@@ -4,7 +4,7 @@
 // order, the API answered `{ error: { message, details } }`, and the editor read `error.message`
 // from the wrong level so every refusal read as the generic "could not save" text.
 import { render, screen } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";

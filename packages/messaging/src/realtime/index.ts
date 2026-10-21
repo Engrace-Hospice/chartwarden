@@ -1,4 +1,4 @@
-// @wardenx/messaging — realtime layer (M36-T08, spec §4.3).
+// @chartwarden/messaging — realtime layer (M36-T08, spec §4.3).
 //
 // The Socket.IO event & room CONTRACT: the room grammar + connect-time room-set computation
 // (./rooms) and the event names + sanitized payload types (./events). The Socket.IO server +

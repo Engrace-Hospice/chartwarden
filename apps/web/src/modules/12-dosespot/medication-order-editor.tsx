@@ -4,7 +4,7 @@ import {
   PageHeader,
   PatientWorkspaceLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";

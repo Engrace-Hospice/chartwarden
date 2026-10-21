@@ -13,10 +13,10 @@
 // reject it. The two portal-self routes therefore use {@link mutatingActorOf}, which permits a portal
 // session and leaves `membershipId` null so the opt-out row records `recorded_by_user_id = NULL` exactly
 // as §3.3.8 specifies for the self-service path.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles + the session facts the §4.8 predicates and §7.13 read. */

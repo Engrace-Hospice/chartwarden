@@ -1,4 +1,4 @@
-// @wardenx/db — `organization_settings_registry` (M1 Foundation §3.12 / D6).
+// @chartwarden/db — `organization_settings_registry` (M1 Foundation §3.12 / D6).
 // Platform-shared, boot-populated registry of the keys modules may store under
 // `organization.settings`, with the collision guard that rejects two modules
 // claiming the same uniqueAcrossTenants key (W-M1-08). NON_ORG_SCOPED in

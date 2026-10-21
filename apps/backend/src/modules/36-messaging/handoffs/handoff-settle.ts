@@ -2,14 +2,14 @@
 // decline, cancel, the expiry tick and offboarding all end here, so the closing row, its history event and the
 // `m36.handoff.unaccepted` announcement cannot drift apart. The caller holds the handoff row FOR UPDATE and has already
 // moved the items; this closes the handoff in the same transaction. The announcement carries counts, never an item.
-import { unacceptedCount } from "@wardenx/messaging";
+import { unacceptedCount } from "@chartwarden/messaging";
 import type {
   HandoffCloseReason,
   HandoffEventType,
   HandoffItemState,
   HandoffState,
   HandoffUnacceptedCause,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import { publishHandoffEvent } from "./handoff-events";

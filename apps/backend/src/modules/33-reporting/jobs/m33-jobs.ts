@@ -1,5 +1,5 @@
 // apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts — M33 Phase 2C LIVE BullMQ wiring for the §4.8 jobs.
-// The thin, infra-touching adapter that turns the @wardenx/reporting pure workers (catalog in ./index.ts)
+// The thin, infra-touching adapter that turns the @chartwarden/reporting pure workers (catalog in ./index.ts)
 // into running BullMQ `Worker`s + the cron-schedule `Queue`s. All job LOGIC lives in the package (unit-tested
 // against in-memory ports); this module only constructs `Worker`/`Queue` over a Valkey connection and BINDS
 // each worker's PORTS to real adapters — the M33 repos (catalog / run-ledger / tile-cache / drilldown-audit /
@@ -28,9 +28,9 @@
 //   • the drilldown-audit writer ENVELOPE-ENCRYPTS the filter context FIRST — the encryption port is unbound
 //     here, so a run fails closed (DrilldownDekUnavailable) and writes NOTHING (never plaintext at rest, §3.6).
 import { randomUUID } from "node:crypto";
-import { type AuditContext, audit } from "@wardenx/audit";
-import { createDbAdminMembershipReader, roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { createDbAdminMembershipReader, roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CsvExportPorts,
   DashboardTileCacheRepository,
@@ -58,9 +58,9 @@ import {
   type XlsxRenderRequestPorts,
   runNightlyRefresh,
   translateSpec,
-} from "@wardenx/reporting";
-import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
-import type { AdminMembershipReader } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
+import type { AdminMembershipReader } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import type Redis from "ioredis";
@@ -128,7 +128,7 @@ export interface M33WorkerDeps {
    */
   readonly auditBypass?: PlatformBypassAuditor<DbClient>;
   /**
-   * The M3-owned `org_admin`-grant reader (`createDbAdminMembershipReader`, @wardenx/auth). Consulted by
+   * The M3-owned `org_admin`-grant reader (`createDbAdminMembershipReader`, @chartwarden/auth). Consulted by
    * the `report.scheduled_run` snapshot to decide the OWNER's §4.7.1 scope (F-059) — see the call site.
    * ABSENT ⇒ every scheduled snapshot narrows to its owner's `self` scope, which is fail-closed: an
    * unwired reader yields less data, never the whole organization's.

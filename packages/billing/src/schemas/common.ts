@@ -1,9 +1,9 @@
-// @wardenx/billing — shared TypeBox fragments for the M23 route request/response contracts (§4.1 / §4.2).
+// @chartwarden/billing — shared TypeBox fragments for the M23 route request/response contracts (§4.1 / §4.2).
 //
 // PURE DOMAIN (shape contracts only): TypeBox schemas + their `Static` types. NO Fastify, NO Drizzle, NO
 // handlers — the routes (P3) import these as `{ schema: { body, querystring, params, response } }`. The
 // validation/lifecycle/penny-math invariants behind each shape are enforced at the service layer, never
-// here (a TypeBox schema is a SHAPE gate only — the M33 `@wardenx/reporting` schema precedent).
+// here (a TypeBox schema is a SHAPE gate only — the M33 `@chartwarden/reporting` schema precedent).
 //
 // ENUM VOCABULARY — the API/wire surface speaks the **DB pgEnum** vocabulary (UPPERCASE claim/notice
 // states, the full `m23_eligibility_outcome` union), MATCHING the spec §4.2 worked examples

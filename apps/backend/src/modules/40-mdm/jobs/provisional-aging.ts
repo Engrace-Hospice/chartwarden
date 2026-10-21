@@ -1,12 +1,12 @@
 // apps/backend/src/modules/40-mdm/jobs/provisional-aging.ts — M40 §4.3 `mdm.provisional_aging_scan` cron body
 // (GAP-173): weekly, provisional rows pending > 14 days → escalate to platform-ops. The pure grouping lives in
-// `@wardenx/mdm` (`planProvisionalAging`); this reads each org's `pending` provisionals under RLS and sends ONE
+// `@chartwarden/mdm` (`planProvisionalAging`); this reads each org's `pending` provisionals under RLS and sends ONE
 // digest notice per org through the org-less platform-ops path (`./platform-ops.ts`) — platform-ops is not a
 // tenant, so this deliberately does not use the tenant-scoped AlertEmitter. Re-escalates weekly while a row stays
 // pending (that is the point of an escalation), with a week-bucketed correlation id.
-import { type DbClient, schema } from "@wardenx/db";
-import { type ProvisionalRow, planProvisionalAging } from "@wardenx/mdm";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type ProvisionalRow, planProvisionalAging } from "@chartwarden/mdm";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { M40ActiveOrgPort } from "../outbox-consumers/nppes-consumer-ports";
 import { type PlatformOpsDeps, notifyPlatformOps } from "./platform-ops";

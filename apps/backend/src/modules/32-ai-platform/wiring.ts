@@ -2,13 +2,13 @@
 //
 // The §3.3 governance tables (`ai_capability`, `ai_capability_lifecycle_event`,
 // `ai_capability_calibration`) grant `wardenx_app` SELECT only; every write is `wardenx_admin` on the
-// separately-pooled platform credential. `@wardenx/tenancy`'s allowlist starts EMPTY and
+// separately-pooled platform credential. `@chartwarden/tenancy`'s allowlist starts EMPTY and
 // `withPlatformContext` refuses any caller not on it, so the registry store's writes are dead until
 // this runs — which is the fail-closed direction: a module that forgets to wire its tenancy cannot
 // write, rather than writing under an unaudited bypass.
 //
 // The M33 `wireM33Tenancy` / M34 `M34_PLATFORM_JOB_ID` precedent, verbatim in shape.
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 
 /**
  * The registered platform-job id M32's governance writes enter `withPlatformContext` under.
@@ -20,7 +20,7 @@ import { registerPlatformJob } from "@wardenx/tenancy";
 export const M32_PLATFORM_JOB_ID = "m32.platform_ops";
 
 /**
- * Register M32's platform job id on the `@wardenx/tenancy` allowlist so the governance registry store
+ * Register M32's platform job id on the `@chartwarden/tenancy` allowlist so the governance registry store
  * may enter `withPlatformContext`. Idempotent (`Set.add`). Must run before any capability registration,
  * lifecycle transition or calibration publication.
  */

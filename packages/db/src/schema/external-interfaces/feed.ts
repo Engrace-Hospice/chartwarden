@@ -1,4 +1,4 @@
-// @wardenx/db — `external_feed` + `external_feed_credential` (M29 §3.3). The per-tenant HL7 feed registry
+// @chartwarden/db — `external_feed` + `external_feed_credential` (M29 §3.3). The per-tenant HL7 feed registry
 // and its rotating channel-credential material.
 //
 // TENANT-SCOPED, UNPARTITIONED: `organization_id` NOT NULL with a REAL FK to `organization` (the M1 spine),

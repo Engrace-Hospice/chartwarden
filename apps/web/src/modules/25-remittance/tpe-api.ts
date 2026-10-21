@@ -2,7 +2,7 @@
 // Every wire shape is an alias into the generated `operations` map (never a hand-copied interface). The server owns
 // every rule and refusal (ADR-0030): this layer only sends the facts typed from the MAC's letters, attaches If-Match
 // where the server requires it, and returns the server's own message on a refusal.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 import { type WriteResult, failure, guarded, ifMatch, ok } from "./remittance-api";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;

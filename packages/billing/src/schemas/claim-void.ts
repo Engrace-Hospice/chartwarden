@@ -1,4 +1,4 @@
-// @wardenx/billing — schemas for route #9 `POST /api/v1/billing/claims/:id:void` (§4.1, D14).
+// @chartwarden/billing — schemas for route #9 `POST /api/v1/billing/claims/:id:void` (§4.1, D14).
 //
 // Builds a TOB 818 (void/cancel) referencing this claim; returns the NEW claim id in DRAFT. Step-up auth
 // required. The predecessor must be in a voidable adjudicated state (server-enforced).

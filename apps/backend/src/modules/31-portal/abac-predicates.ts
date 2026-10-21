@@ -43,8 +43,8 @@ import {
   type AbacContext,
   type AbacTarget,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import type { PortalAccessGrantKind, PortalAccountStatus } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { PortalAccessGrantKind, PortalAccountStatus } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import { consentTypeForGrantKind, portalSessionClass } from "./lifecycle/portal-access-gate";
 import { isTwoPartyRecordingState } from "./telehealth/state-matrix";
@@ -65,7 +65,7 @@ export type M31RegisteredAbacPredicate = (typeof M31_ABAC_PREDICATES)[number];
 /**
  * The three portal session classes M2 mints; a non-portal class denies every `portal.*` predicate.
  *
- * Re-exported from @wardenx/auth rather than redefined. M16, M19 and M31 each kept their own copy of
+ * Re-exported from @chartwarden/auth rather than redefined. M16, M19 and M31 each kept their own copy of
  * this list, all three comparing against `session_class` values the enum did not contain until
  * migration 0219 (F-030) — three independent copies of a vocabulary that matched nothing, which is
  * exactly how a fourth copy would have drifted once the enum finally gained the values.
@@ -156,7 +156,7 @@ export interface PortalAbacPorts {
   }): Promise<boolean>;
 }
 
-// Structural shapes for the seams this file calls — no `@wardenx/*/seams` import edge is taken.
+// Structural shapes for the seams this file calls — no `@chartwarden/*/seams` import edge is taken.
 interface ConsentEvaluatorShape {
   evaluate(args: {
     organizationId: string;

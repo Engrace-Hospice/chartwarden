@@ -10,8 +10,8 @@ import {
   DEVICE_ATTESTATION_ATTRIBUTE,
   type SessionTimeoutEnforcer,
   sessionClassRequiresMfa,
-} from "@wardenx/auth";
-import { type OrgScope, type SessionContextResolver, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type OrgScope, type SessionContextResolver, ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
 

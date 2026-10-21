@@ -27,9 +27,9 @@
 // KNOWN LIMIT (see the spec changelog): the overlay is created when the order is SIGNED, per §2.6. An infusion
 // signed while the patient was still at home and continued after an IPU admission is NOT retro-fitted with an
 // overlay; M13 then runs with its own order-policy bounds only.
-import { type DbClient, schema } from "@wardenx/db";
-import { buildIvSafetyOverlay, isIvContinuousOrder } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { buildIvSafetyOverlay, isIvContinuousOrder } from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 

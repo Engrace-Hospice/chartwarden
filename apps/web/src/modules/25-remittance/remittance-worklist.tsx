@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — M25, the REMITTANCE WORKLIST (R2, §5). The 835 envelope surface: the
 // posted/queued/failed advices and the manual-match backlog of unmatched lines. Reads are org-scoped
 // server-side (RLS); the server is the only authz point (ADR-0030) — this gates nav visibility only. Lantern:

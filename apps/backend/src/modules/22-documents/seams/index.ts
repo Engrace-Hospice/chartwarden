@@ -12,7 +12,7 @@
 // `registerDocumentSeams` registers both real impls over their boot deny-stubs (before validateSeams()),
 // driven from the composition root's wireModuleSeams(). Both compose over an injected store/object-store
 // port (in-memory slice here; Drizzle + MinIO in prod, under the consumer's RLS). Mirrors the M7/M8 seams
-// precedent (interface in @wardenx/types; impl over a port; registered into the M1 registry).
+// precedent (interface in @chartwarden/types; impl over a port; registered into the M1 registry).
 import type {
   DocumentReader,
   DocumentRenderer,
@@ -21,7 +21,7 @@ import type {
   IntakeMetricsProvider,
   PortalDocumentReader,
   RenderedDocumentProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   createDocumentReader,

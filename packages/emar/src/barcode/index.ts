@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.9 / BCMA barcode-scan verification barrel (M13-T09).
+// @chartwarden/emar — §2.9 / BCMA barcode-scan verification barrel (M13-T09).
 export {
   type BarcodeMatchResult,
   type BarcodeOrderContext,

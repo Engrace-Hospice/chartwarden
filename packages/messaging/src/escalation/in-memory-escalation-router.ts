@@ -1,4 +1,4 @@
-// @wardenx/messaging - TEST-ONLY in-memory EscalationRouter (M36 WP 4.3, ADR-0057). It implements the real contract over a fixed
+// @chartwarden/messaging - TEST-ONLY in-memory EscalationRouter (M36 WP 4.3, ADR-0057). It implements the real contract over a fixed
 // ladder using the shared shift-window rule, so the shift-boundary and time-zone acceptance is proved against the contract itself.
 // Every answer is stamped `in_memory_fake`; production wiring must never import it (a backend test scans for that). It is not an
 // M19 roster: M19 stays the only owner of rosters and tiers. It enforces only the org it was built for; the real router must also
@@ -9,7 +9,7 @@ import {
   type EscalationRouteRequest,
   type EscalationRouter,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type ShiftSchedule,
   parseStrictInstant,

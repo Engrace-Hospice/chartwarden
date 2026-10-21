@@ -1,5 +1,5 @@
-import { CHANNEL_KIND_DESCRIPTORS } from "@wardenx/messaging";
-import { POLL_BLOCKED_CHANNEL_KINDS } from "@wardenx/types";
+import { CHANNEL_KIND_DESCRIPTORS } from "@chartwarden/messaging";
+import { POLL_BLOCKED_CHANNEL_KINDS } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import type { MessageBodyCipher } from "../messaging-write-core";
 import { pollBlockedChannelKinds } from "./poll-service-db";

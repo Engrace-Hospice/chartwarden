@@ -41,8 +41,8 @@ import {
   isoDateToEpochDay,
   mergeCarryBlocks,
   walkCarryChain,
-} from "@wardenx/shared/rhc";
-import type { LocalDate } from "@wardenx/types";
+} from "@chartwarden/shared/rhc";
+import type { LocalDate } from "@chartwarden/types";
 import {
   COMPREHENSIVE_ASSESSMENT_DAYS,
   INITIAL_ASSESSMENT_DAYS,
@@ -337,7 +337,7 @@ export interface RhcCountableStay {
 
 /**
  * The RHC day count an admission starting on `readmitOn` continues — the SAME rule as M23's `computeRhcCarryOver`
- * (both run `@wardenx/shared/rhc`): each span is clipped to the day before `readmitOn` (a transfer's hand-off day
+ * (both run `@chartwarden/shared/rhc`): each span is clipped to the day before `readmitOn` (a transfer's hand-off day
  * is day 1 of the new stay), overlapping / next-day spans merge so a shared day counts once, and the walk back
  * continues while each gap is ≤ 60 days, stopping at the 60-day high tier (prior days are capped at 60). Pass
  * `rhcPriorStayFacts(...)` so a transfer-in's sending-hospice days count. Unlike M23 (which assumes an open span

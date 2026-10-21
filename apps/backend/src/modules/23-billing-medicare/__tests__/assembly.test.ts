@@ -1,9 +1,9 @@
-import * as billing from "@wardenx/billing";
-import { BillingRuleRegistry, pass } from "@wardenx/billing";
-import type { Rule } from "@wardenx/billing";
+import * as billing from "@chartwarden/billing";
+import { BillingRuleRegistry, pass } from "@chartwarden/billing";
+import type { Rule } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts — the §10 task-30 CLAIM ASSEMBLY
 // service tests (D10 / D15). The service constructs its repos internally (`new repositories.X(tx)`), so this
-// suite PARTIAL-mocks `@wardenx/billing`: the data ports are swapped for the in-memory `_billing-repo-fakes`
+// suite PARTIAL-mocks `@chartwarden/billing`: the data ports are swapped for the in-memory `_billing-repo-fakes`
 // store, while ALL pure domain (calculatePerDiemClass / calculateSia / sequestration / control-number / TOB / the
 // rule registry) stays REAL — so the assembled claim's money + lines are genuinely computed, not stubbed.
 // `withOrgContext` is exercised against a fake no-op transaction (`makeFakeDb`). Asserted invariants:
@@ -20,8 +20,8 @@ import { computeClaimSia } from "../services/claim-assembly-facts";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/billing")>();
+vi.mock("@chartwarden/billing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/billing")>();
   const { buildFakeRepositories } = await import("./_billing-repo-fakes");
   const { repos, store } = buildFakeRepositories();
   return {

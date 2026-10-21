@@ -23,8 +23,8 @@
 // IDEMPOTENT on the outbox event id via the table's partial unique indexes (`ON CONFLICT DO NOTHING`), in
 // addition to the dispatcher's own (eventId, consumerName) receipt. Event name is a STRING literal (no M12
 // import, no new dependsOn edge). Runs with no acting membership (the F-102 `CONSUMER_USER_ID` convention).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 

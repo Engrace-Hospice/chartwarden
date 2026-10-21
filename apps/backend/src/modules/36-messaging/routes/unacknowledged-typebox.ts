@@ -8,7 +8,7 @@ import {
   ACK_ESCALATION_NOTES,
   ACK_QUEUE_LIMIT_MAX,
   ACK_QUEUE_STATUSES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const UuidOut = Type.String({ format: "uuid" });
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);

@@ -18,8 +18,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { STEP_UP_POLICY } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { STEP_UP_POLICY } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

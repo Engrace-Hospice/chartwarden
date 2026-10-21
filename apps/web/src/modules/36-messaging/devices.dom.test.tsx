@@ -4,8 +4,8 @@
 // confirm revokes then signs out), the 401/403/error/empty states, no IP / user agent / id in the page, axe clean; and the security officer's
 // page: a bad id is refused before any request, the list is that person's, a stale step-up sends the officer to the step-up screen.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DeviceDto } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import type { DeviceDto } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

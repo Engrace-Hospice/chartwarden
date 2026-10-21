@@ -1,4 +1,4 @@
-// @wardenx/shared - E.164 normalisation for a number a machine is going to DIAL (GAP-032: the SOS terminus
+// @chartwarden/shared - E.164 normalisation for a number a machine is going to DIAL (GAP-032: the SOS terminus
 // calls a clinician's consented emergency contact). Backed by libphonenumber-js (registry before hand-rolled).
 //
 // The failure result carries a closed reason code and NEVER the input: the number is a third party's

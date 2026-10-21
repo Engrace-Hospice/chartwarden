@@ -1,10 +1,10 @@
-// @wardenx/billing — the claim's UB-04 Type of Admission (FL 14 / CL101) and Point of Origin (FL 15 / CL102): the
+// @chartwarden/billing — the claim's UB-04 Type of Admission (FL 14 / CL101) and Point of Origin (FL 15 / CL102): the
 // snapshot taken from the admission and the `admission_codes_present` rule that blocks a claim without them.
 import {
   type ValidationContext,
   admissionCodesPresent,
   claimAdmissionCodes,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";
 

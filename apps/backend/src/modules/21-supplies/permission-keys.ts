@@ -1,13 +1,13 @@
 // apps/backend/src/modules/21-supplies/permission-keys.ts — M21-T05 (§4.3).
 //
 // The twenty-nine permission keys Module 21 registers into Module 3's catalog. The canonical map is
-// `M21_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// `M21_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it + the ordered key list so the §4.1
 // routes gate on `requirePermission(key)` without re-declaring the map (the M15/M16/M24/M26 posture —
 // references the auth package directly, no drift).
-import { type M21ContributedPermissionKey, M21_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M21ContributedPermissionKey, M21_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
-export { M21_CONTRIBUTED_PERMISSIONS, type M21ContributedPermissionKey } from "@wardenx/auth";
+export { M21_CONTRIBUTED_PERMISSIONS, type M21ContributedPermissionKey } from "@chartwarden/auth";
 
 /** Union of every §4.3 permission key M21 owns. */
 export type M21PermissionKey = M21ContributedPermissionKey;

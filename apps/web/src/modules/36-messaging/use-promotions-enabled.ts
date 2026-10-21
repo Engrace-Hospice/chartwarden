@@ -3,8 +3,8 @@
 // loaded in the real app) and its rows feed the per-message status chip. Fails closed on any error (a failure is
 // cached only briefly; an "off" answer is cached). A propose or withdraw calls `refreshPromotions` so the chips re-read. The server stays
 // the authority: with the flag off its routes answer 404.
-import type { ChartPromotionDto } from "@wardenx/types";
-import { type ApiClient, useApiClient } from "@wardenx/ui";
+import type { ChartPromotionDto } from "@chartwarden/types";
+import { type ApiClient, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 
 export interface PromotionsIndex {

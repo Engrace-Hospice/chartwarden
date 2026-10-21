@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_allergy` (M5; architecture §10.6.6 "Allergies → Module 5 → Allergy (linked to
+// @chartwarden/db — `patient_allergy` (M5; architecture §10.6.6 "Allergies → Module 5 → Allergy (linked to
 // Patient)"; F-238, migration 0311). The patient's allergy / intolerance list. PHI-bearing → three-column
 // tenancy rule, ENABLE+FORCE RLS, M4 write-audit trigger (`allergen_text`, `reaction`,
 // `entered_in_error_reason` denylisted).
@@ -10,7 +10,7 @@
 //
 // `allergen_text` is the attested line VERBATIM (the reaction is part of it when the fax stated one);
 // `reaction` / `severity` are only ever set by a clinician. `allergen_key` is the deterministic dedupe key
-// (`doclensClinicalLineKey`, @wardenx/types) — a second fax repeating an allergy is flagged, not duplicated.
+// (`doclensClinicalLineKey`, @chartwarden/types) — a second fax repeating an allergy is flagged, not duplicated.
 // Provenance (`source_*`) points back at the M22 candidate / decision / review / document / page; plain
 // uuids, no cross-module FK (M5 never imports M22 schema).
 import { sql } from "drizzle-orm";

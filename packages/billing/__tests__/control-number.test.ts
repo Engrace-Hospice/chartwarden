@@ -4,8 +4,8 @@ import {
   deriveControlNumber,
   isValidControlNumber,
   parseControlNumber,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 deterministic claim_control_number derivation (D4 / §2.6) pure-domain tests.
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 deterministic claim_control_number derivation (D4 / §2.6) pure-domain tests.
 //
 // The control number is the idempotency key BOTH internally (the
 // `(provider_entity_id, claim_control_number, attempt_index)` unique index) AND at the MAC. The D4

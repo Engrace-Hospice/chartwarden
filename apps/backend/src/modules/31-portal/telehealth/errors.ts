@@ -11,7 +11,7 @@
 // consent in a two-party state disables the Record button — never a default-allow, §7.4). An illegal
 // lifecycle transition is a `409` conflict (the caller raced the state machine). The audio-only fallback is
 // NEVER an error for the expected degrade — it returns a plan (§7.3 "the chart-writing path is NEVER blocked").
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7.2–§7.4 / D8 / D9 / D14 telehealth failure-code catalog → HTTP status. */
 export const TELEHEALTH_ERROR_STATUS = {

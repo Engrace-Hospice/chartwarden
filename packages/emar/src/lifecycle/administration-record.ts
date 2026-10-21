@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.2 D6 administration-record lifecycle state machine (M13-T03). Pure, IO-free.
+// @chartwarden/emar — §2.2 D6 administration-record lifecycle state machine (M13-T03). Pure, IO-free.
 //
 // The §2.2 machine is deliberately FLAT — administrations are *recorded events*, not multi-step workflows.
 // The complexity is at the *write gate* (M12 consistency check, witness check, encounter linkage, late-entry
@@ -17,7 +17,7 @@
 // guards (failures raise the precise code via AdministrationStateError), and return the new state + the
 // in-transaction side-effect list. No IO; every fact a guard needs (eligibility, M12 allow flag, five-rights
 // result, late-entry tier resolved, kit-drawdown success) is resolved upstream and passed in.
-import type { AdministrationStatus } from "@wardenx/types";
+import type { AdministrationStatus } from "@chartwarden/types";
 import {
   type AdministrationSideEffect,
   type AdministrationTransitionResult,

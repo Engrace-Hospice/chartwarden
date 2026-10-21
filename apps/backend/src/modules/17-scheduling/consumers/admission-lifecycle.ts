@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {
   type SchedulingAutomationService,

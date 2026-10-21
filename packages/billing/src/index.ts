@@ -1,8 +1,8 @@
-// @wardenx/billing — M23 Billing (Medicare) package entrypoint (public barrel).
+// @chartwarden/billing — M23 Billing (Medicare) package entrypoint (public barrel).
 //
 // M23 owns the Medicare-FFS hospice billing record: claim assembly from clinical artifacts, the §11.A
 // pre-submission validation rule registry (platform-floor `regulatory_required` protection), the
-// outbox-only MAC submission posture (837I / NOE / NOTR via the X12 sidecar in @wardenx/x12-837-client),
+// outbox-only MAC submission posture (837I / NOE / NOTR via the X12 sidecar in @chartwarden/x12-837-client),
 // 999/277CA acknowledgment ingestion, the HIPPS + SIA calculators, HETS eligibility, the sequestration
 // + wage-index reference data, and the per-PE MAC submitter credentials. The Drizzle schema for all 17
 // owned tables lives in the central barrel (packages/db/src/schema/billing) per repo convention; this

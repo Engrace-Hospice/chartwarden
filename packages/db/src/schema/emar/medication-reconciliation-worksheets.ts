@@ -1,4 +1,4 @@
-// @wardenx/db — `medication_reconciliation_worksheet` (M13 §3.3 / §2.8 D17). One worksheet per admission per
+// @chartwarden/db — `medication_reconciliation_worksheet` (M13 §3.3 / §2.8 D17). One worksheet per admission per
 // M6-triggered reconciliation event (admission / transfer_in / discharge / recertification): the trigger outbox
 // event, the 5-day due, and the finalize lifecycle. PHI-bearing (patient_id) → the three-column tenancy rule
 // (provider_entity_id + location_id NOT NULL). Non-partitioned (§3.5). Cross-module refs (M5 patient, M6 admission,

@@ -1,4 +1,4 @@
-// @wardenx/messaging — the messaging cache port + an in-memory adapter (M36-T08, spec §4.8).
+// @chartwarden/messaging — the messaging cache port + an in-memory adapter (M36-T08, spec §4.8).
 //
 // The seam between the realtime/read paths and Valkey. Production binds a Valkey-backed adapter
 // (string GET/SET with the §4.8 TTLs for the resolver cache; SADD/SMEMBERS/EXPIRE for the room-set;

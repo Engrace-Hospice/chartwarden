@@ -2,13 +2,13 @@
 // `dosespot_sync_queue` worker needs before it can call the (also-unbound) `DoseSpotClient` (M12
 // `handlers-unbound` group, #248).
 //
-// The DoseSpot vendor call itself (`@wardenx/dosespot`'s `createUnboundDoseSpotClient`) is ALREADY a
+// The DoseSpot vendor call itself (`@chartwarden/dosespot`'s `createUnboundDoseSpotClient`) is ALREADY a
 // real, typed, fail-closed deny-stub — confirmed no `DOSESPOT_*` env var, base URL, or credential
 // resolver exists anywhere in this repository, so building a "working" HTTP transport here would
 // fabricate an integration that does not exist (explicitly out of scope for this pass). This file covers
 // the edge one step before that call: resolving the data the vendor call needs.
 //
-//   • `PatientSyncSnapshotResolver` — REAL, not deferred. `@wardenx/dosespot`'s `PatientSyncSnapshot`
+//   • `PatientSyncSnapshotResolver` — REAL, not deferred. `@chartwarden/dosespot`'s `PatientSyncSnapshot`
 //     needs firstName/lastName/dateOfBirth/gender/address/phone/active/updatedAt, which M5's PUBLISHED
 //     seams do not carry (`PatientReader.findById` → `PatientIdentity` has no address/phone;
 //     `PatientAddressReader` returns only a 2-letter state code or a kind/facilityId/postalCode triple).
@@ -39,10 +39,10 @@
 // Both ports throw a typed, named error for their failure case (never return undefined and never
 // silently no-op); `PatientSyncSnapshotResolver.resolve` still returns `null` for the DISTINCT, non-error
 // case of "no such patient under this org any more" (deleted/merged/wrong tenant) — the worker treats
-// that as a clean skip, not a failure. Naming mirrors `@wardenx/quality`'s `unboundWorkerPort`/
-// `M30WorkerPortUnbound` (F-150, #248) and `@wardenx/dosespot`'s own `createUnboundDoseSpotClient`
+// that as a clean skip, not a failure. Naming mirrors `@chartwarden/quality`'s `unboundWorkerPort`/
+// `M30WorkerPortUnbound` (F-150, #248) and `@chartwarden/dosespot`'s own `createUnboundDoseSpotClient`
 // (retryable: false, no retry storm, DLQ immediately).
-import type { PatientSyncSnapshot } from "@wardenx/dosespot";
+import type { PatientSyncSnapshot } from "@chartwarden/dosespot";
 import type { DosespotSyncDemographics } from "../../05-patient/index";
 
 /** Raised by {@link createUnboundDosespotPatientIdResolver}. Never retryable — no mapping table exists
@@ -60,7 +60,7 @@ export class M12DosespotPatientIdUnbound extends Error {
   }
 }
 
-/** The §2.6 M5 demographic snapshot `planPatientSync`/`buildPatientUpsertPayload` (`@wardenx/dosespot`)
+/** The §2.6 M5 demographic snapshot `planPatientSync`/`buildPatientUpsertPayload` (`@chartwarden/dosespot`)
  *  need. `null` is the honest "no such patient under this org any more" outcome — a clean skip, not a
  *  failure. */
 export interface PatientSyncSnapshotResolver {
@@ -76,7 +76,7 @@ export type DosespotSyncDemographicsForOrg = (
 
 /**
  * The REAL implementation — a thin adapter folding M5's org-explicit demographic read into the
- * `@wardenx/dosespot` wire shape. `addressLine1`/`city`/`postalCode` fall back to `""` when the patient
+ * `@chartwarden/dosespot` wire shape. `addressLine1`/`city`/`postalCode` fall back to `""` when the patient
  * has no primary address on file — honest (an incomplete chart), not fabricated, and DoseSpot's own
  * upsert is a best-effort demographic sync, not a validation gate.
  */

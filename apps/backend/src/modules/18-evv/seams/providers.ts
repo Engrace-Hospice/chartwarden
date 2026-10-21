@@ -1,5 +1,5 @@
 // apps/backend/src/modules/18-evv/seams/providers.ts — M18-T05 the §4.3 seam implementations: pure
-// orchestration over an injected {@link EvvSeamStore}. Each returns the leaf-typed seam interface (@wardenx/types)
+// orchestration over an injected {@link EvvSeamStore}. Each returns the leaf-typed seam interface (@chartwarden/types)
 // the M1 registry validates and M8/M20/M23/M24/M25/M30/M31/M33 resolve. The providers add NO tenant logic — RLS
 // scopes every store read by the consumer's `app.org_id` (§3.6); they project store rows to the read DTOs and do
 // the read-side rate math (vacuous-window handling). All six seams are READ-only — M18 owns the EVV lifecycle
@@ -20,7 +20,7 @@ import type {
   EvvLocationProvider,
   EvvMetricsProvider,
   EvvVerificationProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { EvvSeamStore } from "./store";
 
 /** Map the richer §4.3 internal bracket DTO down to M8's `EvvBracketResolution` contract (D9). Returns null when

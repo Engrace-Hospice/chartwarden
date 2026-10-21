@@ -1,4 +1,4 @@
-import { StatusPill } from "@wardenx/ui";
+import { StatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/17-scheduling — the shared visit table the day/week/my-visits read screens render
 // (M17 §5.1, Track B / ADR-0030). One row per visit: scheduled window, purpose, clinician, §6.6 status pill.
 // Reconciled to Lantern (R1): No-Line table, mono clinician id, keyboard-actionable rows. Leaves only.

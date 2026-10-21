@@ -1,4 +1,4 @@
-import { BACKGROUND_REQUEST_HEADERS, type operations, useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, type operations, useApiClient } from "@chartwarden/ui";
 // apps/web/src/shell — the shared client state for the global alert inbox. The shell owns the
 // global bell, while M36 consumes this provider for the full inbox screen (ADR-0030).
 import {

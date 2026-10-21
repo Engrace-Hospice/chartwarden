@@ -1,5 +1,5 @@
-import { ChartWardenError } from "@wardenx/types";
-// @wardenx/messaging — message body envelope crypto (M36 §3.4 / FB-T05).
+import { ChartWardenError } from "@chartwarden/types";
+// @chartwarden/messaging — message body envelope crypto (M36 §3.4 / FB-T05).
 import { describe, expect, it } from "vitest";
 import {
   deriveOrgDek,

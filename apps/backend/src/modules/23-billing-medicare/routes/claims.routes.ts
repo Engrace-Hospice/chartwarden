@@ -33,8 +33,8 @@ import {
   ClaimReplaceRequest,
   ClaimVoidRequest,
   ManualValidateRequest,
-} from "@wardenx/billing";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
 import type { ClaimAssemblyService } from "../services/claim-assembly";

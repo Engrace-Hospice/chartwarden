@@ -5,7 +5,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the ACKNOWLEDGMENTS TIMELINE (R2,
 // §5.1 #9). All `claim_acknowledgment` rows for one claim — 999 / 277CA / 835 — each with its MAC
 // jurisdiction, receipt/parse timestamps, outcome (§6.6 pill), and an expandable parsed-payload viewer.

@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `bereavement_discharge_legitimacy` (discharge, error, regulatory).
+// @chartwarden/billing — §4.5 rule `bereavement_discharge_legitimacy` (discharge, error, regulatory).
 // Discharge claims must carry a discharge reason + date; bereavement-period lines (revenue code 0942)
 // are restricted to allowable post-death services per the CMS rule (bereavement is a non-covered,
 // non-reimbursable service — it must not appear as a billable charge). Reads the resolved claim

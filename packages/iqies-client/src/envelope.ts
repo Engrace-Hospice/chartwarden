@@ -1,4 +1,4 @@
-// @wardenx/iqies-client — the CMS HOPE submission envelope assembler (M10-T07, spec §4.10 / D5 / D6).
+// @chartwarden/iqies-client — the CMS HOPE submission envelope assembler (M10-T07, spec §4.10 / D5 / D6).
 // The CMS HOPE submission XML schema, the per-MAC submitter authentication, and the sandbox-vs-prod
 // selection are transport-internal (the real XML serialization lands behind `transport.ts` with the
 // per-tenant credential wiring); this module owns the *deterministic, PHI-light envelope model* M10 hands
@@ -6,7 +6,7 @@
 // SHA-256. Per-PE / per-period batching (not per-assessment) preserves CMS's batch acceptance-report
 // semantics (D5). Pure + deterministic: the same envelope always serializes to the same bytes and hash.
 import { createHash } from "node:crypto";
-import type { HopeRfaKind } from "@wardenx/types";
+import type { HopeRfaKind } from "@chartwarden/types";
 
 /** One assessment included in a submission batch. `correctsIqiesRecordId` is set only for Correction RFAs
  * (D7): the new row references the original's iQIES record id; null for a first-time submission. */

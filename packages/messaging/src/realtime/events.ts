@@ -1,4 +1,4 @@
-// @wardenx/messaging — Socket.IO event contract + sanitized payload shapes (M36-T08, spec §4.3).
+// @chartwarden/messaging — Socket.IO event contract + sanitized payload shapes (M36-T08, spec §4.3).
 //
 // The server→client and client→server event names + their payload TYPES. The §4.3 invariant the
 // types encode: NO event body carries decrypted PHI to a user not entitled to it — the server

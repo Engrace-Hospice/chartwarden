@@ -1,4 +1,4 @@
-// @wardenx/db — M21 Supplies, DME & Comfort Kits schema barrel (§3.1, 11 owned tables). The central
+// @chartwarden/db — M21 Supplies, DME & Comfort Kits schema barrel (§3.1, 11 owned tables). The central
 // ../index.ts re-exports this barrel; the 12 `m21_*` pgEnums live in ../../enums.ts (M21-T01).
 //
 // AUTHORITY (§3.0 / M21-F04 / ADR-0023): the spec's §3.1 SQL migration is the SINGLE normative schema and

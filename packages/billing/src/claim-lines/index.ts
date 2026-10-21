@@ -1,4 +1,4 @@
-// @wardenx/billing — claim-line derivations barrel (visit lines, CHC quarter-hour units, CBSA value codes,
+// @chartwarden/billing — claim-line derivations barrel (visit lines, CHC quarter-hour units, CBSA value codes,
 // physician NPIs). PURE DOMAIN; no I/O.
 export * from "./visit-codes";
 export * from "./visit-lines";

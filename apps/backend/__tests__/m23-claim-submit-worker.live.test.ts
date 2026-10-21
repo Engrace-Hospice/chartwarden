@@ -25,9 +25,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { deriveControlNumber, type repositories } from "@wardenx/billing";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { deriveControlNumber, type repositories } from "@chartwarden/billing";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

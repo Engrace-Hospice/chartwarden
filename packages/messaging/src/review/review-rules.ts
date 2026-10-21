@@ -7,7 +7,7 @@ import type {
   ReviewSource,
   ReviewState,
   TaskCloseReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export const REVIEW_LIST_DEFAULT = 50;
 export const REVIEW_LIST_MAX = 100;

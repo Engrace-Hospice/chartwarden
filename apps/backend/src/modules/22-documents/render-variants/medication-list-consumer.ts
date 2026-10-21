@@ -15,7 +15,7 @@
 // patientId)` seam (`packages/types/src/dosespot.ts`) — resolved fresh at DELIVERY time, never from the
 // diff payload, so a redelivered or later event always renders the CURRENT active-medication set rather
 // than replaying stale added/removed ids. M22 `dependsOn` is `[1, 5]`; the seam is reached OPAQUELY via
-// `getSeam("MedicationOrderProvider")` (../../../bootstrap/index), never a `@wardenx/dosespot` import — the
+// `getSeam("MedicationOrderProvider")` (../../../bootstrap/index), never a `@chartwarden/dosespot` import — the
 // consent-gate.ts / lab-backref-bindings.ts precedent.
 //
 // This event fires REPEATEDLY against the same patient (every active-medication-set change), and each
@@ -25,7 +25,7 @@
 // so a genuine redelivery (crash between render and receipt) never double-renders, and a later, different
 // `list_changed` event for the same patient always produces a new `document_version` (never an
 // `idempotent_skip`, the mistake the pre-F-168 aggregate-level key would have made here).
-import type { DocumentRetentionClass } from "@wardenx/types";
+import type { DocumentRetentionClass } from "@chartwarden/types";
 import {
   type PatientMedicationListRenderPayload,
   type RenderVariantResult,

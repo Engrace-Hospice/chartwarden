@@ -12,7 +12,7 @@
 //
 // The seams read ambient request context, so each call runs inside a system-actor `runWithRequestContext` for the org being
 // processed (a worker tick is not a request). Every seam is resolved at CALL time (they register after this is built).
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 
 import { getSeam } from "../../../bootstrap/index";
 import type { LabOrderPort } from "./lab-patient-resolver";

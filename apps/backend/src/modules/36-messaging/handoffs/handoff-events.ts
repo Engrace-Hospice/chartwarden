@@ -3,7 +3,7 @@
 // any text. Published in the SAME transaction as the write (the caller passes its `tx`), so an event never announces a
 // write that rolled back. An idempotent replay changes nothing and therefore publishes nothing. The catalog entries live
 // in events-by-m36.ts (added with the consumer).
-import type { HandoffUnacceptedCause } from "@wardenx/types";
+import type { HandoffUnacceptedCause } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 
 export const M36_HANDOFF_EVENTS = {

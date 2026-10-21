@@ -1,7 +1,7 @@
 // M36 WP 3.7 - the "Chart proposals" tab of Notifications & Tasks: the caller's own proposals. Rows carry no message
 // text. Withdraw appears only when the server's allowed_actions say so.
-import type { ChartPromotionDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, StatusPill } from "@wardenx/ui";
+import type { ChartPromotionDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

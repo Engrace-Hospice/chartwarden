@@ -8,8 +8,8 @@ import {
   SBAR_MIN_CHARS_CEILING,
   effectiveSbarPolicy,
   prepareSbarPolicy,
-} from "@wardenx/messaging";
-import { SBAR_PLATFORM_FLOOR, SBAR_SECTION_KEYS } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { SBAR_PLATFORM_FLOOR, SBAR_SECTION_KEYS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync(

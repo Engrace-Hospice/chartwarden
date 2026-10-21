@@ -1,9 +1,9 @@
-// @wardenx/inpatient — M37-T08, §2.7 D8. The visitor check-in restriction evaluator + relationship
+// @chartwarden/inpatient — M37-T08, §2.7 D8. The visitor check-in restriction evaluator + relationship
 // resolver. The check-in route merges the active unit-scope (outbreak) and patient-scope restrictions and
 // this core computes the effective decision: full_block denies (412), immediate_family_only denies a
 // non-immediate-family visitor, mask_required allows with a mask flag, time_limited/no_overnight allow with
 // advisory flags. Pure & IO-free.
-import type { IpuVisitorRelationship, IpuVisitorRestrictionKind } from "@wardenx/types";
+import type { IpuVisitorRelationship, IpuVisitorRestrictionKind } from "@chartwarden/types";
 import { IpuStateError } from "../../errors";
 
 /** §2.7 — the immediate-family relationships (the set an immediate_family_only restriction admits). */

@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/17-scheduling — M17 Scheduling screen registration (Track B, ADR-0030, M17-T08).
 // The §5.1 scheduling read screens that have a backing M17 read route on the generated client: the Day View,
 // the Week View, the Proposal Inbox, the Recurring Policies list, the Time-Off Queue, the single Visit Detail,

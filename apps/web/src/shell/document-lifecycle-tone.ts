@@ -2,7 +2,7 @@
 // Shared-shell because the document workspace (`./document-workflows.tsx`) is embedded by M6's admission
 // and referral screens as well as M22's own, and M22 already depends on M6 (an M6→M22 edge would cycle the
 // module graph). M22's `lantern.tsx` re-exports it for its own screens.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /**
  * Map an M22 document/render/intake lifecycle status to a §6.6 status tone (§6.6 "document/render"

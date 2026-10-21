@@ -2,8 +2,8 @@
 // same rules as the database store (one row per trigger and task, one OPEN review per task, a decided row is final, the
 // task-close trigger). It exists for unit tests of the queue and the service; the database behaviour itself is proven by
 // the live suite. The tasks are the memory task store's, and `channelKinds` stands in for the channel join.
-import { REVIEW_QUEUE_BATCH } from "@wardenx/messaging";
-import { TASK_ACTIVE_STATUSES } from "@wardenx/types";
+import { REVIEW_QUEUE_BATCH } from "@chartwarden/messaging";
+import { TASK_ACTIVE_STATUSES } from "@chartwarden/types";
 import {
   type ActiveCareTeamTask,
   CARE_TEAM_CHANNEL_KIND,

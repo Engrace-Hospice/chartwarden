@@ -1,4 +1,4 @@
-// @wardenx/db — `report_metric_catalog` (M33 §3.3). The platform-global catalog of metrics: each
+// @chartwarden/db — `report_metric_catalog` (M33 §3.3). The platform-global catalog of metrics: each
 // row names a metric, its unit + aggregation, the source seam it derives from, an optional formula,
 // and the sensitivity tier (stricter ABAC). PLATFORM-scoped: NO organization_id (retention class
 // `platform`); sits on the check-tenancy NON_ORG_SCOPED allowlist. RLS + grants land in the M33 RLS

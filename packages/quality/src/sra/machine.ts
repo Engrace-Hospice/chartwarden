@@ -1,4 +1,4 @@
-// @wardenx/quality — §2.2 SRA (Security Risk Assessment) cycle lifecycle state machine (M30-P2a). Pure,
+// @chartwarden/quality — §2.2 SRA (Security Risk Assessment) cycle lifecycle state machine (M30-P2a). Pure,
 // IO-free.
 //
 // The `sra_cycle` aggregate lifecycle (§2.2):
@@ -21,7 +21,7 @@
 // Mirrors the M11 order-machine convention: a transition is a PURE function `(state, event) -> next
 // state` that validates the §2.2 graph then runs the enumerated guards (a guard failure throws a
 // `ChartWardenError` with the precise code). No IO; every fact a guard needs is injected on the event.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { SraCycleStatus } from "../contracts";
 
 /** §2.2 — `reopen` requires a reason of at least this many characters. */

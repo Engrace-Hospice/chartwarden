@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T01 unit tests (spec §2.3, §2.4, §3.2).
+// @chartwarden/mdm — M40-T01 unit tests (spec §2.3, §2.4, §3.2).
 //
 // Locks the entity-kind discriminator + the §2.3 canonical-vs-overlay dividing line: the
 // descriptor table covers every kind exactly once, the Phase-1 flags track the manifest's 11

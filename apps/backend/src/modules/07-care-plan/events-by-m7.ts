@@ -10,7 +10,7 @@ import { Type } from "@sinclair/typebox";
 import {
   M7_PROBLEM_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
   type ModuleEventContribution,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** A per-version lifecycle kind (mirrors `care_plan_version_kind`; §3.2). */
 const versionKind = Type.Union([

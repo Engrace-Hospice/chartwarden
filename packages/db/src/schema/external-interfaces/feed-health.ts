@@ -1,4 +1,4 @@
-// @wardenx/db — `external_feed_health` (M29 §3.3). The rolling per-hour rollup the §4.11.5 listener-down
+// @chartwarden/db — `external_feed_health` (M29 §3.3). The rolling per-hour rollup the §4.11.5 listener-down
 // detector (D17) and the operator health dashboard read.
 //
 // TENANT-SCOPED, UNPARTITIONED: `organization_id` NOT NULL with a REAL FK to `organization`, canonical

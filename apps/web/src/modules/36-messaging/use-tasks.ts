@@ -1,7 +1,7 @@
 // M36 WP 3.4 - the caller's tasks and the four things they can do to one. No optimistic state: a row only changes when
 // the server's answer replaces it (a closed answer leaves an "active" list), and a refusal leaves the row untouched.
-import type { TaskAction, TaskDto } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { TaskAction, TaskDto } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type TaskScope = "assigned" | "created";

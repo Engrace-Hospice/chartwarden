@@ -1,4 +1,4 @@
-// @wardenx/db — `qapi_governance_minutes` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `qapi_governance_minutes` (M30 §3.3; non-partitioned; retention class `compliance`).
 // Governing-body / QAPI meeting minutes under a program: attendee roster, the minutes narrative, the
 // reviewed project/PIP id lists, sign-off, and an append-only amendment log. Real intra-M30 FK to
 // qapi_program. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). `minutes_text` may

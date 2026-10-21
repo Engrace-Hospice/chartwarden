@@ -1,7 +1,7 @@
 // M36 WP 5.9 (ADR-0084) - the two ACCESS steps of an offboarding: sessions and devices (the ADR-0083 revoke, not rebuilt) and channel
 // memberships (the existing soft-remove). Run first: access is cut before anything else is moved.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, count, eq, isNull, ne } from "drizzle-orm";
 import { createStaffSessionStore } from "../../02-identity/staff-session-store";
 import type { SessionDeviceService } from "../session-devices/session-device-service";

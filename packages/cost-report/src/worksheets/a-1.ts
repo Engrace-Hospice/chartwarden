@@ -1,11 +1,11 @@
-// @wardenx/cost-report — Worksheet A-1 (Reclassifications) TypeBox schema (CMS-1984-14, §1.1). A-1 moves
+// @chartwarden/cost-report — Worksheet A-1 (Reclassifications) TypeBox schema (CMS-1984-14, §1.1). A-1 moves
 // costs BETWEEN cost centers to align the trial-balance classification with CMS cost-center definitions
 // (e.g. moving a misclassified benefit out of "Administrative" into "Nursing"). Reclassifications are
 // NET-ZERO by construction — every dollar moved out of one center moves into another — so the schema
 // carries the net-balance tie flag the cross-worksheet validation asserts. Money is INTEGER CENTS; no PHI
 // (D18).
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** A single reclassification entry: move `amountCents` from one cost center to another. */

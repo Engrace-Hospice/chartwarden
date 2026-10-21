@@ -95,8 +95,8 @@ export interface SecretCipherPort {
 /**
  * Records the §4.5 prominent M4 audit event for a validation override on the CALLER'S tx and returns its
  * `audit_event` id (persisted onto the NOT-NULL `validation_override.m4_audit_event_id`). M23 may not write
- * `audit_event` directly — it is a HELPER_ONLY_TABLE only `@wardenx/audit` may insert into — so the
- * composition root binds this port over the `@wardenx/audit` helper. Fail-closed deny-stub default (the
+ * `audit_event` directly — it is a HELPER_ONLY_TABLE only `@chartwarden/audit` may insert into — so the
+ * composition root binds this port over the `@chartwarden/audit` helper. Fail-closed deny-stub default (the
  * override route 503s until bound, never silently un-audited).
  */
 export interface AuditEventPort {
@@ -347,7 +347,7 @@ export interface UpsertMacCredentialArgs {
 /**
  * The M23 WRITE route-service contract — every mutating route in §4.1. Each method takes the server-
  * assembled {@link M23WriteActor}; the Drizzle backend opens one `withOrgContext` tx per call (RLS-scoped to
- * `app.org_id`), drives the pure @wardenx/billing machines for the state transitions, enforces §2.5 version
+ * `app.org_id`), drives the pure @chartwarden/billing machines for the state transitions, enforces §2.5 version
  * checks (VERSION_CONFLICT → 412), and emits the matching `m23.*` outbox event in the same tx. The §6/§D14
  * step-up gate (claim submit/replace/void, validation override, MAC-credential admin) is re-checked here at
  * dispatch in addition to the route guard. `claim_line` is INTERNAL-WRITE-ONLY — only `assembleClaim` /

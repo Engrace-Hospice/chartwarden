@@ -1,4 +1,4 @@
-import { CenteredCardLayout, t, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — MFA Challenge (M2 Auth, ADR-0034 task 4).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "MFA challenge" (/login/2fa). Matched to the P0
 // Pencil frame (wardenx-P0-foundation.pen `a1dbhD`, "Card Two-factor verification"): branded card,

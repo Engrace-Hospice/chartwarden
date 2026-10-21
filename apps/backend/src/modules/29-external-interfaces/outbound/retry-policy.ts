@@ -5,7 +5,7 @@
 // alert). An `AR` reject is NOT retried — that path is `correlateAck`'s `rejected` outcome.
 //
 // IO-free: the caller supplies `now`; this core computes the next state deterministically.
-import type { Hl7OutboundStatus } from "@wardenx/types";
+import type { Hl7OutboundStatus } from "@chartwarden/types";
 import type {
   LabOrderTransmissionFailedPayload,
   OutboundAlert,

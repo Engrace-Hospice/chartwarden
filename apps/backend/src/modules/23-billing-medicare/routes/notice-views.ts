@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/routes/notice-views.ts — the NOE / NOTR row → view projections, shared
 // by the read and write services (one mapper, so a column added to the notice cannot reach one surface only). The
 // optional `corrections` are the rows filed against this notice (`corrects_notice_id`), for the "corrected by" link.
-import type { repositories } from "@wardenx/billing";
+import type { repositories } from "@chartwarden/billing";
 import { noticeAckOutcomeView, noticeCorrectionLinkView } from "./notice-ack-view";
 import type { NoeView, NotrView } from "./read-service";
 

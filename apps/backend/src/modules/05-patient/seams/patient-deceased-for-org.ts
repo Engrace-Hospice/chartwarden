@@ -5,8 +5,8 @@
 //
 // FAILS CLOSED: an unknown / cross-tenant / merged-away patient is "not deceased". The funeral link is a
 // disposition-access grant; the only safe answer to "I cannot tell" is no.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const P = schema.patients;

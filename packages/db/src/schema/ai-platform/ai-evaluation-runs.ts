@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_evaluation_run` (M32 §3.2.11). One row per governance evaluation of a
+// @chartwarden/db — `ai_evaluation_run` (M32 §3.2.11). One row per governance evaluation of a
 // (capability, backend) pair: the stage-3/stage-4 gate evidence, a re-approval, a drift response or a
 // post-incident re-test.
 //

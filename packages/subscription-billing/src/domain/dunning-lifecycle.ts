@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §4.15 dunning state machine (pure kernel, M35-T01).
+// @chartwarden/subscription-billing — §4.15 dunning state machine (pure kernel, M35-T01).
 //
 // The D7 dunning ladder as pure data. `none` is the resting state; a `payment_failed` enters `day_1`;
 // each subsequent stage advances after a fixed unresolved interval; `day_28_suspend` suspends the
@@ -6,7 +6,7 @@
 // payment at ANY active stage jumps to `resolved`, which then resets to `none`. The T05 `dunning-engine`
 // cron reads this ordering; encoding it here keeps the advancement rules DB-free and unit-testable.
 
-import type { DunningStage } from "@wardenx/types";
+import type { DunningStage } from "@chartwarden/types";
 
 /** The strictly-ordered active dunning ladder (excludes `resolved`, which is reachable from any stage). */
 export const DUNNING_LADDER = [

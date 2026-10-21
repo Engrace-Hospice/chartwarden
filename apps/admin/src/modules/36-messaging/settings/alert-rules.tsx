@@ -5,8 +5,8 @@
 // platform default clones it server-side, so the row adopts the id the PATCH returns. Locked rules are read-only.
 // Rows carry a stable client `key` so adopting a new ruleId neither remounts the row (focus) nor mis-targets a
 // concurrent edit; every state change is a functional update touching only the edited row.
-import { StatusPill, useApiClient } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { StatusPill, useApiClient } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { type ReadResult, StateEmpty, renderLoadFallback, useLoad } from "../ui";

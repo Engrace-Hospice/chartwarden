@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-shared.ts - small helpers shared by the ack service and the ADR-0078 supervisor
 // operations (kept apart so neither file grows past the maintainability ceiling).
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { AckRow } from "./ack-types";
 
 export const requestNotFound = (): NotFoundError => new NotFoundError("escalation");

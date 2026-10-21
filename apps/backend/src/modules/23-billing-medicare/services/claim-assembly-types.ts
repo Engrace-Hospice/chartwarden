@@ -23,8 +23,8 @@ import type {
   SignedEncounterSnapshot,
   TerminologyResolution,
   VisitChargeVersion,
-} from "@wardenx/billing";
-import type { ValueCodeAreas, repositories } from "@wardenx/billing";
+} from "@chartwarden/billing";
+import type { ValueCodeAreas, repositories } from "@chartwarden/billing";
 
 type BillingDb = repositories.BillingDb;
 
@@ -32,7 +32,7 @@ type BillingDb = repositories.BillingDb;
 type MacJurisdiction = repositories.ClaimRecord["macJurisdiction"];
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// Injected ports — the SHAPE of seam injection. Each return value reuses a `@wardenx/billing` aggregate
+// Injected ports — the SHAPE of seam injection. Each return value reuses a `@chartwarden/billing` aggregate
 // snapshot type so the service and the §11.A rule context speak one vocabulary. The composition root binds
 // the live M5/M6/M8/M18/M38/M40 readers + the platform reference-data + the transactional-outbox ports.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────

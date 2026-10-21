@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — SNOMED CT US Edition parser (tier 2: UMLS/SNOMED affiliate licence).
+// @chartwarden/terminology-loader — SNOMED CT US Edition parser (tier 2: UMLS/SNOMED affiliate licence).
 //
 // Input: the RF2 SNAPSHOT release files (a zip, or the three files raw):
 //   sct2_Concept_Snapshot*.txt       required — active concepts (header + tab-delimited rows)

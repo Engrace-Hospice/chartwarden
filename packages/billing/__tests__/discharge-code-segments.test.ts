@@ -1,4 +1,4 @@
-// @wardenx/billing — the 837I CL1 / HI*BG / HI*BH segment contract for the discharge claim codes.
+// @chartwarden/billing — the 837I CL1 / HI*BG / HI*BH segment contract for the discharge claim codes.
 import {
   buildCl1Segment,
   buildConditionCodeSegments,
@@ -6,7 +6,7 @@ import {
   buildOccurrenceCodeSegments,
   claimDocumentDischargeCodes,
   deriveDischargeClaimCodes,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 describe("837I discharge-code segments", () => {

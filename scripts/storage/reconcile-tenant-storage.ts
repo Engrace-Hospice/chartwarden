@@ -1,4 +1,4 @@
-import { PROVISION_MINIO_PREFIXES } from "@wardenx/saas-tenant-platform";
+import { PROVISION_MINIO_PREFIXES } from "@chartwarden/saas-tenant-platform";
 import { Client } from "pg";
 import {
   createS3TenantStorageProvisioner,

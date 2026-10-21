@@ -13,10 +13,10 @@
 //    offer closes. Run AFTER the task reassignment (`combineReassignments` order) so the task has moved.
 // Converges on redelivery: a closed handoff no longer matches, and `sender_left` is guarded by NOT EXISTS. Per-handoff
 // failures are isolated, counted, and rethrown at the end; the error text carries no seam or driver message.
-import type { DbClient } from "@wardenx/db";
-import { closeOutcome, unacceptedCount } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import type { HandoffItemState } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { closeOutcome, unacceptedCount } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import type { HandoffItemState } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import type { TaskStore } from "../tasks/task-store-db";

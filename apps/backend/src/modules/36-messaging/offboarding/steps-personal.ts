@@ -1,7 +1,7 @@
 // M36 WP 5.9 (ADR-0084) - the PERSONAL leftovers of an offboarding. A departed person's scheduled sends are cancelled (nothing is ever sent as
 // them), their reminders and snoozes are removed, their drafts are KEPT (never sent, never shown to anyone; retention is an open human decision),
 // and the on-call roster is M19's: M36 cannot read it, so it is surfaced as advisory.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, count, eq } from "drizzle-orm";
 import { asLeaver } from "./leaver-scope";
 import type { OffboardingStep } from "./offboarding-types";

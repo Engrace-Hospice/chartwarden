@@ -25,8 +25,8 @@
 // mints one.
 import { randomUUID } from "node:crypto";
 
-import type { DbClient } from "@wardenx/db";
-import type { NppesSyncKind, NppesSyncRunId, NppesSyncTrigger } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { NppesSyncKind, NppesSyncRunId, NppesSyncTrigger } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { NppesClient, type NppesClientConfig } from "./nppes-client";

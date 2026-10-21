@@ -1,4 +1,4 @@
-// @wardenx/db — M25 ADR cluster (hospice ADR/TPE/QIC PRD, milestone 2a): adr_case (a MAC's additional
+// @chartwarden/db — M25 ADR cluster (hospice ADR/TPE/QIC PRD, milestone 2a): adr_case (a MAC's additional
 // documentation request and its response clock) ─ adr_case_event (history) ─ mac_rule (per-organization
 // response-window rules). NON-partitioned; organization_id NOT NULL on all three (canonical app.org_id RLS).
 // State and review type are text + CHECK (closed sets mirrored in the backend domain types), so there is no

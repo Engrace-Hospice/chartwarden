@@ -23,12 +23,12 @@ import type {
   AIPromptRegistry,
   ActivePromptDetail,
   ActivePromptSummary,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import {
   AI_PROMPT_CACHE_TTL_MS,
   aiPromptCacheKey,
   aiPromptContentHashMatches,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 
 import type {
   AiPromptArtifactReader,

@@ -1,4 +1,4 @@
-import { EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — the end-of-episode worklist pieces shared by the "Discharge / transfer" hub
 // (discharges-hub.tsx) and the Readmit list (readmit-list.tsx): the paged bucket read (GET /api/v1/discharges/worklist),
 // the patient names for the rows on screen, the list states, and the "recently discharged" table. Display only — the

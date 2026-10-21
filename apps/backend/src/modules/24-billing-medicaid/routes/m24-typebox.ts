@@ -8,8 +8,8 @@
 // `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import for a Drizzle one.
 //
 // The shapes MIRROR the module's own service interfaces — read-service.ts (`*View`) and write-service.ts
-// (`*Input`) — and the string-literal unions mirror the FROZEN `@wardenx/db` pgEnum value lists
-// (packages/db/src/schema/medicaid-billing/enums.ts) plus the @wardenx/medicaid-adapters contract unions;
+// (`*Input`) — and the string-literal unions mirror the FROZEN `@chartwarden/db` pgEnum value lists
+// (packages/db/src/schema/medicaid-billing/enums.ts) plus the @chartwarden/medicaid-adapters contract unions;
 // the schema wins on conflict. Money is ALWAYS integer cents (D8). Org/actor/membership binding is server-
 // side (request.context) — no body or query carries an org id or an acting membership id. A Recipient ID is
 // never returned (only the masked last-4 fact; D12 / §3.6) and credential secrets are write-only (the read
@@ -17,7 +17,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -71,7 +71,7 @@ const nullableStr = () => Type.Union([Type.String(), Type.Null()]);
 const nullableInt = () => Type.Union([Type.Integer(), Type.Null()]);
 const cents = () => Type.Integer({ description: "Integer cents (D8)" });
 
-// ── §3.3 vocab mirrors (canonical pgEnums live in @wardenx/db/schema/medicaid-billing/enums.ts) ─────────
+// ── §3.3 vocab mirrors (canonical pgEnums live in @chartwarden/db/schema/medicaid-billing/enums.ts) ─────────
 const CLAIM_STATE = [
   "DRAFT",
   "VALIDATING",

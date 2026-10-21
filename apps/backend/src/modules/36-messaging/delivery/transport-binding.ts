@@ -29,8 +29,8 @@ import {
   resolvePostmarkConfig,
   sendPostmarkEmail,
   sendTwilioSms,
-} from "@wardenx/messaging";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 
 type Env = Readonly<Record<string, string | undefined>>;
 

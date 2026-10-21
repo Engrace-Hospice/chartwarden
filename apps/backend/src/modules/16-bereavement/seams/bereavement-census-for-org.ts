@@ -14,8 +14,8 @@
 //
 // Not a request: opens its own `withOrgContext` envelope (empty acting user) with explicit `organization_id` predicates
 // behind RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
 
 const CONTACT = schema.bereavedContact;

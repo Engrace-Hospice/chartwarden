@@ -198,7 +198,7 @@ export interface UpdateValidationRuleArgs {
 /**
  * The M27 WRITE route-service contract — every mutating route in §4.1. Each method takes the server-
  * assembled {@link M27WriteActor}; the Drizzle backend opens one `withOrgContext` tx per call (RLS-scoped
- * to `app.org_id`), drives the pure @wardenx/cost-report lifecycle reducer for state transitions, enforces
+ * to `app.org_id`), drives the pure @chartwarden/cost-report lifecycle reducer for state transitions, enforces
  * §2.5 version checks (VERSION_CONFLICT), and emits the matching `m27.*` outbox event in the same tx.
  */
 export interface M27WriteRouteService {

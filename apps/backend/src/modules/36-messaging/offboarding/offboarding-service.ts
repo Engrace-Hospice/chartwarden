@@ -12,7 +12,7 @@ import {
   type OffboardingDto,
   type OffboardingItemDto,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   Inspection,
   OffboardingActor,

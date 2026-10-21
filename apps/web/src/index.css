@@ -4011,7 +4011,7 @@
   }
 }
 
-/* ---- Motion: keyframes for the @wardenx/ui system primitives ----
+/* ---- Motion: keyframes for the @chartwarden/ui system primitives ----
  * `wardenx-spin` drives LoadingSpinner; `wx-ai-pulse` is the AI-suggestion halo (DESIGN.md §9).
  * Both honor prefers-reduced-motion (no animation, static affordance remains).
  */

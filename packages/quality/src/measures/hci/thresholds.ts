@@ -1,4 +1,4 @@
-// @wardenx/quality — Hospice Care Index (HCI) per-FY threshold constants (§1.1, D2/D15). Pure data.
+// @chartwarden/quality — Hospice Care Index (HCI) per-FY threshold constants (§1.1, D2/D15). Pure data.
 //
 // The HCI score is the COUNT of the ten indicators whose rate meets the CMS-published threshold for the
 // reporting period (max 10). Each indicator's threshold value AND direction (higher-is-better vs lower-is-

@@ -4,8 +4,8 @@
 // with a required fixed reason. It reads no conversation, acknowledges nothing, touches no acknowledged / resolved / cancelled request
 // and never names a patient's care team to someone the Part 2 gate walls off. The permission is the route's; the database guard of
 // migration 1126 is the backstop.
-import { defaultDeadline } from "@wardenx/messaging";
-import { ackStateInvalid } from "@wardenx/messaging";
+import { defaultDeadline } from "@chartwarden/messaging";
+import { ackStateInvalid } from "@chartwarden/messaging";
 import {
   ACK_REASSIGN_CANDIDATE_CAP,
   type AckReassignCandidate,
@@ -13,7 +13,7 @@ import {
   type AckSupervisorReasonCode,
   type AckSupervisorReassignResponse,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type AckEventFacts, M36_ACK_REASSIGNED, publishAckEvent } from "./ack-events";
 import { assigneeInvalid, isWaiting, orElse, requestNotFound } from "./ack-shared";
 import type { AckRow, AckStore } from "./ack-types";

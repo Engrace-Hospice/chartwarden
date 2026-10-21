@@ -1,4 +1,4 @@
-// @wardenx/mdm — entity-kind discriminator + the canonical-vs-overlay dividing line.
+// @chartwarden/mdm — entity-kind discriminator + the canonical-vs-overlay dividing line.
 //
 // M40-T01 (spec §2.3, §2.4, §3.1, §3.2). This file is the TYPE-LEVEL home for the MDM
 // enums and, above all, the §2.3 "what is canonical vs overlay" decision encoded as data —

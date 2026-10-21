@@ -1,4 +1,4 @@
-// @wardenx/reporting · session — the `withReportSession` read-replica session wrapper (M33 §8.1.2 / D3 / D14).
+// @chartwarden/reporting · session — the `withReportSession` read-replica session wrapper (M33 §8.1.2 / D3 / D14).
 //
 // EVERY M33 read worker/route opens its database session through this wrapper. It runs `fn` inside a SINGLE
 // read-only transaction on the read REPLICA, with three GUCs applied (the injected M1 `read_replica_session`
@@ -22,7 +22,7 @@
 // `getSeam`. The composition root (P2C) binds the real M1 `read_replica_session` helper + the lag gate over
 // the `report.lag_probe` state the same fail-closed way the refresh ports bind. The {@link decideReplicaGate}
 // decision core is a total function unit-asserted independently of any I/O.
-import { DegradedError } from "@wardenx/types";
+import { DegradedError } from "@chartwarden/types";
 import type { ReportingDb } from "../repositories/db";
 
 // ── statement-timeout tiers (§8.1.2 / D3) ─────────────────────────────────────────────────────────────────

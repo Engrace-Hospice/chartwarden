@@ -5,7 +5,7 @@
 // fields — so EVERY assignment answered 400 "request validation failed" in production. These tests
 // assert on the RECORDED REQUEST BODY, which is the contract the route validates.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

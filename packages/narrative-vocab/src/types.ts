@@ -1,13 +1,13 @@
 // packages/narrative-vocab/src/types.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 //
-// The bounded clinical vocabulary surface. `@wardenx/narrative-vocab` is a LEAF package — owned by no
+// The bounded clinical vocabulary surface. `@chartwarden/narrative-vocab` is a LEAF package — owned by no
 // single module, consumed by M8 (encounters) and M14 (IDG aggregator). Each entry is a curated phrase
 // the HearthNote Layer-1 assembly engine resolves into a byte-identical narrative; the package carries
-// the data and the lookup shape, never the assembly logic (that is `@wardenx/hearthnote`) and never an
+// the data and the lookup shape, never the assembly logic (that is `@chartwarden/hearthnote`) and never an
 // edit surface (vocabulary content ships through this package's own semver releases — spec "out of
-// scope: the narrative vocabulary itself"). The only cross-package dependency is the leaf `@wardenx/types`
+// scope: the narrative vocabulary itself"). The only cross-package dependency is the leaf `@chartwarden/types`
 // encounter-type / discipline axes, so a vocabulary entry's tags stay 1:1 with the encounter model.
-import type { EncounterDiscipline, EncounterType } from "@wardenx/types";
+import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 
 /** The §10.5.2 per-body-system observation axis (one of nine clinical systems). */
 export type VocabBodySystem =

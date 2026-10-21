@@ -18,15 +18,15 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import {
   type AggregatorPollResult,
   type AggregatorSubmitResult,
   type EvvAggregatorAdapter,
   StateAggregatorRegistry,
   createFixtureCredentialStore,
-} from "@wardenx/evv-aggregators";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/evv-aggregators";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

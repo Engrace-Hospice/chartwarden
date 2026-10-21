@@ -9,7 +9,7 @@
 // id, a reporter/owner/cosigner membership id is supplied only by the route from the actor, never read
 // off the wire except for the explicit co-sign role identities the closer attests to.
 //
-// VOCAB NOTE: the string-literal unions below mirror the FROZEN `@wardenx/db` pgEnum value lists
+// VOCAB NOTE: the string-literal unions below mirror the FROZEN `@chartwarden/db` pgEnum value lists
 // (packages/db/src/schema/quality/*), which are authoritative over the spec §4.2 TypeBox examples where
 // they differ — incident severity is `minor|moderate|severe|critical` (not the spec's
 // `mild|…|sentinel`) and the measure period kind is `rolling_12m_to_quarter|…|cap_year_overlay` (not the
@@ -17,7 +17,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -35,7 +35,7 @@ const uuid = () => Type.String({ format: "uuid" });
 const isoInstant = () => Type.String({ format: "date-time" });
 const isoDate = () => Type.String({ format: "date" });
 
-// ── §3 vocab mirrors (string-literal unions; canonical pgEnums live in @wardenx/db, see header note) ───
+// ── §3 vocab mirrors (string-literal unions; canonical pgEnums live in @chartwarden/db, see header note) ───
 const MEASURE_DOMAIN = ["hci", "ssvi", "hvldl", "hope", "cahps", "operational"] as const;
 const RECOMPUTE_DOMAIN = ["hci", "hvldl", "hope", "cahps"] as const;
 const MEASURE_PERIOD_KIND = [

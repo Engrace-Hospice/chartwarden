@@ -2,8 +2,8 @@
 // named by user id (`?user=<uuid>` or pasted): there is no organization-wide user picker yet, so the page never lists everyone. A bad id is said
 // in words before any request. The revoke needs a fresh step-up: the server answers STEP_UP_REQUIRED and the page sends the officer through the
 // step-up screen and back; the list stays as it was. Every look and revoke is audited server-side; the page shows no IP address or user agent.
-import type { DeviceDto } from "@wardenx/types";
-import { Button, PageHeader } from "@wardenx/ui";
+import type { DeviceDto } from "@chartwarden/types";
+import { Button, PageHeader } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";

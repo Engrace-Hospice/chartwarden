@@ -1,4 +1,4 @@
-// @wardenx/messaging — in-memory adapters for the messaging job processors (M36-T08, §4.4).
+// @chartwarden/messaging — in-memory adapters for the messaging job processors (M36-T08, §4.4).
 //
 // Deterministic, infra-free ports the job unit tests run against — the same forward pattern as the
 // M4 audit / M38 terminology job ports. The adapter records what the processor asked it to do so a

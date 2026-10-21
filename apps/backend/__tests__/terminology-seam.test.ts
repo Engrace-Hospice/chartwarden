@@ -5,7 +5,7 @@
 // validateSeams(). Also asserts the fail-closed baseline (unregistered ⇒ generic deny-stub
 // throws on any call) and that the composition-root `wireModuleSeams` hook wires it during a
 // real buildServer() boot.
-import { type TerminologyProvider, createInMemoryTerminologyStore } from "@wardenx/terminology";
+import { type TerminologyProvider, createInMemoryTerminologyStore } from "@chartwarden/terminology";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";

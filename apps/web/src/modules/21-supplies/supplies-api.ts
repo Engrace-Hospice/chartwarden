@@ -21,7 +21,7 @@
 //
 // The server stays the only authorization point: nothing here decides what a caller may see. An
 // out-of-scope row is a 404 from the server, never a frontend hide.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
 

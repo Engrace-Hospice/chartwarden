@@ -11,7 +11,7 @@
 //     spec's `{ data, next_cursor, has_more, total_count? }` — NOT the `{items, nextCursor}` shape other
 //     modules use, because §4.6.1 pins this one.
 //   • §F08 idempotency — every mutating route requires a client-supplied `Idempotency-Key`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** §F08 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

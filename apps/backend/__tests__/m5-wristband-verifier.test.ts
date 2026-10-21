@@ -1,6 +1,6 @@
 // apps/backend/__tests__/m5-wristband-verifier.test.ts -- GAP-020: M5's PatientWristbandVerifier decides every
 // verdict branch over an in-memory store (the DB-backed store is proven live in m5-patient-wristband.live.test.ts).
-import { OFFLINE_WRISTBAND_MAX_AGE_MS, formatWristbandPayload } from "@wardenx/types";
+import { OFFLINE_WRISTBAND_MAX_AGE_MS, formatWristbandPayload } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { wristbandDigest } from "../src/modules/05-patient/wristband-digest";
 import {

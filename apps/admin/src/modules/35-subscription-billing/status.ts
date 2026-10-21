@@ -2,7 +2,7 @@
 // console. The admin analogue of the tenant slice's billing-status.ts: every §5.2 screen resolves a wire
 // enum to the §6.6 StatusPill taxonomy through these maps, so the badge vocabulary is applied once. The wire
 // enums mirror the backend `subscription-typebox.ts` literal unions the /api/admin routes serve.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** Subscription lifecycle status → §6.6 tone (SubscriptionStatusLit). */
 export const SUBSCRIPTION_TONE: Record<string, StatusTone> = {

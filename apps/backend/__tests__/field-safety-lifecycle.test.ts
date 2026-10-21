@@ -11,12 +11,12 @@ import type {
   MembershipId,
   SafetyPolicyEffectiveDto,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   SAFETY_POLICY_FLOOR,
   SAFETY_SOS_OPEN_STATES,
   SAFETY_SOS_TERMINAL_STATES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   SAFETY_SOS_EDGES,

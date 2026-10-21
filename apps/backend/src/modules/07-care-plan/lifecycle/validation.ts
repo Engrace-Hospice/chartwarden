@@ -6,7 +6,7 @@
 // version/element machines call these at the relevant transition; the service layer (M7-T05) reuses
 // them for field-level request validation. The async rules (5-day / 15-day clocks, ICD-10 currency)
 // are NOT here — they are workers/seam reads wired in M7-T07.
-import type { GoalSource } from "@wardenx/types";
+import type { GoalSource } from "@chartwarden/types";
 import { require_ } from "./errors";
 
 /** Free-text minimum lengths the §2.3 sync rules enforce (machine form trimmed). */

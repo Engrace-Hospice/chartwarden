@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 Worksheet A → B STEP-DOWN cost allocation (§1.1, §3.1 `allocation/`, D8).
+// @chartwarden/cost-report — M27 Worksheet A → B STEP-DOWN cost allocation (§1.1, §3.1 `allocation/`, D8).
 // The first hop of the CMS-1984-14 propagation chain (A → B → C → D → E-1): the net expenses of the
 // general-service / overhead (non-revenue) cost centers from Worksheet A are stepped down onto the
 // direct (revenue-producing) cost centers by a per-center STATISTICAL BASIS (square footage, FTEs,
@@ -10,7 +10,7 @@
 // the cent — because each split is penny-true (`allocateProportional`, largest-remainder).
 //
 // PURE DOMAIN, deterministic total function over an already-fetched input: no Fastify, no Drizzle/DB, no
-// BullMQ, no `@wardenx/db`, no `getSeam`. All money is INTEGER CENTS at the boundary; the only fractional
+// BullMQ, no `@chartwarden/db`, no `getSeam`. All money is INTEGER CENTS at the boundary; the only fractional
 // arithmetic is inside the money kernel. No PHI — aggregate financial/statistical only (D18).
 import { allocateProportional, sumCents } from "../domain/money";
 import type { Cents } from "../domain/money";

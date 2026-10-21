@@ -12,7 +12,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — patient eMAR (M13 §4.1/§6.1 #1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid".
 // Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `ANbhv`): a Patient Workspace (banner + module

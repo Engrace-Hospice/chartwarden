@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.6 `EmbeddingsProvider` (M32-T06).
+// @chartwarden/ai-platform — §4.2.6 `EmbeddingsProvider` (M32-T06).
 //
 // PUBLISHED WITH NO PHASE-1 CONSUMER, deliberately: §4.2.6 says these are "published with deny-stubs to
 // lock the contract". A seam name that exists from the start is one that consumers can be written

@@ -5,7 +5,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   AdmitResult as ServiceAdmitResult,
   AmendmentView as ServiceAmendmentView,

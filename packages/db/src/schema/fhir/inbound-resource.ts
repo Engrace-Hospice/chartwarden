@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_inbound_resource` (M28 §3.3). A staged inbound FHIR resource (D8): an external
+// @chartwarden/db — `fhir_inbound_resource` (M28 §3.3). A staged inbound FHIR resource (D8): an external
 // client POSTs a resource, M28 stages it as a PROPOSAL, and the owner module's reviewer (M5 / M12)
 // accepts or rejects it — M28 never writes a native record itself. The §2.2 staged-proposal FSM lives in
 // `proposal_status`; a `rejected` needs a ≥40-char rationale and shreds `payload` at +30 days, while an

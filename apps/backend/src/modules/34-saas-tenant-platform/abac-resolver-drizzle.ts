@@ -16,13 +16,13 @@
 //
 // `feature_flag` belongs to M1, so the flag rows arrive through an injected loader the composition root
 // builds over M1's own store (the same arrangement as M1's flag admin seam), not a schema import here.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   OnboardingRepository,
   SupportRepository,
   TenantAccountRepository,
-} from "@wardenx/saas-tenant-platform";
-import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
 import type {
   FeatureFlagFacts,
   OnboardingTaskFacts,

@@ -2,7 +2,7 @@
 //
 // The caller owns the `withOrgContext` transaction; nothing here opens its own tenancy envelope, and every
 // table read is RLS-scoped by it.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, lte, notInArray } from "drizzle-orm";
 
 const PAR = schema.parStock;

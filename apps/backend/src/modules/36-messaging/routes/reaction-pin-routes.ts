@@ -7,8 +7,8 @@
 // other. PUT/DELETE are naturally idempotent (a repeat is a no-op), so no Idempotency-Key is required. Pin and unpin
 // are audited by the `message_pin` write-audit trigger. The pin list is a decrypted-body read, so it is read-audited
 // like the channel history (one aggregate list-read event; a single-resource read would need `resourceIdParam`).
-import type { MessagingRouteService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import type { MessagingRouteService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { PinParamsSchema, ReactionParamsSchema } from "./reaction-pin-typebox";

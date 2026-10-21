@@ -1,5 +1,5 @@
 // apps/backend/src/modules/27-cost-report/consumers — the §4.10 UPSTREAM-event handlers (PURE, port-
-// injected). Mirrors the M30 `@wardenx/quality` consumers/handlers.ts precedent: one pure handler per
+// injected). Mirrors the M30 `@chartwarden/quality` consumers/handlers.ts precedent: one pure handler per
 // subscribed topic (`./subscription-map.ts`), each projecting the structurally-minimal upstream event into
 // its M27 effect and fanning it out through the injected {@link M27ConsumerPorts}.
 //
@@ -20,7 +20,7 @@ import {
   applyTransition,
   canTransition,
   suggestRuleFromRejection,
-} from "@wardenx/cost-report";
+} from "@chartwarden/cost-report";
 import {
   type M27ArtifactKind,
   type M27SubscriptionEffect,

@@ -7,7 +7,7 @@
 // Bounded (every select carries a limit) and idempotent: a visit is flagged at most once per approved
 // time_off (`visit.reassignment_flagged_time_off_id`, mig 0350) and reminded at most once
 // (`visit.caregiver_reminder_sent_at`), each stamped in the SAME tx as the outbox publish.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, count, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
 
 const V = schema.visit;

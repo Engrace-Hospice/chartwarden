@@ -12,7 +12,7 @@ import {
   WorkQueueLayout,
   useApiClient,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/04-audit — Legal Holds (GAP-003, M4 spec §4.2/§10.6).
 // List + apply + release, over the real routes GET/POST /api/v1/legal-holds,
 // POST /api/v1/legal-holds/:id/release via the generated typed client. Imports only leaves.

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/12-dosespot — PRODUCTION MedicationOrderRouteService + §4.7 ABAC resolver
 // (M12L reads + writes over Drizzle+RLS). No route is left at 501.
 //
@@ -10,7 +10,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // `medication_order` is PARTITION BY RANGE(created_at) — reads query the parent, inserts always land.
 //
 // Unlike M11, M12 has NO state-transition triggers (only the M4 audit triggers) — the service does every
-// status transition itself via UPDATE, composing the PURE `@wardenx/dosespot` deciders: the §2.2 D2
+// status transition itself via UPDATE, composing the PURE `@chartwarden/dosespot` deciders: the §2.2 D2
 // medication-order machine (`transitionMedicationOrder`), the §2.7 D9 refill machine (`transitionRefillRequest`),
 // and `isEpcsRequired`. Route-driven writes stop at `signed` — the transmission chain (signed → queued →
 // transmitted → ack → active) and the EPCS controlled-substance branch are SYSTEM-ACTOR only, so a controlled
@@ -35,16 +35,16 @@ import {
   transitionMedicationOrder,
   transitionRefillRequest,
   validateMedicationOrderData,
-} from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DeaSchedule, MedClass, PatientAllergyReader } from "@wardenx/types";
+} from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DeaSchedule, MedClass, PatientAllergyReader } from "@chartwarden/types";
 import {
   NotFoundError,
   StepUpRequiredError,
   ValidationError,
   ChartWardenError,
   assertCoverageDetermination,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type SQL,
   and,

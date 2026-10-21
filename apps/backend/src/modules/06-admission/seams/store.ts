@@ -22,7 +22,7 @@ import type {
   LevelOfCarePeriodSummary,
   LocalDate,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * A seeded election-period row (richer than the wire DTOs: it carries `patientId` + `levelOfCare` so

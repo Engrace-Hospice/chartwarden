@@ -9,9 +9,9 @@
 // The plaintext exists only as a local argument here. Nothing in this file logs it, puts it in an error, an audit
 // context or an outbox payload; the audit trigger scrubs `value`, `value_encrypted`, `value_last4`,
 // `value_blind_index` and `value_dek_version` from the row snapshot.
-import { audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { PatientIdentifierCipher, SensitiveIdentifierKind } from "./identifier-cipher";
 import { lastFour, requireValidSsn } from "./ssn";

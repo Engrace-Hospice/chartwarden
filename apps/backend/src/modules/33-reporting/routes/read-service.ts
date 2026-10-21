@@ -11,7 +11,7 @@
 //   - The two MUTATING admin commands (mv refresh / mv suspend) ENQUEUE the matching `report.mv_refresh`
 //     worker job through the injected {@link M33ReadEnqueuePort} and return the job id (HTTP 202) — the
 //     refresh runs on the PRIMARY in the worker, never the request thread (§2.4 / §4.8).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── actor (server-assembled; org/actor binding is the context, never the body/query) ─────────────────
@@ -33,7 +33,7 @@ export type M33ReadQueueName = "report.mv_refresh";
 
 /**
  * The thin worker-trigger port the MV-admin command routes call. In the slice it records the enqueue (so
- * route tests assert the job was scheduled); PRODUCTION binds it to the @wardenx/shared transactional
+ * route tests assert the job was scheduled); PRODUCTION binds it to the @chartwarden/shared transactional
  * outbox / BullMQ producer for the `report.mv_refresh` queue (the on-PRIMARY refresh worker). Keeping it
  * injected keeps the route layer free of any BullMQ/Valkey import.
  */

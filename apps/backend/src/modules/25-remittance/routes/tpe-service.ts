@@ -6,9 +6,9 @@
 // round snapshots the threshold in force when its results are first recorded. Every command runs under
 // `withOrgContext` (RLS) inside the actor's provider-entity scope; every change is If-Match. There are no events or
 // alerts: the write-audit triggers are the trail, and ADR deadlines already alert through the ADR flow.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   TPE_MAX_ROUNDS,

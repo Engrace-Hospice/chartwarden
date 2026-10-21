@@ -42,8 +42,8 @@
 // dedupes on `(eventId, consumerName)` and the alert carries a per-order correlation id.
 //
 // NO PHI: ids, enum tokens and reasons only — never a name, DOB, MRN or result value.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const OR = schema.orderRecords;
@@ -56,7 +56,7 @@ export const M11_LAB_CANCELLATION_CONSUMER = {
   consumerName: "m11.lab-cancellation-required",
 } as const;
 
-/** The M36 alert `eventType` (the platform-default `alert_rule` key in `@wardenx/messaging`'s seed). */
+/** The M36 alert `eventType` (the platform-default `alert_rule` key in `@chartwarden/messaging`'s seed). */
 export const M11_LAB_CANCELLATION_ALERT_TYPE = "m11.order.lab_cancellation_required";
 
 export type LabCancellationState = "transmitted" | "in_flight" | "delivery_unverified";

@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, Panel, StatusPill } from "@wardenx/ui";
+import { EmptyState, Glyph, Panel, StatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — "Discharge / transfer" hub (`/admissions/discharges`, nav: Admissions, right
 // below New admission). The one place to start or finish an end-of-episode workflow, drawn in the 2026-09-25 redesign
 // idiom (page head, flat panels with list tables, a right context rail):

@@ -1,9 +1,9 @@
-// @wardenx/scheduling — §2.2.4 / §7.7 D5 frequency-driven visit-proposal domain (M17-T04). Pure, IO-free,
+// @chartwarden/scheduling — §2.2.4 / §7.7 D5 frequency-driven visit-proposal domain (M17-T04). Pure, IO-free,
 // `Date.now()`-free.
 //
 // The `propose-from-frequency` cron (M17-T08) runs nightly and reads M7's
 // `CarePlanReader.activeInterventionsWithFrequency(patientId)` for every active admission (D5). For each
-// active intervention whose `frequency` is CADENCED (`@wardenx/scheduling` `frequency.ts`), the worker
+// active intervention whose `frequency` is CADENCED (`@chartwarden/scheduling` `frequency.ts`), the worker
 // computes the next-due-by-cadence service dates inside a rolling window and inserts one `visit_proposal`
 // row per date in the scheduler's inbox (`pending`). This module is the deterministic heart of that cron: it
 // enumerates the org-local due dates from a cadence + anchor, and builds the typed proposal-insert input +
@@ -25,7 +25,7 @@ import type {
   VisitId,
   VisitProposalStatus,
   VisitPurpose,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type FrequencyValue, frequencyCadenceDays, parseFrequency } from "../frequency";
 import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";

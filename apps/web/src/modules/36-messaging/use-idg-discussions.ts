@@ -1,6 +1,6 @@
 // WP 3.6 - the IDG discussions of a care-team channel. Read-only. The route answers `enabled:false` when the tenant has
 // IDG discussions off (useFeatureFlag is never loaded in the real app), so that answer is the gate: the section hides.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { Message } from "./messaging-types";
 

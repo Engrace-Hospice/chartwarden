@@ -15,7 +15,7 @@
  *   3. `m40.canonical.*` was in no event catalog, so M40 could not have announced a change it could not
  *      make.
  *
- * Only the fourth piece — the §4.7 decision logic in `@wardenx/mdm` — was ready, shipped and unit-tested
+ * Only the fourth piece — the §4.7 decision logic in `@chartwarden/mdm` — was ready, shipped and unit-tested
  * since M40-T09 and waiting on all three of the above.
  *
  * This suite runs the WHOLE chain as the NOBYPASSRLS `wardenx_app` role: publish a platform event through
@@ -27,7 +27,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";

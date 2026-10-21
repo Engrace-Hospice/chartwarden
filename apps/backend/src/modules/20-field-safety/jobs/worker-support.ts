@@ -4,8 +4,8 @@
 // Split out of `cron-workers.ts` so the three worker bodies can each import it without importing each
 // other (cron-workers.ts imports the bodies to construct the BullMQ Workers; a body importing back from
 // cron-workers.ts would be a cycle).
-import type { DbClient } from "@wardenx/db";
-import type { SafetyPolicyProvider } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { SafetyPolicyProvider } from "@chartwarden/types";
 import type { ConnectionOptions } from "bullmq";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import type { TerminusDeps } from "../terminus/deps";

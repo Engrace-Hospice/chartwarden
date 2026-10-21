@@ -3,8 +3,8 @@
 //
 // The pure M16 bereavement domain core (no DB — every fact is injected) plus the seam-consuming death-fact
 // resolver, exercised against registered fake M6 / M5 seams.
-import { BEREAVEMENT_CADENCE_FLOOR, OUTREACH_MODALITY_RANK } from "@wardenx/bereavement";
-import type { BereavementExternalSourceMetadata } from "@wardenx/types";
+import { BEREAVEMENT_CADENCE_FLOOR, OUTREACH_MODALITY_RANK } from "@chartwarden/bereavement";
+import type { BereavementExternalSourceMetadata } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

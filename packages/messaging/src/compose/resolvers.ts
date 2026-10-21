@@ -1,4 +1,4 @@
-// @wardenx/messaging — the ADR-0024 cross-module composition resolvers (M36-T09, spec §4.11).
+// @chartwarden/messaging — the ADR-0024 cross-module composition resolvers (M36-T09, spec §4.11).
 //
 // SD-017 assigns recipient resolution + preference-aware routing to the M36 Alert Engine; ADR-0024
 // moves the composition + recipient resolution for the referral / critical-results /

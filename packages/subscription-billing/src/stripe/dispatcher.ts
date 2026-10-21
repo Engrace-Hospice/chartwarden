@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §4.13 the outbox-only Stripe dispatcher (pure core, M35-T04).
+// @chartwarden/subscription-billing — §4.13 the outbox-only Stripe dispatcher (pure core, M35-T04).
 //
 // This is the D3 posture in one function: route handlers NEVER call Stripe — they emit a
 // {@link StripeDispatchEvent} into the M35 outbox in the same transaction as the state mutation, and the
@@ -16,7 +16,7 @@
 //   5b. err  → record failure; if retryable & attempt<5 → RETHROW (BullMQ backoff);
 //              else → return the `m35.stripe.api_call_failed` outbox intent (DLQ + alert path)
 
-import type { M35StripeApiCallFailedPayload } from "@wardenx/types";
+import type { M35StripeApiCallFailedPayload } from "@chartwarden/types";
 import { type OutboxIntent, outboxIntent } from "../service/ports";
 import type { StripeClient } from "./client";
 import { deriveIdempotencyKey } from "./idempotency";

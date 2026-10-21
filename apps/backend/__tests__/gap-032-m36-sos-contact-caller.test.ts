@@ -3,7 +3,7 @@ import {
   TransportError,
   createDenyTransport,
   createTwilioVoiceTransport,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 
 import { createSosContactCaller } from "../src/modules/36-messaging/delivery/sos-contact-caller";

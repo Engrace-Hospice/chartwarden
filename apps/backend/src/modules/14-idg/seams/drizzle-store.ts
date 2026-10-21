@@ -20,15 +20,15 @@
 // PARTITIONED PARENT. `idg_patient_packet` is RANGE-partitioned on `built_at` (D12), so the id-only
 // `packetById` fans out across every partition — the seam consumer has an id and no time window, and
 // inventing one would silently miss last month's packet (the M21 trade, taken knowingly).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   DisciplineKey,
   DisciplineViewBlock,
   IdgDecisionDto,
   IdgMeetingDigest,
   PacketSnapshot,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
 import type { IdgCadenceAdherence, IdgSeamStore, StoredIdgPacket } from "./store";
 

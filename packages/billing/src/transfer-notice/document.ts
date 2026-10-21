@@ -1,8 +1,8 @@
-// @wardenx/billing — the PHI-free document M23 hands the X12 gateway for a transfer notice (8xC / 8xD), the
+// @chartwarden/billing — the PHI-free document M23 hands the X12 gateway for a transfer notice (8xC / 8xD), the
 // sibling of `claim-codes/x12-segments.ts`'s `ClaimDocument837i`. It carries the billing FACTS only (TOB,
 // statement date, admission date, codes, physician ids); the gateway resolves the beneficiary's name, address,
 // birth date, sex and MBI from M5 at generation time (D13: the MBI never enters M23). The full 837I a gateway
-// must produce from it is `build837iTransferNotice` in `@wardenx/x12-837-client` (golden-tested).
+// must produce from it is `build837iTransferNotice` in `@chartwarden/x12-837-client` (golden-tested).
 //
 // The fixed values follow the CMS 837I NOE Companion Guide v1.2 (April 2021), which governs every NOE-related
 // TOB (8XA–8XE, CLM05-3 "A, B, C, D, E"): https://www.cms.gov/files/document/cms-837i-noe-companion-guide.pdf

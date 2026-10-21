@@ -61,7 +61,7 @@ Each adapter, being part of its owner's boundary, may import its owner's `depend
 foundation helpers, and **only** the adapter may import its vendor SDK. Adapters own **no tables**.
 
 ### Explicitly NOT changed
-- **`@wardenx/mobile-offline` stays manifest-exempt.** It is on-device sqlcipher with no `org_id`/RLS
+- **`@chartwarden/mobile-offline` stays manifest-exempt.** It is on-device sqlcipher with no `org_id`/RLS
   server contract (manifest header scope note); it is intentionally outside the server fitness model.
 
 ### Open item (deferred to a follow-up ADR) — `packages/x12-worker-client`

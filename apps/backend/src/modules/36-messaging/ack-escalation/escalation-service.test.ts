@@ -1,5 +1,5 @@
 // WP 4.4 - the escalation service over the in-memory store: the algorithm, the race outcomes, the fail-closed deny path.
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createMemoryAckStore } from "../ack-requests/ack-store-memory";
 import type { AckRow } from "../ack-requests/ack-types";

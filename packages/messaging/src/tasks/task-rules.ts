@@ -8,7 +8,7 @@ import {
   TASK_DUE_PAST_GRACE_MINUTES,
   type TaskAction,
   type TaskStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export { TASK_CLOSE_REASONS };
 

@@ -23,7 +23,7 @@ import type {
   BereavementRiskEvidence,
   BereavementScoredResult,
   DerivedRiskFactors,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import {
   DETERMINISTIC_AUGMENTATION_COLUMNS,
   RISK_TIER_OVERRIDE_REASON_MIN_LENGTH,
@@ -31,14 +31,14 @@ import {
   deriveRiskFactors,
   promoteTierForGriefScreen,
   weightedScoreToRuleScore,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavedContactId,
   BereavementPlanId,
   BereavementRiskTier,
   IsoInstant,
   M16RiskScoreComputedPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { BereavementStateError } from "../lifecycle/index";
 import type { BereavementSideEffect } from "../lifecycle/index";
 import { type RiskExtractionInput, gatherRiskEvidence } from "./extract";

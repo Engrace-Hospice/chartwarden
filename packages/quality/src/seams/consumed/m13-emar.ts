@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M13 (eMAR). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M13 (eMAR). PRESENT producer (§4.4).
 //
 // M30 consumes M13's `MedicationAdministrationProvider.getMissedDoseRate`, `getPrnEffectivenessRate`,
 // and `getComfortKitAdministrationTimeline` for the administration-side quality measures; it does NOT

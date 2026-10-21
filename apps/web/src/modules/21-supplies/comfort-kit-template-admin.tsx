@@ -17,7 +17,7 @@
 //   • Removing a platform-floor medication is not blocked in the form. The server refuses it with
 //     `M21_TEMPLATE_VIOLATES_PLATFORM_FLOOR` and names the medication; pre-empting that client-side would
 //     mean shipping a second copy of the floor definition, which is exactly the drift D3 exists to prevent.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

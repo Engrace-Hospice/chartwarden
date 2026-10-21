@@ -2,7 +2,7 @@
 //
 // The data surface the §4.1 routes compose over. Drizzle in prod (./store-drizzle.ts, org-scoped through
 // `withOrgContext`); this in-memory implementation serves the §7 tests (W-FHIR-01/02/12) and any db-less
-// boot. Both share the §2.2 FSM cores from `@wardenx/fhir` (`fhirClientTransition`,
+// boot. Both share the §2.2 FSM cores from `@chartwarden/fhir` (`fhirClientTransition`,
 // `fhirDualApprovalSatisfied`, `FHIR_CLIENT_CASCADE_ON_ENTRY`) so the in-memory path and the real path
 // enforce the SAME dual-approval and cascade rules — a test that passes here is testing the rule, not a
 // second spelling of it.
@@ -15,7 +15,7 @@ import {
   fhirInboundOwnerModuleFor,
   fhirInboundSubjectPatientId,
   inboundPayloadSha256,
-} from "@wardenx/fhir";
+} from "@chartwarden/fhir";
 import {
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
   FHIR_SESSION_TTL_MINUTES,
@@ -28,7 +28,7 @@ import {
   type FhirInboundStatus,
   type FhirReadDisclosureEnvelope,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import {
   type FhirRevocationCascadePort,

@@ -7,8 +7,8 @@
 // payment; the actual posted dollars live here (the 835 posting), which is why the settlement seam is M25's.
 // The read runs under `withOrgContext` (RLS-scoped); the aggregate is a single dollar total, no patient row
 // and no MBI (D18). No db → the M1 deny-stub stands and the E-1↔D tie rule SKIPS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { registerSeam } from "../../bootstrap/index";
 

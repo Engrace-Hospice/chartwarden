@@ -7,8 +7,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
-import type { CarePlanOverdueStatus, RelevantCarePlanElements } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
+import type { CarePlanOverdueStatus, RelevantCarePlanElements } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -174,7 +174,7 @@ export const RelevantElementsQuerySchema = Type.Object({
 // ── §4.3 RESPONSE DTOs (F0 enrichment) ──────────────────────────────────────────────────────────────
 // The read routes returned typed view shapes but published NO response contract, so the generated client
 // typed every GET body as `never`. These DTOs mirror the handlers' concrete read output 1:1; the two §7.8
-// seam reads are additionally pinned to the @wardenx/types seam DTOs by the compile-time `Conforms`
+// seam reads are additionally pinned to the @chartwarden/types seam DTOs by the compile-time `Conforms`
 // aliases below, so a seam-contract field added or renamed breaks `bun run build` rather than drifting.
 const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
 const PROBLEM_STATUS = ["active", "resolved", "inactive"] as const;

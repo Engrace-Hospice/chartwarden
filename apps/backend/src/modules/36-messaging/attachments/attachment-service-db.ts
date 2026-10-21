@@ -18,11 +18,11 @@
 // Everything runs under `withOrgContext` (RLS on app.org_id is the backstop); org and actor always come from the
 // server-side request context. The service never logs a URL, a file name or an object key.
 import { createHash, randomUUID } from "node:crypto";
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import type { MessageAttachmentView } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, NotFoundError, RateLimitedError, ChartWardenError } from "@wardenx/types";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { MessageAttachmentView } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError, NotFoundError, RateLimitedError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
   activeLiveHolds,

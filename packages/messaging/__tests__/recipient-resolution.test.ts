@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T04 recipient-resolution tests (spec §2.1.3, §2.5, §4.6).
+// @chartwarden/messaging — M36-T04 recipient-resolution tests (spec §2.1.3, §2.5, §4.6).
 //
 // Resolution is dynamic at emit time and consults the source-of-truth ports, dedupes, and
 // refuses an unregistered resolver (§2.5). Fakes stand in for the M5/M19/M2 seams.

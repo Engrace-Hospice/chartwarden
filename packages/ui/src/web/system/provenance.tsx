@@ -1,4 +1,4 @@
-// @wardenx/ui web — Provenance & AI Governance Layer (R0.3, DESIGN.md §9 — WardenX-defining).
+// @chartwarden/ui web — Provenance & AI Governance Layer (R0.3, DESIGN.md §9 — WardenX-defining).
 // "The assistant suggests; the clinician decides." AI-suggested content is always marked, cited,
 // and never committed without a human action; system-derived content is a quiet factual chip.
 // Token-driven + No-Line; the AI halo uses the @keyframes wx-ai-pulse defined in index.css.

@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §4.13/§4.14/§8.7 Stripe adapter barrel (M35-T04).
+// @chartwarden/subscription-billing — §4.13/§4.14/§8.7 Stripe adapter barrel (M35-T04).
 //
 // The outbox-only Stripe access layer: the SDK-free typed client + fail-closed transport, the audit-envelope
 // redactor, the deterministic idempotency-key derivation, the HMAC webhook verifier, the outbox-only

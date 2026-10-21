@@ -8,7 +8,7 @@
 // base permission alone, so the predicate allows them outright.
 //
 // M4 owns the predicate's SEMANTICS but registers it into Module 3's shared named-predicate
-// registry through the `registerPredicate` seam (`@wardenx/auth`, M3-T07) — never a direct M3
+// registry through the `registerPredicate` seam (`@chartwarden/auth`, M3-T07) — never a direct M3
 // schema import, so no cross-module dependency edge is introduced. The scope rides on the ABAC
 // TARGET the route assembles from `request.query.scope` (server-side, never trusted client
 // context); the actor's effective permissions are read through `resolveActorPermissions` — the
@@ -18,7 +18,7 @@ import {
   type PredicateRegistry,
   registerPredicate,
   resolveActorPermissions,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 
 /** The registry name M3 resolves and the route names in `requireAbac(...)` (§7.2). */
 export const AUDIT_ACCOUNTING_SCOPE_PREDICATE = "audit_accounting_scope_allowed";

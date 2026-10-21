@@ -16,8 +16,8 @@
 // A CLOSED window is still an event that happened (triage closing it does not un-admit the patient), so every
 // status is read. `severity` is `urgent` for both kinds. NO facility name / narrative crosses this seam —
 // ids, an enum, an instant and a severity only. SEAM PULL: M14 reads on demand at packet build.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 const CW = schema.complianceWindows;

@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — SYNTHETIC HETS 271 responses (no real beneficiary data), shaped after the
+// @chartwarden/x12-837-client — SYNTHETIC HETS 271 responses (no real beneficiary data), shaped after the
 // CMS HETS 270/271 5010 Companion Guide Appendix B + §7.16 examples. Used by the sandbox transport (dev /
 // test only) and by the codec unit tests. Like real HETS, every 271 echoes the submitted MBI in 2100C
 // NM1*IL — so the parser's MBI-confinement is exercised on every scenario.

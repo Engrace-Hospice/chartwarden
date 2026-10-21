@@ -1,7 +1,7 @@
 // capability-detail's section tabs follow the WAI-ARIA tabs pattern: each tab names its panel (aria-controls) and the panel
 // names its tab (aria-labelledby), only the selected tab is in the tab order, and arrow keys / Home / End move between them.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { CapabilityDetail } from "../capability-detail";

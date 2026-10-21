@@ -13,10 +13,10 @@
 // (physician/facility/payer) are shared registry-sourced reference data that survive the tenant and
 // are physically out of reach (the tenant role has no canonical write grant, M40-T03). Runs over an
 // injected store with an in-memory default; production injects the Drizzle-backed store.
-import { type DbClient, schema } from "@wardenx/db";
-import { type MdmEraseStore, createInMemoryMdmEraseStore, eraseTenantMdm } from "@wardenx/mdm";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type MdmEraseStore, createInMemoryMdmEraseStore, eraseTenantMdm } from "@chartwarden/mdm";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

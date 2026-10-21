@@ -1,4 +1,4 @@
-// @wardenx/ui — use-system-status (spec §5.1). Convenience re-export plus a derived
+// @chartwarden/ui — use-system-status (spec §5.1). Convenience re-export plus a derived
 // `isDegraded` helper over the system-status context.
 import { useSystemStatus as useSystemStatusContext } from "../providers/system-status-provider";
 import type { SystemStatusComponent } from "../types";

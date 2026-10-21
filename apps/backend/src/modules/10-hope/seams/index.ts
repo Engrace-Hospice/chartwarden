@@ -7,14 +7,14 @@
 // boot deny-stubs (before validateSeams()), driven from the composition root's wireModuleSeams(). All
 // three share ONE injected HopeSeamStore (in-memory slice here; Drizzle in prod, reads under the
 // consumer's RLS) — mirrors the M9 seams/index.ts precedent.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   HopeJ2051Provider,
   HopeOrgRollupProvider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
   LatestAssessmentProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createDrizzleHopeSeamStore } from "./drizzle-store";
 import { createHopeOrgRollupProvider } from "./org-rollup-provider";

@@ -1,4 +1,4 @@
-// @wardenx/hope — default alert cadence carried on the schedule / SFV rows (M10-T03; §3.3 `alert_cadence`
+// @chartwarden/hope — default alert cadence carried on the schedule / SFV rows (M10-T03; §3.3 `alert_cadence`
 // jsonb, §4.8 deadline-alert cron, §4.9 typed payloads). The schedule/SFV creators stamp these typed
 // cadence objects into the row's `alert_cadence` column; the `hope-deadline-alerts` cron (M10-T06) reads
 // them to decide WHEN to emit the §4.9 M36 alerts. Tenant overrides land in M10-T06 — T03 pins only the

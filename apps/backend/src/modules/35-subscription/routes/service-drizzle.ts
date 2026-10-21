@@ -13,7 +13,7 @@
 // platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   PaymentMethodRejectedError,
   type PaymentMethodVerifier,
@@ -21,14 +21,14 @@ import {
   type VerifiedPaymentMethod,
   checkRefundRequest,
   committedRefundCents,
-} from "@wardenx/subscription-billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   NotFoundError,
   type OrganizationReader,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";

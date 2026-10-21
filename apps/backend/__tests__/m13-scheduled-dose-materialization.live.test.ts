@@ -3,7 +3,7 @@
  * (`buildM13MaterializeScheduleConsumer`) and the order-discontinue cascade
  * (`buildM13CancelFutureScheduleConsumer`) actually write `scheduled_dose` rows, for real, under RLS.
  *
- * `materializeForOrder` (`@wardenx/emar`) has been complete, pure, IO-free since M13-T03 with NO caller
+ * `materializeForOrder` (`@chartwarden/emar`) has been complete, pure, IO-free since M13-T03 with NO caller
  * anywhere in this repository; `M13_OUTBOX_SUBSCRIPTIONS` has named `m12.medication_order.active` with a
  * real consumer (`m13.materialize-schedule`) since the list was written — nothing has ever bound it, and
  * no INSERT into `scheduled_dose` has ever existed in this codebase before this change.
@@ -23,8 +23,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";

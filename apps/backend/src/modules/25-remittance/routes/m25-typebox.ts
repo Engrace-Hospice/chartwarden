@@ -4,7 +4,7 @@
 // fields carry the §4.1 min-length floors (audit-denylisted at the DB layer — never in the audit value).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { MAX_APPEAL_ENCLOSURES, ValidationError } from "@wardenx/types";
+import { MAX_APPEAL_ENCLOSURES, ValidationError } from "@chartwarden/types";
 
 /** Validate + coerce a request body against a TypeBox schema; throw 400 VALIDATION_FAILED on mismatch. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

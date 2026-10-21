@@ -1,6 +1,6 @@
 // WP 3.8 - the supervisor's decisions: reassign and close, never delete; the review row is decided before the task moves;
 // ineligible targets change nothing; replays are 200, other repeats 409; restricted and missing rows are the same 404.
-import { TASK_CLOSE_REASONS } from "@wardenx/types";
+import { TASK_CLOSE_REASONS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   ADMISSION,

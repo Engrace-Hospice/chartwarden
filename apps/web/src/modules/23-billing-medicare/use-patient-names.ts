@@ -5,7 +5,7 @@
 // backoff (so it needs no re-render and a burst of renders cannot burn the attempts), at most MAX_ATTEMPTS times, then
 // falls back to a short id label. Results are always applied; only an unmount stops the work. StrictMode's
 // mount/unmount/mount and a change of the ids mid-fetch can never strand a name.
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 
 export interface PatientName {

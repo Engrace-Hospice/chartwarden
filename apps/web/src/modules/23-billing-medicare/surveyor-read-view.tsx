@@ -8,7 +8,7 @@ import {
   StatusPill,
   humanizeIdentifier,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the SURVEYOR READ VIEW (R2, §5.1 #21,
 // route /admin/billing-audit, navGroup "Admin"). A read-only, denylist-aware projection of a single claim's
 // compliance trail for an auditor/surveyor: the claim state timeline, validation runs (+ applied overrides),

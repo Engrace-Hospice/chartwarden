@@ -5,7 +5,7 @@
 // (`mN.<resource>.<verb>` — every name here is the canonical three-segment form), ownership (moduleOwner='m18'),
 // and declared consumers (real module ids).
 //
-// The canonical wire `eventName`s mirror `M18_EVENT_NAMES` in @wardenx/types (the closed §4.10 set the capture
+// The canonical wire `eventName`s mirror `M18_EVENT_NAMES` in @chartwarden/types (the closed §4.10 set the capture
 // pipeline / correction-of-record / late-check sweep / device lifecycle / geofence-policy editor / the §2.2.5 D7
 // aggregator submission machine may emit). Each entry adds the TypeBox `payloadSchema` + declared consumers the
 // dispatcher validates each publish against, so "DB updated but the event never went out" is closed in the same
@@ -21,7 +21,7 @@
 // and **M25** denial-management (`aggregator_rejected`) — M18 never calls their routes, it only emits the typed
 // outbox event. Consumer dedup is keyed on `(eventId, consumerName)` per the M1 outbox-consumer pattern.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

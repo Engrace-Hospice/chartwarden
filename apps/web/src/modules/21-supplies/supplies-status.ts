@@ -11,7 +11,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** `m21_supply_request_status` (§2.2 / D2) — the fulfillment machine. `cancellation_pending` is `progress`,
  *  not `neutral`: the vendor has been ASKED and has not answered, so the row is still in flight — reading it

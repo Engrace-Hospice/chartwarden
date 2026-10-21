@@ -1,11 +1,11 @@
 // M23 §4.4 — the bound HETS 270/271 port: MBI unlock → 270 → transport → 271 parse → hospice history, plus
 // the env configuration. Uses the fixture-backed sandbox transport (no network) and a fake M5 unlock seam.
-import type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@wardenx/types";
+import type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@chartwarden/types";
 import {
   type HetsTransport,
   HetsTransportError,
   createSandboxHetsTransport,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 import { describe, expect, it } from "vitest";
 import {
   ELIGIBILITY_FRESHNESS_DAYS,

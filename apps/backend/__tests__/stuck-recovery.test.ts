@@ -9,8 +9,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+} from "@chartwarden/auth";
+import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

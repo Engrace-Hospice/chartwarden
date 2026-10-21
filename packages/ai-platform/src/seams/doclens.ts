@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.2 the four DocLens seams (M32-T06).
+// @chartwarden/ai-platform — §4.2.2 the four DocLens seams (M32-T06).
 //
 // Consumed by M22, which per M22 D7 holds ZERO AI capability code and routes every model invocation
 // through M32. All four capabilities sit at `DESIGN_REVIEW` in §2.4's Phase-1 inventory, so even with

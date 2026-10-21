@@ -1,7 +1,7 @@
 // M8 cleanup consumers for M17 visit terminal/superseded states. M17 owns scheduling lifecycle;
 // M8 owns the seeded draft clinical record and may only close an unused draft through its own tables.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { DispatchableOutboxEvent } from "../../../bootstrap/outbox-dispatcher";
 

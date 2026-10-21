@@ -6,10 +6,10 @@
 //                 (a cron tick is not a request — org-explicit `withOrgContext`, never an ambient context);
 //   - `alerts`  — the §4.9 dispatch: emit through the M36 AlertEmitter (structural type — M30's manifest does
 //                 not depend on M36's internals), severity taken from the M30_ALERTS def for the payload type.
-import type { DbClient } from "@wardenx/db";
-import type { OpenSraCycle, OpenSraCycleReadPort, SraReminderAlertPort } from "@wardenx/quality";
-import { M30_ALERTS } from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import type { OpenSraCycle, OpenSraCycleReadPort, SraReminderAlertPort } from "@chartwarden/quality";
+import { M30_ALERTS } from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
 /** `withOrgContext` carries no acting human for a cron (the M4 audit trigger maps "" to NULL). */

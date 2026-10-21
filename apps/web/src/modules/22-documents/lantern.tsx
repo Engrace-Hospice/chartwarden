@@ -1,4 +1,4 @@
-import { type StatusTone, StatusPill as UiStatusPill } from "@wardenx/ui";
+import { type StatusTone, StatusPill as UiStatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents/lantern.tsx — small Lantern visual primitives shared by the M22
 // Track-B screens (M22-T10). These render to the "Lantern" design language (docs/design/DESIGN.md):
 // warm-paper surfaces, twilight-indigo brand, strictly-semantic state colors, the §6.6 status-pill
@@ -10,7 +10,7 @@ import { type StatusTone, StatusPill as UiStatusPill } from "@wardenx/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
 /**
- * A Lantern status pill (R1: reconciled to the canonical `@wardenx/ui` StatusPill — single source of
+ * A Lantern status pill (R1: reconciled to the canonical `@chartwarden/ui` StatusPill — single source of
  * truth, with the §10.10 inline-SVG glyph partners instead of the old emoji glyphs). Kept as a thin
  * children-based wrapper so the M22 call sites stay unchanged.
  */

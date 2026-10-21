@@ -7,15 +7,15 @@
 // order); a repeat request replays, an edited message supersedes. M36 NEVER decides accepted/rejected: it records the outcome
 // the owning module reports (applyOutcome), which is the only way result_ref is ever set. Flag-independent: the routes gate
 // the `messaging.promotions` flag. It writes no M8/M14 table and calls no mutating seam (m36-promotion-no-foreign-writes).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   allowedPromotionActions,
   applyPromotionOutcome as decideOutcome,
   decidePromotionRequest,
   derivePatient,
   promotionActorRole,
-} from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   type ChartPromotionDto,
   type ChartPromotionOutcome,
@@ -27,7 +27,7 @@ import {
   NotFoundError,
   ChartWardenError,
   isChartPromotionTarget,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { gateAdmits } from "../handoffs/handoff-eligibility";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Part2ChannelGate } from "../part2-channel-gate";

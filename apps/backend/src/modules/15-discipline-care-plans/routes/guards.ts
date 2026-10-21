@@ -16,7 +16,7 @@
 // `../lifecycle/validation`; the signer-role binding (the claimed `signerRole` must be held by the
 // authenticated actor, one membership per slot) is enforced in the write service's `signVersion`
 // (GAP-045), NOT here — no route guard reads the body's `signerRole`; the M39 consent gates in `./disclosure.ts`. See `../abac-predicates.ts`.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { type M15ReadActor, type PreHandler, actorOf } from "./actor";
 
 type TargetRequest = {

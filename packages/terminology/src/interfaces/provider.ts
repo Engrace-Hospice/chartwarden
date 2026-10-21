@@ -1,4 +1,4 @@
-// @wardenx/terminology — the `TerminologyProvider` seam (spec §4.5).
+// @chartwarden/terminology — the `TerminologyProvider` seam (spec §4.5).
 //
 // The contract EVERY clinical/billing/interop consumer imports (M5/M7/M8/M9/M10/
 // M11/M12/M13/M21/M23/M24/M27/M28/M29/M30). Consumers depend on this interface

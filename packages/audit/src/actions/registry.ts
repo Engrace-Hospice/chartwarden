@@ -1,4 +1,4 @@
-// @wardenx/audit — the consolidated action catalog + boot validation (M4-T10; M4 spec §4.6, §4.6.7).
+// @chartwarden/audit — the consolidated action catalog + boot validation (M4-T10; M4 spec §4.6, §4.6.7).
 //
 // The single registry M4 loads at boot: every owner module's slice concatenated, the
 // `ACTION_CATALOG` constant the Compliance reporting surface and the boot-time UPSERT into

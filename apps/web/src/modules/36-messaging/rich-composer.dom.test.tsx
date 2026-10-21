@@ -2,15 +2,15 @@
 // send a structured body, keyboard shortcuts behave and never trap focus, a stored rich message renders from its
 // document, and hostile text in a message, an error message or a hostile document never becomes live DOM.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { sanitizeRichBody } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { sanitizeRichBody } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { StaffMessaging } from "./staff-messaging";
 
-vi.mock("@wardenx/types", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/types")>();
+vi.mock("@chartwarden/types", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/types")>();
   return { ...actual, sanitizeRichBody: vi.fn(actual.sanitizeRichBody) };
 });
 vi.mock("socket.io-client", () => ({

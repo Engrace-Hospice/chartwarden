@@ -1,4 +1,4 @@
-// @wardenx/fhir — the D20 whole-report SUD redaction applier (§4.11.3, M28-T04).
+// @chartwarden/fhir — the D20 whole-report SUD redaction applier (§4.11.3, M28-T04).
 //
 // 42 CFR Part 2 redaction at DiagnosticReport granularity is WHOLE-REPORT (D20): if ANY contained
 // Observation is SUD-class, the entire `result[]` is replaced with a single placeholder Observation.

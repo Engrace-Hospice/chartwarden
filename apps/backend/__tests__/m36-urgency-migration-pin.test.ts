@@ -7,7 +7,7 @@ import {
   MESSAGE_URGENCIES,
   URGENT_RECEIVE_PERMISSION,
   URGENT_SEND_PERMISSION,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

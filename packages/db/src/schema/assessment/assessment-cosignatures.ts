@@ -1,4 +1,4 @@
-// @wardenx/db — `assessment_cosignature` (M9 §3.3, §7.4). The LPN-cosignature record: when an
+// @chartwarden/db — `assessment_cosignature` (M9 §3.3, §7.4). The LPN-cosignature record: when an
 // assessment requires a supervising-RN / clinical-supervisor cosignature (cosign_required), one row
 // per cosigner role attests to it. PHI-adjacent → the three-column tenancy rule (PE/location
 // denormalized from the parent assessment). The clinical_assessment link is a plain uuid (the parent

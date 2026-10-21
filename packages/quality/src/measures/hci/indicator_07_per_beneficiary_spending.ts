@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 7: Per-beneficiary Medicare spending (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 7: Per-beneficiary Medicare spending (§1.1). Pure. No IO.
 //
 // CMS criterion: per-beneficiary Medicare spend is at/below the CMS benchmark (lower is better). Modeled
 // as a spend-vs-benchmark RATIO: numerator = total Medicare spend; denominator = benchmark spend for the

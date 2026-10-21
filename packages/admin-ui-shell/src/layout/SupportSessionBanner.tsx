@@ -1,4 +1,4 @@
-// @wardenx/admin-ui-shell — persistent "support session active" banner (M34 §3.10 / §5.1 / D8/D21).
+// @chartwarden/admin-ui-shell — persistent "support session active" banner (M34 §3.10 / §5.1 / D8/D21).
 //
 // A support session is a break-glass *variant*: WardenX-staff PHI access that ALSO carries a
 // `support_consent_grant` reference — consent narrows, never replaces, dual control (M34-F01). While
@@ -9,9 +9,9 @@
 //
 // Lantern: this is the one place an `alert`/critical tone is ambient (DESIGN.md §8). Token-driven,
 // No-Line; the optional PHI-elevation affordance is a Guardrail moment, not a casual button. We build
-// on the shared @wardenx/ui Sensitivity surface so the consented-support session reads as a sibling
+// on the shared @chartwarden/ui Sensitivity surface so the consented-support session reads as a sibling
 // of break-glass rather than a bespoke bar.
-import { CountdownChip, Glyph, t } from "@wardenx/ui";
+import { CountdownChip, Glyph, t } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 export interface SupportSessionBannerProps {

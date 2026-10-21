@@ -1,4 +1,4 @@
-// @wardenx/db — `outbox_event_catalog` (M1 Foundation §3.12 / D8). Platform-shared
+// @chartwarden/db — `outbox_event_catalog` (M1 Foundation §3.12 / D8). Platform-shared
 // registry of every published outbox event, mirroring M4's audit_action_catalog. M1
 // boot UPSERTs each registered event here (M1-T08); the outbox publisher validates
 // that an event name is catalogued, the actor owns its `mN.` prefix, and the payload

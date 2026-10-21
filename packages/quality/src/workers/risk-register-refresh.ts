@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the `m30.risk_register_refresh` PURE processor (§4.8 / §7.9 / D13 WF-20).
+// @chartwarden/quality · workers — the `m30.risk_register_refresh` PURE processor (§4.8 / §7.9 / D13 WF-20).
 //
 // The body the `m30.risk_register_refresh` worker runs per org (serialized per org, concurrency 1): REFRESH
 // the `risk_register_view` MATERIALIZED VIEW CONCURRENTLY for the org, then shape the unified register rows

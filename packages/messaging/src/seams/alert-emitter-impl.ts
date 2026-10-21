@@ -1,4 +1,4 @@
-// @wardenx/messaging — the `AlertEmitter` seam implementation (M36-T06, spec §4.6, §2.1).
+// @chartwarden/messaging — the `AlertEmitter` seam implementation (M36-T06, spec §4.6, §2.1).
 //
 // The boot wiring of the M36-T04 resolution/fan-out engine into the published `AlertEmitter`
 // seam: `emit()` resolves the firing `alert_rule`s for the event, the recipients each names

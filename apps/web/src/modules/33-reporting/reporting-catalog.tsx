@@ -7,7 +7,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/33-reporting — Reports & Analytics landing (M33 §5.1.2 `/reports`, Track B /
 // ADR-0030; 2026-09-25 redesign, mockup "Reports"). Headline cards, category tabs, and one catalog table of
 // what can be reported on: the report datasets (GET /reporting/bases — name, domain, description) and the

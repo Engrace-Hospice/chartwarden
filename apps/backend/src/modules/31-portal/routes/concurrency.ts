@@ -4,7 +4,7 @@
 // precedent): every mutating portal route requires a client-supplied `Idempotency-Key` (the double-tapped
 // button on a phone with one bar of signal — a caregiver attesting a dose twice), and PHI list routes
 // refuse `?offset=` (offset pagination discloses a count oracle; keyset only).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

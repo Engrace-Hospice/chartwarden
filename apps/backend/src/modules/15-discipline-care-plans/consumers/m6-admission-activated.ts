@@ -41,10 +41,10 @@
 // An admission with no location is a THROW, not a skip. The row is retried and eventually dead-lettered,
 // which is visible; silently creating nothing would be a CoP clock that never starts and a queue nobody
 // is watching — the exact failure this file exists to end.
-import { type DbClient, schema } from "@wardenx/db";
-import { BOOTSTRAP_ON_ADMISSION_ACTIVATED, requiredSignersFor } from "@wardenx/discipline-plans";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DisciplinePlanKind } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { BOOTSTRAP_ON_ADMISSION_ACTIVATED, requiredSignersFor } from "@chartwarden/discipline-plans";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DisciplinePlanKind } from "@chartwarden/types";
 import { bootstrapDisciplinePlan } from "../lifecycle/index";
 import type { WriteOutboxPort } from "../routes/write-service";
 

@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_risk_score` (M16 §3.3.3). The D3 hybrid rubric's APPEND-ONLY ledger: every
+// @chartwarden/db — `bereavement_risk_score` (M16 §3.3.3). The D3 hybrid rubric's APPEND-ONLY ledger: every
 // scheduled (intake / 1mo / 6mo / 12mo) and event-triggered recompute writes a NEW row (D8). Rows are
 // IMMUTABLE — D11 gives the table a BEFORE UPDATE trigger that raises, so a "correction" is a new row, and
 // the audit trail can never lose the tier a cadence decision was actually made on.
@@ -54,7 +54,7 @@ export const bereavementRiskScore = pgTable(
     assessedAt: timestamp("assessed_at", { withTimezone: true }).notNull().defaultNow(),
     assessedByUserId: uuid("assessed_by_user_id"), // logical FK → M2 membership; NULL for the cron/system scorer
 
-    // D3/D17 factor vector — shape locked by `BereavementRiskFactorInputs` in @wardenx/types. Carries the
+    // D3/D17 factor vector — shape locked by `BereavementRiskFactorInputs` in @chartwarden/types. Carries the
     // 8 tri-state factors, the optional pg13/ipgr screen totals (D8), and an envelope-encrypted
     // `notes_cipher`. D11 re-scrubs `notes_cipher` + `narrative` out of the audit capture.
     riskFactorsJsonb: jsonb("risk_factors_jsonb").notNull(),

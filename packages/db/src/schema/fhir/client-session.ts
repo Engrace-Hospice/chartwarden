@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_client_session` (M28 §3.3). One row per minted access token (JTI), the SMART
+// @chartwarden/db — `fhir_client_session` (M28 §3.3). One row per minted access token (JTI), the SMART
 // Backend Services / API-key session ledger. MONTHLY-PARTITIONED by `issued_at` (§3.3): high volume,
 // routine-purged past 90 days (`operational` retention, §3.7).
 //

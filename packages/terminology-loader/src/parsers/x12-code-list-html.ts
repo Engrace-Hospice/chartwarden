@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — X12 external code list page reader (CARC, RARC).
+// @chartwarden/terminology-loader — X12 external code list page reader (CARC, RARC).
 //
 // The X12 / Washington Publishing Company code lists are published as HTML pages (no CSV/JSON download exists):
 //   https://x12.org/codes/claim-adjustment-reason-codes     (CARC)

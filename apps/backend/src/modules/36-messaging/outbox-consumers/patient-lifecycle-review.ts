@@ -12,9 +12,9 @@
 // rows and the alert correlation ids converge. TENANT: from the envelope only. A malformed payload or an admission that does
 // not resolve THROWS (relay retry -> DLQ), never a silently unreviewed patient. The queue is a safety record, so rows are
 // written whether or not the `messaging.tasks` flag is on; alerts honour the flag. Logs carry ids and enums only.
-import type { AlertEmitter } from "@wardenx/messaging";
-import { lifecycleCause, triggerRefFor } from "@wardenx/messaging";
-import type { ReviewLifecycleCause } from "@wardenx/types";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { lifecycleCause, triggerRefFor } from "@chartwarden/messaging";
+import type { ReviewLifecycleCause } from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

@@ -5,7 +5,7 @@ import {
   type RichBody,
   type RichInline,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const invalid = (message: string): ChartWardenError =>
   new ChartWardenError("VALIDATION_FAILED", message, 422);

@@ -22,12 +22,12 @@
 //
 // The seam is resolved through `getSeam` and cast to the minimal shape M16 calls (the M15 →
 // ConsentEvaluator precedent): `ConsentEvaluator` is `unknown` in the leaf SeamContracts, and casting
-// structurally keeps M16 off a `@wardenx/consent` import edge it does not have.
+// structurally keeps M16 off a `@chartwarden/consent` import edge it does not have.
 import { getSeam } from "../../../bootstrap/index";
 import { BEREAVEMENT_VOLUNTEER_DISCIPLINE, disciplineForRoleKeys } from "../abac-predicates";
 import type { M16ReadActor } from "./actor";
 
-/** The M39 surface M16 calls — structurally typed so no `@wardenx/consent` import edge is taken. */
+/** The M39 surface M16 calls — structurally typed so no `@chartwarden/consent` import edge is taken. */
 interface ConsentEvaluatorShape {
   evaluate(args: {
     organizationId: string;

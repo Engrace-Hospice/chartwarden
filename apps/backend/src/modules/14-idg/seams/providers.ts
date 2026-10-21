@@ -1,6 +1,6 @@
 // apps/backend/src/modules/14-idg/seams/providers.ts — M14-T05 the §4.8 seam implementations: pure
 // orchestration over an injected {@link IdgSeamStore}. Each returns the leaf-typed seam interface
-// (@wardenx/types) the M1 registry validates and M22/M28/M30/M33 resolve. The providers add NO tenant logic —
+// (@chartwarden/types) the M1 registry validates and M22/M28/M30/M33 resolve. The providers add NO tenant logic —
 // RLS scopes every store read by the consumer's `app.org_id` (§3.6); they project store rows to the read DTOs
 // and derive the read-side signals (the 15-day-cadence longest-gap compliance verdict; the M22 deterministic
 // render payload assembled from the frozen snapshot). All three seams are READ-only — M14 owns the
@@ -11,7 +11,7 @@ import type {
   IdgPacketProvider,
   IdgPacketRenderPayload,
   IdgScheduleProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { IdgSeamStore } from "./store";
 
 /** The platform 15-day per-patient review floor (§2.2 / M14-F01): a cadence is compliant when no gap between

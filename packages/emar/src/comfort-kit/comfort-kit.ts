@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.7 D5 comfort-kit deployment + drawdown (M13-T05). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.7 D5 comfort-kit deployment + drawdown (M13-T05). PURE, IO-free, `Date.now()`-free.
 //
 // A comfort kit is a per-patient stock of common end-of-life medications placed at the bedside for PRN
 // administration. The kit *inventory* is M21's domain; M13 owns the clinical record of the kit being at THIS
@@ -19,7 +19,7 @@ import type {
   IsoInstant,
   MedicationOrderId,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { AdministrationStateError } from "../lifecycle/errors";
 
 /** §2.7 — default replenishment threshold: 25% of the deployed (`expectedQuantity`) amount. */

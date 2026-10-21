@@ -21,8 +21,8 @@
  * wardenx_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
-import type { ChartPromotionTargetModule } from "@wardenx/types";
+import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";
+import type { ChartPromotionTargetModule } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

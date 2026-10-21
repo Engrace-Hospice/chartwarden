@@ -7,7 +7,7 @@
 // 42 CFR Part 2: ICD-10 F10-F19 (substance-related) codes are withheld from the rendering at this producer and
 // only their COUNT travels; the chart row keeps the full code. Clinician-authored free text (the narrative) cannot
 // be classified mechanically and is rendered as written - recorded as a residual in docs/history.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CtiRenderPayload,
   type DischargeRenderPayload,
@@ -26,7 +26,7 @@ import {
   assertRevocationRenderPayload,
   assertTransferRenderPayload,
   partitionPart2Diagnoses,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { representativePrintedName } from "./representative";
 import { RenderPayloadBuildError, type RenderSourcesPort } from "./sources";

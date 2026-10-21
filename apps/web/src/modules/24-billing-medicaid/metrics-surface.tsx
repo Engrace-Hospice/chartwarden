@@ -10,7 +10,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the METRICS SURFACE (R2, §5.1 #18). The billing manager's
 // M33-fed read: denial rate, open AR aging, MCO breakdown, and per-state channel availability. Channel
 // availability is derived from the trading-partner credentials (a state with no active credential cannot be

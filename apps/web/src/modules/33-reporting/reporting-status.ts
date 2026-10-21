@@ -12,7 +12,7 @@
 // FRESHNESS is the §5.1.2 anchor of this module (the "Data as of HH:MM" badge every tile/MV renders):
 // the data-freshness tier palette is green ≤5m · amber ≤10m · red >10m or refresh failed. The six-tone
 // vocabulary has no separate "amber" — `warning` (the clock glyph) IS amber, which is exactly correct.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // ── freshness tiers (§5.1.2 — the data-freshness badge on every tile/MV) ──────────────────────────────
 

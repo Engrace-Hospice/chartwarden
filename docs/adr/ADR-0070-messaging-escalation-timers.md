@@ -40,7 +40,7 @@ Facts that shape the design:
 ## Data model
 
 - Migration `packages/db/migrations/1114_m36_ack_escalation_timers.sql`: two enum values and the replaced update guard. No table, grant or policy. Code mirrors: `packages/db/src/enums.ts`, `packages/types/src/messaging-ack.ts` (`ACK_EVENT_TYPES`, `ACK_ESCALATION_TIMERS_FLAG_KEY`, `ACK_ESCALATION_REQUIRED_ROLE`, `ACK_ESCALATION_NOTES`).
-- Queues in `packages/messaging/src/jobs/queues.ts`: `messaging.ack_escalation_timer` (+ `.dlq`) and `messaging.ack_escalation_sweep` (+ `.dlq`), owned by `@wardenx/messaging` like every messaging queue (`arch:queue-names`).
+- Queues in `packages/messaging/src/jobs/queues.ts`: `messaging.ack_escalation_timer` (+ `.dlq`) and `messaging.ack_escalation_sweep` (+ `.dlq`), owned by `@chartwarden/messaging` like every messaging queue (`arch:queue-names`).
 
 ## Alternatives considered
 

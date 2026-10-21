@@ -3,7 +3,7 @@
 // production caller does. The order is the authority: its class decides the witness (GAP-005), its patient
 // decides which patient every other id on the write may name (GAP-004), and an order that does not resolve
 // is refused rather than assumed.
-import { type MedClass, ValidationError } from "@wardenx/types";
+import { type MedClass, ValidationError } from "@chartwarden/types";
 
 /** GAP-005 — the order decides; a body `medClass` may only agree with it. */
 export function assertMedClassAgrees(

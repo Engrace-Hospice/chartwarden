@@ -7,11 +7,11 @@
  * this seed is written to run against a deployed environment, where there is no credentials file and the
  * password must never be read from disk, echoed, or passed on the command line.
  *
- * Requests go through the generated `@wardenx/ui` client (built from `docs/api/openapi.json`), so every
+ * Requests go through the generated `@chartwarden/ui` client (built from `docs/api/openapi.json`), so every
  * request body is type-checked against the published contract. Responses are unwrapped by {@link call} into
  * a small result type that keeps the server's error `code` — the per-step log reports it verbatim.
  */
-import { type ApiClient, createApiClient } from "@wardenx/ui";
+import { type ApiClient, createApiClient } from "@chartwarden/ui";
 import { fetchAuthWithRateLimitRetry, retryDelaySeconds } from "../lib/auth-rate-limit";
 
 export interface Session {

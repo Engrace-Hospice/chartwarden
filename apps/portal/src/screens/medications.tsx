@@ -7,7 +7,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // M31 patient medication view. M13 remains authoritative for orders and caregiver-attested administrations.
 // Read requests are independently scoped to the selected patient; this screen never recommends a dose.
 import { useCallback, useEffect, useRef, useState } from "react";

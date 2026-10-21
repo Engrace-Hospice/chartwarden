@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — M34's OWN `TenantExportShard` implementation (M34 §3.8 / §7.5, D9).
+// @chartwarden/saas-tenant-platform — M34's OWN `TenantExportShard` implementation (M34 §3.8 / §7.5, D9).
 //
 // THE INVERSE OF THE FAN-OUT. Every PHI-bearing module implements {@link TenantExportShard} and
 // registers it with M34's worker (seam-bootstrap, `registerTenantExportShard`). This file is M34's

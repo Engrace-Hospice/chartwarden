@@ -3,8 +3,8 @@
 // catalog validation, PHI-free payload, idempotency on redelivery (correlation id + the in-memory emitter's dedupe),
 // the platform `alert_rule` the recipients come from, and the resolved recipient set. The real-Postgres / RLS / real
 // emitter proof is in `gap-096-alert-emitter-live.test.ts`; the producer crossing in `m14-packet-build.live.test.ts`.
-import { PLATFORM_DEFAULT_ALERT_RULES, createAlertPayloadRegistry } from "@wardenx/messaging";
-import { createInMemoryAlertEmitter } from "@wardenx/messaging";
+import { PLATFORM_DEFAULT_ALERT_RULES, createAlertPayloadRegistry } from "@chartwarden/messaging";
+import { createInMemoryAlertEmitter } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import { M14_ALERT_PAYLOADS } from "../src/modules/14-idg/index";
 import {

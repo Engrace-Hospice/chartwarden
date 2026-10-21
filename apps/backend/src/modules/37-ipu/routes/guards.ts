@@ -16,8 +16,8 @@
 // periodically-recomputed fact like this is wanted again, it needs an async-capable `getTarget` (a core
 // `requireAbac` change touching every one of M3's 168 predicates) or an in-process cache the
 // `rn-coverage-watchdog` cron keeps warm — either is a real feature, not a bug fix, and neither exists today.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { ForbiddenError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { ForbiddenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.6 key catalog M37 contributes). */

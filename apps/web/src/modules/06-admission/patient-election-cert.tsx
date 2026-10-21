@@ -8,8 +8,8 @@ import {
   cardSurface,
   t,
   useApiClient,
-} from "@wardenx/ui";
-import type { StatusTone } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { StatusTone } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — patient-scoped Election & Certification (M6 §5.2/§5.3, Track B).
 // Spec: docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md — the
 // per-patient slice reached from the patient chart "Election & Certification" tab. A Patient

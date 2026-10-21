@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `subscription` (M35 §3.3). TENANT-SCOPED, RLS keyed ONLY on canonical app.org_id (0143).
+// @chartwarden/db — `subscription` (M35 §3.3). TENANT-SCOPED, RLS keyed ONLY on canonical app.org_id (0143).
 // One live subscription per Organization (partial-unique `subscription_org_active_uq`). M35-F04
 // (ADR-0011 / ARCH-147): `organization_id` is a plain uuid (logical FK to M2 organizations, RLS-governed)
 // — M35 must NOT import the M1/M2 `organization` Drizzle schema; identity is resolved via the

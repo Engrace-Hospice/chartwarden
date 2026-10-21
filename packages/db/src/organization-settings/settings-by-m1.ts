@@ -1,4 +1,4 @@
-// @wardenx/db — M1's own organization-settings contributions (M1 Foundation §3.15.1).
+// @chartwarden/db — M1's own organization-settings contributions (M1 Foundation §3.15.1).
 //
 // Same contribution pattern as settings-by-m3.ts / settings-by-m5.ts — the key belongs to M1
 // itself here, since "what timezone does this org operate in" is a foundational, cross-cutting

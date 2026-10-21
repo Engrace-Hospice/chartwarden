@@ -6,7 +6,7 @@
 // is eliminated structurally. This pure engine (M7-T03) returns side effects DECLARATIVELY as data; the
 // M7 service layer (M7-T05+) executes them inside the version aggregate's optimistic-locked
 // transaction. Keeping them as data makes the machines deterministic and unit-testable with no DB.
-import type { IsoInstant, M7EventName, RequiredSignerSet } from "@wardenx/types";
+import type { IsoInstant, M7EventName, RequiredSignerSet } from "@chartwarden/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.4). The service layer is the only place

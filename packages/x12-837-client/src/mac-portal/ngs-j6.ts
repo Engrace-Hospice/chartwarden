@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — NGS Jurisdiction 6 MAC portal client (the LAUNCH case, Engrace's MAC).
+// @chartwarden/x12-837-client — NGS Jurisdiction 6 MAC portal client (the LAUNCH case, Engrace's MAC).
 //
 // This is the only operational MAC-portal client in Phase 1, but it is a SKELETON: the file-drop +
 // status-poll HTTP details land in Phase 3 behind the `TODO(Phase 3)` boundaries, so Phase 1 methods

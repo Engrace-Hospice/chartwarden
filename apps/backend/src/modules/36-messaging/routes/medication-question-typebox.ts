@@ -2,7 +2,7 @@
 // The question text is a plain string (the send route's own 8000 cap); nothing else reads it. `additionalProperties:false`
 // so a body can carry no order-shaped field.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { MEDICATION_QUESTION_TEXT_MAX } from "@wardenx/types";
+import { MEDICATION_QUESTION_TEXT_MAX } from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 import { TaskSchema } from "./task-typebox";
 

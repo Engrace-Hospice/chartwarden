@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the eleven typed M36 alert payloads (§4.9). M26 routes cap alerts through M36's
+// @chartwarden/cap-management — the eleven typed M36 alert payloads (§4.9). M26 routes cap alerts through M36's
 // generic AlertEmitter (M36-F03: NO cap_watch channel kind); each payload kind is registered with M36's alert
 // type registry at boot (P4) and M36 validates dispatched alerts against the TypeBox schema. patientDisplayName
 // is M5-redacted per recipient permission (M36 resolves it at dispatch), never carried as raw PHI here.

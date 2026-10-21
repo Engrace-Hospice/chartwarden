@@ -13,7 +13,7 @@
 // the raw `$inferSelect`. Audit-denylisted / cipher columns (`computation_snapshot` cipher fields,
 // incident free-text `kind_data` ciphers, SRA finding detail) are NOT projected onto list views; the
 // aggregate-only seams stay aggregate-only. The DTOs intentionally use string-union enums mirroring the
-// @wardenx/quality contracts so the route layer never couples to a Drizzle import.
+// @chartwarden/quality contracts so the route layer never couples to a Drizzle import.
 import type {
   CopStatus,
   IncidentKind,
@@ -22,7 +22,7 @@ import type {
   MeasurePeriodKind,
   QapiProjectPhase,
   SraCycleStatus,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import type { M30ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 import type { QualityPatientScope } from "./patient-scope";

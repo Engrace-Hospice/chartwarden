@@ -1,4 +1,4 @@
-// @wardenx/types — Module 15 (Discipline Care Plans) leaf contracts (M15-T01).
+// @chartwarden/types — Module 15 (Discipline Care Plans) leaf contracts (M15-T01).
 //
 // Per M15-F01 / ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M15 spec's
 // references to `packages/discipline-plans/src/{seams,events}.ts` resolve their TYPE surface HERE so the
@@ -11,7 +11,7 @@
 // `m15.*` outbox event names + payload types, the §4.7 typed M36 alert payloads, and the §4.3 published-seam
 // interfaces + their read DTOs. The pure-data policy constants — the D3 supervisory-cadence catalog, the D10
 // initial-assessment clocks, the D11 required-signer sets, the D1 plan-kind ↔ author-discipline matrix, the
-// §418.78(e) ratio thresholds — live in the `@wardenx/discipline-plans` FEATURE package. This file is
+// §418.78(e) ratio thresholds — live in the `@chartwarden/discipline-plans` FEATURE package. This file is
 // type-only and importable by everyone with no edge.
 //
 // ── LOCKED-ELSEWHERE SEAMS (M15-T01 gotcha) ──────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ import type {
   ProblemId,
 } from "./care-plan";
 
-// ── M15-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── M15-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 export type DisciplinePlanId = string;
 export type DisciplinePlanVersionId = string;
 export type DisciplinePlanSignatureId = string;
@@ -501,7 +501,7 @@ export interface DisciplineAssessmentDto {
 /** §4.3 — the full plan read (`DisciplinePlanReader.planById`). */
 export interface DisciplinePlanFull {
   readonly digest: DisciplinePlanDigest;
-  /** The D1 per-kind `data` payload (validated by the kind's TypeBox in `@wardenx/discipline-plans`). */
+  /** The D1 per-kind `data` payload (validated by the kind's TypeBox in `@chartwarden/discipline-plans`). */
   readonly data: unknown;
   readonly goals: readonly DisciplineGoalDto[];
   readonly interventions: readonly DisciplineInterventionDto[];

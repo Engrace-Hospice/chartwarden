@@ -23,7 +23,7 @@
 //     COUNT of withheld values is reported.
 // Values repeated across documents are shown once, with every citation; values that DIFFER across documents
 // (two dates of birth) are all shown and marked, never reconciled.
-import { lineNamesSudTreatmentMedication } from "@wardenx/intake-extraction";
+import { lineNamesSudTreatmentMedication } from "@chartwarden/intake-extraction";
 import {
   type DocLensBatchSudStatus,
   type DocLensDiagnosisRole,
@@ -35,7 +35,7 @@ import {
   normalizeDiagnosisRole,
   normalizeIcd10CmShape,
   parseDiagnosisFieldPath,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { clinicalWritebackTargetOf } from "./writeback-plan-clinical";
 import { descriptionHasSudWording } from "./writeback-plan-dx";
 
@@ -254,7 +254,7 @@ const ROLE_LABEL: Readonly<Record<DocLensDiagnosisRole, string>> = {
   history: "History",
 };
 
-/** The v1 field catalog (`@wardenx/intake-extraction` registry) extracts none of these. */
+/** The v1 field catalog (`@chartwarden/intake-extraction` registry) extracts none of these. */
 export const PROSPECT_SUMMARY_NOT_CAPTURED: readonly string[] = [
   "Medical record number, Medicare / insurance IDs",
   "Emergency contact, caregiver and DPOA agent",

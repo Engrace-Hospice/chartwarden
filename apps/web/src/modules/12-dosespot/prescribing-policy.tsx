@@ -8,7 +8,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — prescribing policy admin (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill SLA & controlled-
 // substance policy admin). Two read-only tenant-config panes for org_admin / compliance_officer: the refill-
@@ -16,7 +16,7 @@ import {
 // and the controlled-substance policy (schedule-II / III–V refill caps per 21 CFR 1306.22 + the EPCS
 // certification status gate, D18). The tighten-only PATCH write actions fill in as their write surfaces harden;
 // the SERVER enforces the platform floors. Reads GET /api/v1/admin/refill-inbox-policy and
-// GET /api/v1/admin/controlled-substance-policy via the typed client. Leaves only (@wardenx/ui).
+// GET /api/v1/admin/controlled-substance-policy via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { EPCS_TONE, stateLabel } from "./medication-status";

@@ -1,4 +1,4 @@
-import { Glyph, StatusPill, useApiClient } from "@wardenx/ui";
+import { Glyph, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

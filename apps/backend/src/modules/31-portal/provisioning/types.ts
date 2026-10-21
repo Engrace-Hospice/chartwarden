@@ -3,7 +3,7 @@
 // Every one is a locally-declared STRUCTURAL port: M31's manifest `dependsOn` carries no edge to M2 / M6 / M16 /
 // M22 / M39, so the owning module's own function is bound here by the root instead of being imported (the F-160
 // `CapConsumerStore` shape). A port left unbound makes the route that needs it answer 503 — never a fake success.
-import type { PortalAccessGrantKind, PortalAccountRelationship } from "@wardenx/types";
+import type { PortalAccessGrantKind, PortalAccountRelationship } from "@chartwarden/types";
 
 /** M2 — find-or-create the identity (`user` row) an invited portal caregiver will sign in as. */
 export interface PortalInviteeUserPort {

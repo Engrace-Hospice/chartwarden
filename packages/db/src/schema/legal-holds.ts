@@ -1,4 +1,4 @@
-// @wardenx/db — `legal_hold` (M4 Audit §3.5, §2.4.3). A legal hold suspends destruction
+// @chartwarden/db — `legal_hold` (M4 Audit §3.5, §2.4.3). A legal hold suspends destruction
 // for the records its `criteria` match; it is active until released and has supremacy over
 // retention-driven destruction (§10.6). Org-scoped on organization_id (standard app.org_id
 // RLS lands in M4-T05); not a PHI table itself — `criteria` carries only references/filters,

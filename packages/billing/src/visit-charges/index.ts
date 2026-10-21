@@ -1,4 +1,4 @@
-// @wardenx/billing — the TENANT-ENTERED hospice visit-charge schedule domain. PURE: no Fastify, no Drizzle, no clock.
+// @chartwarden/billing — the TENANT-ENTERED hospice visit-charge schedule domain. PURE: no Fastify, no Drizzle, no clock.
 //
 // A hospice claim reports every visit as its own line with "a charge amount" (CMS Pub. 100-04 ch. 11 §30.3), but a
 // visit's charge is informational — the visit is bundled into the level-of-care payment — so the number belongs to

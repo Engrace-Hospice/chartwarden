@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — §4.6 eligibility + recipient-ID rules. PURE: read ctx only.
+// @chartwarden/medicaid-adapters — §4.6 eligibility + recipient-ID rules. PURE: read ctx only.
 import { fail, pass, skip } from "./types";
 import type { MedicaidRule, RuleParameters } from "./types";
 

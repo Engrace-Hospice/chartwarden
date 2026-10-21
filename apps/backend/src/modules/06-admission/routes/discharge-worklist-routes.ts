@@ -8,8 +8,8 @@
 // narrowed to the caller's caseload exactly like the admission census (GAP-020, `readScope`) — except
 // `recently_discharged` (the Readmit list), which an `admission.create` holder also sees at their own site / org-wide
 // (`readmissionScope`, admission-routes.ts), mirroring the readmission routes' ABAC.
-import { requirePermission } from "@wardenx/auth";
-import { DegradedError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "./admission-typebox";
 import type { DischargeWorklistService } from "./discharge-worklist-service";

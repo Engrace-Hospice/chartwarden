@@ -6,9 +6,9 @@
 // reopening against an ADR in assembly or review moves that ADR to `denied_no_response` in the SAME transaction,
 // so the two records never disagree. There are no outbox events yet (nothing consumes them); the reopening_case
 // write-audit trigger and the reopening_case_event history are the trail. A filed reopening is frozen by trigger.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   type AdrState,

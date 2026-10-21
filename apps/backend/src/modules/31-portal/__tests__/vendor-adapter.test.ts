@@ -1,6 +1,6 @@
 // GAP-051 - the Daily.co adapter is bound from config and bridged to the route port against a fake vendor.
 import { createHmac } from "node:crypto";
-import { DailyCoTelehealthProvider, type FetchLike } from "@wardenx/telehealth-client";
+import { DailyCoTelehealthProvider, type FetchLike } from "@chartwarden/telehealth-client";
 import { describe, expect, it } from "vitest";
 import {
   TELEHEALTH_PARTICIPANT_TOKEN_TTL_SECONDS,

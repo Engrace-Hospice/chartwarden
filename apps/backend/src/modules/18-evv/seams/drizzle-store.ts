@@ -37,8 +37,8 @@
 // `unresolved_missing` in the compliance breakdown instead, never in this numerator). Where a fact genuinely
 // has no schema source the shape stays an honest zero-DENOMINATOR pair the provider's vacuous-window rules
 // already handle — nothing here answers a fixed rate.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   EvvAggregatorSubmissionDto,
   EvvBracketDto,
@@ -46,7 +46,7 @@ import type {
   EvvEventDto,
   EvvLocationDto,
   EvvMissingResolutionDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
   type EvvCoordsCipher,

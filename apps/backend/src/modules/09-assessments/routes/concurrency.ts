@@ -6,10 +6,10 @@
 // `STALE_VERSION` (§4.4) on skew via the pure `planCorrection` machine. A missing header is a 428
 // PRECONDITION_REQUIRED; a malformed one is a 400 (never silently treated as "no precondition"). Pure
 // header guard — no IO, no cross-module import. Mirrors the M7/M8 routes/concurrency.ts precedent.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** Request carrying the parsed `If-Match` version the correction handler reads (set by {@link requireIfMatch}). */

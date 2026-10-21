@@ -16,8 +16,8 @@
 // ONE query for the whole id set (`inArray`), never N+1. RLS (`app.org_id`) is the wall; the explicit
 // `organization_id` predicate is the belt behind it, so a cross-tenant / unknown / deleted id is simply
 // ABSENT from the result — indistinguishable from "no such patient", which is the point.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 const P = schema.patients;

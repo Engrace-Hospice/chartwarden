@@ -1,4 +1,4 @@
-// @wardenx/db — `transfer_event` (M6 §3.3). A transfer of the hospice election in/out of this agency
+// @chartwarden/db — `transfer_event` (M6 §3.3). A transfer of the hospice election in/out of this agency
 // (drives `m6.transfer.created`), preserving the benefit-period sequence at transfer. Org-scoped (no
 // direct patient identifier; tenancy via the admission FK). Cross-module refs (M40 facility, M22
 // document) are plain uuid app-validated; the admission FK is intra-M6. RLS + the M4 write-audit

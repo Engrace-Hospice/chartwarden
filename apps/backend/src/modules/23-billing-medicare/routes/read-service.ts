@@ -18,8 +18,8 @@ import type {
   MetricsBucket,
   NoticeState,
   TypeOfBill,
-} from "@wardenx/billing";
-import { canonicalSegments } from "@wardenx/billing";
+} from "@chartwarden/billing";
+import { canonicalSegments } from "@chartwarden/billing";
 import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
 import {
   type StoredRhcCarryOverContext,
@@ -435,7 +435,7 @@ export interface HospicePeriodView {
   readonly daysUsed: number | null;
 }
 
-/** Why `nextPeriodNumber` is (or is not) known — see `deriveHospiceHistory` in `@wardenx/x12-837-client`. */
+/** Why `nextPeriodNumber` is (or is not) known — see `deriveHospiceHistory` in `@chartwarden/x12-837-client`. */
 export type NextPeriodBasis =
   | "computed"
   | "election_open"

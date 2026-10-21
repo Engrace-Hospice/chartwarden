@@ -1,13 +1,13 @@
-// @wardenx/dosespot — M12 medication-order lifecycle failure-code catalog (§2.2 D2 / §2.3, M12-T03).
+// @chartwarden/dosespot — M12 medication-order lifecycle failure-code catalog (§2.2 D2 / §2.3, M12-T03).
 //
 // Every guard / validation failure in the pure medication-order lifecycle domain raises a
 // `MedicationOrderStateError` carrying the machine-readable code below. The error extends the M1
-// `ChartWardenError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify
+// `ChartWardenError` envelope base (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1 Fastify
 // error handler renders it with the precise code + HTTP status with no cross-module import edge (the
 // M11/M10 lifecycle convention). Nothing transitions on a string match — each code is an enumerated
 // constant; the §3 DB triggers (M12-T02) repeat the strongest of these at the schema layer as defense in
 // depth. The route layer (M12-T08) reuses these codes verbatim.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M12 medication-order-lifecycle failure-code catalog → canonical HTTP status. */
 export const M12_ERROR_STATUS = {

@@ -20,9 +20,9 @@
 //
 // Runs inside `withOrgContext` so RLS scopes every statement to the acting org. Idempotent: a second erase
 // finds the rows already shredded and reports zero.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser, OrgScope } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser, OrgScope } from "@chartwarden/types";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 
 import { registerEraser } from "../../../bootstrap/index";

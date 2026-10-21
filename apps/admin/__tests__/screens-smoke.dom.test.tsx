@@ -1,11 +1,11 @@
 import { render, waitFor } from "@testing-library/react";
-// @wardenx/admin — TASK-050C (TEST-004) registry-driven screen smoke render. Auto-discovers every
+// @chartwarden/admin — TASK-050C (TEST-004) registry-driven screen smoke render. Auto-discovers every
 // platform-module slice's screens.ts (import.meta.glob, mirroring apps/web's version — not a
 // hand-copied list, so a new slice lands covered automatically), registers them into a real M34
 // registry, and mounts the real AdminApp once per route with a stubbed API client. See
 // apps/web/src/shell/screens-smoke.dom.test.tsx for the sibling web-app version.
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { createApiClient } from "@wardenx/ui";
+import type { ScreenRegistryModule } from "@chartwarden/types";
+import { createApiClient } from "@chartwarden/ui";
 import { describe, expect, it } from "vitest";
 import { AdminApp } from "../src/app";
 import { adminAuthScreens } from "../src/shell/auth-screens";

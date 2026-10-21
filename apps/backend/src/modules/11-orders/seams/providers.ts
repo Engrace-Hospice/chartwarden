@@ -1,15 +1,15 @@
 // apps/backend/src/modules/11-orders/seams/providers.ts — M11-T05 the §2.8 D14 / §4.3 seam
 // implementations: pure orchestration over an injected {@link OrderSeamStore}. Each returns the leaf-typed
-// seam interface (@wardenx/types) the M1 registry validates and M12/M14/M23/M30/M7 resolve. The providers
+// seam interface (@chartwarden/types) the M1 registry validates and M12/M14/M23/M30/M7 resolve. The providers
 // add NO tenant logic — RLS scopes every store read/write by the consumer's `app.org_id` (§3.6); they
 // compute the deadline + decide the resulting lifecycle status and project store DTOs.
 //
 // `createOrderSignatureProvider` is the one MUTATE seam (M11 owns the signature primitive; M12 writes
 // medication-order signatures through it without importing M11 — D4 / §2.8). It stamps the server-side
 // signature timestamp authoritatively, computes the verbal-order 48-hour deadline via the pure
-// `@wardenx/orders` window math, and — for a LOCAL `order_record` target — drives the lifecycle status
+// `@chartwarden/orders` window math, and — for a LOCAL `order_record` target — drives the lifecycle status
 // transition through the store (a med-order target records the primitive only; M12 owns its lifecycle).
-import { assertVerbalReceivedAtPlausible, computeVerbalDeadline } from "@wardenx/orders";
+import { assertVerbalReceivedAtPlausible, computeVerbalDeadline } from "@chartwarden/orders";
 import type {
   CosignOrderInput,
   DiscontinueOrderInput,
@@ -21,7 +21,7 @@ import type {
   OrderStatus,
   RecordVerbalOrderInput,
   SignOrderTargetInput,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { OrderSeamStore, VerbalTimeliness } from "./store";
 
 /** A clock the signature primitive reads for the authoritative server-side timestamp (never the client

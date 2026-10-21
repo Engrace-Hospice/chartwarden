@@ -28,7 +28,7 @@
 // event name is a STRING literal and the consumed payload is a locally-declared structural minimum. This
 // directory is NOT scanned by arch:gaps' event-catalog / seam-registry gates, so consuming `m11.*` here adds
 // no M22-produced event and no edge.
-import type { DocumentRetentionClass } from "@wardenx/types";
+import type { DocumentRetentionClass } from "@chartwarden/types";
 import {
   type LabResultValue,
   type LabResultsRenderPayload,

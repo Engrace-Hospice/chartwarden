@@ -2,7 +2,7 @@
 // route-inventory audit events (M3 spec §8.1; §7.4–7.6 "all … audited").
 //
 // Every role change, break-glass invocation, and engagement action the §4.3 route inventory
-// performs goes through the mandated @wardenx/audit `audit()` surface — never a direct
+// performs goes through the mandated @chartwarden/audit `audit()` surface — never a direct
 // `audit_event` insert — so each snapshot runs through the PHI field denylist and is filed
 // under a retention class. Per §8.1 (ADR-0004): ALL authorization events are `compliance`
 // retention; break-glass invocation and each per-resource access under glass are `critical`,
@@ -12,7 +12,7 @@
 //
 // M3-T10 completes the §8.1 catalog: the route-inventory lifecycle rows (T08, below) plus the
 // `m3.authz.denied` sampled-denial event (D5) — closing the M3 audit-event catalog.
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
 /** The M3 authorization audit event types (dotted `m3.<resource>.<verb>`, §8.1). */
 export const AUTHZ_AUDIT_EVENTS = {

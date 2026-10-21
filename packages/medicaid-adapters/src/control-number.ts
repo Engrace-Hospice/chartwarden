@@ -1,5 +1,5 @@
-// @wardenx/medicaid-adapters — M24 deterministic medicaid_claim_control_number derivation (D4 / §2.6).
-// Mirrors the M23 @wardenx/billing kernel but is STATE-NAMESPACED: the control number is the idempotency
+// @chartwarden/medicaid-adapters — M24 deterministic medicaid_claim_control_number derivation (D4 / §2.6).
+// Mirrors the M23 @chartwarden/billing kernel but is STATE-NAMESPACED: the control number is the idempotency
 // key BOTH internally (the `(provider_entity_id, service_state, medicaid_claim_control_number,
 // attempt_index)` unique index on medicaid_submission) AND at the state aggregator / CCO clearinghouse.
 //

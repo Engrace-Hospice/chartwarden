@@ -5,10 +5,10 @@
 // M34 routes/tenant/actor.ts precedent), so no handler reads an org id — or a reporter/triager/owner
 // membership id — off the wire. Every authored M30 row (incident report, QAPI charter, SRA finding,
 // infection event) is stamped with the server-assembled membership id, never one supplied by the client.
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /**

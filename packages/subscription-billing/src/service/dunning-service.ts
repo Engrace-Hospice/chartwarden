@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §4.15 dunning state machine (D7) service (pure over ports, M35-T05).
+// @chartwarden/subscription-billing — §4.15 dunning state machine (D7) service (pure over ports, M35-T05).
 //
 // Walks a subscription-in-dunning along the D7 ladder (`none → day_1 → day_7 → day_14 → day_21 →
 // day_28_suspend → day_60_cancel`, with `resolved` reachable from any active stage on a successful payment).
@@ -14,7 +14,7 @@
 // the `m35.tenant.billing_blocked` emit). This service NEVER transitions the subscription itself and NEVER
 // calls Stripe: it owns only the `dunning_state` row and the dunning outbox events.
 
-import type { IsoInstant, MembershipId, OrgId, SubscriptionId } from "@wardenx/types";
+import type { IsoInstant, MembershipId, OrgId, SubscriptionId } from "@chartwarden/types";
 import {
   DUNNING_ADVANCE_AFTER_DAYS,
   DUNNING_CANCEL_STAGE,

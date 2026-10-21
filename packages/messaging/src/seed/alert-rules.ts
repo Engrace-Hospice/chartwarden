@@ -1,4 +1,4 @@
-// @wardenx/messaging — platform-default alert rules seed (M36-T05; spec §3.10, §7.4).
+// @chartwarden/messaging — platform-default alert rules seed (M36-T05; spec §3.10, §7.4).
 //
 // The platform-floor routing layer: `alert_rule` rows with a NULL organization_id every tenant
 // inherits unless it clones + overrides (§3.10). Three are `system_locked` — SOS (life-safety),
@@ -1564,7 +1564,7 @@ export const SYSTEM_LOCKED_EVENT_TYPES = [
 ] as const;
 
 /** Row shape the boot slice UPSERTs into `alert_rule` (mirrors the Drizzle columns, §3.6).
- *  Structural (no `@wardenx/db` import) so the package stays a leaf; `organizationId` is null for
+ *  Structural (no `@chartwarden/db` import) so the package stays a leaf; `organizationId` is null for
  *  every platform-default row. */
 export interface PlatformAlertRuleRow {
   readonly organizationId: null;

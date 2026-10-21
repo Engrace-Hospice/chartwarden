@@ -1,4 +1,4 @@
-// @wardenx/messaging — the in-memory MessagingRouteService slice (M36-T07, spec §4.1–4.2).
+// @chartwarden/messaging — the in-memory MessagingRouteService slice (M36-T07, spec §4.1–4.2).
 //
 // The DB-free implementation of the §4.1 route inventory's application service, so the backend
 // route module is integration-testable with no live Postgres/Valkey (mirrors M38's
@@ -18,7 +18,7 @@ import {
   ChartWardenError,
   isMessageReactionKey,
   sanitizeRichBody,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type AnnouncementReader,
   type AnnouncementReceiptPerson,

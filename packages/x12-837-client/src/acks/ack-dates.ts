@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the payer's own dates on an acknowledgment (ADR-0037: X12 parsing is TypeScript here).
+// @chartwarden/x12-837-client — the payer's own dates on an acknowledgment (ADR-0037: X12 parsing is TypeScript here).
 //
 //   * 277CA (005010X214): the claim-level loop 2200D opens with `TRN*2*<claim control number>` and carries
 //     `STC*<category:status:entity>*<STC02 status information effective date, D8 CCYYMMDD>*<action>…`.

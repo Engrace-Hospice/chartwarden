@@ -11,7 +11,7 @@
 // a name or payload) and the PDF falls back to its own "Member xxxxxxxx" / header-less rendering.
 // 42 CFR Part 2: `memberNamesForSnapshot` walks the snapshot AFTER redaction, so an action item the Part 2
 // redactor elided is never named.
-import type { PacketSnapshot } from "@wardenx/types";
+import type { PacketSnapshot } from "@chartwarden/types";
 import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg-enrichment";
 
 type Warn = (event: string, context: Record<string, unknown>) => void;

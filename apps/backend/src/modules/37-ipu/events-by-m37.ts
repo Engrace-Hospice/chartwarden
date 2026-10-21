@@ -3,12 +3,12 @@
 // (`m37.<resource>.<verb>`), ownership (moduleOwner='m37'), and valid declared consumers (real module ids).
 // The composition root merges this into the platform event catalog at boot (the M35/M27 precedent); the
 // transactional publisher Value.Checks each `m37.*` publish against its payloadSchema inside the mutation's
-// tx. The event-NAME set mirrors the leaf `@wardenx/types` `M37_OUTBOX_EVENT_NAMES`.
+// tx. The event-NAME set mirrors the leaf `@chartwarden/types` `M37_OUTBOX_EVENT_NAMES`.
 //
 // M37 payloads are PHI-lean by construction — uuids + counts + enum lifecycle codes; never a patient name,
 // MRN, or free-text justification (those live only in the RLS-scoped rows, audit-denylisted).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);

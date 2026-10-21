@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T10, §2.13 D14. The hospice service-day rule for the daily census. A service
+// @chartwarden/inpatient — M37-T10, §2.13 D14. The hospice service-day rule for the daily census. A service
 // day counts for an admission when the admission was active for ANY portion of the service date (the
 // standard hospice bed-day convention). Pure & IO-free — the census-snapshot-builder cron injects the
 // admission's active window + the service date's [start, end) in ms.

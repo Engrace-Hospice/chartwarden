@@ -10,8 +10,8 @@ import {
   renderPi,
   textToRecords,
   writeEcr,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 ECR/PI generation pure-domain unit tests (D11, §1.1 / §2.4).
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 ECR/PI generation pure-domain unit tests (D11, §1.1 / §2.4).
 //
 // Covers the deterministic fixed-field ECR writer (`writeEcr`), the records-model round-trip closure
 // (`parse(write(x)) === x` via `textToRecords ∘ recordsToText`), the snapshot → artifacts adapter

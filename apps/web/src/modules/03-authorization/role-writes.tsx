@@ -5,7 +5,7 @@
 // anti-escalation (a role may not confer a permission the actor lacks), the system-locked floor and the
 // reserved-role rule, and every refusal is rendered in place. The controls only appear when the caller
 // holds `role.manage` (GET /me/permissions) — a convenience, never the control.
-import { Button, Modal, SelectField, TextField, useApiClient, useToast } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextField, useApiClient, useToast } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 

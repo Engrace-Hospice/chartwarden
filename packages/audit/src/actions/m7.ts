@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 7 (Care Plan / IPOC) action catalog (M7-T09; M7 §8.1).
+// @chartwarden/audit — Module 7 (Care Plan / IPOC) action catalog (M7-T09; M7 §8.1).
 //
 // M7's APP-level explicit-emit audit actions, under the D9 `m7.<resource>.<verb>` namespace. Row-diff
 // mutation captures for problem/goal/intervention rows flow through the M4 write-audit triggers

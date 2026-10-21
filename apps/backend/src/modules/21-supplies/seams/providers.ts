@@ -1,6 +1,6 @@
 // apps/backend/src/modules/21-supplies/seams/providers.ts — M21-T05, the §4.8 / D14 seam implementations:
-// pure orchestration over an injected {@link SuppliesSeamStore} plus `@wardenx/supplies`'s pure policy.
-// Each returns the leaf-typed seam interface (`@wardenx/types`) the M1 registry validates and
+// pure orchestration over an injected {@link SuppliesSeamStore} plus `@chartwarden/supplies`'s pure policy.
+// Each returns the leaf-typed seam interface (`@chartwarden/types`) the M1 registry validates and
 // M11/M13/M22/M23/M27/M28/M30/M33/M37 resolve. The providers add NO tenant logic — RLS scopes every store
 // read by the caller's ambient `app.org_id` (§3.5) — and NO second copy of the domain rules.
 //
@@ -23,7 +23,7 @@
 //     per-patient-day rate (the M15-T05 / M30 lesson, written into the DTO's own doc-comment).
 //
 // The ONE method that answers softly is `notifyAdministrationDrawdown`: see its doc-comment.
-import { computeReturnLine } from "@wardenx/supplies";
+import { computeReturnLine } from "@chartwarden/supplies";
 import type {
   ActiveDispatchView,
   AdministrationDrawdownInput,
@@ -44,7 +44,7 @@ import type {
   SupplyCostProvider,
   SupplyFulfillmentProvider,
   SupplyRequestId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { SupplyStateError } from "../lifecycle/index";
 import type { SuppliesSeamStore, SupplyCostTotals, SupplyRequestCreator } from "./store";
 

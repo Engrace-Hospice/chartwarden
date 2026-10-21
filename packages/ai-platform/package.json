@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/ai-platform",
+  "name": "@chartwarden/ai-platform",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,6 +9,6 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
-    "@wardenx/types": "workspace:*"
+    "@chartwarden/types": "workspace:*"
   }
 }

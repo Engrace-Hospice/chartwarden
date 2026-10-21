@@ -16,15 +16,15 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
   eraseTenantMessaging,
-} from "@wardenx/messaging";
-import type { ScheduledSendService } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { ScheduledSendService } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { Queue } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";

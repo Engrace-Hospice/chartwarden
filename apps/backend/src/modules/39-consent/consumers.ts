@@ -8,9 +8,9 @@
 //     `m39.consent.repointed` (the only consent event a merge produces).
 //   • m5.patient.deceased — D13: active non-survives-death consents transition to `expired`.
 //   • m22.document.rendered — stamp `consent_document_link` from the M22 back-ref (D15).
-import type { ConsentTypeKey } from "@wardenx/consent";
-// The D13 post-death termination decision is pure domain — it lives in @wardenx/consent (T09).
-export { decideDeceasedConsentExpiry } from "@wardenx/consent";
+import type { ConsentTypeKey } from "@chartwarden/consent";
+// The D13 post-death termination decision is pure domain — it lives in @chartwarden/consent (T09).
+export { decideDeceasedConsentExpiry } from "@chartwarden/consent";
 
 /** The privacy categories M5's snapshot recompute keys on (mirror of M5's `PrivacyFlag`, kept local
  *  so M39 stays edge-free — the test asserts the shapes line up). */

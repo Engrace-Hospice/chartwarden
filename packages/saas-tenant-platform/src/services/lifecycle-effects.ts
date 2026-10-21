@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — tenant-lifecycle side-effect descriptors (§2.5, M34).
+// @chartwarden/saas-tenant-platform · services — tenant-lifecycle side-effect descriptors (§2.5, M34).
 //
 // The M8/M11 §2.8 pattern (packages/orders/src/lifecycle/effects.ts): every transition carries an
 // explicit, in-transaction side-effect list, and the COMMIT binds the `tenant_account` row, the
@@ -9,7 +9,7 @@
 // update status → append status-event → enqueue jobs → outbox.publish() → emit M36 alerts). Keeping
 // them as data makes the machine deterministic and unit-testable with no DB, MinIO, queue, or M2/M4/M36.
 //
-// M34 has no `M34EventName` type in @wardenx/types yet (the §4.4 outbox catalog lands with the backend
+// M34 has no `M34EventName` type in @chartwarden/types yet (the §4.4 outbox catalog lands with the backend
 // wiring phase — apps/backend/src/modules/34-saas-tenant-platform/events-by-m34.ts, the M11/M14 pattern).
 // Until then this module pins the §2.5 outbox names as string-literal constants so the pure machine is
 // self-contained; the backend `events-by-m34.ts` will adopt these verbatim as the authoritative catalog.

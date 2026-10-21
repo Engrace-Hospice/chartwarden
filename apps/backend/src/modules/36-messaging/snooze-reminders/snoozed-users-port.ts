@@ -4,10 +4,10 @@
 // request in the conversation (a request opened after the snooze voids it for as long as it is open), and empty for a message whose
 // urgency is above routine. Empty while the tenant flag is
 // off. An error propagates: the emit fails and is retried.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ACK_OPEN_STATUSES, SNOOZE_REMINDER_FLAG_KEY } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ACK_OPEN_STATUSES, SNOOZE_REMINDER_FLAG_KEY } from "@chartwarden/types";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 

@@ -9,7 +9,7 @@
 //
 // Own name (not M38's / M34's): the predicate registry is single-owner per name (M3 §4.2).
 // Registration is idempotent so a test that reboots the module does not trip the collision guard.
-import { type AbacContext, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, registerPredicateIdempotent } from "@chartwarden/auth";
 
 /** The §4.4 predicate names M40 owns. Single-owner across the platform registry. */
 export const M40_ABAC_PREDICATES = ["mdm_admin_platform_ops"] as const;

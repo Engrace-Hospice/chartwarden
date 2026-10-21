@@ -8,7 +8,7 @@ import type {
   Hl7InboundProposalStatus,
   Hl7ProposalReviewPosture,
   Hl7StatusTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The status a freshly-created proposal lands in (§2.2 — an inbound message resolves to `pending` review). */
 export const HL7_INBOUND_PROPOSAL_INITIAL_STATUS: Hl7InboundProposalStatus = "pending";

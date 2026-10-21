@@ -1,5 +1,5 @@
-import { SESSION_POLICY } from "@wardenx/types";
-import { Modal } from "@wardenx/ui";
+import { SESSION_POLICY } from "@chartwarden/types";
+import { Modal } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Idle Screen-Lock overlay (M2 Auth, AUTH polish).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
 // re-auth (password); the SESSION STAYS ALIVE (lifecycle active → screen_locked → active, M2 §2.2.4).

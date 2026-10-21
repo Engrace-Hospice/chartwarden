@@ -25,15 +25,15 @@
 // composition-root step attaches DLQ-promotion alerting externally to the Workers this file returns.
 //
 // Nothing here runs at import (constructing a Worker opens Valkey) — same posture as M25.
-import type { DbClient } from "@wardenx/db";
-import { type HopeValidationFindingDescriptor, hasBlockingError } from "@wardenx/hope";
+import type { DbClient } from "@chartwarden/db";
+import { type HopeValidationFindingDescriptor, hasBlockingError } from "@chartwarden/hope";
 import {
   type HopeSubmissionEnvelope,
   assembleEnvelopeCanonical,
   envelopeSha256,
-} from "@wardenx/iqies-client";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { HopeDischargeReason, HopeRfaKind } from "@wardenx/types";
+} from "@chartwarden/iqies-client";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { HopeDischargeReason, HopeRfaKind } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { runHopeAssessmentValidation } from "../validation/run-validation";
 import { assemblableAssessmentsForOrg, persistAssembledSubmission } from "./assemble-store";
@@ -215,7 +215,7 @@ function activeOrgsOf(deps: M10WorkerDeps): ActiveOrgListPort {
 
 function iqiesOf(deps: M10WorkerDeps): IqiesAdapterPort {
   const hint =
-    "bind the @wardenx/iqies-client adapter (per-ProviderEntity CMS submitter credentials); createUnboundIqiesAdapter denies until a live transport exists";
+    "bind the @chartwarden/iqies-client adapter (per-ProviderEntity CMS submitter credentials); createUnboundIqiesAdapter denies until a live transport exists";
   return (
     deps.iqies ?? {
       submitBatch: () => unbound("iqies.submitBatch", hint),
@@ -638,7 +638,7 @@ export function transmitCorrelationId(submissionId: string): string {
   return submissionId;
 }
 
-/** The iQIES adapter port (D6) — `@wardenx/iqies-client`'s three typed methods, narrowed to what these
+/** The iQIES adapter port (D6) — `@chartwarden/iqies-client`'s three typed methods, narrowed to what these
  *  two workers call. Declared structurally so this file takes no import-time dependency on a binding. */
 export interface IqiesAdapterPort {
   submitBatch(request: {

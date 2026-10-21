@@ -1,4 +1,4 @@
-import { Button, InlineAlert, Modal, Panel, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, Modal, Panel, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — the order detail's "Resend transmission" action (M11 F-182). A lab order whose HL7
 // request was REFUSED before any message was built (`orm_refused:*` / `dispatch_refused:*`) never reaches the Held
 // Transmissions list — nothing was sent, so there is nothing for the lab to have — and the remedy is: fix the missing

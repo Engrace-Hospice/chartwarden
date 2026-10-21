@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 Cost Report package entrypoint (public barrel).
+// @chartwarden/cost-report — M27 Cost Report package entrypoint (public barrel).
 //
 // M27 owns the regulatory financial record of the hospice provider: the CMS-1984-14 cost report per
 // (ProviderEntity, fiscal-year-end) — worksheets, cost-center mapping, trial-balance/wage imports,
@@ -44,5 +44,5 @@ export * from "./validation";
 export * from "./repositories";
 
 // Re-export the adapter client factories M27 owns (D6) so downstream wiring imports from the package root.
-export { xeroClientFactory } from "@wardenx/xero-client";
-export { gustoClientFactory } from "@wardenx/gusto-client";
+export { xeroClientFactory } from "@chartwarden/xero-client";
+export { gustoClientFactory } from "@chartwarden/gusto-client";

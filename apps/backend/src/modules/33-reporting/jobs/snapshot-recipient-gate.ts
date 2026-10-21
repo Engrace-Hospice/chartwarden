@@ -11,8 +11,8 @@
 // team/location scope work (a supervisor-resolution seam) lands; the error points toward less disclosure.
 //
 // Fail closed: any throw while resolving the owner or admin set drops the recipient (the runner audits it).
-import type { RecipientScopeValidationPort } from "@wardenx/reporting";
-import type { AdminMembershipReader } from "@wardenx/types";
+import type { RecipientScopeValidationPort } from "@chartwarden/reporting";
+import type { AdminMembershipReader } from "@chartwarden/types";
 import { snapshotRecipientAllowed, snapshotScopeKind } from "../routes/schedule-authz";
 
 export interface SnapshotRecipientGateDeps {

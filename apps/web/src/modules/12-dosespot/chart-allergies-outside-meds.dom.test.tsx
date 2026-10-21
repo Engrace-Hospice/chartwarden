@@ -2,7 +2,7 @@
 // allergy banner and the outside medication list. An UNVERIFIED allergy is drawn, labelled; a failed read is
 // never shown as "no allergies"; reconciling an outside line posts the decision and nothing else.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AllergyBanner, OutsideMedicationList } from "./chart-allergies-outside-meds";

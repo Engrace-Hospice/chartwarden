@@ -10,13 +10,13 @@
 // `expires_at` become `failed_timeout` (the §1311.116 60-second window). The guarded UPDATE is idempotent. The
 // "revert the order to pending_signature" half is the `secondFactorFailed` machine edge; it runs only for an order
 // actually in `epcs_identity_pending`, and emits the existing `m12.medication_order.epcs_2fa_failed` event.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import {
   classifyIal2ExpiryStage,
   computeDaysUntilIal2Expiry,
   planIal2ExpiryAlert,
   transitionMedicationOrder,
-} from "@wardenx/dosespot";
+} from "@chartwarden/dosespot";
 import { and, asc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 

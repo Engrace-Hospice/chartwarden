@@ -1,6 +1,6 @@
-// @wardenx/terminology-loader — `terminology.refresh_expansions` (M38 §3.1 `refresh-expansions.ts`, §4.3, §7.5).
+// @chartwarden/terminology-loader — `terminology.refresh_expansions` (M38 §3.1 `refresh-expansions.ts`, §4.3, §7.5).
 //
-// The materialisation engine is `runRefreshExpansions` in @wardenx/terminology (pure over ports). This wrapper
+// The materialisation engine is `runRefreshExpansions` in @chartwarden/terminology (pure over ports). This wrapper
 // adds what a worker needs: failure isolation per value set (one bad set must not stop the rest), a staleness
 // measurement for the §7.5 "within 2 minutes" target, and a content-free result.
 import {
@@ -8,7 +8,7 @@ import {
   type ExpansionRow,
   type RefreshExpansionsPorts,
   runRefreshExpansions,
-} from "@wardenx/terminology";
+} from "@chartwarden/terminology";
 import type { LoaderLogger } from "./ports";
 
 /** What the production port must be able to do beyond the pure engine's two methods: write ONE value set. */

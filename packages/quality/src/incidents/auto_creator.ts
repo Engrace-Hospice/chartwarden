@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — M30 §4.10 / D8 auto-incident creation from upstream events (P2a). PURE.
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — M30 §4.10 / D8 auto-incident creation from upstream events (P2a). PURE.
 //
 // Some incidents are not hand-filed: an upstream module's typed outbox event (a reported medication error,
 // an expired-unsigned verbal order) mints a `draft` `incident_report` row automatically. Per architecture
@@ -8,7 +8,7 @@ import type { schema } from "@wardenx/db";
 // payload to the row to insert. No DB, no clock: the consumer (a later phase) injects `occurredAt`,
 // `reportedByMembershipId` (the M30 service membership), and the `triggeringEventOutboxId` (the §2.6
 // idempotency backstop on `incident_report.triggering_event_outbox_id`), then persists what we return.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { INCIDENT_KIND_CATALOG } from "./kinds";
 
 /** Fields every upstream trigger carries (resolved by the consumer from the inbound event + envelope). */

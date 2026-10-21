@@ -1,4 +1,4 @@
-// @wardenx/db — `nppes_sync_coordination` (M40 MDM §3.5, §4.7.3). The single-row coordination
+// @chartwarden/db — `nppes_sync_coordination` (M40 MDM §3.5, §4.7.3). The single-row coordination
 // state that lets the M40 nightly job (T08) act as a FALLBACK behind M29's platform NPPES sync
 // (Wave H): it records when M29 last completed (run id + timestamp) and when the M40 legacy job
 // last ran, so the nightly job can skip when M29 is fresh and fire after an M29 outage

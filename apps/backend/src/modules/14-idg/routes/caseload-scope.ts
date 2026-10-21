@@ -4,8 +4,8 @@
 // the meeting's location scope: a member who passes `idg.read` + location scope must still have the PATIENT in
 // scope — an org-wide role, the patient on their M5 caseload, or the one patient a pinned session names.
 // Out of scope => 404 (no existence oracle); an unresolvable caseload fails CLOSED.
-import { hasOrgWideScope } from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+import { hasOrgWideScope } from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 

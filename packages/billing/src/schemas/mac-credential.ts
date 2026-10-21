@@ -1,4 +1,4 @@
-// @wardenx/billing — MAC-credential schemas: route #34 `GET /mac-credentials` (list, secrets masked),
+// @chartwarden/billing — MAC-credential schemas: route #34 `GET /mac-credentials` (list, secrets masked),
 // route #35 `POST /mac-credentials` (upsert — M34 wizard; step-up), route #36 `POST /mac-credentials/:id:test`
 // (synthetic claim to MAC sandbox) — §4.1.
 //

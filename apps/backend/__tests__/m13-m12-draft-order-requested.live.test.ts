@@ -4,7 +4,7 @@
  * The real M13 write path (`emar-route-service-db.ts`'s `recordDecision`) used to emit this event with a
  * hardcoded `medicationOrderDraftPayload: {}` for EVERY `carry_forward`/`new_order` decision — a payload no
  * consumer could ever have safely minted a `medication_order` from (`drug_name`/`strength`/`dose_form`/
- * `route` are all NOT NULL). It now sources real, typed drug content from the pure `@wardenx/emar`
+ * `route` are all NOT NULL). It now sources real, typed drug content from the pure `@chartwarden/emar`
  * `planReconciliationDecision` core: `carry_forward` of an already-`m12_active` line is correctly a no-op
  * (no event — the order already exists), `carry_forward`/`new_order` of an `m12_medhx` line is REFUSED
  * (`RECONCILIATION_MEDHX_UNAVAILABLE`, 501 — no medication-history-record projection exists anywhere in
@@ -25,8 +25,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";

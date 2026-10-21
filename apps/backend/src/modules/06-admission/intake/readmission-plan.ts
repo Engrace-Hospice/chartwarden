@@ -2,7 +2,7 @@
 // and new-admission screens read (routes/readmission-typebox.ts) from already-resolved facts. PURE: the caller loads
 // the patient's earlier stays (seams/prior-episodes.ts) and the prior election's NOTR / final-claim status (an M23
 // fact, reached through an injected port — M6 never reads M23's tables).
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import type { BenefitPeriodPlan, ReadmissionBlocker } from "../routes/readmission-typebox";
 import type { PriorEpisode } from "../seams/prior-episodes";
 import { latestLiveEndedEpisode, rhcPriorStayFacts } from "../seams/prior-episodes";

@@ -2,7 +2,7 @@
 // fast-path state-transition SERVICE (spec §10 task 26 / §2.2 lines 224–260, D3).
 //
 // The notice analogue of the claim-state-service: it drives the PURE NOE / NOTR lifecycle reducers from
-// `@wardenx/billing` (`noeMachine.reduce` / `notrMachine.reduce`), persists each transition with the §2.5
+// `@chartwarden/billing` (`noeMachine.reduce` / `notrMachine.reduce`), persists each transition with the §2.5
 // If-Match version check (`NoeRepository` / `NotrRepository` `transitionToState` → VERSION_CONFLICT → 412),
 // and emits the canonical §4.10 `m23.noe.*` / `m23.notr.*` outbox event(s) through the injected
 // {@link WriteOutboxPort} (`bindCallerModule("m23")`) — all inside ONE `withOrgContext` unit of work so
@@ -15,9 +15,9 @@
 //
 // ENUM-CASE BOUNDARY: this service speaks the lowercase domain `NoticeState`; the repo maps to the UPPERCASE
 // DB pgEnum at the boundary. NO PHI / NO MBI on any surface (D13). D13 AI-actor reject guard applies here too.
-import { type NoticeState, noeMachine, notrMachine, repositories } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingTx,

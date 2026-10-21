@@ -13,7 +13,7 @@
 // `triage.read`), the M2 step-up, and a per-access M4 audit row. §4.1's Notes name all three, and the
 // audit declaration below is an EMISSION config rather than a waiver precisely because §8.7.2 gives the
 // decrypt its own business-event row.
-import { hasOrgWideScope } from "@wardenx/auth";
+import { hasOrgWideScope } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";

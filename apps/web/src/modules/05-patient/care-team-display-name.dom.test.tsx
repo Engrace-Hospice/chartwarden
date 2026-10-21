@@ -1,7 +1,7 @@
 // A viewer without member.manage never loads the staff roster; the Overview Care Team panel must still show
 // the server-resolved name, and the system-issued admitting_staff access grant must not appear as a team seat.
 import { render, screen } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

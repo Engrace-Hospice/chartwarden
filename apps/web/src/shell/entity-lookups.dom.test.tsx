@@ -11,7 +11,7 @@
 // These assert on the RECORDED REQUEST, because a spy on the component would not distinguish reading
 // the patient's admissions from reading everyone's and rendering the same-shaped list.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

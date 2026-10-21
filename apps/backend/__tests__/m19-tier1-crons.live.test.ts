@@ -17,8 +17,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 

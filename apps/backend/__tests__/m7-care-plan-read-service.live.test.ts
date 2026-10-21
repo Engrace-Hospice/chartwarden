@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbCarePlanRouteService } from "../src/modules/07-care-plan/care-plan-route-service-db";

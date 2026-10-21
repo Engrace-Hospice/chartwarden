@@ -1,4 +1,4 @@
-// @wardenx/portal — the three Better Auth calls the portal sign-in makes (M2 owns authentication; M31 §5.1).
+// @chartwarden/portal — the three Better Auth calls the portal sign-in makes (M2 owns authentication; M31 §5.1).
 // Plain `fetch` against `/api/auth/*` (the portal takes no compile-time edge into the auth package): the response
 // bodies are tiny and the portal needs only their SHAPE of outcome, never a token or a user record. PURE of React and
 // DOM globals other than the injected `fetch`, so it is unit-testable in the node environment.

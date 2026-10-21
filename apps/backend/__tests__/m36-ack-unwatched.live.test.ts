@@ -19,7 +19,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://... [WARDENX_TEST_REDIS_URL=redis://localhost:PORT] bun run test:m36:ack-unwatched:live
  * Use a PRIVATE pgvector/pgvector:pg18 container (and a private valkey/valkey:8): the suite resets the public schema and the wardenx_* roles.
  */
-import { createAlertEmitter } from "@wardenx/messaging";
+import { createAlertEmitter } from "@chartwarden/messaging";
 import Redis from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";

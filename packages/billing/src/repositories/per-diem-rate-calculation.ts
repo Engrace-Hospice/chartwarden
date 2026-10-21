@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `per_diem_rate_calculation` (the reproducible HIPPS payment math for a claim,
+// @chartwarden/billing · repositories — `per_diem_rate_calculation` (the reproducible HIPPS payment math for a claim,
 // §3.3; 1:1 with `claim` via `per_diem_rate_calculation_claim_uq`). APPEND-ONLY — mirrors the `validation_run`
 // exemplar: INSERT + READ ONLY, deliberately NO update/delete method (the DB carries an append-only
 // write-audit trigger from P1; the per-claim math is recorded once at assembly and never mutated — a
@@ -9,7 +9,7 @@
 // there is NO enum on this table — the per-segment `level_of_care` lives inside the typed `segments` jsonb
 // as the DB abbreviation the math layer emits, so rows pass through un-mapped. No PHI / MBI (D13 / §8.7);
 // money is integer cents (D8).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { eq } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

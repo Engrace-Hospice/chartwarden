@@ -19,7 +19,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { BAA_TONE, lifecycleTone, statusLabel } from "./saas-status";

@@ -1,4 +1,4 @@
-// @wardenx/hope — the server-authoritative J2051 trigger evaluator (M10-T03; §2.3, §4.3, D4). PURE,
+// @chartwarden/hope — the server-authoritative J2051 trigger evaluator (M10-T03; §2.3, §4.3, D4). PURE,
 // IO-free, deterministic — the §9.1 ≥95%-coverage target. The recording service (M10-T06) calls
 // `evaluateJ2051Trigger` over the typed `data.J.J2051` payload and writes the SERVER's verdict to
 // `hope_assessment.j2051_max_severity` / `j2051_trigger_fired`, IGNORING any client-supplied trigger flag
@@ -9,7 +9,7 @@
 // The full Section-J TypeBox (`packages/hope/src/sections/J/schema.ts`) lands with the per-section
 // modules (M10-T04); T03 evaluates over a minimal structural input shape so the trigger logic is testable
 // now and the route TypeBox adapts to it later (the field is `J2051.entries`, mirroring §4.3).
-import { type J2051Severity, J2051_SEVERITY_ORDER } from "@wardenx/types";
+import { type J2051Severity, J2051_SEVERITY_ORDER } from "@chartwarden/types";
 
 /** One per-symptom severity reading from the §4.3 `J2051.entries` array (the CMS symptom-impact items).
  * `symptomCode` is the closed CMS list at the route boundary; the evaluator treats it as an opaque label

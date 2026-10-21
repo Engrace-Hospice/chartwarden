@@ -13,9 +13,9 @@
 // normally serial per event (the relay claims the row); if two deliveries do race, the UNIQUE key makes the
 // loser's insert return no row and it THROWS, rolling back its whole transaction (call row, gap, outcome),
 // so exactly one outcome is ever published.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OrgId, TriageCallId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OrgId, TriageCallId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

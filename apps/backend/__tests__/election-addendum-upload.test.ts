@@ -2,7 +2,7 @@
 // Pure unit tests: the uploaded-acknowledgement planner (draft → signed needs the (c)(10) furnish date; furnished →
 // signed; dates never in the future, furnish on/before signature; settled versions refuse) and the shared M22
 // document-version check (wrong patient / wrong admission / superseded version all refused).
-import type { ActiveDocumentVersionLink } from "@wardenx/types";
+import type { ActiveDocumentVersionLink } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createDocumentReaderEvidenceValidator } from "../src/modules/06-admission/admission-document-validator";
 import {

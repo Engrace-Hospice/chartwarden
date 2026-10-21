@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `icd10_sequencing` (icd, error, regulatory). The principal ICD-10 must be
+// @chartwarden/billing — §4.5 rule `icd10_sequencing` (icd, error, regulatory). The principal ICD-10 must be
 // the terminal diagnosis; related conditions are secondary; unrelated conditions must be explicitly
 // flagged; no truncated / non-billable codes; specificity sufficient. ICD billability/specificity is
 // resolved by M38 as-of the claim's service-from (in `terminology.icd10Billable`). PURE: reads ctx only.

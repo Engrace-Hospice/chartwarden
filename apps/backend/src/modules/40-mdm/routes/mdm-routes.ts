@@ -1,5 +1,5 @@
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/40-mdm/routes/mdm-routes.ts — M40-T07 the MDM route inventory
 // (M40 spec §4.1–4.2; the §4.4 permission handshake; §7.6 merge approval & re-pointing).
 //
@@ -7,7 +7,7 @@ import { requireStepUp } from "@wardenx/auth";
 // relationships) composes over the injected `MdmEntityProvider` seam (M40-T05); the write/admin
 // path (BAA register, manual license, and the platform-ops merge / provisional / NPPES operations)
 // goes through the injected `MdmRouteService` (M40-T07). Every route is gated by the REAL
-// Authorization Contract (`requirePermission` from @wardenx/auth, M3) on the §4.4 keys M40 registers
+// Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.4 keys M40 registers
 // into M3's catalog (M40_CONTRIBUTED_PERMISSIONS).
 //
 // THREE keys per kind by blast radius (§4.4): read is broad, propose writes GLOBAL provisional
@@ -20,8 +20,8 @@ import { requireStepUp } from "@wardenx/auth";
 // `mdm.repoint_*` jobs (T08) run in the background but do NOT gate correctness — service-layer
 // resolves of the duplicate id keep returning the survivor via the redirect throughout (the T04
 // engine over the post-merge store).
-import type { MdmEntityKind, MdmEntityProvider, MdmResolved, MdmRouteService } from "@wardenx/mdm";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import type { MdmEntityKind, MdmEntityProvider, MdmResolved, MdmRouteService } from "@chartwarden/mdm";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   BaaBodySchema,
@@ -37,7 +37,7 @@ import {
   parse,
 } from "./mdm-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the MDM routes. */

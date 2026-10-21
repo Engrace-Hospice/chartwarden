@@ -1,4 +1,4 @@
-// @wardenx/messaging — the tighten-only floor of a `system_locked` platform alert rule (GAP-102).
+// @chartwarden/messaging — the tighten-only floor of a `system_locked` platform alert rule (GAP-102).
 //
 // M36 spec §7.4 (line 401): a `system_locked` rule cannot be disabled or have its
 // `recipient_resolver` changed; §1 (line 75) / D11: a tenant may TIGHTEN routing but never LOOSEN it
@@ -7,7 +7,7 @@
 // (b) ADD channels to `channels_override`. `recipient_resolver`, `enabled = true` and the lock itself
 // are immutable. Pure (no DB) so the in-memory service, the Drizzle service and the Drizzle emitter
 // share one definition; migration 0334 enforces the same rule in a DB trigger.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { AlertSeverity } from "../interfaces/kinds";
 import { PLATFORM_DEFAULT_ALERT_RULES, SYSTEM_LOCKED_EVENT_TYPES } from "./alert-rules";
 

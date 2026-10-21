@@ -11,7 +11,7 @@
 //   - CLINICAL / NARRATIVE scope: the request is recorded as given; accepting it does NOT rewrite the source
 //     note (164.526(c)(1): the covered entity identifies the affected record and APPENDS or links the amendment,
 //     it does not overwrite the original). The accepted request row IS that appended, linked record.
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 /** The patient columns a demographic amendment may change, keyed by the public `fieldPath`. */
 export const AMENDABLE_DEMOGRAPHIC_FIELDS = {

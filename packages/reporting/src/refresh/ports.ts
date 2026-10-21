@@ -1,4 +1,4 @@
-// @wardenx/reporting · refresh — the injected PORT interfaces the three-tier MV-refresh subsystem composes
+// @chartwarden/reporting · refresh — the injected PORT interfaces the three-tier MV-refresh subsystem composes
 // over (M33 §2.4–§2.6 / §4.5 / §4.8). EVERY fact + effect a refresh worker touches is one of these tiny
 // ports; the handlers (`dispatcher` / `outbox-subscriber` / `refresh-worker` / `lag-probe` / `nightly-cron`)
 // are PURE orchestration over them — no clock, no RNG, no Drizzle, no BullMQ, no `getSeam`, no cross-module
@@ -13,7 +13,7 @@
 // Persisted-row types are reused from the central Drizzle schema (`schema.MaterializedViewMetadata` etc.) so
 // the ports never drift from the tables; pure inputs use narrow local types so the deciders stay unit-testable
 // against in-memory doubles.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 // ── tier + trigger vocabulary (mirrors `materialized_view_metadata.refresh_strategy` + `report_run`) ──────
 

@@ -4,8 +4,8 @@
 // `m29-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import for
 // a Drizzle one (the M21-T01 gotcha).
 //
-// THE STRING-LITERAL UNIONS MIRROR the frozen `@wardenx/types` unions (`packages/types/src/external-interfaces.ts`,
-// M29-T01), which mirror the `@wardenx/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict —
+// THE STRING-LITERAL UNIONS MIRROR the frozen `@chartwarden/types` unions (`packages/types/src/external-interfaces.ts`,
+// M29-T01), which mirror the `@chartwarden/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict —
 // the §4.3 spec sketch used a different feed-type vocabulary (`hl7v2_inbound_adt` …); the enrichment publishes
 // what the validator enforces (the T02 schema's `adt_inbound` | `lab_inbound` | `orm_outbound`), not the prose.
 //
@@ -29,7 +29,7 @@ import {
   NPPES_SYNC_KINDS,
   ValidationError,
   XI_PROPOSAL_REJECT_RATIONALE_MIN_CHARS,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -65,7 +65,7 @@ const Instant = Type.String({ format: "date-time" });
 const Lit = <T extends string>(members: readonly T[]) =>
   Type.Union(members.map((m) => Type.Literal(m)));
 
-// ── vocabulary mirrors (`@wardenx/types` is the source of truth) ──────────────────────────────────────
+// ── vocabulary mirrors (`@chartwarden/types` is the source of truth) ──────────────────────────────────────
 
 export const FeedKindSchema = Lit(EXTERNAL_FEED_KINDS);
 export const FeedStatusSchema = Lit(EXTERNAL_FEED_STATUSES);

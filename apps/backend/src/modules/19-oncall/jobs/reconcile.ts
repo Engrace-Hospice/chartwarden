@@ -22,9 +22,9 @@
 // `on_call_shift` rows preserved untouched, `degraded: true` reported — so a tenant that schedules shifts by
 // hand is never silently emptied. The port stays injectable so the debounce/claim/apply machinery can be
 // proven with a roster of the test's choosing.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OncallModel, OrgId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OncallModel, OrgId } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { readOnCallRoster } from "../consumers/trigger-context";
 import type {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-// @wardenx/billing — M23 DDE work-queue item lifecycle (ADR-0052 D4) and note rules (D7). PURE: no DB, no clock, no PHI.
+// @chartwarden/billing — M23 DDE work-queue item lifecycle (ADR-0052 D4) and note rules (D7). PURE: no DB, no clock, no PHI.
 import {
   DDE_ITEM_TYPES,
   DDE_NOTES_MAX_LENGTH,
@@ -12,7 +12,7 @@ import {
   medicareReceiptDay,
   validateDdeCodes,
   validateDdeNotes,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { MBI_CLEAN, MBI_DIGIT_LOOKALIKE_GAP, MBI_HIDDEN } from "./_mbi-vectors";
 

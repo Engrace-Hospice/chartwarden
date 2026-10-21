@@ -12,7 +12,7 @@
 //      and the packet builder's stored-count reader (`packet-build.ts`) never sees a stale value.
 // The unique index `idg_agenda_item_carry_forward_uq` (migration 0285) still makes the carry itself idempotent; this
 // only fixes what is counted.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 const MTG = schema.idgMeeting;

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `claim_line` (M23 Billing-Medicare §3.3; retention class `compliance`). Child line
+// @chartwarden/db — `claim_line` (M23 Billing-Medicare §3.3; retention class `compliance`). Child line
 // table of `claim`; internal-only write surface (the routes expose it read-only after a claim leaves
 // DRAFT — spec §3.1). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).
 //

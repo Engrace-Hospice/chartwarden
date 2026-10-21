@@ -9,14 +9,14 @@
 // ADMISSION (`care_plan.admission_id`). Part 2: a `sud_related` problem is NEVER pre-filled onto the addendum —
 // the addendum is shared with non-hospice providers and Medicare contractors (418.24(c)(9)), and redisclosure of
 // a 42 CFR Part 2 record needs consent this read cannot decide. A clinician can still add such a line by hand.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AddendumDiagnoses,
   AddendumDiagnosesReader,
   NonCoveredItemSnapshot,
   NonCoveredItemsReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 const CP = schema.carePlans;

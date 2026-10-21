@@ -1,4 +1,4 @@
-// @wardenx/db — `intervention` (M7 §3.3). A discipline-owned action under a problem, linking to one or
+// @chartwarden/db — `intervention` (M7 §3.3). A discipline-owned action under a problem, linking to one or
 // more goals (`goalRefs` uuid[] in jsonb). PHI-bearing → three-column tenancy rule. `scopeText` +
 // `frequencyText` + `discontinueReason` are free-text → denylisted in the M4 write-audit trigger (§3.5).
 // `linkedOrderId` is an M11 order soft-ref (app-validated, no cross-module FK). `version` carries

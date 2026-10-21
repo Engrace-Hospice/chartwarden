@@ -1,6 +1,6 @@
 // ADR-0079 (G-5) - the unreachable watch: a bounded, backed-off schedule once the deadline has passed, once per stage fleet-wide, flag-gated,
 // writes nothing to the request.
-import { UNROUTED_MAX_RECORDS, unroutedBackoffMs } from "@wardenx/messaging";
+import { UNROUTED_MAX_RECORDS, unroutedBackoffMs } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import { createOpsNoticeClaims } from "../../../bootstrap/ops-notice-claims";
 import { createMemoryAckStore } from "../ack-requests/ack-store-memory";

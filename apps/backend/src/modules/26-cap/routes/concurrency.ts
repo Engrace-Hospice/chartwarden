@@ -1,7 +1,7 @@
 // apps/backend/src/modules/26-cap/routes/concurrency.ts — keyset-pagination cursor helpers + the
 // Idempotency-Key presence guard (the M25/M27 precedent). A cursor is the base64url of `{ts,id}`; pages
 // order by `(anchor DESC, id DESC)`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** §F08 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/14-idg — M14 (Interdisciplinary Group / IDG) backend module surface.
 //
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { registerIdgAbacPredicates as _registerM14Abac } from "./abac-predicates";
 import { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
@@ -52,7 +52,7 @@ export { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service
 // `registerIdgSeams` (driven from the composition root's wireModuleSeams()); the three §4.7 ABAC predicates M14
 // owns (`quorate_decision` / `idg_meeting_scope` / `per_patient_review_floor_clear`); and the §4.1 route
 // inventory behind the real `requirePermission` / `requireAbac` Authorization Contract (the §4.6 keys live in
-// @wardenx/auth as `M14_CONTRIBUTED_PERMISSIONS`).
+// @chartwarden/auth as `M14_CONTRIBUTED_PERMISSIONS`).
 export {
   type IdgCadenceAdherence,
   type IdgDecisionSeedRow,
@@ -71,7 +71,7 @@ export {
   registerIdgSeams,
 } from "./seams/index";
 // M14-T05 — the three §4.7 ABAC predicates M14 owns (`quorate_decision` / `idg_meeting_scope` /
-// `per_patient_review_floor_clear`). The §4.6 permission keys M14 contributes to M3 live in @wardenx/auth
+// `per_patient_review_floor_clear`). The §4.6 permission keys M14 contributes to M3 live in @chartwarden/auth
 // (M14_CONTRIBUTED_PERMISSIONS).
 export {
   type IdgAbacDeps,

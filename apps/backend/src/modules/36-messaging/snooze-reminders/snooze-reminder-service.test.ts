@@ -7,7 +7,7 @@ import {
   SNOOZE_MAX_MINUTES,
   SNOOZE_MIN_MINUTES,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type Actor, createSnoozeReminderService } from "./snooze-reminder-service";
 import { createMemorySnoozeReminderStore } from "./snooze-reminder-test-kit";

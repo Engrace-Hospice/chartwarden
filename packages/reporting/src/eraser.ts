@@ -1,4 +1,4 @@
-// @wardenx/reporting — the M33 tenant-offboarding eraseFn (M4 destruction registry, §3.7 / D6 / §8.4).
+// @chartwarden/reporting — the M33 tenant-offboarding eraseFn (M4 destruction registry, §3.7 / D6 / §8.4).
 //
 // On tenant offboarding M33's eraseFn deletes the org's OPERATIONAL reporting rows (retention class
 // `operational`, 13-month hot) in FK-safe order, REFUSES to destroy the `compliance`-class

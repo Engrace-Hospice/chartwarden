@@ -16,9 +16,9 @@
 // an `UPDATE … WHERE post_action = 'flagged_review'` guard so a concurrent override cannot double-apply.
 // Both commands are org-scoped by RLS and provider-entity-scoped through `actor.providerEntityScope`
 // (out-of-scope = 404).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   type PostingOutcome,

@@ -12,7 +12,7 @@
 // The payload shapes below are transcribed from `M28OutboxEvent` — the payload-shape contract T07
 // already committed to — so this file adds the REGISTRY half T08 never built, not a new contract.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const fhirClientId = Type.String({ minLength: 1 });
 const membershipId = Type.String({ minLength: 1 });

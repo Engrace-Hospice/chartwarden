@@ -1,4 +1,4 @@
-// @wardenx/xero-client — M27-owned Xero adapter package (D6, architecture §25.14 adapter mandate).
+// @chartwarden/xero-client — M27-owned Xero adapter package (D6, architecture §25.14 adapter mandate).
 //
 // This package is the ONLY place in the WardenX repo permitted to import the `xero-node` SDK (the
 // dependency-cruiser adapter-mandate rule enforces). It yields a typed per-tenant `XeroClient` with

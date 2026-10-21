@@ -39,8 +39,8 @@
 //   (5) the M17 visit-state advance the capture drives (published → en_route → in_visit → completed, D14) is the
 //       M17 consumer of `m18.evv.check_*_recorded`, not a write here.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type EvvAggregatorSubmissionDto,
   type EvvAggregatorSubmissionStatus,
@@ -56,7 +56,7 @@ import {
   IdempotencyConflictError,
   NotFoundError,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import {

@@ -1,4 +1,4 @@
-// @wardenx/portal - the iframe src for a telehealth join ticket (GAP-053).
+// @chartwarden/portal - the iframe src for a telehealth join ticket (GAP-053).
 //
 // Daily.co's hosted room is embedded as an iframe with the per-participant meeting token in the `t` query
 // parameter; the token is short-lived and bound to one room. Anything that is not an https URL on the

@@ -3,7 +3,7 @@
 // The 42 CFR §418.78 volunteer domain: the compliance-gate lifecycle, the effective status M17's
 // pre-schedule gate consumes, the expiry → inactive cascade, and the 418.78(e) 5% hour ledger + ratio.
 // Pure — every fact is injected — plus the M8 volunteer-visit resolver against a registered fake seam.
-import type { SignedEncounterDigest } from "@wardenx/types";
+import type { SignedEncounterDigest } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { resolveVolunteerVisitCandidates } from "../src/modules/15-discipline-care-plans/consumers/index";

@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_center_mapping` (M27 §3.3, D5; non-partitioned; retention class `operational`).
+// @chartwarden/db — `cost_center_mapping` (M27 §3.3, D5; non-partitioned; retention class `operational`).
 // Per-(tenant, provider_entity, fiscal_year) GL-account → CMS-1984-14 cost-center mapping. Platform
 // defaults are seeded; tenant overrides/extensions layer on top. Versioned per FY so a 2027 re-mapping
 // does not retroactively alter the 2026 cost report. UNIQUE per (org, provider, fy, xero_account_code) —

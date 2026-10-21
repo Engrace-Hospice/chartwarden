@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M18 (EVV). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M18 (EVV). PRESENT producer (§4.4).
 //
 // M33 reads EVV productivity/quality measures. Bound to the live M18 `EvvMetricsProvider` via
 // `getSeam` at boot (P2C). Aggregate only — never coordinate-bearing data (D6/D10).

@@ -1,7 +1,7 @@
 // apps/web/src/modules/08-encounters — shared encounter presentation helpers (R1, Lantern).
 // The encounter / late-entry / cosignature enums each map to the §6.6 badge taxonomy tone so every M8
 // surface (cosignature queue, encounter read, my-drafts) renders the same StatusPill for a state.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // EncounterStatus (§2.3: draft → finalized → {signed | cosign_pending → cosigned} → voided) → tone.
 export const ENCOUNTER_TONE: Record<string, StatusTone> = {

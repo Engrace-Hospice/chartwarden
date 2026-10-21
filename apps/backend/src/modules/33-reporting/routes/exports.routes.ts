@@ -11,13 +11,13 @@
 // `reportable_scope` predicate M33 OWNS, M3). PDF/XLSX are idempotency-required (the exportId is the
 // `Idempotency-Key` so M22 renders at-most-once across a redelivered request). Org/actor binding is ALWAYS
 // server-side (request.context, never the body). Mirrors the M33 schedules/views route shape.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import {
   CSV_EXPORT_ROW_CAP,
   CsvExportRowCapExceeded,
   PdfRowLimitExceeded,
-} from "@wardenx/reporting";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

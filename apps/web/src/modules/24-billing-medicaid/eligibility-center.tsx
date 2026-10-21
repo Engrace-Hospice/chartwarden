@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the ELIGIBILITY CENTER (R2, §5.1 #15). Per-patient
 // Medicaid eligibility history with the MCO assignment timeline and a refresh action. The Recipient ID is
 // NEVER returned by the API — only the masked last-4 fact (D12 / §3.6) — so it renders through the shared

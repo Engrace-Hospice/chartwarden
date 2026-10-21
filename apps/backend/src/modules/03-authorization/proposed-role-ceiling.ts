@@ -13,12 +13,12 @@
 //   1. proposing any role requires the inviter to hold `role.assign`;
 //   2. a reserved platform role (GAP-003/GAP-096) is never proposable;
 //   3. every permission the role grants must be one the inviter holds (§6 anti-escalation).
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { isReservedPlatformRoleKey, isTenantRoleReserved } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { isReservedPlatformRoleKey, isTenantRoleReserved } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { auditEscalationBlocked } from "./audit/authz-audit";
 import type { ActorPermissionResolver } from "./authz-ports";

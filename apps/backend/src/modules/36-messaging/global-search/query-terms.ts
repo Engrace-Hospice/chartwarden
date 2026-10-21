@@ -19,8 +19,8 @@ import {
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
-} from "@wardenx/messaging";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { headPairKey } from "./stats";
 
 export const MAX_QUERY_TERMS = 8;

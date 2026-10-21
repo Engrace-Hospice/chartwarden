@@ -20,8 +20,8 @@
 // impact was business-logic corruption and unhandled `pg` errors rather than takeover.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { contracts } from "@wardenx/cap-management";
-import { ValidationError } from "@wardenx/types";
+import { contracts } from "@chartwarden/cap-management";
+import { ValidationError } from "@chartwarden/types";
 
 /**
  * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on
@@ -67,7 +67,7 @@ export const validateParams =
  *
  * `format` in TypeBox resolves through a global `FormatRegistry`, and the only thing that populates
  * `uuid` in this repo is `packages/supplies/src/kinds/formats.ts` — an M21 module. So every
- * `Type.String({ format: "uuid" })` in the codebase (including `@wardenx/billing`'s shared `Uuid` and
+ * `Type.String({ format: "uuid" })` in the codebase (including `@chartwarden/billing`'s shared `Uuid` and
  * the M26 contracts) validates ONLY because M21 happens to have been imported first; TypeBox treats an
  * unregistered format as a FAILURE ("Unknown format 'uuid'"), so in any context that does not load
  * M21 these checks reject valid uuids. A params guard must not depend on which sibling module was

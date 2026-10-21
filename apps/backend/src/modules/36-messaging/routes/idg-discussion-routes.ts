@@ -8,8 +8,8 @@
 // Flag off => 200 { enabled:false }; the web reads that `enabled` (the web feature-flag hook is not wired, never use it).
 // The list is a decrypted-body read, so it is read-audited as one aggregate list event carrying the channel's patient.
 // Nothing here writes, publishes or reads a header; a message never marks an IDG meeting complete or changes a plan.
-import type { ResolvedMessage } from "@wardenx/messaging";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import type { ResolvedMessage } from "@chartwarden/messaging";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { IdgDiscussionStore } from "../idg/idg-discussion-store-db";
 import { IdgDiscussionQuerySchema } from "./idg-discussion-typebox";

@@ -14,7 +14,7 @@ import {
   type StripeClient,
   createFetchStripeHttpPort,
   createStripeClient,
-} from "@wardenx/subscription-billing";
+} from "@chartwarden/subscription-billing";
 import {
   type WebhookPayloadCipher,
   createWebhookPayloadCipher,

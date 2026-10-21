@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 40 (Master Data Management) action catalog (M40-T10; M40 spec §8.1.1).
+// @chartwarden/audit — Module 40 (Master Data Management) action catalog (M40-T10; M40 spec §8.1.1).
 //
 // The app-emitted MDM audit actions from §8.1.1, registered under the D9 `m40.<resource>.<verb>`
 // namespace the catalog validator enforces (§4.6.7 owner-prefix). These are governance/ops events

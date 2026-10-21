@@ -1,4 +1,4 @@
-import { parseWristbandPayload } from "@wardenx/types";
+import { parseWristbandPayload } from "@chartwarden/types";
 import {
   Button,
   Modal,
@@ -8,7 +8,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — the ADMINISTER ceremony (M13 §2.1/§2.4/§2.6/§2.9, §6.1 #1; F-031).
 //
 // The screen that displayed a dose grid and could not record a dose is the sharp end of F-031: an eMAR a

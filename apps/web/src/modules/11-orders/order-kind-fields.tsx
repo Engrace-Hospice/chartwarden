@@ -1,4 +1,4 @@
-import { CodeSearchInput } from "@wardenx/ui";
+import { CodeSearchInput } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 type Kind =

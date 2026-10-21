@@ -4,7 +4,7 @@
 // duplicate chart was created silently and nothing ever reached a reviewer. It now inserts one
 // `patient_match_review` row per soft candidate in the SAME transaction as the patient, and returns their
 // ids (spec §7.3: "201 + matchReviewIds").
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type { MatchSubject, ScoredCandidate } from "./matching/matcher";
 import { DEFAULT_THRESHOLDS } from "./matching/matcher";
 

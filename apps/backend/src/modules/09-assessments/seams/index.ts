@@ -6,7 +6,7 @@
 // real impls over their boot deny-stubs (before validateSeams()), driven from the composition root's
 // wireModuleSeams(). Both share ONE injected AssessmentReaderStore (in-memory slice here; Drizzle in
 // prod, reads under the consumer's RLS) — mirrors the M7/M8 seams/index.ts precedent.
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from "@wardenx/types";
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createLatestAssessmentProvider, createScaleSeriesProvider } from "./providers";
 import { type AssessmentReaderStore, createInMemoryAssessmentReaderStore } from "./store";

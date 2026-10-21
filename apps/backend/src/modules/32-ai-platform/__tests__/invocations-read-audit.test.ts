@@ -2,7 +2,7 @@
  * GAP-055 — the AI invocation PHI reads (R16 search, R17 detail) must leave a read-audit row. The configs
  * the routes declare are driven through the real emission hook against a capturing fake DB.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../../../bootstrap/index";

@@ -8,8 +8,8 @@
 // call for a consumer binding is not itself wrapped in the delivering transaction (see
 // `bootstrap/outbox-dispatcher.ts`), so this is the same shape `12-dosespot/jobs/worker.ts`'s drain uses,
 // not a nested-transaction hazard.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { DosespotSyncQueueRepository } from "../jobs/repository";
 import type {
   AdmissionIdForElectionPeriodPort,

@@ -20,12 +20,12 @@ import {
   tierWindowMinutes,
   unroutedRetryDue,
   unroutedShouldRecord,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
   ESCALATION_MAX_TIER,
   type EscalationRouter,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type AckEventFacts,
   M36_ACK_ESCALATED,

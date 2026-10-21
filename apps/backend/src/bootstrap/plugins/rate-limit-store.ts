@@ -95,7 +95,7 @@ export function createBudgetedRateLimiter(
  * guard needs to refuse BEFORE a credential is checked, and the DEL that clears a username's budget
  * on a successful sign-in. Keys are already hashed by the caller — no address reaches Valkey.
  *
- * Structurally satisfies `@wardenx/auth`'s `FailedLoginStore`; the composition root wires the two,
+ * Structurally satisfies `@chartwarden/auth`'s `FailedLoginStore`; the composition root wires the two,
  * so M1's plugin layer takes no dependency on M2's package.
  */
 export function createRedisFailedLoginStore(redis: Redis): {

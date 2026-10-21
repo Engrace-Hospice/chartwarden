@@ -1,15 +1,15 @@
-// @wardenx/idg — M14 IDG-lifecycle failure-code catalog (§4.3, M14-T03).
+// @chartwarden/idg — M14 IDG-lifecycle failure-code catalog (§4.3, M14-T03).
 //
 // Every guard / validation failure in the pure IDG-lifecycle domain (the §2.2 meeting machine, the
 // §2.7 decision recorder/emitter, the D8 action-item engine, the D10 minutes + amendment workflow)
 // raises an `IdgStateError` carrying the machine-readable code below. The error extends the M1
-// `ChartWardenError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1
+// `ChartWardenError` envelope base (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1
 // Fastify error handler renders it with the precise code + HTTP status with no cross-module import
 // edge (the M8/M9/M11/M12/M13 lifecycle convention). Nothing transitions on a string match — each code
 // is an enumerated constant; the M14-T05 routes/ABAC reuse these codes verbatim, and the §3.4 DB
 // triggers (M14-T02) repeat the strongest (`MINUTES_FINAL`, `PACKET_FROZEN`) at the schema layer as
 // defense in depth.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §4.3 M14 IDG-lifecycle failure-code catalog → canonical HTTP status. */
 export const M14_ERROR_STATUS = {

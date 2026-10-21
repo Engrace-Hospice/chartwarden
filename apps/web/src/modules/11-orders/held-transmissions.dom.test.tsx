@@ -3,7 +3,7 @@
 // be recovered only through the API. The net asserts what is SENT: the attestation body, the co-sign / cancel paths, and
 // that a step-up refusal round-trips through `/step-up` with the operator's typed evidence intact.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

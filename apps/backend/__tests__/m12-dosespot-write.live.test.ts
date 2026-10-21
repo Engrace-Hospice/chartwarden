@@ -2,7 +2,7 @@
  * M12L — the Drizzle DoseSpot write lifecycle, proven against real Postgres.
  *
  * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Unlike M11, M12 has NO state-transition triggers,
- * so the service does every status transition itself (composing the pure `@wardenx/dosespot` machines):
+ * so the service does every status transition itself (composing the pure `@chartwarden/dosespot` machines):
  * createDraft/edit · requestSignature (prescriber-eligibility gate) · sign → `signed` · recordVerbal →
  * `verbal_pending` then named-prescriber sign · discontinue/complete (on a seeded `active` order) · correct ·
  * refill approve (mints a new order) / deny · prescriber enroll/revoke · the controlled-substance EPCS-OFF
@@ -15,8 +15,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

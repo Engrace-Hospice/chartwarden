@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   PatientAddressReader,
   PatientAllergyReader,
@@ -8,7 +8,7 @@ import type {
   PatientPrivacyFlagReader,
   PatientReader,
   PatientWristbandVerifier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 // apps/backend/src/modules/05-patient/seams — M5's published cross-module seams (M5-T07/T08).
 // M5 closes THREE M3/Wave-A boot-gate deny-stubs, all required by validateSeams(): CaseloadProvider

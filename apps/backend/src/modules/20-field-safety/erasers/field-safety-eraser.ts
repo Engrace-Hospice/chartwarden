@@ -45,9 +45,9 @@
 // Idempotent: a second erase finds already-redacted rows and reports zero new ones. Registers the REAL
 // eraser over the Phase-0 deny-stub (`safety_record` is in REQUIRED_ERASERS); the composition root's
 // wireModuleErasers() runs it AFTER wireErasers() and before validateErasers().
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

@@ -6,7 +6,7 @@
 // scanner that merely follows the link therefore cannot burn the single-use token. Redemption starts an
 // ENROLMENT-stage session (the session cookie is set by the response) and hands over to /auditor/enrol, where
 // the auditor accepts the BAA terms and proves a second factor before anything can be read (M2 §7.7).
-import { Button, CenteredCardLayout, InlineAlert, t, useApiClient } from "@wardenx/ui";
+import { Button, CenteredCardLayout, InlineAlert, t, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

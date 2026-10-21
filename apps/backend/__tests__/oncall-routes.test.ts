@@ -3,7 +3,7 @@ import {
   PERMISSIONS,
   allPermissionMirrorRows,
   createPredicateRegistry,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type ExternalTriageVendorAdapter,
   type TriageVendorBinding,
@@ -11,8 +11,8 @@ import {
   VendorPhiMinimizationError,
   assertVendorPayloadMinimized,
   minimizeForVendor,
-} from "@wardenx/triage-vendors";
-import { M19_AI_CONFIDENCE_FLOOR, M19_SYSTEM_LOCKED_ALERT_TYPES } from "@wardenx/types";
+} from "@chartwarden/triage-vendors";
+import { M19_AI_CONFIDENCE_FLOOR, M19_SYSTEM_LOCKED_ALERT_TYPES } from "@chartwarden/types";
 /**
  * M19-T07 — the §4.1 route layer: permission keys (§4.6), ABAC predicates (§4.7), the §4.9 typed M36
  * alerts, the §8.5 adapter mandate + §7.10 PHI boundary, the §4.8 `m36.notification.delivery_failed`

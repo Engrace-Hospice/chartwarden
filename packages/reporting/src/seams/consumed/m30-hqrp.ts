@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M30 (HQRP / Quality Measures). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M30 (HQRP / Quality Measures). ABSENT producer (§4.4).
 //
 // M30 is the spec's ONLY EXPLICIT forward seam (§4.4): until M30 locks, every HQRP measure read resolves
 // to `{ value: null, isForwardSeamDenyStub: true }` and the embedded tile renders "Not yet available —

@@ -1,4 +1,4 @@
-// @wardenx/hope — the `hope_assessment.data` → validator-input projection (F-057; §2.1, §2.3).
+// @chartwarden/hope — the `hope_assessment.data` → validator-input projection (F-057; §2.1, §2.3).
 // PURE, IO-free. The CMS pre-submission validator (`validate-hope-assessment.ts`) consumes TYPED
 // per-section projections (`SectionIInput` / `SectionJInput` / `SectionNInput` + the present-section
 // list); the column it must read is one opaque `jsonb`. Nothing bridged the two, which is the mechanical

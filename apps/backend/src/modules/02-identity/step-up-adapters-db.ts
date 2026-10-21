@@ -5,7 +5,7 @@ import {
   createWebauthnAssertionVerifier,
   resolvePasskeyOrigins,
   resolvePasskeyRpId,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 // apps/backend/src/modules/02-identity/step-up-adapters-db.ts — M2 §4.4, the PRODUCTION step-up
 // adapters. Until these landed, `registerSessionStepUpRoutes` had in-memory adapters and one caller:
 // its own test.
@@ -20,7 +20,7 @@ import {
 // ceremony that could not be performed — including the four write paths (M23 claim submit/replace/void,
 // M27 cost-report submit, M37 IRC cap override + restraint apply) whose guard PASSES and whose domain
 // then refuses on the flag.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import type {

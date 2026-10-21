@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_patient_packet` (M14 §3.3.1 / §2.4 D1 / D12). One frozen pre-meeting packet per
+// @chartwarden/db — `idg_patient_packet` (M14 §3.3.1 / §2.4 D1 / D12). One frozen pre-meeting packet per
 // patient per meeting: the §2.4 PacketSnapshot (since-last-IDG join across M7/M8/M9/M10/M12), the per-
 // discipline view blocks (D7), the two-layer cover summary, and the M22 rendered-PDF back-ref. Carries the
 // M14-F01 / ADR-0018 D2 per-patient (per-POC) 15-day review anchor (`last_idg_reviewed_at`) — a column, not

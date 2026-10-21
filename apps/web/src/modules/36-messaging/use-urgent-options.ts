@@ -4,8 +4,8 @@
 // reads as "unavailable", so a clinician is told rather than silently left without the button. `reload` re-reads (the dialog
 // calls it on open so the list is fresh). A monotonic request id drops a late answer for a channel the person has left. The
 // server stays the authority: with the flag off its POST answers 404.
-import type { UrgentMessageOptions } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { UrgentMessageOptions } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { POLICY_RETRY_DELAYS_MS } from "./use-sbar-policy";
 

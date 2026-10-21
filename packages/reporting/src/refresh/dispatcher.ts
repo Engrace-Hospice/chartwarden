@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/reporting · refresh — the three-tier MV-refresh DISPATCHER (M33 §2.5–§2.6 / D2, D15).
+import type { schema } from "@chartwarden/db";
+// @chartwarden/reporting · refresh — the three-tier MV-refresh DISPATCHER (M33 §2.5–§2.6 / D2, D15).
 //
 // The single routing brain the three demand-paths (nightly cron, incremental outbox-subscriber, manual
 // "Refresh now") funnel through: it resolves an MV's declared `materialized_view_metadata.refresh_strategy`

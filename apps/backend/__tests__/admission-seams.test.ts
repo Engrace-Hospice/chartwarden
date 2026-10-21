@@ -3,7 +3,7 @@ import type {
   CertificationSummary,
   FaceToFaceSummary,
   LevelOfCarePeriodSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // apps/backend/__tests__/admission-seams.test.ts — M6-T05 (§4.7 reader seams). Each seam is pure
 // orchestration over an injected AdmissionReaderStore; these cover the projection + the derived facts
 // (active-period containment, LOC-day counting, signed/attested booleans, current-LOC selection) and

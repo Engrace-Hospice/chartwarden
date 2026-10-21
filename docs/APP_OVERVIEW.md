@@ -117,7 +117,7 @@ top. A handful of shared/infrastructure packages underpin everything:
 - `packages/auth` — Better Auth config, passkey/WebAuthn
 - `packages/audit` — the Audit Capture Contract (trigger generator, read-audit declarations)
 - `packages/tenancy` — RLS/org-context helpers
-- `packages/shared` — cross-cutting utilities, including the money kernel (`@wardenx/shared/money`)
+- `packages/shared` — cross-cutting utilities, including the money kernel (`@chartwarden/shared/money`)
 - `packages/types` — shared TypeScript types/contracts used across module boundaries
 - `packages/ui` — the shared component library / design-token system ("Lantern") used by `web` (and partly `admin`)
 

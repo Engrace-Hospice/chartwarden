@@ -2,7 +2,7 @@
 // that could not be read is named, the recipient is required, and refusals map to field text without leaking a reason.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { HandoffComposeDialog } from "./handoff-compose-dialog";
 import { HANDOFF_FIXTURE } from "./handoffs-test-fixture";

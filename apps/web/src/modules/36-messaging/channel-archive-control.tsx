@@ -1,7 +1,7 @@
 // M36 WP 2.11 phase 4 — archive / unarchive of a department channel, offered inside the members dialog to an org
 // admin. Importers: channel-members-dialog.tsx. API: POST /channels/{id}/archive | unarchive (204; 409 for a kind that
 // is not archivable, 403 for a non-admin). The status line is always mounted so a screen reader hears each outcome.
-import { Button, useApiClient } from "@wardenx/ui";
+import { Button, useApiClient } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { JSX } from "react";

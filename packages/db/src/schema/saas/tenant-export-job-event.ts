@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_export_job_event` (M34 SaaS Tenant Platform §3.7). The append-only
+// @chartwarden/db — `tenant_export_job_event` (M34 SaaS Tenant Platform §3.7). The append-only
 // progress ledger for a tenant-export job: one row per status transition / per-module shard receipt.
 //
 // M34-F02 / M34-F10 / ADR-0010: NEW table — carries its own `organization_id` NOT NULL

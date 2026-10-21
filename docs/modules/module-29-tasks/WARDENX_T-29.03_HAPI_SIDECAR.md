@@ -1539,7 +1539,7 @@ export interface Hl7Builder {
 
 ```ts
 // packages/hl7-worker/src/interfaces/listener.ts
-import type { ExternalFeed } from '@wardenx/db/schema/external-interfaces'
+import type { ExternalFeed } from '@chartwarden/db/schema/external-interfaces'
 
 export interface MllpFrame {
   readonly payload: Buffer
@@ -1559,7 +1559,7 @@ export interface MllpListener {
 
 ```ts
 // packages/hl7-worker/src/interfaces/transmitter.ts
-import type { ExternalFeed } from '@wardenx/db/schema/external-interfaces'
+import type { ExternalFeed } from '@chartwarden/db/schema/external-interfaces'
 
 export interface MllpTransmitOutcome {
   readonly status: 'aa' | 'ae' | 'ar' | 'timeout'

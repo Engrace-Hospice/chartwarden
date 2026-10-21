@@ -14,8 +14,8 @@
 // IDEMPOTENCY. A second tick sees the row it created and skips; `evv_missing_resolution_open_uidx` (one OPEN row
 // per (visit, kind)) + `onConflictDoNothing` backstops a concurrent tick. The grace is the D6 default (4 h): no
 // tenant grace column exists yet, so there is nothing tenant-specific to resolve.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, exists, gte, isNull, lte, notExists } from "drizzle-orm";
 import type { EvvWriteOutboxPort } from "../evv-route-service-db";
 import {

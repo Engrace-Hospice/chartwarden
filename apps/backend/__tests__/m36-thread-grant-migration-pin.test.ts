@@ -2,7 +2,7 @@
 // insert/revoke-only guard, one live grant, audit trigger, database clock) are pinned on the migration text.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { THREAD_ACCESS_GRANT_FLAG_KEY, THREAD_ACCESS_GRANT_REASONS } from "@wardenx/types";
+import { THREAD_ACCESS_GRANT_FLAG_KEY, THREAD_ACCESS_GRANT_REASONS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

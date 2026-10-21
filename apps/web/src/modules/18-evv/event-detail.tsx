@@ -4,13 +4,13 @@ import {
   LoadingSpinner,
   PageHeader,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/18-evv — EVV Event Detail (M18 §5.1 `/app/evv/event/:eventId`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Detail Page". One `evv_event`'s raw + computed fields. Coordinates are redacted
 // unless evv.read_coords (D10) — this read path never requests them, so the view is coordinate-free; the
 // "file correction" action (correction-of-record, step-up) fills in as that write path hardens. The SERVER owns
 // the §4.7 ABAC (ADR-0030 — an out-of-scope event 404s). Reads GET /api/v1/evv/events/:eventId via the typed
-// client. Leaves only (@wardenx/ui).
+// client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useParams } from "react-router-dom";

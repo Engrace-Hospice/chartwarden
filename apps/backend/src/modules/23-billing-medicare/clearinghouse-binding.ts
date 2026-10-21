@@ -13,7 +13,7 @@ import {
   type SubmissionAttemptStore,
   bindClearinghouseTransport,
   createStediTransportFromEnv,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 
 export interface ClearinghouseBindingDeps {
   /** The durable, tenant-scoped attempt store, or null when this process has no database. */

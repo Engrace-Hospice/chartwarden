@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — M25, the APPEAL TRACKER (R2, §5 / §1.1). The five-tier Medicare
 // appeal hierarchy with its per-tier filing deadline — the §6.6 CountdownChip is the anchor (the most
 // expensive billing mistake is a missed 60-day window). Reads org-scoped server-side (RLS); the hard T-0

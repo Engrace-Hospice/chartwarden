@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.11 D11 IV continuous administration — M13-T06. W-EMAR-10 (start → titrate → stop).
+// @chartwarden/emar — §2.11 D11 IV continuous administration — M13-T06. W-EMAR-10 (start → titrate → stop).
 import { describe, expect, it } from "vitest";
 import {
   IV_SESSION_GRAPH,

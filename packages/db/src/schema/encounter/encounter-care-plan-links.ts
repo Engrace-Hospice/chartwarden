@@ -1,4 +1,4 @@
-// @wardenx/db — `encounter_care_plan_link` (M8 §3.3). Joins an encounter to the M7 care-plan elements
+// @chartwarden/db — `encounter_care_plan_link` (M8 §3.3). Joins an encounter to the M7 care-plan elements
 // it addressed (problem / goal / intervention). PHI-bearing → three-column tenancy rule (denormalized
 // from the parent encounter). The problem/goal/intervention refs are M7 (logical; app-validated, no
 // cross-module FK). RLS + the M4 write-audit trigger land in migration 0031 (M8-T03).

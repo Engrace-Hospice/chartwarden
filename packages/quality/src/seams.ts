@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 HQRP & Quality: the FIVE published seam interfaces (§4.3).
+// @chartwarden/quality — M30 HQRP & Quality: the FIVE published seam interfaces (§4.3).
 //
 // M30 publishes five read-only seams; each is consumed by at least one downstream module (M22 PDF,
 // M28 FHIR, M33 dashboards, M34 tenant gate). All seams are READ-ONLY — M30's mutating surfaces are
@@ -8,7 +8,7 @@
 // later boot assert). The spec proposes registering each seam against a standalone seam-registry
 // package at declaration time — that package does NOT exist in this codebase; the actual registration
 // into the M1 SeamRegistry is port-injected at the backend composition root in a LATER phase. Do NOT
-// add registration calls here (mirrors how `@wardenx/reporting`'s `seams/published/*` declares pure
+// add registration calls here (mirrors how `@chartwarden/reporting`'s `seams/published/*` declares pure
 // interfaces with no registration).
 import type {
   ComplianceStatus,

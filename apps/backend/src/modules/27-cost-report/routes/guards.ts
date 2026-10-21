@@ -3,7 +3,7 @@
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` preHandler factories every M27 route
 // plugin composes (the M30 routes/*.routes.ts precedent: a local `P(...)` RBAC wrapper + per-predicate
 // ABAC wrappers + the `requireIdempotencyKey` presence guard). Each is cast to the local {@link PreHandler}
-// (a @wardenx/auth `GuardHandler` is structurally a Fastify preHandler). M27 carries NO PHI (D18); the
+// (a @chartwarden/auth `GuardHandler` is structurally a Fastify preHandler). M27 carries NO PHI (D18); the
 // gates here are RBAC + the §4.7 provider/approver/period-active ABAC chain + the §D14 step-up assertion.
 //
 // ABAC TARGETING (§4.7): the M27 predicates resolve their provider/state facts SERVER-SIDE from the
@@ -11,7 +11,7 @@
 // `:id` (or, for `create`, the body's `providerEntityId`) onto the predicate target, then M3-T07's
 // registered resolver derives the report's ProviderEntity + lifecycle state. `notFoundOnDeny:true`
 // realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404, not 403).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { PreHandler } from "./actor";
 
 /** A structural request shape carrying the ABAC target sources (params/body); GuardRequest is assignable. */

@@ -23,7 +23,7 @@
 // Anything that fails between 2 and 4 leaves a `pending` upload row and a staged object, so every
 // failure path calls `DELETE /api/v1/document-uploads/:id`. A row nobody aborts expires on its own
 // after 15 minutes, but relying on that would leave the user's next attempt racing a stale one.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 

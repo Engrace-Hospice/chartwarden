@@ -1,7 +1,7 @@
 // M36 WP 4.10 (ADR-0077) - the message-row "Remind me" trigger. It renders nothing unless the tenant has reminders on (the list read
 // succeeded). A set reminder shows its local time and a Cancel button. The reminder notification names no message text; the dialog
 // says so. The server stays the authority: an urgent message answers a typed refusal that is shown as words.
-import { Button, Modal } from "@wardenx/ui";
+import { Button, Modal } from "@chartwarden/ui";
 import { type JSX, useEffect, useMemo, useRef, useState } from "react";
 import {
   REMINDER_CANCELLED_TEXT,

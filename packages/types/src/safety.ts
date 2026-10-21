@@ -1,4 +1,4 @@
-// @wardenx/types — Module 20 (Field Safety) leaf contracts (M20-T01).
+// @chartwarden/types — Module 20 (Field Safety) leaf contracts (M20-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package, so the downstream consumers
 // (M8's encounter safety-context, M17's visit-day badge, M30/M33's operational dashboards, M36's
@@ -23,7 +23,7 @@
 // §4.10 `m20.safety.*` outbox event names + a payload type per event, the subscribed-event names, the
 // §4.9 typed M36 alert payloads, and the §4.3 seven published reader-seam interfaces + their read DTOs.
 //
-// NAMING: every exported symbol carries a `Safety` / `Sos` / `M20` prefix. `@wardenx/types` is
+// NAMING: every exported symbol carries a `Safety` / `Sos` / `M20` prefix. `@chartwarden/types` is
 // re-exported wholesale from `./index.ts`, so a bare `IncidentSeverity` / `CheckInKind` / `PolicyFloor`
 // would be a TS2308 collision the day M29 or M30 wants the same word (the M14 `IdgDecisionPayload` and
 // M19 `TriageDisposition` precedents).
@@ -42,7 +42,7 @@ import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 import type { VisitId } from "./encounter";
 import type { IsoDate } from "./scheduling";
 
-// ── M20-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── M20-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 export type SafetyPolicyId = string;
 export type SafetyPolicyVersionId = string;
 export type SafetyCheckInScheduleId = string;
@@ -1473,7 +1473,7 @@ export interface SafetySupervisorProvider {
 //
 //   §8.5 names the client packages `packages/oncall-client`, `packages/evv-client` and
 //   `packages/scheduling-client`. None exists (M20-F13 already corrected two of the three in the spec's
-//   own dependency list): M17's, M18's and M19's seam CONTRACTS all live in `@wardenx/types`, which is
+//   own dependency list): M17's, M18's and M19's seam CONTRACTS all live in `@chartwarden/types`, which is
 //   where M20 imports them from, with no `dependsOn` edge.
 
 // ── GAP-032 terminus contracts (leaf; M20 consumes, M40 / M36 implement) ──────────────────────────────

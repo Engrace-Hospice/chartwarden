@@ -1,7 +1,7 @@
-// @wardenx/subscription-billing — §4.13/§8.7 Stripe adapter WIRE TYPES + injected-port shapes (M35-T04).
+// @chartwarden/subscription-billing — §4.13/§8.7 Stripe adapter WIRE TYPES + injected-port shapes (M35-T04).
 //
 // M35's outbound Stripe access is confined to this `./stripe` adapter (the VENDOR_ADAPTERS gate pins the
-// `stripe` npm SDK to `packages/subscription-billing`). Following the `@wardenx/xero-client` idiom, the
+// `stripe` npm SDK to `packages/subscription-billing`). Following the `@chartwarden/xero-client` idiom, the
 // adapter imports NO vendor SDK and performs NO direct network I/O: every byte flows through the injected
 // {@link StripeHttpPort}. The default factory injects a fail-closed port so an un-wired env throws
 // {@link STRIPE_NOT_CONFIGURED} instead of silently no-op'ing a real billing call. The T06 composition
@@ -13,7 +13,7 @@
 // reach `stripe_api_call_audit`, and the webhook payload is envelope-encrypted BEFORE it reaches
 // `stripe_webhook_event` (D15).
 
-import type { OrgId, StripeApiCallAuditId } from "@wardenx/types";
+import type { OrgId, StripeApiCallAuditId } from "@chartwarden/types";
 
 /** Error string thrown by the fail-closed default port when no live Stripe transport is wired (T06). */
 export const STRIPE_NOT_CONFIGURED = "STRIPE_NOT_CONFIGURED";

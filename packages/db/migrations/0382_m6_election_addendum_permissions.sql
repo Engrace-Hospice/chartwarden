@@ -5,7 +5,7 @@
 --   election_addendum.write        ← roles holding election.draft  (draft, edit items, furnish)
 --   election_addendum.acknowledge  ← roles holding election.sign   (record signature / refusal / not-required)
 --
--- The keys live in @wardenx/auth (M6_CONTRIBUTED_PERMISSIONS). `permission` is the FK target of
+-- The keys live in @chartwarden/auth (M6_CONTRIBUTED_PERMISSIONS). `permission` is the FK target of
 -- `role_permission.permission_key` and nothing in the deploy path syncs it (`db:sync:permissions` is local-dev), so
 -- without these rows no administrator could grant the keys (the 0348 lesson). The grants follow the 0316 precedent:
 -- the addendum is the election statement's own required attachment (418.24(b)(6)), so whoever a tenant lets work the

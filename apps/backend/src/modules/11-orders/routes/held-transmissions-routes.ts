@@ -20,8 +20,8 @@
 // org-wide scope roles (DON, medical director, compliance officer, ...) see the whole org. `view_held` alone is not
 // chart access: an org_admin holds it but deliberately no `patient.read` scope, and before this the queue listed
 // rows whose order and patient reads then 404'd for that same caller.
-import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { StuckTransmissionRecovery } from "../stuck-transmission-recovery";
 import { HeldTransmissionsQuerySchema } from "./held-transmissions-typebox";

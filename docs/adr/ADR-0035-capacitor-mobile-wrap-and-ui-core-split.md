@@ -174,7 +174,7 @@ enforced one-way boundary) is already done by the carve. Promotion steps:
 1. create `packages/ui-core` (own `package.json` / `tsconfig`); move `packages/ui/src/core/*` into it;
 2. add the leaf to `architecture/module-manifest.ts` (+ the `.cjs` mirror) — LEAF set + codePaths;
    `bun run scaffold`; re-verify `arch:parity`;
-3. repoint `packages/ui` (web layer) and the new consumer at `@wardenx/ui-core`; the folder-level
+3. repoint `packages/ui` (web layer) and the new consumer at `@chartwarden/ui-core`; the folder-level
    `dependency-cruiser` rule (`web → core`) becomes a package-direction edge with the same guarantee.
 
 Per ADR-0005, adding the leaf needs its **own** ADR — and that ADR records the second consumer that

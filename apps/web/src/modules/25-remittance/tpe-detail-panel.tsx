@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the TPE PROGRAM PANEL (hospice ADR/TPE/QIC PRD, milestone 5). Reads the program
 // fresh (so the If-Match version is the one the server holds NOW) and shows each round's notice, the MAC's results
 // letter, education date, sampled claims (linked to the ADR flow) and the outcome. The MAC's rate and result are the

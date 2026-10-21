@@ -29,15 +29,15 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type AlertEmitter,
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
   escalationJobId,
-} from "@wardenx/messaging";
-import { getRequestContext } from "@wardenx/tenancy";
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { getRequestContext } from "@chartwarden/tenancy";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import { Queue, type Worker } from "bullmq";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

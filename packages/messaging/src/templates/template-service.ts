@@ -1,4 +1,4 @@
-// @wardenx/messaging - the TemplateService contract (M36 WP 2.8). Implemented by the in-memory double here and by the
+// @chartwarden/messaging - the TemplateService contract (M36 WP 2.8). Implemented by the in-memory double here and by the
 // Drizzle service in apps/backend/src/modules/36-messaging/templates. Org and actor are always the server-side request
 // context. Every refusal of an id that is not the caller's to touch is the same 404 a random id gets.
 import type { TemplateCategory, TemplateScope, TemplateView } from "./template-model";

@@ -3,14 +3,14 @@
 // (tier, claim, denial reason, remittance line, deadline) is read HERE from the appeal case and its denial
 // case under the acting org's RLS - never taken from the request. Only the biller's own narrative and the
 // documents they chose to attach come from the submit input.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type AppealPacketRenderPayload,
   type AppealReconsiderationBlock,
   NotFoundError,
   ChartWardenError,
   buildAppealPacketRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { checkQicEvidence } from "../domain";
 import { type AppealSourcePorts, describeEnclosures, loadRemitCopy } from "./appeal-packet-sources";

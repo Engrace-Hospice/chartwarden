@@ -1,4 +1,4 @@
-import type { SupplyRequestKind } from "@wardenx/types";
+import type { SupplyRequestKind } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,4 +1,4 @@
-import { Glyph, InlineAlert } from "@wardenx/ui";
+import { Glyph, InlineAlert } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — the two form steps of the Discharge / Revocation / Transfer-out
 // workflow (discharge-workflow.tsx): the reason choice and the reason-specific details. Split out so the
 // screen file stays within the size budget; the frame primitives come from end-of-episode-ui.tsx.

@@ -1,6 +1,6 @@
-// @wardenx/billing — deriving a provider's tenant wage-index entry from the CMS hospice geography.
+// @chartwarden/billing — deriving a provider's tenant wage-index entry from the CMS hospice geography.
 // Fixture provider: CCN 381588, Pendleton, Oregon (ZIP 97801, Umatilla County 41059).
-import { resolveHospiceArea, wageIndexSeedBody } from "@wardenx/billing";
+import { resolveHospiceArea, wageIndexSeedBody } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const lookup = {

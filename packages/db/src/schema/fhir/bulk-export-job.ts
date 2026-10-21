@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_bulk_export_job` (M28 §3.3). One row per `$export` (system / Group / Patient); the
+// @chartwarden/db — `fhir_bulk_export_job` (M28 §3.3). One row per `$export` (system / Group / Patient); the
 // §2.2 async-export FSM lives in `status`. `accepted` + `in_progress` hold the §2.5 per-client
 // concurrency lock (a further request is a 429); `completed` mints output URLs with a 24h TTL (W-FHIR-04).
 //

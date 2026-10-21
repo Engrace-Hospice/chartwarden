@@ -1,4 +1,4 @@
-import type { LatestAssessment } from "@wardenx/types";
+import type { LatestAssessment } from "@chartwarden/types";
 // apps/backend/__tests__/assessment-seams.test.ts — M9-T04 (§4.7 / D7 LatestAssessmentProvider +
 // ScaleSeriesProvider). Both seams are pure orchestration over an injected AssessmentReaderStore; these
 // cover the latest-active reads (single + batch), the windowed read-time series (D4, ascending), the

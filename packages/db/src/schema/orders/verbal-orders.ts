@@ -1,4 +1,4 @@
-// @wardenx/db — `verbal_order` (M11 §3.3 / §2.3 D3). The verbal-order receipt + 48h authentication
+// @chartwarden/db — `verbal_order` (M11 §3.3 / §2.3 D3). The verbal-order receipt + 48h authentication
 // timer: an RN records the ordering physician's verbal order, which flips the linked `order_record` to
 // `verbal_pending` (via the §3.4 set-target-pending trigger) and starts the deadline clock. PHI-bearing →
 // the three-column tenancy rule. Non-partitioned, bounded by the active-pending queue depth (§3.7). The

@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 ECR fixed-field WRITER (D11, §1.1 / §2.4). Turns the 21 worksheets' frozen
+// @chartwarden/cost-report — M27 ECR fixed-field WRITER (D11, §1.1 / §2.4). Turns the 21 worksheets' frozen
 // `data` payloads (the `worksheet_snapshot` jsonb materialized at submit) into the CMS-1984-14 ECR text
 // file: a report-level header record, one addressed data record per worksheet leaf value, and a record-
 // count trailer. The walk is fully deterministic — object keys are visited in lexicographic order and
@@ -11,7 +11,7 @@
 // field name (`*Cents` ⇒ dollars). This is internally consistent and round-trips; only the line/column
 // numbers and value typing are provisional, and replacing them is a localized edit to this file.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No PHI — aggregate
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. No PHI — aggregate
 // financial / statistical values only (D18).
 import { WORKSHEET_CODES, type WorksheetCode } from "../contracts";
 import {

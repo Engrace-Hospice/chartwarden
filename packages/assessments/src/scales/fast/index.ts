@@ -1,4 +1,4 @@
-// @wardenx/assessments — FAST (Functional Assessment Staging) scorer (§4.3, §3.3, D1).
+// @chartwarden/assessments — FAST (Functional Assessment Staging) scorer (§4.3, §3.3, D1).
 //
 // FAST is ordinal, not additive: a discrete stage (1, 2, 3, 4, 5, 6a–6e, 7a–7f). The `score` column
 // holds the monotonic stage INDEX (1..16) so the `fast_progression_30d` significant-change rule can

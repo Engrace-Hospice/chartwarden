@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/40-mdm/seams.ts — M40-T05 seam registration (spec §4.5).
 //
 // M40 publishes the `MdmEntityProvider` seam — the master-data read surface every clinical/
@@ -8,11 +8,11 @@ import type { DbClient } from "@wardenx/db";
 // `wireModuleSeams`) invokes it inside the boot gate, after M1's wireSeams() and before
 // validateSeams().
 //
-// The seam's rich interface lives in @wardenx/mdm (per-kind `CanonicalFields<K>`/`OverlayFields<K>`
-// generics + the merge-redirect shape) — not the leaf @wardenx/types (`leaves-stay-leaves`). So the
+// The seam's rich interface lives in @chartwarden/mdm (per-kind `CanonicalFields<K>`/`OverlayFields<K>`
+// generics + the merge-redirect shape) — not the leaf @chartwarden/types (`leaves-stay-leaves`). So the
 // M1 registry holds the instance opaquely (`SeamContracts["MdmEntityProvider"] = unknown`); this
 // file is the typed boundary: `registerMdmSeams` registers the typed impl and `getMdmEntityProvider`
-// hands consumers a typed handle. Consumers import the `MdmEntityProvider` TYPE from @wardenx/mdm
+// hands consumers a typed handle. Consumers import the `MdmEntityProvider` TYPE from @chartwarden/mdm
 // (they already list 40 in dependsOn) and resolve the runtime instance through here.
 //
 // SLICE NOTE: the provider is wired over an injected slice-safe in-memory store by default (no live
@@ -27,7 +27,7 @@ import {
   createInMemoryBaaStore,
   createInMemoryMdmStore,
   createMdmEntityProvider,
-} from "@wardenx/mdm";
+} from "@chartwarden/mdm";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 import { buildGriefResourceReader } from "./grief-resources";
 import { buildEmergencyServiceJurisdictionReader } from "./psap-jurisdictions";

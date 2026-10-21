@@ -4,10 +4,10 @@
 //
 // Both workers fan out over active orgs via `apps/backend/src/bootstrap/active-org-enumerator.ts`'s
 // `buildActiveOrgEnumerator`, which enters ONE audited `withPlatformContext` transaction per tick. That
-// entry is gated: the job id must be on the `@wardenx/tenancy` `PLATFORM_CONTEXT_ALLOWLIST`, which starts
+// entry is gated: the job id must be on the `@chartwarden/tenancy` `PLATFORM_CONTEXT_ALLOWLIST`, which starts
 // empty (fail-closed). This registers M19's id on it at boot. One job id covers both workers — they are
 // two halves of the same §4.5 mechanism (drain vs. catch-up-seed), not two independent platform crons.
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 
 /** The platform job id the roster-sync drain + catch-up-seed workers' active-org fan-out enters
  *  `withPlatformContext` under. Registered on the allowlist by {@link wireM19Tenancy} at boot. */

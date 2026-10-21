@@ -21,13 +21,13 @@
 // `skipped: "unconfigured"` and touches nothing — the hot tier simply keeps the partitions.
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { AUDIT_QUEUES } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
+import { AUDIT_QUEUES } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
 import {
   type PlatformBypassAuditor,
   registerPlatformJob,
   withPlatformContext,
-} from "@wardenx/tenancy";
+} from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
 export const AUDIT_ARCHIVE_JOB_ID = "platform.audit_archive";

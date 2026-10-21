@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T03 unit tests (M4 spec §3.4 read-capture contract, §2.5 completeness).
+// @chartwarden/audit — M4-T03 unit tests (M4 spec §3.4 read-capture contract, §2.5 completeness).
 //
 // Proves the read-capture surface without live infra:
 //   • EVENT TYPE — a view records `<kind>.viewed`; a disclosure records `<kind>.disclosed`

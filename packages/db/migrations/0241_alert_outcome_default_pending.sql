@@ -2,7 +2,7 @@
 -- (F-109 / #103, second half of 0240).
 --
 -- THE DEFAULT. An alert is `pending` the moment it is written; what it settles on is computed from its
--- `notification_delivery` children (`rollUpAlertOutcome`, @wardenx/messaging). The emitter now writes the
+-- `notification_delivery` children (`rollUpAlertOutcome`, @chartwarden/messaging). The emitter now writes the
 -- initial value explicitly — a plan with no rows settles `failed` immediately, which is exactly the case
 -- `DEFAULT 'delivered'` was most wrong about (`emit()` writes a no-op alert when no `alert_rule` fires) —
 -- so this DEFAULT is the floor for a writer that forgets, not the normal path.

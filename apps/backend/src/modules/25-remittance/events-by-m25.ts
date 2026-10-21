@@ -11,7 +11,7 @@
 // fan-outs target M22 (PDF render handshake), M23 (claim state machine), M26 (cap accrual/reversal), M30
 // (HQRP denial-rate), M33 (dashboards), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

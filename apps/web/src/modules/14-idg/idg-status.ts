@@ -1,7 +1,7 @@
 // apps/web/src/modules/14-idg — shared IDG presentation helpers (R1, Lantern).
 // The §2.2 meeting, §1.1 action-item, and D10 minutes enums each map to the §6.6 badge taxonomy tone
-// (grounded in the @wardenx/types unions) so every M14 surface renders the same StatusPill for a state.
-import type { StatusTone } from "@wardenx/ui";
+// (grounded in the @chartwarden/types unions) so every M14 surface renders the same StatusPill for a state.
+import type { StatusTone } from "@chartwarden/ui";
 
 // IdgMeetingStatus = scheduled | packets_building | packets_ready | live | adjourned | cancelled | rescheduled.
 export const MEETING_TONE: Record<string, StatusTone> = {

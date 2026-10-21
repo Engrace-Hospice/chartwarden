@@ -21,8 +21,8 @@ import {
   calculateSia,
   splitAtFiscalYears,
   wageIndexFactorForLevelOfCare,
-} from "@wardenx/billing";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { ChartWardenError } from "@chartwarden/types";
 import type { ClaimAssemblySeams, DateRange, InpatientStay } from "./claim-assembly-types";
 
 /** The CMS hospice fiscal year STARTING year for a service date (the rate year flips each Oct 1). */

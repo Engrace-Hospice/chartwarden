@@ -1,7 +1,7 @@
-// @wardenx/portal — presentation-format helpers shared across the §5.1 portal screens.
+// @chartwarden/portal — presentation-format helpers shared across the §5.1 portal screens.
 // PURE (no React, no DOM): imported by both the screen components and the registry unit test, so it
 // must stay renderer-free.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** snake_case / kebab enum → human words. Portal is lay-language (M38); enums never reach the caregiver raw. */
 export function humanize(value: string): string {

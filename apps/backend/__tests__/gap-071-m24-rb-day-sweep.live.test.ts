@@ -10,7 +10,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { levelOfCarePeriodsForPatientForOrg } from "../src/modules/06-admission/seams/loc-periods-for-patient";

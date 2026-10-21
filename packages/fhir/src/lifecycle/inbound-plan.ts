@@ -1,4 +1,4 @@
-// @wardenx/fhir — inbound proposal stage → review → accept/reject/expiry decision core (§2.2, §D8,
+// @chartwarden/fhir — inbound proposal stage → review → accept/reject/expiry decision core (§2.2, §D8,
 // W-FHIR-05/06, M28-T07).
 //
 // T01 fixed the `fhir_inbound_resource` FSM edges + the reject-rationale / payload-erase predicates
@@ -28,7 +28,7 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundResourceId,
   type FhirInboundStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import type { M28OutboxEvent } from "../outbox-events";
 import { fhirInboundRejectRationaleValid, fhirInboundTransition } from "./inbound";

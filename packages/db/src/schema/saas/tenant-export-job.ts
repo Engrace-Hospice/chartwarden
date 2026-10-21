@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_export_job` (M34 SaaS Tenant Platform §3.7). The tenant-export job: one row
+// @chartwarden/db — `tenant_export_job` (M34 SaaS Tenant Platform §3.7). The tenant-export job: one row
 // per whole-tenant data export (migration, BAA termination, compliance audit, surveyor request),
 // driving the D19 bundle (per-module NDJSON + documents, uploaded to MinIO, 7-day object expiry).
 //

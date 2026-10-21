@@ -12,7 +12,7 @@ import {
   WorkQueueLayout,
   useApiClient,
   useRequestGuard,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 

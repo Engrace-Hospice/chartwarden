@@ -22,10 +22,10 @@
 // unknown key means, and run N transactions with no atomicity across them. Accept is a one-shot,
 // idempotent, at-least-once path (the invitation consume already races), so the resolution and the
 // grants belong in ONE transaction that can be replayed.
-import { isTenantRoleReserved } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { isTenantRoleReserved } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 import type { ActorPermissionResolver, M3OutboxPublisher } from "./authz-ports";
 import { ROLE_ASSIGN_PERMISSION, createDbOrgRoleLookup } from "./proposed-role-ceiling";

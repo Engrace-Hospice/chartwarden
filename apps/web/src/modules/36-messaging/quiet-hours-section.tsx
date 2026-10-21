@@ -1,6 +1,6 @@
 // M36 WP 4.6 - the quiet-hours part of "My notifications": an on/off switch (role="switch" with state text), the time zone, the severity
 // that still breaks through, the weekly ranges, and the LOCKED rows (text, not just an icon) that quiet hours can never silence.
-import { Button, SelectField, TextField } from "@wardenx/ui";
+import { Button, SelectField, TextField } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {
   DAY_LABELS,

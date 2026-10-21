@@ -1,7 +1,7 @@
 // GAP-116 — the Roles & Permissions controls must issue the writes. Asserted on RECORDED FETCH CALLS (not a
 // spy over the client), same shape as `10-hope/hope-writes.dom.test.tsx`.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { RolesPermissions } from "./roles-permissions";

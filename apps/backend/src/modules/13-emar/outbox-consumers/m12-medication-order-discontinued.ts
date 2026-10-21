@@ -1,8 +1,8 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/13-emar/outbox-consumers/m12-medication-order-discontinued.ts — the
 // order-level scheduled-dose cascade, live for the first time (F-166, #248).
 //
-// `planOrderDiscontinueCascade` (`@wardenx/emar`, `cascade/order-discontinue-cascade.ts`) is the
+// `planOrderDiscontinueCascade` (`@chartwarden/emar`, `cascade/order-discontinue-cascade.ts`) is the
 // order-scoped counterpart to `planDischargeCascade` (F-155's admission-level D14 cascade): a
 // `discontinueOrder` (or the discharge/discontinue cascades acting through it) flips ONE order to
 // `discontinued`, and every future PENDING scheduled dose for THAT order — not the whole admission,
@@ -23,9 +23,9 @@ import { type DbClient, schema } from "@wardenx/db";
 //
 // A consumer-driven write names no acting membership: `scheduled_dose` has no actor column for this
 // transition (the discharge cascade's own header notes the same for this table).
-import { planOrderDiscontinueCascade } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant } from "@wardenx/types";
+import { planOrderDiscontinueCascade } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant } from "@chartwarden/types";
 import { and, eq, gt } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 

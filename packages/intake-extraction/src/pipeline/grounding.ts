@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — DocLens quote GROUNDING (F-236, ADR-0048). Pure.
+// @chartwarden/intake-extraction — DocLens quote GROUNDING (F-236, ADR-0048). Pure.
 //
 // The extractor model is never trusted for coordinates. It returns, per field, a value plus a VERBATIM
 // quote and the page it claims the quote is on. This module finds that quote in the text Docling actually

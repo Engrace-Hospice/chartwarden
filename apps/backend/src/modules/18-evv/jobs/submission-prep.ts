@@ -15,9 +15,9 @@
 // does nothing. A correction changes an event id, hence the hash: a still-pending/queued row is re-pointed at the
 // new pair; a `rejected`/`timeout` row is requeued for the new pair (attempt counted); an `accepted` row is left
 // alone (the vendor already holds the old pair — a re-submission of a corrected, accepted pair is NOT built).
-import { type DbClient, schema } from "@wardenx/db";
-import { eventPairHash } from "@wardenx/evv-aggregators";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { eventPairHash } from "@chartwarden/evv-aggregators";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
 import { transitionAggregatorSubmission } from "../domain/aggregator-submission";
 import { type EvvAggregatorDeps, adapterFor } from "./ports";

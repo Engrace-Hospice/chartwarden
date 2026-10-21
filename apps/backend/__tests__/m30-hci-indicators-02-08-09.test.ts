@@ -12,7 +12,7 @@ import {
   computeHciIndicator09,
   computeHciScore,
   isDataUnavailable,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { describe, expect, it } from "vitest";
 import {
   resolveHciCompositeInput,

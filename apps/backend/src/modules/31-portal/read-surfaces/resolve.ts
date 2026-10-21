@@ -14,7 +14,7 @@
 // read has no dedicated portal seam arm yet — only the encounter-scoped `relevantElementsForEncounter` — so
 // its LIVE resolver is deferred to when M7 publishes a portal reader; the pure `projectCarePlan` core ships
 // here now and is exercised in the T04 unit suite.)
-import type { PatientId, PatientIdentity } from "@wardenx/types";
+import type { PatientId, PatientIdentity } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import {
   projectAdministrationList,

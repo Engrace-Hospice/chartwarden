@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/27-cost-report — M27 Cost Report screen registration (R2, ADR-0030, §5). The read
 // surface over the live /api/v1/cost-reports/* + /api/v1/cost-report-validation-rules backend. Each
 // `requiredPermission` is the REAL §4.6 M27 key the matching route gates on (mirrored into

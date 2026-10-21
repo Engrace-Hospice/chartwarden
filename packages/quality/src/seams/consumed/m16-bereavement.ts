@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M16 (Bereavement). ABSENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M16 (Bereavement). ABSENT producer (§4.4).
 //
 // M16 is not yet implemented → forward-seam DENY-STUB. M30 consumes `BereavementComplianceProvider` for
 // the CoP 418.64(d) bereavement-services-coverage measure; M16 registers the real reader over this stub

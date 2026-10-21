@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T06 PHI sanitization golden test (spec §4.7 / §7.2).
+// @chartwarden/messaging — M36-T06 PHI sanitization golden test (spec §4.7 / §7.2).
 //
 // §7.2 "No PHI leaves the perimeter in out-of-band payloads" — done means the sanitizer's output
 // contains no patient name, no body, no diagnosis, and no category-specific content beyond the

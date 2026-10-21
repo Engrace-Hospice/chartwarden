@@ -1,8 +1,8 @@
-// @wardenx/billing · repositories — `transfer_notice_record` (the 8xC transfer notice / corrected 8xC / 8xD void,
+// @chartwarden/billing · repositories — `transfer_notice_record` (the 8xC transfer notice / corrected 8xC / 8xD void,
 // migration 0375). ORG-SCOPED + VERSIONED, shape-identical to `noe-record` / `notr-record` and over the same
 // `noticeStateCodec` (UPPERCASE DB enum ↔ lowercase domain `NoticeState`), keyset pagination and §2.5
 // optimistic concurrency. No PHI beyond ids / dates / CCN-NPI of a provider; no MBI (D13).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, inArray, ne, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {

@@ -12,8 +12,8 @@ import type {
   IntakeBatchStatus,
   IntakeBatchSudStatus,
   OrgId,
-} from "@wardenx/types";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
 import type { ClinicalWritebackSummary } from "../extraction/writeback-commit-clinical-db";
 import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";

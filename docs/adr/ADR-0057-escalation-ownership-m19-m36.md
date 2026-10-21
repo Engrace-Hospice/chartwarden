@@ -127,7 +127,7 @@ proposal; the M19 owner confirms or amends it.
       `patientId` belongs to `orgId`; the in-memory fake enforces only the org it was built for. `getEscalationRouter()` is the raw seam
       with no wrapper; WP 4.4 adds an org-checking wrapper (and a boot report that the router is still the stub; no such warning pattern
       exists for other stubs today) before any worker passes an org read from an event payload.
-    - **Fake not on the barrel.** The in-memory router is reachable only at `@wardenx/messaging/testing/in-memory-escalation-router`.
+    - **Fake not on the barrel.** The in-memory router is reachable only at `@chartwarden/messaging/testing/in-memory-escalation-router`.
     - **No M36 timer, caller, table, route, event or flag change.** Wiring the router into timers is WP 4.4.
       **As built in WP 4.4 ([ADR-0070](ADR-0070-messaging-escalation-timers.md)):** the timers call the router through `guardEscalationRouter` (the org-checking wrapper above; `getEscalationRouter()` itself stays the raw registry entry), record the resolved tier and assignee on the request (migration 1114 lets the timer move the assignee) and key idempotency on the request, its tier and its window, never on the clock. The contract is unchanged. Today every answer is the deny-stub's `unavailable`, which the timer surfaces (a history row, an event and a generic in-app alert, the request left open) and retries each minute; the fallback recipient and `failed_unreachable` of item 5 are WP 4.5.
 
@@ -144,7 +144,7 @@ proposal; the M19 owner confirms or amends it.
       - *Decision 3, role-level lookup without a patient:* not offered. The contract requires `patientId`, and a patient is how the router finds the provider entity (the unit that holds shifts, policy and zone). A role-only lookup would need a provider-entity argument; propose adding it only if a caller without a patient appears.
       - *Decision 4, fallback recipient when the seam is down or cannot route:* PROPOSAL only, NOT built: `tenant_oncall_policy.emergency_contact_e164` (an existing M19 column), platform-fixed behaviour (not tenant-tunable), delivered through the existing alert path as ADR-0057 item 5 already describes. M36 does not read it today; WP 4.5's supervisor attention alert (ADR-0079) remains the only fallback in the build.
       - *Decision 5, `failed_unreachable` feeding the coverage-gap watchdog:* PROPOSAL: yes, as a read-only input to the watchdog's existing event, in a separate change that touches Tier-1 behaviour. NOT built here and M19 triage behaviour is untouched.
-    - **Verified at build time:** the discipline enum, the nullable `patient.provider_entity_id`, `PatientReader.findById`, the site reader's zone read, and M19's `dependsOn` allowing the `@wardenx/messaging` import for the shared strict-instant parser. Not verified: any real roster (no tenant is bound), the clinical meaning of tier 1 as "the on-call RN of the patient's provider entity" (an assumption an owner must confirm), and tier-2 recipients.
+    - **Verified at build time:** the discipline enum, the nullable `patient.provider_entity_id`, `PatientReader.findById`, the site reader's zone read, and M19's `dependsOn` allowing the `@chartwarden/messaging` import for the shared strict-instant parser. Not verified: any real roster (no tenant is bound), the clinical meaning of tier 1 as "the on-call RN of the patient's provider entity" (an assumption an owner must confirm), and tier-2 recipients.
 
 ## What M19 must provide (when an owner is named)
 

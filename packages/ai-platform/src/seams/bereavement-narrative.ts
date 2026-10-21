@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.4 `BereavementRiskNarrativeProvider` (M32-T06).
+// @chartwarden/ai-platform — §4.2.4 `BereavementRiskNarrativeProvider` (M32-T06).
 //
 // Consumed by M16, optionally: M16 ships the deterministic D3/D17 complicated-grief score alone and
 // AUGMENTS it with a narrative when this seam is available. The deterministic `rule_tier` is what a

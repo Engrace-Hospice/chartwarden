@@ -26,7 +26,7 @@
 // `total_count` IS NEVER EMITTED ON A PHI LIST (ADR-0021 §6 / §8.3): a count is an enumeration oracle.
 // {@link CursorPage} has no field for it, which is the compile-time half of that rule.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route except the SOS press requires an Idempotency-Key (1–128 chars). */

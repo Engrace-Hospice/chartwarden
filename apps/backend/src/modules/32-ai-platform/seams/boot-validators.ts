@@ -25,7 +25,7 @@ import {
   type AIPromptRegistry,
   findAiProhibitedZoneViolations,
   formatAiProhibitedZoneViolations,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 
 import type { AiCapabilityRegistryStore } from "../governance/store";
 import type { AiBackendRegistryStore } from "../invocation/store";

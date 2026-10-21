@@ -2,8 +2,8 @@
 // Offered only when the ack feature flag is on, the person holds messaging.send + messaging.urgent.send, and the options
 // route (shared with Urgent clinical) lists at least one qualified colleague. The server stays the authority. The picker is an
 // inline radiogroup, not a dialog: it has no <form> of its own, so nothing here can submit the composer's form.
-import { ACK_REQUESTS_FLAG_KEY, URGENT_SEND_PERMISSION } from "@wardenx/types";
-import { useFeatureFlag } from "@wardenx/ui";
+import { ACK_REQUESTS_FLAG_KEY, URGENT_SEND_PERMISSION } from "@chartwarden/types";
+import { useFeatureFlag } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { useSession } from "../../shell/session";

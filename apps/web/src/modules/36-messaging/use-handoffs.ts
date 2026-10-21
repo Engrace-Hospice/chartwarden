@@ -1,7 +1,7 @@
 // M36 WP 3.5 - the caller's handoffs (list) and the actions on one. No optimistic state: a row only changes when the
 // server's answer replaces it, and a refusal leaves it untouched. Action enablement comes from `allowed_actions` only.
-import type { HandoffDto } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { HandoffDto } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 

@@ -1,4 +1,4 @@
-import { Glyph } from "@wardenx/ui";
+import { Glyph } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 /** Shared identity and accessible layout for pre-session onboarding. No patient information is shown here. */

@@ -1,4 +1,4 @@
-// @wardenx/db — `administration_witness` (M13 §3.3 / §2.6 D7). The controlled-substance double-witness attestation
+// @chartwarden/db — `administration_witness` (M13 §3.3 / §2.6 D7). The controlled-substance double-witness attestation
 // for an administration_record: a structured attestation plus the sha256 digest of the burned witness token (§7.4).
 // Org-scoped (no patient row — the parent administration_record carries the patient/PE/location); standard app.org_id
 // RLS. Non-partitioned. administration_record is partitioned, so `administration_record_id` is plain uuid (no SQL FK);

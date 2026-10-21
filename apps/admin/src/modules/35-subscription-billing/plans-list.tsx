@@ -8,8 +8,8 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
 // Cross-tenant plan catalog over GET /api/admin/plans; a draft plan is created via POST /api/admin/plans
 // (plan.admin.write — step-up + Idempotency-Key, enforced server-side). Amounts are integer cents formatted once.

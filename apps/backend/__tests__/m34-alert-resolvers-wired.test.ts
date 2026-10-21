@@ -4,8 +4,8 @@
 // unseeded and no tenant-lifecycle / security alert reached anyone. This drives the REAL M36 emitter
 // (`createAlertEmitter`) with M34's extension over fake ports, seeded with the real M34 rule rows, and
 // proves an `m34.tenant.shred_pending_approval` emit resolves the platform security owners and delivers.
-import { createAlertEmitter } from "@wardenx/messaging";
-import type { AlertEmitterPorts, EmitAlertRule, PersistedAlert } from "@wardenx/messaging";
+import { createAlertEmitter } from "@chartwarden/messaging";
+import type { AlertEmitterPorts, EmitAlertRule, PersistedAlert } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import { m34ResolverExtension } from "../src/modules/34-saas-tenant-platform/alert-resolver-ports";
 import {

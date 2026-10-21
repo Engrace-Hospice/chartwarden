@@ -53,9 +53,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 
-import type { FhirReadDisclosureEnvelope } from "@wardenx/types";
+import type { FhirReadDisclosureEnvelope } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer, registerSeam } from "../src/bootstrap/index";

@@ -1,4 +1,4 @@
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 // WP 3.7: records the decision an OWNING module (M8, M14) reports for a chart-promotion proposal, then tells the requester
 // with one fixed-text in-app alert (rule m36.promotion.decided). M36 never decides accepted/rejected itself: this consumer is
 // the only writer of result_ref / decided_by / decided_at (ADR-0063 D4).
@@ -15,7 +15,7 @@ import {
   type ChartPromotionOutcome,
   type ChartPromotionReasonCode,
   type ChartPromotionTargetModule,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

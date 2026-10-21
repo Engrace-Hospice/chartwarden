@@ -2,7 +2,7 @@
 // the patient label is resolved HERE, at read time, and the Part 2 gate is re-applied to the VIEWER on every row. A row whose
 // patient the viewer may not see (or whose gate cannot answer) is `restricted`: no label, no patient id, no actions - but it
 // is still listed and counted, never invisible. No message body is ever shown.
-import { allowedReviewActions } from "@wardenx/messaging";
+import { allowedReviewActions } from "@chartwarden/messaging";
 import type {
   ReviewCause,
   ReviewItemDto,
@@ -11,8 +11,8 @@ import type {
   ReviewSource,
   ReviewState,
   TaskCloseReason,
-} from "@wardenx/types";
-import { TASK_ACTIVE_STATUSES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { TASK_ACTIVE_STATUSES } from "@chartwarden/types";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import type { ReviewRow, ReviewTaskRow } from "./review-store-db";

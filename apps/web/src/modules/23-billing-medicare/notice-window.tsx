@@ -14,7 +14,7 @@ import {
   WorkQueueLayout,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — shared NOE / NOTR filing-window surface (R2, §5.1 #11–14,
 // §10 PR-J). NOE (Notice of Election) and NOTR (Notice of Termination/Revocation) are structurally identical:
 // a state-grouped Work Queue of records, each racing a CMS 5-day filing window (the `windowTargetAt`

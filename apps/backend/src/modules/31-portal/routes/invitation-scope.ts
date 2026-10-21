@@ -18,8 +18,8 @@
 // `caseload_or_scope` treats an id-less target as the collection case and would allow it. A predicate that
 // throws (an unreadable M5 seam) is a deny, never a 500. Break-glass is a READ emergency grant and these
 // routes mutate, so it never satisfies the guard (`breakGlassBypassable: false`).
-import { requireAbac } from "@wardenx/auth";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { requireAbac } from "@chartwarden/auth";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { actorOf } from "./actor";
 import type { PortalOwnedTableOps } from "./store";

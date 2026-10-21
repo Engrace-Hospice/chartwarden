@@ -1,6 +1,6 @@
-// @wardenx/billing — rule `claim_total_matches_lines` (charges, error, regulatory): the 837I claim charge
+// @chartwarden/billing — rule `claim_total_matches_lines` (charges, error, regulatory): the 837I claim charge
 // (CLM02) must equal the sum of its service-line charges; the clearinghouse rejects a claim that does not balance.
-import { type ValidationContext, claimTotalMatchesLines } from "@wardenx/billing";
+import { type ValidationContext, claimTotalMatchesLines } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";
 

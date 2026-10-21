@@ -6,7 +6,7 @@
 //
 // NON-GOAL (§1.2): NPI-2 (organization) entities. The M40 `external_physician` model is individual-only, so a
 // classified NPI-2 short-circuits as `organization_skipped` before any DB write. Type-2 sync is a future PR.
-import type { Npi, NppesProviderStatus } from "@wardenx/types";
+import type { Npi, NppesProviderStatus } from "@chartwarden/types";
 
 /** The stable internal projection of one NPPES individual (NPI-1) provider. */
 export interface NppesIndividualProvider {

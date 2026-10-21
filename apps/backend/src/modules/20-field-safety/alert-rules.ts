@@ -6,7 +6,7 @@
 // recipients. This is the ADR-0024 composition-resolver precedent (`registerCompositionResolvers`,
 // packages/messaging/src/compose/resolvers.ts) and the M34 precedent (34-saas-tenant-platform/
 // alert-rules.ts): M20 adds a NEW resolver name to M36's OPEN registry without changing M36's seven
-// built-ins and without an import edge from M36 to M20. This file imports `@wardenx/messaging` (M36)
+// built-ins and without an import edge from M36 to M20. This file imports `@chartwarden/messaging` (M36)
 // types only; the inverse never happens.
 //
 // The composition is what makes a 3-AM SOS reach both the on-call supervisor (per M20's subscription
@@ -53,8 +53,8 @@
 // coverage gap, so it would record a successful fan-out to nobody instead of taking its degraded alert
 // path (which is what reaches the tenant emergency number, M20-F01).
 
-import type { RecipientResolverFn } from "@wardenx/messaging";
-import type { IsoInstant, MembershipId, OrgId, ProviderEntityId } from "@wardenx/types";
+import type { RecipientResolverFn } from "@chartwarden/messaging";
+import type { IsoInstant, MembershipId, OrgId, ProviderEntityId } from "@chartwarden/types";
 import type { SafetyAfterHoursParallelSet } from "./consumers/m19-after-hours";
 
 /** The resolver name M20 adds to M36's registry (§4.5). */

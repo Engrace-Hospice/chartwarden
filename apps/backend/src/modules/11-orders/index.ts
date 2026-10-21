@@ -1,6 +1,6 @@
 // apps/backend/src/modules/11-orders — M11 (Orders) backend module surface.
 //
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
 import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
@@ -126,7 +126,7 @@ export {
 } from "./seams/index";
 // M11-T06 — the §4.1 route inventory over an in-memory backend + the §4.7 ABAC predicates M11 owns
 // (`discipline_can_order` / `signer_eligible` / `m11.cosigner_role_match`). The §4.6 permission keys M11
-// contributes to M3 live in @wardenx/auth (M11_CONTRIBUTED_PERMISSIONS).
+// contributes to M3 live in @chartwarden/auth (M11_CONTRIBUTED_PERMISSIONS).
 export {
   type OrderAbacDeps,
   M11_ABAC_PREDICATES,

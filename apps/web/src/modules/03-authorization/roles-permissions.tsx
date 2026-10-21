@@ -10,7 +10,7 @@ import {
   RightDetailPanel,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
 // GAP-116 — the review surface plus the role-catalog writes (`./role-writes`): create a tenant role (optionally
 // a copy of a template), edit its permission set, enable/disable, delete. The controls show only to a caller

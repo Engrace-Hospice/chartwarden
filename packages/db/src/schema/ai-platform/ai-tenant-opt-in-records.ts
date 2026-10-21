@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_tenant_opt_in_record` (M32 §3.2.6). W4: the tenant's own decision about one
+// @chartwarden/db — `ai_tenant_opt_in_record` (M32 §3.2.6). W4: the tenant's own decision about one
 // capability, with the disclosures its admin acknowledged at the moment they took it.
 //
 // TENANT-SCOPED: organization_id NOT NULL, RLS keyed ONLY on app.org_id (0116).

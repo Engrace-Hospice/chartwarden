@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.10 / D9 / W5 hallucination report → triage → follow-up (M32-T05).
+// @chartwarden/ai-platform — §3.2.10 / D9 / W5 hallucination report → triage → follow-up (M32-T05).
 //
 // The clinician's "the model made that up" and everything it sets in motion. Pure; the store, the
 // §4.8 `ai:hallucination-triage-followup` worker and the M36 alert publish live in
@@ -38,7 +38,7 @@ import type {
   AiHallucinationTriageDisposition,
   AiHallucinationTriageStatus,
   AiKillSwitchReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 

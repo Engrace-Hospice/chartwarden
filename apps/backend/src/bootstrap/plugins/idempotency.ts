@@ -1,7 +1,7 @@
 // apps/backend/src/bootstrap/plugins/idempotency.ts — M1 idempotency HTTP middleware
 // (spec §4.6 / W-M1-10 / SEC-025; M1-T10).
 //
-// This is the HTTP wrapper the `@wardenx/shared` idempotency helper's docstring promised
+// This is the HTTP wrapper the `@chartwarden/shared` idempotency helper's docstring promised
 // "is wired in M1-T10": it reuses that leaf's request fingerprint (computeIdempotencyHash
 // = SHA-256 over org + key + body) and its injected IdempotencyStore port (Valkey /
 // Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write.
@@ -16,8 +16,8 @@ import {
   type IdempotencyStore,
   type IdempotentResponse,
   computeIdempotencyHash,
-} from "@wardenx/shared";
-import { ConflictError, IdempotencyConflictError } from "@wardenx/types";
+} from "@chartwarden/shared";
+import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 declare module "fastify" {

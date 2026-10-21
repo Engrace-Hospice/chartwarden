@@ -10,8 +10,8 @@
 //   • The webhook handler (when DoseSpot is configured to push) may settle the same order first; every UPDATE is
 //     guarded on `status = 'transmitted'` and asserts its row count, so the loser is a no-op, never a double emit.
 // Poll failures never settle anything: a degraded call leaves the order for the next tick.
-import { schema } from "@wardenx/db";
-import { isDegradedError } from "@wardenx/dosespot";
+import { schema } from "@chartwarden/db";
+import { isDegradedError } from "@chartwarden/dosespot";
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 import { applyPharmacyAck, applyPharmacyNack } from "./order-outcomes";

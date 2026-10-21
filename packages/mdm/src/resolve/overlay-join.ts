@@ -1,4 +1,4 @@
-// @wardenx/mdm — the canonical + this-tenant overlay join (M40-T04, spec §2.1, §2.3).
+// @chartwarden/mdm — the canonical + this-tenant overlay join (M40-T04, spec §2.1, §2.3).
 //
 // The §2.1 read path's JOIN node: after the redirect chase lands on a surviving canonical row,
 // fold in this tenant's overlay (if any) to produce the canonical-plus-overlay shape every

@@ -8,13 +8,13 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/09-assessments — Scale-policy editor, admin (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // Per-scale enable/disable state. The threshold/cadence tuners (platform floor read-only · tenant override
 // floor-enforced both client- and server-side, §5.2) fill in with the policy write surface; this read view shows
 // the enabled state per scale. Reads GET /api/v1/admin/scales/policies via the typed client; the server enforces
-// org-admin scope and the floor (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+// org-admin scope and the floor (ADR-0030 — no authz on the frontend). Imports only leaves (@chartwarden/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 

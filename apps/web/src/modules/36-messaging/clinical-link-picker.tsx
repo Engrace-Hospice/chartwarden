@@ -1,9 +1,9 @@
-import type { ClinicalLinkKind } from "@wardenx/types";
+import type { ClinicalLinkKind } from "@chartwarden/types";
 // M36 WP 3.2 - the composer's clinical link picker. Typing `#` or `+` at the start of a word (or the "Link record" button)
 // opens a combobox popover: first a record kind, then a record of that kind from the candidate SOURCE (a port; see
 // clinical-link-kinds.ts). Arrow keys move, Enter chooses, Escape closes and focus returns to the composer. Choosing only
 // calls `onAdd`: the link becomes a tray chip and is sent as a `clinicalLink` node. Nothing here writes to a source.
-import { Glyph, useFeatureFlag } from "@wardenx/ui";
+import { Glyph, useFeatureFlag } from "@chartwarden/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FocusEvent, JSX, KeyboardEvent } from "react";
 import {

@@ -3,7 +3,7 @@
 // seam by the write service; this decides which caregivers become `proposed` contacts and how M5's relationship maps
 // onto M16's value set. A seeded contact is only ever `proposed`: the D6 consent gate (route 13) still decides whether
 // anyone may be contacted.
-import type { PatientCaregiverRosterEntry } from "@wardenx/types";
+import type { PatientCaregiverRosterEntry } from "@chartwarden/types";
 
 /** M5 `patient_caregiver.relationship` → M16 `bereaved_contact_relationship` (the M38 relationship-to-decedent set). */
 const RELATIONSHIP_FROM_M5: Readonly<Record<string, string>> = {

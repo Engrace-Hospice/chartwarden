@@ -1,4 +1,4 @@
-// @wardenx/db — `clinical_assessment` (M9 §3.3, D1). The shared base table for all 14 validated
+// @chartwarden/db — `clinical_assessment` (M9 §3.3, D1). The shared base table for all 14 validated
 // scales (PPS/KPS/FAST/PAINAD/FLACC/ESAS-r/NYHA/MELD/BODE/Flacker/GDS/Braden/Morse/AIMS): one row per
 // measurement, the per-scale shape carried in the `data` jsonb (validated by the per-scale TypeBox +
 // scoring module under `packages/assessments/src/scales/<scale>`), the score server-computed (D6).

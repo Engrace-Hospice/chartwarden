@@ -1,11 +1,11 @@
-// @wardenx/quality · repositories — the infection-surveillance subdomain: `infection_surveillance_event`
+// @chartwarden/quality · repositories — the infection-surveillance subdomain: `infection_surveillance_event`
 // (per-event infection/exposure observations feeding outbreak detection; PARTITIONED monthly by
 // `observed_at`, composite PK id + observed_at; retention class `phi`) and `infection_outbreak_case`
 // (the SERVER-CREATED-ONLY detected cluster over a (pathogen, body_site, window); non-partitioned)
 // (M30 §3.3, §7.8). ORG-SCOPED; the surveillance/outbreak service wraps these in `withOrgContext`.
 // `exposure_source` (free-text identifying) is audit-denylisted (§3.6). The ≥3-events/14d detector reads
 // `listEventsForOutbreakWindow`; the outbreak case is idempotent on the V-18 window unique.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { type SQL, and, asc, desc, eq, gte, inArray, lt, lte, or } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

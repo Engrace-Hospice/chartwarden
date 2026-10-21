@@ -11,7 +11,7 @@
 // moments the plan is `eligible` or `initiating`, and §4.8 pins the window predicate to {active, paused}.
 // See `./guards.ts` for the full reasoning — it is the difference between a working assignment flow and a
 // permanent 403.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";

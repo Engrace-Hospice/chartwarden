@@ -2,7 +2,7 @@
 // programmed rows (the recording Drizzle fake) and fake M5 / M40 sources, then round-tripped through M22's form
 // compiler: what the producer builds is what the form draws. Real-Postgres coverage of the same builders is in
 // m22-order-render-payloads.live.test.ts.
-import { RenderPayloadError } from "@wardenx/types";
+import { RenderPayloadError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type RenderBuildCtx,

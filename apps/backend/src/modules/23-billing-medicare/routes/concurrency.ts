@@ -3,13 +3,13 @@
 //
 // Three route-layer concurrency primitives the M23 routes share:
 //   - the opaque keyset-cursor envelope ({@link CursorPage}) every LIST route returns; the cursor encodes
-//     `(createdAt DESC, id DESC)` and the @wardenx/billing repos mint/decode it (this file re-exports the
+//     `(createdAt DESC, id DESC)` and the @chartwarden/billing repos mint/decode it (this file re-exports the
 //     package codec so routes + services speak the same opaque cursor).
 //   - {@link requireIdempotencyKey} — the mutating-route `Idempotency-Key` presence guard (§4.1.1).
 //   - {@link requireIfMatch} — the §2.5 optimistic-concurrency `If-Match` presence + parse guard; a stale
 //     version is surfaced as 412 by the write service (VERSION_CONFLICT), this guard only enforces that a
 //     mutation of a versioned root CARRIES the header so a lost-update is impossible.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 // Re-export the package cursor codec + page envelope so the route + service layers share one opaque cursor.
 export {
@@ -20,9 +20,9 @@ export {
   encodeCursor,
   MAX_PAGE_SIZE,
   pageSizeOf,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — a mutating route did not carry the required `Idempotency-Key` header. */

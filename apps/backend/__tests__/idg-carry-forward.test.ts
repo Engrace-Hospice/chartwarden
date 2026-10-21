@@ -2,7 +2,7 @@
 // (`compute-carry-forward`). The PURE selection + idempotency-filter logic (target meeting per location,
 // which (item, meeting) carries are still to be made) and the queue catalog. The DB idempotency (unique
 // index + ON CONFLICT + increment-only-on-insert) is proven live in `m14-packet-build.live.test.ts`.
-import { planCarryForward } from "@wardenx/idg";
+import { planCarryForward } from "@chartwarden/idg";
 import { describe, expect, it } from "vitest";
 import {
   CARRY_FORWARD_LOOKAHEAD_MS,

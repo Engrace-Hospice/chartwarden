@@ -8,7 +8,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-housekeeping:live
  */
 import { createHash, randomUUID } from "node:crypto";
-import { DegradedError } from "@wardenx/dosespot";
+import { DegradedError } from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createEnvWebhookSecretResolver,

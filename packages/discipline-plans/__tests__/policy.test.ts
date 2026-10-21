@@ -1,4 +1,4 @@
-// @wardenx/discipline-plans — M15-T01 policy/cadence unit tests.
+// @chartwarden/discipline-plans — M15-T01 policy/cadence unit tests.
 //
 // The CoP-floor invariants the whole module rests on: 418.76(h)(1) tighten-only cadence, the §7.1
 // escalation ladder shifting with a tenant override, the D11 quorum lookup, and the M15-F04 hours-÷-hours

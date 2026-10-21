@@ -1,13 +1,13 @@
-// @wardenx/hope — M10 domain failure-code catalog (§4.4, M10-T03).
+// @chartwarden/hope — M10 domain failure-code catalog (§4.4, M10-T03).
 //
 // Every guard / validation failure in the M10 HOPE domain raises a `HopeStateError` carrying the
 // machine-readable code the spec's §4.4 table enumerates (e.g. `M10_TIMEPOINT_EXPIRED`,
 // `M10_DISCIPLINE_NOT_PERMITTED`, `M10_SFV_PAST_DUE`). The error extends the M1 `ChartWardenError` envelope
-// base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders
+// base (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders
 // it with the precise code + HTTP status with no cross-module import edge. The code→status mapping is the
 // single source mirrored from §4.4; nothing transitions on a string match — each code is an enumerated
 // constant (the M8/M9 lifecycle convention). The route layer (M10-T06) reuses these codes verbatim.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §4.4 M10-specific failure-code catalog → canonical HTTP status (full table; the timepoint /
  * discipline / SFV codes are raised by the M10-T03 pure machines, the remainder by later tasks' routes,

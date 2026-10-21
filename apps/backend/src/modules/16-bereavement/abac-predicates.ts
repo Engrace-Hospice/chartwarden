@@ -35,9 +35,9 @@ import {
   type AbacContext,
   type AbacTarget,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import { isClosedPlanStatus } from "@wardenx/bereavement";
-import type { BereavementPlanStatus, MembershipId } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { isClosedPlanStatus } from "@chartwarden/bereavement";
+import type { BereavementPlanStatus, MembershipId } from "@chartwarden/types";
 
 /** The §4.8 predicate names M16 owns (registered into M3). Single-owner across the platform registry. */
 export const M16_ABAC_PREDICATES = [
@@ -111,7 +111,7 @@ export function disciplineForRoleKeys(roleKeys: readonly string[]): string | nul
 }
 
 /** M2 session classes that are a bereaved family member's own portal session (§4.8 `portal_self_service`).
- *  The canonical list (@wardenx/auth), not a local copy — see the F-030 note in M31's predicates. */
+ *  The canonical list (@chartwarden/auth), not a local copy — see the F-030 note in M31's predicates. */
 const PORTAL_SESSION_CLASSES = AUTH_PORTAL_SESSION_CLASSES;
 
 /** The plan facts `bereavement_window` decides over (loaded org-scoped, never read off the request). */
@@ -151,7 +151,7 @@ export interface BereavementAbacResolver {
 
 /**
  * The M15 418.78 verdict `discipline_can_provide_bereavement` consults for the volunteer discipline.
- * Structurally typed so M16 takes no `@wardenx/discipline-plans` import edge — the production probe resolves
+ * Structurally typed so M16 takes no `@chartwarden/discipline-plans` import edge — the production probe resolves
  * `VolunteerComplianceProvider` through the M1 seam registry.
  */
 export type VolunteerGatesProbe = (input: {

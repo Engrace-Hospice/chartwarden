@@ -2,7 +2,7 @@
 // primary-nav.ts). Keyed by registered screen ID, so the shell still imports no module slice: a screen that is
 // registered but not placed here falls into "More" instead of vanishing, and a placed ID that is not registered is
 // skipped. Parameterised screens (`:id`) and actions (New refund) are reached from their list, not the sidebar.
-import type { GlyphName } from "@wardenx/ui";
+import type { GlyphName } from "@chartwarden/ui";
 import type { AdminScreenDescriptor } from "./registry";
 
 export interface AdminNavEntry {

@@ -1,4 +1,4 @@
-// @wardenx/consent — the tenant-overlay TIGHTEN-ONLY validator (M39-T09, §7.6, D2/D8).
+// @chartwarden/consent — the tenant-overlay TIGHTEN-ONLY validator (M39-T09, §7.6, D2/D8).
 //
 // A tenant may TIGHTEN a platform consent-type floor, never LOOSEN it. The platform ships the floor
 // (consent_type_catalog); a `tenant_consent_type_overlay` may only narrow it:

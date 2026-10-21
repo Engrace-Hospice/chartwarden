@@ -10,7 +10,7 @@
 // security control is exactly what the control exists to protect. TIGHTEN-ONLY: the request is validated
 // against the platform floor (422 with the reason) and `trg_tenant_step_up_tighten_only` refuses it at rest.
 // Audited at `compliance` retention and published as `m2.session.step_up_policy_override.configured`.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import {
   auditStepUpOverrideConfigured,

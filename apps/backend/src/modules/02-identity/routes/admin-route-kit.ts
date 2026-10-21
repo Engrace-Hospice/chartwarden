@@ -2,8 +2,8 @@
 // route shares: the authenticated-actor resolution, the server-side org binding (§7.12), the audit context, and
 // the `m2.*` outbox publish. Kept beside the routes (not in identity-routes.ts, which keeps its own private
 // copies) so the new files stay small and the two cannot be confused.
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import type { Actor, ActorResolver, IdentityOutboxPort } from "../identity-ports";
 

@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `sia_calculation_correct` (sia, error, regulatory). The Service Intensity
+// @chartwarden/billing — §4.5 rule `sia_calculation_correct` (sia, error, regulatory). The Service Intensity
 // Add-on (SIA), when present, must reflect qualifying RN / MSW visits in the last 7 days of life per the
 // CMS rule, and must not be double-counted with another adjustment (D6). This rule verifies the SIA
 // snapshot against the signed-encounter window the service layer materialized. PURE: reads ctx only.

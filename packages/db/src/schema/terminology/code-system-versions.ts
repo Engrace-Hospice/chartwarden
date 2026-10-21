@@ -1,4 +1,4 @@
-// @wardenx/db — `code_system_version` (M38 Terminology §3.3). One row per loaded version
+// @chartwarden/db — `code_system_version` (M38 Terminology §3.3). One row per loaded version
 // of a code system (e.g. ICD-10-CM '2024', SNOMED '2024-09-AA'). Carries the effective
 // range that the as-of-date resolution engine (M38-T04, §7.1) keys on: two versions of a
 // system coexist; the older is never deleted (§7.2). Platform-shared reference

@@ -5,10 +5,10 @@
 // so no handler reads an org id — or an authoring/approving membership id — off the wire. Every authored
 // M27 row (cost report, worksheet write, bad-debt entry, validation override, snapshot) is stamped with
 // the server-assembled membership id, never one supplied by the client. M27 carries NO PHI (D18).
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /**

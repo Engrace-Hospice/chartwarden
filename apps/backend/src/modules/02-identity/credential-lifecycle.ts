@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { audit } from "@wardenx/audit";
-import type { IdentityCredentialAdmin } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { audit } from "@chartwarden/audit";
+import type { IdentityCredentialAdmin } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, ne, sql } from "drizzle-orm";
 import type {
   MembershipRepository,

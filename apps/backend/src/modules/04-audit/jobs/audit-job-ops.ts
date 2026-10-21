@@ -34,9 +34,9 @@ import {
   runExecuteDestruction,
   runRetentionScan,
   widenSpan,
-} from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq } from "drizzle-orm";
 
 const EXPORT = schema.auditExports;

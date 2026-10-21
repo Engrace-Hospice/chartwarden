@@ -6,10 +6,10 @@
 //     invoice's `issued_at`, a subscription's `started_at`, a refund's `requested_at`, a snapshot's
 //     `computed_at` — which the Drizzle read service maps onto the `createdAt` slot of {@link CursorKeyset}.
 //   - base64url JSON. A malformed/tampered cursor is a 400 VALIDATION_FAILED (never page-from-start).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — a mutating route did not carry the required `Idempotency-Key` header. */

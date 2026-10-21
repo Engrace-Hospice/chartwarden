@@ -10,7 +10,7 @@
 // There is deliberately no decrypt: nothing reads the filters back, and an unused decrypt path would be a PHI
 // read surface with no audit behind it.
 import { createCipheriv, randomBytes } from "node:crypto";
-import type { DrilldownFilterEncryptionPort } from "@wardenx/reporting";
+import type { DrilldownFilterEncryptionPort } from "@chartwarden/reporting";
 
 const DEK_BYTES = 32;
 const GCM_NONCE_BYTES = 12;

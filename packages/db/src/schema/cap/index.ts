@@ -1,4 +1,4 @@
-// @wardenx/db — M26 Cap Management schema barrel (§3.3, 12 owned tables). Re-exports the shared enums plus
+// @chartwarden/db — M26 Cap Management schema barrel (§3.3, 12 owned tables). Re-exports the shared enums plus
 // every table module; the central ../index.ts re-exports this barrel.
 //
 // Tenancy (ADR-0010, canonical): 11 of the 12 tables carry organization_id NOT NULL → the canonical

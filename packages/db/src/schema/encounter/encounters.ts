@@ -1,4 +1,4 @@
-// @wardenx/db — `encounter` (M8 §3.3). The clinical-event root: one row per visit/contact a clinician
+// @chartwarden/db — `encounter` (M8 §3.3). The clinical-event root: one row per visit/contact a clinician
 // charts on. PHI-bearing → the three-column tenancy rule; here provider_entity_id + location_id are
 // NOT NULL (an encounter is a patient-level, location-anchored clinical event, always sited from the
 // M17 visit / M6 admission context — see §3.3 tenancy note; drives location-scoped ABAC, multi-CCN
@@ -77,7 +77,7 @@ export const encounters = pgTable(
     }),
     administrativeOverrideReason: text("administrative_override_reason"),
 
-    // The D11 pin: a `@wardenx/narrative-vocab` corpus-release uuid (`NARRATIVE_VOCAB_RELEASES`), set at
+    // The D11 pin: a `@chartwarden/narrative-vocab` corpus-release uuid (`NARRATIVE_VOCAB_RELEASES`), set at
     // first finalize and immutable thereafter. NOT an M38 `code_system_version` id — ADR-0046 overrides
     // the spec on that: Layer-1 assembly resolves no M38 concept, so pinning M38 would guard nothing.
     vocabVersionId: uuid("vocab_version_id"),

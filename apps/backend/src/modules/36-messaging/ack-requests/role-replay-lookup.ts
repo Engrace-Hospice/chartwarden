@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/ack-requests/role-replay-lookup.ts - ADR-0081: the read a role send needs to replay a retry. It lives in the
 // aggregate's directory because it selects the request table; the urgent code stays unaware of the aggregate (m36-ack-static). Select only.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const MSG = schema.messages;

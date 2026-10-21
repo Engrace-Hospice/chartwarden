@@ -1,4 +1,4 @@
-// @wardenx/types · policy — the single `SESSION_POLICY` timeout constant (M2-T04; M2
+// @chartwarden/types · policy — the single `SESSION_POLICY` timeout constant (M2-T04; M2
 // spec §2.2.4, §11 D1).
 //
 // Re-homed from the banned `packages/foundation/src/policy` per ADR-0005 D3 / M02-F03.

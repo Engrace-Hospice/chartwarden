@@ -1,4 +1,4 @@
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { searchTimeoutToError } from "../src/modules/36-messaging/message-search-service-db";
 

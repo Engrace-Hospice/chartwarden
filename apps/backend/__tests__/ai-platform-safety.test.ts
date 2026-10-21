@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AiGovernanceError } from "@wardenx/ai-platform";
+import { AiGovernanceError } from "@chartwarden/ai-platform";
 
 import { transitionAiCapability } from "../src/modules/32-ai-platform/governance/service";
 import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";

@@ -1,4 +1,4 @@
-// @wardenx/db — `trial_balance_import` (M27 §3.3, D6; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `trial_balance_import` (M27 §3.3, D6; non-partitioned; retention class `compliance`).
 // Audit-replay record of every Xero trial-balance pull (or manual CSV). `raw_payload_cipher` is
 // envelope-encrypted at rest (per-tenant DEK) and audit-denylisted (§3.6); `normalized_accounts` holds
 // the post-normalization GL rows. History is preserved (never updated) — the latest status='complete'

@@ -13,9 +13,9 @@
 // `active` immediately and date it from the SIGNING day, so an early signature left two `active` periods
 // overlapping by up to two weeks and every later period shifted earlier. The start date is now the
 // preceding period's end + 1 day, and the period stays `pending` until that day.
-import { type DbClient, schema } from "@wardenx/db";
-import type { LocalDate } from "@wardenx/types";
-import { ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { LocalDate } from "@chartwarden/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import {
   type AdequacyResult,

@@ -10,7 +10,7 @@ import {
   type ValidatedClinicalLinkInput,
   derivePatient,
   urgentRecipientInvalid,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   NotFoundError,
   type RichBody,
@@ -20,7 +20,7 @@ import {
   type UrgentMessageResponse,
   type UrgentRecipient,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { linkNotAvailable } from "../clinical-link/clinical-link-service";
 import type { HintOutboxPort } from "../message-hint-events";
 import { resolveRichWrite } from "../rich-body-codec";

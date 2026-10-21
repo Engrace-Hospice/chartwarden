@@ -1,4 +1,4 @@
-import type { RoleCategory } from "@wardenx/auth";
+import type { RoleCategory } from "@chartwarden/auth";
 // WP 2.7b C3 (ADR-0058 "Who may call the route: role categories") - the workforce-category gate of the global search route.
 //
 // The route needs `messaging.read` AND an active role in the allow-list below AND no active role in the excluded set (deny
@@ -9,8 +9,8 @@ import type { RoleCategory } from "@wardenx/auth";
 // The policy is a `Record<RoleCategory, ...>`, so a category added to `RoleCategory` fails compilation until it is classified.
 // An excluded role counts even when `role.enabled = false` (a disabled role is still the identity's role); the allow side
 // requires an enabled role. A role the TypeScript map does not know (a new DB enum value) is treated as deny: fail closed.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 export type RoleCategoryPolicy = "allow" | "deny" | "off";

@@ -9,10 +9,10 @@
 // write-service-drizzle precedent).
 //
 // SEAM INJECTION (the architecture posture): every cross-module edge is an INJECTED port — this service
-// depends on the seam INTERFACES (shaped below over the `@wardenx/billing` aggregate snapshot types),
+// depends on the seam INTERFACES (shaped below over the `@chartwarden/billing` aggregate snapshot types),
 // never on another module's package. The composition root binds the live providers at boot (M5/M6/M8/
 // M18/M38/M40 readers are LIVE; the platform reference-data + outbox ports are M1/M23-owned). The pure
-// calculators + rule registry are imported from `@wardenx/billing` (no I/O); all I/O lives here at the
+// calculators + rule registry are imported from `@chartwarden/billing` (no I/O); all I/O lives here at the
 // service boundary.
 //
 // HARD INVARIANTS carried from the M27 lessons:
@@ -48,9 +48,9 @@ import {
   repositories,
   summarizeRuleRun,
   telehealthF2fDatesRequiringG0679,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import {
   computeClaimPerDiemClass,
   computeClaimSia,
@@ -126,7 +126,7 @@ function resultOutcome(r: RuleResult): "pass" | "fail" | "warn" | "info" {
  * from 2027-01-01). In-person encounters are never reported. The line rides the LOC period covering the
  * encounter date (the `claim_line` model requires one) and the claim's site Q-code; the 837I builder emits
  * the G0679 HCPCS for it, not the Q-code. Units / charge are the UNCONFIRMED constants in
- * `@wardenx/billing` (`G0679_UNITS_PER_ENCOUNTER`, `G0679_UNIT_CHARGE_CENTS`).
+ * `@chartwarden/billing` (`G0679_UNITS_PER_ENCOUNTER`, `G0679_UNIT_CHARGE_CENTS`).
  */
 export function buildG0679LineInputs(args: {
   readonly orgId: string;

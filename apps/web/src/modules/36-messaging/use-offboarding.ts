@@ -1,8 +1,8 @@
 // M36 WP 5.9 (ADR-0084, PROPOSED) - reads the dry-run (GET) and runs the execute step (POST) of a departed user's offboarding. The checklist shown is
 // always the server's latest answer: a run replaces it, and a failed run leaves the previous one in place. After a 401/403 no further request is made.
 // A stale step-up is handed back to the screen to send the officer through the step-up page. Nothing here stores or logs an id.
-import type { OffboardingDto } from "@wardenx/types";
-import { isStepUpRequired } from "@wardenx/ui";
+import type { OffboardingDto } from "@chartwarden/types";
+import { isStepUpRequired } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 

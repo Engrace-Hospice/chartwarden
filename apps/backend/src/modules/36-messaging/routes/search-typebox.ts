@@ -4,7 +4,7 @@ import {
   SEARCH_MAX_PAGE_SIZE,
   SEARCH_MAX_QUERY_LENGTH,
   SEARCH_MAX_SCAN_PER_REQUEST,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import { ResolvedMessageSchema } from "./messaging-typebox";
 
 /** Lengths only here; the word count and minimum are the service's rule (one 422 code for every bad query). */

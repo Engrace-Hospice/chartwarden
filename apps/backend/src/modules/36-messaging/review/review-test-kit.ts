@@ -1,6 +1,6 @@
 // WP 3.8 test support: a fully in-memory review service (memory stores, fake db, captured outbox, controllable ports).
 // Not a test file itself; the *.test.ts files in this directory build on it.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { createMemoryTaskStore } from "../tasks/task-store-memory";
 import { queueLifecycleReviewForPatient } from "./lifecycle-queue";

@@ -1,4 +1,4 @@
-import type { AggregatorPollResult, AggregatorSubmitResult } from "@wardenx/evv-aggregators";
+import type { AggregatorPollResult, AggregatorSubmitResult } from "@chartwarden/evv-aggregators";
 // apps/backend/src/modules/18-evv/domain/aggregator-submission.ts — M18-T06 (§2.2.5 D7, §7.8, §7.9).
 //
 // The pure per-state `evv_aggregator_submission` D7 state machine. One row per (state, visit) carries the
@@ -16,12 +16,12 @@ import type { AggregatorPollResult, AggregatorSubmitResult } from "@wardenx/evv-
 // the §2.2.4 missing-resolution machine: it validates the transition against the graph, then returns the new
 // status + the ordered §2.4 side-effect list (audit + the §4.10 `m18.evv.aggregator_*` outbox event + the §4.9
 // M36 alert on reject/timeout). The §4.8 BullMQ worker / route layer loads the row under RLS, checks the
-// `version`, runs the adapter (M18-T06 `@wardenx/evv-aggregators`), and executes the effects in one tx.
+// `version`, runs the adapter (M18-T06 `@chartwarden/evv-aggregators`), and executes the effects in one tx.
 //
 // ADR-0008 — EVV is operational, never a Medicare claim gate: a `rejected` / `timeout` submission does NOT
 // block the Medicare claim (only an `unresolved_missing` bracket does). The aggregator handshake is the
 // state-Medicaid EVV substantiation, surfaced to M24/M25 via `EvvAggregatorReferenceReader`.
-import type { EvvAggregatorSubmissionStatus } from "@wardenx/types";
+import type { EvvAggregatorSubmissionStatus } from "@chartwarden/types";
 import type { EvvSideEffect } from "./effects";
 import { EvvStateError, require_ } from "./errors";
 

@@ -1,4 +1,4 @@
-// @wardenx/billing — the two-tier RHC day-count CARRY-OVER across hospice stays (ours AND other hospices').
+// @chartwarden/billing — the two-tier RHC day-count CARRY-OVER across hospice stays (ours AND other hospices').
 // PURE: no clock, no I/O. Feeds `calculatePerDiemClass`'s `priorHospiceDays`.
 //
 // CMS RULE (Medicare Claims Processing Manual, Pub. 100-04, ch. 11 §30.2; CR 9201 / Transmittal R3326CP):
@@ -49,7 +49,7 @@
 //   - every span is clipped to end the day before the new election before merging, and the day attribution is
 //     interval arithmetic — the work is O(n log n)-ish in the row count and independent of a span's LENGTH.
 //
-// SHARED CORE: the clip / merge / walk-back rule (1–3 above, + the 60-day stop) is `@wardenx/shared/rhc`, the one
+// SHARED CORE: the clip / merge / walk-back rule (1–3 above, + the 60-day stop) is `@chartwarden/shared/rhc`, the one
 // implementation M6's own fallback count (`rhcCarryOver`, which may not import this package) uses too.
 import {
   type CarryBlock,
@@ -57,7 +57,7 @@ import {
   clipToBeforeElection,
   mergeCarryBlocks,
   walkCarryChain,
-} from "@wardenx/shared/rhc";
+} from "@chartwarden/shared/rhc";
 import type { IsoDate } from "../contracts";
 import { fromEpochDay, toEpochDay } from "../domain/dates";
 import { RHC_HIGH_TIER_LAST_DAY } from "./calculator";

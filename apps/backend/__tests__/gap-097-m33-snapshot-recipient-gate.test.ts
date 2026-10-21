@@ -1,5 +1,5 @@
 // M33 recipient-disclosure follow-up: the worker's recipient port narrows by the snapshot's scope.
-import { handleScheduledRun } from "@wardenx/reporting";
+import { handleScheduledRun } from "@chartwarden/reporting";
 import { describe, expect, it } from "vitest";
 import { gateRecipientsBySnapshotScope } from "../src/modules/33-reporting/jobs/snapshot-recipient-gate";
 

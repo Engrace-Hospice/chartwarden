@@ -3,7 +3,7 @@
 // `GET /api/v1/auth/context` response — the M2↔M3 role/membership enrichment — into the shell's
 // Session, and decides nav / Role-Home tile visibility from the actor's effective permissions.
 // The server is ALWAYS the authoritative enforcer; this only drives what the shell renders.
-import type { paths } from "@wardenx/ui";
+import type { paths } from "@chartwarden/ui";
 import type { Session, SessionStatus } from "./session-types";
 
 /** The wire shape of `GET /api/v1/auth/context` (generated contract). */

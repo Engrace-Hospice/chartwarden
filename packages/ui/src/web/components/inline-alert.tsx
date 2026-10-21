@@ -1,4 +1,4 @@
-// @wardenx/ui — InlineAlert (2026-09-25 redesign). A flat, token-only message line for a form or panel:
+// @chartwarden/ui — InlineAlert (2026-09-25 redesign). A flat, token-only message line for a form or panel:
 // an error refusal (role="alert", announced at once) or a success/info notice (<output>, a polite live
 // region). No card, no border — a tinted strip, so it sits inside flat sections. Presentational only.
 import type { JSX, ReactNode } from "react";

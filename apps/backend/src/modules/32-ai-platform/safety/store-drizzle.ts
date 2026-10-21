@@ -24,8 +24,8 @@
 // `ai_hallucination_report` is org-scoped: EVERY method opens `withOrgContext`, and no method takes an
 // org id it does not also pin into the session variable. `ai_evaluation_run` is platform-shared: reads
 // on the tenant handle (`ai_evaluation_run_read` is `USING (true)`), writes under the audited bypass.
-import { type DbClient, schema } from "@wardenx/db";
-import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
 import type {
   AiEvaluationRunDecision,
   AiEvaluationRunStage,
@@ -36,7 +36,7 @@ import type {
   AiHallucinationTriageStatus,
   AiKillSwitchActorKind,
   AiKillSwitchReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { type M32EventEmitter, capabilityIdentity } from "../events";
 

@@ -16,7 +16,7 @@
 // per-event adapter into it. An event whose payload does not normalize THROWS — the dispatcher retries then
 // dead-letters it (§7.2), which is the honest outcome for a malformed render request; it is never a silent
 // no-op that would leave a signed clinical artifact permanently un-rendered with a green outbox.
-import { RENDER_PAYLOAD_VERSION } from "@wardenx/types";
+import { RENDER_PAYLOAD_VERSION } from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

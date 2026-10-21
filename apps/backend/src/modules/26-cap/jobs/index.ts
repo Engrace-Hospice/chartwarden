@@ -4,8 +4,8 @@
 // construction. The platform ports (the M2 active-org enumerator, the M36 alert router) carry a fail-closed
 // thunk default until the integrator binds them — constructing the workers at boot stays green; a port only
 // throws WHEN A CRON TICK RUNS. Nothing here runs at import (constructing a Worker opens Valkey).
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, lte, or, sql } from "drizzle-orm";
 import { reconcileInpatientAccrual } from "../consumers/inpatient-reconcile";

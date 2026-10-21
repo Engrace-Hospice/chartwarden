@@ -1,4 +1,4 @@
-import { M2_ACTION_CATALOG } from "@wardenx/audit";
+import { M2_ACTION_CATALOG } from "@chartwarden/audit";
 // apps/backend/__tests__/auth-audit-trail.test.ts — GAP-002 / GAP-004: the M2 §8.1 authentication trail.
 //
 // Drives the real Fastify <-> Better Auth bridge with a STUB handler and a capturing sink, proving every
@@ -8,7 +8,7 @@ import {
   createCredentialThrottle,
   createInMemoryFailedLoginStore,
   registerIdentityAuth,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 

@@ -1161,7 +1161,7 @@ Outbox-only cross-module communication is enforced by dependency-cruiser: any di
 -----
 ## 5. UI Surfaces
 
-M33 ships three frontend bundles on the TanStack Start + TanStack Router + TanStack Query stack: a desktop-class **Dashboards & Reports** workspace at `apps/web`, a constrained **Mobile Dashboards** surface on Capacitor (for clinicians in the field who need census/productivity glances without the report builder), and a tiny **Patient Portal** surface that surfaces only consent-bounded summary tiles (e.g., bereavement schedule for the family member, never live PHI of others). Every route lives under TanStack Router with file-based code-splitting; every data fetch flows through the `useReporting()` hook layer, which in turn calls the seam-backed `@wardenx/reporting-client` package — the same package that M30 (Mobile Visit), M34 (Analytics Embed), and M37 (IPU) will consume.
+M33 ships three frontend bundles on the TanStack Start + TanStack Router + TanStack Query stack: a desktop-class **Dashboards & Reports** workspace at `apps/web`, a constrained **Mobile Dashboards** surface on Capacitor (for clinicians in the field who need census/productivity glances without the report builder), and a tiny **Patient Portal** surface that surfaces only consent-bounded summary tiles (e.g., bereavement schedule for the family member, never live PHI of others). Every route lives under TanStack Router with file-based code-splitting; every data fetch flows through the `useReporting()` hook layer, which in turn calls the seam-backed `@chartwarden/reporting-client` package — the same package that M30 (Mobile Visit), M34 (Analytics Embed), and M37 (IPU) will consume.
 
 ### 5.1 Web Application (Desktop, TanStack Router)
 
@@ -1854,7 +1854,7 @@ M33 communicates with downstream modules **only** via seam-tagged adapters; dire
 
 ```typescript
 // packages/reporting/src/adapters/document-render-adapter.ts
-import type { DocumentRenderProvider } from '@wardenx/m22/seams';
+import type { DocumentRenderProvider } from '@chartwarden/m22/seams';
 
 export class DocumentRenderAdapter {
   constructor(private readonly impl: DocumentRenderProvider) {}
@@ -2053,7 +2053,7 @@ Create `report_mv` and `report_mv_public` schemas. Define the 36 MVs from §3 ca
 Populate `report_base_catalog` (≥20 entries) and `report_metric_catalog` (≥200 entries: dims + measures). System-authored definitions (≥12) seeded as `report_definition` rows with `is_system_authored=true`, all with a published v1 in `report_definition_version`.
 
 **T-04: Seam interfaces — published**
-Create `@wardenx/m33/seams` package with the three published seams: `MetricsProvider`, `DashboardCatalogProvider`, `ScheduledReportProvider`. Each seam is a typed interface + an Implementation symbol for DI; the implementation registers in M33's `SeamRegistry` at boot.
+Create `@chartwarden/m33/seams` package with the three published seams: `MetricsProvider`, `DashboardCatalogProvider`, `ScheduledReportProvider`. Each seam is a typed interface + an Implementation symbol for DI; the implementation registers in M33's `SeamRegistry` at boot.
 
 **T-05: Seam adapters — consumed**
 Create adapters in `packages/reporting/src/adapters/` for every consumed seam (~30 across M5–M28, plus M22, M36, M39). Each adapter wraps the provider impl with OTel span and named error mapping.

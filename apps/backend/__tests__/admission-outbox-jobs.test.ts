@@ -3,7 +3,7 @@
 // enforces) against the §4.4 name list, and the two pure compliance-window scans (recompute +
 // window-alert) for status promotion + idempotency.
 import { Value } from "@sinclair/typebox/value";
-import { M6_EVENT_NAMES } from "@wardenx/types";
+import { M6_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   CLOSING_SOON_LEAD_MS,

@@ -1,8 +1,8 @@
 // GAP-068 — the single-request upload service: content gate (pure) + store-then-commit ordering over a
 // recording fake transaction (no DB, no MinIO). The real-DB/real-MinIO proof is the live suite.
 import { createHash } from "node:crypto";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryObjectStore } from "../seams/store";
 import {
@@ -12,7 +12,7 @@ import {
   verifyUploadContent,
 } from "./server-upload";
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   withOrgContext: async (db: { tx: unknown }, _ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn(db.tx),
 }));

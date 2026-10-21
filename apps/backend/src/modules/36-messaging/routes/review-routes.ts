@@ -12,9 +12,9 @@
 // reads it), which would leave the patients this queue discloses out of the Section 164.528 accounting. So the list is
 // audited as a multi-patient single read: one `messaging_review_item.viewed` event per distinct patient disclosed, all
 // against the first item's id. A restricted row carries no patient id and is skipped by construction.
-import { requirePermission } from "@wardenx/auth";
-import { REVIEW_LIST_DEFAULT } from "@wardenx/messaging";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { REVIEW_LIST_DEFAULT } from "@chartwarden/messaging";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ReviewActorRef, ReviewService } from "../review/review-service";
 import { parse } from "./messaging-typebox";

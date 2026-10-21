@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_spec_version` (M10 HOPE modernization Phase 1A). Platform reference table for
+// @chartwarden/db — `hope_spec_version` (M10 HOPE modernization Phase 1A). Platform reference table for
 // immutable CMS HOPE Data Specification releases. Org-independent and non-PHI; later import jobs load
 // the official CMS package rows against this version key.
 import { date, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";

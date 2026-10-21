@@ -6,7 +6,7 @@ import {
   PageHeader,
   humanizeIdentifier,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — DOC.VersionHistory (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "DOC.VersionHistory" — the per-document version chain with author/version metadata and a
 // signed-URL preview per version.
@@ -18,7 +18,7 @@ import {
 // surface this slice does not add. Built to the Lantern look: Detail Page pattern, the §6.2 Lantern
 // Card, mono identifiers (§3.1), No-Line table (§6.7), warm-paper surfaces, the §6.6 status pill. The SERVER
 // owns authz + legal-hold (ADR-0030); reads GET /api/v1/documents/:id (header) + GET
-// /api/v1/documents/:id/versions (cursor-paginated chain) via the typed client. Leaves only (@wardenx/ui).
+// /api/v1/documents/:id/versions (cursor-paginated chain) via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";

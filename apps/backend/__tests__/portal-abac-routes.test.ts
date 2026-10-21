@@ -4,8 +4,8 @@
 // keys, and the six §4.7 ABAC predicates decided over an injected resolver + ports. The cases that matter
 // pin the fail-CLOSED direction §8.2 turns on — a NON-portal session class denies every `portal.*`
 // predicate, an absent grant denies, and a live grant allows ONLY when the backing M39 consent is live.
-import { M31_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
-import type { AbacContext, AbacTarget } from "@wardenx/auth";
+import { M31_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
+import type { AbacContext, AbacTarget } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   M31_ABAC_PREDICATES,

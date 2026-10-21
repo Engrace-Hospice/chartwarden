@@ -11,9 +11,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

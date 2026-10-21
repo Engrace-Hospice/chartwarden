@@ -6,8 +6,8 @@
 // (failures raise the §2.4 code via AdmissionStateError), and returns the new state + the §2.5
 // in-transaction side-effect list the service executes. No IO; every fact a guard needs (M5 privacy
 // flags, the M9 48h window status) is resolved upstream and passed in.
-import type { AdmissionStatusValue } from "@wardenx/types";
-import type { LocalDate } from "@wardenx/types";
+import type { AdmissionStatusValue } from "@chartwarden/types";
+import type { LocalDate } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { AdmissionStateError, require_ } from "./errors";
 import { checkDeathCertifier } from "./validation";

@@ -4,8 +4,8 @@
 // (packages/orders ORDER_KIND_CONTRACT_STATUS / the closed dme.v2 + supply.v2 schemas); for the others the
 // payload says so (`detailsNote`) instead of dumping an open object, because `dme.v1`, `supply.v1` and
 // `ancillary_service.v1` are explicitly extensible and carry no reviewed field names.
-import type { schema } from "@wardenx/db";
-import { ORDER_KIND_CONTRACT_STATUS } from "@wardenx/orders";
+import type { schema } from "@chartwarden/db";
+import { ORDER_KIND_CONTRACT_STATUS } from "@chartwarden/orders";
 import {
   type ORDER_RECORD_KINDS,
   type OrderRecordRenderPayload,
@@ -13,7 +13,7 @@ import {
   type RenderDetailLine,
   type SignatureRecord,
   assertOrderRecordRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type RenderBuildCtx,
   RenderPayloadBuildError,

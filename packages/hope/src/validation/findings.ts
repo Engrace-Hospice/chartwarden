@@ -1,10 +1,10 @@
-// @wardenx/hope — the pre-submission validation finding descriptor + rule-id catalog (M10-T04; §3.3).
+// @chartwarden/hope — the pre-submission validation finding descriptor + rule-id catalog (M10-T04; §3.3).
 // PURE data. The CMS HOPE pre-submission validator (`validate-hope-assessment.ts`) returns these
 // descriptors; the recording/submission service (M10-T06/T07) maps each into a `hope_validation_finding`
 // row (rule_id / severity / section / item_code / message) inside the tenant transaction. Keeping the
-// descriptor distinct from the Drizzle row keeps the engine IO-free and `@wardenx/types`-only — this
-// package never imports `@wardenx/db`.
-import type { HopeValidationSeverity } from "@wardenx/types";
+// descriptor distinct from the Drizzle row keeps the engine IO-free and `@chartwarden/types`-only — this
+// package never imports `@chartwarden/db`.
+import type { HopeValidationSeverity } from "@chartwarden/types";
 
 /**
  * The stable `hope_validation_finding.rule_id` catalog (the CMS HOPE submission rule set v1; the spec's

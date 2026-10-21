@@ -10,9 +10,9 @@
 //  * EVERY enabled flip sets `changed_at = now()` (C2's reconcile treats a `ready` index as trustworthy only while
 //    `reconciled_at >= changed_at`) and `changed_by_user_id`. A repeat of the current value is not a flip: it writes nothing,
 //    except that OFF always (re)requests the purge and ON records a newly acknowledged notice version. Audit is the write-audit trigger on the table (who/when/old/new).
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import { CURRENT_NOTICE, type GlobalSearchNotice } from "./notice";
 import {

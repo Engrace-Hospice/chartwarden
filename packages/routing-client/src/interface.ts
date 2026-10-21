@@ -1,4 +1,4 @@
-// @wardenx/routing-client — the §4.10 D1 `RoutingProvider` adapter interface (M17-T01).
+// @chartwarden/routing-client — the §4.10 D1 `RoutingProvider` adapter interface (M17-T01).
 //
 // Per architecture §25.14 (the adapter mandate) this package is the ONLY place the routing endpoint lives;
 // dependency-cruiser (architecture-fitness §25.15 check #2) forbids any other module from calling OSRM/

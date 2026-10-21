@@ -1,6 +1,6 @@
 // The @-mention candidate lookup behind the composer popup: debounced GET of the channel's mention candidates for the
 // active query, the highlighted row, and an explicit retry. Moved out of ConversationThread unchanged to keep it small.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { MentionCandidate, MentionOption } from "./messaging-types";
 

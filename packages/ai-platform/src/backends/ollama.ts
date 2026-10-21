@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the Ollama (local model) vendor adapter (F-236, ADR-0048).
+// @chartwarden/ai-platform — the Ollama (local model) vendor adapter (F-236, ADR-0048).
 //
 // One adapter per `ai_model_backend` row of kind `local`, speaking to an Ollama server's `/api/chat`. PHI
 // sent here stays on infrastructure the tenant controls — which is the whole point of a `local_only`
@@ -22,7 +22,7 @@
 //
 // The served model is echoed back as `ollama/<model>` so the ledger's `model_version_pin` names the
 // model that actually ran, whatever the registry row expected.
-import type { AiBackendHealthStatus } from "@wardenx/types";
+import type { AiBackendHealthStatus } from "@chartwarden/types";
 import type {
   ModelBackend,
   ModelBackendCapabilities,

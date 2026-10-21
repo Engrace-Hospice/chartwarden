@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the M31 portal session binder (M2-owned; F-030 / #75).
+// @chartwarden/auth · identity — the M31 portal session binder (M2-owned; F-030 / #75).
 //
 // M31 owns the portal ACCOUNT and the access GRANT; M2 owns the `session` row. Before this, nothing
 // connected the two: M31's `select-patient` route resolved the grant, computed the binding, returned it
@@ -16,7 +16,7 @@
 // refused rather than silently rescoped — the store's update is org-scoped and the row's class is
 // re-checked, so neither call can convert a staff session into a portal one or move a portal session
 // between tenants.
-import type { OrgScope, PortalSessionBinder, PortalSessionClass } from "@wardenx/types";
+import type { OrgScope, PortalSessionBinder, PortalSessionClass } from "@chartwarden/types";
 import { isPortalSessionClass } from "./session-classes";
 
 /** The `session` row fields the binder reads back to verify what it is about to write onto. */

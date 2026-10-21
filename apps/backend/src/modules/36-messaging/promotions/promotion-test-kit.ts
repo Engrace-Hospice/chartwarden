@@ -1,8 +1,8 @@
 // WP 3.7 test support: a fully in-memory promotion service (memory store, fake db, captured outbox, controllable ports) and
 // source reader. Not a test file itself; the *.test.ts files in this directory build on it.
-import type { DbClient } from "@wardenx/db";
-import { messageBodySha256 } from "@wardenx/messaging";
-import { ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { messageBodySha256 } from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { type PromotionService, createPromotionService } from "./promotion-service";
 import type { PromotionBodyPorts, StoredBody } from "./promotion-snapshot";
 import { createPromotionSourceReader } from "./promotion-source-reader";

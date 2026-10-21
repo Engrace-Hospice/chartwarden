@@ -11,8 +11,8 @@
 // ABAC. List is fully live (repo → withPlatformContext → typed page). Qualify ENQUEUES the §4.3
 // `tenant.provision` job through the service's injected enqueue port; the live BullMQ worker construction
 // is Phase 2D (see platform/service.ts TODO). Mirrors the sibling tenants.ts plugin shape.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   IntentParamsSchema,

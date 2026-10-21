@@ -37,8 +37,8 @@
 // RELAY, NOT A REQUEST: `handle` runs in the outbox relay and opens no tenant reads itself — `alerts.emit` and each
 // lookup wrap their own `withOrgContext` with the event's org id.
 import { Value } from "@sinclair/typebox/value";
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
-import type { AlertPayloadEntry } from "@wardenx/types";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
+import type { AlertPayloadEntry } from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

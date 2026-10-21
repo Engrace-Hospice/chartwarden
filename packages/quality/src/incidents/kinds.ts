@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §2.3 / D8 incident-kind catalog + per-kind required-field rules (P2a).
+// @chartwarden/quality — M30 §2.3 / D8 incident-kind catalog + per-kind required-field rules (P2a).
 //
 // The incident taxonomy (V-14; the module spec's six-kind V-14 lock plus `restraint_use`, added F-185
 // #248) as a PURE domain catalog: per-kind metadata, the required
@@ -10,7 +10,7 @@
 // `kind_data` is the open `IncidentKindData` jsonb payload (free-text members narrativeText / witnessNames
 // / patientQuote / staffQuote are §3.6 audit-denylisted). The validation predicates below check only that
 // the per-kind STRUCTURAL required members are present and non-empty — clinical content is never inspected.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { IncidentKind, IncidentSeverity } from "../contracts";
 
 /**

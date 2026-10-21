@@ -1,4 +1,4 @@
-// @wardenx/cap-management — PS&R (Provider Statistical & Reimbursement) reconciliation (D9, Phase 1 = CSV).
+// @chartwarden/cap-management — PS&R (Provider Statistical & Reimbursement) reconciliation (D9, Phase 1 = CSV).
 // The MAC's PS&R report is the MAC's view of the hospice's cap status; M26 ingests the quarterly CSV, diffs
 // each figure against its running ledger, and routes any variance above the per-tenant threshold (default
 // $50) to the cap_psr_reconciliation queue with a categorical reason for the billing clerk.

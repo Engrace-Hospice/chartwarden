@@ -11,7 +11,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 
 // apps/web/src/modules/09-assessments — Clinical Assessments Suite (M9 §5.1/§5.2, Track B / ADR-0030).
 

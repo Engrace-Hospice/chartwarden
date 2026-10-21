@@ -16,8 +16,8 @@
 // A pull that returns ZERO entries is still ingested (ledger row, `rowsCreated: 0`, event emitted): that is
 // the §5.5 edge "DoseSpot returns 0 entries — the M14 IDG packet shows 'No external medication history
 // available' explicitly", which must be distinguishable from "never pulled".
-import { type DbClient, schema } from "@wardenx/db";
-import type { DoseSpotMedHistoryItem, DoseSpotMedHistoryResponse } from "@wardenx/dosespot";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { DoseSpotMedHistoryItem, DoseSpotMedHistoryResponse } from "@chartwarden/dosespot";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 
 const PULL = schema.medicationHistoryPulls;

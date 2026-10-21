@@ -1,4 +1,4 @@
-import type { NewHl7InboundProposalRow } from "@wardenx/db/schema";
+import type { NewHl7InboundProposalRow } from "@chartwarden/db/schema";
 // apps/backend/src/modules/29-external-interfaces/proposals — cascade-outcome → proposal-creation planning (M29-T04 /
 // T-29.06 §2.1/§4). PURE. Translates a {@link MatchOutcome} + the ADT message context + the parsed
 // candidate into either:
@@ -15,7 +15,7 @@ import type {
   Hl7InboundMatchOutcome,
   Hl7InboundProposalKind,
   Hl7ProposalOwnerModule,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { MatchOutcome } from "../inbound/match-cascade";
 import type { CascadeMessageContext } from "../inbound/outcome-router";
 import { MESSAGE_TYPE_ROUTING, isSupportedAdt } from "./message-type-routing";

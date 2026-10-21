@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_capability_snapshot` (M28 §3.3, D11). The platform-singleton CapabilityStatement:
+// @chartwarden/db — `fhir_capability_snapshot` (M28 §3.3, D11). The platform-singleton CapabilityStatement:
 // the boot-generated conformance JSON, its sha256 checksum, and an HMAC-SHA256 signature over the
 // checksum. `/fhir/r4/metadata` returns the snapshot; the hourly validator detects tampering.
 //

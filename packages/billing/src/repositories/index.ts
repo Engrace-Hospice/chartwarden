@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories barrel (M23 §3.3).
+// @chartwarden/billing · repositories barrel (M23 §3.3).
 //
 // Drizzle data ports over the 17 M23-owned tables. Each repo is a thin reader/writer that takes the
 // Drizzle client (`BillingDb` — the pooled client or a `withOrgContext` transaction handle) in its

@@ -5,7 +5,7 @@ const ORIGINAL_TZ = process.env.TZ;
 process.env.TZ = "America/Los_Angeles";
 
 import { render, screen } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

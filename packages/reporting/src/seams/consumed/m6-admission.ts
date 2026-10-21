@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M6 (Admission, Election & Certification). PRESENT (§4.4).
+// @chartwarden/reporting — consumed-seam view of M6 (Admission, Election & Certification). PRESENT (§4.4).
 //
 // M33 reads admission census + LOC-day + election/F2F compliance aggregates. Bound to the live M6
 // `AdmissionCensusReader` / `LevelOfCareReader` / `ElectionPeriodReader` / `FaceToFaceReader` via

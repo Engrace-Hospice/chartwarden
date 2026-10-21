@@ -1,5 +1,5 @@
 // apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts — M7-T05 the §4.1 route inventory
-// behind the REAL Authorization Contract (`requirePermission` from @wardenx/auth, M3) on the §4.5 keys
+// behind the REAL Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.5 keys
 // M7 contributes to M3's catalog (M7_CONTRIBUTED_PERMISSIONS). Org binding is server-side
 // (`request.context`, never the body). Handlers compose over the injected `CarePlanRouteService`
 // (in-memory slice; Drizzle in prod under withOrgContext so RLS backstops).
@@ -16,9 +16,9 @@
 // discipline being authored). `dpoa_active`/`sud_disclosure_allowed` stay as the existing
 // `dpoaConsentActive`/`sudDisclosureAllowed` closures below (per-element data-shaping, not a route
 // gate; wiring their real seam-backed implementations at boot is GAP-013, a separate finding).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
-import type { InterventionDiscipline } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
+import type { InterventionDiscipline } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { disciplineScopeOf, membershipIdOf } from "../abac-predicates";

@@ -27,7 +27,7 @@
 // SCOPE (FB-T05): message BODIES are envelope-encrypted under the per-tenant DEK (bytea body_cipher)
 // at write time and decrypted for entitled readers on the thread read — the shared `MessageBodyCipher`
 // loads the master KEK lazily so a read-only deployment without MESSAGING_ENCRYPTION_KEY still boots.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   AlertCategory,
   AlertInboxItem,
@@ -50,7 +50,7 @@ import type {
   QuietHoursConfig,
   ResolvedMessage,
   RoutingMap,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   type MemberAdminActor,
   PLATFORM_DEFAULT_ALERT_RULES,
@@ -62,8 +62,8 @@ import {
   isSystemLockedEventType,
   mayManageChannelMembersResolved,
   rollUpAlertOutcome,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   ForbiddenError,
@@ -72,7 +72,7 @@ import {
   ChartWardenError,
   formatMrn,
   richBodySbar,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { cancelOpenRequestForMessage } from "./ack-requests/ack-cancel";

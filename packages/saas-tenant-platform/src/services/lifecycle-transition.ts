@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — §2.2 D2 tenant-lifecycle state machine (M34). Pure, IO-free.
+// @chartwarden/saas-tenant-platform · services — §2.2 D2 tenant-lifecycle state machine (M34). Pure, IO-free.
 //
 // The eleven-state tenant_account lifecycle (§2.2 / §3.3 `tenant_account_status`):
 //

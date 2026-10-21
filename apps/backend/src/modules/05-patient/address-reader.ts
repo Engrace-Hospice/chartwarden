@@ -9,9 +9,9 @@
 // Reads run under `withOrgContext` so Postgres RLS scopes them to the calling org. "Current" means the
 // row with `effective_to IS NULL` (M5's append-only address-history convention); "primary" is the
 // `is_primary` flag M5 maintains as at most one true row per patient.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientAddressReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientAddressReader } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 
 export function buildPatientAddressReader(db: DbClient): PatientAddressReader {

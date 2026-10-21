@@ -7,9 +7,9 @@
 // returns the wrong row, not an error). Nothing here uses a correlated subquery: every one-to-many fact is a
 // real JOIN + GROUP BY, where Drizzle qualifies each column, and the test that guards it
 // (`m37-lifecycle-crons.live.test.ts`) seeds two rows with DIFFERENT facts so a mis-binding changes the answer.
-import { type DbClient, schema } from "@wardenx/db";
-import { INSPECTION_DUE_WARN_DAYS, RESERVATION_HOLD_HOURS } from "@wardenx/inpatient";
-import type { IpuAdmissionKind, IpuAdmissionState } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { INSPECTION_DUE_WARN_DAYS, RESERVATION_HOLD_HOURS } from "@chartwarden/inpatient";
+import type { IpuAdmissionKind, IpuAdmissionState } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { M37_SYSTEM_MEMBERSHIP_ID } from "../routes/system-actor";
 import {

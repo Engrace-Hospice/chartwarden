@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/alert-rule-seed-persister.ts — GAP-096.
 //
 // Boot-populate `alert_rule`'s platform-default rows (organization_id IS NULL) from
-// `PLATFORM_DEFAULT_ALERT_RULES` (@wardenx/messaging). The package's own doc comments already call
+// `PLATFORM_DEFAULT_ALERT_RULES` (@chartwarden/messaging). The package's own doc comments already call
 // this "the boot slice UPSERT" (`toNewAlertRuleRows`'s doc: "the boot slice UPSERTs into alert_rule")
 // and gate boot on `assertAlertRuleSeedValid()` — the write side was simply never wired, mirroring
 // `apps/backend/src/bootstrap/organization-settings-persister.ts`'s exact prior gap (a header comment
@@ -20,8 +20,8 @@
 // its own dedicated `alert_rule_admin_all` policy), EXECUTE-granted to `wardenx_app` — so this runs over
 // the SAME ordinary `dbHandle.db` connection every other boot-populate uses, no separate platform
 // credential required. `organization_id` is hardcoded NULL inside the function body, never a parameter.
-import type { DbClient } from "@wardenx/db";
-import { PLATFORM_DEFAULT_ALERT_RULES, assertAlertRuleSeedValid } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import { PLATFORM_DEFAULT_ALERT_RULES, assertAlertRuleSeedValid } from "@chartwarden/messaging";
 import { sql } from "drizzle-orm";
 
 /** Idempotent UPSERT of the platform-default `alert_rule` rows via the migration-0193 SECURITY

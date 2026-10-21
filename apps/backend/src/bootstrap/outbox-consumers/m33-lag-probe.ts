@@ -16,7 +16,7 @@
 // `pollPlatform()` loop), and a genuinely later, different lag sample simply overwrites the row with a
 // newer status — the identical "last write wins" semantics `SystemStatusReader.upsert`'s own admin route
 // already carries for a human-authored status flip.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type { PlatformDispatchableOutboxEvent } from "../outbox-dispatcher";
 
 /** The stable `system_status.id` this probe owns — matches the §4.9 M36 alert's own component naming. */

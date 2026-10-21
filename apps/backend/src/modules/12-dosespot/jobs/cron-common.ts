@@ -1,9 +1,9 @@
 // apps/backend/src/modules/12-dosespot/jobs/cron-common.ts — shared plumbing for the §4.8 M12 crons (GAP-037).
 // Every cron is ORG-EXPLICIT: a tick fans out over the active orgs and runs one pass per org, each opening its
 // own `withOrgContext` (a cron tick is not a request). The vendor call is NEVER made inside a transaction.
-import type { DbClient } from "@wardenx/db";
-import { type DegradedError, type DoseSpotClient, isDegradedError } from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { type DegradedError, type DoseSpotClient, isDegradedError } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 
 /** A worker-driven write names no acting membership (the M12 sync worker's convention). */

@@ -1,4 +1,4 @@
-// @wardenx/reporting — the `ReportDefinitionSpec` TypeBox schema (M33 §4.2).
+// @chartwarden/reporting — the `ReportDefinitionSpec` TypeBox schema (M33 §4.2).
 //
 // The runtime validator for a tenant-authored `report_definition_version.spec` (D4). A tenant never
 // writes SQL: they pick a platform-shipped `report_base_key`, then select `dimensions[]` / `measures[]`

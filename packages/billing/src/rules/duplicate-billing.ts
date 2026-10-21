@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `duplicate_billing_check` (duplicates, error, regulatory). No overlapping
+// @chartwarden/billing — §4.5 rule `duplicate_billing_check` (duplicates, error, regulatory). No overlapping
 // date range may exist within the same patient + CCN, and no duplicate of a previously-accepted claim.
 // The §3.4 partial unique index is the STRUCTURAL backstop; this rule is the user-facing surfacing. In
 // the pure domain the only cross-claim fact materialized is the immediately-prior claim's through-date,

@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §7.7 / D10: the 6-month CoP review-cadence logic (WF-17).
+// @chartwarden/quality — M30 §7.7 / D10: the 6-month CoP review-cadence logic (WF-17).
 //
 // Every `cop_compliance_status` row carries a `last_reviewed_at` attestation and a `next_review_due_at`
 // derived from it. CMS expects the Compliance Officer to re-attest each citation on a 6-month default
@@ -10,7 +10,7 @@
 // caller injects `now`. Invalid timestamps throw a `ChartWardenError`. The recompute/alert worker (a LATER
 // phase) calls `computeNextReviewDueAt` to persist `next_review_due_at` on attestation, and
 // `evaluateReviewCadence` to decide whether the overdue alert fires.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The default CoP review cadence in days (6 months, WF-17). */
 export const COP_REVIEW_CADENCE_DAYS = 180;

@@ -1,4 +1,4 @@
-// @wardenx/triage-vendors — Module 19's external-triage-vendor adapter package (the §25.14 adapter-mandate
+// @chartwarden/triage-vendors — Module 19's external-triage-vendor adapter package (the §25.14 adapter-mandate
 // boundary, ADR-0028). This is the ONLY place a triage vendor's endpoint, credentials and payload shape
 // may live; dependency-cruiser forbids any other module from importing a vendor SDK or hitting a vendor
 // URL.

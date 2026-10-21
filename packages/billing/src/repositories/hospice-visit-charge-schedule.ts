@@ -1,10 +1,10 @@
-// @wardenx/billing · repositories — `hospice_visit_charge_schedule` (migration 1056; the TENANT-ENTERED, effective-dated
+// @chartwarden/billing · repositories — `hospice_visit_charge_schedule` (migration 1056; the TENANT-ENTERED, effective-dated
 // charge per 15-minute unit per visit discipline). ORG-SCOPED, no PHI. APPEND-ONLY exactly like `hospice_rate_table`:
 // rows are inserted and SUPERSEDED (`superseded_at`/`superseded_by_id`, the only app-updatable columns — column GRANT +
 // `hospice_visit_charge_schedule_guard` trigger); a charge is never edited in place and there is no delete surface.
 // "Live" = `superseded_at IS NULL`; the DB EXCLUDE constraint guarantees at most one live version covers any date per
 // provider entity.
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

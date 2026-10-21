@@ -2,7 +2,7 @@
 // (spec §7.1 / §7.7). Backed by GET .../provision-status (the BullMQ `tenant.provision` job state) and
 // POST .../provision/retry. A failed job leaves the tenant in `provisioning` until someone intervenes, so this is
 // where an operator sees that it failed, why, and re-runs it.
-import { Button, InlineAlert, useApiClient, useRequestGuard } from "@wardenx/ui";
+import { Button, InlineAlert, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 

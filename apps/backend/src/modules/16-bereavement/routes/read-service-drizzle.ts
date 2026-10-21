@@ -22,9 +22,9 @@ import {
   evaluateExternalSourceGate,
   isClosedPlanStatus,
   isWithinOptOutRescindWindow,
-} from "@wardenx/bereavement";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavementExternalSourceMetadata,
   BereavementOutreachKind,
@@ -35,7 +35,7 @@ import type {
   IsoInstant,
   M16OutreachStats,
   MembershipId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
 import { COP_DENOMINATOR_STATUSES, COP_NUMERATOR_STATUSES } from "../seams/store";

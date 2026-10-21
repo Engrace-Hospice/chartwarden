@@ -12,7 +12,7 @@
 //     requires a client-supplied `Idempotency-Key`. This is the HTTP-layer guard against a duplicate
 //     client submission; it is NOT the §4.9 worker-side state-check, which §4.9's own note is explicit
 //     about keeping orthogonal.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

@@ -1,4 +1,4 @@
-import { Button, SelectField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the §3.3 tag editor (#91's M22 row, unblocked by #153).
 //
 // This surface was not deferred by preference; it was UNBUILDABLE. `document_tag` had two writers and

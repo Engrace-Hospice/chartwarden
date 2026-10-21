@@ -1,7 +1,7 @@
 // M36 WP 3.1 - the tiles of the patient context panel. A pure view of GET /messaging/patients/:id/context: the server
 // decides which tiles the caller may see (a denied tile is simply absent here, never a blank card), a failing source shows
 // "temporarily unavailable" rather than "none", and every tile says when it was read and links to the owning screen.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

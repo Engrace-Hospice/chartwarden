@@ -1,10 +1,10 @@
-// @wardenx/supplies — the §2.2 / D2 supply-request lifecycle as pure data.
+// @chartwarden/supplies — the §2.2 / D2 supply-request lifecycle as pure data.
 //
 // The XState actor (`statemachines/supply-request.machine.ts`, M21-T03) is BUILT FROM this table rather
 // than restating it, so the graph the machine runs and the graph the tests and the UI timeline read are
 // the same object. PURE — no IO, no clock.
 
-import type { SupplyRequestKind, SupplyRequestStatus } from "@wardenx/types";
+import type { SupplyRequestKind, SupplyRequestStatus } from "@chartwarden/types";
 
 import { KIT_REQUEST_KINDS, SUPPLY_REQUEST_TERMINAL_STATUSES } from "./policy";
 

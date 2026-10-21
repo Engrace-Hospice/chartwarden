@@ -1,4 +1,4 @@
-// @wardenx/billing — filing a corrected NOE / NOTR after Medicare rejected one. PURE.
+// @chartwarden/billing — filing a corrected NOE / NOTR after Medicare rejected one. PURE.
 //
 // A NOE or NOTR the 999 or 277CA rejected never reached the CWF: no election (or termination) was established.
 // The fix is a NEW original notice (TOB 8xA / 8xB) — M23 §2.2: "corrected NOE is its own row". It is NOT the

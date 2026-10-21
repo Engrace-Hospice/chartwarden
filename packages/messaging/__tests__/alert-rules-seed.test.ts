@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T05 platform-default alert-rule seed tests (spec §3.10, §7.4).
+// @chartwarden/messaging — M36-T05 platform-default alert-rule seed tests (spec §3.10, §7.4).
 //
 // §7.4 "tenant cannot disable system_locked rules": the seed is the source of WHICH rules carry
 // the flag (the DB RLS in M36-T03 enforces the can't-disable at runtime). These tests lock the

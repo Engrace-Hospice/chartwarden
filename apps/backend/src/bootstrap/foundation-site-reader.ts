@@ -11,7 +11,7 @@
 // precedent in ./provider-entity-resolver.ts): the reads run inside the consumer's own `withOrgContext`
 // transaction, so RLS scopes them to the same `app.org_id` and they see the same snapshot the consumer's
 // write does. No method opens its own transaction or switches tenants.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
 const PROVIDER = schema.providerEntities;
@@ -53,7 +53,7 @@ export interface FoundationSiteReader {
    * F-166 (#248) — the location's IANA timezone, for M13's §2.3 D2 scheduled-dose materializer (DST-exact
    * administration-instant resolution). `location.timezone` is NOT NULL when the row exists; null here
    * means the id does not resolve (unknown / deleted), never "no timezone set" — the caller falls back
-   * to the platform's own documented default zone for that case (`@wardenx/emar`'s
+   * to the platform's own documented default zone for that case (`@chartwarden/emar`'s
    * `DEFAULT_ORDER_TIME_ZONE`, the same fallback M10's `m6-admission-workflow.ts` consumer already uses).
    */
   locationTimezone(tx: DbClient, locationId: string): Promise<string | null>;

@@ -1,11 +1,11 @@
-// @wardenx/cost-report · repositories — the pre-submission validation cluster: `cost_report_validation`
+// @chartwarden/cost-report · repositories — the pre-submission validation cluster: `cost_report_validation`
 // (one row per run with rolled-up counts + rule-set-version pinning — a 2027 rule-set update does not
 // retroactively alter a 2026 history; `failed_to_run` captures infra failures distinct from rule
 // failures — D9), its `cost_report_validation_result` children (one row per rule applied), and the
 // `cost_report_validation_override` per-result override (elevated approval + step-up + reason; UNIQUE per
 // result — D14) (M27 §3.3). ORG-SCOPED; the validation service wraps these in `withOrgContext` and owns
-// the run lifecycle (the pure rule engine `runValidation`/`DEFAULT_RULES` lives in @wardenx/cost-report).
-import { schema } from "@wardenx/db";
+// the run lifecycle (the pure rule engine `runValidation`/`DEFAULT_RULES` lives in @chartwarden/cost-report).
+import { schema } from "@chartwarden/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

@@ -3,7 +3,7 @@
 // tones, the deadline indicator, and the client-side checks of the three forms. The server re-evaluates everything
 // (state machine, MBI screen, acceptance transition); these checks only keep an incomplete form from being sent.
 // NO MBI is shown or sent from here, and notes are never logged.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 export type DdeItemType =
   | "noe"
@@ -194,7 +194,7 @@ function squash(text: string): string {
 }
 
 /**
- * Best-effort mirror of the server's note screen (`looksLikeMbi` in @wardenx/billing): NFKD-normalise, drop marks and
+ * Best-effort mirror of the server's note screen (`looksLikeMbi` in @chartwarden/billing): NFKD-normalise, drop marks and
  * everything that is not a letter or digit, turn a non-ASCII lookalike into a wildcard of its own kind (a letter where
  * the MBI has a letter, a numeral where it has a digit), and look for any MBI-shaped 11-character window. A letter
  * lookalike for a DIGIT (Cyrillic Ze for 3) is a known, accepted gap. The server is the authority; this only stops

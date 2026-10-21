@@ -22,15 +22,15 @@
 // Idempotent: each decision is a function of the CURRENT snapshot, so a redelivery that finds the change
 // already applied decides "no change" and emits nothing. A null/unknown patient is a silent no-op (the
 // convention of every M5 consumer); a malformed payload throws (dead-letter for a human).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_DETECTED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
   M22_INTAKE_SUD_RELINKED_EVENT,
   M22_INTAKE_SUD_WITHDRAWN_EVENT,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { M5OutboxPort } from "../deceased-db";

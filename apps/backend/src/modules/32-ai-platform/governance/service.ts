@@ -21,12 +21,12 @@ import {
   evaluateAiTenantOptInPause,
   evaluateAiTenantOptInWithdrawal,
   requireAiGovernance,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 // apps/backend/src/modules/32-ai-platform/governance/service.ts — M32-T03's governance SERVICES: the
 // capability lifecycle (§2.2), calibration publication (§3.2.3), tenant opt-in (§5.3/W4) and clinician
 // opt-out (§5.4), sequenced over the `./store` ports.
 //
-// Shape of every command: read the facts → run the PURE rule from `@wardenx/ai-platform/governance`
+// Shape of every command: read the facts → run the PURE rule from `@chartwarden/ai-platform/governance`
 // over them → write what the rule's patch says, and nothing else. No business rule lives here and none
 // lives in SQL; this file is the wiring between the two, which is why it is short relative to what it
 // decides.
@@ -60,7 +60,7 @@ import type {
   AiLifecycleApprovalKind,
   AiRoutingMode,
   AiRoutingPreference,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import type {
   AiCalibrationRow,

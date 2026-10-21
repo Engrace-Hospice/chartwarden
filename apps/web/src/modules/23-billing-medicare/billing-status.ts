@@ -15,7 +15,7 @@
 // NOE/NOTR WINDOW STATE is the §5.1 anchor (the countdown-to-windowTargetAt badge on every queue card):
 // in_window → success · at_risk → warning · breached → error. The six-tone vocab has no separate amber —
 // `warning` IS amber (the clock glyph), which is exactly correct for an at-risk filing window.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // ── claim lifecycle (§2.5 claim_state) ────────────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@
 // membership of this org). The route composes the same rule as a `requireAbac` preHandler; this guard repeats
 // it so a worker/other caller of the service cannot bypass the route. The confirmer is never named on the wire:
 // it is the nominee persisted on the row, compared with the session's membership id.
-import { ConflictError, ForbiddenError, StepUpRequiredError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, StepUpRequiredError } from "@chartwarden/types";
 import {
   ROLE_COMPLIANCE_OFFICER,
   ROLE_MEDICAL_DIRECTOR,

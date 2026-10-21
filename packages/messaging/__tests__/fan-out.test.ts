@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T04 fan-out tests (spec §2.1, §2.4.4, §2.5, §2.6).
+// @chartwarden/messaging — M36-T04 fan-out tests (spec §2.1, §2.4.4, §2.5, §2.6).
 //
 // The pure planner: in-app floor is unconditional, out-of-band is additive per preference (or
 // the rule override), voice is SOS-only, quiet hours skip below the override floor, and vacation

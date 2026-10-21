@@ -10,9 +10,9 @@
 // a log line, or a stack trace), and the withheld category rides `redacted_categories`. The §4.1
 // `caseload_or_scope` equivalent runs BEFORE the query (`actorMayReadPatient`) and answers `null` — the
 // route turns that into a 404, so an off-caseload plan is indistinguishable from a non-existent one.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { FiscalYear, IsoInstant, MembershipId, ProviderEntityId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { FiscalYear, IsoInstant, MembershipId, ProviderEntityId } from "@chartwarden/types";
 import { and, asc, desc, eq, gt, lt, lte, or, sql } from "drizzle-orm";
 import {
   evaluateSupervisoryCadence,

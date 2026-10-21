@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the two platform-housekeeping services (M34 §3.7 / §3.9):
+// @chartwarden/saas-tenant-platform · services — the two platform-housekeeping services (M34 §3.7 / §3.9):
 //
 //   (a) runBundleExpirySweep  — the 7-day DSAR/tenant-export bundle-expiry reaper (D19). Walks the
 //       fulfilled DSAR + tenant-export jobs whose presigned-URL TTL has passed, deletes the underlying

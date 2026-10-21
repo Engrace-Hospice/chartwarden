@@ -11,7 +11,7 @@
 // Layout follows the redesign's list + right drawer (the Hospice Rates / Admissions pattern): KPI tiles, the flat
 // `wx-list-table`, and an `aside.wx-admission-drawer` for the selected order. Visibility of the recovery controls follows
 // the session's grants as a UX cue only; the server is the only enforcement point (ADR-0030).
-import { formatMrn } from "@wardenx/types";
+import { formatMrn } from "@chartwarden/types";
 import {
   Button,
   EmptyState,
@@ -25,7 +25,7 @@ import {
   t,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";

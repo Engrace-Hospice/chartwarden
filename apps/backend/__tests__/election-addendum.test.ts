@@ -1,7 +1,7 @@
 // FY2027 election statement addendum (42 CFR 418.24(b)(6), (c), (d); CMS-1851-F) — pure unit tests: the
 // state machine, the (d)(1)/(d)(2) calendar-day clocks and the 2026-10-01 cutoff, item merging, the M7
 // consumer's decision, the M36 alert plan, the activation-gate item and the M22 templates' 418.24 elements.
-import type { NonCoveredItemSnapshot } from "@wardenx/types";
+import type { NonCoveredItemSnapshot } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   ELECTION_ADDENDUM_MANDATORY_FROM,

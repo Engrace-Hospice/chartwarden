@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { expo } from "@better-auth/expo";
 import { passkey } from "@better-auth/passkey";
-// @wardenx/auth · identity — Better Auth integration (M2-T01; M2 spec §1, §3.1).
+// @chartwarden/auth · identity — Better Auth integration (M2-T01; M2 spec §1, §3.1).
 //
 // This file is the ONE place `better-auth` may be imported (vendor-adapter mandate,
 // ARCHITECTURE §25.14 / manifest VENDOR_ADAPTERS["better-auth"] = "packages/auth";
@@ -20,7 +20,7 @@ import { passkey } from "@better-auth/passkey";
 // (password-policy), the org / two-factor / passkey / magic-link plugins (M2-T02+), the
 // explicit step-up route that writes the step-up fields (M2-T05), and the published
 // session seams (M2-T07) land in their own tasks.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";

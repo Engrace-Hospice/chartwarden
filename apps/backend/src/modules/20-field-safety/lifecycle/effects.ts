@@ -32,7 +32,7 @@ import type {
   SafetySosLifecycleState,
   SafetySosOutcome,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The timestamp columns a transition may stamp — exactly the ones migration 0110 created.

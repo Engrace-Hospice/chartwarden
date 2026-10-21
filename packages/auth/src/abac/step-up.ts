@@ -1,4 +1,4 @@
-// @wardenx/auth · abac — the `step_up_recent` freshness/factor decision (M3-T07; spec §4.2.1).
+// @chartwarden/auth · abac — the `step_up_recent` freshness/factor decision (M3-T07; spec §4.2.1).
 //
 // `requireStepUp(opKey)` (require-abac.ts) is a thin `requireAbac` over the `step_up_recent`
 // predicate. The predicate itself is registered at boot by M3 (apps/backend/src/modules/
@@ -9,9 +9,9 @@
 //
 // FAIL CLOSED (§2.2): a session with no step-up, a non-qualifying factor (SMS — see STEP_UP_POLICY),
 // a future-dated stamp (clock skew), or an expired window all deny. The platform-floor policy
-// (`STEP_UP_POLICY`, @wardenx/types leaf) is the baseline; tenants may only TIGHTEN it per-operation
+// (`STEP_UP_POLICY`, @chartwarden/types leaf) is the baseline; tenants may only TIGHTEN it per-operation
 // via M2's override resolver (M2-T05) — never loosen — so applying the floor here is the safe default.
-import type { SessionStepUpFields, StepUpPolicy } from "@wardenx/types";
+import type { SessionStepUpFields, StepUpPolicy } from "@chartwarden/types";
 
 /**
  * Whether a session's step-up state satisfies `policy` as of `nowMs`. Pure — the boot-registered

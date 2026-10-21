@@ -28,11 +28,11 @@
 // pending, suspended) is skipped, and an active one that has no audience binding keeps whatever roles the tenant
 // admin left it, so a tenant admin who removed the role is respected.
 import { randomUUID } from "node:crypto";
-import { audit } from "@wardenx/audit";
-import { PLATFORM_ALERT_AUDIENCE_ROLE_KEY, PLATFORM_OPS_ROLE_KEY } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { audit } from "@chartwarden/audit";
+import { PLATFORM_ALERT_AUDIENCE_ROLE_KEY, PLATFORM_OPS_ROLE_KEY } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 /** The role they are bound with inside the tenant. */

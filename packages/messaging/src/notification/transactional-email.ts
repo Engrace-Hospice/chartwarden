@@ -1,4 +1,4 @@
-// @wardenx/messaging — outbound TRANSACTIONAL email transport (M36; FB-T14, DR/INT #14).
+// @chartwarden/messaging — outbound TRANSACTIONAL email transport (M36; FB-T14, DR/INT #14).
 //
 // M36 owns outbound email in the integration catalog (manifest VENDOR_ADAPTERS["postmark"] =
 // "packages/messaging"; M2_DR_INT_INVENTORY §2.2 #14 — "Postmark email ... Owner = M36"). The auth

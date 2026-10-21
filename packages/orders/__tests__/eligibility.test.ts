@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.1/§2.2/§4.7 discipline_can_order + signer_eligible — M11-T03.
+// @chartwarden/orders — §2.1/§2.2/§4.7 discipline_can_order + signer_eligible — M11-T03.
 import { describe, expect, it } from "vitest";
 import {
   LPN_DRAFTABLE_KINDS,

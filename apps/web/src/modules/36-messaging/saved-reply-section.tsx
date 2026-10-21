@@ -1,7 +1,7 @@
 // M36 WP 2.8 - a list of editable saved replies with an add form: used for "My saved replies" (personal) and, for a
 // template manager, "Organization templates" (shared). The caller supplies the three writes, so this component never
 // knows which scope it is editing and the server stays the only authority on who may.
-import { Button, ConfirmDialog, EmptyState, InlineAlert, Panel } from "@wardenx/ui";
+import { Button, ConfirmDialog, EmptyState, InlineAlert, Panel } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { CATEGORY_LABEL, type ReplyDraft, type SavedReply } from "./saved-replies-types";

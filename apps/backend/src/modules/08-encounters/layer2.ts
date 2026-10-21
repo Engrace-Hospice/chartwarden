@@ -1,6 +1,6 @@
 // apps/backend/src/modules/08-encounters/layer2.ts — §2.6 D5 Layer-2 eligibility, resolved once (#123).
 //
-// D5 is a five-gate ladder and the module has always owned it: `@wardenx/hearthnote`'s
+// D5 is a five-gate ladder and the module has always owned it: `@chartwarden/hearthnote`'s
 // `evaluateLayer2Eligibility` is pure, tested, and returns the FIRST failing gate in priority order —
 // a REASON, not a boolean. Two places need that answer and used to disagree about it:
 //
@@ -21,8 +21,8 @@ import {
   DEFAULT_HEARTHNOTE_FLAGS,
   type Layer2TenantEligibility,
   evaluateLayer2Eligibility,
-} from "@wardenx/hearthnote";
-import type { Layer2EligibilityReason } from "@wardenx/types";
+} from "@chartwarden/hearthnote";
+import type { Layer2EligibilityReason } from "@chartwarden/types";
 
 /**
  * The per-tenant half of the D5 ladder, every gate at its DENY value.
@@ -51,7 +51,7 @@ export function resolveLayer2Eligibility(): Layer2EligibilityReason {
 
 /**
  * What route 12 answers. Only the `enhanced: false` arm exists, and that is deliberate: `Layer2Outcome`
- * in `@wardenx/hearthnote` is itself typed `enhanced: false` while the real M32 dispatch is unbuilt, so
+ * in `@chartwarden/hearthnote` is itself typed `enhanced: false` while the real M32 dispatch is unbuilt, so
  * publishing an `enhanced: true` arm would put a shape in the contract that no code path can produce —
  * the published API and the implementation agreeing with each other and both being wrong about what the
  * route does. The arm is added when Wave H can return it, and the compiler will require it then.

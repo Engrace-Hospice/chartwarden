@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — the `TenantKeyProvider` seam (M34 §4.6, D5).
+// @chartwarden/saas-tenant-platform — the `TenantKeyProvider` seam (M34 §4.6, D5).
 //
 // THE CRITICAL D5 SEAM. M1's envelope-encryption helper imports THIS interface to obtain a tenant's
 // active DEK — so the contract is defined HERE and M1 implements it (the dependency direction runs

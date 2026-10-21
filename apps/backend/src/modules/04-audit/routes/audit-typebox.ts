@@ -10,7 +10,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -359,7 +359,7 @@ export const IntegrityReportResponseSchema = Type.Object({
 
 // ── §4.3 RESPONSE DTO pins (M4E enrichment) ────────────────────────────────────────────────────
 // The four audit read routes already publish view-shaped response schemas above, but nothing tied
-// them to the `@wardenx/audit` `AuditQuery` port they actually return (this module has no local
+// them to the `@chartwarden/audit` `AuditQuery` port they actually return (this module has no local
 // `service.ts` — the read views live in the port package). These compile-time `Conforms` aliases
 // pin each published schema to the service view it mirrors, so a port field added/renamed breaks
 // `bun run build` rather than silently drifting the generated client.
@@ -368,7 +368,7 @@ import type {
   AuditEventRecord as ServiceAuditEventRecord,
   Page as ServicePage,
   PatientAccessEntry as ServicePatientAccessEntry,
-} from "@wardenx/audit";
+} from "@chartwarden/audit";
 
 /** `T` (what the schema publishes) must be assignable to `V` (what the port returns). */
 type Conforms<T extends V, V> = T;

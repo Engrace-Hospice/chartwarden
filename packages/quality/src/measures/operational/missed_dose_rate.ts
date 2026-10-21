@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: missed-dose rate. Pure. No IO.
+// @chartwarden/quality — operational measure: missed-dose rate. Pure. No IO.
 // Rate of scheduled medication doses recorded as missed (LOWER is better). Source: M13
 // `MedicationAdministrationProvider.getMissedDoseRate`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

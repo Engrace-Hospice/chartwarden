@@ -7,7 +7,7 @@ import {
   interactiveRowProps,
   useApiClient,
   useRequestGuard,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/01-ops — Outbox status (`/admin/ops/outbox`, WX-PR-020/OPS-004). The M1
 // operator recovery view over `outbox_event` (apps/backend/src/bootstrap/routes/ops-outbox.ts) —
 // read-only: the dispatcher already retries on its own backoff clock, so this is for diagnosing

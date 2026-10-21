@@ -1,6 +1,6 @@
 // The receiving hospice's 8xC draft consumer (off `m6.transfer.created` direction `in`): the pure snapshot
 // plan, and the decisions it settles before touching the database.
-import { CONTROL_NUMBER_RE } from "@wardenx/billing";
+import { CONTROL_NUMBER_RE } from "@chartwarden/billing";
 import { describe, expect, it, vi } from "vitest";
 import {
   M23_TRANSFER_NOTICE_DRAFT_CONSUMER,

@@ -9,7 +9,7 @@
 // THREE PROPERTIES THAT ARE THE POINT OF THE FILE:
 //
 //   1. `systemLocked` IS NOT ADVISORY. §4.9 marks three rules locked — the red-flag hit, the mandatory
-//      escalation and the coverage gap — and `@wardenx/types` already pins that set as
+//      escalation and the coverage gap — and `@chartwarden/types` already pins that set as
 //      `M19_SYSTEM_LOCKED_ALERT_TYPES`. {@link isAlertSuppressible} is the ONE function any tenant-policy
 //      check must go through, and it consults that pinned list rather than the local rule table, so a rule
 //      edited here can never quietly unlock the three alerts an agency under staffing pressure would most
@@ -39,8 +39,8 @@ import type {
   TriageEscalationTier,
   TriageMandatoryEscalationTriggeredAlert,
   TriageProtocolRedFlagHitAlert,
-} from "@wardenx/types";
-import { M19_SYSTEM_LOCKED_ALERT_TYPES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { M19_SYSTEM_LOCKED_ALERT_TYPES } from "@chartwarden/types";
 
 /** §4.9 — how M36 resolves the recipient set for a rule. */
 export type OncallAlertRecipientResolver = "on_call" | "role_set" | "care_team";
@@ -111,7 +111,7 @@ export function alertRuleFor(
 /**
  * §4.9 / §8.6 — may a tenant setting suppress this alert?
  *
- * Consults the `@wardenx/types` pinned set, NOT the local rule table (rule 1). An unknown event type is
+ * Consults the `@chartwarden/types` pinned set, NOT the local rule table (rule 1). An unknown event type is
  * treated as NOT suppressible: a rule nobody has classified must not default to silenceable.
  */
 export function isAlertSuppressible(eventType: string): boolean {

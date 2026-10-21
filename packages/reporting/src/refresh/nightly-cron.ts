@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/reporting · refresh — the NIGHTLY tier orchestrator (M33 §2.5 / §4.8 / D2).
+import type { schema } from "@chartwarden/db";
+// @chartwarden/reporting · refresh — the NIGHTLY tier orchestrator (M33 §2.5 / §4.8 / D2).
 //
 // The cron-fired orchestrator for slow-changing aggregates: at 02:00 tenant-local (the boot scheduler owns
 // the tenant-TZ cron tick via M2; this handler owns the work) it enqueues a `report.mv_refresh` job

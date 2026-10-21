@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 5 (Patient & Demographics) action catalog (M5-T12; M5 spec §8.1).
+// @chartwarden/audit — Module 5 (Patient & Demographics) action catalog (M5-T12; M5 spec §8.1).
 //
 // M5's app-level audit action under the D9 `m5.<resource>.<verb>` namespace. Patient CRUD itself
 // flows through the M4 write-audit triggers (the DB-trigger layer, M5-T05) as `<table>.created/

@@ -4,7 +4,7 @@
 //
 //   SAMPLE (cron):   death census (M6 port) → caregiver contact (M5 port) → pure CMS classifier → sealed insert
 //                    into `cahps_decedent_sample` (tenant-DEK envelope, AAD-bound) → `m30.cahps.sample_ready`.
-//   EXPORT (worker): active binding + sealed vendor config → adapter from `@wardenx/cahps-vendors` → decrypt the
+//   EXPORT (worker): active binding + sealed vendor config → adapter from `@chartwarden/cahps-vendors` → decrypt the
 //                    sample rows to the in-flight vendor shape → render → STORE the sealed artifact on the
 //                    `cahps_export_job` row → push (SHP) / no_push (manual) → stamp rows → `export_completed`.
 //
@@ -12,7 +12,7 @@
 // M30 reads no M5/M6 table and gains no manifest edge (the F-160 `CapConsumerStore` shape). Every statement runs
 // in `withOrgContext` on the row's own org (RLS) with the system actor ('' → NULL in the M4 trigger).
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   CahpsAdapterResolutionMap,
   CahpsAdapterResolvePort,
@@ -29,9 +29,9 @@ import type {
   CahpsVendorAdapterId,
   DecedentCandidateReadPort,
   DecedentDeathSource,
-} from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { buildCahpsExportJobPort } from "./export-job-store";
 import type { CahpsPhiCipher } from "./phi-cipher";
@@ -78,7 +78,7 @@ export interface CahpsDeathFacts {
 export interface CahpsPipelineDeps {
   readonly db: DbClient;
   readonly cipher: CahpsPhiCipher;
-  /** `@wardenx/cahps-vendors`' `CAHPS_ADAPTER_FACTORIES` — injected so M30 jobs import no vendor class. */
+  /** `@chartwarden/cahps-vendors`' `CAHPS_ADAPTER_FACTORIES` — injected so M30 jobs import no vendor class. */
   readonly adapterFactories: CahpsAdapterResolutionMap;
   /** M6 — deaths in `[from, to)` with stay facts (`cahpsDeathCandidatesForOrg`). */
   readonly deathsForOrg: (

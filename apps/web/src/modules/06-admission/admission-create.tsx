@@ -11,8 +11,8 @@ import {
   WorkflowStepper,
   t,
   useApiClient,
-} from "@wardenx/ui";
-import type { WorkflowStep } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { WorkflowStep } from "@chartwarden/ui";
 // Direct intake is a short, governed workflow. It keeps draft values in React state only: browser
 // storage would be inappropriate for referral/admission data, and no durable draft endpoint exists.
 import { useCallback, useEffect, useMemo, useState } from "react";

@@ -39,7 +39,7 @@ import {
   computeVisitOnTimeRate,
   computeVolunteerComplianceGateRate,
 } from "./operational/index";
-// @wardenx/quality — M30 measure REGISTRATIONS: the concrete catalog-code → pure-calculator binding the
+// @chartwarden/quality — M30 measure REGISTRATIONS: the concrete catalog-code → pure-calculator binding the
 // `m30.measure_recompute` worker resolves a calculator by measure code through (§3.1, §4.8, V-8).
 //
 // `registry.ts` defines the PURE binder (`registerMeasure`) + the descriptor-only `MEASURE_CATALOG`, but

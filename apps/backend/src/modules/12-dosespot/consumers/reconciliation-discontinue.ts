@@ -2,7 +2,7 @@
 // reconciliation "discontinue" handshake consumer (F-155/F-161, #248). PHASE-1 PURE DECISION CORE.
 //
 // M13's medication-reconciliation worksheet decides, per line, what M12 should do about the medication —
-// `planReconciliationDecision` (`@wardenx/emar`) maps a `discontinue` decision on an `m12_active` line to
+// `planReconciliationDecision` (`@chartwarden/emar`) maps a `discontinue` decision on an `m12_active` line to
 // the `m13.reconciliation.discontinue_requested` outbox event, and the real M13 write path
 // (`emar-route-service-db.ts`'s `recordDecision`) emits it carrying the exact fields this decider reads —
 // `medicationOrderId: args.sourceId, reason: "reconciled_discontinue"`. `events-by-m13.ts` already declares
@@ -38,7 +38,7 @@
 // non-empty string (`const id = Type.String({minLength: 1})`, a generic helper despite the name), not the
 // closed TS union, so the wire is honest about WHY even though the machine's own typed guard call is not
 // (and does not need to be, since its return value is discarded exactly as `discontinueOrder`'s already is).
-import type { MedicationOrderStatus } from "@wardenx/types";
+import type { MedicationOrderStatus } from "@chartwarden/types";
 
 /** The `m13.reconciliation.discontinue_requested` payload subset M12 reads (M13 owns the wire shape). */
 export interface ReconciliationDiscontinuePayload {

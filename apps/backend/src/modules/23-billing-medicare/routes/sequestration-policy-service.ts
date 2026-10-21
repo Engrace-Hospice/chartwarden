@@ -2,7 +2,7 @@
 // POLICY service (F-212): create / supersede / list / get / active / effective-on.
 //
 // The same shape as the F-210 rate-table service, because it is the same problem: claim assembly fails closed unless a
-// tenant-entered, effective-dated row covers the service date. Validation is layered: the pure rules in `@wardenx/billing`
+// tenant-entered, effective-dated row covers the service date. Validation is layered: the pure rules in `@chartwarden/billing`
 // (`validateSequestrationPolicyEntry`: plausibility band 0-2%, reason required off-2%, effective window) run first for a precise
 // 422; the overlap pre-check names the clashing row for a precise 409; migration 0281's EXCLUDE constraint is the race-safe
 // backstop (a concurrent writer that slips past the pre-check surfaces as the same 409, never as two live rows).
@@ -14,10 +14,10 @@
 // NO silent default. There is deliberately no "assume 2%" (or 0%) fallback: a wrong withhold silently mis-states every claim's
 // expected payment. A tenant with no row for the service date gets `SEQUESTRATION_POLICY_UNAVAILABLE` naming this route.
 import { randomUUID } from "node:crypto";
-import { addDaysIso, repositories, validateSequestrationPolicyEntry } from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { addDaysIso, repositories, validateSequestrationPolicyEntry } from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateSequestrationPolicyBody,

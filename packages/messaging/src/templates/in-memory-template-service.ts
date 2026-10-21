@@ -1,6 +1,6 @@
-// @wardenx/messaging - in-memory TemplateService (M36 WP 2.8): the DB-free double the route tests run on. Same rules as
+// @chartwarden/messaging - in-memory TemplateService (M36 WP 2.8): the DB-free double the route tests run on. Same rules as
 // the Drizzle service (validation lives in template-model.ts and is shared); state is per instance.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import {
   type PlatformTemplate,
   TEMPLATE_LIMITS,

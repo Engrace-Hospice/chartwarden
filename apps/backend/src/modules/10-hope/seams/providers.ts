@@ -1,6 +1,6 @@
 // apps/backend/src/modules/10-hope/seams/providers.ts — M10-T05 the §2 / D10 seam implementations: pure
 // orchestration over an injected {@link HopeSeamStore}. Each returns the leaf-typed seam interface
-// (@wardenx/types) the M1 registry validates and M14/M22/M30/M32 resolve. The providers add NO tenant
+// (@chartwarden/types) the M1 registry validates and M14/M22/M30/M32 resolve. The providers add NO tenant
 // logic — RLS scopes every store read by the consumer's `app.org_id` (§3.6); they only project store DTOs
 // and apply the open/history read-time semantics with one home each.
 import type {
@@ -15,7 +15,7 @@ import type {
   HopeTimepointStatus,
   PatientId,
   ProviderEntityId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HopeSeamStore } from "./store";
 
 /** The SFV statuses that are still an OPEN obligation (a `completed` / `missed` SFV is terminal, D3). */

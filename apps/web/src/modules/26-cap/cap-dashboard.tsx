@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — M26, the CAP WATCH DASHBOARD (R2, §5.1.1). The primary surface for billing
 // managers + compliance officers: the current cap period, the agency-aggregate + inpatient utilization bands,
 // the top patients by utilization, and the recent threshold-event feed. Reads are org-scoped server-side

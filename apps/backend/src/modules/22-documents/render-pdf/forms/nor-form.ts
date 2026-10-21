@@ -1,7 +1,7 @@
 // apps/backend/src/modules/22-documents/render-pdf/forms/nor-form.ts - the `nor` template: the acknowledgment of
 // the Notice of Patient Rights (42 CFR 418.52(a)). The acknowledgment is the signed fact; the rights text is the
 // template's own fixed language and is the document the patient or representative received.
-import { assertNorRenderPayload } from "@wardenx/types";
+import { assertNorRenderPayload } from "@chartwarden/types";
 import { fmtDate, humanize } from "../shared";
 import { defineForm } from "./compile";
 

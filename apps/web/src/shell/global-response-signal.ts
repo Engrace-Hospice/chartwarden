@@ -1,4 +1,4 @@
-// apps/web/src/shell — global HTTP-status signal (TASK-033). The API client (`@wardenx/ui`,
+// apps/web/src/shell — global HTTP-status signal (TASK-033). The API client (`@chartwarden/ui`,
 // leaf-safe, no router access) reports every response's status via `onResponseStatus`; this module
 // turns that into a tiny external store a router-connected component can subscribe to and act on
 // (401 → /expired, 503 → /maintenance). Kept outside React so it can be fed from `main.tsx` before

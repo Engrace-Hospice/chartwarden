@@ -1,9 +1,9 @@
-// @wardenx/reporting · repositories — the scheduled-report aggregate: `report_schedule` (a cron-driven
+// @chartwarden/reporting · repositories — the scheduled-report aggregate: `report_schedule` (a cron-driven
 // render of a saved view to a recipient list, evaluated in the tenant timezone) (M33 §3.3–§3.4). The
 // schedule SERVICE wraps these in `withOrgContext` (recipients must be active memberships in the same
 // org) and the cron evaluator calls `listDue` under `withPlatformContext`. `listActiveForOrg` +
 // `cascadeRecipientRevocation` back the §4.3 ScheduledReportProvider seam M34 consumes.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

@@ -1,4 +1,4 @@
-// @wardenx/billing — AR-dashboard schema: route #37 `GET /ar-dashboard` (AR aging buckets, denial rate,
+// @chartwarden/billing — AR-dashboard schema: route #37 `GET /ar-dashboard` (AR aging buckets, denial rate,
 // NOE/NOTR window state) — §4.1. Aggregate-only (mirrors `ArAgingDto`); no row-level PHI.
 import { type Static, Type } from "@sinclair/typebox";
 import { CentsSchema, IsoDateTimeSchema, Uuid } from "./common";

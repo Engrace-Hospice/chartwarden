@@ -8,7 +8,7 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../../index";
 

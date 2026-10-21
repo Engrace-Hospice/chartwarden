@@ -7,7 +7,7 @@ import {
   InlineAlert,
   LoadingSpinner,
   useRequestGuard,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 

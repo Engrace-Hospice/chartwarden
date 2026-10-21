@@ -1,4 +1,4 @@
-// @wardenx/messaging — out-of-band dispatch + vendor-callback reconcile (M36 GAP-101; §4.4 / §4.7 / §4.9).
+// @chartwarden/messaging — out-of-band dispatch + vendor-callback reconcile (M36 GAP-101; §4.4 / §4.7 / §4.9).
 export {
   type FakeTransportCall,
   type OutOfBandTransport,

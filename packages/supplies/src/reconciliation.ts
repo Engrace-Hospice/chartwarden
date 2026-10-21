@@ -1,4 +1,4 @@
-// @wardenx/supplies — the §2.6 / D8 controlled-substance return reconciliation math.
+// @chartwarden/supplies — the §2.6 / D8 controlled-substance return reconciliation math.
 //
 // This is the service-layer half of the "compute at the DB AND re-compute in the service" rule in §2.10:
 // the `m21_compute_return_discrepancy()` BEFORE trigger owns the persisted values, and this function is
@@ -12,7 +12,7 @@
 //     flagged     = isControlled AND pct >= 0.05
 // A non-controlled line is never flagged at any shortfall: gloves get used.
 
-import type { ControlledSubstanceSchedule } from "@wardenx/types";
+import type { ControlledSubstanceSchedule } from "@chartwarden/types";
 import { Decimal } from "decimal.js";
 
 import { CONTROLLED_DISCREPANCY_THRESHOLD_PCT } from "./policy";

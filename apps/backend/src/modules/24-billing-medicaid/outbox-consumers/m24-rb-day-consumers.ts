@@ -11,7 +11,7 @@
 //   - m5.patient.deceased  -> void not-yet-billed days AFTER `deceasedDate` (day of death is billable)
 // Idempotent: re-evaluation converges and voiding an already-voided/billed day is a no-op, so a redelivery
 // is harmless.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

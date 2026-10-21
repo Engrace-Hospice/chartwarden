@@ -16,7 +16,7 @@ import type {
   PortalEngagementMetrics,
   PortalScopeSet,
   TelehealthVisitDigest,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── §4.3 seam 1: PortalAccountReader ────────────────────────────────────────────────────────────────────
 export interface PortalAccountStore {

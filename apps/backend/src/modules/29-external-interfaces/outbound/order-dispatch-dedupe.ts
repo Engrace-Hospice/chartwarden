@@ -14,7 +14,7 @@
 // outbound row — on ANY feed, in ANY status (a crashed `in_flight`, a `dlq` terminal, a sent one) — for this order?
 // A redelivery that finds one must send nothing: the row owns the order's MSH-10 and the reclaim sweep (F-182) is
 // the only path allowed to re-send it. Runs on the caller's org-scoped transaction, so RLS applies.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { ORM_SOURCE_KIND } from "./dispatch-planner";
 

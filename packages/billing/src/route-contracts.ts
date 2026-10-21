@@ -1,4 +1,4 @@
-// @wardenx/billing — route request/response SHAPE contracts re-export hop (§4.1 / §4.2).
+// @chartwarden/billing — route request/response SHAPE contracts re-export hop (§4.1 / §4.2).
 //
 // This file exists ONLY as a one-line re-export indirection for the TypeBox route-shape modules under
 // `./schemas`. The package barrel surfaces these shapes, but it also re-exports several catalogs whose

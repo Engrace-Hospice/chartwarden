@@ -8,8 +8,8 @@
 //     missed a newer revision is a 409: the hook reads the server copy and raises a merge prompt (`conflict`)
 //     instead of overwriting it. Last writer wins per device, so a tab never conflicts with itself.
 // A failed save never touches the composer; `saveFailed` only drives a small status line and clears on the next success.
-import { SBAR_SECTION_KEYS, type SbarSections } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import { SBAR_SECTION_KEYS, type SbarSections } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { currentSessionIdentity, useSession } from "../../shell/session";
 import type { MessageReferenceInput } from "./messaging-types";

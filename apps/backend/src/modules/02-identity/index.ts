@@ -337,8 +337,8 @@ export {
   registerPlatformUserRoutes,
 } from "./routes/platform-user-routes";
 
-import type { DbClient } from "@wardenx/db";
-import type { AdminMembershipReader } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { AdminMembershipReader } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import type Redis from "ioredis";
 import { registerM2AbacPredicates as _registerM2AbacPredicates } from "./abac-predicates";
@@ -488,7 +488,7 @@ export function mountIdentityRoutes(
     /** GAP-005 - the MFA matrix gate `select-organization` consults before binding an organization. */
     mfaGate?: IdentityRouteDeps["mfaGate"];
     /** Better Auth credential lifecycle port (server-only extension). */
-    credentialAdmin?: import("@wardenx/auth").IdentityCredentialAdmin;
+    credentialAdmin?: import("@chartwarden/auth").IdentityCredentialAdmin;
     /** M3 role-id resolver; M2 keeps the structural port to preserve module boundaries. */
     provisioningRoles?: import("./credential-lifecycle").ProvisioningRoleResolver;
   },

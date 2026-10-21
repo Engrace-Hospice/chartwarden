@@ -1,4 +1,4 @@
-// @wardenx/db — `nppes_provider` + `nppes_sync_run` (M29 §3.3). The cached CMS NPPES public-directory
+// @chartwarden/db — `nppes_provider` + `nppes_sync_run` (M29 §3.3). The cached CMS NPPES public-directory
 // records and the nightly-sync orchestration log (W-XI-11/12).
 //
 // PLATFORM-SHARED (NO organization_id) BY DESIGN — the NPPES registry is the same public directory for

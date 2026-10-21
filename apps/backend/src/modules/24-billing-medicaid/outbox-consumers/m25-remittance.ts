@@ -18,9 +18,9 @@
 // `remittance_partial_paid` counterpart in `MEDICAID_CLAIM_TRANSITIONS` and `m25.remittance
 // .claim_partial_paid` / `.claim_recouped` declare only `m23` (never `m24`), so those two topics are not
 // subscribed here at all — matching the catalog exactly, not merely a subset of M23's four.
-import { type DbClient, schema } from "@wardenx/db";
-import { medicaidClaimMachine } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { medicaidClaimMachine } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type {
   DispatchableOutboxEvent,

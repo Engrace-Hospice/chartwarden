@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §7.7 / D10: the `cop_citation_v1` value set (the 23 Conditions-of-
+// @chartwarden/quality — M30 §7.7 / D10: the `cop_citation_v1` value set (the 23 Conditions-of-
 // Participation citations the tenant self-assesses against, from architecture v0.11 §23.4 / §2.J).
 //
 // This is the PLATFORM-DEFINED canonical registry: a per-org `cop_compliance_status` row exists per
@@ -13,7 +13,7 @@
 // route layer renders into the standard envelope in a LATER phase. The 23 rows themselves are also
 // seeded into M38's `value_set` table by the migration (spec step 21) — this file is the in-process
 // source of truth the domain logic resolves against.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { CopStatus } from "../contracts";
 
 /** The 42 CFR Part 418 subpart a CoP citation belongs to (B = eligibility/election, C = patient care, D = organizational environment). */

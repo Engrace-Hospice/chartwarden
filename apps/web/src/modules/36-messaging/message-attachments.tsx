@@ -1,4 +1,4 @@
-import { Glyph, useApiClient } from "@wardenx/ui";
+import { Glyph, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {

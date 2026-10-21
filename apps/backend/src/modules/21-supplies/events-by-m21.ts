@@ -6,7 +6,7 @@
 // M15/M16/M23…M27/M30/M33/M34 events-by-mN precedent), and the dispatcher validates each `m21.*` publish
 // against the TypeBox `payloadSchema` inside the SAME transaction as the mutation (transactional outbox).
 //
-// The shapes MIRROR the §4.5.2 payload interfaces frozen in `@wardenx/types` (packages/types/src/
+// The shapes MIRROR the §4.5.2 payload interfaces frozen in `@chartwarden/types` (packages/types/src/
 // supplies.ts, M21-T01) — those are the contract M11/M13/M22/M27/M30/M33/M36 type-check against; this file
 // is their runtime validator. Every name is drawn from `M21_EVENT_NAMES` (the `satisfies` at the bottom
 // proves the catalog covers the frozen list exactly), so a rename in the leaf breaks the build here rather
@@ -28,8 +28,8 @@
 // through a JS float is not the quantity the perpetual log recorded. Money is integer CENTS for the same
 // reason (a rounding drift on a cap-relevant accrual is a reportable finding).
 import { Type } from "@sinclair/typebox";
-import { HospiceCoverageSchema } from "@wardenx/types";
-import type { M21EventName, ModuleEventContribution } from "@wardenx/types";
+import { HospiceCoverageSchema } from "@chartwarden/types";
+import type { M21EventName, ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdN = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

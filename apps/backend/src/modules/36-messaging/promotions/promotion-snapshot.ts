@@ -4,10 +4,10 @@
 // carries that hash (the sender edited it since). The opened plaintext is hashed again and must equal the recorded hash, so
 // a corrupted or swapped row yields nothing. Erased, deleted, missing or unmatched => null (fail closed). The decrypt path is
 // the one the channel history already uses (MessageBodyCipher.open + storedBodyToPlainText); no new crypto lives here.
-import { type DbClient, schema } from "@wardenx/db";
-import { messageBodySha256 } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { storedBodyToPlainText } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { messageBodySha256 } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { storedBodyToPlainText } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { MessageBodyCipher } from "../messaging-write-core";
 

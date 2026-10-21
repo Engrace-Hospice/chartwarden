@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `claim` (M23 Billing-Medicare §3.3, D4/D14; retention class `compliance`).
+// @chartwarden/db — `claim` (M23 Billing-Medicare §3.3, D4/D14; retention class `compliance`).
 // The Medicare-claim root: one row per hospice claim (TOB 811/812/813/814 + 817/818 replacements).
 // The XState lifecycle (D4) lives in `state`; `claim_control_number` is the deterministic per-D4
 // identifier. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).

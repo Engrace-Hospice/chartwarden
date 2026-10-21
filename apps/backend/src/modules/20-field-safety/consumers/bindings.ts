@@ -42,8 +42,8 @@
 // are what stop a decider that later declares an outbox event or a new effect kind from having it silently
 // dropped by a consumer that only knew about mutations. `decideVisitNoShow` already declares two, and they
 // are the §4.9 warn-severity supervisor inquiry — the one thing this whole surface exists to raise.
-import type { DbClient } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
   MembershipId,
@@ -51,7 +51,7 @@ import type {
   PatientId,
   SafetyPolicyEffectiveDto,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { type EffectPatch, runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";

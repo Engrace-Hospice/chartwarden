@@ -1,4 +1,4 @@
-// @wardenx/db — M25 Remittance & Denials §3.3 — the patient-responsibility (PR) ledger. Read-only in
+// @chartwarden/db — M25 Remittance & Denials §3.3 — the patient-responsibility (PR) ledger. Read-only in
 // Phase 1: a CAS group-code `PR` adjustment records one row here; the future Patient Statement module
 // (Phase 2) consumes it via PatientResponsibilityReader. No collections workflow (D8).
 //

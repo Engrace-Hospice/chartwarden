@@ -13,7 +13,7 @@
 // feed — and refuses otherwise, so an unroutable order is refused at sign time with an alert to the ordering
 // provider rather than published into an event M29 would only alert on and drop. When the feed↔facility link
 // lands, only the feed half of `destination` changes; the port shape does not.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { getMdmEntityProvider } from "../../40-mdm/seams";
 import type {
   OrmDestinationResult,

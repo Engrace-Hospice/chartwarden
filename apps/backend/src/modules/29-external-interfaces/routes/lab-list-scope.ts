@@ -4,7 +4,7 @@
 // passed no caseload). Scope is now resolved from the SERVER session: org-wide roles read across the org;
 // everyone else reads only their M5 caseload, resolved through the CaseloadProvider seam. A lookup failure
 // fails CLOSED (empty caseload ⇒ empty list), never open. Also home to the keyset cursor codec.
-import { hasOrgWideScope } from "@wardenx/auth";
+import { hasOrgWideScope } from "@chartwarden/auth";
 
 export interface LabListActor {
   readonly organizationId: string;

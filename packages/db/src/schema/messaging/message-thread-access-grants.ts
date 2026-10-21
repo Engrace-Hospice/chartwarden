@@ -30,7 +30,7 @@ export const messageThreadAccessGrants = pgTable(
     granteeUserId: uuid("grantee_user_id")
       .notNull()
       .references(() => users.id),
-    /** 'escalated' | 'reassigned' | 'oncall_role_send' (THREAD_ACCESS_GRANT_REASONS in @wardenx/types). */
+    /** 'escalated' | 'reassigned' | 'oncall_role_send' (THREAD_ACCESS_GRANT_REASONS in @chartwarden/types). */
     reason: text("reason").notNull(),
     grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

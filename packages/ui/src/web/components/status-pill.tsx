@@ -1,4 +1,4 @@
-// @wardenx/ui — Status Pill (R1, DESIGN.md §6.6 badge taxonomy). Every status pill pairs a color
+// @chartwarden/ui — Status Pill (R1, DESIGN.md §6.6 badge taxonomy). Every status pill pairs a color
 // with a glyph or text so it survives color-blindness and grayscale print (Hard Rule §10.10).
 // Canonical lifecycles (patient / claim / order-visit / document-render) render with this taxonomy;
 // modules map their domain status → a tone, then render <StatusPill>.

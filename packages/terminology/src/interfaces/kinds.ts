@@ -1,4 +1,4 @@
-// @wardenx/terminology — code-system identity + the per-system concept shape.
+// @chartwarden/terminology — code-system identity + the per-system concept shape.
 //
 // M38-T01 (spec §2.3, §3.1, §3.2). This file is the TYPE-LEVEL home for the
 // terminology enums and the union concept shape that the `TerminologyProvider`

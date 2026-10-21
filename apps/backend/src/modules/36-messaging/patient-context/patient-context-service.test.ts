@@ -1,4 +1,4 @@
-import type { MedicationOrderDto, PatientAllergyEntry, PatientIdentity } from "@wardenx/types";
+import type { MedicationOrderDto, PatientAllergyEntry, PatientIdentity } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   PATIENT_CONTEXT_TILES,

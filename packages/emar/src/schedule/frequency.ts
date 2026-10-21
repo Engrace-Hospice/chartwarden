@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.3 D2 structured-frequency model + `frequencyCode` parser (M13-T03). PURE, IO-free.
+// @chartwarden/emar — §2.3 D2 structured-frequency model + `frequencyCode` parser (M13-T03). PURE, IO-free.
 //
 // M13 materializes `scheduled_dose` rows from M12's medication order. M12's `MedicationOrderProvider`
 // seam projects the sig as `SigStructuredDto.frequencyCode` (a canonical string). The materializer cannot
@@ -8,7 +8,7 @@
 // (with meals) — plus the `prn` no-materialization case cover the canonical hospice sig patterns; an
 // unrecognized code raises {@link FrequencyParseError} so the calling worker (M13-T08) routes it to the
 // manual-review queue rather than silently materializing nothing.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { WeekdayKey } from "./time";
 
 /** A `HH:mm` order-local time-of-day (24h). The materializer resolves it to an instant per calendar day. */

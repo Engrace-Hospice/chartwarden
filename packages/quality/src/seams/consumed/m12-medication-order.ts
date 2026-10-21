@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M12 (Medication Orders / DoseSpot). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M12 (Medication Orders / DoseSpot). PRESENT producer (§4.4).
 //
 // M30 consumes M12's `MedicationOrderProvider.getOpioidOnAdmissionStats` for the opioid-on-admission
 // indicator and `getComfortKitDeploymentTimeline` for the comfort-kit-deployment interval measure; it

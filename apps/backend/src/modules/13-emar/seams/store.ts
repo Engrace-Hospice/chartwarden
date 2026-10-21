@@ -7,7 +7,7 @@
 // read-seam store precedents.
 //
 // Both M13 seams are READ-only (no mutate path — M13 owns the administration + reconciliation workflows
-// internally and never writes through a seam). Reads project the read-only DTO shapes from @wardenx/types (never
+// internally and never writes through a seam). Reads project the read-only DTO shapes from @chartwarden/types (never
 // Drizzle rows); the per-mode / per-row free-text PHI (notes / refusal_reason / decision_notes, D12) NEVER
 // crosses the seam — only the server-resolved snapshot projections do.
 import type {
@@ -18,7 +18,7 @@ import type {
   ReconciliationWorksheetDto,
   ScaleType,
   ScheduledDoseStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** One PRN administration in the window with whether an M9 reassessment scale row was linked (the
  * PRN-effectiveness-documented-rate numerator input; M30 owns the measure, M13 publishes the count surface). */

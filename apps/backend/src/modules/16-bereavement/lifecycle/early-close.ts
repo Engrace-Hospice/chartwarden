@@ -1,8 +1,8 @@
 // apps/backend/src/modules/16-bereavement/lifecycle/early-close.ts — GAP-047 (D7). The pure guards around
 // the two-step early close: close-early records a PENDING request on the plan, and cosign-close — by a
 // DIFFERENT supervisor — performs the transition. The requester is never recorded as the cosigner.
-import { isClosedPlanStatus } from "@wardenx/bereavement";
-import { ForbiddenError } from "@wardenx/types";
+import { isClosedPlanStatus } from "@chartwarden/bereavement";
+import { ForbiddenError } from "@chartwarden/types";
 import { require_ } from "./errors";
 import type { BereavementPlanLifecycleState } from "./plan";
 

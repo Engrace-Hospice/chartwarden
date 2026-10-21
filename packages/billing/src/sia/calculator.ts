@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 SIA (Service Intensity Add-on) calculator (D6, spec §1.1 / §3.3
+// @chartwarden/billing — M23 SIA (Service Intensity Add-on) calculator (D6, spec §1.1 / §3.3
 // `sia_calculation`). A PURE function that walks the injected SIGNED encounters for the last 7 days of
 // the patient's life (`[deceasedDate − 6, deceasedDate]`, inclusive) and produces the CMS SIA add-on:
 // for RHC days, qualifying RN / MSW (social-work) in-person visit time in that window is paid at the CHC
@@ -13,7 +13,7 @@
 // `hospice_rate_table.chc_hourly_rate_cents`), wage-adjusted at the service layer on the CHC LABOR SHARE only (F-211), and
 // passed in as `chcHourlyRateCents`.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. No PHI (D13).
 import type { IsoDate } from "../contracts";
 import { addDaysIso, isWithinInclusive } from "../domain/dates";
 import type { Cents } from "../domain/money";

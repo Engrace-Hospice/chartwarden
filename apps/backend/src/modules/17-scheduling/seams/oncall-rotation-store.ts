@@ -2,10 +2,10 @@
 // `oncall_rotation_entry`, M17's on-call rotation source. Backs BOTH the `tonightsOnCallRoster` read
 // (request-scoped, like every other `VisitAssignmentReader` read) and M17's own rotation management routes
 // (org-explicit, the `credentials-drizzle-store` shape).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
-import type { OnCallRosterEntry } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
+import type { OnCallRosterEntry } from "@chartwarden/types";
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 
 const ROT = schema.oncallRotationEntry;

@@ -6,7 +6,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VERSION HISTORY (§5.1 #13, Track B / ADR-0030).
 // Spec layout: "Use Detail Page."
 //

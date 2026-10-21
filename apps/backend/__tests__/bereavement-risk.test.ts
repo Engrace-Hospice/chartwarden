@@ -22,8 +22,8 @@ import {
   ruleScoreToWeighted,
   suddenUnexpectedDeathFromPps,
   weightedScoreToRuleScore,
-} from "@wardenx/bereavement";
-import type { MswRiskFactor, ScaleSeriesPoint } from "@wardenx/types";
+} from "@chartwarden/bereavement";
+import type { MswRiskFactor, ScaleSeriesPoint } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { BereavementStateError } from "../src/modules/16-bereavement/lifecycle/index";

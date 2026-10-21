@@ -3,7 +3,7 @@
 // The saved-view + SHARING surface (D17): list (mine / org-shared), create a view over a published
 // definition version, read/edit a view, set its share scope (`private | role | org`), set the single
 // org-default (Org Admin), and archive. Every route is gated by the REAL Authorization Contract
-// (`requirePermission` + `requireAbac` from @wardenx/auth, M3) on the §4.6 `report.view.*` /
+// (`requirePermission` + `requireAbac` from @chartwarden/auth, M3) on the §4.6 `report.view.*` /
 // `report.share.*` keys. The view read/edit/share/archive keys bind the `dashboard_visibility` predicate
 // M33 OWNS (§4.7.2 owner/org/role ladder) — applied here over the `:id` view (the predicate reads the
 // target `viewId`, so the getTarget maps the route param). `report.view.list` / `report.view.write`
@@ -16,7 +16,7 @@
 // `app.org_id`); each carries `requireIdempotencyKey` + returns 201. READS disclose the actor's own /
 // org-shared views; the M4 write-audit trigger on the `withOrgContext` path is the §164.312(b) anchor.
 // Org/actor/owner binding is ALWAYS server-side (request.context). Mirrors M22 routes/documents-routes.ts.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

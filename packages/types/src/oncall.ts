@@ -1,4 +1,4 @@
-// @wardenx/types — Module 19 (On-Call Triage) leaf contracts (M19-T01).
+// @chartwarden/types — Module 19 (On-Call Triage) leaf contracts (M19-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package, so the downstream consumers
 // (M36's `on_call` recipient resolver, M20's after-hours SOS parallel recipient, M14's IDG packet, M31's
@@ -12,7 +12,7 @@
 // Track B web codePaths (ADR-0030). The manifest is the single source of truth, so M19's TYPE surface
 // resolves HERE, its domain services live under `apps/backend/src/modules/19-oncall` (the M6 precedent
 // for a module with no feature package), and the vendor-adapter boundary stays in
-// `@wardenx/triage-vendors` (§8.5 / architecture §25.14). Nothing in the spec's §3.1 is lost — only
+// `@chartwarden/triage-vendors` (§8.5 / architecture §25.14). Nothing in the spec's §3.1 is lost — only
 // re-homed onto paths the fitness gates actually govern.
 //
 // M19-T01 ships the type-level surface every later M19 task builds on: the §3.2 pgEnum value mirrors, the
@@ -22,7 +22,7 @@
 // alert payloads, and the §4.3 five published reader-seam interfaces + their read DTOs.
 //
 // NAMING: every exported symbol carries a `Triage` / `OnCall` / `Oncall` / `M19` prefix.
-// `@wardenx/types` is re-exported wholesale from `./index.ts`, so a bare `Disposition` /
+// `@chartwarden/types` is re-exported wholesale from `./index.ts`, so a bare `Disposition` /
 // `EscalationTier` / `RiskBand` would be a TS2308 collision the day M20 / M30 / M37 wants the same word
 // (the M14 `IdgDecisionPayload` precedent).
 //
@@ -41,7 +41,7 @@ import type { EncounterId } from "./encounter";
 import type { OrderRecordId } from "./orders";
 import type { IsoDate, MeasureCounts, VisitProposalId } from "./scheduling";
 
-// ── M19-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── M19-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 export type TenantOncallPolicyId = string;
 export type ExternalTriageVendorId = string;
 export type OnCallShiftId = string;

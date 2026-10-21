@@ -1,4 +1,4 @@
-import { Button, Panel, TextAreaField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, Panel, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Pause subscription (`/admin/subscriptions/:id/pause`,
 // subscription.admin.write). A gated action: an optional until-date over POST /api/admin/subscriptions/:id/pause
 // (step-up + Idempotency-Key, enforced server-side). A stale step-up surfaces as a first-class error outcome.

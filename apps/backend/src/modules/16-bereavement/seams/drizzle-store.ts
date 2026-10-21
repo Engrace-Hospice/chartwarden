@@ -24,8 +24,8 @@
 // inherits `organization_id` from the base row it narrates (never invents a tenant), and copies the base
 // row's `risk_factors_jsonb` provenance verbatim — the M32 result reaches only the `augmented_*` columns
 // the provider's `mergeAugmentation` produced.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   BereavedContactView,
   BereavementOutreachKind,
@@ -37,7 +37,7 @@ import type {
   IsoInstant,
   LocalDate,
   M16OutreachStats,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type AnyColumn, and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { BereavementStateError } from "../lifecycle/index";
 import type { RiskFactorsJsonb } from "../risk/score";

@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `validation_override` (one row per overridden failed validation
+// @chartwarden/billing · repositories — `validation_override` (one row per overridden failed validation
 // result, §3.3, D5; APPEND-ONLY, retention class `compliance`). A role-gated, reason-required (≥40 chars),
 // M4-audited override that lets a claim proceed past a NON-regulatory failure; AT MOST ONE override per
 // result (the `validation_override_result_uq` unique index). This port mirrors the `ValidationRunRepository`
@@ -10,7 +10,7 @@
 // `onConflictDoNothing` + read-back, so a retry never doubles. ENUM BOUNDARY: `override_role_applied`
 // (billing_manager/…) is a DB-native lowercase enum identical to the domain `OverrideRole`, so rows pass
 // through un-mapped. No PHI / MBI is ever stored here (D13, §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   type BillingDb,

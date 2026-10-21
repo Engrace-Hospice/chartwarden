@@ -1,5 +1,5 @@
 // apps/backend/src/modules/29-external-interfaces/inbound — the §4.6 D6 deterministic patient-match cascade
-// (M29-T04 / T-29.05). PURE over an injected `PatientReader` seam (M5, `@wardenx/types`) — no DB, no clock
+// (M29-T04 / T-29.05). PURE over an injected `PatientReader` seam (M5, `@chartwarden/types`) — no DB, no clock
 // except an injected per-call timeout. The single most-consequential algorithm in M29: every inbound ADT
 // (and, in T05, every inbound lab) runs it, and the discriminated {@link MatchOutcome} routes the message to
 // propose-then-review (D5) — NEVER a direct M5/M6 mutation.
@@ -7,8 +7,8 @@
 // The five levels are tried in ORDER; the first definitive result returns (sequential by design, T-29.05 §4.3:
 // L1 is the common positive case, and higher levels depend on lower-level negative signal). Every match
 // resolves M5 merge-redirects transparently (≤ 3 hops; a dangling/over-long chain fails closed to no-match).
-import type { PatientIdentity, PatientReader } from "@wardenx/types";
-import type { Hl7InboundMatchLevel } from "@wardenx/types";
+import type { PatientIdentity, PatientReader } from "@chartwarden/types";
+import type { Hl7InboundMatchLevel } from "@chartwarden/types";
 
 /** The confident (L1-L3), candidate (L4-L5), and ambiguous match levels, typed off the leaf enum. */
 type ConfidentLevel = Extract<

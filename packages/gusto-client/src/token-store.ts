@@ -1,4 +1,4 @@
-// @wardenx/gusto-client — per-tenant OAuth token-store PORT (M27 §6 `oauth/`, D6).
+// @chartwarden/gusto-client — per-tenant OAuth token-store PORT (M27 §6 `oauth/`, D6).
 //
 // OAuth is per-tenant with isolated refresh (spec §43). The persistence + the real refresh round-trip
 // (Gusto's token endpoint) land in M34 tenant-onboarding — see the TODO(M34-oauth) boundary below. This

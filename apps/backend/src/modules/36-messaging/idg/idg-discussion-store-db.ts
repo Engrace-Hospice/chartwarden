@@ -4,10 +4,10 @@
 // An IDG discussion is not a row of its own: it is a ROOT message (not a reply, not deleted) of a care_team channel that
 // carries at least one `idg_meeting` clinical link. Nothing here writes. The rows are hydrated by the same function the
 // pins and the channel history use, so the DTO (decrypted body, clinicalLinks, replyCount) is identical.
-import { type DbClient, schema } from "@wardenx/db";
-import type { ResolvedMessage } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { ResolvedMessage } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "../messaging-message-hydration";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";

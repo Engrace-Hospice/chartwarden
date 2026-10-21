@@ -35,15 +35,15 @@
 // list that could drift from the machine's own definition. A claim not in one of those states when its
 // job runs is silently skipped (idempotent — it already advanced past the fact this job reacts to).
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_MEDICAID_RULES,
   DEFAULT_MEDICAID_RULE_SET_VERSION,
   type MedicaidValidationContext,
   medicaidClaimMachine,
   runMedicaidRules,
-} from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";

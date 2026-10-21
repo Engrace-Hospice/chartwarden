@@ -10,8 +10,8 @@
 // + the `platform_tenant_baa.read_platform` key. The compliance-officer ATTESTATION route lives on the
 // tenant surface (`POST /api/v1/tenant/baa/:id/attest`, a separate group) — this group is the platform-ops
 // register CRUD only. Org/actor binding is server-side. Mirrors the sibling tenants.ts plugin shape.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   BaaParamsSchema,

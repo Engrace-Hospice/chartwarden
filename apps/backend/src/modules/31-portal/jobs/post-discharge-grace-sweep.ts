@@ -32,8 +32,8 @@
 // or a new seam, and M31 emits ZERO `m31.*` events today (F-160's reasoning stands). The M4 write-audit trigger
 // on `portal_access_grant` records every revocation. The write-side read-only rule during the grace window is
 // already enforced live (`PATIENT_DISCHARGED_READ_ONLY`).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import { type M31EventEmitter, emitGrantsRevoked } from "../events";
 import {

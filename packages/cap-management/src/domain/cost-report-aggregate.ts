@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the pure cap-period aggregate for the M27 cost-report Worksheet-E cap calc
+// @chartwarden/cap-management — the pure cap-period aggregate for the M27 cost-report Worksheet-E cap calc
 // (D13). Penny-exact integer cents; the seam impl supplies the raw ledger sums (RLS-scoped), this kernel
 // applies the settled-vs-unsettled rule. Before settlement the aggregate cap is per-beneficiary cap ×
 // beneficiary count and payments are the accrued paid total; once a settlement is final, the settled

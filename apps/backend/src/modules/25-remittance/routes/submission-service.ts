@@ -9,9 +9,9 @@
 // Nothing is transmitted here or anywhere in 6a: the only live adapter is the guided manual one, and the esMD / fax
 // shells are unbound (registry.ts). A recorded receipt is frozen by trigger; a correction appends to
 // `receipt_amendments`. No outbox events (nothing consumes them); the write-audit trigger and the rows are the trail.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   type AmendmentRefusal,

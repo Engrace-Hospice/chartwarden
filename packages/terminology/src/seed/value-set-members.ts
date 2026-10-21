@@ -1,4 +1,4 @@
-// @wardenx/terminology — the platform value-set member curation file (M38-T08, spec §3.9, §4.3).
+// @chartwarden/terminology — the platform value-set member curation file (M38-T08, spec §3.9, §4.3).
 //
 // §3.9 ships value-set DEFINITIONS only; members come "via curation file". This file curates the
 // members for the small, FULLY-ENUMERATED, CMS-public reference sets whose entire membership the spec

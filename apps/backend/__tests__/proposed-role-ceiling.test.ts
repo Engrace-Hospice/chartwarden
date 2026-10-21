@@ -1,5 +1,5 @@
 // GAP-008 — the pure inviter-ceiling rule (apps/backend/src/modules/03-authorization/proposed-role-ceiling.ts).
-import type { AuditExecutor } from "@wardenx/audit";
+import type { AuditExecutor } from "@chartwarden/audit";
 import { describe, expect, it } from "vitest";
 import {
   type ProposableRole,

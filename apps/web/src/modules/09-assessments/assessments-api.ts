@@ -11,7 +11,7 @@
 // THE BLOCKER WAS THE INSTRUMENT DEFINITION, NOT THE WRITE ROUTE (F-067).
 // `POST /api/v1/patients/:patientId/assessments` publishes `data` as a bare object; which ITEMS a scale
 // needs, their ranges and their option values existed only as TypeScript interfaces in
-// `@wardenx/assessments`. A client cannot read a type. `SCALE_CATALOG`'s own header calls itself "the
+// `@chartwarden/assessments`. A client cannot read a type. `SCALE_CATALOG`'s own header calls itself "the
 // single source the record-modal scale picker (T07) ... read" — there was no record modal.
 // `GET /api/v1/scales` is that definition, so ONE description drives the form and the scorer.
 //
@@ -28,7 +28,7 @@
 //   • D3 LICENSING. Five scales are proprietary and license-gated; the server refuses a capture whose
 //     licence is missing or expired. The form surfaces the requirement as information, never as a gate.
 //   • §7.6 SUD REDACTION, and the §4.x discipline rules for who may record which scale.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 

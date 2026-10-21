@@ -2,7 +2,7 @@
 // the same rules as the database store (one open handoff per pair, one pending handoff per work item, a resolved item and
 // a closed handoff are final, an accepted item belongs to the recipient). It exists for unit tests of the service, the
 // expiry tick and the offboarding job; the database behaviour itself is proven by the live suites.
-import type { HandoffEventType, HandoffState } from "@wardenx/types";
+import type { HandoffEventType, HandoffState } from "@chartwarden/types";
 import {
   type ActiveTaskRow,
   type HandoffEventRow,

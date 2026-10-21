@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { buildM13CronRunners } from "../jobs/cron-workers";
 import { OFFLINE_QUEUE_RETENTION_DAYS } from "../jobs/purge-offline-queue";

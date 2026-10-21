@@ -4,7 +4,7 @@
 // cryptographic shred, DSAR & tenant-export fulfilment, platform-ops support sessions (tenant-consented
 // break-glass), and the platform-tenant BAA register + feature-flag admin UI (§1.1). The pure domain
 // (seams / repositories / services / state machines + M34's own `TenantExportShard`) lives in
-// `@wardenx/saas-tenant-platform`; this backend module is the Fastify-side wiring root — it re-exports
+// `@chartwarden/saas-tenant-platform`; this backend module is the Fastify-side wiring root — it re-exports
 // the §4.5 permission keys M34 contributes to M3, the §4.6 ABAC predicates M34 owns, the §4.9 outbox
 // event catalog, and the seam boot wiring (`bootstrapModule34` / `validateSeams`). Mirrors the M22
 // barrel: this file exports the registration surfaces; the composition root invokes them in the boot
@@ -47,7 +47,7 @@ export { buildFeatureFlagKillSwitchPorts } from "./feature-flag-kill-switch-port
 export { M34_OUTBOX_EVENTS } from "./events-by-m34";
 
 // §4.6 — the seam boot wiring. M34's seams are PACKAGE-OWNED (the D5 `TenantKeyProvider` interface is
-// imported by M1's envelope helper FROM `@wardenx/saas-tenant-platform`, so the live-impl registry
+// imported by M1's envelope helper FROM `@chartwarden/saas-tenant-platform`, so the live-impl registry
 // lives there, not in the M1 registry). The composition root calls
 // `bootstrapModule34({ tenantKeyProvider, … })` inside the boot gate, then `validateSeams()` (which
 // THROWS if the mandatory `TenantKeyProvider` is missing, D5) — both re-exported here so the M34 wiring
@@ -73,7 +73,7 @@ export {
   setTenantSubscriptionEntitlementReader,
   setTenantSupportSessionProvider,
   validateSeams as validateModule34Seams,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 
 // §2.5 r2 / §7.1 step 3 — the forward `TenantOrgCreationProvider` seam (M2 implements it later; deny-stub
 // today). Re-exported so the M2 registration site + the provision-worker consumer have one import.
@@ -81,8 +81,8 @@ export type {
   TenantOrgCreationIntent,
   TenantOrgCreationProvider,
   TenantOrgCreationResult,
-} from "@wardenx/saas-tenant-platform";
-export { denyStubTenantOrgCreationProvider } from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
+export { denyStubTenantOrgCreationProvider } from "@chartwarden/saas-tenant-platform";
 
 // Phase 2D — bind the PACKAGE-OWNED seams (lifecycle / onboarding / support-session + the MANDATORY D5
 // `TenantKeyProvider`) to their real Drizzle-backed implementations over the §3 repositories. The
@@ -108,7 +108,7 @@ export {
   M34_MODULE_KEY,
   createInMemoryM34ExportShardStore,
   createTenantExportShardForM34,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 
 // Phase 2D — the LIVE composition glue: the seam-provider registration over real repos/tenancy runners,
 // the Drizzle-backed route services, the §4.3 queue producers (EnqueuePort), and the worker deps. The
@@ -220,8 +220,8 @@ export {
   registerPublicSignupRoutes,
 } from "./routes/public/signup-intents";
 
-import type { DbClient } from "@wardenx/db";
-import { ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import {
   type TenantPlatformRouteService as _TenantPlatformRouteService,
@@ -273,7 +273,7 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * is present. Three surfaces:
  *   - PLATFORM-OPS (nine plugins: tenants / invitations / key-ring / onboarding-templates / support-sessions
  *     / signup-intents / baa-register / feature-flags-admin / tenant-export-approval) behind
- *     `withPlatformContext` (M1 @wardenx/tenancy — the separately-pooled, RLS-bypass, AUDITED cross-tenant
+ *     `withPlatformContext` (M1 @chartwarden/tenancy — the separately-pooled, RLS-bypass, AUDITED cross-tenant
  *     platform read path, F03/F09);
  *   - TENANT-scoped (five plugins, support-consent-grants / dsar-export-jobs / tenant-export-jobs /
  *     onboarding-tasks / baa) behind `withOrgContext` (the tenant's own org);

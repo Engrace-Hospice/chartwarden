@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the Anthropic vendor adapter and its D19 / §8.4 ZDR invariant (M32-T04).
+// @chartwarden/ai-platform — the Anthropic vendor adapter and its D19 / §8.4 ZDR invariant (M32-T04).
 //
 // ── THIS FILE IS THE VENDOR-ADAPTER MANDATE'S ADDRESS ──────────────────────────────────────────────
 //
@@ -33,9 +33,9 @@
 // once in M2's contract registry, where the tenant opt-in already validates it (W4.1). Adding a column
 // is a schema change, not an adapter change, and it belongs to whoever decides the per-invocation ref
 // is worth a migration.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
-import type { AiBackendHealthStatus } from "@wardenx/types";
+import type { AiBackendHealthStatus } from "@chartwarden/types";
 import type {
   ModelBackend,
   ModelBackendCapabilities,

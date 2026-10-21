@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.3 D4 / §7.7 recurring-visit RRULE materializer + discontinuation (M17-T03).
+// @chartwarden/scheduling — §2.2.3 D4 / §7.7 recurring-visit RRULE materializer + discontinuation (M17-T03).
 // Pure, IO-free, `Date.now()`-free.
 //
 // The RFC 5545 RRULE subset (D4): `FREQ ∈ {DAILY, WEEKLY}` with `BYDAY` (WEEKLY only), `INTERVAL`, and
@@ -10,7 +10,7 @@
 // of that cron: it parses+validates the rule and enumerates the org-local occurrence dates + their
 // `scheduled_started_at` / `scheduled_ended_at` instants. The actual `visit` row genesis (and the
 // `visit_state_history` row) is `planVisitProposed` (visit-machine).
-import type { IsoDate, IsoInstant, RruleByDay } from "@wardenx/types";
+import type { IsoDate, IsoInstant, RruleByDay } from "@chartwarden/types";
 import { RRULE_BYDAY, SUPPORTED_RRULE_FREQ, type SupportedRruleFreq } from "../rrule";
 import type { SchedulingSideEffect } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";

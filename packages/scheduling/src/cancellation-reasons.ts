@@ -1,4 +1,4 @@
-// @wardenx/scheduling — the §3.2 Phase-D platform-default cancellation-reason value set (M17-T01).
+// @chartwarden/scheduling — the §3.2 Phase-D platform-default cancellation-reason value set (M17-T01).
 //
 // The tenant-extensible reason value set seeded at migration Phase D. The `reasonCode` on a cancel/
 // reschedule carries one of these (or a tenant-defined extension); the free-text `reason ≥ 20 chars`

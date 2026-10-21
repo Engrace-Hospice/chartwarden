@@ -1,6 +1,6 @@
 // apps/backend/src/modules/40-mdm/jobs/cron-workers.ts — the LIVE BullMQ Workers + repeatable Queues for M40's
 // scheduled §4.3 jobs (GAP-173; the M39 `jobs/cron-workers.ts` template). Queue names and cadences are the
-// `@wardenx/mdm` catalog (`MDM_QUEUES` / `MDM_JOB_SCHEDULES`, single source); the bodies are the sibling files.
+// `@chartwarden/mdm` catalog (`MDM_QUEUES` / `MDM_JOB_SCHEDULES`, single source); the bodies are the sibling files.
 // This file is only the BullMQ shell.
 //
 // The §4.3 table has eight jobs; how each is covered:
@@ -15,9 +15,9 @@
 //                                         transaction (GAP-060), so there is no queue hop to build.
 //   mdm.repoint_<consumer>     (event)    the per-consumer re-point is a one-liner each downstream module adds beside its
 //                                         own FK column (spec §11 / Lock status) — owned by those modules, not built here.
-import type { DbClient } from "@wardenx/db";
-import { MDM_JOB_SCHEDULES, MDM_QUEUES } from "@wardenx/mdm";
-import type { NppesFreshRecord } from "@wardenx/mdm";
+import type { DbClient } from "@chartwarden/db";
+import { MDM_JOB_SCHEDULES, MDM_QUEUES } from "@chartwarden/mdm";
+import type { NppesFreshRecord } from "@chartwarden/mdm";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { M40ActiveOrgPort, M40AlertPort } from "../outbox-consumers/nppes-consumer-ports";
 import { runBaaExpirationScan } from "./baa-scan";

@@ -1,8 +1,8 @@
-// @wardenx/mdm — the `MdmEntityProvider` seam: the contract every consumer imports (M40-T05, §4.5).
+// @chartwarden/mdm — the `MdmEntityProvider` seam: the contract every consumer imports (M40-T05, §4.5).
 //
 // This is the read surface every clinical/billing/interop consumer of master data imports (a
 // patient's attending physician, a claim's payer, an order's facility). The rich interface lives
-// HERE in the feature package — not the leaf @wardenx/types — because its per-kind generics
+// HERE in the feature package — not the leaf @chartwarden/types — because its per-kind generics
 // (`CanonicalFields<K>`/`OverlayFields<K>`) and merge-redirect shape can't live in a leaf
 // (`leaves-stay-leaves`, ARCHITECTURE §25.15). Consumers that list `40` in their manifest
 // `dependsOn` import this TYPE and resolve the runtime instance through the module-40 typed

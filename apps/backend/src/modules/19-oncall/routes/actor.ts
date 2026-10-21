@@ -22,7 +22,7 @@
 //   discipline    — the §3.2 band the §7.3 / D6 disposition matrix is keyed on, DERIVED from the role keys
 //                   M2 assembled. Not a claim, not a query param, and not a column: see
 //                   `../abac-predicates.ts` for why the platform has no workforce-discipline read.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   PORTAL_SESSION_CLASSES,
@@ -32,7 +32,7 @@ import {
 import { require_ } from "../lifecycle/errors";
 import type { TriageActorDiscipline } from "../lifecycle/protocol";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles + the scope facts the §4.7 predicates compare against. */

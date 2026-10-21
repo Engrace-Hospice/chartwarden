@@ -10,8 +10,8 @@
 //    migration-0740 SECURITY DEFINER `m34_platform_role_holders` function (user ids only, platform-owned
 //    roles only). Delivery caveat: the notification rows live in the emit-org, so the in-app inbox is not
 //    visible from the owner's own org; out-of-band channels (push/email) reach them.
-import type { DbClient } from "@wardenx/db";
-import type { RecipientResolverFn } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import type { RecipientResolverFn } from "@chartwarden/messaging";
 import { sql } from "drizzle-orm";
 import { type M34AlertResolverPorts, registerM34AlertResolvers } from "./alert-rules";
 

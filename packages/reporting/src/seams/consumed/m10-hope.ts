@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M10 (HOPE Engine). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M10 (HOPE Engine). PRESENT producer (§4.4).
 //
 // M33 reads HOPE timepoint completion + per-PE submission posture + J2051 COUNTS only. Bound to the
 // live M10 `HopeTimepointProvider` / `HopeSubmissionProvider` / `HopeJ2051Provider` (count-only) via

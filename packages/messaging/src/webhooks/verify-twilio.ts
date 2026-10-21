@@ -1,8 +1,8 @@
-// @wardenx/messaging — Twilio webhook signature verification (M36-T08, spec §4.9.2 / SD-056).
+// @chartwarden/messaging — Twilio webhook signature verification (M36-T08, spec §4.9.2 / SD-056).
 //
 // Twilio signs each callback with HMAC-SHA1 over `(POST URL + sorted-param key=value concat)` using
 // the account Auth Token, base64-encoded into `X-Twilio-Signature`. The spec shows the `twilio` SDK
-// `validateRequest` helper; this package stays dependency-free (only @wardenx/types), so we
+// `validateRequest` helper; this package stays dependency-free (only @chartwarden/types), so we
 // implement the SAME published algorithm directly with `node:crypto` — production may swap in the
 // SDK at the wiring layer, but the bytes computed here are identical. The Auth Token comes from the
 // tenant secret store (M1 §8.3); the signing URL must match the configured public URL EXACTLY

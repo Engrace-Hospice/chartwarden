@@ -15,8 +15,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { PlaceOfServiceFacilityKind } from "@wardenx/medicaid-adapters";
+import { createDbClient } from "@chartwarden/db";
+import type { PlaceOfServiceFacilityKind } from "@chartwarden/medicaid-adapters";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity-resolver";

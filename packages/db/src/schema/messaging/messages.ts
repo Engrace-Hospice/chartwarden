@@ -1,4 +1,4 @@
-// @wardenx/db — `message` (M36 Secure Messaging §3.4). The org-scoped, encrypted message row.
+// @chartwarden/db — `message` (M36 Secure Messaging §3.4). The org-scoped, encrypted message row.
 // `body_cipher` is envelope-encrypted under the tenant DEK (bytea); `body_sha256` is the hex
 // SHA-256 of the PLAINTEXT body computed PRE-ENCRYPTION at write time and re-computed on edit
 // (M36-F03 / ARCH-206 / ARCH-240 — HIPAA §164.312(c) integrity). The §4.4 hash-verification

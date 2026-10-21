@@ -16,7 +16,7 @@
 //     re-acknowledges, because the patient's situation may have moved on while the volunteer was out.
 //
 // PURE — the gate rows, the plan kind, and `now` are injected; the transaction is the caller's.
-import { OVERRIDE_REASON_MIN_LENGTH } from "@wardenx/discipline-plans";
+import { OVERRIDE_REASON_MIN_LENGTH } from "@chartwarden/discipline-plans";
 import type {
   DisciplinePlanId,
   DisciplinePlanKind,
@@ -24,7 +24,7 @@ import type {
   MembershipId,
   VolunteerAssignmentId,
   VolunteerGateKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { DisciplinePlanSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
 import { effectiveStatusFor } from "./effective-status";

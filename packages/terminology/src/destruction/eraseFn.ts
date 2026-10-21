@@ -1,4 +1,4 @@
-// @wardenx/terminology — the D8 tenant-offboarding eraseFn (M38-T10, spec §11 D8, §3.1 layout).
+// @chartwarden/terminology — the D8 tenant-offboarding eraseFn (M38-T10, spec §11 D8, §3.1 layout).
 //
 // Registered with the M4 destruction registry (over the app boundary's DataEraser) to satisfy a
 // right-to-erasure / tenant-offboarding request for the `terminology_tenant_extensions` data class.

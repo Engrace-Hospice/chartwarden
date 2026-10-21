@@ -1,7 +1,7 @@
 // WP 3.5 test support: a fully in-memory handoff service (memory stores, fake db, captured outbox, controllable ports).
 // Not a test file itself; the *.test.ts files in this directory build on it.
-import type { DbClient } from "@wardenx/db";
-import { ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import { allowAllPart2ChannelGate } from "../part2-channel-gate";
 import { createMemoryTaskStore } from "../tasks/task-store-memory";
 import { createMemoryHandoffPolicyStore } from "./handoff-policy-store-db";

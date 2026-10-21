@@ -9,14 +9,14 @@
 // other kind must NOT carry a `source_encounter_id`. Both directions are DB CHECKs on the contact log as
 // well; the guard here is what turns the constraint into a 422 with a code the UI can render instead of a
 // raw PG violation.
-import { requiresArtifactRender, requiresSourceEncounter } from "@wardenx/bereavement";
+import { requiresArtifactRender, requiresSourceEncounter } from "@chartwarden/bereavement";
 import type {
   BereavementContactLogOutcome,
   BereavementOutreachKind,
   BereavementOutreachStatus,
   EncounterId,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type BereavementTransitionResult, result } from "./effects";
 import { BereavementStateError, require_ } from "./errors";
 

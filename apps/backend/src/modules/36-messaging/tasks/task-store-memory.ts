@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/tasks/task-store-memory.ts - WP 3.4: an in-memory TaskStore that applies the same
 // rules as the database store (one active task per message and assignee, the shared transition table). It exists for
 // unit tests of the service and the offboarding job; the database behaviour itself is proven by the live suite.
-import { decideTransition, taskActorRole } from "@wardenx/messaging";
-import type { TaskAction, TaskEventType, TaskStatus } from "@wardenx/types";
+import { decideTransition, taskActorRole } from "@chartwarden/messaging";
+import type { TaskAction, TaskEventType, TaskStatus } from "@chartwarden/types";
 import {
   type TaskActor,
   TaskAssigneeAlreadyHasActive,

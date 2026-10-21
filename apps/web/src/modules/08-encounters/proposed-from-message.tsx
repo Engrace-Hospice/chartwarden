@@ -3,7 +3,7 @@
 // "Start my addendum" opens a form where the reviewer writes their own reason, and the draft is linked to the proposal.
 // Signing that addendum (existing flow, step-up) is the accept; "Decline" records a reason. Hidden while the tenant has
 // proposals off (`enabled:false`) or there are none; any server refusal reads as "no longer available".
-import { Button, SelectField, TextAreaField, t, useApiClient } from "@wardenx/ui";
+import { Button, SelectField, TextAreaField, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import {

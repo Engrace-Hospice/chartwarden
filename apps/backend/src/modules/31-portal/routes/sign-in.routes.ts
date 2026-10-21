@@ -21,8 +21,8 @@
 // unlock), and every bind and refusal is audited. A suspended/revoked account is refused (lockout), as is an
 // unverified email, a non-active tenant and an account with no live grant. Idempotent: a replay of the same bind
 // answers 200 `replayed:true`; a different bind of an already-bound session is a 409, never a silent re-scope.
-import { CredentialThrottleError } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError, type ChartWardenError } from "@wardenx/types";
+import { CredentialThrottleError } from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError, type ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { PortalStateError } from "../lifecycle/errors";
 import { accountRefusal, decideSignIn } from "../sign-in";

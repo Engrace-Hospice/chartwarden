@@ -14,10 +14,10 @@
 // implicitly — they need a human membership on the request context (the actor whose name the row records).
 // Writes run under `withOrgContext` as the acting user, so RLS scopes them and the M4 trigger attributes
 // them; a row of another patient or another tenant is a 404.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {

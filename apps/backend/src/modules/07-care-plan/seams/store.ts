@@ -17,7 +17,7 @@ import type {
   RelevantGoal,
   RelevantIntervention,
   RelevantProblem,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** A care-plan problem the store hands the reader, carrying the SQL-resolved `containsSud` flag (D7). */
 export interface StoredRelevantProblem extends RelevantProblem {

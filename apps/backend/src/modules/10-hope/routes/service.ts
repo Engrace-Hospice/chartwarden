@@ -1,6 +1,6 @@
 // apps/backend/src/modules/10-hope/routes/service.ts — M10-T06 the §4.1 route service over an in-memory
 // backend (the same in-mem-slice precedent as M8-T09 / M9-T05; Drizzle in prod under `withOrgContext` so
-// RLS backstops every read). The service composes the PURE M10 domain (`@wardenx/hope`): the
+// RLS backstops every read). The service composes the PURE M10 domain (`@chartwarden/hope`): the
 // server-authoritative J2051 trigger (`evaluateJ2051Trigger`, D4), the one-SFV-per-source planner
 // (`planSfvCreation`), the SFV completion guard (`planSfvCompletion`), the correction-chain guards, and
 // the §4.4 `HopeStateError` codes. It consumes M9's `LatestAssessmentProvider` seam (injected) to snapshot
@@ -23,7 +23,7 @@ import {
   planSfvCompletion,
   planSfvCreation,
   require_,
-} from "@wardenx/hope";
+} from "@chartwarden/hope";
 import type {
   HopeDischargeReason,
   HopeRfaKind,
@@ -34,8 +34,8 @@ import type {
   J2051Severity,
   LatestAssessmentProvider,
   ScaleType,
-} from "@wardenx/types";
-import { ConflictError, NotFoundError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "../abac-predicates";
 import type {
   HopeAnswerPatchChange,

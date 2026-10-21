@@ -1,4 +1,4 @@
-// @wardenx/gusto-client — the shared adapter CONTRACT types (no IO, no SDK). Extracted into their own
+// @chartwarden/gusto-client — the shared adapter CONTRACT types (no IO, no SDK). Extracted into their own
 // leaf so client.ts / normalize.ts / index.ts all import them WITHOUT closing an index↔client cycle
 // (the no-circular fitness rule). No Gusto SDK shapes leak past this boundary; money is INTEGER CENTS.
 
@@ -28,7 +28,7 @@ export interface GustoClient {
   refreshTokens(): Promise<void>;
 }
 
-/** The published `GustoClientFactory` seam shape (mirrors `@wardenx/cost-report`'s seam interface). */
+/** The published `GustoClientFactory` seam shape (mirrors `@chartwarden/cost-report`'s seam interface). */
 export interface GustoClientFactory {
   forTenant(input: { organizationId: string; gustoCompanyId?: string }): Promise<GustoClient>;
 }

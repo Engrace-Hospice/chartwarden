@@ -1,4 +1,4 @@
-// @wardenx/db — `dashboard_tile_cache` (M33 §3.3). A transient, non-partitioned cache of computed
+// @chartwarden/db — `dashboard_tile_cache` (M33 §3.3). A transient, non-partitioned cache of computed
 // tile results keyed by a sha256 over (orgId, mvKey, scope_envelope_hash, filters_hash), with a
 // freshness stamp and TTL. ORG-SCOPED: carries organization_id NOT NULL → standard app.org_id RLS
 // (retention class `operational`). UNIQUE (organization_id, cache_key). RLS + grants + the M4

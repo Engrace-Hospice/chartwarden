@@ -3,7 +3,7 @@
 // published M17 visit), never from the client body and never defaulted to "". An aggregator submission with an
 // empty service-type code is rejected by the vendor, so an unresolved code refuses the capture and the
 // submission payload builder.
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 export interface CaptureClassification {
   readonly serviceTypeCode: string;

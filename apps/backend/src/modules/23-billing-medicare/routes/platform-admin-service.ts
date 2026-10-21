@@ -11,10 +11,10 @@
 //                       custom rule's predicate DSL is evaluated by any engine today, so a persisted "rule"
 //                       would be dead data that never ran. A key that already exists is a 409; a new key is an
 //                       honest 501 naming exactly what is missing — never a 2xx that registered nothing.
-import { DEFAULT_BILLING_RULES, validateWageIndexEntry } from "@wardenx/billing";
-import type { repositories } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ValidationError, ChartWardenError } from "@wardenx/types";
+import { DEFAULT_BILLING_RULES, validateWageIndexEntry } from "@chartwarden/billing";
+import type { repositories } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ValidationError, ChartWardenError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { M23WriteActor } from "./actor";
 import type {

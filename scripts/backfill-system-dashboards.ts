@@ -21,7 +21,7 @@
  *
  * Run:   bun run scripts/backfill-system-dashboards.ts
  */
-import { createDbClient, schema } from "@wardenx/db";
+import { createDbClient, schema } from "@chartwarden/db";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { createDbSystemDashboardSeeder } from "../apps/backend/src/modules/33-reporting/index";
 

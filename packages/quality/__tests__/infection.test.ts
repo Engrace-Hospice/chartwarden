@@ -6,9 +6,9 @@ import {
   detectOutbreakClusters,
   normalizeSurveillanceEvent,
   toNewOutbreakCase,
-} from "@wardenx/quality";
-import { ChartWardenError } from "@wardenx/types";
-// @wardenx/quality — M30 §7.8 / D11 (WF-18) infection outbreak-detector unit tests (PURE; no DB).
+} from "@chartwarden/quality";
+import { ChartWardenError } from "@chartwarden/types";
+// @chartwarden/quality — M30 §7.8 / D11 (WF-18) infection outbreak-detector unit tests (PURE; no DB).
 //
 // Proves the ≥3-events-in-14-days cluster algorithm: a cluster OPENS exactly at the threshold (the third
 // qualifying event within the rolling window) and NOT below it, the 14-day window is INCLUSIVE on its

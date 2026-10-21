@@ -6,8 +6,8 @@
 // (the conservative reading: keep the evidence longer, never shorter), so rows are deleted once
 // `expires_at < now - 90 days`. An expired token is already refused at the bearer check regardless of the row.
 // Bounded per org per tick; idempotent (a deleted row is simply absent); one org's failure does not stop the rest.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, lt } from "drizzle-orm";
 
 import type { ActiveOrgListPort } from "./ports";

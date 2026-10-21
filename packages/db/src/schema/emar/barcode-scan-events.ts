@@ -1,4 +1,4 @@
-// @wardenx/db — `barcode_scan_event` (M13 §3.3). BCMA (Barcode Medication Administration) capture: the scanned
+// @chartwarden/db — `barcode_scan_event` (M13 §3.3). BCMA (Barcode Medication Administration) capture: the scanned
 // drug NDC/RxNorm/lot/expiration plus the patient-wristband scan (only a hash of the PHI-equivalent wristband
 // payload is stored — the raw payload is never logged), and the five-rights match result. Org-scoped; standard
 // app.org_id RLS. Non-partitioned. administration_record is partitioned, so `administration_record_id` is plain

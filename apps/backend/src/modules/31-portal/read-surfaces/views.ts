@@ -7,7 +7,7 @@
 // handlers that emit them through `validatePortalDto` land in M31-T07. Every surface carries an explicit
 // `category: PortalDataCategory` so the route layer can drive the §164.528 disclosure-accounting emit off
 // one field and the §4.4 scope-set gate off the same taxonomy.
-import type { IsoInstant, PatientId, PortalDataCategory } from "@wardenx/types";
+import type { IsoInstant, PatientId, PortalDataCategory } from "@chartwarden/types";
 
 /** §5.1 — the patient dashboard header (composed from M5 `PatientReader`). Name is shown (the caregiver is
  *  entitled to it via an active grant) but MRN / SSN / external ids never cross to the portal. */

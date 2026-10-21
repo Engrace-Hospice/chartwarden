@@ -36,14 +36,14 @@ import {
   isReturnLineCoherent,
   returnDueAt,
   returnEscalationAt,
-} from "@wardenx/supplies";
+} from "@chartwarden/supplies";
 import type {
   ComfortKitDispatchedContentId,
   ComfortKitDisposalMethod,
   ComfortKitReturnState,
   IsoInstant,
   MembershipId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type SupplySideEffect, type SupplyTransitionResult, result, withAudit } from "./effects";
 import { SupplyStateError, require_ } from "./errors";
 
@@ -274,7 +274,7 @@ function reconcile(
  * §2.6 / D8 — the reconciliation. Returns the transition AND the computed per-line accounting, because the
  * caller writes both the state and the `comfort_kit_returned_content` rows in one transaction.
  *
- * The discrepancy flag is COMPUTED here from the quantities (`@wardenx/supplies` owns the Decimal math the
+ * The discrepancy flag is COMPUTED here from the quantities (`@chartwarden/supplies` owns the Decimal math the
  * `m21_compute_return_discrepancy` trigger mirrors). It is never accepted from the caller: a flag the
  * reconciler could set is a flag the reconciler could clear, and §7.3 is explicit that only an M30
  * investigation closure can mark a discrepancy explained.

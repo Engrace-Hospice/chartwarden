@@ -1,10 +1,10 @@
-// @wardenx/reporting · repositories — the tile-cache aggregate: `dashboard_tile_cache` (a transient,
+// @chartwarden/reporting · repositories — the tile-cache aggregate: `dashboard_tile_cache` (a transient,
 // non-partitioned cache of computed tile results keyed by sha256 over (orgId, mvKey,
 // scope_envelope_hash, filters_hash), with a freshness stamp + TTL) (M33 §3.3–§3.4). ORG-SCOPED with a
 // UNIQUE (organization_id, cache_key); the tile-compute path upserts on the cache key, the read path
 // looks up by key, and a sweeper trims expired rows. The dashboard service wraps these in
 // `withOrgContext`.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, eq, lte } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

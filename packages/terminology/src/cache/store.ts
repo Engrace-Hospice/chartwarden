@@ -1,4 +1,4 @@
-// @wardenx/terminology — the terminology cache port + an in-memory adapter (M38-T10, spec §4.6).
+// @chartwarden/terminology — the terminology cache port + an in-memory adapter (M38-T10, spec §4.6).
 //
 // The seam between the read path and Valkey. Production binds a Valkey-backed adapter (GET/SET with
 // the §4.6 TTLs, MGET on the batch hot path, prefix DELETE on invalidation); the slice/tests bind

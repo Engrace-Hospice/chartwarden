@@ -6,7 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the SURVEYOR READ VIEW (R2, §5.1 #19). The engagement-
 // scoped, strictly READ-ONLY rendering of one Medicaid claim for a surveyor or auditor: the claim facts,
 // the rule outcomes of its latest validation run, the override history against it, the R&B chain, and the

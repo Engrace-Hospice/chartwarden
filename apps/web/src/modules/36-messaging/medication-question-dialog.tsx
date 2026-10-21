@@ -2,8 +2,8 @@
 // the server builds the message, the optional read-only medication link and the nurse's task in one transaction. One
 // {Idempotency-Key, client_message_id} pair is reused only to retry an identical payload; an edit rotates both. No order action or
 // link exists here: the fixed notices say a message never changes a medication.
-import { MEDICATION_QUESTION_TEXT_MAX } from "@wardenx/types";
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { MEDICATION_QUESTION_TEXT_MAX } from "@chartwarden/types";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { createPortal } from "react-dom";

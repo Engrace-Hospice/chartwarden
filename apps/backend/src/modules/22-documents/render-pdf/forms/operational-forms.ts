@@ -10,7 +10,7 @@ import {
   assertEvvVerificationRenderPayload,
   assertTenantExportCoverRenderPayload,
   assertVisitConfirmationRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { fmtInstant, shortId } from "../shared";
 import { defineForm } from "./compile";
 

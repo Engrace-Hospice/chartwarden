@@ -11,10 +11,10 @@
 //      caller carries the row `version` it read; a missing header is 428 PRECONDITION_REQUIRED, a malformed
 //      one is 400, and a stale value surfaces (service-side) as 412 VERSION_MISMATCH. Mirrors the M7/M8
 //      routes/concurrency.ts precedent.
-import { ForbiddenError, ChartWardenError } from "@wardenx/types";
+import { ForbiddenError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 // ── opaque keyset cursor (§4.1 / SD-052) ──────────────────────────────────────────────────────────────

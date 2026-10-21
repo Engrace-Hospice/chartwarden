@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the support-session service (M34 §3.6, §7.4; D8/D16/D21).
+// @chartwarden/saas-tenant-platform · services — the support-session service (M34 §3.6, §7.4; D8/D16/D21).
 //
 // The WITH-consent break-glass *variant* (M34-F01 / D21): a tenant compliance_officer files a
 // `support_consent_grant` (scope + ≤72h expiry — the repo + the §3.6 CHECK enforce that); a DISTINCT
@@ -21,7 +21,7 @@
 //
 // The three `m34.support_session.*` outbox names are pinned as constants until the backend wiring phase
 // adopts the §4.9 `M34EventName` catalog verbatim (events-by-m34.ts already declares the three payloads).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { SupportRepository } from "../repositories/support";
 
 /** The §7.4 hard ceiling on a support-session window: a session never outlives `started_at + 8h`, even

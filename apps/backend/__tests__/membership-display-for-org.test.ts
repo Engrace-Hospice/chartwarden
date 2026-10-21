@@ -1,6 +1,6 @@
 // The identity-owned staff display seam (`membershipDisplayForOrg`) — the pure halves. The RLS/JOIN
 // behaviour is proven live, as the NOBYPASSRLS `wardenx_app` role, in `m14-idg-read-service.live.test.ts`.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
   MEMBERSHIP_DISPLAY_MAX_IDS,

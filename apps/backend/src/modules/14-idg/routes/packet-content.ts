@@ -7,14 +7,14 @@
 // is empty/`null` here, never back-filled. The cover summary is DETERMINISTIC Layer-1 text composed from the
 // snapshot's own facts (no LLM; `layer2Polished` is never read — the D6 polish is a gated, separate concern).
 //
-// SUD (42 CFR Part 2, W-SUD-01): redaction is `@wardenx/idg`'s `applySudRedaction`, applied HERE before the
+// SUD (42 CFR Part 2, W-SUD-01): redaction is `@chartwarden/idg`'s `applySudRedaction`, applied HERE before the
 // view is shaped (so the cover summary and counts describe what the caller is actually shown, never what was
 // elided). The build snapshot carries no per-source SUD tag — only the patient-level `patientCover.activeSudFlag`
 // — so a caller WITHOUT a Part 2 release on a SUD-flagged patient gets EVERY source-derived block elided
 // (fail-closed: we cannot tell which encounter/assessment/order is the SUD one, so none is shown). The banner
 // signal (`appliedSudRedaction` + notice) is non-PHI. Counts of withheld rows are never published.
-import { DISCIPLINE_VIEW_POLICY, applySudRedaction } from "@wardenx/idg";
-import type { DisciplineKey, DisciplineViewBlock, PacketSnapshot } from "@wardenx/types";
+import { DISCIPLINE_VIEW_POLICY, applySudRedaction } from "@chartwarden/idg";
+import type { DisciplineKey, DisciplineViewBlock, PacketSnapshot } from "@chartwarden/types";
 
 /** The only snapshot schema this mapper understands. Anything else ⇒ `content: null` (fail-honest). */
 export const SUPPORTED_PACKET_SCHEMA_VERSION = "2026-01-v1" as const;

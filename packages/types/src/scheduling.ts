@@ -1,4 +1,4 @@
-// @wardenx/types — Module 17 (Scheduling & Route Optimization) leaf contracts (M17-T01).
+// @chartwarden/types — Module 17 (Scheduling & Route Optimization) leaf contracts (M17-T01).
 //
 // Per ADR-0005 D1/D3 the cross-module CONTRACTS live in this leaf package: the M17 spec's references to
 // `packages/scheduling/src/{seams,events}.ts` resolve their TYPE surface HERE so the downstream consumers
@@ -12,8 +12,8 @@
 // §4.9 typed M36 alert payloads, the §4.3 published-seam interfaces + their read DTOs. The pure-data domain
 // constants (§3.2 Phase-D cancellation-reason value set, the §2.3 RRULE-subset grammar, the
 // `visit_purpose → discipline` mapping the `discipline_matches_visit` predicate reads) live in the
-// `@wardenx/scheduling` FEATURE package. The OSRM `RoutingProvider` adapter interface (§4.10 D1) lives in
-// `@wardenx/routing-client`. This file is type-only and importable by everyone with no edge.
+// `@chartwarden/scheduling` FEATURE package. The OSRM `RoutingProvider` adapter interface (§4.10 D1) lives in
+// `@chartwarden/routing-client`. This file is type-only and importable by everyone with no edge.
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
@@ -27,7 +27,7 @@ import type { ClinicalLinkSource } from "./clinical-link";
 /** A calendar date in ISO `YYYY-MM-DD` form (org-tz service date). M17-owned alias; no other leaf exports it. */
 export type IsoDate = string;
 
-// ── M17-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M17-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type VisitProposalId = string;
 export type RecurringVisitId = string;
 export type ClinicianAvailabilityId = string;

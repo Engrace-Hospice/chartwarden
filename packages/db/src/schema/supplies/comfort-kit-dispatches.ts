@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_dispatch` (M21 §3.1.8). D6/D17: one row per physical kit that left a DEA
+// @chartwarden/db — `comfort_kit_dispatch` (M21 §3.1.8). D6/D17: one row per physical kit that left a DEA
 // registration, unified across every deployment site (home / ALF / SNF-as-residence / IPU room) behind the
 // single `deployment_site` discriminator. This is the head of the 21 CFR §1304 chain of custody; the
 // per-medication lines hang off it in `comfort_kit_dispatched_content`.

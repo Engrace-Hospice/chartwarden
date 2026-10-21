@@ -3,7 +3,7 @@
 //
 // Exercises M38's routes through the FULL M1 middleware chain via Fastify `inject` with no live
 // infra: buildServer() mounts the foundation host, registerTerminologyRoutes() mounts the §4.1
-// inventory over the in-memory TerminologyProvider (@wardenx/terminology) seeded with concepts /
+// inventory over the in-memory TerminologyProvider (@chartwarden/terminology) seeded with concepts /
 // value-set members / a deprecation. The REAL Authorization Contract gates every route on the
 // §4.4 keys (`terminology.read` / `terminology.value_set.extend`); a header-auth shim populates
 // request.context. The §7.4 lockdown is proven structurally: NO route mutates a canonical table —
@@ -13,12 +13,12 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type ResolvedConcept,
   createInMemoryTerminologyStore,
   createTerminologyProvider,
-} from "@wardenx/terminology";
+} from "@chartwarden/terminology";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

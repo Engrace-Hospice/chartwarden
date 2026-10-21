@@ -1,10 +1,10 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/19-oncall — M19 On-Call Triage screen registration (Track B / ADR-0030, §5.1).
 // The read + write surface over the live /api/v1 triage backend (38 routes, M19-T07).
 //
 // Each `requiredPermission` is the REAL §4.6 M19 key the matching route gates on
 // (apps/backend/src/modules/19-oncall/permission-keys.ts → `M19_CONTRIBUTED_PERMISSIONS` in
-// @wardenx/auth) — this gates NAV VISIBILITY only. The server stays the authoritative enforcer, and a call
+// @chartwarden/auth) — this gates NAV VISIBILITY only. The server stays the authoritative enforcer, and a call
 // outside the caller's reach is a non-leaking 404 from the server, never a frontend hide; that 404 is
 // deliberate, because "this call 403s" would tell an unauthorized caller that a particular patient rang the
 // after-hours line.

@@ -17,14 +17,14 @@
 // Platform-shared: there is no org to fan out over (spec "n/a"), so there is no per-org loop. Bounded (one
 // release tag, at most {@link VERIFY_ROW_LIMIT} rows), idempotent (a re-run with a row present writes nothing).
 // No signing key bound => the tick FAILS LOUD rather than silently verifying nothing.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type FhirCapabilityStatement,
   capabilityChecksum,
   signCapabilitySnapshot,
   verifyCapabilitySnapshot,
-} from "@wardenx/fhir";
-import { FHIR_PHASE_1_VERSION } from "@wardenx/types";
+} from "@chartwarden/fhir";
+import { FHIR_PHASE_1_VERSION } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 const SNAPSHOT = schema.fhirCapabilitySnapshot;

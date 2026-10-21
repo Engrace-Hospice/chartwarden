@@ -17,8 +17,8 @@
 // the set of patients whose current SSN equals the incoming one (found WITHOUT decrypting anything) and
 // `buildMatchCandidates` stamps the incoming number on exactly those candidates, so the matcher's own equality
 // check, and its DOB check, decides.
-import { type DbClient, schema } from "@wardenx/db";
-import { ValidationError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { ValidationError } from "@chartwarden/types";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireValidSsn } from "./identifiers/ssn";
 import type { MatchCandidate } from "./matching/matcher";

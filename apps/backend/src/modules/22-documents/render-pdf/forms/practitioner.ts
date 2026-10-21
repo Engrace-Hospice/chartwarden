@@ -1,6 +1,6 @@
 // apps/backend/src/modules/22-documents/render-pdf/forms/practitioner.ts - how a physician prints on an order:
 // "Dr. Imani Okafor, MD (NPI 1234567893)". Pure; shared by the order forms.
-import type { RenderPractitioner } from "@wardenx/types";
+import type { RenderPractitioner } from "@chartwarden/types";
 
 export function practitionerLine(p: RenderPractitioner | null): string {
   if (p === null) return "Not recorded";

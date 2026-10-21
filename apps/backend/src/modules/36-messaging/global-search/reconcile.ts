@@ -21,9 +21,9 @@
 // ponytail: each message is its own tenant transaction through the flag-checking writer (2 extra small reads per message);
 // batch the writer if the backfill of a very large tenant is too slow. The verify query prefilters on `status='deleted'`
 // only; when the redaction marker lands (WP 5.x) the verify scan must evaluate the port on every row, not only on candidates.
-import type { DbClient } from "@wardenx/db";
-import { shouldResizeTagBits, tagBitsForTotalRows } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { shouldResizeTagBits, tagBitsForTotalRows } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import { type IndexState, ensureIndexState, saveCheckpoint, setIndexStatus } from "./index-state";

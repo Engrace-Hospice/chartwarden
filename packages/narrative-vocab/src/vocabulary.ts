@@ -7,7 +7,7 @@
 // pinned at first finalize (D11) and the assembly engine asserts the selection was authored against the
 // version it resolves. Expanding the corpus is additive and never edits a shipped phrase's bytes (Layer-1
 // determinism depends on phrase stability).
-import type { EncounterDiscipline, EncounterType } from "@wardenx/types";
+import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { VocabEntry } from "./types";
 
 /** Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11). */

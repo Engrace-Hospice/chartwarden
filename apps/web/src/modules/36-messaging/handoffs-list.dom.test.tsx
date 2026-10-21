@@ -2,7 +2,7 @@
 // loading, empty and error states say so.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { HandoffsList } from "./handoffs-list";
 import { HANDOFF_FIXTURE } from "./handoffs-test-fixture";

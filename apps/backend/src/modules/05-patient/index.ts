@@ -1,7 +1,7 @@
 // apps/backend/src/modules/05-patient — Module 5 (Patient & Demographics) backend surface,
 // owned per module-manifest.ts codePath `apps/backend/src/modules/05-patient`. M5 has NO package —
 // its code lives only here; the cross-module CONTRACTS (identifier strategy, outbox event names,
-// PatientReader data shape) live in the leaf @wardenx/types (M5-T01, re-exported below).
+// PatientReader data shape) live in the leaf @chartwarden/types (M5-T01, re-exported below).
 //
 // Build order (Wave C plan): T01 enums + layout + identifier strategy (this) → T02/T03/T04 schema
 // (packages/db) → T05 RLS/audit/migration → T06 matching pipeline → T07 CaseloadProvider seam
@@ -20,7 +20,7 @@ export {
   type M5PatientEventName,
   type PatientIdentity,
   type ExternalMrn,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // M5-T07/T08 — the three boot-gate seams: CaseloadProvider (§4.1, + caseload_membership predicate),
 // PatientReader (§4.8, merge-redirect), PatientMutator (§4.9, D12 strip). registerPatientSeams closes
@@ -323,7 +323,7 @@ export {
 // M5-T12 — the `clinical_record` destruction eraser (§8/§10, D7/D8). Screens DEFER (no apps/web
 // codePath in the M5 manifest — the entity/admit/merge screens are tracked for the ADR-0030 UI
 // follow-up). DR Tier 1 (the patient spine is on every clinical/billing critical path) — see
-// M5_DR_INT_INVENTORY.md. The m5.patient.mutator_applied audit action ships in @wardenx/audit.
+// M5_DR_INT_INVENTORY.md. The m5.patient.mutator_applied audit action ships in @chartwarden/audit.
 export {
   type PatientEraserDeps,
   type PatientEraseStore,
@@ -377,7 +377,7 @@ export {
   registerPatientPrivacyRoutes,
 } from "./routes/privacy-routes";
 
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
 import { createDbCareTeamStaffPort as _dbCareTeamStaffPort } from "./care-team-staff-db";

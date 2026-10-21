@@ -1,4 +1,4 @@
-// @wardenx/terminology — tenant value-set extension rules (M38-T07, spec §7.6, §2.4.3, §2.5, §7.10).
+// @chartwarden/terminology — tenant value-set extension rules (M38-T07, spec §7.6, §2.4.3, §2.5, §7.10).
 //
 // A tenant extension may ADD a (system, code) to a platform value set; it may NEVER weaken one
 // (§2.4.3 — "a tenant extension never overrides a platform value-set member, only adds"). That

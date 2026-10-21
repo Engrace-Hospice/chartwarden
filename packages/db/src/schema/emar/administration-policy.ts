@@ -1,4 +1,4 @@
-// @wardenx/db — `administration_policy` (M13 §3.3). Per-tenant configuration (org-scoped, single row per tenant —
+// @chartwarden/db — `administration_policy` (M13 §3.3). Per-tenant configuration (org-scoped, single row per tenant —
 // NOT patient-scoped): grace-window defaults, PRN reassessment-window defaults, the materialization window, the
 // per-state scope-of-practice overrides (D8 framework, jsonb keyed by state code), and the eMAR-per-admin-PDF flag
 // (D9 — off for home, on for IPU). Org-scoped; standard app.org_id RLS. Non-partitioned. RLS + grants + the M4

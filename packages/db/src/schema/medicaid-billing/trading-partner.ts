@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — per-PE per-state per-channel trading-partner credentials
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — per-PE per-state per-channel trading-partner credentials
 // (NON-partitioned; org/PE-level configuration, NOT patient PHI). Mirrors M23's mac_submitter_credential.
 // All *_cipher columns are KMS-wrapped under the per-tenant DEK (M1 §6) and audit-denylisted (§3.6).
 //

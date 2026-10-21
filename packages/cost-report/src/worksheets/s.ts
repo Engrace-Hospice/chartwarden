@@ -1,10 +1,10 @@
-// @wardenx/cost-report — Worksheet S (Certification & Settlement Summary) TypeBox schema (CMS-1984-14,
+// @chartwarden/cost-report — Worksheet S (Certification & Settlement Summary) TypeBox schema (CMS-1984-14,
 // §4.2 / §1.1). Worksheet S is the cover/certification page: it names the provider + fiscal year, carries
 // the officer attestation statement captured verbatim at submit (D14), and summarizes the top-line cost-
 // report total that must tie to Worksheet A's grand total (cross-worksheet tie). All money is INTEGER
 // CENTS at the boundary; no PHI — aggregate financial/identification data only (D18).
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet S — certification statement + settlement summary. */

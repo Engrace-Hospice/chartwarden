@@ -714,7 +714,7 @@ request.
 
 - Enum `hospice_coverage` (shared with M12 `medication_order`; created by M12's migration `0385`):
   `covered_related` | `not_covered_unrelated` | `not_covered_other` (`HOSPICE_COVERAGE_VALUES` in
-  `@wardenx/types`, `hospiceCoverage` in `packages/db/src/enums.ts`).
+  `@chartwarden/types`, `hospiceCoverage` in `packages/db/src/enums.ts`).
 - Columns on `supply_request` (migration `0386_m21_supply_request_hospice_coverage.sql`): `hospice_coverage`
   (NOT NULL, default `covered_related`), `coverage_reason` (text, patient-facing), `coverage_determined_at`
   (timestamptz; NULL = never explicitly determined), `coverage_determined_by_membership_id` (uuid, SESSION
@@ -1975,7 +1975,7 @@ zone against M32's prompt registry.
 
 ```ts
 // apps/backend/src/modules/21-supplies/boot.ts
-import type { ModuleBootContext } from '@wardenx/seams';
+import type { ModuleBootContext } from '@chartwarden/seams';
 import { SupplyFulfillmentProviderImpl } from './services/supply-fulfillment-provider.js';
 import { ComfortKitDispatchProviderImpl } from './services/comfort-kit-dispatch-provider.js';
 import { SupplyCostProviderImpl } from './services/supply-cost-provider.js';
@@ -2008,7 +2008,7 @@ export async function bootSupplies(ctx: ModuleBootContext): Promise<void> {
 
 ```ts
 // apps/backend/src/modules/21-supplies/services/validate-supply-ai-block.ts
-import type { ModuleBootContext } from '@wardenx/seams';
+import type { ModuleBootContext } from '@chartwarden/seams';
 
 /**
  * D15: AI-Prohibited Zone Validator

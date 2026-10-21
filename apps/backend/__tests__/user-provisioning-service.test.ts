@@ -1,4 +1,4 @@
-import type { NewAuditEvent } from "@wardenx/audit";
+import type { NewAuditEvent } from "@chartwarden/audit";
 import { describe, expect, it, vi } from "vitest";
 import {
   createInMemoryMembershipRepository,

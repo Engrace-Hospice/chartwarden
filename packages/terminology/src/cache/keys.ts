@@ -1,4 +1,4 @@
-// @wardenx/terminology — cache key grammar + TTLs + invalidation (M38-T10, spec §4.6).
+// @chartwarden/terminology — cache key grammar + TTLs + invalidation (M38-T10, spec §4.6).
 //
 // Pure, infra-free key construction for the four terminology caches. The keys + TTLs live here so
 // the read path (lookup/expand/isMemberOf/search) and the invalidation path (version load, member

@@ -3,7 +3,7 @@
 // in the SAME transaction as the write (the caller passes its `tx`), so an event never announces a write that rolled back.
 // A replay changes nothing and publishes nothing. The catalog entries live in events-by-m36.ts (added with the consumers).
 // The two `decided` events are published by the OWNING modules (M8, M14), not here; the outcome consumer reads them.
-import type { ChartPromotionTargetKind, ChartPromotionTargetModule } from "@wardenx/types";
+import type { ChartPromotionTargetKind, ChartPromotionTargetModule } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 
 export const M36_PROMOTION_EVENTS = {

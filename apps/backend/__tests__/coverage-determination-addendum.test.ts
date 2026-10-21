@@ -1,6 +1,6 @@
 // FY2027, 42 CFR 418.24(d)(2) — M6's consumer of the M12 / M21 coverage-determination events decides whether
 // the change touches the election addendum's non-covered list (and so opens the 3-day update window).
-import type { NonCoveredItemSnapshot } from "@wardenx/types";
+import type { NonCoveredItemSnapshot } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import type { ElectionAddendumService } from "../src/modules/06-admission/election-addendum/service";

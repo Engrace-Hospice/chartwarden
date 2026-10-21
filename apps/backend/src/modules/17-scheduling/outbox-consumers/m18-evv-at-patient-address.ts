@@ -12,10 +12,10 @@
 // membership. Unlike `arriveVisit`, this consumer does not emit an outbox event on `arrive` — neither
 // does the route-layer method, since no `m17.visit.arrived`/`.in_visit` catalog entry exists; `arrive`
 // is otherwise silent until `m8.encounter.signed` completes the visit.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionVisit } from "@wardenx/scheduling";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { VisitStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionVisit } from "@chartwarden/scheduling";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { VisitStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;

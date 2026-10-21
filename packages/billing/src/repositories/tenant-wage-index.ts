@@ -1,9 +1,9 @@
-// @wardenx/billing · repositories — `tenant_wage_index` (F-211; the TENANT-ENTERED, append-only CMS hospice wage index
+// @chartwarden/billing · repositories — `tenant_wage_index` (F-211; the TENANT-ENTERED, append-only CMS hospice wage index
 // per CCN + federal fiscal year). ORG-SCOPED, no PHI. Rows are inserted and SUPERSEDED (`superseded_at`/`superseded_by_id`,
 // the only app-updatable columns — column GRANT + `tenant_wage_index_guard` trigger); there is no edit or delete surface.
 // "Live" = `superseded_at IS NULL`; the partial unique index `tenant_wage_index_live_uq` guarantees at most one live row
 // per (org, ccn, fiscal year), so `findLive` has at most one answer.
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

@@ -8,8 +8,8 @@ import type {
   TriageCallState,
   TriageDispositionData,
   TriageProtocolAnswerType,
-} from "@wardenx/types";
-import { TRIAGE_CALL_TERMINAL_STATES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { TRIAGE_CALL_TERMINAL_STATES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type CallCloseEscalationVerdict,

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/17-scheduling/routes/service.ts — M17-T07 the §4.1 route service over an in-memory
 // backend (the M11-T06 / M12-T08 / M13-T08 / M14-T05 in-mem-slice precedent; Drizzle in prod under
-// `withOrgContext` so RLS backstops every read). The service composes the PURE M17 domain (`@wardenx/scheduling`):
+// `withOrgContext` so RLS backstops every read). The service composes the PURE M17 domain (`@chartwarden/scheduling`):
 // the §2.2.1 visit state machine (`transitionVisit` / `planVisitProposed`) and the §2.3 / §1.1 D8 discipline
 // matrix. It ALSO orchestrates the §1.1 D8 seven-predicate pre-schedule gate for the publish / reassign / edit
 // write paths (the visit machine takes the already-computed `gatePassed` verdict) by resolving the same facts
@@ -9,22 +9,22 @@
 //
 // Route optimisation stays behind `scheduling.route_optimization` (OFF in Phase 1): `optimizeDay` returns the
 // §7.9 degraded result (visits in scheduled order) unless an OSRM `RoutingProvider` is injected AND the flag is
-// on. The adapter boundary lives in `@wardenx/routing-client` (the §25.14 mandate).
-import type { RoutingProvider } from "@wardenx/routing-client";
+// on. The adapter boundary lives in `@chartwarden/routing-client` (the §25.14 mandate).
+import type { RoutingProvider } from "@chartwarden/routing-client";
 import {
   type SchedulingDiscipline,
   VISIT_PURPOSE_DISCIPLINES,
   planVisitProposed,
   transitionVisit,
-} from "@wardenx/scheduling";
+} from "@chartwarden/scheduling";
 import type {
   TimeOffKind,
   TimeOffState,
   VisitPurpose,
   VisitSetting,
   VisitStatus,
-} from "@wardenx/types";
-import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 import type { CreateOnCallRotationInput, OnCallRotationView } from "../seams/oncall-rotation-store";

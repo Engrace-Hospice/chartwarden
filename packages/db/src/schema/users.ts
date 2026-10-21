@@ -1,4 +1,4 @@
-// @wardenx/db — `user` (M1 Foundation §3.6, Better Auth compatible). Cross-org
+// @chartwarden/db — `user` (M1 Foundation §3.6, Better Auth compatible). Cross-org
 // identity: a user is NOT scoped to a single organization (org membership lives in
 // `membership`), so `user` is NON_ORG_SCOPED in check-tenancy.ts. Better Auth reads
 // this table directly (M2-T01 vendor-adapter).

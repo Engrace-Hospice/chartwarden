@@ -1,8 +1,8 @@
 // WP 3.4 - the task policy with an in-memory store: replay returns the existing active task and publishes nothing, a
 // closed prior allows a new one, an assignee who cannot see the channel is the uniform 422, the participant rule is the
 // uniform 404, a clinical close needs a reason before the store is touched, and events are PHI-free.
-import type { DbClient } from "@wardenx/db";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type TaskService, createTaskService } from "./task-service";
 import { createMemoryTaskStore } from "./task-store-memory";

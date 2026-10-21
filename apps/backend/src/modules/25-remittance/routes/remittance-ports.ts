@@ -10,10 +10,10 @@
 //
 // {@link RemittanceAuditPort} persists the operator's free-text rationale. `remittance_line` and
 // `remittance_adjustment` carry no reason column, so the rationale lands in the M4 audit trail (`audit_event`,
-// written atomically on the same tx through the `@wardenx/audit` helper) and NEVER in an outbox payload.
+// written atomically on the same tx through the `@chartwarden/audit` helper) and NEVER in an outbox payload.
 import { randomUUID } from "node:crypto";
-import { audit } from "@wardenx/audit";
-import { repositories } from "@wardenx/billing";
+import { audit } from "@chartwarden/audit";
+import { repositories } from "@chartwarden/billing";
 import type { M25WriteActor } from "./actor";
 
 /** The three claim facts the commands read. */

@@ -17,7 +17,7 @@ import {
   ESCALATION_SWEEP_BATCH,
   UNROUTED_MAX_RECORDS,
   unroutedBackoffMs,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type { OpsNoticeClaims } from "../../../bootstrap/ops-notice-claims";
 import type { AckStore } from "../ack-requests/ack-types";
 import {

@@ -1,4 +1,4 @@
-// @wardenx/db — `qapi_pip` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `qapi_pip` (M30 §3.3; non-partitioned; retention class `compliance`).
 // A QAPI Performance Improvement Project (PIP): charter + RCA + intervention/measurement/conclusion
 // narrative, dual cosign (QAPI coordinator + medical director) gating closure (V-11 CHECK). Real
 // intra-M30 FKs to qapi_program + qapi_project. ORG-SCOPED: organization_id NOT NULL (canonical

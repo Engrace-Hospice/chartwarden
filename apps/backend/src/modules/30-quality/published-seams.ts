@@ -1,8 +1,8 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/30-quality/published-seams.ts — M30's §4.3 published-seam registration into
 // the M1 SeamRegistry (the M23 `registerM23PublishedSeams` / M26 `registerM26PublishedSeams` precedent).
 //
-// This is M30's FIRST M1 publish. Before it, `registerQualityPublishedSeams` existed in @wardenx/quality
+// This is M30's FIRST M1 publish. Before it, `registerQualityPublishedSeams` existed in @chartwarden/quality
 // with no caller anywhere in apps/backend, and M30's seam names were not members of the M1
 // `SeamContracts` / `REQUIRED_SEAMS` — so M30 was reachable cross-module ONLY through its §4.10 outbox
 // events, with no read path to the measure ledger, the incident register, QAPI, CoP status, or the SRA
@@ -14,7 +14,7 @@ import type { DbClient } from "@wardenx/db";
 // live and tested against the M1 registry; they are simply the read path a future consumer will use.
 //
 // The package owns the wiring shape: `registerQualityPublishedSeams(registrar, seams)` takes the M1
-// `registerSeam` as an injected PORT so @wardenx/quality keeps its no-apps-backend edge. This file is the
+// `registerSeam` as an injected PORT so @chartwarden/quality keeps its no-apps-backend edge. This file is the
 // composition-root side of that port — it builds the five live Drizzle-backed impls and hands them over.
 //
 // Tenancy (§4.3 / D3): each impl opens its OWN `withOrgContext` transaction per read, because the seam
@@ -30,7 +30,7 @@ import {
   type QualityPublishedSeamDeps,
   SecurityRiskAssessmentReaderImpl,
   registerQualityPublishedSeams,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { registerSeam } from "../../bootstrap/index";
 
 /** The platform system actor the aggregate (actor-less) seam reads bind to `app.user_id`. */

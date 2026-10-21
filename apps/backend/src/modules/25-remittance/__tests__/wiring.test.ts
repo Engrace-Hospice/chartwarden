@@ -1,4 +1,4 @@
-import type { DataClass, DataEraser } from "@wardenx/types";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 // M25 — boot-wiring unit tests: the consumer dispatch routing + subscription map, the subscription
 // map, and the eraser registration over the injected hook.
 import { describe, expect, it, vi } from "vitest";

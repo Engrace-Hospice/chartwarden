@@ -10,7 +10,7 @@ import {
   StatusPill,
   humanizeIdentifier,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { PatientLookupField } from "../../shell/entity-lookups";

@@ -7,17 +7,17 @@
 // REGISTRATION DEFERRED for eight of the nine (the M26 unconsumed-seam posture): these are NOT registered
 // into the M1 SeamRegistry — no live consumer calls `getSeam` on them today (M27/M28/M30/M37 deny-stub or
 // are unbuilt). The published surface ships now; `wiring.ts` registers each one once a consumer binds,
-// following the M26 precedent (add the SeamName to @wardenx/types + a deny-stub provider + REQUIRED_SEAMS
+// following the M26 precedent (add the SeamName to @chartwarden/types + a deny-stub provider + REQUIRED_SEAMS
 // at that point). Until then those eight stay reachable cross-module via M24's §4.11 outbox events.
 //
 // `claimMatch` (`MedicaidClaimMatchProvider`) is the NINTH and is REGISTERED (F-172, #248, m24 group) —
 // M25's `postAdvice` auto-match is its first live consumer, routed by the advice's own `payerKind`
 // discriminator alongside M23's sibling `ClaimSubmissionReader` seam (never a Medicaid 835 matched
 // against M23's `claim` table, or the reverse). The seam interfaces are declared locally (the
-// medicaid-adapters pure package owns no seam-DTO module) — they ship to @wardenx/types at the M24 lock,
+// medicaid-adapters pure package owns no seam-DTO module) — they ship to @chartwarden/types at the M24 lock,
 // the subscription contract in §4.11.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { M24ReadActor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";

@@ -1,4 +1,4 @@
-// @wardenx/emar — §5.11 five-rights validator — M13-T03.
+// @chartwarden/emar — §5.11 five-rights validator — M13-T03.
 import { describe, expect, it } from "vitest";
 import {
   type FiveRightsOrderContext,

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/37-ipu/routes/service.ts — the M37 route-service interface the §4.1 handlers
 // compose over. The Drizzle implementation (./service-drizzle) runs each op inside one withOrgContext tx
-// under RLS and drives the pure @wardenx/inpatient machines; a test can substitute an in-memory backend.
+// under RLS and drives the pure @chartwarden/inpatient machines; a test can substitute an in-memory backend.
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   AdvanceBodyReleaseBody,

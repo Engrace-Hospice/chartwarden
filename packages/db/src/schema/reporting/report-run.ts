@@ -1,4 +1,4 @@
-// @wardenx/db — `report_run` (M33 §3.3). The MV-refresh run ledger: one row per refresh of a
+// @chartwarden/db — `report_run` (M33 §3.3). The MV-refresh run ledger: one row per refresh of a
 // `report_mv` materialized view, with the trigger kind (nightly cron / incremental outbox / on-
 // demand / manual), the originating outbox event id, duration/rows telemetry, status, and retry
 // attempt. organization_id is NULLABLE — cross-tenant platform-wide refreshes (rare) carry no org.

@@ -21,8 +21,8 @@ import {
   buildProvenance,
   planCommitIntents,
   runExtractionPipeline,
-} from "@wardenx/intake-extraction";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/intake-extraction";
+import { ChartWardenError } from "@chartwarden/types";
 import {
   type DocumentFeatureFlagReader,
   EXTRACTION_DISABLED_CODE,

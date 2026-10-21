@@ -1,9 +1,9 @@
-// @wardenx/subscription-billing — §3.3 enum value tuples (M35-T01).
+// @chartwarden/subscription-billing — §3.3 enum value tuples (M35-T01).
 //
 // These `as const` tuples are the RUNTIME source of truth for M35's enumerations: the T02 Drizzle
 // `pgEnum(...)` definitions (in `packages/db/src/schema/subscription-billing/enums.ts`) seed from these
 // exact arrays, and the §2 domain kernels iterate/validate against them. The TYPE mirrors live in the
-// leaf `@wardenx/types` (edge-free for cross-module consumers); each tuple is `satisfies`-pinned to its
+// leaf `@chartwarden/types` (edge-free for cross-module consumers); each tuple is `satisfies`-pinned to its
 // leaf union here so drift between the two definition sites is a compile error, not a silent lie
 // (the M30 "wire enum as Type.String()" precedent).
 
@@ -23,7 +23,7 @@ import type {
   SubscriptionStatus,
   UsageEventSourceModule,
   UsageEventType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export const PLAN_TIERS = [
   "starter",

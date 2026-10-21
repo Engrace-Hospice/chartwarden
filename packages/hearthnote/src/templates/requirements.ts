@@ -29,7 +29,7 @@
 // only `recert_visit` has an explicit roster (Sec 2.2: "Required: PPS, ESAS, prognosis indicators...."),
 // and Sec 2.6's own gloss for check 3 is "if mandated by the type" -- silence for the other thirteen is
 // the answer, not a gap, because no other type's spec text mandates one.
-import type { EncounterType, ScaleType } from "@wardenx/types";
+import type { EncounterType, ScaleType } from "@chartwarden/types";
 import type { HearthnoteTemplate } from "./types";
 
 /**

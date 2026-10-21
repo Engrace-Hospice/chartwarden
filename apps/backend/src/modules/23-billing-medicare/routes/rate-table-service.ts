@@ -3,7 +3,7 @@
 // `referenceData` adapter binds (`hospiceRateTableEffectiveForOrg`, the F-121 org-explicit seam-function pattern:
 // boot-time closures have no ambient request context, so each read opens its own `withOrgContext`).
 //
-// Validation is layered: the pure rules in `@wardenx/billing` (`validateRateTableEntry`) run first for a precise
+// Validation is layered: the pure rules in `@chartwarden/billing` (`validateRateTableEntry`) run first for a precise
 // 422; the overlap pre-check names the conflicting version for a precise 409; migration 0279's EXCLUDE constraint is
 // the race-safe backstop (a concurrent writer that slips past the pre-check surfaces as the same 409, never as two
 // live rows). Rates are append-only: a correction SUPERSEDES the old version (it stays readable as history) and
@@ -14,10 +14,10 @@ import {
   dateRangesOverlap,
   repositories,
   validateRateTableEntry,
-} from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateRateTableBody,

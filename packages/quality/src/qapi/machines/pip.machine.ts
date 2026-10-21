@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — §2.2 QAPI PIP (Performance Improvement Project) lifecycle state machine (M30-P2a).
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — §2.2 QAPI PIP (Performance Improvement Project) lifecycle state machine (M30-P2a).
 // Pure, IO-free.
 //
 // The `qapi_pip` aggregate lifecycle (§2.2):
@@ -17,7 +17,7 @@ import type { schema } from "@wardenx/db";
 // Mirrors the M11 order-machine convention: a transition is a PURE function `(state, event) -> next
 // state` that validates the §2.2 graph then runs the enumerated guards (a guard failure throws a
 // `ChartWardenError` with the precise code). No IO; every fact a guard needs is injected on the event.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * The PIP lifecycle phase — derived from the FROZEN `qapi_pip.status` pgEnum (no drift). The PIP phase

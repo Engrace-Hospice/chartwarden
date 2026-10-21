@@ -25,8 +25,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Redis } from "ioredis";
 import { Client } from "pg";

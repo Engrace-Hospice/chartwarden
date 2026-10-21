@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 §4.5 / §11.A the VALIDATION RULE REGISTRY (D1). The configurable rule library
+// @chartwarden/billing — M23 §4.5 / §11.A the VALIDATION RULE REGISTRY (D1). The configurable rule library
 // is the architectural answer to the ">99% claim acceptance" / "31-point audit equivalent" promise:
 // every claim runs through a set of typed predicates before it can leave READY. This file holds the
 // registry container + the pure runner (mirrors `cost-report/src/validation/rule-engine.ts`); the 19
@@ -10,7 +10,7 @@
 // rule set cannot mutate under a live request. Duplicate keys THROW (the key is the registry identity +
 // the `validation_result.rule_key`).
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. Types,
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. Types,
 // pure functions, constants only. `runRules` is a DETERMINISTIC pure function of (rules, ctx, overrides)
 // — given the same materialized `ValidationContext` it returns the same `RuleResult[]` every time. NO PHI.
 import type { Rule, RuleParameters, RuleResult, ValidationContext } from "./types";

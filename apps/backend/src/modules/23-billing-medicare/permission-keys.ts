@@ -13,13 +13,13 @@
 // guards by the platform-scope check (the M27 cost_report / cost_report_admin split precedent, simplified to
 // the single `billing` category the spec §4.6 declares).
 //
-// SOURCE OF TRUTH: the spec §4.6 places the canonical `M23_PERMISSION_KEYS` tuple in `@wardenx/billing`
+// SOURCE OF TRUTH: the spec §4.6 places the canonical `M23_PERMISSION_KEYS` tuple in `@chartwarden/billing`
 // (packages/billing) — but that package is still a Phase-0 placeholder (no business logic yet), so this P1
 // file is SELF-CONTAINED: it declares the keys + the `M23PermissionKey` union locally. When the billing
 // package lands its `M23_PERMISSIONS` tuple, the Integrate phase (P3) reconciles this map against it (the M27
 // pattern: backend permission-keys.ts mirrors the pure package tuple, asserted equal in test). The KEYS here
-// are the §4.6 verbatim list and MUST stay in lock-step with `@wardenx/billing` + the §4.1 route inventory.
-import type { PermissionDef } from "@wardenx/auth";
+// are the §4.6 verbatim list and MUST stay in lock-step with `@chartwarden/billing` + the §4.1 route inventory.
+import type { PermissionDef } from "@chartwarden/auth";
 
 /**
  * The §4.6 permission keys M23 owns (registered into M3). Single-owner across the platform registry.
@@ -276,7 +276,7 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
   },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of every §4.6 permission key M23 owns. Kept in lock-step with `@wardenx/billing` (P3 reconcile). */
+/** Union of every §4.6 permission key M23 owns. Kept in lock-step with `@chartwarden/billing` (P3 reconcile). */
 export type M23PermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;
 
 /** The ordered §4.6 key list — the canonical surface the Integrate phase asserts equal to the package tuple. */

@@ -7,10 +7,10 @@
 // `org_admin` get the non-platform catalog) are the pure planner's: packages/auth/src/roles/template-materialization.
 // This file only reads the two inputs and applies the plan inside one `withOrgContext` transaction. Idempotent and
 // safe to run on every boot: a second run finds every key present and writes nothing.
-import { ROLE_TEMPLATES, planRoleTemplateMaterialization } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { ROLE_TEMPLATES, planRoleTemplateMaterialization } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 
 /** The structural slice of a Drizzle transaction the materializer uses (so a caller already inside one can reuse it). */

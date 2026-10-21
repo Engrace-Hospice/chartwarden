@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_bulk_export_artifact` (M28 §3.3). One row per NDJSON output object of a completed
+// @chartwarden/db — `fhir_bulk_export_artifact` (M28 §3.3). One row per NDJSON output object of a completed
 // bulk-export job — the per-resource-type MinIO object key, byte size, row count and checksum.
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). Checksums and counts only

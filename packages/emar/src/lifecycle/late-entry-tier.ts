@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.5 D8 late-entry tier ladder (M13-T03). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.5 D8 late-entry tier ladder (M13-T03). PURE, IO-free, `Date.now()`-free.
 //
 // The §2.2 administration write gate resolves the late-entry tier from the gap between the clinician-entered
 // `administeredAt` and the server-receive `recordedAt` (§3 line 1381): ≤4h normal · 4–24h late · 24h–7d
@@ -7,7 +7,7 @@
 // computed server-side from both instants; the offline path cannot lower it (§2.10) — an administration
 // captured at 0300 and synced 18h later is `late`, computed off `administeredAt` vs `recordedAt`, not off
 // the sync time alone. PURE: both instants are passed in, so the ladder is deterministic.
-import type { AdministrationLateEntryTier, IsoInstant } from "@wardenx/types";
+import type { AdministrationLateEntryTier, IsoInstant } from "@chartwarden/types";
 
 const HOUR_MS = 3_600_000;
 const FOUR_HOURS_MS = 4 * HOUR_MS;

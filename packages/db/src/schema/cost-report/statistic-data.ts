@@ -1,4 +1,4 @@
-// @wardenx/db — `statistic_data` (M27 §3.3; non-partitioned; retention class `compliance`). One row per
+// @chartwarden/db — `statistic_data` (M27 §3.3; non-partitioned; retention class `compliance`). One row per
 // cost report (UNIQUE cost_report_id): the S-3 statistical inputs aggregated from M6 (level-of-care
 // periods), M8 (encounter stats), and M23 (billed days, deny-stub today). monthly_breakdown is by month
 // × LOC × program; visit_counts_by_discipline / fte_calculations / bereavement_census back S-3 Parts

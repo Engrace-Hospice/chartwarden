@@ -8,14 +8,14 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/09-assessments — Significant-change inbox, per-patient (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Work Queue."
 // The open / escalated significant-change events for this patient: one row per event with its rule, severity,
 // and acknowledgement state. Even when M36 push is degraded, this list reads `significant_change_event` rows
 // directly so the care team still sees the alert (§5.6 degraded-mode). The ack action (§5.2) fills in as the
 // write path hardens. Reads GET /api/v1/patients/:patientId/significant-changes via the typed client; the
-// server enforces every scope (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+// server enforces every scope (ADR-0030 — no authz on the frontend). Imports only leaves (@chartwarden/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";

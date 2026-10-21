@@ -11,7 +11,7 @@ import {
   type OutOfBandTransportChannel,
   type OutOfBandTransports,
   dispatchClaimedDelivery,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type { DeliveryDispatchStore } from "./delivery-dispatch-store-db";
 
 export interface DeliverySweepDeps {

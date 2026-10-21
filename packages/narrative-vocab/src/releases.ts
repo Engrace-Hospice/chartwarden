@@ -24,8 +24,8 @@
 //      them keyed on `asOf`. There is no "the active M38 version" for a `uuid` column to hold.
 //   3. **Pinning M38 would protect nothing.** D11 exists so that a corpus release cannot change the
 //      rendered text of an already-signed note. Architecture §10.5.2 makes the Layer-1 assembly a pure
-//      function of (selection tree × template × this package) — `@wardenx/hearthnote` depends on
-//      `@wardenx/narrative-vocab` and `@wardenx/types` and nothing else, and no SNOMED or LOINC concept
+//      function of (selection tree × template × this package) — `@chartwarden/hearthnote` depends on
+//      `@chartwarden/narrative-vocab` and `@chartwarden/types` and nothing else, and no SNOMED or LOINC concept
 //      is resolved anywhere in assembly. The version whose stability the guarantee rests on is THIS
 //      one. `packages/narrative-vocab` is M8-owned (manifest `codePaths`), so the module reads it
 //      directly and needs no seam at all.

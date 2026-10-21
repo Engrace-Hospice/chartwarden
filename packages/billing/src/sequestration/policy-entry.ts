@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 tenant-entered SEQUESTRATION POLICY entry rules (F-212). PURE: no Fastify, no Drizzle; the clock is a parameter.
+// @chartwarden/billing — M23 tenant-entered SEQUESTRATION POLICY entry rules (F-212). PURE: no Fastify, no Drizzle; the clock is a parameter.
 //
 // The Medicare FFS sequestration reduction is a statutory payment cut, not a tenant preference, but the platform has no
 // bundled CMS schedule (it would silently go stale, the F-210 lesson) and `POST /claims/assemble` deliberately fails

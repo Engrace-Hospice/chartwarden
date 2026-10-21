@@ -27,7 +27,7 @@
 //   • §4.7 prescriber eligibility — `prescriberEligible(discipline, medClass)` is resolved server-side
 //     from the caller's own grants. A 403 is the answer, surfaced verbatim.
 //   • The §2.3 verbal-order window, and the §2.7 refill SLA.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 

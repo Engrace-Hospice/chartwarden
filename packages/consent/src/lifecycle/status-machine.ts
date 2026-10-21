@@ -1,4 +1,4 @@
-// @wardenx/consent — the consent_record status machine (§2.2.1, D1).
+// @chartwarden/consent — the consent_record status machine (§2.2.1, D1).
 //
 // M39-T04. Pure transition function over `consent_status`. The append-only model means most
 // "edits" are a NEW row (supersession / renewal), not an in-place transition — the only in-place

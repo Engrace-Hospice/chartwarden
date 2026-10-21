@@ -15,15 +15,15 @@ import { type Static, Type } from "@sinclair/typebox";
 // Every route also rides the REAL Authorization Contract (`requirePermission` on M22's §4.6 `intake.*` keys,
 // M3). Org binding is server-side (`request.context`, never the body). The DocLens pipeline service is
 // injected (in-memory/fake in tests; the deny-stub-backed service in prod).
-import { requirePermission } from "@wardenx/auth";
-import { DegradedError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import { type DocumentFeatureFlagReader, isDocLensEnabled } from "./feature-flag";
 import type { DocLensIntakeEnqueue } from "./intake-queue";
 import { type DocLensPipelineService, extractionDisabled } from "./pipeline-service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface DocLensRouteDeps {

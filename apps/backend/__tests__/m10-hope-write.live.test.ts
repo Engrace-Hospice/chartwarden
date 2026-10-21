@@ -14,8 +14,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { LatestAssessment, ScaleType } from "@wardenx/types";
+import { createDbClient } from "@chartwarden/db";
+import type { LatestAssessment, ScaleType } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";

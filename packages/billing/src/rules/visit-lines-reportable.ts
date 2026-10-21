@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `visit_lines_reportable` (visits, warn, regulatory). CMS requires every visit by
+// @chartwarden/billing — §4.5 rule `visit_lines_reportable` (visits, warn, regulatory). CMS requires every visit by
 // hospice staff on the claim (Pub. 100-04 ch. 11 §30.3), in 15-minute units. A billable visit with no documented
 // duration — or outside every level-of-care period — cannot be turned into a line without inventing data, so the
 // assembly SKIPS it; this rule surfaces each skipped visit (encounter ids and reason codes only, no PHI) as a

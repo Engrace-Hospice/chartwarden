@@ -1,4 +1,4 @@
-// @wardenx/mdm — cache key grammar + TTLs + invalidation (M40-T10, spec §4.8).
+// @chartwarden/mdm — cache key grammar + TTLs + invalidation (M40-T10, spec §4.8).
 //
 // Pure, infra-free key construction for the two MDM caches. The keys + TTLs live here so the read
 // path (resolve / resolve_batch) and the invalidation path (canonical update, overlay update) agree

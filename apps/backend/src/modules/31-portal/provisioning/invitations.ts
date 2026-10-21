@@ -14,9 +14,9 @@
 // The invitee's SIGN-IN credential is the M2 identity module's concern (magic link / password reset over the same
 // verified email); this service provisions the account and the access, it does not mint a session.
 import { createHash, randomBytes } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, type PortalDataCategory, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, type PortalDataCategory, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { type M31EventEmitter, emitGrantGranted } from "../events";
 import { requirePortal } from "../lifecycle/errors";

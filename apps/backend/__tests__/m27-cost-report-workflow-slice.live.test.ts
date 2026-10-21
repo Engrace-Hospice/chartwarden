@@ -22,8 +22,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 import { Client } from "pg";
@@ -264,7 +264,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         },
       });
       // Worksheet A-2 — Routine Home Care direct cost (the ONLY real direct cost in this fixture; matches
-      // the proven @wardenx/cost-report pure "end-to-end A → B → C ties" unit fixture exactly).
+      // the proven @chartwarden/cost-report pure "end-to-end A → B → C ties" unit fixture exactly).
       await writeService().putWorksheet(actor, costReportId, "A-2", {
         expectedVersion: 1,
         data: { entries: [], netDirectCostCents: 600_000 },
@@ -293,7 +293,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       // (the exact shape `statistics-refresh` would itself persist) — a real DB write, not a fabricated
       // in-memory number.
       await withOrgContext(handle.db, { organizationId: ORG, userId: USER_ID }, async (tx) => {
-        const { StatisticDataRepository } = await import("@wardenx/cost-report");
+        const { StatisticDataRepository } = await import("@chartwarden/cost-report");
         await new StatisticDataRepository(tx as unknown as DbClient).create({
           organizationId: ORG,
           costReportId,

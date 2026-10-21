@@ -1,4 +1,4 @@
-// @wardenx/db — `channel_member` (M36 Secure Messaging §3.3). The membership join between a
+// @chartwarden/db — `channel_member` (M36 Secure Messaging §3.3). The membership join between a
 // channel and a user. M36-F04 / ADR-0010: organization_id is carried DIRECTLY (not derived
 // via a subquery into `channel`) so the canonical SD-029 app.org_id RLS template applies and
 // the SD-028 composite (organization_id, channel_id) index is possible. `source` records

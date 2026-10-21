@@ -5,7 +5,7 @@ import {
   StatusPill,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the DENIAL WORK PANEL (GAP-074): assign / start / escalate / resolve /
 // close / close-with-write-off / reopen / open an appeal, over the live /api/v1/denials/{id}/* routes. The
 // server owns every decision (ADR-0030): the panel reads the case fresh (so the If-Match version is the one

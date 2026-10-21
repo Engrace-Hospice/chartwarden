@@ -1,6 +1,6 @@
 // apps/backend/src/modules/24-billing-medicaid/routes/write-service.ts — the M24 WRITE service interface
 // (the §4.1 POST/PATCH/DELETE surface) + the transactional-outbox port. Each command runs under
-// withOrgContext (RLS), validates the §2.2 transition via the pure @wardenx/medicaid-adapters reducers,
+// withOrgContext (RLS), validates the §2.2 transition via the pure @chartwarden/medicaid-adapters reducers,
 // stamps the acting membership, and emits the §4.11 outbox event on the caller's tx through the injected
 // WriteOutboxPort (transactional outbox).
 //

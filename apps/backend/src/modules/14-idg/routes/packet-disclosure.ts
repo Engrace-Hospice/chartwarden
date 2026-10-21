@@ -10,7 +10,7 @@
 // structural shape M14 calls. FAIL-CLOSED: an unbound/erroring M39 (deny-stub) denies in BOTH fields.
 import { getSeam } from "../../../bootstrap/index";
 
-/** The M39 surface M14 calls — structural, so no `@wardenx/consent` import edge is taken. */
+/** The M39 surface M14 calls — structural, so no `@chartwarden/consent` import edge is taken. */
 interface ConsentEvaluatorShape {
   evaluateForInternalAccess(args: {
     organizationId: string;

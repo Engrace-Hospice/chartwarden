@@ -1,9 +1,9 @@
 // apps/backend/src/bootstrap/interfaces.ts — the M1 bootstrap's view of the seam +
-// eraser contracts. Per ADR-0005 D1/D3 the INTERFACES live in the leaf @wardenx/types
+// eraser contracts. Per ADR-0005 D1/D3 the INTERFACES live in the leaf @chartwarden/types
 // (never in a packages/foundation); this file just re-exports them so the registry,
 // providers, and consumers share one import site.
 // Note: M39's `ConsentEvaluator` is NOT re-exported here — it follows the opaque rich-seam pattern
-// (interface in @wardenx/consent; `SeamContracts["ConsentEvaluator"] = unknown`), same as
+// (interface in @chartwarden/consent; `SeamContracts["ConsentEvaluator"] = unknown`), same as
 // TerminologyProvider / MdmEntityProvider / AlertEmitter.
 export type {
   AITokenMeterProvider,
@@ -144,4 +144,4 @@ export type {
   VisitReader,
   VolunteerComplianceProvider,
   VolunteerGateExpiryReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";

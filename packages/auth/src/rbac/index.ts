@@ -1,4 +1,4 @@
-// @wardenx/auth · rbac (M3 — Authorization). Owned per module-manifest.ts codePath
+// @chartwarden/auth · rbac (M3 — Authorization). Owned per module-manifest.ts codePath
 // `packages/auth/src/rbac`. The Authorization Contract's RBAC surface — `requireSession`,
 // `requireRole`, `requirePermission` + the §2.2 pipeline composer (M3-T05) — ships in
 // ./require-role; the cached effective-permission resolver it consumes (M3-T06) is

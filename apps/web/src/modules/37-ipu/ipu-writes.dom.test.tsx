@@ -15,7 +15,7 @@
 // Asserted on the recorded `fetch` calls — method, path, body — never on a spy over the api client, so a
 // test cannot pass against a client that was never wired to a screen.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";

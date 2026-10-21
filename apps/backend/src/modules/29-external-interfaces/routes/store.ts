@@ -32,7 +32,7 @@ import {
   NotFoundError,
   ValidationError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import {
   canExternalFeedTransition,

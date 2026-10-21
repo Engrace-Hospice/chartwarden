@@ -5,7 +5,7 @@ import {
   InlineAlert,
   LoadingSpinner,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Discharge / Revocation / Transfer-out workflow (M6 routes 36/37/39).
 // Spec: docs/design/screens/clinical/WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER.md — "Patient Workspace +
 // Stepper": 1 reason → 2 reason-specific data → 3 effective date → 4 review cascades → 5 confirm.

@@ -7,9 +7,9 @@
 // The ONLY writer of `message.urgency`. It does not page, escalate or track a response from anyone, and the message text is never
 // inspected. Flag off (`messaging.urgent_clinical` AND `messaging.sbar`): POST is the uniform 404; the options read answers
 // 200 `{enabled:false}`. Org and actor are always the request context.
-import { requirePermission } from "@wardenx/auth";
-import { NotFoundError, URGENT_SEND_PERMISSION, UnauthorizedError } from "@wardenx/types";
-import type { RichBody } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { NotFoundError, URGENT_SEND_PERMISSION, UnauthorizedError } from "@chartwarden/types";
+import type { RichBody } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { UrgentActorRef, UrgentService, ValidateLinks } from "../urgent/urgent-service";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";

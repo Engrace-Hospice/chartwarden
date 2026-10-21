@@ -1,4 +1,4 @@
-// @wardenx/db — `concept_embedding` (M38 Terminology §3.6, §7.7). HNSW pgvector index over
+// @chartwarden/db — `concept_embedding` (M38 Terminology §3.6, §7.7). HNSW pgvector index over
 // 384-dim concept embeddings (BGE-small-en-v1.5), refreshed on version load. Backs semantic
 // search — which rides the `ai.full` flag (Phase 2, default OFF): the TABLE is built now,
 // the endpoint stays flag-gated (M38-T09). Requires the `vector` extension (enabled in the

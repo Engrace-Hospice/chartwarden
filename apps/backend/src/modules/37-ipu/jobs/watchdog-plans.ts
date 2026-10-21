@@ -10,8 +10,8 @@ import {
   isTurnoverOverdue,
   normalizeTurnoverSlaMinutes,
   planIrcDailyTick,
-} from "@wardenx/inpatient";
-import type { IpuBedCleaningStatus, IrcEpisodeState } from "@wardenx/types";
+} from "@chartwarden/inpatient";
+import type { IpuBedCleaningStatus, IrcEpisodeState } from "@chartwarden/types";
 
 // ── §4.8 queue catalog (names carry no ':' — BullMQ forbids it in queue names) ───────────────────────────
 

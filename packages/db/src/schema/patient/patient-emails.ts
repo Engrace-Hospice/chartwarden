@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_email` (M5 §3.3). Email addresses. PHI-bearing → three-column tenancy rule.
+// @chartwarden/db — `patient_email` (M5 §3.3). Email addresses. PHI-bearing → three-column tenancy rule.
 import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { organizations } from "../organizations";

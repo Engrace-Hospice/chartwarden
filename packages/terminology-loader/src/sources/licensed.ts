@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — tier-2 LICENSED-FREE sources behind a credential seam (SNOMED CT US, RxNorm full
+// @chartwarden/terminology-loader — tier-2 LICENSED-FREE sources behind a credential seam (SNOMED CT US, RxNorm full
 // release, LOINC). NOTHING here fetches: no UMLS download client and no Regenstrief client exists in this
 // repository, and a fetch that "works" without having been exercised against the real service is a lie.
 //

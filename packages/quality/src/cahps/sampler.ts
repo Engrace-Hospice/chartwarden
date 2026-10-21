@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §7.2 (WF-04) + §4.13 CAHPS decedent sampling logic. Pure, IO-free.
+// @chartwarden/quality — M30 §7.2 (WF-04) + §4.13 CAHPS decedent sampling logic. Pure, IO-free.
 //
 // The monthly CAHPS-Hospice sample is the set of decedents whose deaths fell in the prior calendar month,
 // minus the CMS exclusions (caregiver unavailable, survey language unsupported, prior-survey opt-out,
@@ -10,7 +10,7 @@
 // §4.13 source marking (D22): every produced row carries the `deathSource` of the candidate so the QAPI
 // Coordinator can spot-check external-source samples for CMS-eligibility-rule correctness. This marker is
 // platform-side only and is intentionally NOT forwarded into the vendor-facing `CahpsDecedentSampleRow`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * Where the death record originated (§4.13). `admission_discharge` is the in-system M6 discharge/death

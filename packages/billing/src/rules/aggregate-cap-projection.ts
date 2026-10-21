@@ -1,5 +1,5 @@
 import { paramNumber } from "./_util";
-// @wardenx/billing — §4.5 rule `aggregate_cap_projection` (cap, regulatory). The patient's projected
+// @chartwarden/billing — §4.5 rule `aggregate_cap_projection` (cap, regulatory). The patient's projected
 // payments must be below the hospice aggregate cap (42 CFR §418.308), and the claim must warn if it
 // brings the agency-wide projection within 5% of the cap (D8). The M26 `CapProjectionProvider` is a
 // DENY-STUB at this phase, so `capProjection` is null and the rule SKIPs (`seam_not_bound`) —

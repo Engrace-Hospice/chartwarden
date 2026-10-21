@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.2 / §4.7 `signer_eligible` + the named-practitioner / on-behalf guards (M11-T03).
+// @chartwarden/orders — §2.2 / §4.7 `signer_eligible` + the named-practitioner / on-behalf guards (M11-T03).
 // Pure, IO-free.
 //
 // The signing gate is stricter than the drafting gate (./discipline-can-order): a signer must be in the
@@ -8,7 +8,7 @@
 // requires the signer to be the named ordering practitioner OR to hold `orders.sign_on_behalf` (reserved
 // to a `medical_director`); the verbal flow admits no on-behalf shortcut (§2.2, per CMS). The named/on-
 // behalf facts are resolved upstream (the named-practitioner match, the held-permission) and passed in.
-import type { OrderKind } from "@wardenx/types";
+import type { OrderKind } from "@chartwarden/types";
 import { KIND_CATALOG } from "../catalog";
 import { require_ } from "./errors";
 

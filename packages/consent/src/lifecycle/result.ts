@@ -1,4 +1,4 @@
-// @wardenx/consent — the shared decision result for the lifecycle machines + §2.3 validators.
+// @chartwarden/consent — the shared decision result for the lifecycle machines + §2.3 validators.
 //
 // M39-T04. Every pure decision returns a discriminated `Decision`: a transition/validation either
 // succeeds (`ok: true`, carrying the resolved next state where relevant) or is refused with a

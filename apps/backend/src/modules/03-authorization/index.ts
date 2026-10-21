@@ -108,11 +108,11 @@ export { createDbAuditorEngagementReader } from "./engagement-reader";
 export { M3_OUTBOX_EVENTS } from "./events-by-m3";
 export type { M3OutboxPublisher } from "./authz-ports";
 
-import type { AuditExecutor, NewAuditEvent } from "@wardenx/audit";
-import type { RbacEngineHandle } from "@wardenx/auth";
-import { organizationSettingsReader, schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { AuditExecutor, NewAuditEvent } from "@chartwarden/audit";
+import type { RbacEngineHandle } from "@chartwarden/auth";
+import { organizationSettingsReader, schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";

@@ -14,10 +14,10 @@ import {
   hasLaborShares,
   repositories,
   toPerDiemRateTable,
-} from "@wardenx/billing";
-import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
@@ -640,7 +640,7 @@ export interface M38TerminologyReader {
  * (F-124) — `modifier-codes.ts` referenced it and no migration, seed, or curation file ever defined it,
  * so `expand()` would have answered an empty iterable forever, same shape as the `hope_j_codes`/
  * `hospice_terminal_diagnosis` gap F-057 already documented and degrades honestly for. Two CMS-defined
- * hospice modifiers (GV, GW) are now curated in `@wardenx/terminology`'s seed alongside the platform's
+ * hospice modifiers (GV, GW) are now curated in `@chartwarden/terminology`'s seed alongside the platform's
  * other small, fully-enumerated reference sets (`level_of_care`, `place_of_service_q_codes`).
  *
  * `icd10Billable` (F-209, #251) is now REAL. It used to be an honest `{}` because `claim-assembly.ts` hardcoded

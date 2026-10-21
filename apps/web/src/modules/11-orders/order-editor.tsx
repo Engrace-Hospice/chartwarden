@@ -1,4 +1,4 @@
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { CanonicalOrderFields, kindDefaults } from "./order-kind-fields";
@@ -18,7 +18,7 @@ const KINDS = [
 type OrderKind = (typeof KINDS)[number];
 
 /**
- * Mirrors `ORDER_KIND_CATALOG[kind].allowsVerbal` in `@wardenx/orders` (§2.3): level-of-care changes
+ * Mirrors `ORDER_KIND_CATALOG[kind].allowsVerbal` in `@chartwarden/orders` (§2.3): level-of-care changes
  * and recertifications need a written order ab initio, so the verbal form must not offer them.
  */
 const KIND_OPTIONS: ReadonlyArray<{ value: OrderKind; label: string; allowsVerbal: boolean }> = [

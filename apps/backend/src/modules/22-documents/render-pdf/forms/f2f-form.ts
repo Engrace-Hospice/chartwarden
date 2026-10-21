@@ -3,7 +3,7 @@
 // occurred, with its date, and signs and dates the attestation. When the performer is a nurse practitioner the
 // attestation states that the clinical findings were provided to the certifying physician (b)(4). The
 // attestation source is either the written narrative or a linked, signed clinical note (R-F2F-06).
-import { assertF2fRenderPayload } from "@wardenx/types";
+import { assertF2fRenderPayload } from "@chartwarden/types";
 import { fmtDate, humanize, shortId } from "../shared";
 import { defineForm } from "./compile";
 

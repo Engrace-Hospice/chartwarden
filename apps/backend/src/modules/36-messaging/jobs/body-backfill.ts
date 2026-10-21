@@ -20,10 +20,10 @@
 // Message heads are updated directly (the app role may UPDATE `message`); revisions are append-only for the app role and go
 // through the ONE audited definer function `m36_reseal_message_revision` (migration 1089).
 import { randomUUID } from "node:crypto";
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { messageBodySha256 } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { messageBodySha256 } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { isLegalHoldViolation } from "../governance/under-hold";
 import type { MessageBodyCipher } from "../messaging-write-core";

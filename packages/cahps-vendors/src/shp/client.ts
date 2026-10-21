@@ -1,4 +1,4 @@
-// @wardenx/cahps-vendors — SHP intake API client SHAPE (M30 §4.5 SHP-specific notes).
+// @chartwarden/cahps-vendors — SHP intake API client SHAPE (M30 §4.5 SHP-specific notes).
 //
 // The platform-default vendor, Strategic Healthcare Programs (SHP), exposes an mTLS + HMAC-SHA256-signed
 // intake endpoint (`https://api.shpdata.com/cahps/intake/v2`). This module owns the request-signing helper
@@ -6,7 +6,7 @@
 // `ShpHttpPort`; in P2a no port is wired, so the default port fails closed (degraded). The worker that
 // owns the real fetch is a later phase.
 import { createHmac } from "node:crypto";
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** SHP's documented intake endpoint (platform default). */
 export const SHP_INTAKE_URL = "https://api.shpdata.com/cahps/intake/v2";

@@ -24,10 +24,10 @@
 // RELAY TICKS ARE NOT REQUESTS: everything runs inside `withOrgContext` with the event's own org (the F-102
 // `CONSUMER_USER_ID` convention); no ambient-scope seam is called. The two M16 events it can publish
 // (`outreach_completed`) go through the bound, catalog-validating `m16` publisher on the same tx.
-import { isClosedPlanStatus } from "@wardenx/bereavement";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { BereavementOutreachStatus, EncounterId, IsoInstant } from "@wardenx/types";
+import { isClosedPlanStatus } from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { BereavementOutreachStatus, EncounterId, IsoInstant } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { transitionBereavementOutreach } from "../lifecycle/index";
 import { type EffectContext, runEffects } from "../routes/effects-runner";

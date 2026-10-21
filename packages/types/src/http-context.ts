@@ -1,4 +1,4 @@
-// @wardenx/types — Per-request HTTP context shape (M1 Foundation §4.5; M1-T10).
+// @chartwarden/types — Per-request HTTP context shape (M1 Foundation §4.5; M1-T10).
 //
 // This is the object the M1 request-context middleware hangs on `request.context`
 // (apps/backend/src/bootstrap/plugins/request-context.ts). It lives in the
@@ -6,7 +6,7 @@
 // cross-module edge, and so the FastifyRequest augmentation (declared once, in the M1
 // bootstrap, the only place that imports `fastify`) references a shared type.
 //
-// NAMING: `@wardenx/tenancy` already exports a `RequestContext` — the AMBIENT
+// NAMING: `@chartwarden/tenancy` already exports a `RequestContext` — the AMBIENT
 // (AsyncLocalStorage) tenant context that `withOrgContextFromRequest()` reads. This
 // HTTP-layer type is named `HttpRequestContext` to avoid colliding with it; the M1
 // middleware derives the tenancy `OrgContext` (organizationId + userId) from this object

@@ -2,7 +2,7 @@
 // `m22.extraction.commit_requested` consumer: M5's half of the DocLens chart-writeback handshake
 // (M22 §7.1 W1 steps 11–12, M5 §4.6; F-235, #248).
 //
-// SCOPE (F-231 decisions A1 + B, see `@wardenx/types` doclens-writeback.ts): a DEMOGRAPHICS UPDATE on an
+// SCOPE (F-231 decisions A1 + B, see `@chartwarden/types` doclens-writeback.ts): a DEMOGRAPHICS UPDATE on an
 // EXISTING patient — the one the intake batch was resolved to — limited to the low-risk contact allowlist
 // (`DOCLENS_M5_WRITEBACK_FIELDS`). The M22 review is the clinician accept step, exactly as M29's review
 // queue is for an HL7 proposal (§4.10); this is never a headless patient create, never touches legal name /
@@ -22,8 +22,8 @@
 // DLQ — a writeback aimed at a merged chart needs a human, not a redirect guess). A single field that
 // cannot be normalized (a phone that is not a NANP/E.164 number, an incomplete address) is SKIPPED with a
 // reason and reported back; the rest of the commit still applies.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DOCLENS_M5_WRITEBACK_FIELDS,
   type DocLensFieldOutcome,
@@ -32,7 +32,7 @@ import {
   type ExtractionCommitRequestedPayload,
   M5_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
   M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { M5OutboxPort } from "../deceased-db";
 

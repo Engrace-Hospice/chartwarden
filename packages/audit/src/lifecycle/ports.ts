@@ -1,4 +1,4 @@
-// @wardenx/audit — In-memory eraser ports (M4-T08): the infra-free `EraserPorts` adapter every
+// @chartwarden/audit — In-memory eraser ports (M4-T08): the infra-free `EraserPorts` adapter every
 // destruction/eraser test runs against, mirroring the in-memory adapters in ./query + the M2
 // eraser store. Seed patients (lifecycle), legal holds (which row-groups are held), and a fixed
 // clock; `performErasure` reports a deterministic count so a run's tallies are assertable. The

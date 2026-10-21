@@ -3,7 +3,7 @@
 // The TWO named ABAC predicate resolvers M9 OWNS and registers into M3's named-predicate registry (M3
 // §3.4). Each is a typed `(context, target) => boolean` evaluated server-side AFTER RBAC passes:
 //
-//   discipline_can_record_scale[:scaleType] — D8 typed matrix (@wardenx/assessments eligibility): does ANY
+//   discipline_can_record_scale[:scaleType] — D8 typed matrix (@chartwarden/assessments eligibility): does ANY
 //        of the caller's session-assembled disciplines cover the scale being recorded? The target's
 //        `scaleType` is lifted from the request body (the thing being authored) by the author/correction
 //        route's `getTarget`; the SUBJECT (the caller's discipline set) is never read from the body. A
@@ -34,14 +34,14 @@
 // than shared cross-module, matching the GAP-011/012/014 precedent (each module's copy stays a few lines).
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is
 // idempotent via `registerPredicateIdempotent`.
-import { ASSESSMENT_DISCIPLINES, anyDisciplineCanRecordScale } from "@wardenx/assessments";
+import { ASSESSMENT_DISCIPLINES, anyDisciplineCanRecordScale } from "@chartwarden/assessments";
 import {
   type AbacContext,
   type AbacTarget,
   hasOrgWideScope,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import type { ScaleType } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { ScaleType } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import type { AssessmentAbacResolver } from "./routes/service";
 

@@ -1,4 +1,4 @@
-// @wardenx/reporting · repositories barrel (M33 §3.3–§3.4).
+// @chartwarden/reporting · repositories barrel (M33 §3.3–§3.4).
 //
 // Eight Drizzle data ports over the twelve M33-owned tables. Each repo is a thin reader/writer that takes
 // the Drizzle client (`ReportingDb` — pooled client or a `withOrgContext` / `withPlatformContext`

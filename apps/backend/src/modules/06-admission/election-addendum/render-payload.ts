@@ -5,7 +5,7 @@ import {
   ELECTION_ADDENDUM_TITLE,
   type ElectionAddendumRenderPayload,
   type LocalDate,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { localDateOfInstant } from "../certification/window-math";
 import type { AddendumRow } from "./store";
 

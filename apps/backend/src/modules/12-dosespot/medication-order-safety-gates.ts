@@ -13,12 +13,12 @@
 //     opaquely through the M1 registry and cast to the locally-declared minimum {@link ConsentGatePort}.
 //   · Allergy — M5's `PatientAllergyReader` seam. Every non-`entered_in_error` row counts, UNVERIFIED rows
 //     included. Matching is by normalized generic (brand -> generic), by drug class ("opioids",
-//     "penicillins") and by documented cross-reactivity — the pure matcher in `@wardenx/dosespot`
+//     "penicillins") and by documented cross-reactivity — the pure matcher in `@chartwarden/dosespot`
 //     (`allergy/`). A conflict is NOT a hard stop: a prescriber-eligible actor with a FRESH step-up may
 //     acknowledge it with a written reason (spec §6 "Allergy banner"); unreadable data is never overridable.
-import { isSudTreatmentDrug } from "@wardenx/dosespot";
-import { type AllergyMatch, matchDrugToAllergy } from "@wardenx/dosespot";
-import { type PatientAllergyReader, ChartWardenError } from "@wardenx/types";
+import { isSudTreatmentDrug } from "@chartwarden/dosespot";
+import { type AllergyMatch, matchDrugToAllergy } from "@chartwarden/dosespot";
+import { type PatientAllergyReader, ChartWardenError } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The M12-side structural projection of M39's `ConsentEvaluator.evaluateForInternalAccess`. */
@@ -37,7 +37,7 @@ const CONSENT_CALLER_MODULE = "m12";
 const CONSENT_CALLER_ROUTE = "POST /api/v1/medication-orders/:id/request-signature";
 
 /**
- * SUD-treatment medications (the §7.8 / spec §6 Part 2 table): the list lives in `@wardenx/dosespot`
+ * SUD-treatment medications (the §7.8 / spec §6 Part 2 table): the list lives in `@chartwarden/dosespot`
  * (`classes/sud-treatment-drugs.ts`, the single source of truth shared with the 0340 backfill migration);
  * `medication_order.is_sud_treatment` is derived from it.
  */

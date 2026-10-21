@@ -1,4 +1,4 @@
-// @wardenx/db — the four M12 DoseSpot vendor-boundary persistence tables (F-230, #248; migration 0303).
+// @chartwarden/db — the four M12 DoseSpot vendor-boundary persistence tables (F-230, #248; migration 0303).
 // Populated ONLY by a real ingested vendor payload (a successful upsert response, a MedHx pull result, a
 // signature-verified ScriptStatusUpdate webhook) — never seeded, never defaulted.
 //   • dosespot_patient_sync      — §2.6 patient -> DoseSpot-side patient id (the id a MedHx pull is keyed on).

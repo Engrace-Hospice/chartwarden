@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.2 D2 medication-order lifecycle state machine — M12-T03.
+// @chartwarden/dosespot — §2.2 D2 medication-order lifecycle state machine — M12-T03.
 import { describe, expect, it } from "vitest";
 import {
   MEDICATION_ORDER_GRAPH,

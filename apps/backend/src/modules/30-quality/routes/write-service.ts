@@ -11,17 +11,17 @@
 // binding is ALWAYS the server-assembled {@link M30WriteActor} (context, never body).
 //
 // LIFECYCLE: the service does NOT re-implement state logic. It supplies the upstream-resolved FACTS to
-// the pure reducers already in @wardenx/quality (`transitionIncident`, the QAPI project/PIP machines,
+// the pure reducers already in @chartwarden/quality (`transitionIncident`, the QAPI project/PIP machines,
 // the SRA cycle machine, the mortality machine) and persists their result. The only pure rule helpers
 // added HERE are the ones not already owned by the package — and even those DELEGATE to the package's
 // canonical guard (the two-person co-sign split, V-11 / V-12).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type PipClosureCosign,
   type SraClosureCosign,
   assertPipClosureCosign,
   assertSraClosureCosign,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import type {
   CopStatus,
   IncidentKind,
@@ -29,7 +29,7 @@ import type {
   MeasurePeriodKind,
   QapiProjectPhase,
   SraCycleStatus,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import type { M30WriteActor } from "./actor";
 import type {
   CahpsDecedentView,
@@ -106,7 +106,7 @@ export type M30WriteQueueName =
 /**
  * The thin worker-trigger port the R-04 / R-96 routes enqueue to (typed-TODO producer; bound in P2c). In
  * the slice it records the enqueue (so route tests assert the job was scheduled); PRODUCTION binds it to
- * the @wardenx/shared transactional-outbox / BullMQ producer. Keeping it injected keeps the route layer
+ * the @chartwarden/shared transactional-outbox / BullMQ producer. Keeping it injected keeps the route layer
  * free of any BullMQ/Valkey import.
  */
 export interface RecomputeEnqueuePort {
@@ -357,7 +357,7 @@ export interface UpdateInfectionOutbreakArgs {
   readonly resolutionNote?: string;
 }
 
-// ── pure cross-route domain-rule helpers (DELEGATE to the @wardenx/quality canonical guards) ───────────
+// ── pure cross-route domain-rule helpers (DELEGATE to the @chartwarden/quality canonical guards) ───────────
 
 /**
  * V-11 (R-31) — assert the two-person PIP-closure co-sign split. Delegates to the package's canonical
@@ -383,7 +383,7 @@ export function assertSraCloseSplitActor(cosign: SraClosureCosign): void {
 
 /**
  * The M30 WRITE route-service contract: one method per §4.1 mutating (POST/PATCH) route. The P2c Drizzle
- * adapter implements each method inside ONE `withOrgContext` transaction, drives the pure @wardenx/quality
+ * adapter implements each method inside ONE `withOrgContext` transaction, drives the pure @chartwarden/quality
  * reducers for any lifecycle transition, and emits the §4.10 `m30.*` events through the injected
  * {@link WriteOutboxPort} in the same unit of work. A missing/RLS-hidden row is a non-leaking 404; a
  * domain-rule violation surfaces the package's typed `ChartWardenError`.

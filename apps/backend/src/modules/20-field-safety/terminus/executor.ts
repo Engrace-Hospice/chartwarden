@@ -9,10 +9,10 @@
 //
 // Workers are not requests (CLAUDE.md): every step runs under `runWithRequestContext` / `withOrgContext` with
 // the empty system actor, exactly like the watchdog that wrote the intents.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { MembershipId, SafetySosLifecycleState } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { MembershipId, SafetySosLifecycleState } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { OpsPageError } from "../jobs/terminus-port";
 import { M20_WORKER_SYSTEM_USER_ID, logM20Cron } from "../jobs/worker-support";

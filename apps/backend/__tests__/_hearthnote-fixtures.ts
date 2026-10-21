@@ -9,8 +9,8 @@
 // documents sections but captured none, so the moment check 2 went live every finalize/sign case for a
 // vitals-requiring pair would have failed the same way — `requiredVitalsCapture` is that fix's vitals
 // half, built to the SAME rule (`requiredVitalsFor`'s own answer, never a hand-guessed one).
-import { type VitalField, requiredVitalsFor, resolveTemplate } from "@wardenx/hearthnote";
-import type { EncounterDiscipline, EncounterType } from "@wardenx/types";
+import { type VitalField, requiredVitalsFor, resolveTemplate } from "@chartwarden/hearthnote";
+import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { VitalsInput } from "../src/modules/08-encounters/authoring/index";
 
 /** A param-free corpus code, so a fixture never has to carry slot values to assemble. */

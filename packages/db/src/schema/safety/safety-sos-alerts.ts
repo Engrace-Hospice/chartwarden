@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_sos_alert` + `safety_sos_location_stream` + `safety_sos_alert_state_history`
+// @chartwarden/db — `safety_sos_alert` + `safety_sos_location_stream` + `safety_sos_alert_state_history`
 // (M20 §3.3 / §2.2.2, D5/D6/D7). The SOS spine: one row per press, immutable in its identifying facts once
 // the cancel window expires, with every lifecycle move appended to the state-history ledger for replay.
 //
@@ -86,7 +86,7 @@ export const safetySosAlert = pgTable(
     cancelStatus: safetySosCancelStatus("cancel_status").notNull().default("not_cancelled"),
     cancelAttemptedAt: timestamp("cancel_attempted_at", { withTimezone: true }),
     /** `passed` | `failed` | `not_required` — §3.3 spells it `text`; the vocabulary is a CHECK below
-     *  (`SafetySosCancelBiometricResult` in @wardenx/types). `not_required` is the tenant-policy case and
+     *  (`SafetySosCancelBiometricResult` in @chartwarden/types). `not_required` is the tenant-policy case and
      *  is NOT a pass: a forensics read has to tell them apart. */
     cancelBiometricResult: text("cancel_biometric_result"),
 

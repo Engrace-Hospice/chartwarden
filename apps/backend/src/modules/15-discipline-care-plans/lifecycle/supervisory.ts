@@ -3,7 +3,7 @@ import {
   SUPERVISORY_CADENCE,
   isCadenceOverrideLegal,
   supervisoryEscalationDays,
-} from "@wardenx/discipline-plans";
+} from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/supervisory.ts — M15-T03 (§2.2.4 / §7.1).
 //
 // The 42 CFR §418.76(h) RN supervisory cadence — the Aide POC's compliance heart:
@@ -29,7 +29,7 @@ import type {
   IsoInstant,
   MembershipId,
   SupervisoryCadenceState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { DisciplinePlanSideEffect } from "./effects";
 import { require_ } from "./errors";
 import { TEXT_MINIMUMS } from "./validation";

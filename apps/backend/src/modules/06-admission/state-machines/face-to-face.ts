@@ -3,7 +3,7 @@
 // The FaceToFaceEncounter lifecycle: scheduled → completed → attested, with a self-loop on `completed`
 // for a Medical-Director window override. The encounter window is the CMS 418.22 prior-to window
 // (R-F2F-02); an out-of-window date with no override raises `F2F_OUTSIDE_WINDOW`. Pure transition.
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { AdmissionStateError, require_ } from "./errors";
 import {

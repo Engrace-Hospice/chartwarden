@@ -10,7 +10,7 @@
 // {disclosure, survey_export} with a `recipientClass`), the mint additionally consults M40's real
 // `BaaStatusProvider` via the T06 fail-closed BAA resolver — a missing/inactive BAA blocks the presign
 // (`baa_inactive`). M22 `dependsOn` is `[1, 5]`: the BAA seam is resolved OPAQUELY from the M1 registry
-// (no `@wardenx/mdm` import, no dependency-cruiser edge — the T06 baa-gate precedent).
+// (no `@chartwarden/mdm` import, no dependency-cruiser edge — the T06 baa-gate precedent).
 //
 // SUD-CONSENT MINT-TIME GATE (§7.16, F-197 #248). `consent-gate.ts`'s `resolveSudConsentPresent` is also
 // run at RENDER time (`decide-document-request.ts`), but that is a one-shot check — a document rendered
@@ -23,8 +23,8 @@ import type {
   IsoInstant,
   OrgId,
   SignedUrlDescriptor,
-} from "@wardenx/types";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { planSignedUrl } from "../lifecycle/storage";
 import { resolveExternalBaaActive } from "../outbox-consumers/baa-gate";
 import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";

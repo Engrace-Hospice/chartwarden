@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §7.8 / D11 (WF-18): the 14-day infection-cluster outbreak detector.
+// @chartwarden/quality — M30 §7.8 / D11 (WF-18): the 14-day infection-cluster outbreak detector.
 //
 // The core of §7.8: given a stream of normalized surveillance events for an org, detect clusters of
 // `≥3` events sharing the same `(provider_entity, pathogen, body_site)` triple within any rolling
@@ -17,7 +17,7 @@
 // transmission_context` in the triple, but the schema's outbreak-case columns + unique index carry only
 // pathogen + body site, so the detector keys on the schema triple (architecture wins over the WF-18
 // prose). Transmission context remains an event attribute, not a cluster discriminator.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { NormalizedSurveillanceEvent } from "./surveillance";
 
 /** The rolling detection window in days (D11). */

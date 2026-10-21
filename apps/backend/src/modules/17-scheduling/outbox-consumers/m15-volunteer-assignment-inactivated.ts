@@ -28,8 +28,8 @@
 // each visit is stamped with the delivered outbox event id (`visit.volunteer_gate_flagged_event_id`, mig 0360)
 // in the same tx as the publish, so a REPLAY of the same event flags nothing twice while a genuinely new
 // inactivation (a new event id) still flags the visit again.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 const V = schema.visit;

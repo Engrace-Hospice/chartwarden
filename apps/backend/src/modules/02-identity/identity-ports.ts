@@ -24,8 +24,8 @@
 // controls. The external-collaborator link carries a `patientId` *scope* (not a clinical
 // record); M3's caseload ABAC predicate (deny-stubbed here) governs which patient an actor
 // may scope a link to.
-import type { DbClient } from "@wardenx/db";
-import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type { FastifyRequest } from "fastify";
 
 /**
@@ -106,7 +106,7 @@ export function createOrgScopedIdentityOutbox(
  * assumes. (The OTHER thing that migration named, the PHI read-audit path, was fixed correctly —
  * `bootstrap/plugins/read-audit.ts` already wraps in `withOrgContext`.)
  */
-export function createOrgScopedAuditExecutor(db: DbClient): import("@wardenx/audit").AuditExecutor {
+export function createOrgScopedAuditExecutor(db: DbClient): import("@chartwarden/audit").AuditExecutor {
   return {
     insert(table) {
       return {
@@ -291,7 +291,7 @@ export interface InvitationListItem {
 
 /**
  * Delivers the invite-acceptance link to an invitee. Declared locally (not imported from
- * @wardenx/messaging) so M2 takes no `dependsOn` edge on M36 — the composition root binds the SAME
+ * @chartwarden/messaging) so M2 takes no `dependsOn` edge on M36 — the composition root binds the SAME
  * M36 `TransactionalEmailTransport` instance here via structural typing, mirroring
  * packages/auth/src/identity/email-transport.ts's `EmailTransport` port for the same reason.
  */
@@ -338,7 +338,7 @@ export interface ProposedRoleGuard {
     readonly organizationId: string;
     readonly inviterUserId: string;
     readonly roleKeys: readonly string[];
-    readonly auditContext: import("@wardenx/audit").AuditContext;
+    readonly auditContext: import("@chartwarden/audit").AuditContext;
   }): Promise<void>;
 }
 
@@ -621,7 +621,7 @@ export interface IdentityRouteDeps {
    * `POST /collaborators/consume` keeps its legacy slice behaviour (no session row); a durable mount ALWAYS binds
    * it, and a durable store with no minter refuses 503 `LINK_SESSION_UNAVAILABLE` WITHOUT consuming the link.
    */
-  linkSessions?: import("@wardenx/auth").LinkSessionMinter;
+  linkSessions?: import("@chartwarden/auth").LinkSessionMinter;
   /** GAP-115 follow-up - delivers the minted token. Unbound -> invite routes refuse 503 (see {@link LinkDeliveryPort}). */
   linkDelivery?: LinkDeliveryPort;
   /**
@@ -630,12 +630,12 @@ export interface IdentityRouteDeps {
    */
   linkRecipientRequired?: boolean;
   /** GAP-115 follow-up - the failed-redemption budget (per IP). Unbound -> only the global rate tier applies. */
-  linkRedeemThrottle?: import("@wardenx/auth").CredentialThrottle;
+  linkRedeemThrottle?: import("@chartwarden/auth").CredentialThrottle;
   /** GAP-115 follow-up - M5's minimum decedent read for `GET /funeral/case`. Unbound -> that route answers 503. */
   funeralCases?: FuneralCaseReader;
   users: UserDirectory;
   /** Audit sink for the M2 lifecycle events (audit() executor — denylist runs there). */
-  audit: import("@wardenx/audit").AuditExecutor;
+  audit: import("@chartwarden/audit").AuditExecutor;
   /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op (the M28 `NOOP_FHIR_OUTBOX`
    *  precedent) — every existing route keeps working without it. */
   outbox?: IdentityOutboxPort;

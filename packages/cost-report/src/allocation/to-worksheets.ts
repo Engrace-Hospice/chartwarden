@@ -1,6 +1,6 @@
 import type { WorksheetBData } from "../worksheets/b";
 import type { WorksheetCData } from "../worksheets/c";
-// @wardenx/cost-report — the PURE allocation-RESULT → derived-worksheet mapper (Form CMS-1984-14, D8). The
+// @chartwarden/cost-report — the PURE allocation-RESULT → derived-worksheet mapper (Form CMS-1984-14, D8). The
 // inverse of `assemble-inputs`: it turns the chain RESULTS (`StepDownAllocateResult` → Worksheet B,
 // `PerDiemResult` → Worksheet C) into the TypeBox-typed `data` jsonb the `cost_report_worksheet` rows persist,
 // so a `cost-allocation-recompute` materializes the derived worksheets. Total, deterministic functions over

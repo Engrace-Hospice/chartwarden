@@ -808,7 +808,7 @@ Every canonical and overlay table installs the M4 `generateAuditTrigger` in `004
 
 ```typescript
 // in 0040_mdm migration
-import { generateAuditTrigger } from '@wardenx/audit/triggers'
+import { generateAuditTrigger } from '@chartwarden/audit/triggers'
 
 const canonicalTables = [
   ['external_physician','physician'],
@@ -1131,7 +1131,7 @@ The provider is **registered at boot** via the M1 seam registry (see `boot.ts`):
 ```typescript
 // apps/backend/src/bootstrap/seams.ts
 import { setMdmEntityProvider } from './mdm'
-import { realMdmEntityProvider } from '@wardenx/mdm'
+import { realMdmEntityProvider } from '@chartwarden/mdm'
 
 setMdmEntityProvider(realMdmEntityProvider)
 // validateSeams() will refuse to start the server if no provider is registered.
@@ -1141,7 +1141,7 @@ Consumers import only the interface:
 
 ```typescript
 // e.g. apps/backend/src/modules/05-patient/services/patient.ts
-import type { MdmEntityProvider } from '@wardenx/mdm'
+import type { MdmEntityProvider } from '@chartwarden/mdm'
 
 async function loadPatientHeader(p: Patient, mdm: MdmEntityProvider) {
   const physician = p.attendingPhysicianId
@@ -1207,11 +1207,11 @@ The omnibus `MdmEntityProvider` is for chart-load callers (caller has the entity
 ```ts
 // apps/backend/src/modules/40-mdm/seams/baa-status-provider.ts
 
-import { db } from '@wardenx/db'
-import { facility, mdmBaaRecords as mdmBaaRecord, mdmBaaRequired } from '@wardenx/db/schema/mdm'
+import { db } from '@chartwarden/db'
+import { facility, mdmBaaRecords as mdmBaaRecord, mdmBaaRequired } from '@chartwarden/db/schema/mdm'
 import { sql, eq, and, or, gte, isNull } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
-import type { BaaStatusProvider, BaaStatusResult } from '@wardenx/foundation/seams'
+import { withPlatformContext } from '@chartwarden/tenancy'
+import type { BaaStatusProvider, BaaStatusResult } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 const VALKEY_TTL_SECONDS = 60      // BAA status changes infrequently; short TTL keeps the SLO budget low
@@ -1393,7 +1393,7 @@ export class BaaStatusProviderImpl implements BaaStatusProvider {
 
 ```ts
 // apps/backend/src/modules/40-mdm/boot.ts (extension)
-import { SeamRegistry } from '@wardenx/foundation/seams'
+import { SeamRegistry } from '@chartwarden/foundation/seams'
 import { BaaStatusProviderImpl } from './seams/baa-status-provider'
 import { MdmEntityProviderImpl } from './seams/mdm-entity-provider'
 
@@ -1439,11 +1439,11 @@ The `MdmEntityProvider.baaStatus` contract does not expose `expired` as a status
 ```ts
 // apps/backend/src/modules/40-mdm/outbox-consumers/m29-nppes-provider-synced.ts
 
-import type { Outbox } from '@wardenx/foundation/outbox'
-import { db } from '@wardenx/db'
-import { externalPhysician, nppesSyncCoordination } from '@wardenx/db/schema/mdm'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import { db } from '@chartwarden/db'
+import { externalPhysician, nppesSyncCoordination } from '@chartwarden/db/schema/mdm'
 import { eq } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
+import { withPlatformContext } from '@chartwarden/tenancy'
 import type { Logger } from 'pino'
 
 interface M29NppesProviderSyncedPayload {

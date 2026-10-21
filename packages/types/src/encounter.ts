@@ -1,4 +1,4 @@
-// @wardenx/types — Module 8 (Encounters & Visit Notes) leaf contracts (M8-T01).
+// @chartwarden/types — Module 8 (Encounters & Visit Notes) leaf contracts (M8-T01).
 //
 // Per ADR-0005 D1 the cross-module CONTRACTS live in this leaf package (the M8 spec's references to
 // `packages/domain/encounter/*` and `packages/types/events/encounter.ts` resolve here — there is no
@@ -15,7 +15,7 @@
 import type { AdmissionId, DateRange, LocalDate, PatientId } from "./admission";
 import type { IsoInstant, MembershipId } from "./care-plan";
 
-// ── Encounter-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──
+// ── Encounter-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──
 export type EncounterId = string;
 export type EncounterAddendumId = string;
 export type EncounterSignatureId = string;
@@ -468,7 +468,7 @@ export interface EvvBracketResolution {
  * finalize (D9). M18 (EVV) owns `evv_event` + the geofence/aggregator math; M8 only READS the bracket
  * (never writes EVV). Registered in the M1 seam registry with a fail-closed deny-stub until M18 lands
  * (Wave F); M8's EVV-missing-documented fallback path stays operative in the meantime (route 10).
- * Leaf-typed in @wardenx/types (not @wardenx/evv) so M8 consumes it with no `dependsOn` edge to M18.
+ * Leaf-typed in @chartwarden/types (not @chartwarden/evv) so M8 consumes it with no `dependsOn` edge to M18.
  */
 export interface EvvBracketResolver {
   resolveBracket(input: {

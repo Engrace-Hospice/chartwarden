@@ -33,8 +33,8 @@
 // No cross-module import: M27's manifest carries no `dependsOn` edge to 21 (`architecture/module-
 // manifest.ts`), so both event names are STRING literals and the payload is read structurally, the
 // `buildM27DocumentBackrefConsumer` precedent for a module M27 has no compile edge to.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, lte } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 

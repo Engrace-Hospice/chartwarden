@@ -3,8 +3,8 @@
 // to the platform's own) and returns the binding: `isEnabled` + `service` are the route deps, `sourceReader` is the seam
 // implementation, `stillProposed` / `requestFacts` are the notification consumer's ports. One factory, so every caller
 // shares one service and one store.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { createSeamPart2ChannelGate } from "../part2-channel-gate";

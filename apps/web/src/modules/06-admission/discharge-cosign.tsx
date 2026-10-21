@@ -1,4 +1,4 @@
-import { InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { InlineAlert, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — for-cause discharge physician cosign (42 CFR 418.26(b): medical director, physician designee or the patient's IDG physician)
 // (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER "For cause: cosign required → pending"; M6 route 40,
 // POST /api/v1/discharges/:id/cosign-for-cause). A for-cause discharge is filed as `pending_cosign` and

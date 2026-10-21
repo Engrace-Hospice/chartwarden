@@ -1,4 +1,4 @@
-// @wardenx/db — `incident_report` (M30 §3.3; PARTITIONED monthly by `occurred_at`; retention class
+// @chartwarden/db — `incident_report` (M30 §3.3; PARTITIONED monthly by `occurred_at`; retention class
 // `phi`). The safety-incident ledger (falls, med errors, complaints, abuse allegations, exposures),
 // with a per-kind TypeBox payload, triage/investigation lifecycle, and mandatory-report tracking.
 // Registers a §3.7 eraser. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).

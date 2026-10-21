@@ -5,7 +5,7 @@ import {
   type LateEntryTier,
   type LocalDate,
   isValidEncounterDisciplinePair,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/lifecycle/validation.ts — M8-T04 (§2.7).
 //
 // §2.7 has two kinds of rule: SYNCHRONOUS (run inside the service before/within the optimistic-locked

@@ -3,7 +3,7 @@
 // M36 migration or event hands anything to the order modules.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { buildMedicationQuestionBody } from "@wardenx/messaging";
+import { buildMedicationQuestionBody } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 
@@ -50,7 +50,7 @@ describe("medication-question code is order-free", () => {
     for (const spec of imports) {
       expect(spec).not.toMatch(/\/modules\/(11|12)-/);
       expect(spec).not.toMatch(/\.\.\/\.\.\/(11|12)-/);
-      expect(spec).not.toMatch(/@wardenx\/(orders|dosespot|emar)/);
+      expect(spec).not.toMatch(/@chartwarden\/(orders|dosespot|emar)/);
     }
   });
 

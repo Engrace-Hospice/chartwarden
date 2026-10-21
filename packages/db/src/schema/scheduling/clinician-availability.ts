@@ -1,4 +1,4 @@
-// @wardenx/db — `clinician_availability` (M17 §3.3 / D7). The positive-declaration availability model: one
+// @chartwarden/db — `clinician_availability` (M17 §3.3 / D7). The positive-declaration availability model: one
 // row per clinician per weekly slot ("Sarah is available Mon/Wed 8am–5pm"). The pre-schedule gate checks a
 // visit falls inside these bounds (and outside approved `time_off`). Clinician-scoped (membership_id) — NOT
 // patient-bearing → org-scoped; the M17-F01 tenancy columns are carried (nullable — a clinician's weekly

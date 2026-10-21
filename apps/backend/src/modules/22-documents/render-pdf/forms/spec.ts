@@ -7,7 +7,7 @@ import type {
   RenderPatientIdentity,
   SignatureRecord,
   UndatedSignatureRecord,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { Block } from "../doc-model";
 
 /** Context derived once per render, never from the payload's own claims about safety. */

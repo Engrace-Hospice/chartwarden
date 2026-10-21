@@ -1,6 +1,6 @@
-import { capYearForDate } from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { capYearForDate } from "@chartwarden/cap-management";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 // apps/backend/src/modules/26-cap/consumers/drizzle-store.ts — the Drizzle-backed `CapConsumerStore`
 // (F-131, #248). `./handlers.ts`'s five §4.4 handlers (`handleRemittancePosted`, `handleClaimReversed`,

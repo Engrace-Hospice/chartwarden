@@ -9,7 +9,7 @@
 //   m36.handoff.unaccepted  -> the sender, then the supervisor audience (rule m36.handoff.supervisor_review); when that
 //                              reaches nobody, a needs_attention event is appended to the handoff and the sender is told
 //                              (m36.handoff.no_supervisor) - the loud fallback, never a silent drop.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

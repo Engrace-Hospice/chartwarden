@@ -1,4 +1,4 @@
-// @wardenx/types — Module 16 (Bereavement) leaf contracts (M16-T01).
+// @chartwarden/types — Module 16 (Bereavement) leaf contracts (M16-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M16 spec's references to
 // `packages/domain/bereavement/{seam-interfaces,events,alerts}.ts` resolve their TYPE surface HERE, so the
@@ -12,9 +12,9 @@
 // M36 alert payloads, and the §4.6 / D13 published-seam interfaces + their read DTOs. The pure-data policy
 // — the D4 death-date-anchored cadence floor, the D3/D17 risk rubric weights + scorer, the D15 per-kind
 // encounter-backing rules, the D7/D9 closure + opt-out windows, the D18 external-source gate — lives in the
-// `@wardenx/bereavement` FEATURE package. This file is type-only and importable by everyone with no edge.
+// `@chartwarden/bereavement` FEATURE package. This file is type-only and importable by everyone with no edge.
 //
-// NAMING: every exported symbol carries the `Bereavement`/`Bereaved`/`M16` prefix. `@wardenx/types` is
+// NAMING: every exported symbol carries the `Bereavement`/`Bereaved`/`M16` prefix. `@chartwarden/types` is
 // re-exported wholesale from `./index.ts`, so a bare `RiskTier` / `OutreachKind` / `ContactLog` would be a
 // TS2308 collision the day another module wants the same word (the M14 `IdgDecisionPayload` precedent).
 
@@ -25,7 +25,7 @@ import type { ConsentId, IsoInstant, LocationId, MembershipId } from "./care-pla
 import type { DocumentId } from "./documents";
 import type { EncounterId } from "./encounter";
 
-// ── M16-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M16-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type BereavementPlanId = string;
 export type BereavedContactId = string;
 export type BereavementRiskScoreId = string;

@@ -5,7 +5,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 invoice detail (§5.1 `/billing/invoices/:id`).
 // One invoice over GET /api/v1/invoices/:id with its line breakdown (subtotal/tax/paid), plus the
 // "Download PDF" (GET :id/pdf) and "View on Stripe" (GET :id/hosted_url, a signed redirect) CTAs. All

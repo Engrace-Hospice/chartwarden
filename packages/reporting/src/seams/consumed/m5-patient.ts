@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M5 (Patient). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M5 (Patient). PRESENT producer (§4.4).
 //
 // M33 reads aggregate census counts only (D6 — no row-level PHI). Bound to the live M5
 // `CaseloadProvider` / `PatientReader.countActive` via `getSeam` at boot (P2C). Consumer-defined

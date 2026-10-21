@@ -1,4 +1,4 @@
-// @wardenx/db — `mileage` (M8 §3.3). Travel mileage captured for an encounter (payroll/reimbursement
+// @chartwarden/db — `mileage` (M8 §3.3). Travel mileage captured for an encounter (payroll/reimbursement
 // source feeding the M8 MileagePayrollReader seam). PHI-bearing → three-column tenancy rule (denormalized
 // from the parent encounter). One mileage row per encounter (unique). RLS + the M4 write-audit trigger
 // land in migration 0031 (M8-T03).

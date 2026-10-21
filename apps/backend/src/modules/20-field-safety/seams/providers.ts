@@ -1,8 +1,8 @@
-import { pointInRings } from "@wardenx/shared/geo";
-import { getRequestContext } from "@wardenx/tenancy";
+import { pointInRings } from "@chartwarden/shared/geo";
+import { getRequestContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/20-field-safety/seams/providers.ts — M20-T05, the §4.3 seam implementations:
 // pure orchestration over an injected {@link SafetySeamStore}. Each returns the leaf-typed seam interface
-// (`@wardenx/types`) the M1 registry validates and M8 / M17 / M19 / M30 / M32 / M33 / M36 resolve. The
+// (`@chartwarden/types`) the M1 registry validates and M8 / M17 / M19 / M30 / M32 / M33 / M36 resolve. The
 // providers add NO tenant logic — RLS scopes every store read by the caller's ambient `app.org_id` (§3.5).
 //
 // ── THE `orgId` ARGUMENT IS AN ASSERTION, NOT A SELECTOR ───────────────────────────────────────────────
@@ -88,8 +88,8 @@ import type {
   SafetySupervisorProvider,
   SafetySupervisorRecipientDto,
   SafetyVisitCheckInStatusDto,
-} from "@wardenx/types";
-import { SAFETY_POLICY_FLOOR, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { SAFETY_POLICY_FLOOR, ChartWardenError } from "@chartwarden/types";
 import type { SafetyClinicianSignalCache } from "../consumers/m18-gps-spoof";
 import {
   lastKnownLocationFrom,
@@ -201,7 +201,7 @@ export function pointInPolygon(
   rings: SafetyPolygonRings,
   point: SafetyRoundedCoordinates,
 ): boolean {
-  // GAP-032: the ray-cast itself moved to the leaf `@wardenx/shared/geo` so M40's PSAP resolver (which may
+  // GAP-032: the ray-cast itself moved to the leaf `@chartwarden/shared/geo` so M40's PSAP resolver (which may
   // not import M20) shares ONE implementation. This wrapper keeps M20's rounded-coordinate signature.
   return pointInRings(rings, { latitude: point.latitude3, longitude: point.longitude3 });
 }

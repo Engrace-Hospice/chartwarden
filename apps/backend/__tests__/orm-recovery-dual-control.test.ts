@@ -1,7 +1,7 @@
 // F-202 (#248) — the PURE half of the two-person control on the attested lab-transmission recovery: who may co-sign,
 // what counts as a repeat attester, and what the compliance alert says (and, as importantly, does not say). The live
 // half (the requests table, the ledger CHECKs, the single-dispatch guards, destruction) is `m11-orm-recovery.live.test.ts`.
-import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import {
   RECOVERY_ALERT_KINDS,

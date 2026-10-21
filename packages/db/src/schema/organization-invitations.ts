@@ -1,4 +1,4 @@
-// @wardenx/db — `organization_invitation` (M2 Identity §3.5). Invite-by-email before an
+// @chartwarden/db — `organization_invitation` (M2 Identity §3.5). Invite-by-email before an
 // account exists: single-use, time-bound tokens (only the token HASH is stored). Unlike
 // the user-owned auth tables, an invitation belongs to an organization, so it IS
 // org-scoped — it carries `organization_id`, lives under `app.org_id` RLS (the M1 RLS

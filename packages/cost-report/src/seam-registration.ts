@@ -1,4 +1,4 @@
-// @wardenx/cost-report — boot-time seam registration + consumed-seam binding (§4.3 / §4.4).
+// @chartwarden/cost-report — boot-time seam registration + consumed-seam binding (§4.3 / §4.4).
 //
 // Mirrors M30/M33's M1-bootstrap posture: the SEVEN published-seam contracts are registered into the M1
 // SeamRegistry; consumed seams are resolved through it. M27 takes NO `apps/backend` edge here — the

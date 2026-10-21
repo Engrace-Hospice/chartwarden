@@ -1,4 +1,4 @@
-import type { Rule, RuleResult, ValidationContext } from "@wardenx/billing";
+import type { Rule, RuleResult, ValidationContext } from "@chartwarden/billing";
 import {
   aggregateCapProjection,
   bereavementDischargeLegitimacy,
@@ -20,8 +20,8 @@ import {
   placeOfServiceConsistency,
   siaCalculationCorrect,
   tobAndDatesConsistency,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 §4.5 / §11.A the 20 platform-default validation rules pure-domain unit tests.
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 §4.5 / §11.A the 20 platform-default validation rules pure-domain unit tests.
 // For EACH rule: a passing `ValidationContext` (predicate holds) and a failing one (predicate fails), with
 // the rule object's published METADATA asserted (severity + regulatoryRequired + overrideRoleRequired) so
 // the §2.3 blocking-failure roll-up and the §4.5 worklist grouping stay grounded. Plus the cross-cutting

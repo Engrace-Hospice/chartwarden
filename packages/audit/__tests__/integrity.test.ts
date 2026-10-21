@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T11 integrity & tamper-evidence tests (M4 spec §10.4, §12.3).
+// @chartwarden/audit — M4-T11 integrity & tamper-evidence tests (M4 spec §10.4, §12.3).
 //
 // The security-critical §12.3 controls: the append-only GRANT model holds (no app-role UPDATE/
 // DELETE/TRUNCATE on the audit log), the sample-vs-backup check detects an altered backup row, and

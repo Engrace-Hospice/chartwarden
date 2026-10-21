@@ -10,7 +10,7 @@
 // NB the §4.3 published reader seams (ClaimReader / ClaimDayProjectionProvider / ClaimSubmissionReader /
 // ClaimMetricsProvider / MacCredentialAdmin) + the §4.4 consumed-seam bundle (M5/M6/M8/M18 readers, the M26
 // CapProjectionProvider forward-seam deny-stub, M22/M36/M38/M40 seams, and the self-published
-// `@wardenx/x12-837-client` X12WorkerClient) live in `@wardenx/billing` / `@wardenx/x12-837-client`. They are
+// `@chartwarden/x12-837-client` X12WorkerClient) live in `@chartwarden/billing` / `@chartwarden/x12-837-client`. They are
 // NOT wired into the M1 SeamRegistry here yet because M23's seam names are not yet members of the M1
 // `SeamContracts` / `REQUIRED_SEAMS` (M1-owned); until then M23 is reachable cross-module via its §4.10 outbox
 // events (the D2 outbox-only posture). Nothing here runs at import; the composition root opts M23 in at boot.

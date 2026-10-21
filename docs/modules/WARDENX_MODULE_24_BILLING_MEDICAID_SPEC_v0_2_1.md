@@ -519,13 +519,13 @@ The migration is sequenced to land cleanly under the existing M23 substrate and 
 > from the root claim via their NOT NULL `medicaid_claim_id` FK; `medicaid_validation_rule_config` and
 > `state_medicaid_trading_partner_credential` are **org/PE-level configuration**, not patient PHI. RLS
 > is the org-only policy (per the Phase-2 F11 fix) with PE narrowing in M3 ABAC. Satisfies
-> `check-tenancy` (fitness #10); `location` added to the shared `@wardenx/db/schema` import.
+> `check-tenancy` (fitness #10); `location` added to the shared `@chartwarden/db/schema` import.
 
 ```typescript
 // apps/backend/src/modules/24-billing-medicaid/schema/medicaid-claim.ts
 import { pgTable, uuid, timestamp, text, integer, jsonb, pgEnum, varchar, boolean, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organization, providerEntity, location, patient, patientPayer, admission } from '@wardenx/db/schema'  // location added — ARCH-011 (M24-F21)
+import { organization, providerEntity, location, patient, patientPayer, admission } from '@chartwarden/db/schema'  // location added — ARCH-011 (M24-F21)
 import { claim as medicareClaim } from '../../23-billing-medicare/schema/claim'   // boundary: M23 dependency edge per manifest
 
 export const medicaidClaimStateEnum = pgEnum('medicaid_claim_state', [
@@ -1256,7 +1256,7 @@ export const RefreshMedicaidEligibilityBodyT = Type.Object({
 import type {
   OrgId, ProviderEntityId, PatientId, MembershipId, MedicaidClaimId,
   RbArrangementId, IsoDate, IsoDateTime, StateCode, CapYear,
-} from '@wardenx/domain/ids'
+} from '@chartwarden/domain/ids'
 
 export interface MedicaidClaimReader {
   // M28 FHIR Gateway projection (R4 Claim/ClaimResponse/EOB per US Core hospice for Medicaid)
@@ -1362,23 +1362,23 @@ export function setMedicaidTradingPartnerAdmin(p: MedicaidTradingPartnerAdmin): 
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { PatientReader, PatientPayerReader } from '@wardenx/patient/seams'                          // M5
-import type { MedicaidIdUnlockReader } from '@wardenx/patient/seams'                                     // M5 (new seam introduced by M24)
-import type { CaseloadProvider } from '@wardenx/identity/seams'                                          // M5/M17
+import type { PatientReader, PatientPayerReader } from '@chartwarden/patient/seams'                          // M5
+import type { MedicaidIdUnlockReader } from '@chartwarden/patient/seams'                                     // M5 (new seam introduced by M24)
+import type { CaseloadProvider } from '@chartwarden/identity/seams'                                          // M5/M17
 import type {
   ElectionPeriodReader, AdmissionStatusReader, CertificationReader,
   FaceToFaceReader, LevelOfCareReader,
-} from '@wardenx/admission/seams'                                                                        // M6
-import type { BillableEncounterReader, SignedEncountersReader } from '@wardenx/encounters/seams'        // M8
-import type { EvvComplianceReader } from '@wardenx/evv/seams'                                            // M18
-import type { ClaimReader } from '@wardenx/billing/seams'                                                // M23 (for medicareSecondaryContext)
-import type { CapProjectionProvider } from '@wardenx/cap/seams'                                            // M26 (deny-stub until M26 lands)
-import type { MessagingProvider, AlertEmitter } from '@wardenx/messaging/seams'                         // M36
-import type { TerminologyProvider } from '@wardenx/terminology/seams'                                   // M38
-import type { MdmEntityProvider } from '@wardenx/mdm'                                                    // M40
-import type { MembershipReader, CredentialReader } from '@wardenx/identity/seams'                       // M2
-import type { X12WorkerClient } from '@wardenx/x12-worker-client'                                        // M23-owned vendor adapter
-import type { DocumentRenderer } from '@wardenx/forms/seams'                                            // M22
+} from '@chartwarden/admission/seams'                                                                        // M6
+import type { BillableEncounterReader, SignedEncountersReader } from '@chartwarden/encounters/seams'        // M8
+import type { EvvComplianceReader } from '@chartwarden/evv/seams'                                            // M18
+import type { ClaimReader } from '@chartwarden/billing/seams'                                                // M23 (for medicareSecondaryContext)
+import type { CapProjectionProvider } from '@chartwarden/cap/seams'                                            // M26 (deny-stub until M26 lands)
+import type { MessagingProvider, AlertEmitter } from '@chartwarden/messaging/seams'                         // M36
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'                                   // M38
+import type { MdmEntityProvider } from '@chartwarden/mdm'                                                    // M40
+import type { MembershipReader, CredentialReader } from '@chartwarden/identity/seams'                       // M2
+import type { X12WorkerClient } from '@chartwarden/x12-worker-client'                                        // M23-owned vendor adapter
+import type { DocumentRenderer } from '@chartwarden/forms/seams'                                            // M22
 ```
 
 At M24 init:
@@ -1453,7 +1453,7 @@ The adapter interface — the architectural commitment from ARCH §11.E and §13
 
 ```typescript
 // packages/medicaid-adapters/src/interface.ts
-import type { OrgId, PatientId, MedicaidClaimId, StateCode, IsoDate } from '@wardenx/domain/ids'
+import type { OrgId, PatientId, MedicaidClaimId, StateCode, IsoDate } from '@chartwarden/domain/ids'
 import type { TradingPartnerCredentials } from './credentials'
 
 export interface MedicaidAdapter {
@@ -1612,9 +1612,9 @@ The dependency-cruiser mandate (Architecture §25.14) forbids any module outside
 // packages/medicaid-adapters/src/rules/types.ts
 import type {
   ValidationRule, ValidationContext, ValidationResultPayload, ValidationSeverity,
-} from '@wardenx/billing/rules/types'        // imported from M23 per manifest dep
+} from '@chartwarden/billing/rules/types'        // imported from M23 per manifest dep
 import type { MedicaidClaimReader, MedicaidEligibilityReader, RoomAndBoardReader, StateRateScheduleReader } from '../seams'
-import type { ClaimReader } from '@wardenx/billing/seams'                          // M23
+import type { ClaimReader } from '@chartwarden/billing/seams'                          // M23
 
 export interface MedicaidValidationContext extends ValidationContext {
   // Inherits everything from the M23 ValidationContext, plus M24-specific:
@@ -2440,7 +2440,7 @@ Lock-grade sign-off requires every item below to be green. Each item is verifiab
 
 - `dependency-cruiser` boundary check will allow imports from M1/M2/M3/M4/M5/M6/M8/M18/M22/M23/M26/M28/M36/M38/M40 code paths into M24 paths (and forbids any path not in this set).
 - `check-table-ownership` script will assert that the 14 listed tables are written to only by M24's code paths (no other module may direct-write); M4 helpers (`audit_event`, `outbox_event`, `idempotency_key`) remain helper-only as the platform-wide convention.
-- The new manifest dep on M23 unlocks M24's import of `@wardenx/billing/seams` for `ClaimReader.medicareSecondaryContext` and `@wardenx/billing/rules/types` for the shared `ValidationRule` types per D2/D10.
+- The new manifest dep on M23 unlocks M24's import of `@chartwarden/billing/seams` for `ClaimReader.medicareSecondaryContext` and `@chartwarden/billing/rules/types` for the shared `ValidationRule` types per D2/D10.
 - The new manifest dep on M26 reflects the `CapProjectionProvider` consumed seam — deny-stubbed at M24 lock because M26 has not yet locked; the dep-cruiser allowance is set up so that when M26 publishes the real reader, no manifest churn is required at M24's side.
 - The new manifest dep on M28 reflects M24's forward-seam consumption — M28 will read `MedicaidClaimReader.fhirProjection` when M28 locks; M24's published seam is ready today.
 

@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — the `TenantLifecycleProvider` seam (M34 §4.6).
+// @chartwarden/saas-tenant-platform — the `TenantLifecycleProvider` seam (M34 §4.6).
 //
 // The platform control-plane's single source of truth for "is this tenant allowed to operate?".
 // Every downstream module that needs to gate writes / sessions / claims / dispatch consults
@@ -9,7 +9,7 @@
 //
 // The status union mirrors the `tenant_account_status` pgEnum (packages/db/src/schema/saas/
 // tenant-account.ts) as a type-level constant so the seam contract does not take a project-reference
-// edge on @wardenx/db. Keep the two in lock-step when the enum changes (M34 §3.3).
+// edge on @chartwarden/db. Keep the two in lock-step when the enum changes (M34 §3.3).
 
 /**
  * The tenant-account lifecycle status (§3.3). Type-level mirror of the `tenant_account_status`

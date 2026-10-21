@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.4 D3 PRN minimum-interval enforcement — M13-T04.
+// @chartwarden/emar — §2.4 D3 PRN minimum-interval enforcement — M13-T04.
 import { describe, expect, it } from "vitest";
 import { assertPrnInterval, checkPrnInterval } from "../src/prn";
 

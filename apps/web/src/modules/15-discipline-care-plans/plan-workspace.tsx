@@ -7,7 +7,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the SHARED DISCIPLINE PLAN WORKSPACE (§5.1 #2/#6/#8/#9).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md (M07 + M15) — "Use Patient Workspace."
 //

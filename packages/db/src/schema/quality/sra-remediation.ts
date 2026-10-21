@@ -1,4 +1,4 @@
-// @wardenx/db — `sra_remediation` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `sra_remediation` (M30 §3.3; non-partitioned; retention class `compliance`).
 // A remediation action for an SRA finding: owner, description, target date, status, and the evidence
 // document required to mark it completed. Real intra-M30 FK to sra_finding. ORG-SCOPED:
 // organization_id NOT NULL (canonical app.org_id RLS). `description_text` may name staff →

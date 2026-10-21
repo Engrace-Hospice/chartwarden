@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_incident` + `safety_incident_state_history` (M20 §3.3 / §2.2.3, D9). The formal
+// @chartwarden/db — `safety_incident` + `safety_incident_state_history` (M20 §3.3 / §2.2.3, D9). The formal
 // report, opened either from an SOS (auto-draft) or freestanding (the clinician reports a near-miss the
 // next morning), progressing through a state machine that gates supervisor sign-off before the row can be
 // externalized to a workers-comp carrier or an OSHA-equivalent state filing.

@@ -1,15 +1,15 @@
-// @wardenx/quality · repositories — the unified risk-register source loader (M30 §7.9 / D13). The risk
+// @chartwarden/quality · repositories — the unified risk-register source loader (M30 §7.9 / D13). The risk
 // register is the UNION of four open-risk sources (open SRA findings ≥ medium residual, open incidents
 // ≥ moderate, corrective-action QAPI projects, non-compliant CoP citations). In production this is the
 // `risk_register_view` MATERIALIZED VIEW (migration-owned, refreshed CONCURRENTLY off a NON-tx primary
 // pool — NOT this port's job). This repo backs the IN-PROCESS projection path: it loads the candidate
-// open-risk rows from the four base tables so the pure `buildRiskRegister(sources)` (in @wardenx/quality)
+// open-risk rows from the four base tables so the pure `buildRiskRegister(sources)` (in @chartwarden/quality)
 // can shape + band + sort them. ORG-SCOPED; the register read worker wraps these in `withOrgContext`.
 //
 // The SQL predicates here are deliberately BROADER-OR-EQUAL than the pure open-risk predicates (e.g. no
 // residual-score floor on SRA findings): the authoritative inclusion test stays in `buildRiskRegister`,
 // so SQL and the in-process projection cannot drift. The candidate filters only prune obviously-closed rows.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import type { RiskRegisterSources } from "../risk_register/refresh";
 import type { QualityDb } from "./db";

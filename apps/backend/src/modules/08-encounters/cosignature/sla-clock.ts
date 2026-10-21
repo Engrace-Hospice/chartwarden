@@ -6,7 +6,7 @@
 // §4.3 cron tick supplies "now"); there is no `Date.now()` and no IO, so the 12h/24h/48h boundaries
 // are testable with a fixed clock (the §7.3 acceptance walks T+12h/T+24h/T+48h). The pure stage
 // decision drives the §4.3 hard-cap sweep; the side-effecting state change is the ./cosignature machine.
-import type { CosignatureStatus } from "@wardenx/types";
+import type { CosignatureStatus } from "@chartwarden/types";
 
 /** The D3 SLA thresholds, in whole hours from `routedAt` (§2.4 / §1.1). */
 export const COSIGNATURE_SLA_HOURS = {

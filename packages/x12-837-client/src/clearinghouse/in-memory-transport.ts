@@ -1,7 +1,7 @@
-// @wardenx/x12-837-client — the in-memory ClearinghouseTransport: the executable SPECIFICATION of the port
+// @chartwarden/x12-837-client — the in-memory ClearinghouseTransport: the executable SPECIFICATION of the port
 // (ADR-0053 D4). It is the reference every real adapter is compared against by ./conformance, and a
 // deterministic double for module tests (claim-cycle workers, DDE queue triggers) that need a clearinghouse
-// without a network. TEST SUPPORT ONLY: it is exported from `@wardenx/x12-837-client/testing`, not from the
+// without a network. TEST SUPPORT ONLY: it is exported from `@chartwarden/x12-837-client/testing`, not from the
 // package barrel, so production code cannot pull it (or `node:crypto`) in by accident.
 //
 // All state is partitioned by (organizationId, providerEntityId, usage) — the port's isolation boundary — so one

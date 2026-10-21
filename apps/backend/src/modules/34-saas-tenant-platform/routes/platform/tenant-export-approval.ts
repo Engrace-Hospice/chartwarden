@@ -15,8 +15,8 @@
 // own step-up on the tenant-scoped side). Org/actor binding is server-side (`request.context`, never the
 // body) — the target job's own `organizationId` (a DIFFERENT org than the platform-ops actor's own) is
 // resolved from the row itself under `withPlatformContext`, not from the caller's session.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   ApproveOversizedExportRequest,

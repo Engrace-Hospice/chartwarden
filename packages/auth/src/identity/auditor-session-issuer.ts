@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — mint a Better Auth `auditor`-class session from a redeemed magic link
+// @chartwarden/auth · identity — mint a Better Auth `auditor`-class session from a redeemed magic link
 // (M2 §2.2.4 / §7.7). This is the half of the auditor flow the batch-11 `auditor_magic_link` store left
 // undone: the link was issued and consumable in SQL, but nothing turned a consumed link into a session.
 //

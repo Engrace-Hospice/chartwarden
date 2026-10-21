@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the pure HETS 270 (005010X279A1) request builder.
+// @chartwarden/x12-837-client — the pure HETS 270 (005010X279A1) request builder.
 //
 // Shape follows the CMS HETS 270/271 5010 Companion Guide, Appendix A ("minimum required data elements")
 // and §7.3 (beneficiary search: MBI + last name + first name + DOB; no middle name, no gender — those make

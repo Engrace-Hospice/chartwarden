@@ -7,12 +7,12 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HQRP compliance dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Dashboard."
 // "Are we losing the 4 points?" — four KPI cards: HOPE on-time rate, SFV on-time rate, submission
 // acceptance rate, late-completion rate (1 − HOPE on-time). Rates are server-computed (ADR-0030 — no
-// frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@wardenx/ui).
+// frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 

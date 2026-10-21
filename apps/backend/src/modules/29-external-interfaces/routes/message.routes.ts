@@ -5,7 +5,7 @@
 // step-up decrypt route). Replay re-enqueues a parse_error/rejected inbound message; retry re-queues a
 // failed/dlq outbound message (D9). The compliance decrypt of a stored payload needs the per-tenant DEK,
 // which no module binds in Phase 1, so it fails closed with a typed 501 (honest "not yet", not a 404).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";

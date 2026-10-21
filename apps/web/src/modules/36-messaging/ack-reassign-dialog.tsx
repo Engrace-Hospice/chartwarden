@@ -2,8 +2,8 @@
 // supervisor queue ("supervisor": adds a REQUIRED reason). Opening sends only the colleague read. Confirm is inert (aria-disabled,
 // with its explanation) until the choices are made. Escape and Cancel close it and the modal returns focus to the button that
 // opened it. It names no patient, no message text and no id.
-import { ACK_SUPERVISOR_REASON_CODES } from "@wardenx/types";
-import { Button, Modal } from "@wardenx/ui";
+import { ACK_SUPERVISOR_REASON_CODES } from "@chartwarden/types";
+import { Button, Modal } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import {

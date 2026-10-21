@@ -13,7 +13,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-scope:live
  */
 import { randomUUID } from "node:crypto";
-import { withOrgContext } from "@wardenx/tenancy";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { FastifyInstance } from "fastify";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

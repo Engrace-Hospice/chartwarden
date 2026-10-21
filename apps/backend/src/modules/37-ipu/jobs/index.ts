@@ -4,7 +4,7 @@
 //
 // WHAT THIS FIXES. `ipu_rn_coverage_window` is a MATERIALIZED invariant: the spec (§2.3 D3) defines an
 // `rn-coverage-watchdog` worker that rebuilds it every 5 minutes per unit, and the pure builder that
-// computes the grid has been written and unit-tested in `@wardenx/inpatient` since M37-T07
+// computes the grid has been written and unit-tested in `@chartwarden/inpatient` since M37-T07
 // (`domain/rn-coverage/window-builder.ts`, whose own header names this worker).
 //
 // The worker was never built, so nothing ever wrote a row. Four write paths read the table and treat an

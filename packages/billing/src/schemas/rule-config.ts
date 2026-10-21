@@ -1,4 +1,4 @@
-// @wardenx/billing — rule-config CRUD: route #18 `GET /rule-config` (list overlay + platform snapshot),
+// @chartwarden/billing — rule-config CRUD: route #18 `GET /rule-config` (list overlay + platform snapshot),
 // route #19 `PATCH /rule-config/:ruleKey` (tenant overlay edit), route #20 `POST /rule-config:custom`
 // (tenant custom rule with predicate DSL), route #21 `DELETE /rule-config/:ruleKey` (revert to default).
 // §4.1. The D5 platform-floor protection (no overlay/disable on a `regulatory_required` rule) is enforced

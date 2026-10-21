@@ -6,7 +6,7 @@
 // absent document / funeral home. None of them trusts a body field for anything but the ID it then
 // resolves; the facts (document type, owning release, patient, funeral-home status, physician status) come
 // from M22/M40, and the actor's discipline from the server-assembled role set.
-import type { BodyReleaseEvent } from "@wardenx/inpatient";
+import type { BodyReleaseEvent } from "@chartwarden/inpatient";
 import { isIpuSystemActor } from "./system-actor";
 
 /** M22 `DocumentType` the signed body-release authorization is filed under (the render consumer's type). */
@@ -204,7 +204,7 @@ export interface RestraintOrderReader {
 
 /**
  * The M39 `ConsentEvaluator` narrowed to the ONE method §2.7's visitor gate calls (GAP-062) — the M12
- * `DoseSpotConsentValidator` precedent. M39's rich interface lives in @wardenx/consent, which M37 does
+ * `DoseSpotConsentValidator` precedent. M39's rich interface lives in @chartwarden/consent, which M37 does
  * not import; the seam is registered opaquely (`SeamContracts["ConsentEvaluator"] = unknown`) and this
  * subset is what M37 depends on, so no manifest edge appears.
  *

@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Socket, io } from "socket.io-client";
 
-/** Mirror of `RealtimeHint` in @wardenx/messaging (the web app does not import that Node-side package). */
+/** Mirror of `RealtimeHint` in @chartwarden/messaging (the web app does not import that Node-side package). */
 export interface MessagingHint {
   readonly kind: string;
   readonly cursor: string;

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `user_active_period` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Pseudonymized —
+// @chartwarden/db — `user_active_period` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Pseudonymized —
 // NEVER holds a raw membership_id, only a 32-hex HMAC-SHA256 `membership_pseudonym`. §3.6 requests full
 // audit exclusion (append-only). `organization_id` is a logical uuid (M35-F04).
 import {

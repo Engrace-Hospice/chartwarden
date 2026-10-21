@@ -924,7 +924,7 @@ export const documentAccessPurpose = pgEnum('document_access_purpose', [
 // db/schema/documents.ts
 import { pgTable, uuid, text, timestamp, boolean, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organization } from '@wardenx/db/schema'
+import { organization } from '@chartwarden/db/schema'
 import {
   documentRetentionClass, documentSourceKind, documentAggregateType, documentStatus,
 } from './enums'
@@ -1747,15 +1747,15 @@ All five seams are registered in M22's `boot.ts` and published via the M1 `SeamR
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { PatientReader } from '@wardenx/patient/seams'                    // M5
-import type { CaseloadProvider } from '@wardenx/identity/seams'                // M5/M17
-import type { TerminologyProvider } from '@wardenx/terminology/seams'          // M38
-import type { ExternalPhysicianReader, PharmacyReader, FacilityReader, ReferralSourceReader, BaaStatusProvider } from '@wardenx/mdm/seams' // M40
-import type { OrderProvider } from '@wardenx/orders/seams'                     // M11
-import type { LabObservationReader } from '@wardenx/external-interfaces/seams' // M29
+import type { PatientReader } from '@chartwarden/patient/seams'                    // M5
+import type { CaseloadProvider } from '@chartwarden/identity/seams'                // M5/M17
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'          // M38
+import type { ExternalPhysicianReader, PharmacyReader, FacilityReader, ReferralSourceReader, BaaStatusProvider } from '@chartwarden/mdm/seams' // M40
+import type { OrderProvider } from '@chartwarden/orders/seams'                     // M11
+import type { LabObservationReader } from '@chartwarden/external-interfaces/seams' // M29
 import type {
   DocLensClassifier, DocLensExtractor, DocLensVisionVerifier,
-} from '@wardenx/ai-platform/seams'                                            // M32
+} from '@chartwarden/ai-platform/seams'                                            // M32
 ```
 
 At M22 init:
@@ -1999,7 +1999,7 @@ Every state transition publishes one event in the same transaction as the state 
 
 > **Chart writeback handshake.** When the source module (e.g., M12) receives `m22.extraction.commit_requested`, it creates a draft in its own domain (a draft `medication_order`) and replies via outbox `m12.medication_order.draft_created_from_extraction` carrying the back-ref. M22's `m12-draft-created` consumer applies `target_aggregate_id` to the `extraction_provenance` row and emits `m22.extraction.commit_completed`. The downstream signing workflow is the source module's responsibility.
 
-> **Writeback scope as built (F-235, #248 — decisions A1 + B, 2026-10-03).** The handshake above is narrowed by two product/clinical decisions. **A1:** medications are excluded from DocLens writeback — M12 D12 and AI Governance §2.1.1 hard-block AI-introduced medication changes, so extracted medications stay read-only review evidence; no commit targets M12 and `m12.medication_order.draft_created_from_extraction` has no M22 consumer. **B:** the only target is M5, as a demographics update on the intake batch's already-resolved patient (never a headless create), limited to the low-risk contact allowlist `DOCLENS_M5_WRITEBACK_FIELDS` (`@wardenx/types`): preferred name, home/mobile phone, email, a complete address. `POST /api/v1/intake/reviews/:id/complete` (Idempotency-Key, AI principals refused) commits server-side decisions only — values from the stored candidate (DEK-decrypted) or the reviewer's stored edit — and excludes, with a named reason, any non-allowlisted, non-low-risk or SUD-flagged candidate. It emits ONE `m22.extraction.commit_requested` per target aggregate (W1 step 11), not one per candidate; M5 replies with per-field outcomes on `m5.patient.draft_created_from_extraction`, and M22's `m22.extraction-writeback-backref` stamps provenance only for the fields the chart now holds before emitting `m22.extraction.commit_completed`. Writeback to M7/M9/M11/M13 is not built.
+> **Writeback scope as built (F-235, #248 — decisions A1 + B, 2026-10-03).** The handshake above is narrowed by two product/clinical decisions. **A1:** medications are excluded from DocLens writeback — M12 D12 and AI Governance §2.1.1 hard-block AI-introduced medication changes, so extracted medications stay read-only review evidence; no commit targets M12 and `m12.medication_order.draft_created_from_extraction` has no M22 consumer. **B:** the only target is M5, as a demographics update on the intake batch's already-resolved patient (never a headless create), limited to the low-risk contact allowlist `DOCLENS_M5_WRITEBACK_FIELDS` (`@chartwarden/types`): preferred name, home/mobile phone, email, a complete address. `POST /api/v1/intake/reviews/:id/complete` (Idempotency-Key, AI principals refused) commits server-side decisions only — values from the stored candidate (DEK-decrypted) or the reviewer's stored edit — and excludes, with a named reason, any non-allowlisted, non-low-risk or SUD-flagged candidate. It emits ONE `m22.extraction.commit_requested` per target aggregate (W1 step 11), not one per candidate; M5 replies with per-field outcomes on `m5.patient.draft_created_from_extraction`, and M22's `m22.extraction-writeback-backref` stamps provenance only for the fields the chart now holds before emitting `m22.extraction.commit_completed`. Writeback to M7/M9/M11/M13 is not built.
 >
 > **Diagnosis writeback as built (F-238 dx-writeback, 2026-10-04).** Approved `diagnoses[n].description | .icd10 | .role` candidates (same `n` within one extraction job = one diagnosis) now commit to **M7 as PROPOSALS**, never as charted problems (AI Governance §2.1.1). Completion publishes ONE `m22.extraction.diagnosis_commit_requested` (`targetModule: 'm7'`, the batch's resolved patient) carrying, per diagnosis, the description as written or the reviewer's edit, the ICD-10-CM code **as printed or as typed by the reviewer** (`extraction_candidate.value_code` is never read; a malformed code is excluded as `icd10_malformed` and the diagnosis goes without one), the document's own `role` label (a suggestion — it never becomes `problem.kind`), and the Part 2 flag (F10–F19 except F17, or SUD wording). Diagnoses on SUD-flagged pages stay out unless the batch detection was rejected; a confirmed-SUD batch sends nothing SUD. M7 lands each as a `pending` `problem_proposal` on the patient's single non-discharged care plan (else `no_care_plan` / `care_plan_ambiguous`; a plan is never created), validates the code against M38 as of the batch upload date (`unvalidated` when M38 cannot answer — the code is kept), dedupes per patient, flags a same-code active problem, and replies `m7.problem.draft_created_from_extraction`; `m22.extraction-diagnosis-backref` stamps `extraction_provenance.target_aggregate_id` with the proposal id and emits `m22.extraction.commit_completed` (`targetModule: 'm7'`). A clinician accepts (choosing terminal/related/unrelated → a `problem` with `source = 'intake_extraction'`) or dismisses. **Deviation from D5's single event:** a separate event per target, because on the outbox every declared consumer receives every row and M5's consumer fail-closes on a non-M5 payload; the payload keeps the D5 `targetModule` discriminator. Writeback to M9/M11/M13 is not built.
 
@@ -2066,12 +2066,12 @@ M22's outbox consumers — events from other modules that drive M22 state — ar
 ```ts
 // apps/backend/src/modules/22-documents/consumers/m11-order-results-received.ts
 
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
-import { db } from '@wardenx/db'
-import { document, documentVersion } from '@wardenx/db/schema/documents'
-import { renderFormTemplate } from '@wardenx/forms'
-import { withOrgContext } from '@wardenx/tenancy'
+import { db } from '@chartwarden/db'
+import { document, documentVersion } from '@chartwarden/db/schema/documents'
+import { renderFormTemplate } from '@chartwarden/forms'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 interface M11ResultsReceivedPayload {
   readonly orderId: string
@@ -2362,7 +2362,7 @@ All PHI documents cached for offline use on the mobile app (Capacitor) are subje
 - **Encrypted storage.** Cached document metadata and signed-URL content are persisted in a **SQLCipher-encrypted SQLite database** (`packages/mobile/src/offline/db.ts`). The encryption key is derived from the authenticated user's device-bound credential (Capacitor Secure Storage — iOS Keychain / Android Keystore). Plaintext SQLite or IndexedDB is prohibited for any PHI-bearing offline data (SEC-075 / ADR-0021).
 - **Cache scope.** Up to 50 most-recent document versions per patient per field clinician are eligible for offline cache. Documents tagged `retain_offline=false` (e.g., `compliance_42cfr_part2`-class lab results with SUD content) are excluded from the offline cache regardless of access pattern.
 - **Logout eviction.** On session logout or session expiry, the offline cache is **fully wiped**: the SQLCipher key is deleted from Keychain/Keystore and the encrypted database file is deleted from the device. The wipe runs before the logout confirmation screen clears. A background-app termination while logout is in progress re-attempts the wipe on next foreground.
-- **Screen-capture protection.** Every screen that renders a cached PHI document applies `FLAG_SECURE` (Android) and the equivalent `UIScreen.main.isCaptured` gate (iOS) to prevent screen recording, screenshots, and AirPlay mirroring of document content (SEC-075). The Capacitor plugin `@wardenx/capacitor-secure-screen` implements this across both platforms.
+- **Screen-capture protection.** Every screen that renders a cached PHI document applies `FLAG_SECURE` (Android) and the equivalent `UIScreen.main.isCaptured` gate (iOS) to prevent screen recording, screenshots, and AirPlay mirroring of document content (SEC-075). The Capacitor plugin `@chartwarden/capacitor-secure-screen` implements this across both platforms.
 
 ### 5.3 Screen Inventory (Portal — M31 forward-seam)
 
@@ -2376,7 +2376,7 @@ These screens are owned by the portal app shell (M31) but consume M22 reader sea
 
 ### 5.4 Component Library Integration
 
-All screens use the `@wardenx/ui` design system (M1-owned). M22-specific components ship from `packages/forms/components/` and `apps/web/src/modules/22-documents/components/`:
+All screens use the `@chartwarden/ui` design system (M1-owned). M22-specific components ship from `packages/forms/components/` and `apps/web/src/modules/22-documents/components/`:
 
 - `<DocumentList />` — virtualized list, server-side pagination via TanStack Query infinite query; columns are user-configurable and persisted in M40 user preferences
 - `<DocumentPreview />` — wraps `<iframe>` / PDF.js per browser capability; falls back to download link

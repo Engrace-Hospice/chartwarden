@@ -1,4 +1,4 @@
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiErrorCode, selectFiles, sha256Hex, withRequestDeadline } from "./attachment-utils";
 import type { AttachmentChip } from "./messaging-types";

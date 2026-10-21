@@ -10,7 +10,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** `discipline_plan_status` (enums.ts §3.2) — the §2.2.1 plan-root lifecycle. */
 export const PLAN_STATUS_TONE: Record<string, StatusTone> = {

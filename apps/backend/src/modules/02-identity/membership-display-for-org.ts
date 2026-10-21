@@ -14,8 +14,8 @@
 // member must still name who signed it. RLS (`app.org_id`) is the wall; the explicit `organization_id`
 // predicate is the belt behind it, so an unknown / cross-tenant membership id is simply ABSENT from the
 // result. ONE query for the whole id set, never N+1.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 const MB = schema.memberships;

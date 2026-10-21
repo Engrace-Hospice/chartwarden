@@ -1,4 +1,4 @@
-// @wardenx/fhir — the US Core 6.0 mandatory search-parameter catalog (§4.5 D6, M28-T04).
+// @chartwarden/fhir — the US Core 6.0 mandatory search-parameter catalog (§4.5 D6, M28-T04).
 //
 // The conformance bar consumers test against. This is a TYPED, per-resource catalog — the single place
 // M28 knows the FHIR search grammar. Adding a parameter is a CODE change here; it cannot be configured at

@@ -1,9 +1,9 @@
-// @wardenx/reporting · repositories — the report-definition aggregate: `report_definition` (the
+// @chartwarden/reporting · repositories — the report-definition aggregate: `report_definition` (the
 // tenant-/system-authored definition bound to a base, carrying the optimistic-concurrency lock) +
 // `report_definition_version` (the immutable spec snapshots; publish promotes one to `latest`) (M33
 // §3.3–§3.4). One data port over the two tables of the authoring chain; the authoring SERVICE wraps
 // these in `withOrgContext` and owns the legal-transition + version-bump guards.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

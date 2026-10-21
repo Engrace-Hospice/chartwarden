@@ -1,4 +1,4 @@
-import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
+import { resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
 // apps/backend/__tests__/terminology-routes-mount.test.ts — FB-T01 composition-root mount glue.
 //
 // Proves `mountTerminologyRoutes(app, db)` wires the M38 read surface onto the host behind the same
@@ -7,7 +7,7 @@ import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
 // over the handle; queries happen at request time), so a stub DbClient exercises the wiring without
 // live Postgres. The deep store reads are covered by the route inventory tests over the in-memory
 // provider (terminology-routes.test.ts) and by the live RLS suite (rls-isolation.live.test.ts).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountTerminologyRoutes } from "../src/modules/38-terminology/index";

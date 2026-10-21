@@ -1,6 +1,6 @@
 // apps/backend/src/modules/28-fhir/routes/admin-export.routes.ts — §4.1 R31-R33: operator-facing bulk
 // export administration. R33's cancel gates on `bulk_export_initiator_or_admin` (§4.7).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import type { BulkExportEnqueuePort } from "../jobs/ports";

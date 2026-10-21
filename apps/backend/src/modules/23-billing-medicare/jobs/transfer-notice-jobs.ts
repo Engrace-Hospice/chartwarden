@@ -21,8 +21,8 @@ import {
   transferNoticeConditionCodes,
   transferNoticeMachine,
   transferNoticeOccurrenceCodes,
-} from "@wardenx/billing";
-import type { TransferNoticeDocument837i } from "@wardenx/billing";
+} from "@chartwarden/billing";
+import type { TransferNoticeDocument837i } from "@chartwarden/billing";
 
 type BillingDb = repositories.BillingDb;
 

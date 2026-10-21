@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `claim_state_history` (M23 Billing-Medicare §3.3; retention class
+// @chartwarden/billing · repositories — `claim_state_history` (M23 Billing-Medicare §3.3; retention class
 // `compliance`). APPEND-ONLY: one row per `claim.state` transition (D4 lifecycle) — the claim service
 // appends a row inside the SAME transaction as each `transitionToState`, capturing the from/to states,
 // the actor, and the transition-context pointers. Mirrors the `validation_run` append-only exemplar
@@ -8,7 +8,7 @@
 // lowercase domain `ClaimState`). The per-claim timeline (§3.4) is the `(at DESC, id DESC)` keyset list.
 //
 // `from_state` is NULL on the initial creation row. No PHI / MBI is ever stored here (D13, §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { ClaimState } from "../contracts";
 import {

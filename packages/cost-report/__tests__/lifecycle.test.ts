@@ -1,12 +1,12 @@
-import type { CostReportState } from "@wardenx/cost-report";
+import type { CostReportState } from "@chartwarden/cost-report";
 import {
   COST_REPORT_TRANSITIONS,
   type CostReportTransitionEvent,
   applyTransition,
   canApproveForSubmit,
   canTransition,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 lifecycle reducer (§2.2) pure-domain unit tests.
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 lifecycle reducer (§2.2) pure-domain unit tests.
 //
 // The reducer is a flat transition table over (state, event): every legal edge in
 // COST_REPORT_TRANSITIONS must apply, every illegal (state, event) pair must be rejected

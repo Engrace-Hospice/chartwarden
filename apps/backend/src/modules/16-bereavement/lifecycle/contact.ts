@@ -13,14 +13,14 @@
 import {
   UNREACHABLE_CONSECUTIVE_NO_RESPONSE_THRESHOLD,
   isWithinOptOutRescindWindow,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavedContactStatus,
   BereavementOptOutKind,
   BereavementOptOutSourceKind,
   ExternalGriefResourceId,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type BereavementTransitionResult, result } from "./effects";
 import { BereavementStateError, require_ } from "./errors";
 

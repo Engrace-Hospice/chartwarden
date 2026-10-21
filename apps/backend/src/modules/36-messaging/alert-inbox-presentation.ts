@@ -1,4 +1,4 @@
-import type { AlertCategory } from "@wardenx/messaging";
+import type { AlertCategory } from "@chartwarden/messaging";
 
 const CATEGORY_LABEL: Record<AlertCategory, string> & Readonly<Record<string, string>> = {
   clinical_urgent: "Urgent clinical alert",

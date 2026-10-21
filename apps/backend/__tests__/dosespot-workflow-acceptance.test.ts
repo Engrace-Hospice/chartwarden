@@ -3,7 +3,7 @@
 // draft → request-signature → sign → transmit → active), W-MR-04 (refill inbox: receive → approve → mint /
 // deny), W-MR-05 (medication-history pull + reconciliation) — exercised end-to-end over the in-memory
 // `MedicationOrderRouteService` (the same backend the §4.1 routes compose over, M12-T08) plus the pure
-// `@wardenx/dosespot` lifecycle machine the §4.10 transmission worker + webhook handler drive. Deterministic:
+// `@chartwarden/dosespot` lifecycle machine the §4.10 transmission worker + webhook handler drive. Deterministic:
 // no infra, injected clock.
 //
 // The route-auth handshake (§4.6/§4.7) + the wire status codes live in dosespot-routes.test.ts; the pure
@@ -11,7 +11,7 @@
 // transitions, the transmission chain to `active`, the refill mint, the reconciliation carry-forward) and the
 // §9.3 security/race guarantees of the §2.2 graph (anti-escalation, the EPCS-certification gate D18, the
 // terminal-state race). The RLS layer-independence (§9.4) lives in rls-isolation.live (the M12 block).
-import { transitionMedicationOrder } from "@wardenx/dosespot";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
 import { describe, expect, it } from "vitest";
 import { createInMemoryDoseSpotBackend } from "../src/modules/12-dosespot/index";
 

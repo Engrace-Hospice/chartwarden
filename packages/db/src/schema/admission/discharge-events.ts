@@ -1,4 +1,4 @@
-// @wardenx/db — `discharge_event` (M6 §3.3). The terminal event for an admission (drives
+// @chartwarden/db — `discharge_event` (M6 §3.3). The terminal event for an admission (drives
 // `m6.discharge.created` / `m6.discharge.death` / `m6.bereavement.eligible`). Org-scoped (no direct
 // patient identifier; tenancy via the admission FK). Cross-module refs (M40 death certifier, M22
 // document) are plain uuid app-validated; the admission FK is intra-M6. One discharge per admission

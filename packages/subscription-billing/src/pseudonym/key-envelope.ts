@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — the M35-private `patient_pseudonym_key` envelope (§3.3, D6). F-172
+// @chartwarden/subscription-billing — the M35-private `patient_pseudonym_key` envelope (§3.3, D6). F-172
 // (#248): `PseudonymKeyProvider.activeKey()` had zero implementations anywhere in the platform — the
 // standing finding this file resolves. Two prior passes (F-142, F-167) declined to build it, reasoning
 // that M34's per-tenant DEK-wrap mechanism (`apps/backend/src/bootstrap/tenant-kek.ts`) "does not

@@ -13,7 +13,7 @@
 // cluster-wide, not per-replica; `createInMemoryRateLimitStore()` (the default here) stays
 // correct for a single instance, dev, and tests. The header set + tier values are unchanged
 // from the hand-rolled baseline; a future `@fastify/helmet` swap must preserve them.
-import { RateLimitedError } from "@wardenx/types";
+import { RateLimitedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type RateLimitStore, createInMemoryRateLimitStore } from "./rate-limit-store";
 

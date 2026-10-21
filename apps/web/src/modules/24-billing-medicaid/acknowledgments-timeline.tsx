@@ -5,7 +5,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the ACKNOWLEDGMENTS TIMELINE (R2, §5.1 #9). Every ack
 // received against this claim's submissions: kind (999 / 277CA / state-specific), outcome, the payer's own
 // claim control number, the accepted/rejected line numbers, and the payer error codes. A PARTIAL ack is the

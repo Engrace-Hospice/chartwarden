@@ -35,9 +35,9 @@
 //     kit was ever deployed for this admission" — a fabricated negative for a timeliness measure — so it
 //     THROWS the same typed refusal and points the consumer at M13's
 //     `MedicationAdministrationProvider.getComfortKitDeploymentTimeline`, which computes the real timeline.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import type { MedicationOrderDto, RefillRequestDto, SigStructuredDto } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import type { MedicationOrderDto, RefillRequestDto, SigStructuredDto } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import type { DoseSpotSeamStore } from "./store";
 
@@ -448,7 +448,7 @@ export async function medicationOrderPatientAndDrugForOrg(
 
 /**
  * F-166 (#248) — the order facts M13's §2.3 D2 scheduled-dose materializer (`materializeForOrder`,
- * `@wardenx/emar`) needs, org-explicit for the same reason as {@link medicationOrderPatientAndDrugForOrg}
+ * `@chartwarden/emar`) needs, org-explicit for the same reason as {@link medicationOrderPatientAndDrugForOrg}
  * immediately above (a relay tick is not a request, so the published `MedicationOrderProvider` seam —
  * every read under `withOrgContextFromRequest` — cannot be called from here). `sigStructured` reuses the
  * SAME allowlist projection `toMedicationOrderDto` uses (`sigStructuredOf`) — the clinician free-text

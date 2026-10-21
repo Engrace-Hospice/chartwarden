@@ -40,7 +40,7 @@
 // deliberately no `phone` field on {@link SafetyEmergencyContactRead}: a spouse's phone number that
 // existed as a plain string anywhere in M20's read path would sooner or later reach a log line, and the
 // §8.7 privacy boundary is drawn precisely so that it cannot.
-import type { IsoInstant, MembershipId, OrgId } from "@wardenx/types";
+import type { IsoInstant, MembershipId, OrgId } from "@chartwarden/types";
 import type { SafetyEmergencyContactFacts, SafetySeamStore } from "./store";
 
 /** M20-F06 — the terminus's answer to "may we call somebody for her, and who?". See the header. */

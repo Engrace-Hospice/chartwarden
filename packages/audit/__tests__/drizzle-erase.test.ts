@@ -15,7 +15,7 @@
  *   - every scoping value is a BOUND PARAMETER, never interpolated,
  *   - the returned count is the `.returning()` length — rows ACTUALLY destroyed, not the ask.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";

@@ -32,7 +32,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
   resolveActorPermissions,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MODULES } from "../../../architecture/module-manifest";

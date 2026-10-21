@@ -1,4 +1,4 @@
-import { fiscalYearFor } from "@wardenx/discipline-plans";
+import { fiscalYearFor } from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/volunteer/patient-care-hours.ts — §7.6 / M15-F04.
 //
 // The 418.78(e) DENOMINATOR: total patient-care HOURS delivered by paid + contract staff. The spec names no
@@ -10,7 +10,7 @@ import { fiscalYearFor } from "@wardenx/discipline-plans";
 // discipline today; one added later joins CARE_DISCIPLINES.
 //
 // Pure: the digests are read through M8's SignedEncountersReader seam by `../consumers/patient-care-hours`.
-import type { EncounterDiscipline, SignedEncounterDigest } from "@wardenx/types";
+import type { EncounterDiscipline, SignedEncounterDigest } from "@chartwarden/types";
 
 /** Hands-on clinical disciplines whose signed visit minutes form the 418.78(e) denominator. */
 export const PATIENT_CARE_DISCIPLINES: ReadonlySet<EncounterDiscipline> = new Set([

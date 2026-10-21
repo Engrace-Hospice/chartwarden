@@ -1,9 +1,9 @@
-// @wardenx/cahps-vendors — manual-vendor CSV column schemas + helpers (M30 §4.5 manual adapter).
+// @chartwarden/cahps-vendors — manual-vendor CSV column schemas + helpers (M30 §4.5 manual adapter).
 //
 // For tenants without a vendor contract, the `manual` adapter renders a decedent CSV the QAPI Coordinator
 // emails to a vendor of their choice, and accepts the vendor's aggregate back as a CSV upload (R-16). This
 // module documents BOTH column schemas and owns the small, pure CSV render/parse helpers the adapter uses.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** Manual DECEDENT export columns, in order (the file the coordinator sends out). */
 export const MANUAL_DECEDENT_COLUMNS = [

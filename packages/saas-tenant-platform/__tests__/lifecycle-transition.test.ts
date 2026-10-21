@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — §2.2 D2 tenant-lifecycle state machine (M34).
+// @chartwarden/saas-tenant-platform — §2.2 D2 tenant-lifecycle state machine (M34).
 //
 // Proves the pure, IO-free eleven-state lifecycle (src/services/lifecycle-transition.ts):
 //   - every §2.2 LEGAL transition is allowed and lands on the right state;

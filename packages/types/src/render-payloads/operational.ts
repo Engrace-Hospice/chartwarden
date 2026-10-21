@@ -1,4 +1,4 @@
-// @wardenx/types - the typed render payloads of the operational documents M22 draws (GAP-033, Wave 4): the
+// @chartwarden/types - the typed render payloads of the operational documents M22 draws (GAP-033, Wave 4): the
 // caregiver visit-confirmation reminder (M17), the EVV verification record (M18), the DSAR export transmittal
 // sheet and the tenant-export cover letter (M34). Like the billing correspondence, these producers already put
 // the whole content on the wire (the M17 / M18 outbox events, the M34 direct `DocumentRenderer.render()` args), so

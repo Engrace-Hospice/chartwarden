@@ -2,7 +2,7 @@
 // cleared with a notice, Enter opens a row's drawer, Escape closes it and hands focus back to the row, and a free-text
 // filter issues one request after the typing pauses (Apply / Enter still load at once).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

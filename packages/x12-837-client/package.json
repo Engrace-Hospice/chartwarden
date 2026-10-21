@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/x12-837-client",
+  "name": "@chartwarden/x12-837-client",
   "version": "0.0.0",
   "private": true,
   "type": "module",

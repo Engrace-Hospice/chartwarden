@@ -1,4 +1,4 @@
-// @wardenx/audit — M1-T12 unit tests (spec §7.3 Audit Trail Reliability, §8).
+// @chartwarden/audit — M1-T12 unit tests (spec §7.3 Audit Trail Reliability, §8).
 //
 // Proves the three guarantees audit() adds over a raw insert, without live infra:
 //   • REDACTION — PHI/secret leaf keys are censored in before/after/context snapshots.

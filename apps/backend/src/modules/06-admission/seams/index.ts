@@ -6,7 +6,7 @@
 // registers all six real readers over their boot deny-stubs (before validateSeams()), driven from the
 // composition root's wireModuleSeams(). The readers are pure orchestration over an injected
 // AdmissionReaderStore (in-memory slice here; Drizzle in prod, reads under the consumer's RLS).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   AdmissionCensusReader,
   AdmissionOnsetReader,
@@ -19,7 +19,7 @@ import type {
   LevelOfCarePeriodReader,
   LevelOfCareReader,
   ReferralReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createAdmissionOnsetReader } from "./admission-onset-reader";
 import {

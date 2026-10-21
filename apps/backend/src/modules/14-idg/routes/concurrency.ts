@@ -11,7 +11,7 @@
 // Pure header guards (no IO). M14 cannot import M7's copy (module boundary), so this is a local mirror of the
 // M7/M22 `concurrency.ts` precedent. Both headers are registered `not-authorization` in
 // scripts/check-request-header-auth.ts: a wrong value can lose a write, never win one.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;

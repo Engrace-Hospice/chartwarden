@@ -1,9 +1,9 @@
-// @wardenx/consent — the published `ConsentEvaluator` seam (§4.3, D11).
+// @chartwarden/consent — the published `ConsentEvaluator` seam (§4.3, D11).
 //
 // M39-T05. The disclosure/redaction gate every PHI-egress module imports (M28 FHIR, M22 disclosure
 // subsetter, M5 right-of-access, M27 cost report, M29 interop, M30/M33 aggregates) + the surface the
 // eleven ABAC predicates resolve through. The rich interface lives HERE in the feature package (not
-// the leaf @wardenx/types — `leaves-stay-leaves`, ARCHITECTURE §25.15); the M1 registry holds the
+// the leaf @chartwarden/types — `leaves-stay-leaves`, ARCHITECTURE §25.15); the M1 registry holds the
 // instance opaquely (`SeamContracts["ConsentEvaluator"] = unknown`) and the module-39 typed accessor
 // (apps/backend/src/modules/39-consent/seams.ts) re-applies the type at the boundary.
 //

@@ -1,4 +1,4 @@
-// @wardenx/fhir — R4 mapper barrel (§4.5, §4.11, M28-T04).
+// @chartwarden/fhir — R4 mapper barrel (§4.5, §4.11, M28-T04).
 
 export * from "./deps";
 export * from "./domain";

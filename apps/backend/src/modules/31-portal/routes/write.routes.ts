@@ -20,8 +20,8 @@
 // emitted the plan's `m31.*` event; M31 has no outbox publisher, and the request was simply dropped.)
 // `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
 // composed in `./mount`.
-import type { MedicationOrderProvider } from "@wardenx/types";
-import { ChartWardenError } from "@wardenx/types";
+import type { MedicationOrderProvider } from "@chartwarden/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { toPreferencesView } from "../provisioning/preferences";

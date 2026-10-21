@@ -1,7 +1,7 @@
 // The console frame's keyboard behaviour below 768px: the off-canvas nav takes focus when it opens, Escape closes it and
 // returns focus to the toggle; the actor menu is a plain disclosure that Escape also closes.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

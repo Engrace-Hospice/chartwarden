@@ -6,15 +6,15 @@
 // Paging is keyset on (deadline_at, tie) where `tie` is the SHA-256 of the request id: unique in practice, stable, and the cursor never
 // carries a request id (a restricted row's id must not leave the server, not even inside an opaque cursor). The counts are computed
 // without the page limit and without the cursor, so the page can always be checked against them.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ACK_QUEUE_STATUSES,
   type AckEscalationNote,
   type AckQueueCounts,
   type AckQueueStatus,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type SQL, and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 import type { AckRow } from "./ack-types";
 

@@ -1,8 +1,8 @@
 // Boot path for ESCALATION_ROUTER_ORGS (ADR-0057 item 12): the registration runs inside wireModuleSeams, i.e. before validateSeams,
 // so it must not look the deny-stub up in the registry. Proves a set variable boots, an allowlisted org reaches the M19 router and
 // any other org still gets the deny-stub's answer.
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootSeams, escalationRouterDenyStub, getSeam } from "../src/bootstrap/index";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";

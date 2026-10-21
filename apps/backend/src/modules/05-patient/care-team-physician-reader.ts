@@ -5,8 +5,8 @@
 // (the attending physician is the separate `attending_clinician` role and never qualifies). M6 depends on
 // M5, so it imports this owner-side reader instead of touching M5's schema (scripts/check-table-ownership.ts).
 // Ids only — no clinical content. Runs under `withOrgContext` so RLS scopes it to the org.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 /** The care-team role that seats a physician on the patient's IDG. */

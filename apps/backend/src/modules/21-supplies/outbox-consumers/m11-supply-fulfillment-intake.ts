@@ -4,7 +4,7 @@
 //
 // WHAT MAKES IT BINDABLE NOW. F-229 named the gaps: M11 published no field-level `dme`/`supply` contract and
 // M5 exposed no street address. F-232 closes both (user-approved Option A): `dme.v2` / `supply.v2`
-// (`@wardenx/orders`, `{skuId, quantity, ...}`, CLOSED — no address, no HCPCS on the order) and
+// (`@chartwarden/orders`, `{skuId, quantity, ...}`, CLOSED — no address, no HCPCS on the order) and
 // `PatientAddressReader.primaryAddress`. Everything else the `supply_request` needs is READ, not guessed:
 //   • patient / admission / provider entity / serving Location — `resolveSupplyOrderContext` (M11 + M6 seams);
 //   • `hcpcs` (+ `unit` for a supply that omits one) — the M21 `supply_item` row the order's `skuId` names;
@@ -45,11 +45,11 @@
 //
 // NO ACTING MEMBERSHIP (F-102 `CONSUMER_USER_ID`): `requestedByMembershipId: null` and
 // `emitCreatedFromExternal: false` (§7.1 acceptance 3) — a system cascade must not claim a human origin.
-import { type DbClient, schema } from "@wardenx/db";
-import { validateOrderData } from "@wardenx/orders";
-import { validateSupplyRequestData } from "@wardenx/supplies";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OrderRecordId, PatientAddressReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { validateOrderData } from "@chartwarden/orders";
+import { validateSupplyRequestData } from "@chartwarden/supplies";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OrderRecordId, PatientAddressReader } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

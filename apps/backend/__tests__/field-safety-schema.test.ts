@@ -1,9 +1,9 @@
 // M20-T02 — the DB-side / code-side drift guard for M20's thirteen owned tables.
 //
 // WHY IT LIVES HERE. The two facts this compares sit in packages that cannot see each other:
-// `M20_AUDIT_DENYLIST` / `M20_AUDIT_RETENTION_CLASS` are in `@wardenx/types` (M20-T01) and the scrub that
-// must obey them is PL/pgSQL inside `packages/db/migrations/0111`. `@wardenx/db` does not depend on
-// `@wardenx/types`, so a test inside either package could only assert half of it — the same reason M19-T02's
+// `M20_AUDIT_DENYLIST` / `M20_AUDIT_RETENTION_CLASS` are in `@chartwarden/types` (M20-T01) and the scrub that
+// must obey them is PL/pgSQL inside `packages/db/migrations/0111`. `@chartwarden/db` does not depend on
+// `@chartwarden/types`, so a test inside either package could only assert half of it — the same reason M19-T02's
 // equivalent landed in `apps/backend/__tests__`.
 //
 // The failure this exists to catch is silent and one-directional: someone adds a PHI column to
@@ -23,7 +23,7 @@ import {
   M20_AUDIT_RETENTION_CLASS,
   M20_TABLE_NAMES,
   SAFETY_SOS_OPEN_STATES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = join(__dirname, "..", "..", "..", "packages", "db", "migrations");

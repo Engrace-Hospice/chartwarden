@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.2 D2 order lifecycle state machine (M11-T03). Pure, IO-free.
+// @chartwarden/orders — §2.2 D2 order lifecycle state machine (M11-T03). Pure, IO-free.
 //
 // The order aggregate lifecycle (§2.2):
 //
@@ -20,7 +20,7 @@ import type {
   OrderDiscontinuationReason,
   OrderKind,
   OrderStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { KIND_CATALOG } from "../catalog";
 import { type OrderSideEffect, type OrderTransitionResult, result } from "./effects";
 import { OrderStateError, require_ } from "./errors";

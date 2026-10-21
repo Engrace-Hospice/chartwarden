@@ -1,6 +1,6 @@
 // apps/backend/__tests__/billing-eraser.test.ts — M23-T79 the `billing_record` destruction-cert eraser
 // (§3.7 / §8.4). Subject under test: apps/backend/src/modules/23-billing-medicare/erasers/billing-eraser.ts
-// — the backend adapter that bridges the pure `@wardenx/billing` `BillingEraseStore` contract to the M1
+// — the backend adapter that bridges the pure `@chartwarden/billing` `BillingEraseStore` contract to the M1
 // `DataEraser` and registers it over the Phase-0 deny-stub via the injected `registerEraser` hook.
 //
 // PLACEMENT NOTE: the eraser-cascade test lives here (apps/backend/__tests__) rather than
@@ -8,7 +8,7 @@
 // registration path (registry import + createBillingEraser + registerBillingErasers) — a package test
 // cannot import apps/backend. This mirrors every sibling *-eraser.test.ts (care-plan, patient, orders…).
 // The PURE §3.7 contract it drives (M23_PATIENT_CASCADE_ORDER / M23_REDACT_FIELDS / BillingEraseRefused)
-// is asserted directly against the `@wardenx/billing` exports.
+// is asserted directly against the `@chartwarden/billing` exports.
 //
 // Unlike M27/M30 (org-only operational rows), the M23 billing record IS per-patient PHI and is
 // COMPLIANCE-class (7 years past final action, M4 D1) — so the registered eraser is the DESTRUCTION
@@ -31,7 +31,7 @@ import {
   M23_PATIENT_CASCADE_ORDER,
   M23_REDACT_FIELDS,
   M23_RETENTION_CLASS,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

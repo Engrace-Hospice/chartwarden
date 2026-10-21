@@ -18,7 +18,7 @@
  * SCOPE OF ownedTables — SERVER POSTGRESQL ONLY:
  *   ownedTables governs the central multi-tenant PostgreSQL schema only. It does NOT
  *   enumerate on-device / client-side stores. In particular, the mobile offline drafts
- *   in the @wardenx/mobile-offline package — M09 `assessment_draft` and M10
+ *   in the @chartwarden/mobile-offline package — M09 `assessment_draft` and M10
  *   `hope_assessment_draft` (encrypted sqlcipher tables, device-derived keys, defined
  *   in their specs as raw CREATE TABLE, evict-on-logout) — are deliberately OUT OF SCOPE
  *   and are not manifest-owned. They carry no org_id/RLS server contract and are never
@@ -232,7 +232,7 @@ export const MODULES: ModuleDef[] = [
       "apps/web/src/modules/03-authorization",
     ],
     dependsOn: [1, 2], // +1: M3's production RBAC data layer (effective-permission Drizzle store) needs
-    // M1's Drizzle client (@wardenx/db), like M2's db-session-store; its §2.2 join also
+    // M1's Drizzle client (@chartwarden/db), like M2's db-session-store; its §2.2 join also
     // reads the M1-owned `membership` table.
     ownedTables: [
       "role",
@@ -739,8 +739,8 @@ export const MODULES: ModuleDef[] = [
     // wave's manifest changes to the triage-vendors codePath (already applied, ADR-0028) and the two
     // Track B web codePaths, so M19's leaf CONTRACTS live in `packages/types/src/oncall.ts` (ADR-0005
     // D1/D2) and its domain services under `apps/backend/src/modules/19-oncall` (the M6 precedent).
-    dependsOn: [1, 5, 17, 36], // +M1 (M19-T02): the M1 FOUNDATION edge every implemented module carries — `@wardenx/db`
-    // (the ten owned tables), `@wardenx/tenancy`'s withOrgContext, and the bootstrap eraser registry the
+    dependsOn: [1, 5, 17, 36], // +M1 (M19-T02): the M1 FOUNDATION edge every implemented module carries — `@chartwarden/db`
+    // (the ten owned tables), `@chartwarden/tenancy`'s withOrgContext, and the bootstrap eraser registry the
     // §3.7 `triage_record` eraser registers into. Not a widening of the module graph: it is the same edge
     // M15/M16/M18/M21 each added at their first backend task, and Wave P2-2 acceptance #1 governs
     // codePaths (no `packages/oncall`), which is unchanged.
@@ -771,7 +771,7 @@ export const MODULES: ModuleDef[] = [
     // `apps/backend/src/modules/20-field-safety` (the M6 / M19 precedent for a module with no feature
     // package).
     dependsOn: [1, 17, 36], // +M1 (M20-T02): the M1 FOUNDATION edge every implemented module carries —
-    // `@wardenx/db` (the thirteen owned tables), `@wardenx/tenancy`'s withOrgContext, and the bootstrap
+    // `@chartwarden/db` (the thirteen owned tables), `@chartwarden/tenancy`'s withOrgContext, and the bootstrap
     // eraser registry the §3.7 `safety_record` eraser registers into. Not a widening of the module graph:
     // it is the same edge M15/M16/M18/M19/M21 each added at their first backend task, and Wave P2-2
     // acceptance #1 governs codePaths (no `packages/safety-client`), which is unchanged.
@@ -973,7 +973,7 @@ export const MODULES: ModuleDef[] = [
       "apps/web/src/modules/26-cap",
     ],
     // ADR-0005: genuine compile-time edges only. +M1: the backend repos/services/abac resolver/seam impls
-    // import the @wardenx/db barrel (packages/db/src/index.ts) — a real compile edge, so M1 is declared (the
+    // import the @chartwarden/db barrel (packages/db/src/index.ts) — a real compile edge, so M1 is declared (the
     // M25 [1,23,36] / M27 [1,23,26,38] precedent). The broader read-direction inventory (M2-6/M25/M38/M40
     // foundation + seam/outbox consumers) stays no-edge per D1/D4 — do not bulk-apply the §13 relationship list.
     dependsOn: [1, 23, 36],
@@ -1003,7 +1003,7 @@ export const MODULES: ModuleDef[] = [
       "apps/web/src/modules/27-cost-report",
     ],
     // ADR-0005: genuine compile-time edges only. +M1: the backend repos/services/workers/eraser import
-    // the @wardenx/db barrel + the M1-owned bootstrap registry (registerEraser) — a real compile edge, so
+    // the @chartwarden/db barrel + the M1-owned bootstrap registry (registerEraser) — a real compile edge, so
     // M1 is declared (the M5..M18 "+M1: the bootstrap seam registry" precedent). The broader relationship
     // inventory (M2/M3/M4 foundation helpers reached via the always-importable packages/auth/tenancy/audit;
     // M6/M8/M12/M13/M22/M36/M40 seam+outbox consumers; M23/M26 forward-seam deny-stubs) stays no-edge per
@@ -1050,7 +1050,7 @@ export const MODULES: ModuleDef[] = [
     id: 29,
     name: "External Interfaces",
     codePaths: ["apps/backend/src/modules/29-external-interfaces"],
-    // +M1 (M29-T08): the backend module now imports the @wardenx/db barrel (the T08 Drizzle route +
+    // +M1 (M29-T08): the backend module now imports the @chartwarden/db barrel (the T08 Drizzle route +
     // published-seam + ABAC-resolver stores) and the M1-owned bootstrap seam registry
     // (`apps/backend/src/bootstrap` — registerSeam/getSeam) to publish its five §4.4 read seams and resolve
     // the M5 CaseloadProvider — real compile edges, so M1 is declared (the M5..M28 "+M1: the bootstrap seam
@@ -1164,8 +1164,8 @@ export const MODULES: ModuleDef[] = [
     // M33 consumes every clinical/billing module THROUGH SEAMS (the runtime M1 SeamRegistry getSeam +
     // the outbox) — never an import edge — so the broad "all clinical + billing" relationship inventory
     // drops out of dependsOn (per ADR-0005 that list is NOT the compile-edge set). The real compile edges:
-    // M1 (@wardenx/db client + apps/backend/src/bootstrap getSeam + envelope/idempotency helpers), M2/M3/
-    // M4 (auth/audit/tenancy), M36 (@wardenx/messaging alert types). Mirrors the M34 [1,2,3,4,36] posture.
+    // M1 (@chartwarden/db client + apps/backend/src/bootstrap getSeam + envelope/idempotency helpers), M2/M3/
+    // M4 (auth/audit/tenancy), M36 (@chartwarden/messaging alert types). Mirrors the M34 [1,2,3,4,36] posture.
     dependsOn: [1, 2, 3, 4, 36],
     ownedTables: [
       "dashboard_tile_cache",
@@ -1192,7 +1192,7 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",
     ],
-    // M1 (Foundation) is a genuine compile-time edge: M34's repositories import the @wardenx/db client
+    // M1 (Foundation) is a genuine compile-time edge: M34's repositories import the @chartwarden/db client
     // + schema barrel and the backend module imports the apps/backend/src/bootstrap seam registry
     // (getSeam) — both M1-owned codePaths — plus the M1 envelope/MinIO/idempotency helpers. Same posture
     // as every peer DB-consuming module (M4 [1,2,3], M40 [1,2,3,4], M22 [1,5]). The spec §13/D23 listed
@@ -1229,7 +1229,7 @@ export const MODULES: ModuleDef[] = [
       "apps/admin/src/modules/35-subscription-billing", // §5.2 platform-ops admin slice (M35A-T04); M34 owns the apps/admin shell (ADR-0030)
       "packages/subscription-billing",
     ],
-    // M1 foundation edge (withOrgContext + @wardenx/db + outbox + bootstrap seam/route wiring) — the
+    // M1 foundation edge (withOrgContext + @chartwarden/db + outbox + bootstrap seam/route wiring) — the
     // standard backend-owning-module dependency (M27/M28 precedent). M34↔M35 stays seam-both-ways NO
     // edge either direction (ADR-0025); no feature-module edge is added.
     dependsOn: [1],

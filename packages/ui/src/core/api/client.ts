@@ -1,7 +1,7 @@
-// @wardenx/ui — typed REST API client (F0-T02, ADR-0032).
+// @chartwarden/ui — typed REST API client (F0-T02, ADR-0032).
 // Wraps openapi-fetch over the generated `paths` (from docs/api/openapi.json via
 // `bun run client:gen`) and attaches the WardenX auth + correlation-id headers.
-// Leaf-safe: depends only on `openapi-fetch` + the generated schema — NO @wardenx/* import,
+// Leaf-safe: depends only on `openapi-fetch` + the generated schema — NO @chartwarden/* import,
 // so `packages/ui` stays a leaf and the frontend never compile-imports the backend.
 import createClient, { type Client, type ClientOptions, type Middleware } from "openapi-fetch";
 import type { paths } from "./schema";

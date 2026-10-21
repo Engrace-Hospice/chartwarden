@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/cap-management",
+  "name": "@chartwarden/cap-management",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
-    "@wardenx/db": "workspace:*",
-    "@wardenx/shared": "workspace:*",
-    "@wardenx/types": "workspace:*"
+    "@chartwarden/db": "workspace:*",
+    "@chartwarden/shared": "workspace:*",
+    "@chartwarden/types": "workspace:*"
   }
 }

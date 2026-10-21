@@ -1,4 +1,4 @@
-// @wardenx/types - the typed render payloads of the signed order documents M22 draws (GAP-033, Wave 2): M11's
+// @chartwarden/types - the typed render payloads of the signed order documents M22 draws (GAP-033, Wave 2): M11's
 // order record (the eight non-medication kinds) and M12's medication order. Both events used to carry identifiers
 // only (`kind`, `signedAt`, `viaVerbal`), so a layout had nothing to draw - an "order" PDF was a list of ids.
 // Each producer now builds the payload in the signing transaction from the order's own row, so the document is a

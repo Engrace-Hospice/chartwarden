@@ -1,9 +1,9 @@
 // apps/backend/__tests__/bereavement-gap047-049.test.ts — GAP-047 (D7 early-close cosign) + GAP-049 (D15
 // completion kind + M8 source-encounter verification). Pure decisions over injected facts, plus M8's
 // BereavementEncounterReader over a fake db.
-import type { DbClient } from "@wardenx/db";
-import type { BereavementEncounterReader } from "@wardenx/types";
-import { ForbiddenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { BereavementEncounterReader } from "@chartwarden/types";
+import { ForbiddenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createBereavementEncounterReader } from "../src/modules/08-encounters/seams/bereavement-encounter-reader";
 import {

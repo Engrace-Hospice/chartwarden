@@ -5,7 +5,7 @@ import type {
   EscalationRouter,
   OnCallShiftDto,
   OncallModel,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { escalationRouterDenyStub } from "../src/bootstrap/seams/providers";
 import {

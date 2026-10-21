@@ -12,7 +12,7 @@
 //   allergy lines    → `m22.extraction.allergies_requested` → M5 writes `unverified` `patient_allergy` rows.
 //
 // Both replies are stamped back onto the provenance rows by `extraction-clinical-backref-consumer.ts`.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DegradedError,
   type DocLensBatchSudStatus,
@@ -22,7 +22,7 @@ import {
   M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
   M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { ExtractionWritebackDeps } from "./writeback-commit-db";
 import {

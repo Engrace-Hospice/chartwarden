@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §2 lifecycle-service PORTS + outbox intents (M35-T03).
+// @chartwarden/subscription-billing — §2 lifecycle-service PORTS + outbox intents (M35-T03).
 //
 // The T03 lifecycle services (subscription / invoice / usage-metering / revenue / platform-retention) are
 // PURE over these injected ports — exactly the M28-T03/T04 idiom (cores IO-free; the routes/workers in
@@ -29,7 +29,7 @@ import type {
   UsageEventInput,
   UsageEventSourceModule,
   UsageEventType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── Outbox intent — the deferred publication a lifecycle service RETURNS (T06 drains it into M1's outbox) ─
 

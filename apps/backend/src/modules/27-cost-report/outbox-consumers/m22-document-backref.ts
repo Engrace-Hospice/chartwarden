@@ -40,8 +40,8 @@
 //
 // The event name is a STRING literal and no M22 schema is imported — M27 reads M22 solely through the
 // foundation outbox, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

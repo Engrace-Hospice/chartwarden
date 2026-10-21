@@ -14,7 +14,7 @@
 // session produces a refusal, never a default-allow. The bereaved flip is the one place the answer is a
 // *lateral* re-scope rather than a refusal (§7.5), so it raises no error for the expected transition — only
 // for an incoherent one (a flip asked for a grant that is already revoked).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §7 / §8.1 machine-readable failure-code catalog → HTTP status. */
 export const M31_ERROR_STATUS = {

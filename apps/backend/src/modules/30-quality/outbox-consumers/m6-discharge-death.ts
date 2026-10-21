@@ -20,8 +20,8 @@
 //
 // Idempotency: `eventIdempotencyKey` is the outbox event id (`created_via_event_idempotency_key`); the
 // port also de-dupes on `admission_id` (one review per admission) — see `insertMortalityReviewDraft`.
-import type { DbClient } from "@wardenx/db";
-import { handleDischargeDeathMortality } from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import { handleDischargeDeathMortality } from "@chartwarden/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { WriteOutboxPort } from "../routes/write-service";
 import { buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";

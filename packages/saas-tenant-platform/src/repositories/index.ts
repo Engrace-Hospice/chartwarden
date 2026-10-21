@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories barrel (M34 §3.3–§3.9).
+// @chartwarden/saas-tenant-platform · repositories barrel (M34 §3.3–§3.9).
 //
 // Seven Drizzle data ports over the seventeen M34-owned tables. Each repo is a thin reader/writer that
 // takes the Drizzle client (or a `withOrgContext` transaction handle) in its constructor and issues plain

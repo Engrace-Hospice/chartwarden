@@ -11,9 +11,9 @@
 //
 // VOTES: one per user per poll (unique key). A change is an UPDATE of option_id, audited by the vote table's trigger.
 // A vote takes a SHARE lock on the poll row, a close takes the exclusive one, so a vote can never land after a close.
-import { type DbClient, schema } from "@wardenx/db";
-import { CHANNEL_KIND_DESCRIPTORS, type MessagingRouteService } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { CHANNEL_KIND_DESCRIPTORS, type MessagingRouteService } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ForbiddenError,
   NotFoundError,
@@ -22,7 +22,7 @@ import {
   ValidationError,
   ChartWardenError,
   checkPollInput,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
 import {

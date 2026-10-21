@@ -27,8 +27,8 @@
 // RELAY, NOT A REQUEST: `handle` runs in the outbox relay. It opens no tenant reads itself — `alerts.emit` and the
 // membership lookup each wrap their own `withOrgContext` with the event's org id.
 import { Value } from "@sinclair/typebox/value";
-import type { AlertEmitter } from "@wardenx/messaging";
-import type { AlertPayloadEntry } from "@wardenx/types";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import type { AlertPayloadEntry } from "@chartwarden/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 
 export const IDG_CARRY_FORWARD_COMPLIANCE_CONSUMER = {
@@ -39,7 +39,7 @@ export const IDG_CARRY_FORWARD_COMPLIANCE_CONSUMER = {
 /** The typed alert payload type (also the `alert.event_type` and the platform `alert_rule` key). */
 export const IDG_CARRY_FORWARD_COMPLIANCE_PAYLOAD_TYPE = "m14.action_item.carry_forward.compliance";
 
-/** The count at which the alert fires (mirrors `CARRY_FORWARD_COMPLIANCE_THRESHOLD` in @wardenx/idg; M36 does not
+/** The count at which the alert fires (mirrors `CARRY_FORWARD_COMPLIANCE_THRESHOLD` in @chartwarden/idg; M36 does not
  *  import M14's package — the catalog schema's own `minimum: 3` is the contract). */
 const THRESHOLD = 3;
 

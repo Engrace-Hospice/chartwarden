@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-owned transactional email transport (FB-T14).
+// @chartwarden/messaging — M36-owned transactional email transport (FB-T14).
 //
 // M36 owns outbound email (DR/INT #14, Postmark = packages/messaging); the auth `EmailTransport` seam
 // binds to `selectTransactionalEmailTransport` at the composition root, so password-reset / magic-link

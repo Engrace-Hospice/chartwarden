@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -18,7 +18,7 @@ import {
  *
  * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Like M12/M13, M17 has NO state-transition triggers,
  * so the service performs every visit / time-off / recurring / availability transition itself (composing the
- * pure `@wardenx/scheduling` machines): the 8-state visit machine (create→publish · start · cancel · reschedule
+ * pure `@chartwarden/scheduling` machines): the 8-state visit machine (create→publish · start · cancel · reschedule
  * · no-show · reassign), proposals (publish/dismiss), recurring create/discontinue, availability upsert, the
  * time-off machine (request/approve/deny/cancel), and the §7.9 route-optimisation degraded path. Like the
  * M7–M14 write suites it binds the REAL catalog-validating transactional publisher

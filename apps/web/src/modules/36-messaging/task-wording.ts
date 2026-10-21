@@ -1,7 +1,7 @@
 // M36 WP 3.4 - every word the task UI shows, in one place. PROVISIONAL pending clinical-lead review (no sign-off is
 // recorded): change the text here, never the codes. Deliberately free of urgency and escalation language; the only
 // mention of paging is the notice that tasks do not do it.
-import type { TaskAction, TaskCloseReason, TaskStatus } from "@wardenx/types";
+import type { TaskAction, TaskCloseReason, TaskStatus } from "@chartwarden/types";
 
 export const TASK_NOTICE =
   "Tasks do not page or escalate anyone and are not for emergencies. Use your emergency process for urgent needs.";

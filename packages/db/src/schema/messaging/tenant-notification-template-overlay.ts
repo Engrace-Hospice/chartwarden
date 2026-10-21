@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_notification_template_overlay` (M36 Secure Messaging §3.13, ADR-0024 —
+// @chartwarden/db — `tenant_notification_template_overlay` (M36 Secure Messaging §3.13, ADR-0024 —
 // moved from M14). A per-tenant tighten-only overlay on a `notification_template`: a tenant
 // may reword title/body for brand voice (NULL = use the platform default), but cannot remove
 // mandatory wording or change the payload type / recipient resolver (those stay platform-floor,

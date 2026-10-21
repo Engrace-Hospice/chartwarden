@@ -3,7 +3,7 @@
 // link to the intake review, never a confirm/reject control), re-syncs and reports the change; the queue
 // filters by origin through the query string.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PatientPrivacy, type PatientPrivacyView } from "./patient-privacy";

@@ -21,21 +21,21 @@
 //
 // Every route sits BEHIND the REAL Authorization Contract (as of M3-T10): admin routes gate on
 // the §4.7 permission keys via `requirePermission`, and the per-patient collaborator route on
-// the `caseload_membership` ABAC predicate via `requireAbac` (both from @wardenx/auth, a
+// the `caseload_membership` ABAC predicate via `requireAbac` (both from @chartwarden/auth, a
 // foundation-helper package every module may consume). The M1 deny-stub forward-seam is retired.
 // Every mutation is audited at `compliance` retention through the mandated audit() helper (the
 // field denylist runs there — the invitee email is redacted). Org binding is server-side only:
 // an admin route additionally asserts the session's bound org === the path org, so a token
 // replay with an altered org cannot act cross-tenant (§7.12).
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
 import {
   hasOrgWideScope,
   requireAbac,
   requirePermission,
   requireSession,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditInvitationRescinded,

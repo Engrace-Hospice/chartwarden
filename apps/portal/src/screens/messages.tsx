@@ -1,4 +1,4 @@
-import { Button, Glyph, InlineAlert, TextAreaField, useApiClient } from "@wardenx/ui";
+import { Button, Glyph, InlineAlert, TextAreaField, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { usePortalPatient } from "../patient-context";

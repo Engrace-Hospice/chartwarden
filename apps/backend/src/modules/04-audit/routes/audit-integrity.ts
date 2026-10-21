@@ -1,7 +1,7 @@
 // apps/backend/src/modules/04-audit/routes/audit-integrity.ts — GAP-003 the §10.4 tamper-evidence
 // report surface.
 //
-// `verifyAppendOnly()` (@wardenx/audit `integrity/index.ts`) is pure logic over an injected
+// `verifyAppendOnly()` (@chartwarden/audit `integrity/index.ts`) is pure logic over an injected
 // `GrantSnapshot[]` — this file is the live adapter: a `pg_catalog`/`aclexplode` read of the
 // PRIVILEGES actually granted on `audit_event`, the same catalog-metadata read Postgres exposes to
 // any connected role (no elevated credential needed — this is not a `SELECT audit_event` read, it
@@ -13,15 +13,15 @@
 // seal / a run — "never checked" must not read as "verified clean". `backupSampling` (a pgBackRest
 // comparison) stays absent: no backup reader exists in this repo, which `integritySample
 // .backupCrossReference` states explicitly rather than fabricating a section.
-import { type GrantSnapshot, verifyAppendOnly, verifySealLinkage } from "@wardenx/audit";
-import { requirePermission } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GrantSnapshot, verifyAppendOnly, verifySealLinkage } from "@chartwarden/audit";
+import { requirePermission } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { UnauthorizedError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { readIntegrityState } from "../jobs/audit-integrity-job";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface AuditIntegrityRouteDeps {
@@ -31,7 +31,7 @@ export interface AuditIntegrityRouteDeps {
 }
 
 const AUDIT_TABLE = "audit_event";
-/** The app roles the append-only model must hold for (§10.4) — mirrors `@wardenx/audit`'s default. */
+/** The app roles the append-only model must hold for (§10.4) — mirrors `@chartwarden/audit`'s default. */
 const APP_ROLE = "wardenx_app";
 
 const integrityPermission = requirePermission("audit.integrity") as PreHandler;

@@ -447,7 +447,7 @@ export const evvAggregatorSubmissionStatus = pgEnum('evv_aggregator_submission_s
 ```typescript
 // packages/db/src/schema/evv/evv-event.ts
 import { pgTable, uuid, timestamp, text, bigint, integer, real, jsonb, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organization, membership } from '@wardenx/db/schema/m1m2'
+import { organization, membership } from '@chartwarden/db/schema/m1m2'
 import { evvEventKind, evvEventGpsQuality } from './enums'
 import { evvDevice } from './evv-device'
 
@@ -537,7 +537,7 @@ export const evvGeofenceEvaluation = pgTable('evv_geofence_evaluation', {
 ```typescript
 // packages/db/src/schema/evv/evv-geofence-policy.ts
 import { pgTable, uuid, timestamp, text, bigint, integer, date, jsonb, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organization, membership } from '@wardenx/db/schema/m1m2'
+import { organization, membership } from '@chartwarden/db/schema/m1m2'
 import { evvGeofencePolicyScope } from './enums'
 
 export const evvGeofencePolicy = pgTable('evv_geofence_policy', {
@@ -569,7 +569,7 @@ export const evvGeofencePolicy = pgTable('evv_geofence_policy', {
 ```typescript
 // packages/db/src/schema/evv/evv-device.ts
 import { pgTable, uuid, timestamp, text, bigint, integer, jsonb, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organization, membership } from '@wardenx/db/schema/m1m2'
+import { organization, membership } from '@chartwarden/db/schema/m1m2'
 import { evvDevicePlatform, evvDeviceStatus } from './enums'
 
 export const evvDevice = pgTable('evv_device', {
@@ -609,7 +609,7 @@ export const evvDevice = pgTable('evv_device', {
 ```typescript
 // packages/db/src/schema/evv/evv-missing-resolution.ts
 import { pgTable, uuid, timestamp, text, bigint, jsonb, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organization, membership } from '@wardenx/db/schema/m1m2'
+import { organization, membership } from '@chartwarden/db/schema/m1m2'
 import { evvMissingResolutionKind, evvMissingResolutionStatus } from './enums'
 
 export const evvMissingResolution = pgTable('evv_missing_resolution', {
@@ -646,7 +646,7 @@ export const evvMissingResolution = pgTable('evv_missing_resolution', {
 ```typescript
 // packages/db/src/schema/evv/evv-aggregator-submission.ts
 import { pgTable, uuid, timestamp, text, bigint, integer, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organization, membership } from '@wardenx/db/schema/m1m2'
+import { organization, membership } from '@chartwarden/db/schema/m1m2'
 import { evvAggregatorSubmissionStatus } from './enums'
 
 export const evvAggregatorSubmission = pgTable('evv_aggregator_submission', {
@@ -908,7 +908,7 @@ export const CreatePerAddressOverrideRequest = Type.Object({
 
 ```typescript
 // packages/evv/src/seams.ts
-import type { OrgId, PatientId, VisitId, MembershipId, IsoDateTime } from '@wardenx/domain/ids'
+import type { OrgId, PatientId, VisitId, MembershipId, IsoDateTime } from '@chartwarden/domain/ids'
 import type { EvvEventDto, EvvBracketDto, EvvComplianceDto, EvvLocationDto } from './dtos'
 
 export interface EvvBracketResolver {
@@ -971,14 +971,14 @@ export function setEvvVerificationProvider(p: EvvVerificationProvider): void
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { CaseloadProvider } from '@wardenx/auth/seams'                      // M5/M17
-import type { PatientAddressReader } from '@wardenx/patient/seams'                // M5
-import type { CredentialReader, MembershipReader, DeviceAttestationReader } from '@wardenx/identity/seams'  // M2
-import type { VisitReader, VisitAssignmentReader } from '@wardenx/scheduling/seams'  // M17
-import type { FacilityReader } from '@wardenx/mdm/seams'                          // M40
-import type { ConsentEvaluator } from '@wardenx/consent/seams'                    // M39 (for portal arrival surface)
-import type { TerminologyProvider } from '@wardenx/terminology/seams'             // M38 (service-type value set)
-import type { StateAggregatorRegistry } from '@wardenx/evv-aggregators'           // M18-owned; per-state adapter selector
+import type { CaseloadProvider } from '@chartwarden/auth/seams'                      // M5/M17
+import type { PatientAddressReader } from '@chartwarden/patient/seams'                // M5
+import type { CredentialReader, MembershipReader, DeviceAttestationReader } from '@chartwarden/identity/seams'  // M2
+import type { VisitReader, VisitAssignmentReader } from '@chartwarden/scheduling/seams'  // M17
+import type { FacilityReader } from '@chartwarden/mdm/seams'                          // M40
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'                    // M39 (for portal arrival surface)
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'             // M38 (service-type value set)
+import type { StateAggregatorRegistry } from '@chartwarden/evv-aggregators'           // M18-owned; per-state adapter selector
 ```
 
 At M18 init:
@@ -1024,7 +1024,7 @@ export function initM18(reg: SeamRegistry): void {
 
 ```typescript
 // packages/evv-aggregators/src/interface.ts
-import type { OrgId, VisitId } from '@wardenx/domain/ids'
+import type { OrgId, VisitId } from '@chartwarden/domain/ids'
 
 export interface EvvAggregatorAdapter {
   /** Identifier for ops dashboards and the per-state registry */

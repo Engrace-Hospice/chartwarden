@@ -8,11 +8,11 @@
 //
 // M35 carries NO PHI (§8.4/§8.5) — every payload is IDs (uuid / stripe id / membership id) + aggregate
 // financial facts (INTEGER CENTS) + enum lifecycle codes. The names + payload shapes MIRROR the leaf
-// `@wardenx/types` `M35_EVENT_NAMES` / `M35EventPayloadMap` (the compile-time contract the dispatcher
+// `@chartwarden/types` `M35_EVENT_NAMES` / `M35EventPayloadMap` (the compile-time contract the dispatcher
 // enforces); the cross-module fan-outs target M29 (Xero AR sync on paid/executed), M33 (dashboards),
 // M34 (tenant billing gate), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);

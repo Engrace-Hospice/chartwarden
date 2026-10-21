@@ -3,8 +3,8 @@
 // RLS'd, so it is reached only through an in-org membership join). Active memberships only — the same
 // set `assign` accepts (see assignments-db.ts ClinicianNotInOrgError). The name filter is a literal
 // substring (LIKE wildcards escaped) and matches display name only, so it cannot be used to probe emails.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { CareTeamStaffPort, CareTeamStaffView } from "./care-team-staff";
 

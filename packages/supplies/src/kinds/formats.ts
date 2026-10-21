@@ -1,4 +1,4 @@
-// @wardenx/supplies — TypeBox string-format registration for the §2.1 per-kind schemas.
+// @chartwarden/supplies — TypeBox string-format registration for the §2.1 per-kind schemas.
 //
 // TypeBox's `Value` checker treats an UNREGISTERED format as a hard failure ("Unknown format 'uuid'"), not
 // as a no-op — so a package that declares `format: 'uuid'` and never registers the checker rejects every

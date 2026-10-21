@@ -1,4 +1,4 @@
-// @wardenx/portal — §5.1 screen manifest (metadata only). PURE (no React): this is the single source of the
+// @chartwarden/portal — §5.1 screen manifest (metadata only). PURE (no React): this is the single source of the
 // portal's route → permission-key map, imported by both the concrete registry (which binds each id to its
 // component) and the registry unit test (which asserts unique ids/paths + real permission keys). Keeping the
 // metadata renderer-free lets the test run under the node vitest environment without a DOM.

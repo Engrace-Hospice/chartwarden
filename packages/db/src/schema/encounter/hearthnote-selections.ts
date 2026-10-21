@@ -1,4 +1,4 @@
-// @wardenx/db — `hearthnote_selection` (M8 §3.3). The structured selection tree a clinician builds against
+// @chartwarden/db — `hearthnote_selection` (M8 §3.3). The structured selection tree a clinician builds against
 // a HearthNote template (the Layer-1 deterministic-assembly input). PHI-bearing → three-column tenancy
 // rule (denormalized from the parent encounter/addendum). Belongs to exactly one parent (encounter XOR
 // addendum). `free_text_cipher` holds the only free-text annotations, encrypted per-tenant DEK (PHI

@@ -8,8 +8,8 @@
 // Printing is the browser's: a print-only label sized for the common 1in x 11in direct-thermal band stock, a QR
 // code plus a Code 128 for linear scanners, the human-readable line, and the typed fallback code under them. No
 // diagnosis, payer or treatment program is printed - the band must not reveal program participation.
-import { formatMrn } from "@wardenx/types";
-import { Button, Modal, SelectField, useApiClient } from "@wardenx/ui";
+import { formatMrn } from "@chartwarden/types";
+import { Button, Modal, SelectField, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { renderWristbandBarcodes } from "./wristband-barcode";

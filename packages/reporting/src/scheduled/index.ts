@@ -1,4 +1,4 @@
-// @wardenx/reporting · scheduled barrel — the scheduled-delivery subsystem (M33 §2.2 / §2.5–§2.6 / §4.3 /
+// @chartwarden/reporting · scheduled barrel — the scheduled-delivery subsystem (M33 §2.2 / §2.5–§2.6 / §4.3 /
 // §4.8 W-R-04 / D7).
 //
 // PURE port-injected handlers for the `report.scheduled_run` worker + the M22 render-reply consumer (the M34

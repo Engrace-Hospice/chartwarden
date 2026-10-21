@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 HQRP & Quality: the ABAC predicate-NAME catalog (§4.7, §6.7).
+// @chartwarden/quality — M30 HQRP & Quality: the ABAC predicate-NAME catalog (§4.7, §6.7).
 //
 // The named ABAC predicates M30 surfaces reference. Routes refer to a predicate by string, never
 // inlining its logic; the predicate IMPLEMENTATIONS (pure `(actor, resource, context) => boolean`

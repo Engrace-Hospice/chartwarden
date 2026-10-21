@@ -1,7 +1,7 @@
 // M14 render-payload NAMES: the org-explicit site / membership lookups the packet-build worker makes (degrade,
 // batching, names-only) and the per-patient render context that never names a Part 2-elided assignee.
-import type { DbClient } from "@wardenx/db";
-import type { PacketSnapshot } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { PacketSnapshot } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   SITE_DISPLAY_MAX_LOCATION_IDS,

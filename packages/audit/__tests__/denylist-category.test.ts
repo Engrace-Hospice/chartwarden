@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T07 unit tests (M4 spec §5.1, §5.2, §5.3; D10; W-M4-11).
+// @chartwarden/audit — M4-T07 unit tests (M4 spec §5.1, §5.2, §5.3; D10; W-M4-11).
 //
 // PHI denylist category behavior, layered on the M4-T02 trigger generator:
 //   • §5.1 CATEGORY EXPANSION — named categories resolve to columns via the per-table catalog.

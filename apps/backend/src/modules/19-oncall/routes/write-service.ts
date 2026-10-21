@@ -29,7 +29,7 @@ import type {
   TriageDispositionData,
   TriageEscalationTier,
   TriageRedFlagMatch,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { TriageAnswerValue } from "../lifecycle/protocol";
 import type { M19WriteActor } from "./actor";
 import type {

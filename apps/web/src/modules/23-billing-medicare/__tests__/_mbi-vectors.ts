@@ -1,5 +1,5 @@
 // Shared test vectors for the two MBI note screens (this file is kept byte-identical in packages/billing/__tests__ and
-// apps/web/src/modules/23-billing-medicare/__tests__; a billing test fails if they differ): the server's `looksLikeMbi` (@wardenx/billing) and its web mirror
+// apps/web/src/modules/23-billing-medicare/__tests__; a billing test fails if they differ): the server's `looksLikeMbi` (@chartwarden/billing) and its web mirror
 // (`apps/web/.../dde-queue-model.ts`). One table, so the two cannot diverge silently. Test data only: these are the
 // CMS format example shapes, not real identifiers.
 

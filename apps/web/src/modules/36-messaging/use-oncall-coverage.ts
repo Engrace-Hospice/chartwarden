@@ -1,7 +1,7 @@
 // M36 WP 4.12 (ADR-0080) - reads the on-call directory for one role and one patient's team. The safety-net poll (the thread's own timer)
 // re-reads it because who is covering changes at a shift boundary; a failed refresh keeps the last answer and says it may be stale. An
 // answer for an old role is dropped as superseded. After a 401/403/404 no further request is made (a changed role asks again).
-import type { OnCallCoverageDto, OnCallDirectoryRole } from "@wardenx/types";
+import type { OnCallCoverageDto, OnCallDirectoryRole } from "@chartwarden/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 import { useLatestPolling } from "./use-latest-polling";

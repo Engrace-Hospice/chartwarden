@@ -1,4 +1,4 @@
-// @wardenx/db — `location` (M1 Foundation §3.5). Leaf of the tenancy spine (a service
+// @chartwarden/db — `location` (M1 Foundation §3.5). Leaf of the tenancy spine (a service
 // site under a provider_entity). NON_ORG_SCOPED in check-tenancy.ts: it defines the
 // location scope that PHI tables key on via the three-column rule.
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

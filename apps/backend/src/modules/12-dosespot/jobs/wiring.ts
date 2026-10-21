@@ -5,9 +5,9 @@
 // `runDoseSpotSyncQueueDrain` (`./worker.ts`) fans out over active orgs the same way M11's standing-spawn
 // worker and M20's SOS watchdog do — via `apps/backend/src/bootstrap/active-org-enumerator.ts`'s
 // `buildActiveOrgEnumerator`, which enters ONE audited `withPlatformContext` transaction per drain tick.
-// That entry is gated: the job id must be on the `@wardenx/tenancy` `PLATFORM_CONTEXT_ALLOWLIST`, which
+// That entry is gated: the job id must be on the `@chartwarden/tenancy` `PLATFORM_CONTEXT_ALLOWLIST`, which
 // starts empty (fail-closed). This registers M12's id on it at boot.
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 
 /** The platform job id the `dosespot_sync_queue` drain's active-org fan-out enters `withPlatformContext`
  *  under. Registered on the allowlist by {@link wireM12Tenancy} at boot. */

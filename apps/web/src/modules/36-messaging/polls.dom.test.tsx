@@ -3,8 +3,8 @@
  * failure states) and the composer action (create dialog, patient-linked channels explain why it is unavailable).
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { PollView } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import type { PollView } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

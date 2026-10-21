@@ -1,4 +1,4 @@
-// @wardenx/types — Module 21 (Supplies, DME & Comfort Kits) leaf contracts (M21-T01).
+// @chartwarden/types — Module 21 (Supplies, DME & Comfort Kits) leaf contracts (M21-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M21 spec's §4.8 reference
 // to `packages/seams/src/supplies.ts` resolves its TYPE surface HERE, so the downstream consumers (M11
@@ -12,10 +12,10 @@
 // the §4.7 typed M36 alert payloads, and the §4.8 / D14 published-seam interfaces + their read DTOs. The
 // pure-data policy — the D1 per-kind `data` TypeBox schemas, the D2 transition graph, the D3 platform-floor
 // comfort kit + tighten-only validator, the D4 routing precedence ladder, the D8 reconciliation math —
-// lives in the `@wardenx/supplies` FEATURE package. This file is type-only, importable by everyone.
+// lives in the `@chartwarden/supplies` FEATURE package. This file is type-only, importable by everyone.
 //
 // NAMING: every exported symbol carries a `Supply` / `ComfortKit` / `VendorRouting` / `ParStock` / `M21`
-// prefix. `@wardenx/types` is re-exported wholesale from `./index.ts`, so a bare `DeliveryMethod` /
+// prefix. `@chartwarden/types` is re-exported wholesale from `./index.ts`, so a bare `DeliveryMethod` /
 // `DispatchStatus` / `ReturnState` would be a TS2308 collision the day M18 / M24 / M37 wants the same word
 // (the M14 `IdgDecisionPayload` precedent). `ComfortKitDeploymentId` and `ComfortKitDisposalStatus` are
 // already M13's (`emar.ts`) — M21's dispatch-side ids are `ComfortKitDispatch*`.
@@ -36,7 +36,7 @@ import type { ComfortKitDeploymentId } from "./emar";
 import type { HospiceCoverageDeterminationChangedPayload } from "./hospice-coverage";
 import type { OrderRecordId } from "./orders";
 
-// ── M21-owned id aliases (mirror the §3.1 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── M21-owned id aliases (mirror the §3.1 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 export type SupplyItemId = string;
 export type TenantSupplyItemExtensionId = string;
 export type ComfortKitTemplateId = string;
@@ -371,7 +371,7 @@ export interface M21SupplyRequestDeliveredPayload extends M21PatientScopedEventB
  *  via M22's signature flow, triggered when policy or tenant config requires it") named a mechanism M22
  *  was never going to build (M22's own spec disclaims signature capture; see the `delivered` payload's
  *  F-191 history and `events-by-m21.ts`'s comment for the full citation trail). This mirrors the SHAPE
- *  (not the type — M21's manifest `dependsOn` has no edge to M39) of `@wardenx/consent`'s proven
+ *  (not the type — M21's manifest `dependsOn` has no edge to M39) of `@chartwarden/consent`'s proven
  *  `ConsentCaptureEvidence.captureMethod`, narrowed to what is plausible for a courier-delivery caregiver
  *  signature: no portal session, no uploaded PDF, no notary — just typed-in-app, a witnessed verbal
  *  account, or an explicit decline (still evidence worth recording). ALWAYS OPTIONAL: nothing reads this
@@ -756,7 +756,7 @@ export interface RoutingRuleResolved {
 }
 
 /** The `SupplyFulfillmentProvider.createDirectSupplyRequest` input (§4.8). `data` stays `unknown` on the
- *  seam: it is validated against the per-kind TypeBox in `@wardenx/supplies` at the M21 boundary, and a
+ *  seam: it is validated against the per-kind TypeBox in `@chartwarden/supplies` at the M21 boundary, and a
  *  structurally-typed union here would let a caller construct a `data` the validator then rejects. */
 export interface CreateDirectSupplyRequestInput {
   readonly patientId: PatientId;

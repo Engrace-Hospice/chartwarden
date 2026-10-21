@@ -1,4 +1,4 @@
-// @wardenx/db — `hl7_message_inbound` + `hl7_message_outbound` (M29 §3.3). Every HL7 v2 wire message
+// @chartwarden/db — `hl7_message_inbound` + `hl7_message_outbound` (M29 §3.3). Every HL7 v2 wire message
 // crossing an MLLP feed, stored raw (DEK-encrypted) for the §164.528 disclosure-accounting record.
 //
 // BOTH ARE MONTHLY PARTITIONED BY RANGE (M4 §3.6 PHI convention): inbound on `received_at`, outbound on
@@ -11,7 +11,7 @@
 // by `transmitted_at`, but that column is NULL while a message sits `queued` — and a partition key that is
 // part of the PRIMARY KEY must be NOT NULL. So the outbound partition key is `queued_at` (NOT NULL
 // defaultNow, always present at insert); `transmitted_at` stays a nullable data column. `M29_PARTITIONED_TABLES`
-// in @wardenx/types is updated to name `queued_at` so the one source of truth the T02 migration + the RLS
+// in @chartwarden/types is updated to name `queued_at` so the one source of truth the T02 migration + the RLS
 // proof iterate stays honest.
 //
 // §3.6 DENYLIST: `payload_cipher` / `parsed_segments_cipher` (inbound) and `payload_cipher` /

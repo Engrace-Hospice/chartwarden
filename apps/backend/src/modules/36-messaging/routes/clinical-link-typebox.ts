@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/routes/clinical-link-typebox.ts - WP 3.2 schemas (params + OpenAPI response).
 import { Type } from "@sinclair/typebox";
-import { CLINICAL_LINK_KINDS } from "@wardenx/types";
+import { CLINICAL_LINK_KINDS } from "@chartwarden/types";
 
 const KindSchema = Type.Union(CLINICAL_LINK_KINDS.map((kind) => Type.Literal(kind)));
 

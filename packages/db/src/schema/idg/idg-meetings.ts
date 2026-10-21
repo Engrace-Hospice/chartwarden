@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `idg_meeting` (M14 §3.3.1). One row per IDG meeting occurrence: the §2.2 lifecycle
+// @chartwarden/db — `idg_meeting` (M14 §3.3.1). One row per IDG meeting occurrence: the §2.2 lifecycle
 // (scheduled → packets_building → packets_ready → live → adjourned, with cancelled/rescheduled branches),
 // the per-meeting quorum snapshot (frozen at schedule time), and the coordinator. Org+location-scoped
 // (NOT patient-bearing — a meeting is location-level → no three-column PHI rule). The only FKs are the

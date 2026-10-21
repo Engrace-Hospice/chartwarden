@@ -1,9 +1,9 @@
-// @wardenx/db — Module 29 (External Interfaces) §3.2 Phase-A enum types (M29-T02).
+// @chartwarden/db — Module 29 (External Interfaces) §3.2 Phase-A enum types (M29-T02).
 //
 // The 23 `CREATE TYPE ... AS ENUM` vocabularies the module's eleven owned tables bind their enum columns
-// to. Their VALUE sets are kept in lock-step with the `@wardenx/types` `external-interfaces.ts` value
+// to. Their VALUE sets are kept in lock-step with the `@chartwarden/types` `external-interfaces.ts` value
 // mirror (M29-T01) — a consumer narrows/iterates against that leaf, the DB stores against these. The two
-// are hand-maintained VERBATIM copies (the leaf `@wardenx/types` cannot import `@wardenx/db` and vice
+// are hand-maintained VERBATIM copies (the leaf `@chartwarden/types` cannot import `@chartwarden/db` and vice
 // versa, so no runtime import ties them); any edit here must land identically in the leaf.
 //
 // The pgEnum names here match the `CREATE TYPE` statements the 0144 migration emits VERBATIM; Drizzle's

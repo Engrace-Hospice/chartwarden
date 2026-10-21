@@ -2,7 +2,7 @@
 // version and its CMS reference warnings in the drawer, then key a new version with the HQRP toggle + prefill and
 // see the live warning when a rate is changed.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";

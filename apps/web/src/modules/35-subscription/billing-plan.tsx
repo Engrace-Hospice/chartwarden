@@ -7,7 +7,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 plan picker (§5.1 `/billing/plan`).
 // The plan comparison grid over GET /api/v1/plans (the public catalog: tier, cadence, base price, and
 // per-meter included quantities + overage rates) with the org's current plan highlighted (from

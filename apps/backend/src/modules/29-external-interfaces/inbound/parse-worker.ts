@@ -30,9 +30,9 @@
 // Everything cross-module is an injected PORT (patient reader, order reader, terminology, consent, org settings, outbox).
 import { createHash, randomUUID } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientReader } from "@chartwarden/types";
 import { and, asc, eq, notInArray } from "drizzle-orm";
 
 import { isSupportedAdt } from "../proposals/message-type-routing";

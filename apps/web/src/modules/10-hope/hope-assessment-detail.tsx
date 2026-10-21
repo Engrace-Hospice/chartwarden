@@ -1,4 +1,4 @@
-import { normalizeSsn, ssnCmsProblem } from "@wardenx/types";
+import { normalizeSsn, ssnCmsProblem } from "@chartwarden/types";
 import {
   Button,
   CountBadge,
@@ -14,7 +14,7 @@ import {
   ageYears,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // Phase 4 Admission HOPE workspace. The backend owns CMS spec, applicability, validation, SFV,
 // readiness, and signing; this screen renders that state and sends canonical set/clear answer patches.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

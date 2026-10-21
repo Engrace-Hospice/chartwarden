@@ -3,7 +3,7 @@
 // `transmission_failed` order (`replacesMedicationOrderId` set) — never an in-place resend — which the prescriber then
 // sends for signature and signs, and the GAP-037 DoseSpot worker transmits. The net asserts on recorded fetch calls.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";

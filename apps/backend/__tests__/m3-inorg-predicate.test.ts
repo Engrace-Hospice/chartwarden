@@ -3,7 +3,7 @@ import {
   type AbacTarget,
   abacRegistry,
   resetAuthorizationContract,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 // apps/backend/__tests__/m3-inorg-predicate.test.ts — the M3-base `inOrg` ABAC predicate.
 //
 // Modules composed on `inOrg` as if it existed — M30's abac-predicates.ts says "`inOrg` is excluded — it

@@ -1,5 +1,5 @@
 import { SandataAdapter } from "./adapters/sandata-adapter";
-// @wardenx/evv-aggregators — the per-state adapter selector (M18-T06, §4.5 D1).
+// @chartwarden/evv-aggregators — the per-state adapter selector (M18-T06, §4.5 D1).
 //
 // The registry resolves the `EvvAggregatorAdapter` per `stateCode` from M40 master-data state configs (the
 // "state-vendor selection from M40"): each config names the state's aggregator vendor + operating model. The

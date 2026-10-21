@@ -6,7 +6,7 @@
 // late the note was. This composes them: the tier comes from `service_date` against the org-local day (never
 // from the client), the reason is required from `late_entry` up, and — at sign — the matching supervisor /
 // director override must already be recorded. Pure; the service injects the org-local day and the facts.
-import type { LateEntryTier, LocalDate } from "@wardenx/types";
+import type { LateEntryTier, LocalDate } from "@chartwarden/types";
 import { TEXT_MINIMUMS, checkLateEntryReason } from "../lifecycle/validation";
 import { checkLateEntryOverrideSatisfied } from "./override";
 import { computeLateEntryTier, daysLate } from "./tiers";

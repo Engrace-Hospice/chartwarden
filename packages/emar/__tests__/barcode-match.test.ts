@@ -1,7 +1,7 @@
 // packages/emar/__tests__/barcode-match.test.ts — M13-T09 §2.9 BCMA barcode-verification unit tests.
 // The pure `evaluateBarcodeScan` re-derives the canonical `barcode_scan_event.match_result` and
 // `barcodeScanBlocks` names the unsafe results the administration write path refuses.
-import type { WristbandVerdictStatus } from "@wardenx/types";
+import type { WristbandVerdictStatus } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type BarcodeOrderContext,

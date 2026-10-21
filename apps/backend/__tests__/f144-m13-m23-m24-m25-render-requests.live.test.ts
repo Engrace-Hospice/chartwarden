@@ -3,7 +3,7 @@
  * module's own document-request table, and had NO EMITTER anywhere in the codebase, END TO END over
  * real Postgres.
  *
- *   · `m13.administration_record.document_requested` — the pure `@wardenx/emar` machine has declared
+ *   · `m13.administration_record.document_requested` — the pure `@chartwarden/emar` machine has declared
  *     this as a `commit`-time effect on `perAdministrationPdfRequired` since M13-T03; the DB write
  *     service (`emar-route-service-db.ts`) reimplements `commit` inline rather than calling
  *     `transitionAdministration` (the M11/M12 convention this module follows) and never read the effect
@@ -44,9 +44,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { MedicaidAdapter, MedicaidAdapterRegistry } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import type { MedicaidAdapter, MedicaidAdapterRegistry } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";

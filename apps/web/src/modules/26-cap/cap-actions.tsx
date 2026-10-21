@@ -1,4 +1,4 @@
-import { Button, Modal, TextAreaField } from "@wardenx/ui";
+import { Button, Modal, TextAreaField } from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — GAP-079: the write half of the M26 screens. Every cap mutation (settlement
 // propose / finalize, period close / reopen, PS&R variance resolve, threshold-event acknowledge) is the same
 // shape — a confirm dialog, an optional required reason, one request, a refusal rendered in place — so they

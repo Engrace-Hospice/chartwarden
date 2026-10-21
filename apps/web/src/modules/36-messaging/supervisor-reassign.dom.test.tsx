@@ -3,8 +3,8 @@
 // generic words for every refusal, the list re-read after a save, focus never lost to the page, and a background refresh that never
 // disturbs the open dialog.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { AckQueueItemDto, AckQueueResponse } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import type { AckQueueItemDto, AckQueueResponse } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

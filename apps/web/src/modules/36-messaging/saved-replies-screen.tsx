@@ -2,7 +2,7 @@
 // (messaging.template.manage) also authors the organization's shared templates and customizes the platform ones.
 // The management section appears when the administration read succeeds; a 403 simply leaves it out. The server decides
 // everything - this screen never infers a permission.
-import { ErrorState, InlineAlert, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
+import { ErrorState, InlineAlert, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { HandoffPolicySection } from "./handoff-policy-section";

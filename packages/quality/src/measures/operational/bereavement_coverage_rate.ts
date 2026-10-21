@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: bereavement coverage rate (CoP 418.64(d)). Pure. No IO.
+// @chartwarden/quality — operational measure: bereavement coverage rate (CoP 418.64(d)). Pure. No IO.
 // Rate of eligible bereaved caregivers with a bereavement plan in place (higher is better). Source: M16
 // `BereavementComplianceProvider`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

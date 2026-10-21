@@ -30,8 +30,8 @@
 // Deliberately no `visit_state_history` row (no lifecycle state changes) and no outbox emission (nothing
 // downstream reads this pointer today — confirmed by a repo-wide grep — so inventing a notification would
 // be advertising a fact no consumer asked for).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const V = schema.visit;

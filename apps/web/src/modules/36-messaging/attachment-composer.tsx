@@ -1,4 +1,4 @@
-import { Glyph } from "@wardenx/ui";
+import { Glyph } from "@chartwarden/ui";
 import { useEffect, useRef } from "react";
 import type { JSX, RefObject } from "react";
 import { ATTACHMENT_ACCEPT, displayFileName, formatBytes } from "./attachment-utils";

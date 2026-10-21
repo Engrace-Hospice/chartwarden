@@ -1,8 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/jobs — M23 background-jobs adapter barrel (§4.8).
 //
-// The thin, infra-touching BullMQ wiring that turns the @wardenx/billing PURE domain (the claim/noe/notr
+// The thin, infra-touching BullMQ wiring that turns the @chartwarden/billing PURE domain (the claim/noe/notr
 // lifecycle reducers, the validation rule registry, the HIPPS/SIA/sequestration/TOB calculators, the
-// control-number deriver) into running `Worker`s + the cron-schedule `Queue`s. @wardenx/billing ships NO
+// control-number deriver) into running `Worker`s + the cron-schedule `Queue`s. @chartwarden/billing ships NO
 // BullMQ catalog, so this folder holds BOTH the §4.8 queue catalog (`queues.ts`) AND the live `Worker`/`Queue`
 // construction + processor logic (`m23-jobs.ts`). The composition root imports `registerM23Workers` /
 // `registerM23CronWorkers` / `scheduleM23Jobs` / `buildM23WorkerDeps` from here at boot. Nothing runs at import.

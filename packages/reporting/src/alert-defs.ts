@@ -1,9 +1,9 @@
-// @wardenx/reporting — the NINE typed M36 alert payloads M33 emits (spec §4.9), with their severity +
-// default channel. Mirrors the @wardenx/saas-tenant-platform alert posture: M33 is the PRODUCER — it
+// @chartwarden/reporting — the NINE typed M36 alert payloads M33 emits (spec §4.9), with their severity +
+// default channel. Mirrors the @chartwarden/saas-tenant-platform alert posture: M33 is the PRODUCER — it
 // emits the typed `m33.*` outbox events (apps/backend/src/modules/33-reporting/events-by-m33.ts) and
 // ships these alert definitions; M36 is the live alerts consumer that matches an emitted outbox
 // `eventType` to the firing `alert_rule`(s) and fans out via its registered resolvers (§4.8). This file
-// imports NOTHING from M36 at runtime (only `@wardenx/messaging` channel/severity TYPES where useful) —
+// imports NOTHING from M36 at runtime (only `@chartwarden/messaging` channel/severity TYPES where useful) —
 // never the inverse — so M33 `dependsOn` stays `[1,2,3,4,36]`.
 //
 // SEVERITY (§4.9 ↔ M36 `alert_severity`): the §4.9 table uses the three-level `info | warn | critical`

@@ -25,10 +25,10 @@
 //
 // IDEMPOTENT: the stamp is `WHERE rendered_document_id IS NULL`; a redelivery finds it set and writes
 // nothing. The completion is guarded on the `in_progress` status it was decided from.
-import { AUTO_COMPLETE_ON_RENDER_KINDS } from "@wardenx/bereavement";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { BereavementOutreachKind, IsoInstant } from "@wardenx/types";
+import { AUTO_COMPLETE_ON_RENDER_KINDS } from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { BereavementOutreachKind, IsoInstant } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { transitionBereavementOutreach } from "../lifecycle/index";
 import { runEffects } from "../routes/effects-runner";

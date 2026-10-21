@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the PATH section of the denial work panel (hospice ADR/TPE/QIC PRD, milestone
 // 3): which route the denial takes (an appeal, or a reopening the MAC handles itself), which rule decided it, and the
 // reopening once there is one. The route is computed by the server from the organization's dated rules plus a

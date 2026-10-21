@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/render-payloads/representative.ts - who signed for the patient (GAP-033).
 // The consent row (M39's published grantor read) names the representative; a user is Foundation, a caregiver is
 // M5's, resolved through the render sources' roster seam. Null when nothing resolves - the caller then refuses.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 import { consentGrantorFacts } from "../../39-consent/grantor-reader";
 import type { RenderSourcesPort } from "./sources";

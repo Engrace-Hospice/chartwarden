@@ -1,6 +1,6 @@
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ValidationError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   type HopeJ2051TriggerState,

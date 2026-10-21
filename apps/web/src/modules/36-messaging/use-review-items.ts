@@ -1,6 +1,6 @@
 // M36 WP 3.8 - the lifecycle review queue (list) and the two decisions on one item. No optimistic state: a row only
 // changes when the server's answer replaces it (the list re-reads). Action enablement comes from `allowed_actions` only.
-import type { ReviewItemDto, TaskCloseReason } from "@wardenx/types";
+import type { ReviewItemDto, TaskCloseReason } from "@chartwarden/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 

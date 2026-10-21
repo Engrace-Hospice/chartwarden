@@ -1,4 +1,4 @@
-// @wardenx/assessments — server-authoritative scoring dispatch (§4.3, §10 task #4, D6).
+// @chartwarden/assessments — server-authoritative scoring dispatch (§4.3, §10 task #4, D6).
 //
 // The single entry point the recording service (M9-T05 `score-assessment.ts`) calls: dispatch over the
 // captured `scaleType` to the per-scale `score()`/`interpret()`, then enforce the D6 composite-score
@@ -7,7 +7,7 @@
 // is the only place a score is produced. M9-T03 registers the four representative scorers the plan pins
 // (PPS / FAST / PAINAD / ESAS-r); a request for a not-yet-registered scale raises
 // `SCALE_SCORER_UNAVAILABLE` (500) until its module lands with the routes/tests.
-import type { ScaleType } from "@wardenx/types";
+import type { ScaleType } from "@chartwarden/types";
 import { AssessmentStateError } from "./errors";
 import type { ScaleData } from "./scale-types";
 import { esasrScorer } from "./scales/esas-r";

@@ -3,7 +3,7 @@
 // Static scan of the emit sites in M23/M25/M26/M27 against PLATFORM_DEFAULT_ALERT_RULES.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 
 const SRC = join(__dirname, "..", "src", "modules");

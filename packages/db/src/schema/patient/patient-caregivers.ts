@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_caregiver` (M5 §3.4). The patient↔caregiver link with relationship +
+// @chartwarden/db — `patient_caregiver` (M5 §3.4). The patient↔caregiver link with relationship +
 // legal-representative authority (DPOA/guardian/NOK). Three-column tenancy rule. One primary
 // caregiver per patient; an LR authority other than 'none' requires the legal-representative flag.
 import { sql } from "drizzle-orm";

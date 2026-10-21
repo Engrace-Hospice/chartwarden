@@ -1,7 +1,7 @@
 // apps/backend/src/modules/02-identity/org-admin-validation.ts — the pure input rules for the org-admin routes
 // (GAP-115): organization names, provider-entity regulatory identifiers (CCN, NPI with its Luhn check digit,
 // tax id, fiscal year end), service-location fields. No I/O, so the routes and their tests share one definition.
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const fail = (field: string, message: string): never => {
   throw new ValidationError(message, [{ field, code: "INVALID", message }]);

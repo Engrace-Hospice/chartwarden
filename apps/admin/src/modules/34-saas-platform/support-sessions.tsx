@@ -12,14 +12,14 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — Support Sessions queue (M34 Phase-3, §4.1 platform-ops; F01/D8/D16).
 // Spec: docs/modules/... §5.1 screen inventory. The tenant-consented break-glass control surface:
 //   • /support/sessions — the active+recent session queue (GET /api/v1/platform/support-sessions),
 //   • session detail — the surveyor event ledger (GET .../{id}/events) in the right drawer, kept in
 //     `?session=<id>`,
 //   • Start-session CTA + the §10 step-up ceremony for start / elevate-PHI-read.
-// Live-wired over the generated typed client (useApiClient); imports only @wardenx/ui leaves + the
+// Live-wired over the generated typed client (useApiClient); imports only @chartwarden/ui leaves + the
 // Foundation tone map. Every cross-tenant read is an audited platform-ops read on the server.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";

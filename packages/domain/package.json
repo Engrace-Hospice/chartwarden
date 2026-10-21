@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/domain",
+  "name": "@chartwarden/domain",
   "version": "0.0.0",
   "private": true,
   "type": "module",

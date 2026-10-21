@@ -1,4 +1,4 @@
-// @wardenx/consent — the §2.3 validation rules as pure predicates.
+// @chartwarden/consent — the §2.3 validation rules as pure predicates.
 //
 // M39-T04. Each rule is a pure function the service layer composes on draft + on sign (and the
 // evaluate path consults at access time). Rules that need a DB/seam lookup (the acting DPOA record,

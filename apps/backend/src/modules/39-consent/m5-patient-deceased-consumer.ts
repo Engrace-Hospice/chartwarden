@@ -27,9 +27,9 @@ import {
   type ConsentTypeKey,
   consentTerminatesOnDeath,
   decideDeceasedConsentExpiry,
-} from "@wardenx/consent";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/consent";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../bootstrap/outbox-dispatcher";
 import type { ConsentWriteOutboxPort } from "./consent-store-db";

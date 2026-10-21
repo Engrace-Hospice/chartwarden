@@ -1,4 +1,4 @@
-// @wardenx/db — `membership_role` (M3 Authorization §3.4). The M2<->M3 handshake: it
+// @chartwarden/db — `membership_role` (M3 Authorization §3.4). The M2<->M3 handshake: it
 // realizes an accepted invitation's `proposedRoleKeys` as concrete role grants on a
 // membership. M03-F05: a membership belongs to exactly one org, so organization_id is
 // NOT NULL and the standard app.org_id RLS generator policy applies directly (M3-T04).

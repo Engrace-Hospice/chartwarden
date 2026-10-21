@@ -1,7 +1,7 @@
 // WP 2.7b C2 (ADR-0058, Accepted) - the small ports the index writer depends on, so the two things that are not settled yet
 // (the async key-ring body cipher of WP 2.13, and the ADR-0055 redaction marker) are one-line adapter changes later.
-import { messageBodySha256 } from "@wardenx/messaging";
-import type { MessageBodyKind } from "@wardenx/messaging";
+import { messageBodySha256 } from "@chartwarden/messaging";
+import type { MessageBodyKind } from "@chartwarden/messaging";
 import type { MessageBodyCipher } from "../messaging-write-core";
 import { decodeStoredBody } from "../rich-body-codec";
 

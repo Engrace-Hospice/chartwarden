@@ -5,8 +5,8 @@ import {
   type SiaEncounterInput,
   calculateSia,
   lineChargeCents,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 SIA (Service Intensity Add-on) calculator (D6, spec §1.1 / §3.3
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 SIA (Service Intensity Add-on) calculator (D6, spec §1.1 / §3.3
 // `sia_calculation`) pure-domain tests.
 //
 // SIA fires ONLY when the patient is deceased AND ≥1 qualifying SIGNED RN/MSW in-person visit landed in the

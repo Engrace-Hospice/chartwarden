@@ -38,7 +38,7 @@ import type {
   SafetyLastKnownLocationDto,
   SafetyLocationSource,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   getEvvLocationProvider,
   getPatientReader,

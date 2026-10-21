@@ -1,6 +1,6 @@
 // WP 3.4 - the pure task rules: the transition table, who may act, when a closing reason is required, the due window,
 // patient derivation and the actions a caller is offered.
-import { TASK_ACTIONS, TASK_STATUSES, type TaskAction, type TaskStatus } from "@wardenx/types";
+import { TASK_ACTIONS, TASK_STATUSES, type TaskAction, type TaskStatus } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   TASK_CLOSE_REASONS,

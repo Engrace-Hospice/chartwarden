@@ -1,4 +1,4 @@
-// @wardenx/auth · identity (M2 — Identity & Org). Owned per module-manifest.ts codePath
+// @chartwarden/auth · identity (M2 — Identity & Org). Owned per module-manifest.ts codePath
 // `packages/auth/src/identity`. Better Auth integration lands in M2-T01 (see ./auth);
 // the session-class taxonomy + lifecycle (M2-T03) in ./session-classes; the published
 // cross-module seams (M2-T07) in ./session-seam + ./auditor-session.

@@ -1,7 +1,7 @@
 import {
   CHART_PROMOTION_PENDING_MAX,
   CHART_PROMOTION_PENDING_PATIENTS_MAX,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/promotions/promotion-source-reader.ts - WP 3.7: the ChartPromotionSourceReader seam
 // M8 and M14 read to show their reviewer a proposal. Read-only and org-explicit (it opens its own tenant context, so it is
 // callable outside a request). FAIL CLOSED on every doubt: the flag is off, the target is not one of the two, the request is
@@ -16,7 +16,7 @@ import {
   type ChartPromotionSourceReader,
   type ChartPromotionTargetKind,
   type ChartPromotionTargetModule,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { gateAdmits } from "../handoffs/handoff-eligibility";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { type PromotionBodyPorts, resolveSnapshot } from "./promotion-snapshot";

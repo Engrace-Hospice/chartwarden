@@ -1,6 +1,6 @@
 // apps/backend/src/modules/13-emar/seams/providers.ts — M13-T07 the §2.12 D16 seam implementations: pure
 // orchestration over an injected {@link EmarSeamStore}. Each returns the leaf-typed seam interface
-// (@wardenx/types) the M1 registry validates and M14/M28/M30/M31/M33/M37 resolve. The providers add NO tenant
+// (@chartwarden/types) the M1 registry validates and M14/M28/M30/M31/M33/M37 resolve. The providers add NO tenant
 // logic — RLS scopes every store read by the consumer's `app.org_id` (§3.6); they project store DTOs and derive
 // the read-side signals (PRN-effectiveness / missed-dose / comfort-kit-timeliness measure inputs, the
 // lay-language portal summary with the §7.8 / D12 SUD redaction, the FHIR status mapping, the IV-session
@@ -13,7 +13,7 @@ import type {
   MedicationAdministrationProvider,
   PortalAdministrationSummary,
   ReconciliationProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { EmarSeamStore } from "./store";
 
 /** Ascending-by-`administeredAt` comparator (ISO-8601 lexicographic order == chronological order). */

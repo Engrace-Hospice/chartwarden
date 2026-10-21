@@ -1,9 +1,9 @@
 // apps/backend/src/modules/02-identity/audit/org-admin-audit.ts — audit events for the M2 org-admin surface
 // (GAP-115): organization / provider-entity / location management, the tenant step-up override registry, and
-// the funeral-home link. Every one goes through the mandated @wardenx/audit `audit()` helper (the PHI field
+// the funeral-home link. Every one goes through the mandated @chartwarden/audit `audit()` helper (the PHI field
 // denylist runs there) at `compliance` retention. NO tax id, no address line, no token ever enters a payload —
 // field NAMES that changed, never their values (a changed `taxId` is recorded as the word "taxId").
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
 export const ORG_ADMIN_AUDIT_EVENTS = {
   organizationCreated: "m2.organization.created",

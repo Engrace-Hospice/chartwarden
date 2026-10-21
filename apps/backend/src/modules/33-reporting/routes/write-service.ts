@@ -16,8 +16,8 @@
 //     so both backends refuse the same illegal mutations identically. The pure assertion helpers below are
 //     the single home for each rule.
 //   - org/actor/owner binding is ALWAYS the server-assembled {@link M33WriteActor} (context, never body).
-import type { DbClient } from "@wardenx/db";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
 import {

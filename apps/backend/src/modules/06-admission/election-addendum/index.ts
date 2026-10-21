@@ -1,6 +1,6 @@
 // apps/backend/src/modules/06-admission/election-addendum — the FY2027 election statement addendum
 // (42 CFR 418.24(b)(6), (c), (d); CMS-1851-F). See ./service.ts for the entry points.
-import type { NonCoveredItemSnapshot, NonCoveredItemsReader } from "@wardenx/types";
+import type { NonCoveredItemSnapshot, NonCoveredItemsReader } from "@chartwarden/types";
 
 export * from "./due-dates";
 export * from "./render-payload";

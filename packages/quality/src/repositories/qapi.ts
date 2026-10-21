@@ -1,10 +1,10 @@
-// @wardenx/quality · repositories — the QAPI subdomain (CoP §418.58): `qapi_program` (the annual
+// @chartwarden/quality · repositories — the QAPI subdomain (CoP §418.58): `qapi_program` (the annual
 // program, ≤1 per (org, plan_year)) and its children `qapi_indicator` (tracked indicators, soft-delete),
 // `qapi_project` (improvement projects), `qapi_pip` (Performance Improvement Projects, dual-cosign
 // closure), and `qapi_governance_minutes` (meeting minutes + append-only amendment log) (M30 §3.3).
 // ORG-SCOPED; the QAPI service wraps these in `withOrgContext` and owns the lifecycle/cosign guards
-// (the pure reducers live in @wardenx/quality). Several narrative columns are audit-denylisted (§3.6).
-import { schema } from "@wardenx/db";
+// (the pure reducers live in @chartwarden/quality). Several narrative columns are audit-denylisted (§3.6).
+import { schema } from "@chartwarden/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

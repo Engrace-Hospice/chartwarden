@@ -8,7 +8,7 @@
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m14'),
 // and valid declared consumers (real module ids).
 //
-// The canonical wire `eventName`s mirror `M14_EVENT_NAMES` in @wardenx/types (the closed §4.4 set the
+// The canonical wire `eventName`s mirror `M14_EVENT_NAMES` in @chartwarden/types (the closed §4.4 set the
 // schedule worker / meeting lifecycle / packet builder / decision + action-item write paths / minutes
 // finalize + amendment / the per-patient review-clock cron may emit). Each entry adds the TypeBox
 // `payloadSchema` + declared consumers the dispatcher validates each publish against, so "DB updated but the
@@ -19,14 +19,14 @@
 // M28/M30/M33 read M14's published provider seams; listing those readers here would invent outbox work.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import type { ModuleEventContribution, ModuleToken } from "@wardenx/types";
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "./decision-payload-schema";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 
-// The §4.4 wire names mirror `M14_EVENT_NAMES` (@wardenx/types) EXACTLY. The locked cross-namespace
+// The §4.4 wire names mirror `M14_EVENT_NAMES` (@chartwarden/types) EXACTLY. The locked cross-namespace
 // `idg.decision_recorded` does NOT match the stricter `OutboxEventName` template (`m${number}.…`), so
 // `eventName` is relaxed to `string` here (every other field stays fully type-checked) and the array is cast
 // once to `ModuleEventContribution` — the M13 events-by-m13.ts precedent.

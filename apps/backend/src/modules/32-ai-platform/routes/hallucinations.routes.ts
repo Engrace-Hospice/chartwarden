@@ -32,7 +32,7 @@
 import type { FastifyInstance } from "fastify";
 import type { TriageFollowUpEnqueuePort } from "../jobs/triage-followup-worker";
 
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 import {
   type AiSafetyServiceDeps,

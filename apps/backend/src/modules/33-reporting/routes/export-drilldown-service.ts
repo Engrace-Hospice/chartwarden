@@ -13,7 +13,7 @@
 // The in-memory slice is deterministic (route/acceptance tests). PRODUCTION injects the Drizzle backend, which
 // reads under `withReportSession` (export tier) and is DENY-STUB-SAFE: unbound translator/executor/consent/DEK
 // ports degrade to the forward-seam empty stream or the fail-closed drilldown deny — never fail open (D6/D13).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   CSV_EXPORT_ROW_CAP,
   type CsvExportOutboxPort,
@@ -47,9 +47,9 @@ import {
   translateSpec,
   withReportSession,
   writeDrilldownAudit,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
 import { type ReportScopeResolverPort, narrowScope } from "./read-service-drizzle";

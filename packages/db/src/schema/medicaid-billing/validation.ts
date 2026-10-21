@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — the validation registry tables. medicaid_validation_run and
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — the validation registry tables. medicaid_validation_run and
 // medicaid_validation_result are PARTITION BY LIST(organization_id) (composite PK (id, organization_id) in
 // SQL 0095); medicaid_validation_override and medicaid_validation_rule_config are NON-partitioned (SQL 0093).
 //

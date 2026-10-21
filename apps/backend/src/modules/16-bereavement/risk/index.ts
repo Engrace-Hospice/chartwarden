@@ -8,7 +8,7 @@
 //                     narrative structurally unable to move `rule_tier`
 //
 // The pure halves (weights, cutoffs, the `unknown`-aware scorer, the derivation, the ladder) live in
-// `@wardenx/bereavement/risk`; everything here is the IO shell and the persistence shape around them.
+// `@chartwarden/bereavement/risk`; everything here is the IO shell and the persistence shape around them.
 export * from "./extract";
 export * from "./score";
 export * from "./augmentation";

@@ -2,7 +2,7 @@
 // flag is off, so that is the signal: it is read ONCE per API client (every message row shares the same answer) and
 // fails closed on any error (a failure is not cached, so a later mount tries again; an "off" answer is). The server
 // stays the authority: with the flag off its task routes answer 404, so a stale "on" here only shows a trigger that then fails politely.
-import { type ApiClient, useApiClient } from "@wardenx/ui";
+import { type ApiClient, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 
 const sharedReads = new WeakMap<ApiClient, Promise<boolean>>();

@@ -1,4 +1,4 @@
-// @wardenx/telehealth-client — M31-T05 adapter tests (§4.5 D1 / §7.2 / §7.3 / D13).
+// @chartwarden/telehealth-client — M31-T05 adapter tests (§4.5 D1 / §7.2 / §7.3 / D13).
 //
 // Covers: the pure circuit breaker (closed → open → half-open → closed), the Daily.co adapter's PHI-free
 // boundary (no visit id / no PHI ever reaches the vendor; the room name is an opaque HMAC), token TTL clamping,

@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 8: Skilled Nursing Care Minutes per Routine Home Care (RHC) day
+// @chartwarden/quality — HCI indicator 8: Skilled Nursing Care Minutes per Routine Home Care (RHC) day
 // (§1.1). Pure. No IO.
 //
 // CMS definition: the MEAN skilled-nursing minutes per RHC day — total skilled-nursing (RN/LPN) minutes

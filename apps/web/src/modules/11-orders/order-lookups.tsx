@@ -1,9 +1,9 @@
-import { EntityLookupField, useApiClient } from "@wardenx/ui";
+import { EntityLookupField, useApiClient } from "@chartwarden/ui";
 import type {
   EntityLookupFieldProps,
   EntityLookupLoadInput,
   EntityLookupLoadResult,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback } from "react";
 import type { JSX } from "react";
 

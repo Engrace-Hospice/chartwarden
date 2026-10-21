@@ -1,5 +1,5 @@
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
-// (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -12,8 +12,8 @@
 // → 412 VERSION_MISMATCH on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
 // freshness (≤ 5 min, §2.7 D13) is verified here and injected into the lifecycle machine
 // (STEP_UP_AUTH_REQUIRED → 412 when stale).
-import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
@@ -48,7 +48,7 @@ import {
 } from "./encounters-typebox";
 import type { EncounterRouteService, SigningActor } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface EncounterRouteDeps {

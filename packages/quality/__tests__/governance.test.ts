@@ -4,8 +4,8 @@ import {
   M30_ALERT_LIST,
   M30_PERMISSIONS,
   buildMortalityReviewFromDeath,
-} from "@wardenx/quality";
-// @wardenx/quality — M30 GOVERNANCE unit tests (§4.6 permission catalog · §4.9 alert catalog ·
+} from "@chartwarden/quality";
+// @chartwarden/quality — M30 GOVERNANCE unit tests (§4.6 permission catalog · §4.9 alert catalog ·
 // §3.6/§3.8 + W-M30-28 42 CFR Part 2 promotion). PURE: no DB / Valkey / BullMQ.
 //
 // Proves three pure, boot-catalog / Part-2 invariants the integrator must not let drift:
@@ -19,7 +19,7 @@ import {
 //   (c) W-M30-28 — a SUD decedent (or a Part-2 document in chart) auto-promotes the mortality review to
 //       the `compliance_42cfr_part2` retention class; a non-SUD decedent stays `phi` (§3.6/§3.8 fail-safe:
 //       promotion is positive-only, never silently dropped).
-import { M30_ALERT_PAYLOADS } from "@wardenx/types";
+import { M30_ALERT_PAYLOADS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 // -----------------------------------------------------------------------------

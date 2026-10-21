@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services barrel (M34 §2.2 / §2.4 / §2.5).
+// @chartwarden/saas-tenant-platform · services barrel (M34 §2.2 / §2.4 / §2.5).
 //
 // The pure (framework-free) domain services that land on top of the repositories + seam interfaces.
 // First spine: the §2.2 tenant-lifecycle state machine — the legal transition graph, the §2.4 guards,

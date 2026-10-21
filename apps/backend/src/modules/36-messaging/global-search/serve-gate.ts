@@ -9,10 +9,10 @@
 //             'ready' AND reconciled since the setting and the platform row last changed AND not expired (C2's `stillValid`),
 //             otherwise 503 GLOBAL_SEARCH_INDEX_NOT_READY. Status alone is not enough (a flip invalidates a prior reconcile).
 // Any unexpected failure (key provider, destroyed ring, database) is 503: no gate ever falls back to "allowed".
-import { type DbClient, schema } from "@wardenx/db";
-import type { SearchKeyProvider } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { SearchKeyProvider } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import type { PlatformSearchFlag, PlatformSearchFlagState } from "./platform-flag";

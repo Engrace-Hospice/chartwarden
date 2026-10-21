@@ -1,4 +1,4 @@
-// @wardenx/db — `mdm_baa_record` (M40 MDM §3.5, §7.7). The per-tenant BAA execution state for
+// @chartwarden/db — `mdm_baa_record` (M40 MDM §3.5, §7.7). The per-tenant BAA execution state for
 // a canonical entity — ORG-SCOPED (each tenant's relationship with the entity is its own,
 // §2.3 baa_execution_state). Keyed by (org, entity_kind, canonical_id); `baa_status` plus
 // executed/expires dates drive the §7.7 disclosure gate (the BaaStatusProvider seam, M40-T06):

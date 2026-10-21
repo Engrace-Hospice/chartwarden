@@ -8,10 +8,10 @@
 // grantable/revocable somewhere, or the D8 gate would deny every caller forever for lack of any way
 // to ever satisfy it (the exact GAP-030 regression this fix is careful not to reintroduce). The
 // grant/revoke methods back `scheduling-route-service-db.ts`'s new membership-credential routes.
-import type { CredentialGrant, CredentialReader } from "@wardenx/types";
+import type { CredentialGrant, CredentialReader } from "@chartwarden/types";
 import { registerSeam } from "../../../bootstrap/index";
 
-/** The discipline vocabulary a credential covers — mirrors `@wardenx/scheduling`'s
+/** The discipline vocabulary a credential covers — mirrors `@chartwarden/scheduling`'s
  *  `SchedulingDiscipline` (rn/lpn/chha/msw/chaplain/volunteer/md/np/pa); kept as a plain string union
  *  here rather than importing the feature package (this file is consumed by the seam layer, which
  *  stays leaf-safe). `md` is PHYSICIAN — MD *or* DO (same level, one value; see the policy header). */

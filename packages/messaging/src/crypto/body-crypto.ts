@@ -1,7 +1,7 @@
-// @wardenx/messaging · crypto — message body envelope encryption (M36 §3.4 / M36-F03, FB-T05).
+// @chartwarden/messaging · crypto — message body envelope encryption (M36 §3.4 / M36-F03, FB-T05).
 //
 // Per-tenant DEK envelope crypto for `message.body_cipher` (bytea). SERVER-ONLY (node:crypto) —
-// the package is never bundled into the browser (the apps/web slices import @wardenx/ui only), so
+// the package is never bundled into the browser (the apps/web slices import @chartwarden/ui only), so
 // this sits beside the webhook HMAC verifiers that already use node:crypto.
 //
 // KEY MODEL (architecture §8(2) / M36-T10 eraser). A single master KEK (MESSAGING_ENCRYPTION_KEY,
@@ -15,7 +15,7 @@
 // `body_sha256` (the §164.312(c) integrity digest) is the SHA-256 of the PLAINTEXT computed
 // PRE-encryption (the §4.4 hash-verify job decrypts and re-checks it), so it lives here too.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 const VERSION = 1;
 const NONCE_LEN = 12;

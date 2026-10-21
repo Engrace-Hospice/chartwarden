@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `mac_submitter_credential` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// @chartwarden/db — `mac_submitter_credential` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `operational`). Per-provider-entity MAC trading-partner identifiers + portal credentials. The portal
 // client secret is stored ciphertext only (encrypted under a per-tenant DEK; never plaintext at rest);
 // the DEK version is tracked for rotation. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).

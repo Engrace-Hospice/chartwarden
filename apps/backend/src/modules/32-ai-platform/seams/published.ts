@@ -54,7 +54,7 @@ import {
   type SemanticSearchProvider,
   aiCapabilityKeyForNarrativeSurface,
   aiSeamRefusal,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import type {
   AiConsumerContextRef,
   HospitalizationRiskProvider,
@@ -65,7 +65,7 @@ import type {
   TriageHospitalizationRiskResult,
   TriageProtocolSuggestionInput,
   TriageProtocolSuggestionResult,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { AiInvocationOutput, AiInvocationPipeline } from "../invocation/service";
 import {
   DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
@@ -732,7 +732,7 @@ export function createCopilotProvider(deps: AiPublishedSeamDeps): CopilotProvide
 // ── §4.2.3 the two M19 ADVISORY seams, on M19's OWN leaf-typed contracts ─────────────────────────
 //
 // THESE DO NOT RE-DECLARE ANYTHING. `ProtocolSuggestionProvider` and `HospitalizationRiskProvider` were
-// leaf-typed in `@wardenx/types`'s `./oncall` by M19-T01, which shipped first and locked their shapes.
+// leaf-typed in `@chartwarden/types`'s `./oncall` by M19-T01, which shipped first and locked their shapes.
 // §4.2.3 sketches different signatures (`suggest(...)`, `predict(...)`, an `available` union); the
 // REGISTERED contract wins, because a second interface for one seam is a permanently unbound seam — the
 // M15/M17 `VolunteerComplianceProvider` lesson, applied in the direction it teaches.

@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — missed-dose inbox (M13 §4.1/§6.1 #8, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (missed-dose queue /
 // chart-level banner). The queue of unacknowledged missed doses for a patient, KPI'd by acknowledged-vs-open,

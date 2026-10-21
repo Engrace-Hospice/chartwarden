@@ -16,8 +16,8 @@
 // (auditor-second-factor-store.ts). Nothing here is cacheable: recovery codes ride one response only.
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { requireAbac } from "@wardenx/auth";
-import { RateLimitedError, UnauthorizedError, ValidationError } from "@wardenx/types";
+import { requireAbac } from "@chartwarden/auth";
+import { RateLimitedError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { registerM2AbacPredicates } from "../abac-predicates";
 import {

@@ -7,7 +7,7 @@
 // party's personal detail: it is never put in a thrown message, a log line, a result code or the ledger.
 // Every failure collapses to the closed result `{ kind: "unreadable" }` / `{ kind: "invalid" }` so there is
 // nothing sensitive to leak by construction.
-import { normalizeE164 } from "@wardenx/shared/phone";
+import { normalizeE164 } from "@chartwarden/shared/phone";
 import type { SafetyDecipherPort } from "../routes/read-service-drizzle";
 
 /** The default region for a number a clinician typed without a country code (US-only, R4). */

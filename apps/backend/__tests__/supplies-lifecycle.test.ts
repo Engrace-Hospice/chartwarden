@@ -8,7 +8,7 @@ import type {
   RoutingRuleResolved,
   SupplyCourierAttestation,
   SupplyRequestStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   COMFORT_KIT_DISPATCH_GRAPH,

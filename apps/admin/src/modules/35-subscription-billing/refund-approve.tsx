@@ -6,8 +6,8 @@ import {
   TextAreaField,
   useApiClient,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
 // refund.approve). THE sensitive path: approval carries a step-up AND the §4.8 four-eyes rule (the approver
 // MUST differ from the requester). The server enforces both; this screen surfaces each denial as a

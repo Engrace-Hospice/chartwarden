@@ -19,7 +19,7 @@
 // RLS. So the ports are separate and the services take exactly the ones they need.
 //
 // The ports are NARROW ON PURPOSE: no `db` handle reaches a governance service, so every rule in
-// `@wardenx/ai-platform/governance` is exercised against the in-memory store in the slice tests and the
+// `@chartwarden/ai-platform/governance` is exercised against the in-memory store in the slice tests and the
 // Drizzle implementation carries no branch a test cannot reach.
 import type {
   AiCapabilityLifecycleState,
@@ -29,7 +29,7 @@ import type {
   AiModelBackendKind,
   AiRoutingPreference,
   AiTenantOptInStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── projections ────────────────────────────────────────────────────────────────────────────────────
 

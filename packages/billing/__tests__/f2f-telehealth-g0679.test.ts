@@ -1,11 +1,11 @@
-// @wardenx/billing — FY2027 CR 14495: the `f2f_telehealth_g0679` rule + the pure G0679 date derivation
+// @chartwarden/billing — FY2027 CR 14495: the `f2f_telehealth_g0679` rule + the pure G0679 date derivation
 // claim assembly uses (docs/research/FY2027_HOSPICE_COP_RESEARCH.md §4). Pure; no DB, no clock.
 import type {
   ClaimLineSnapshot,
   FaceToFaceSnapshot,
   RuleResult,
   ValidationContext,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import {
   G0679_EFFECTIVE_FROM,
   G0679_HCPCS,
@@ -16,7 +16,7 @@ import {
   f2fTelehealthG0679,
   levelOfCareCoherence,
   telehealthF2fDatesRequiringG0679,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";
 

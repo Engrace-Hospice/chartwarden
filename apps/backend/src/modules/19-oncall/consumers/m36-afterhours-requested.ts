@@ -26,7 +26,7 @@ import type {
   TriageCallId,
   TriageCallInboundChannel,
   TriageCallSource,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "../lifecycle/errors";
 import { UUID_PATTERN } from "../seams/escalation-router";
 import {

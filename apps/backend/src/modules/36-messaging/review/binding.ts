@@ -3,7 +3,7 @@
 // cached a few seconds per org like tasks and handoffs); the CONSUMER queues regardless of the flag (a safety record, like
 // handoff expiry), the routes and the alerts honour it. Everything is built from ports so the routes and the consumer share
 // one service and one store.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import type { HintOutboxPort } from "../message-hint-events";
 import { isActiveMessagingUser } from "../messaging-route-service-db";

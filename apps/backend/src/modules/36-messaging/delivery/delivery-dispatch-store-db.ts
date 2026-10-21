@@ -13,15 +13,15 @@
 // and bumps `attempt_count` in one statement, so two instances never claim the same row, and a crash between
 // the vendor call and the write-back simply lets the lease lapse and the row be retried (at-least-once; a row
 // that already holds a vendor id is NOT re-sent — see `dispatchClaimedDelivery`).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   AlertCategory,
   AlertSeverity,
   ClaimedDelivery,
   OutOfBandTransportChannel,
   ResolvedDestination,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq, sql } from "drizzle-orm";
 import { type DeliveryOutboxPort, type Tx, applyDeliveryTransition } from "./delivery-settlement";
 

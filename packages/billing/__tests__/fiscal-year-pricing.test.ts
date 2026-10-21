@@ -1,11 +1,11 @@
-// @wardenx/billing — a claim that crosses Oct 1 prices each day with ITS OWN fiscal year's rate table and wage index
+// @chartwarden/billing — a claim that crosses Oct 1 prices each day with ITS OWN fiscal year's rate table and wage index
 // (the federal fiscal year changes the rates on Oct 1), instead of pricing the whole claim at the first day's year.
 import {
   type FiscalYearPricing,
   type PerDiemRateTable,
   calculatePerDiemClassByFiscalYear,
   splitAtFiscalYears,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const RATES = (rhc: number): PerDiemRateTable => ({

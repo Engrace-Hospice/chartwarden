@@ -10,10 +10,10 @@
 // precedent — no M2/M3 import edge). M28's `*_membership_id` columns hold MEMBERSHIP ids and M3's grant
 // store is keyed on USER id, so the membership→user translation matters for the same reason it did there:
 // a direct lookup would return zero grants, denying every legitimate reviewer for the wrong reason.
-import { resolveEffectivePermissions } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { FhirInboundOwnerModule } from "@wardenx/types";
+import { resolveEffectivePermissions } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { FhirInboundOwnerModule } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 import type {

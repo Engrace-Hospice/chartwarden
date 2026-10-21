@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Readmit patient (`/admissions/:id/readmit`). A patient discharged ALIVE comes
 // back: the readmission repeats the whole admission (new election statement, certification, NOE, assessments, HOPE
 // Admission) in the NEXT available benefit period — a live discharge or revocation ended the last one, a transfer kept

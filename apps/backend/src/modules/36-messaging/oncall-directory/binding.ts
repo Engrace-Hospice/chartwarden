@@ -2,9 +2,9 @@
 // composition-root binding. The ops flags `messaging.oncall_directory` and `messaging.role_send` (tenant row wins; absent = off) are read
 // through the platform's FeatureFlagReaderPort and cached a few seconds per org. The router is the M1 seam behind the org-checking guard
 // (a test source or a malformed answer is refused); BOTH features share that one guarded router, so the real M19 router drops in unchanged.
-import type { DbClient } from "@wardenx/db";
-import { derivePatient } from "@wardenx/messaging";
-import { ONCALL_DIRECTORY_FLAG_KEY, ROLE_SEND_FLAG_KEY } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { derivePatient } from "@chartwarden/messaging";
+import { ONCALL_DIRECTORY_FLAG_KEY, ROLE_SEND_FLAG_KEY } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { guardEscalationRouter } from "../ack-escalation/escalation-router-guard";
 import { createDbRoleReplayLookup } from "../ack-requests/role-replay-lookup";

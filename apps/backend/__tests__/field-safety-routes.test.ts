@@ -28,13 +28,13 @@ import {
   PERMISSIONS,
   allPermissionMirrorRows,
   createPredicateRegistry,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   M20_EVENT_IDEMPOTENCY_KEYS,
   M20_EVENT_NAMES,
   M20_SYSTEM_LOCKED_ALERT_TYPES,
   SAFETY_SOS_TERMINAL_STATES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   ACTIVE_SOS_RESPONDER_STATES,

@@ -21,7 +21,7 @@
 // Shift windows are absolute instants (`on_call_shift.shift_starts_at/ends_at`), compared in epoch ms: start inclusive, end
 // exclusive, so back-to-back shifts neither gap nor overlap. `timeZone` is the provider entity's location zone and is information
 // only; it never moves a boundary. Pure read: no write, no outbox.
-import { isKnownTimeZone, parseStrictInstant } from "@wardenx/messaging";
+import { isKnownTimeZone, parseStrictInstant } from "@chartwarden/messaging";
 import {
   ESCALATION_MAX_TIER,
   type EscalationRank,
@@ -36,7 +36,7 @@ import {
   type OrgId,
   type ProviderEntityId,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type OncallSeamOrgResolver,
   assertCallerOrg,

@@ -13,8 +13,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

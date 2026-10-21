@@ -12,7 +12,7 @@ import type {
   CarePlanVersionKind,
   IsoInstant,
   RequiredSignerSet,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { CarePlanStateError, require_ } from "./errors";
 import { decideRecordSignature, resolveRequiredSignerSet } from "./required-signer-set";

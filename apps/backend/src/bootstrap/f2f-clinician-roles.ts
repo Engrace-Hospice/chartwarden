@@ -3,9 +3,9 @@
 // SAME one `request.context.roles` derives from (enabled roles on unexpired assignments, minus a reserved
 // platform key carried by a tenant-owned row). Memberships / roles are M3's tables, so M6 gets this as an
 // injected port rather than importing the schema (`arch:tables`). Role KEY strings only (minimum necessary).
-import { roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 
 const MB = schema.memberships;

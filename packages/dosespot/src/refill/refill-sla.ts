@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.7 refill-inbox SLA clock (M12-T04). Pure, IO-free.
+// @chartwarden/dosespot — §2.7 refill-inbox SLA clock (M12-T04). Pure, IO-free.
 //
 // A pending refill request that ages in the inbox harms the patient: the §2.7 SLA fires an M36 routine
 // alert at 48 hours (`warn`) and a high-severity alert at 72 hours (`critical`). The 72-hour clock is the

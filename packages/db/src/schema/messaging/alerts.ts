@@ -1,4 +1,4 @@
-// @wardenx/db — `alert` (M36 Secure Messaging §3.6). The org-scoped record of a dispatched
+// @chartwarden/db — `alert` (M36 Secure Messaging §3.6). The org-scoped record of a dispatched
 // alert: its event type, severity, fan-out `outcome`, and the field-tagged `payload`. The
 // payload may carry PHI at the field level, but it NEVER leaves the perimeter unsanitized —
 // the §4.7 sanitization wrapper is the only path to out-of-band channels (§7.2). The table

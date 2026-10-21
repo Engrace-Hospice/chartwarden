@@ -4,7 +4,7 @@
 // definitions + the immutable version chain (D9), saved views + the sharing model (D17), and the
 // scheduled-delivery pipeline (D7). The two canonical §4.2 builder shapes — `ReportDefinitionSpec`
 // (the whitelisted dimensions/measures/filters spec a tenant authors, D4) and `ScheduledReportCreate`
-// (the cron + recipients + format create payload) — are OWNED by the @wardenx/reporting package
+// (the cron + recipients + format create payload) — are OWNED by the @chartwarden/reporting package
 // (packages/reporting/src/schemas); we re-export them so the route plugins + the OpenAPI enrichment
 // table reference ONE symbol, then wrap them in the per-route request envelopes here.
 //
@@ -15,7 +15,7 @@
 // body never carries an organization_id or an owner membership id.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
-import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@wardenx/reporting";
+import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@chartwarden/reporting";
 
 // Defence-in-depth format registration (idempotent) — `./reporting-typebox` registers these on load
 // too, but a route file may import this module first.
@@ -32,7 +32,7 @@ const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Typ
 // Re-export the package-owned §4.2 builder shapes so callers import them from the route barrel.
 export { ReportDefinitionSpec, ScheduledReportCreate, FilterTypeBox };
 
-// Vocab mirrors (canonical enums live in @wardenx/db).
+// Vocab mirrors (canonical enums live in @chartwarden/db).
 const DEFINITION_STATUS = ["draft", "published", "archived"] as const;
 const DEFINITION_AUTHORSHIP = ["system", "tenant"] as const;
 const SHARE_SCOPE = ["private", "role", "org"] as const;

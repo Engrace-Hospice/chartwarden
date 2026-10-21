@@ -32,7 +32,7 @@
 //
 // NO PHI: ids, instants and counts only. A malformed event THROWS (relay retry -> DLQ — a visible failure,
 // never a silently dropped safety page).
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

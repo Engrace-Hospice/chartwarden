@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 const contexts: Array<{ organizationId: string; userId: string }> = [];
 const queue: Array<Array<{ n: number | string }>> = [];
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   withOrgContext: async (
     _db: unknown,
     ctx: { organizationId: string; userId: string },
@@ -28,8 +28,8 @@ vi.mock("@wardenx/tenancy", () => ({
   },
 }));
 
-vi.mock("@wardenx/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/db")>();
+vi.mock("@chartwarden/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/db")>();
   return { ...actual, organizationTimezone: async () => "America/Los_Angeles" };
 });
 

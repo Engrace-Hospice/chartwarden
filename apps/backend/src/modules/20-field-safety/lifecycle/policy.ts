@@ -7,7 +7,7 @@
 // a regression that never happened.
 //
 // THE FLOOR IS MERGED UNDER, NOT OVER (M20-F03). There is no org-NULL platform row — `SAFETY_POLICY_FLOOR`
-// is a code constant (@wardenx/types) that the migration seeds each tenant's first version from and that
+// is a code constant (@chartwarden/types) that the migration seeds each tenant's first version from and that
 // this resolver fills any absent knob with. "Absent" is not a state today (every §3.3 column is NOT NULL),
 // and that is exactly why the merge is written defensively: the day a migration adds a knob, every version
 // row written before it carries `undefined` for it, and a resolver that passed the undefined through would
@@ -33,8 +33,8 @@ import type {
   SafetyPolicyEffectiveDto,
   SafetyPolicyVersionId,
   SafetySubscriptionModel,
-} from "@wardenx/types";
-import { SAFETY_POLICY_BOUNDS, SAFETY_POLICY_FLOOR } from "@wardenx/types";
+} from "@chartwarden/types";
+import { SAFETY_POLICY_BOUNDS, SAFETY_POLICY_FLOOR } from "@chartwarden/types";
 import { requireSafety } from "./errors";
 
 /** One `safety_policy_version` row as the resolver sees it. Every knob is OPTIONAL here and NOT NULL in the

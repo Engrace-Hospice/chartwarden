@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.5/§2.7 D14 admission-discharge + patient-deceased cascade — M13-T05.
+// @chartwarden/emar — §2.5/§2.7 D14 admission-discharge + patient-deceased cascade — M13-T05.
 import { describe, expect, it } from "vitest";
 import {
   type CascadeActiveDeployment,

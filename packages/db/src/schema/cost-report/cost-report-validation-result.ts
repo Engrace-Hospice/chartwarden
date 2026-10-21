@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_report_validation_result` (M27 §3.3, D9; non-partitioned; retention
+// @chartwarden/db — `cost_report_validation_result` (M27 §3.3, D9; non-partitioned; retention
 // `compliance`). One row per rule applied in a validation run. `details` (remediation hints / computed
 // values) is captured fully in audit (small + important for replay, §3.6). ORG-SCOPED. No PHI (D18).
 import { index, jsonb, pgEnum, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";

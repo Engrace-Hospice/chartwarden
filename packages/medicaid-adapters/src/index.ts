@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — M24 Billing — Medicaid pure-domain package entrypoint (public barrel).
+// @chartwarden/medicaid-adapters — M24 Billing — Medicaid pure-domain package entrypoint (public barrel).
 //
 // M24 owns the assembly, validation, submission, and acknowledgment of state Medicaid hospice claims —
 // including the Room & Board per-diem flow — across a pluggable per-state adapter registry (ARCH §11.E /
@@ -8,7 +8,7 @@
 // rule-result vocabulary), the `MedicaidAdapter` interface + the per-state registry, the Oregon reference
 // adapter (real metadata + helpers; wire I/O deferred) and the WA/ID/CA/NV Phase-1 deny-stubs.
 //
-// PURE DOMAIN: no Fastify, Drizzle/DB, BullMQ, @wardenx/db, getSeam, clock. The state Medicaid Recipient ID
+// PURE DOMAIN: no Fastify, Drizzle/DB, BullMQ, @chartwarden/db, getSeam, clock. The state Medicaid Recipient ID
 // digit is NEVER a field/return on any surface (D12 / §3.6). Adapter METHODS are the only async I/O surface
 // (they do real work when implemented); the validation rules never call them.
 

@@ -1,4 +1,4 @@
-// @wardenx/billing — read-side schemas: route #2 list, #3 detail, #10 lines, #11 state-history,
+// @chartwarden/billing — read-side schemas: route #2 list, #3 detail, #10 lines, #11 state-history,
 // #12 submissions, #13 acknowledgments (§4.1). All aggregate / id-keyed projections — NO MBI, no
 // free-text PHI on any field (D13 / §3.6 / §8.7).
 import { type Static, Type } from "@sinclair/typebox";

@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the nine outbox-event names (§4.10) + their TypeBox payload shapes. The backend
+// @chartwarden/cap-management — the nine outbox-event names (§4.10) + their TypeBox payload shapes. The backend
 // events-by-m26.ts assembles the platform `ModuleEventContribution` from these in P3 (the M27 precedent); the
 // dispatcher validates each `m26.cap.*` publish against the matching payload schema inside the mutation
 // transaction (transactional outbox). Names use the `m26.<resource=cap>.<verb>` form (no version suffix — the

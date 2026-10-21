@@ -42,7 +42,7 @@ lookup. (The SUD-treatment-medication consent gate is a *display* redaction down
 ### Mobile offline (manifest-exempt — server path only, this task)
 
 Per architecture §25.10 / §6.3, a medication-order draft captured offline lives in the shared
-`@wardenx/mobile-offline` store and syncs via `POST /api/v1/medication-orders` with the device draft id as the
+`@chartwarden/mobile-offline` store and syncs via `POST /api/v1/medication-orders` with the device draft id as the
 `Idempotency-Key`. **Signature actions are never permitted offline** (the signature primitive requires an
 authoritative server timestamp + audit + DoseSpot transmission). It is **not** a codePath and **not**
 fitness-governed (deferred in Phase 0). M12-T09 builds only the server-side read screens (Track B) + the

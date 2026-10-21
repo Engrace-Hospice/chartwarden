@@ -17,8 +17,8 @@ import {
   createInMemoryStepUpOverrideStore,
   createSessionContextResolver,
   tightenStepUpPolicy,
-} from "@wardenx/auth";
-import { STEP_UP_POLICY } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { STEP_UP_POLICY } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

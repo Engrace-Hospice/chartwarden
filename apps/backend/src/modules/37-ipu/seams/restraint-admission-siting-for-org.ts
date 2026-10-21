@@ -32,8 +32,8 @@
 // null-on-miss contract; a restraint-incident draft that cannot be sited is advisory-adjacent (a safety
 // paper trail), not a write whose loss on an unrecognised org is itself a correctness bug worth blocking
 // redelivery over.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const ADMISSION = schema.ipuAdmission;

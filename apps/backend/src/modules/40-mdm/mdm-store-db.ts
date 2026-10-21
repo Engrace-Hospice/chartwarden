@@ -19,7 +19,7 @@
 //     SECURITY DEFINER functions. GAP-060: all three writes used to throw a blanket 501 behind live,
 //     fully-enriched admin routes, and `listMergeRequests` read `merge_request` directly on the app
 //     pool, which is a `permission denied` 500 — so the queue could be neither seen nor acted on.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   BaaRecordRow,
   BaaRegisterEntry,
@@ -36,10 +36,10 @@ import type {
   OverlayFields,
   OverlayPhysicianFields,
   SearchSpec,
-} from "@wardenx/mdm";
-import type { BaaEntityKind } from "@wardenx/mdm";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/mdm";
+import type { BaaEntityKind } from "@chartwarden/mdm";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
 /** Rows the platform-ops NPPES console shows (the DB function clamps it again at 200). */

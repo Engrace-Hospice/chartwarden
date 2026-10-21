@@ -5,7 +5,7 @@ import { Type } from "@sinclair/typebox";
 // POST /tenant/feature-flags/:flagKey (feature_flag.write_tenant + `feature_flag_write_authority` + step-up).
 // The write's ABAC target is built SERVER-SIDE from the verified session org: `organizationId` is the actor's
 // own org, never a body field, so an org_admin can only reach a flag row scoped to its own tenant.
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { TenantFlagWriteRequest } from "../typebox";
 import type { TenantAccountFlagsService } from "./account-flags-service";

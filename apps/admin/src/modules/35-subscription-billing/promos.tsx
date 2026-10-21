@@ -8,8 +8,8 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
 // Cross-tenant promo catalog over GET /api/admin/promos with redemption counts; create via POST
 // /api/admin/promos and deactivate via POST /api/admin/promos/:id/deactivate (promo.admin.write — step-up +

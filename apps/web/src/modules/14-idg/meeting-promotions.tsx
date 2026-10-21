@@ -2,7 +2,7 @@
 // patient, who proposed it and when. "Add to agenda" puts an `other` item (a pointer) on the agenda; "Decline" records a
 // reason. Hidden while the tenant has proposals off (`enabled:false`) or there are none; every owner-route refusal reads
 // as one neutral "no longer available" line. (No "Open message" link: agenda items do not carry the channel id.)
-import { Button, Panel, SelectField, t, useApiClient } from "@wardenx/ui";
+import { Button, Panel, SelectField, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import {

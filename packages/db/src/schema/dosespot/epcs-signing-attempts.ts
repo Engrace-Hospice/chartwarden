@@ -1,4 +1,4 @@
-// @wardenx/db — `epcs_signing_attempt` (M12 §3.3 / §7.3, DEA §1311.205 records-of-application). One
+// @chartwarden/db — `epcs_signing_attempt` (M12 §3.3 / §7.3, DEA §1311.205 records-of-application). One
 // append-only row per controlled-substance e-prescribing signing attempt: the §1311.116 60-second nonce
 // (stored ONLY as its SHA-256 — the nonce value itself is never persisted), the second-factor type, the
 // hashed signing device + IP (`ip_address_digest` = sha256(IP+salt), never a raw IP), and the

@@ -3,7 +3,7 @@
 // sheet and the tenant-export cover letter (M34). Proves each draws exactly its declared fields (an allow-list),
 // fails closed on a payload missing what the document exists to state, keeps payload-derived titles, internal
 // object keys and unknown keys off the page and out of file metadata, and is deterministic.
-import { RenderPayloadError } from "@wardenx/types";
+import { RenderPayloadError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { COMPILED_FORMS } from "../src/modules/22-documents/render-pdf/forms";
 import { layoutDocument, pageTexts } from "../src/modules/22-documents/render-pdf/layout";

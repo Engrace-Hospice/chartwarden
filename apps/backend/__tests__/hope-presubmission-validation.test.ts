@@ -1,7 +1,7 @@
 // apps/backend/__tests__/hope-presubmission-validation.test.ts — F-057. The CMS HOPE pre-submission
 // rule set, driven through its IO runner `runHopeAssessmentValidation` (validation/run-validation.ts).
 //
-// `validateHopeAssessment` (@wardenx/hope) is a pure rule set with its own unit suite. What this suite
+// `validateHopeAssessment` (@chartwarden/hope) is a pure rule set with its own unit suite. What this suite
 // proves is the layer above it: the projection from the stored `data` jsonb to the engine's typed
 // inputs, and the M38 availability/membership oracle resolved through the `TerminologyProvider` seam.
 //
@@ -10,9 +10,9 @@
 // and in `getValidation` over the old `data` blob) was deliberately NOT restored — main's spec-registry
 // validation service replaces it — see audit/FORCE_PUSH_RECOVERY_AUDIT_2026-09-25.md. The runner itself
 // is still exported and used (jobs/cron-workers.ts), so every case now calls it directly.
-import { HOPE_VALIDATION_RULES, type HopeValidationFindingDescriptor } from "@wardenx/hope";
-import { PLATFORM_VALUE_SET_MEMBERS } from "@wardenx/terminology";
-import type { HopeDischargeReason, HopeRfaKind } from "@wardenx/types";
+import { HOPE_VALIDATION_RULES, type HopeValidationFindingDescriptor } from "@chartwarden/hope";
+import { PLATFORM_VALUE_SET_MEMBERS } from "@chartwarden/terminology";
+import type { HopeDischargeReason, HopeRfaKind } from "@chartwarden/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { runHopeAssessmentValidation } from "../src/modules/10-hope/validation/run-validation";

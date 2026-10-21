@@ -3,7 +3,7 @@
 // shape of `../seams/drizzle-store.ts`'s `fifteenDayCycleCountsForOrg` (explicit `organizationId`,
 // caller-owned `withOrgContext` tx — this file never opens its own tenancy envelope; `cron-workers.ts`'s
 // per-org fan-out owns that so the read, the outbox publish, and the marker writes commit atomically).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import type { CarePlanGateSnapshot, PlannedCarePlanEvent } from "./index";
 

@@ -15,9 +15,9 @@
 //
 // Pure orchestration over an injected store port: the in-memory store backs the slice/tests, production
 // injects the Drizzle-backed one (every statement inside `withOrgContext`, so RLS scopes by app.org_id).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, type ElevatedApprovalReader, NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, type ElevatedApprovalReader, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 

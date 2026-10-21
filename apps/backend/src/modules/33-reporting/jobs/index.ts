@@ -2,7 +2,7 @@
 // (queue names / params / schedules / DLQ / idempotency keys) + the pure processor closures that wrap each
 // §2 worker over its injected ports — pure data + thin closures, NO `bullmq` import (the live `Worker`/`Queue`
 // construction binds at app boot in `m33-jobs.ts`, the M4-T11 `audit-jobs.ts` / M34 `saas-jobs.ts` pattern).
-// The job LOGIC all lives in @wardenx/reporting (unit-tested against in-memory ports); this file only NAMES
+// The job LOGIC all lives in @chartwarden/reporting (unit-tested against in-memory ports); this file only NAMES
 // the queues and adapts `(job.data, ports) → worker(job.data, ports)`.
 //
 // §4.8 queues (the spec table, verbatim wire names): report.mv_refresh · report.scheduled_run ·
@@ -35,7 +35,7 @@ import type {
   ScheduledRunPorts,
   ScheduledRunResult,
   XlsxRenderRequestPorts,
-} from "@wardenx/reporting";
+} from "@chartwarden/reporting";
 import {
   handleCsvExport,
   handleMvRefresh,
@@ -44,7 +44,7 @@ import {
   requestXlsxRender,
   runLagProbe,
   writeDrilldownAudit,
-} from "@wardenx/reporting";
+} from "@chartwarden/reporting";
 
 // ── §4.8 queue catalog (spec-literal `report.*`; the scheduler binds the cron repeatables at boot) ─────
 
@@ -211,7 +211,7 @@ export function tenantEraserJobId(organizationId: string): string {
 
 /**
  * The tenancy envelope a job runs inside. The live wiring resolves the scope per queue and wraps the
- * port-binding + the package-worker call in the matching @wardenx/tenancy / @wardenx/reporting context (F09):
+ * port-binding + the package-worker call in the matching @chartwarden/tenancy / @chartwarden/reporting context (F09):
  *   - `org`      → `withReportSession` (read-replica reads) or `withOrgContext` (org-scoped writes) — the
  *                  scheduled-run / export-render / tile-warm / drilldown-audit jobs scope to the REQUESTING
  *                  tenant's RLS (never platform bypass).

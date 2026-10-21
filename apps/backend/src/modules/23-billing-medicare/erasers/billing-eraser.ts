@@ -6,7 +6,7 @@
 // COMPLIANCE-class (7 years past final action per CMS 42 CFR §424 / §405 + state override, M4 D1), so the
 // registered eraser is the DESTRUCTION handler the M4 destruction-cert workflow invokes — NOT an
 // ordinary-offboarding cleanup. The §3.7 cascade order + the redact/shred surface are the pure
-// `@wardenx/billing` eraser contract (`M23_PATIENT_CASCADE_ORDER` / `M23_REDACT_FIELDS`); this backend
+// `@chartwarden/billing` eraser contract (`M23_PATIENT_CASCADE_ORDER` / `M23_REDACT_FIELDS`); this backend
 // wrapper only adapts the package's `BillingEraseStore` to the M1 `DataEraser` contract and registers the
 // REAL eraser over the Phase-0 deny-stub via the composition-root `registerModuleErasers` hook (after
 // wireErasers(), before validateErasers() — the same M6/M22/M27/M30 registration shape).
@@ -27,15 +27,15 @@
 // reason, replacement reason, patient-id refs) are redacted rather than orphaned. NO MBI is ever a field
 // (§3.6 — it never persists).
 //
-// AI-BLOCK (D13): no `@wardenx/ai-platform` import here (the dependency-cruiser boundary enforces it).
+// AI-BLOCK (D13): no `@chartwarden/ai-platform` import here (the dependency-cruiser boundary enforces it).
 import {
   BillingEraseRefused,
   type BillingEraseStore,
   type BillingEraseTableCounts,
   M23_RETENTION_CLASS,
-} from "@wardenx/billing";
-import { type DbClient, schema } from "@wardenx/db";
-import type { DataClass, DataEraser } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 // IMPORT-BOUNDARY NOTE (differs from M27): M23 `dependsOn = [6,8,22,38,40]` does NOT include M1, so the
@@ -47,7 +47,7 @@ import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
 
 /**
- * The M23 destruction data class. NOT yet a member of the `@wardenx/types` `DataClass` union (M4-owned) —
+ * The M23 destruction data class. NOT yet a member of the `@chartwarden/types` `DataClass` union (M4-owned) —
  * cast here as the single string literal so the wiring lands in one place (the M27 `cost_report_class` /
  * M30 `quality_class` precedent). The Integrate phase adds `"billing_record"` to that union + to
  * `REQUIRED_ERASERS` (apps/backend/src/bootstrap/erasers/registry.ts) so boot fails closed if M23's real
@@ -695,7 +695,7 @@ export function createDrizzleBillingEraseStore(
  * the default; prod injects `createDrizzleBillingEraseStore(db)` bound to the PRIVILEGED M4 destruction-cert
  * connection (wardenx_admin — the app role holds no DELETE on any M23 table, migration 0077).
  *
- * TODO(M23 boot-wiring, Integrate phase): (1) add `"billing_record"` to the `@wardenx/types` `DataClass`
+ * TODO(M23 boot-wiring, Integrate phase): (1) add `"billing_record"` to the `@chartwarden/types` `DataClass`
  * union + `REQUIRED_ERASERS` so the deny-stub exists to register over; (2) have the M4 org-destruction
  * driver invoke `store.eraseOrgBillingConfig` (MAC `client_secret_cipher` cryptographic shred incl. the DEK
  * rotation + operational config) when it lands — the Drizzle store above already implements both paths.

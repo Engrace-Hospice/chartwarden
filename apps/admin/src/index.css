@@ -2,7 +2,7 @@
  *
  * Two jobs, mirroring apps/web/src/index.css + apps/portal/src/index.css:
  *   1. Pull in Tailwind v4 (Preflight reset + the utility engine) via the @tailwindcss/vite plugin.
- *   2. Define the design tokens the admin screens + @wardenx/admin-ui-shell chrome consume.
+ *   2. Define the design tokens the admin screens + @chartwarden/admin-ui-shell chrome consume.
  *
  * SOURCE OF TRUTH is packages/ui/src/core/theme/colors.ts + apps/web/src/index.css. Tokens remain local
  * because the web @theme block is required by Tailwind and the architecture gate; shared browser defaults

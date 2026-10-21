@@ -1,7 +1,7 @@
 // M36 WP 3.4: handing a task to someone else. The candidates are the task channel's own members (the composer's source).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { TaskReassignDialog } from "./task-reassign-dialog";
 import { TASK_FIXTURE } from "./tasks-test-fixture";

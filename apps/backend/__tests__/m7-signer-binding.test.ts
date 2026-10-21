@@ -1,4 +1,4 @@
-import { REQUIRED_SIGNER_SET_IDG_REVIEW, REQUIRED_SIGNER_SET_INITIAL } from "@wardenx/types";
+import { REQUIRED_SIGNER_SET_IDG_REVIEW, REQUIRED_SIGNER_SET_INITIAL } from "@chartwarden/types";
 // GAP-011 / GAP-012 — care-plan sign-off is bound to the AUTHENTICATED actor, and the Required Signer Set
 // can be tightened but never loosened.
 //   011: a one-role user cannot stamp another seat (SIGNER_ROLE_MISMATCH 403) and one membership cannot

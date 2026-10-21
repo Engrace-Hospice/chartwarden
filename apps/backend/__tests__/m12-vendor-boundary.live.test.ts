@@ -20,9 +20,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
-import { createUnboundDoseSpotClient } from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
+import { createUnboundDoseSpotClient } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
 import Fastify from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

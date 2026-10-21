@@ -15,13 +15,13 @@
 // out of reach (the tenant role has no write grant, §7.4). Like the rest of the slice it runs over
 // an injected store with an in-memory default; production injects the Drizzle-backed store (the same
 // `TerminologyStore` adapter the provider/routes use, which implements `eraseTenantExtensions`).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type TerminologyEraseStore,
   createInMemoryTerminologyStore,
   eraseTenantTerminology,
-} from "@wardenx/terminology";
-import type { DataEraser } from "@wardenx/types";
+} from "@chartwarden/terminology";
+import type { DataEraser } from "@chartwarden/types";
 import { registerEraser } from "../../../bootstrap/index";
 import { createDbTerminologyStore } from "../terminology-store-db";
 

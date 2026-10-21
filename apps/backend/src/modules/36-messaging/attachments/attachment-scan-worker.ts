@@ -4,7 +4,7 @@
 //
 // A scanner outage is NOT a job failure: the row stays `pending` and the next tick tries again (the per-row error goes
 // to `onScanError`). Only an org-level failure (e.g. the DB) fails the tick, via the same fan-out the integrity jobs use.
-import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
+import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type M36IntegrityWorkerDeps, fanOutOrgs } from "../jobs/integrity-workers";
 import { REAP_TICK_BUDGET_MS, SCAN_TICK_BUDGET_MS } from "./attachment-policy";

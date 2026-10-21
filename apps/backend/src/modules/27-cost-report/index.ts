@@ -8,7 +8,7 @@
 //
 // NB the SEVEN §4.3 published seams (CostReportProvider / CostReportFilingStatusReader / EcrArtifactReader
 // / ValidationResultProvider / XeroClientFactory / GustoClientFactory / CostReportMetricsProvider) + the
-// §4.4 consumed-seam bundle (incl. the M23/M26 forward-seam deny-stubs) live in `@wardenx/cost-report`
+// §4.4 consumed-seam bundle (incl. the M23/M26 forward-seam deny-stubs) live in `@chartwarden/cost-report`
 // (registerM27PublishedSeams / M27_REQUIRED_SEAMS / makeDenyStub). They are NOT wired into the M1
 // SeamRegistry here yet because M27's seam names are not yet members of the M1 `SeamContracts` /
 // `REQUIRED_SEAMS` (M1-owned) — adding those entries is a foundation change outside this slice; until

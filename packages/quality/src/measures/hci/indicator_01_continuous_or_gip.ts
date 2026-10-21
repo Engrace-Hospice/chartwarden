@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 1: Continuous Home Care (CHC) or General Inpatient (GIP) provided
+// @chartwarden/quality — HCI indicator 1: Continuous Home Care (CHC) or General Inpatient (GIP) provided
 // (§1.1). Pure function over already-fetched M6 `LevelOfCarePeriodReader` projections. No IO.
 //
 // CMS criterion: the hospice provided at least one day of CHC or GIP level of care in the reporting period

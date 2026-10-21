@@ -29,7 +29,7 @@ import type {
   TriageProtocolId,
   TriageProtocolQuestionId,
   TriageRedFlagMatch,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type TriageSideEffect, withAudit, withAuditAndHistory } from "./effects";
 import { TriageStateError, require_ } from "./errors";
 

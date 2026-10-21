@@ -1,4 +1,4 @@
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 // apps/backend/src/modules/06-admission/state-machines/validation.ts — M6-T04 (§2.4).
 //
 // §2.4 has two kinds of rule: SYNCHRONOUS (run inside the service before any DB write, raise an inline

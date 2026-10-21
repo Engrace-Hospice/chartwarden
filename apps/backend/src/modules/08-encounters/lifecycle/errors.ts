@@ -7,7 +7,7 @@
 // with the precise code + HTTP status the UI keys its message off, with no cross-module import edge. The
 // code→status mapping is the single source mirrored from §2.7; nothing transitions on a string match —
 // each code is an enumerated constant (the M6 state-machine convention).
-import { type ErrorDetailType, ChartWardenError } from "@wardenx/types";
+import { type ErrorDetailType, ChartWardenError } from "@chartwarden/types";
 
 /** The full §2.7 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
 export const M8_ERROR_STATUS = {
@@ -46,7 +46,7 @@ export const M8_ERROR_STATUS = {
   PARENT_VOIDED: 409,
   VERSION_MISMATCH: 412,
   IMMUTABLE_AFTER_SIGN: 409,
-  // §2.6 HearthNote Layer-1 assembly (#114). `@wardenx/hearthnote` documents its own error codes as
+  // §2.6 HearthNote Layer-1 assembly (#114). `@chartwarden/hearthnote` documents its own error codes as
   // "mapped to HTTP by the M8 service in T09" — this is that mapping, which was never written because
   // nothing ever assembled. TEMPLATE_NOT_FOUND and VOCAB_VERSION_MISMATCH already have codes above
   // (INVALID_ENCOUNTER_DISCIPLINE_PAIR / VOCAB_VERSION_MISMATCH), exactly as the package prescribes.

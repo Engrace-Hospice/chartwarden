@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — the `TenantSupportSessionProvider` seam (M34 §4.6).
+// @chartwarden/saas-tenant-platform — the `TenantSupportSessionProvider` seam (M34 §4.6).
 //
 // The read surface over platform-ops break-glass support sessions (`support_session` +
 // `support_consent_grant`, §3.3) — tenant-consented, time-boxed access a platform-ops actor holds

@@ -31,8 +31,8 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import type { IsoInstant, MembershipId } from "@wardenx/types";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import type { IsoInstant, MembershipId } from "@chartwarden/types";
 import { type VolunteerGateFacts, effectiveStatusFor } from "./volunteer/index";
 
 /** The §4.5 predicate names M15 owns (registered into M3). Single-owner across the platform registry. */
@@ -86,7 +86,7 @@ export interface DisciplinePlanAbacResolver {
   ): Promise<readonly VolunteerGateFacts[] | null>;
 }
 
-/** The M39 verdict the family-violence gate consults (structurally typed — no @wardenx/consent edge). */
+/** The M39 verdict the family-violence gate consults (structurally typed — no @chartwarden/consent edge). */
 export type FamilyViolenceRedactionProbe = (input: {
   readonly organizationId: string;
   readonly patientId: string;

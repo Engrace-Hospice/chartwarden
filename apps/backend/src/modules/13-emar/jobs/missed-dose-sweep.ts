@@ -29,8 +29,8 @@
 // sweep reads `grace_window_minutes` off the row — never a re-resolved policy that could retroactively
 // change what counted as missed.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 

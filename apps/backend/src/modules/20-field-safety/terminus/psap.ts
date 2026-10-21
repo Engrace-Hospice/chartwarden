@@ -8,9 +8,9 @@
 // What is surfaced to a human is NOT decided here: the terminus UI always shows the static "call 911 / your
 // local emergency number" line; the PSAP administrative line is supplementary (and labelled with who verified
 // it, when). The platform never dials a PSAP.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import type { OrgId } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import type { OrgId } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import { coordinatesCaptured, decodeCoordinates } from "../routes/coordinates";
 import type { SafetyDecipherPort } from "../routes/read-service-drizzle";

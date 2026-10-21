@@ -1,4 +1,4 @@
-import { Panel, StatusPill, type StatusTone, type operations, useApiClient } from "@wardenx/ui";
+import { Panel, StatusPill, type StatusTone, type operations, useApiClient } from "@chartwarden/ui";
 // apps/web/src/shell — the F-238 PROSPECT SUMMARY render, shared across modules (like goals-progress.tsx): the
 // DocLens review workspace (M22) shows it once a review completes, and the patient chart's Overview (M5) shows
 // every completed intake summary of a patient on service. One clean picture of the person an intake fax

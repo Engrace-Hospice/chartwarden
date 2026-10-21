@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — M24 Type-of-Bill derivation + replacement/void mapping (D13). Most states'
+// @chartwarden/medicaid-adapters — M24 Type-of-Bill derivation + replacement/void mapping (D13). Most states'
 // Medicaid 837I uses the same hospice TOB frequency codes as Medicare (81X): the trailing digit is the
 // billing-cadence frequency. Per-state TOB variations are expressed by the adapter's replacementTob /
 // voidTob methods (§4.5). PURE DOMAIN: deterministic, no I/O.

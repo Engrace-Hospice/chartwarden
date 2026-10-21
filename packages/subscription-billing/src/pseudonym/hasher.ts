@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §D6 HMAC pseudonym computation (pure core, M35-T03).
+// @chartwarden/subscription-billing — §D6 HMAC pseudonym computation (pure core, M35-T03).
 //
 // The D6 discipline in ONE function: a per-patient / per-user meter signal is stored in M35 ONLY as an
 // `HMAC-SHA256(active_key_material, subjectId)` digest, hex-encoded and truncated to the 32-lowercase-hex
@@ -13,7 +13,7 @@
 // digest with overwhelming probability.
 
 import { createHmac } from "node:crypto";
-import type { BillingPseudonym } from "@wardenx/types";
+import type { BillingPseudonym } from "@chartwarden/types";
 import { isValidBillingPseudonym } from "../domain/validation";
 
 /** The number of lowercase-hex characters a §2.3 pseudonym occupies (16 bytes of the SHA-256 digest). */

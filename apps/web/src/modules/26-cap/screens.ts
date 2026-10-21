@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/26-cap — M26 Cap Management screen registration (R2, ADR-0030, §5). The read surface
 // over the live /api/v1/cap/* + /api/v1/platform/cap/* backend (27 routes). Each `requiredPermission` is the
 // REAL §4.6 M26 key the matching route gates on (already in packages/auth/src/permissions/contributed.ts via

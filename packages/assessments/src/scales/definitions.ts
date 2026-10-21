@@ -1,4 +1,4 @@
-// @wardenx/assessments — the per-scale ITEM definitions the capture form is built from (F-067).
+// @chartwarden/assessments — the per-scale ITEM definitions the capture form is built from (F-067).
 //
 // `SCALE_CATALOG` (catalog.ts) has always carried a scale's label, family and license requirement, and
 // its own header says it is "the single source the record-modal scale picker (T07) ... read". There was
@@ -16,7 +16,7 @@
 // in the route's own `scaleType` enum. That is a legal request reaching an unhandled path, and it is why
 // `items` is `null` rather than `[]` for them: a form cannot be built, and "no items" would read as
 // "this scale takes no data" rather than "this scale cannot be captured yet".
-import type { ScaleType } from "@wardenx/types";
+import type { ScaleType } from "@chartwarden/types";
 import { SCALE_CATALOG } from "../catalog";
 import { hasScorer } from "../scoring";
 import { esasrScorer } from "./esas-r";

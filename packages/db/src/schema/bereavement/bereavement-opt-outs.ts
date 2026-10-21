@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_opt_out` (M16 §3.3.8). D9's second level: the per-contact, post-creation
+// @chartwarden/db — `bereavement_opt_out` (M16 §3.3.8). D9's second level: the per-contact, post-creation
 // opt-out. (The FIRST level is M5's patient-level `bereavement_opt_out` flag, which prevents the plan from
 // ever being created — that one lives in M5, not here.)
 //
@@ -56,7 +56,7 @@ export const bereavementOptOut = pgTable(
 
     optedOutAt: timestamp("opted_out_at", { withTimezone: true }).notNull().defaultNow(),
     recordedByUserId: uuid("recorded_by_user_id"), // NULL when the portal self-service path recorded it
-    // Mirrors `BereavementOptOutSourceKind` in @wardenx/types.
+    // Mirrors `BereavementOptOutSourceKind` in @chartwarden/types.
     sourceKind: text("source_kind").notNull(),
 
     rescindedAt: timestamp("rescinded_at", { withTimezone: true }), // D9 90-day self-service undo

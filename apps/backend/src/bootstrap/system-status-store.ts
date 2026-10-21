@@ -28,7 +28,7 @@
 // actor id here would be inventing a fact the route does not have. A future pass that wants attribution
 // needs to widen the route handler (and the `SystemStatusComponent` shape) to carry one through first, not
 // this store.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type { SystemStatusComponent, SystemStatusReader } from "./routes/system";
 
 /**

@@ -1,8 +1,8 @@
 // apps/backend/src/modules/27-cost-report/jobs — M27 background-jobs adapter barrel (§4.8).
 //
-// The thin, infra-touching BullMQ wiring that turns the @wardenx/cost-report PURE domain (lifecycle reducer,
+// The thin, infra-touching BullMQ wiring that turns the @chartwarden/cost-report PURE domain (lifecycle reducer,
 // allocation/ECR/validation, money/snapshot) into running `Worker`s + the cron-schedule `Queue`s. Unlike
-// @wardenx/quality, @wardenx/cost-report ships NO processors/queue catalog (P1 = "no BullMQ"), so this folder
+// @chartwarden/quality, @chartwarden/cost-report ships NO processors/queue catalog (P1 = "no BullMQ"), so this folder
 // holds BOTH the §4.8 queue catalog (`queues.ts`) AND the live `Worker`/`Queue` construction + processor logic
 // (`m27-jobs.ts`). The composition root imports `registerM27Workers` / `registerM27CronWorkers` /
 // `scheduleM27Jobs` from here at boot. Nothing runs at import.

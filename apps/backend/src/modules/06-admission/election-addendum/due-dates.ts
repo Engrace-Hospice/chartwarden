@@ -9,7 +9,7 @@
 //
 // Scope: only elections whose effective date is on or after 2026-10-01 (418.24(b)(6), (c), (d)(1): "for hospice
 // elections beginning on or after October 1, 2026"). Earlier elections owe no addendum (it was on-request only).
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import {
   addCalendarDays,
   endOfOrgDayInstant,

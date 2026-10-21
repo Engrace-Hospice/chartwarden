@@ -4,8 +4,8 @@ import {
   WORKSHEET_SCHEMAS,
   emptyWorksheetData,
   resolveWorksheetSchema,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 worksheet-schema registry/resolver pure-domain unit tests (§4.2 / D3).
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 worksheet-schema registry/resolver pure-domain unit tests (§4.2 / D3).
 //
 // Covers the previously-untested `worksheets/` surface the §4.2 service layer (and the ECR writer) depend
 // on: the `WORKSHEET_SCHEMAS` registry is exhaustive over the 17 `WORKSHEET_CODES`; `resolveWorksheetSchema`

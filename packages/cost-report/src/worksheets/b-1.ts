@@ -1,4 +1,4 @@
-// @wardenx/cost-report — Worksheet B-1 (Cost Allocation – Statistical Basis) TypeBox schema
+// @chartwarden/cost-report — Worksheet B-1 (Cost Allocation – Statistical Basis) TypeBox schema
 // (Form CMS-1984-14, Pub 15-2 §4320). B-1 is the STATISTICAL BASIS that drives the Worksheet B step-down:
 // for each general-service (overhead) cost center it records the recommended allocation statistic (square
 // feet, in-facility days, gross salaries, accumulated cost, …), the total statistic base, and that portion
@@ -8,7 +8,7 @@
 // row/column codes). Money is INTEGER CENTS; statistics are fractional; no PHI (D18).
 //
 // CMS-CERT: certified against the form + Ch.43 §4320 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** One general-service cost center's statistical-basis column: its recommended basis, total statistic, and the

@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — mount Better Auth on Fastify (M2, AUTH-T02, ADR-0033).
+// @chartwarden/auth · identity — mount Better Auth on Fastify (M2, AUTH-T02, ADR-0033).
 //
 // Bridges Fastify's request/reply to Better Auth's web-standard `handler(request: Request)`. We use the
 // web handler (not toNodeHandler) so the bridge stays scoped to the /api/auth/* route — no global

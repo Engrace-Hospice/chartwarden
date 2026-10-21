@@ -1,4 +1,4 @@
-// @wardenx/triage-vendors — the §4.4 / §8.5 `ExternalTriageVendorAdapter` interface (M19-T01).
+// @chartwarden/triage-vendors — the §4.4 / §8.5 `ExternalTriageVendorAdapter` interface (M19-T01).
 //
 // Per architecture §25.14 (the adapter mandate) this package is the ONLY place an external triage
 // vendor's endpoint, credentials and payload shape live; dependency-cruiser (architecture-fitness §25.15
@@ -15,7 +15,7 @@
 // `assertVendorPayloadMinimized` (§7.10) before it reaches an adapter's `submit`. An adapter never sees
 // the full `TriageVendorSourceContext` and never logs a body.
 
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 import type { VendorMinimizationProfile, VendorOutboundPayload } from "./minimization";
 

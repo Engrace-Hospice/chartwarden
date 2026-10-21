@@ -11,7 +11,7 @@
 // wire code is the contract, so the two the spec wrote are kept exactly and every code the spec only
 // describes in prose follows the same shape — one module, one dialect. (M21's `M21_*` prefix exists
 // because M21's own §7 tables spell it that way; copying it here would have contradicted §7.1/§7.3.)
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §7 machine-readable failure-code catalog → HTTP status. */
 export const M19_ERROR_STATUS = {

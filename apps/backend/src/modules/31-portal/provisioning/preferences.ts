@@ -1,8 +1,8 @@
 // apps/backend/src/modules/31-portal/provisioning/preferences.ts — GAP-092. The portal notification preferences:
 // one `portal_notification_preference` row per (account, channel), a channel with no row reading as its default.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const PREF = schema.portalNotificationPreferences;

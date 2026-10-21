@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M16 (Bereavement). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M16 (Bereavement). ABSENT producer (§4.4).
 //
 // M16 is not yet implemented → forward-seam DENY-STUB (resolves `FORWARD_SEAM_UNAVAILABLE`, never fails
 // open). M16 registers the real `BereavementOutreachProvider` / `BereavementRiskTierProvider` /

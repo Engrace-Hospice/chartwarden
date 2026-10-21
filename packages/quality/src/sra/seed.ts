@@ -1,4 +1,4 @@
-// @wardenx/quality — SRA prior-cycle finding-seed logic (M30-P2a). Pure, IO-free.
+// @chartwarden/quality — SRA prior-cycle finding-seed logic (M30-P2a). Pure, IO-free.
 //
 // §7.4 — when a new annual SRA cycle opens, the prior cycle's still-OPEN findings carry forward so the
 // remediation work is not lost across the cycle boundary (NIST 800-66r2 continuity). A carried-forward
@@ -7,7 +7,7 @@
 // the new cycle. `mitigated` and `accepted_risk` findings are CLOSED for seed purposes (accepted-risk
 // findings are handled separately by their 12-month auto-reopen reminder, not by cycle seeding). This is
 // the pure planner; the route inserts the returned `NewSraFinding` payloads inside the open-cycle tx.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /**
  * The finding statuses considered OPEN for cycle-seed purposes — everything except the two resolved

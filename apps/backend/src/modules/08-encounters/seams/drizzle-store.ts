@@ -16,9 +16,9 @@
 // the M8 read-surface additions #251 named for M23's still-unbound `billableEncounters`/`signedEncounters`
 // seams — the `admissionSchedulingContextForOrg` (M6) shape, for the same reason: M23's boot-time seam
 // adapters have no ambient request context to read.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import type { EncounterBillability, SignedEncounterDigest } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import type { EncounterBillability, SignedEncounterDigest } from "@chartwarden/types";
 import { and, asc, between, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { evvStateOrMissing } from "../evv-at-sign";
 import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";

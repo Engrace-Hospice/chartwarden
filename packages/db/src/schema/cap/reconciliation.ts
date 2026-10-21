@@ -1,4 +1,4 @@
-// @wardenx/db — M26 Cap Management §3.3 — the PS&R reconciliation cluster (CSV import + per-line variance
+// @chartwarden/db — M26 Cap Management §3.3 — the PS&R reconciliation cluster (CSV import + per-line variance
 // queue) + the cap-year settlement (one-per-period). All NON-partitioned, all org-scoped (organization_id
 // NOT NULL → canonical app.org_id RLS). The raw PS&R file is encrypted at rest via M1 per-tenant DEK (the
 // file_storage_key points at MinIO); MBI / patient-identifiable payment detail never lands in a column here.

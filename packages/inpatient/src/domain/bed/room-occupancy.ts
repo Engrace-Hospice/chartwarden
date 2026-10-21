@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37 §2.2, route-table row 170. The shared-room occupancy gate: may this patient
+// @chartwarden/inpatient — M37 §2.2, route-table row 170. The shared-room occupancy gate: may this patient
 // be placed in this bed, given who is already in the room? GAP-061.
 //
 // The admission machine has always accepted a `roomOccupancyAllowed` fact on its `assignBed` event and
@@ -6,7 +6,7 @@
 // this failure `BED_GENDER_MISMATCH`). Nothing ever computed the fact: the route hard-coded `true`, so
 // every assignment passed. This kernel computes it. Pure & IO-free — the route resolves the room, the
 // current occupants and their M5 rooming facts, and hands them in.
-import type { PatientRoomingFacts, PatientSexClass } from "@wardenx/types";
+import type { PatientRoomingFacts, PatientSexClass } from "@chartwarden/types";
 
 /** The `ipu_room.kind` values (§3.3 / the `ipu_room_kind` enum), mirrored leaf-side. */
 export type IpuRoomKindValue = "private" | "semi_private" | "family" | "shared_overflow";

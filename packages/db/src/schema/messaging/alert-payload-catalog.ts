@@ -1,4 +1,4 @@
-// @wardenx/db — `alert_payload_catalog` (M36 Secure Messaging §3.11, M36-F06b). The
+// @chartwarden/db — `alert_payload_catalog` (M36 Secure Messaging §3.11, M36-F06b). The
 // platform-floor registry of typed alert payloads: each `payload_type` declares its owning
 // module, the floor severity (the DISTINCT `alert_payload_severity` ladder — tenants may
 // TIGHTEN but never loosen, D11), default channels + recipient resolver, and a JSON Schema.

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type PatientCreateFromIntakeInput,
   type PatientIdentity,
@@ -8,7 +8,7 @@ import {
   type PatientIntakeSubject,
   isValidMedicareNumber,
   normalizeMedicareNumber,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, gte, isNull, or } from "drizzle-orm";
 import { ensureAdmittingAssignment } from "../assignments-db";
 import { type MatchCandidate, runMatch } from "../matching/matcher";

@@ -1,4 +1,4 @@
-// @wardenx/fhir — the `FhirSearchTranslator` contract (§4.5 D6, M28-T04).
+// @chartwarden/fhir — the `FhirSearchTranslator` contract (§4.5 D6, M28-T04).
 //
 // The translator is the SINGLE POINT in M28 that knows the FHIR search grammar. It translates FHIR
 // search syntax into typed reader-seam calls — NO SQL is constructed inside M28; every read goes through

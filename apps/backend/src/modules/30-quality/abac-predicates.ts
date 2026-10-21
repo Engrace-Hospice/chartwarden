@@ -35,7 +35,7 @@
 // attribute the routes' `writeActorOf` already trusts), NOT `context.userId` (which lives in a different
 // id space). An actor whose session carries no membership id cannot own an M30 row → deny.
 //
-// NB §6.7's `part2Redisclosure` was OMITTED from the pure `@wardenx/quality` `M30_ABAC_PREDICATES`
+// NB §6.7's `part2Redisclosure` was OMITTED from the pure `@chartwarden/quality` `M30_ABAC_PREDICATES`
 // name catalog (which lists `inOrg` + the ten operator predicates). It is added HERE so the predicate
 // EXISTS (fail-closed) at boot; the pure const may want `part2Redisclosure` appended for surface
 // self-description, but this slice does NOT edit packages/quality.
@@ -47,10 +47,10 @@ import {
   type AbacTarget,
   registerPredicateIdempotent,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { schema } from "@wardenx/db";
-import type { QualityDb } from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/auth";
+import { schema } from "@chartwarden/db";
+import type { QualityDb } from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { selectActiveMemberRoleKeys } from "./member-roles";
@@ -93,7 +93,7 @@ const RETENTION_CLASS_PART2 = "compliance_42cfr_part2";
 /** The M5 §3.5 privacy flag that puts a patient's records under 42 CFR Part 2 (GAP-047). */
 const PART2_FLAG = "sud";
 
-/** The minimal M39 surface this file calls — structurally typed so M30 takes no `@wardenx/consent`
+/** The minimal M39 surface this file calls — structurally typed so M30 takes no `@chartwarden/consent`
  *  import edge (the M9 `capture-siting.ts` / M7 `seams/drizzle-store.ts` precedent). */
 interface M30ConsentEvaluatorShape {
   evaluateForInternalAccess(args: {
@@ -163,7 +163,7 @@ export interface MortalityReviewAbacFacts {
 /**
  * Loads the org-scoped owner facts + the OPAQUE M5/M39 Part-2 reach the M30 predicates resolve (Drizzle
  * under RLS in prod via {@link buildDrizzleM30AbacResolver}; an in-memory stub in unit tests). The M5
- * PrivacyFlag snapshot + M39 consent reach is opaque (no `@wardenx/patient` / M39 import edge) — the
+ * PrivacyFlag snapshot + M39 consent reach is opaque (no `@chartwarden/patient` / M39 import edge) — the
  * Drizzle resolver returns false (fail-closed) until those seams land in the M1 SeamContracts.
  */
 export interface ReadingM30AbacResolver {
@@ -245,14 +245,14 @@ export const denyStubM30AbacResolver: ReadingM30AbacResolver = {
 
 /**
  * The REAL P2c Drizzle-backed `ReadingM30AbacResolver`. Each owner-fact load opens ONE
- * `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @wardenx/tenancy helper) so Postgres RLS
+ * `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @chartwarden/tenancy helper) so Postgres RLS
  * scopes every statement to `app.org_id` — the read-service-drizzle precedent. The partitioned tables
  * (`incident_report`, `mortality_review`) are point-read by id alone (org + RLS scope the row; the
  * partition key need not be supplied for a single-row lookup). `loadMemberRoleKeys` joins
  * `membership_role` → `role` for the LIVE (unexpired) role keys.
  *
  * The two M5/M39 Part-2 reaches go through the M1 seam registry (GAP-047), not through a schema edge:
- * `PatientPrivacyFlagReader` is leaf-typed in @wardenx/types so `getSeam` resolves it with no import
+ * `PatientPrivacyFlagReader` is leaf-typed in @chartwarden/types so `getSeam` resolves it with no import
  * edge, and M39's `ConsentEvaluator` is opaque in the registry so it is narrowed here by a local
  * structural shape (the M9 `capture-siting.ts` precedent). Both fail closed on a seam error.
  */

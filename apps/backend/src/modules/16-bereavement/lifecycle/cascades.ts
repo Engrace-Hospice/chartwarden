@@ -13,13 +13,13 @@
 //     explicit that M39 is the source of truth and M16 does not gate-keep: M16 cascades.
 //   • {@link decidePlanCloseOnRoster} — after ANY contact leaves the roster, does D6's all-opted-out
 //     condition now hold?
-import { shouldCloseAsDeclined } from "@wardenx/bereavement";
+import { shouldCloseAsDeclined } from "@chartwarden/bereavement";
 import type {
   BereavedContactId,
   BereavedContactStatus,
   BereavementPlanStatus,
   ConsentId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── D9 — the M5 patient-level bereavement opt-out flag flips to true (§2.6) ────────────────────────────
 

@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_anniversary_reminder` (M16 §3.3.6). One row per (plan × D4 milestone): the
+// @chartwarden/db — `bereavement_anniversary_reminder` (M16 §3.3.6). One row per (plan × D4 milestone): the
 // daily 14-day-lookahead worker's ledger, so the M36 counselor alert for a given mark fires exactly once
 // (`alert_fired_at`) no matter how often the cron re-runs or catches up after an outage (§9.7).
 //

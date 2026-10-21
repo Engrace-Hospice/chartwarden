@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — §7.1 W1 the DocLens extraction PIPELINE barrel.
+// @chartwarden/intake-extraction — §7.1 W1 the DocLens extraction PIPELINE barrel.
 export {
   type CapabilityResult,
   type ClassifiedPageResult,

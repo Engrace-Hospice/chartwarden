@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.7 D9 refill-inbox workflow (M12-T04). Pure-domain unit tests.
+// @chartwarden/dosespot — §2.7 D9 refill-inbox workflow (M12-T04). Pure-domain unit tests.
 import { describe, expect, it } from "vitest";
 import {
   // SLA

@@ -1,4 +1,4 @@
-// @wardenx/billing — pure claim-line derivations (CMS Pub. 100-04 ch. 11 §30.3): the hospice visit-line
+// @chartwarden/billing — pure claim-line derivations (CMS Pub. 100-04 ch. 11 §30.3): the hospice visit-line
 // table + builder and the CHC 15-minute unit conversion. No DB, no clock.
 import {
   CHC_UNITS_PER_HOUR,
@@ -12,7 +12,7 @@ import {
   hospiceValueCodeForRevenue,
   visitCodeFor,
   visitUnitsForMinutes,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 describe("visitCodeFor — CMS ch. 11 §30.3 revenue-code / HCPCS table", () => {

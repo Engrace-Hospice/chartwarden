@@ -29,9 +29,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import type { ClinicalLinkKind, ClinicalLinkSummary } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import type { ClinicalLinkKind, ClinicalLinkSummary } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

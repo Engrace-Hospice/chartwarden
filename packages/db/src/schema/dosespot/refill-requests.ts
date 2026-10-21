@@ -1,4 +1,4 @@
-// @wardenx/db — `refill_request` (M12 §3.3 / §2.7 D9). One row per pharmacy-initiated refill request that
+// @chartwarden/db — `refill_request` (M12 §3.3 / §2.7 D9). One row per pharmacy-initiated refill request that
 // arrives via the DoseSpot `refill_request` webhook: the source order it renews, the pharmacy of record at
 // receipt, the requested quantity/days-supply, and the §2.7 approve/deny inbox workflow (approve mints a new
 // `medication_order` via `resulting_medication_order_id`; deny records a channel + reason). PHI-bearing

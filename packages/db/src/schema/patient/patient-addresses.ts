@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_address` (M5 §3.3, M5 D5). APPEND-ONLY address history: a change inserts a
+// @chartwarden/db — `patient_address` (M5 §3.3, M5 D5). APPEND-ONLY address history: a change inserts a
 // new row and closes the prior with `effective_to`; `effective_to IS NULL` is the current row.
 // PHI-bearing → three-column tenancy rule. Geocode lat/lng are filled by the M5-T10 geocode job;
 // `facility_id` resolves an M40 Facility when kind='facility'. One current primary per patient.

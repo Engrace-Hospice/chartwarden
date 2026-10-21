@@ -4,8 +4,8 @@
 // a kill switch = off), cached a few seconds per org like tasks and SBAR. Everything is built from ports so the routes, the
 // expiry tick, the notification consumer and the revocation consumer share one service and one store. The expiry tick and
 // the offboarding sweep do NOT consult the flag: accountability must never stall on it.
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import type { Part2ChannelGate } from "../part2-channel-gate";

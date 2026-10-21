@@ -5,8 +5,8 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the SCHEDULE MANAGEMENT queue (R2).
 // Spec §5.1.6 (`/reports/schedules`) — the scheduled-delivery pipeline (D7): list schedules (My
 // Schedules / Affecting Me tabs), then read a selected schedule's run ledger. Backed by GET

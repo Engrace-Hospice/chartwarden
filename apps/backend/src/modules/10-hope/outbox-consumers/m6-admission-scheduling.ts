@@ -14,12 +14,12 @@
 // precedent. Putting a second durable queue in front of an already-durable relay would add a failure
 // mode, not remove one. The §4.8 param entries stay as declared tuning for a future queue if per-org
 // throughput ever needs one.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type TimepointScheduleDescriptor,
   planAdmissionTimepoints,
   planDischargeTimepoint,
-} from "@wardenx/hope";
+} from "@chartwarden/hope";
 import type { HopeWriteOutboxPort } from "../outbox-port";
 import {
   type AdmissionSitingResolver,

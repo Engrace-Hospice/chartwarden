@@ -1,6 +1,6 @@
-// @wardenx/billing — the hospice CBSA resolver (value code 61 / G8): ZIP5 -> county -> CBSA / rural 999NN /
+// @chartwarden/billing — the hospice CBSA resolver (value code 61 / G8): ZIP5 -> county -> CBSA / rural 999NN /
 // transition 5000N for a federal fiscal year, failing closed on anything it cannot place.
-import { type HospiceAreaLookup, claimValueCodes, resolveHospiceArea } from "@wardenx/billing";
+import { type HospiceAreaLookup, claimValueCodes, resolveHospiceArea } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const COUNTY_BY_ZIP: Record<string, string> = {

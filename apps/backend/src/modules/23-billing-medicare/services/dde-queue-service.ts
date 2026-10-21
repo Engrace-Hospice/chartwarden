@@ -25,15 +25,15 @@ import {
   repositories,
   validateDdeCodes,
   validateDdeNotes,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,

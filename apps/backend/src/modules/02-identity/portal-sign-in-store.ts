@@ -16,8 +16,8 @@
 //
 // The port is declared structurally here (M31 declares the same shape): M2 takes no import edge on M31, and the
 // composition root wires the two (the `PortalInviteeUserPort` precedent).
-import type { AuditExecutor } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
+import type { AuditExecutor } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   auditPortalSessionEstablished,

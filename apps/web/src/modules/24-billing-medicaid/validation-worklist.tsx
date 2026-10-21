@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the PER-CLAIM VALIDATION WORKLIST (R2, §5.1 #5 scoped to
 // one claim, + the #6 override modal). A run selector over GET /api/v1/medicaid-claims/{id}/validation-runs,
 // the selected run's per-rule results from GET /api/v1/medicaid-validation-runs/{id}, and an Override

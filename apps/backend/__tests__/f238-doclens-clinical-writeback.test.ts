@@ -15,14 +15,14 @@ import {
   type ActivePromptSummary,
   aiTargetPrefixIsProhibited,
   findAiProhibitedZoneViolations,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import {
   M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
   M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
   doclensClinicalLineKey,
   doclensFieldPathIndex,
   parseDocLensClinicalCommit,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { buildM5ExtractionAllergyConsumer } from "../src/modules/05-patient/outbox-consumers/m22-extraction-allergies";
 import { buildM12ExtractionMedicationHistoryConsumer } from "../src/modules/12-dosespot/outbox-consumers/m22-extraction-medication-history";

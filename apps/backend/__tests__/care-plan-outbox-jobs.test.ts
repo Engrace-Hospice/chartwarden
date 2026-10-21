@@ -3,7 +3,7 @@
 // invariants arch:gaps enforces) against M7_EVENT_NAMES, the org-tz due-date clock (gate-clock), and the
 // two pure gate scans for emission + idempotency.
 import { Value } from "@sinclair/typebox/value";
-import { M7_EVENT_NAMES } from "@wardenx/types";
+import { M7_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type CarePlanGateSnapshot,

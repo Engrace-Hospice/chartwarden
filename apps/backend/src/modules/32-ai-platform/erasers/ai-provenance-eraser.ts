@@ -41,9 +41,9 @@
 // Idempotent: a second erase finds the rows already shredded and reports zero. Registers the REAL
 // erasers over the Phase-0 deny-stubs; the composition root runs this AFTER wireErasers() and before
 // validateErasers().
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { and, eq, isNotNull, like, not, or, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

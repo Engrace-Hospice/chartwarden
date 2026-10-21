@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // GAP-141 — the MinIO access-log ingestor: record parsing and the webhook's fail-closed auth.
 import { describe, expect, it } from "vitest";
 import { buildServer } from "../../../bootstrap/index";

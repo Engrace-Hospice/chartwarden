@@ -5,7 +5,7 @@
 // below also name the owner, so a forgotten filter cannot surface a colleague's row. Org and user come from the
 // server-side request context, never the body. The routes have already authorised the channel (channel_visibility,
 // messaging.send, and messaging.announce for the announcement channel); the SEND is authorised again at dispatch.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CreateScheduledMessageInput,
   DEFAULT_MAX_SCHEDULED_PER_USER,
@@ -15,9 +15,9 @@ import {
   type ScheduledSendService,
   assertScheduleTime,
   normalizeScheduleTimeZone,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   type MessageBodyCipher,

@@ -1,9 +1,9 @@
-// @wardenx/db - `safety_sos_terminus_action` (M20, GAP-032). The durable intent ledger behind the SOS
+// @chartwarden/db - `safety_sos_terminus_action` (M20, GAP-032). The durable intent ledger behind the SOS
 // emergency-terminus effects (ops page, emergency-contact dial, PSAP resolution): an INTENT row is written
 // in the watchdog's tenant tx, an executor performs the call OUTSIDE any tenant tx and settles the row.
 // UNIQUE (sos_alert_id, action_kind, loop_iteration, attempt_no) is what makes the re-page loop fire once
 // per period instead of once per 15-second tick. Reason codes and opaque refs only: no PHI, no contact
-// number, no coordinate. Closed vocabularies are text + CHECK, mirrored in @wardenx/types.
+// number, no coordinate. Closed vocabularies are text + CHECK, mirrored in @chartwarden/types.
 import { sql } from "drizzle-orm";
 import { check, index, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";

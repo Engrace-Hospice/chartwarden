@@ -1,9 +1,9 @@
 // apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts — the Drizzle-backed WX-PR-012
 // implementation of {@link M25IngestService} (see ./service.ts for the full design rationale).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { parseX12EnvelopeHeader } from "@wardenx/x12-835-client";
-import type { ParsedClaim835 } from "@wardenx/x12-835-client";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { parseX12EnvelopeHeader } from "@chartwarden/x12-835-client";
+import type { ParsedClaim835 } from "@chartwarden/x12-835-client";
 import { and, eq, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";

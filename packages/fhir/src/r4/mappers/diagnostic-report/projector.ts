@@ -1,4 +1,4 @@
-// @wardenx/fhir — the DiagnosticReport read-time projector (§4.11.2 D19, M28-T04).
+// @chartwarden/fhir — the DiagnosticReport read-time projector (§4.11.2 D19, M28-T04).
 //
 // A lab DiagnosticReport is COMPOSED at read time from three sources (D19), never persisted (§1.2):
 //   (a) the M11 `order_record`     — report metadata (code, subject, performer, effectivePeriod.start)

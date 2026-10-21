@@ -19,7 +19,7 @@
 //
 // NO PHI: ids, instants and counts only (no drug name, no reason text). A malformed event THROWS (relay retry
 // -> DLQ — a visible failure, never a silently dropped alert).
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

@@ -85,7 +85,7 @@ function ensureFile(rel: string, content: string): void {
 }
 
 function nameFor(root: string): string {
-  return `@wardenx/${root.split("/")[1]}`;
+  return `@chartwarden/${root.split("/")[1]}`;
 }
 
 function relBase(root: string): string {

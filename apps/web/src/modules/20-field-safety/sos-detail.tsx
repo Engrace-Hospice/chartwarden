@@ -25,7 +25,7 @@
 // The route dispatches on `openIncidentFromOutcome`, so the form carries one checkbox and says plainly
 // which of the two it will produce — rather than making a supervisor at 3 a.m. choose between two buttons
 // whose difference is invisible until afterwards.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

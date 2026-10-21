@@ -1,7 +1,7 @@
-// @wardenx/cahps-vendors — M30 §4.5 CAHPS vendor adapter registry (the concrete classes + factory map).
+// @chartwarden/cahps-vendors — M30 §4.5 CAHPS vendor adapter registry (the concrete classes + factory map).
 //
 // One class per approved CAHPS-Hospice vendor implements the `CahpsVendorAdapter` contract published by
-// `@wardenx/quality`. The platform default is SHP; `manual` is the no-contract path; Press Ganey / Deyta /
+// `@chartwarden/quality`. The platform default is SHP; `manual` is the no-contract path; Press Ganey / Deyta /
 // HEALTHCAREfirst are real Phase-2 placeholders. `CAHPS_ADAPTER_FACTORIES` is the `vendor_adapter_id →
 // factory` resolution map the M30 composition root injects into a `CahpsAdapterRegistry` at org boot — it
 // is the single point that couples concrete vendor classes to the persisted `vendorAdapterId`.
@@ -9,7 +9,7 @@ import type {
   CahpsAdapterResolutionMap,
   CahpsVendorAdapter,
   CahpsVendorAdapterId,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { DeytaCahpsAdapter } from "./deyta/adapter";
 import { HealthcarefirstCahpsAdapter } from "./healthcarefirst/adapter";
 import { ManualCahpsAdapter } from "./manual/adapter";

@@ -1,5 +1,5 @@
-import { repositories } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
+import { repositories } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   REMITTANCE_TRANSITION_BY_TOPIC,
   type RemittancePostedEvent,

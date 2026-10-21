@@ -1,4 +1,4 @@
-// @wardenx/db — `support_session_event` (M34 §3.6). The append-only ledger of every action taken inside a
+// @chartwarden/db — `support_session_event` (M34 §3.6). The append-only ledger of every action taken inside a
 // platform-ops support session (the surveyor-facing audit trail; `support_record` retention class, 7 years).
 // Tenancy (§3.10 M34-F02 / M34-F10 / ADR-0010): ORG-SCOPED — carries its own `organization_id` NOT NULL so
 // the canonical app.org_id RLS predicate applies directly, and as the LIST co-partition key (the table

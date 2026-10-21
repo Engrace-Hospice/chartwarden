@@ -7,7 +7,7 @@ import {
   listPlatformTemplates,
   resolveTemplate,
   validateOverlay,
-} from "@wardenx/forms";
+} from "@chartwarden/forms";
 // apps/backend/__tests__/form-template-library.test.ts — M22-T05 §4.5 Form Template Library (D14/D16/D20/D21).
 //
 // Covers: the 31-key platform-floor catalog + versioning (D14); the golden-template-diff overlay validator

@@ -6,7 +6,7 @@ import {
   InlineAlert,
   LoadingSpinner,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/shell — Organization Select (M1/M34, ADR-0030). Ported from
 // apps/web/src/modules/02-identity/organization-select.tsx: a multi-org platform-ops user picks the
 // org that binds the session. Backed by the real M2 routes GET /api/v1/auth/memberships +

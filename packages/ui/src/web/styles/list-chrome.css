@@ -1,9 +1,9 @@
-/* @wardenx/ui — shared list chrome (GAP-207).
+/* @chartwarden/ui — shared list chrome (GAP-207).
  *
  * The `wx-*` rules every LIST screen shares: KPI strip, the shared DataTable card, the WorkQueueLayout
  * `kpis` / `filters` / table slots, and the redesigned list toolbar / state / table card. They used to live
  * only in apps/web/src/index.css, so apps/admin and apps/portal rendered the same shared components
- * (`@wardenx/ui` layouts, DataTable) unstyled. This file is a MECHANICAL lift: the rule text is unchanged
+ * (`@chartwarden/ui` layouts, DataTable) unstyled. This file is a MECHANICAL lift: the rule text is unchanged
  * and its order relative to itself is preserved; each app imports it right after `@import "tailwindcss"`,
  * so it sits at the head of the `components` layer (no earlier rule in any app mentions these classes).
  *

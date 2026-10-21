@@ -1,4 +1,4 @@
-// @wardenx/messaging — messaging job processors (M36-T08, spec §4.4 / §4.4.1 / §8.1.2).
+// @chartwarden/messaging — messaging job processors (M36-T08, spec §4.4 / §4.4.1 / §8.1.2).
 //
 // The pure, infra-free logic the distinctive §4.4 workers run, each a function over injected ports —
 // the same pattern as the M4 audit jobs and the M38 terminology jobs: unit-tested against in-memory

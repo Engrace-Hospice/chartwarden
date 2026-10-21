@@ -17,7 +17,7 @@
 // `activationGate.ready` the server enforces is true (route 14 now calls the identical
 // `computeActivationGate` before transitioning — see admission-route-service-db.ts), so the button can
 // never promise something the server would then refuse.
-import { formatMrn } from "@wardenx/types";
+import { formatMrn } from "@chartwarden/types";
 import {
   type ApiClient,
   CeremonyModal,
@@ -36,7 +36,7 @@ import {
   type StatusTone,
   formatDateOnly,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";

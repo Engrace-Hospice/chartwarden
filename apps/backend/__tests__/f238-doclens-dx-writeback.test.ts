@@ -1,5 +1,5 @@
 // apps/backend/__tests__/f238-doclens-dx-writeback.test.ts — F-238 dx-writeback, no DB: the PURE halves of
-// the DocLens → M7 diagnosis writeback. The shared contract helpers (`@wardenx/types` code shape, Part 2
+// the DocLens → M7 diagnosis writeback. The shared contract helpers (`@chartwarden/types` code shape, Part 2
 // code range, dedupe key, role label), M22's commit planner (every exclusion reason + governance rules), M7's
 // fail-closed payload parse, its M38 validator, and M22's back-ref item-key parse. The live chain is
 // `f238-doclens-dx-writeback.live.test.ts`.
@@ -9,7 +9,7 @@ import {
   normalizeDiagnosisRole,
   normalizeIcd10CmShape,
   parseDiagnosisFieldPath,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import {
@@ -88,7 +88,7 @@ const plan = (facts: DiagnosisCandidateFact[], over: Record<string, unknown> = {
 const reasons = (p: ReturnType<typeof plan>) =>
   Object.fromEntries(p.excluded.map((e) => [e.fieldPath, e.reason]));
 
-describe("F-238 — the shared contract helpers (@wardenx/types)", () => {
+describe("F-238 — the shared contract helpers (@chartwarden/types)", () => {
   it("normalizes ICD-10-CM SHAPE without changing a character beyond case/space/dot", () => {
     expect(normalizeIcd10CmShape("i50.9")).toBe("I50.9");
     expect(normalizeIcd10CmShape(" I509 ")).toBe("I50.9");

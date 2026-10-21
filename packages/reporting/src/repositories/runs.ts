@@ -1,10 +1,10 @@
-// @wardenx/reporting · repositories — the run-ledger aggregate: `report_schedule_run` (the per-
+// @chartwarden/reporting · repositories — the run-ledger aggregate: `report_schedule_run` (the per-
 // occurrence ledger for a scheduled report, partitioned monthly by `scheduled_for`) + `report_run`
 // (the MV-refresh ledger, partitioned monthly by `started_at`, nullable org for cross-tenant refreshes)
 // (M33 §3.3–§3.4). Both carry a COMPOSITE PK (id + partition key), so point reads take BOTH the id and
 // the partition-key value (partition pruning). The schedule-runner / MV-refresh workers wrap these in
 // `withOrgContext` / `withPlatformContext`.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

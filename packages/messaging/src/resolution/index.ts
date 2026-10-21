@@ -1,4 +1,4 @@
-// @wardenx/messaging — resolution & fan-out engine (M36-T04, spec §2.1).
+// @chartwarden/messaging — resolution & fan-out engine (M36-T04, spec §2.1).
 //
 // The pure, DB-agnostic core dispatch path: recipient resolution (dynamic at emit time),
 // per-recipient channel selection (routing map / quiet hours / vacation), the fan-out planner

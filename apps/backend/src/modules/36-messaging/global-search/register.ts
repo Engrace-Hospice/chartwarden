@@ -5,8 +5,8 @@
 // Nothing is indexed until operators enable it: the tenant flag defaults OFF, the platform flag is absent (= OFF), and `keys`
 // is the ring-backed provider (throws, fail closed, while no ring is bound or the ring is destroyed). The consumer is registered unconditionally (the catalog's declared `m36` consumer must be bound);
 // with the flags off it completes without doing work.
-import type { DbClient } from "@wardenx/db";
-import type { SearchKeyProvider } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import type { SearchKeyProvider } from "@chartwarden/messaging";
 import type { ConnectionOptions, Queue, Worker } from "bullmq";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { M36IntegrityWorkerDeps } from "../jobs/integrity-workers";

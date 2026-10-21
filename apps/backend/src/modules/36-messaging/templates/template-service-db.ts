@@ -6,7 +6,7 @@
 // request context. RLS keeps a tenant out of another tenant and out of writing the platform scope; "personal" is private
 // to its owner by the `owner_user_id = actor` filter in this file (RLS keys only on org, like every M36 table).
 // Every id that is not the caller's to touch answers the same 404 a random id gets, including a non-uuid string.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type OverlayInput,
   type PlatformTemplate,
@@ -26,9 +26,9 @@ import {
   prepareTemplate,
   prepareTemplatePatch,
   titleTakenError,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 const T = schema.messageTemplates;

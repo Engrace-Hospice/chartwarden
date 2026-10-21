@@ -11,14 +11,14 @@
 // Idempotent: only rows still `target_aggregate_id IS NULL` are stamped, and `commit_completed` is emitted
 // only when this delivery stamped something. FAIL-CLOSED: a malformed / cross-tenant payload, an item key
 // that is not `<extractionJobId>#<n>`, or a reply whose patient is not the commit's target THROWS → DLQ.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type DocLensDiagnosisOutcome,
   M7_PROBLEM_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
   M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
   type ProblemDraftCreatedFromExtractionPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull, like } from "drizzle-orm";
 import type { ExtractionOutboxPort } from "./writeback-commit-db";
 

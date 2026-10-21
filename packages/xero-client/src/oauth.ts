@@ -1,4 +1,4 @@
-// @wardenx/xero-client — raw transport PORT + the refresh-on-401 wrapper STRUCTURE (M27 §6 `oauth/`, D6).
+// @chartwarden/xero-client — raw transport PORT + the refresh-on-401 wrapper STRUCTURE (M27 §6 `oauth/`, D6).
 //
 // This is the integration boundary. The raw bytes leave the process ONLY through the injected
 // {@link XeroHttpPort}; this package performs no network I/O and imports no SDK. The default port fails

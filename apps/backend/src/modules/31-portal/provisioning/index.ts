@@ -1,7 +1,7 @@
 // apps/backend/src/modules/31-portal/provisioning/index.ts — GAP-092. The portal provisioning services
 // (notification preferences, encrypted upload staging, account + grant provisioning) behind ONE factory, so the
 // composition root builds them once and every route reads them off `PortalRouteDeps.provisioning`.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { M31EventEmitter } from "../events";
 import type { PortalPhiCipher } from "../portal-crypto";
 import {

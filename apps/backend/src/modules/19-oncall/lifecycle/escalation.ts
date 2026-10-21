@@ -21,7 +21,7 @@ import type {
   TriageEscalationState,
   TriageEscalationTier,
   TriageEscalationTrigger,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type TriageSideEffect, type TriageTransitionResult, result, withAudit } from "./effects";
 import { require_ } from "./errors";
 

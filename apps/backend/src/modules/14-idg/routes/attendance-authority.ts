@@ -21,8 +21,8 @@
 //
 // "coordinator" = holds `idg.coordinate` (resolved server-side; never client input). `administrator` is a member of the
 // vocabulary but NOT a quorum seat, so recording an admin under it can never satisfy quorum.
-import { isIdgAttendanceDiscipline } from "@wardenx/idg";
-import { ChartWardenError } from "@wardenx/types";
+import { isIdgAttendanceDiscipline } from "@chartwarden/idg";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** What the route learned about the TARGET membership's authoritative disciplines. */
 export type AttendanceTargetFacts =

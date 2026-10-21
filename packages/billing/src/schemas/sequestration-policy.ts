@@ -1,4 +1,4 @@
-// @wardenx/billing — sequestration-policy schemas: route #32 `GET /sequestration-policy` (effective-dated
+// @chartwarden/billing — sequestration-policy schemas: route #32 `GET /sequestration-policy` (effective-dated
 // timeline) and route #33 `POST /sequestration-policy` (forward-date a new policy row) — §4.1.
 //
 // `percentage` is a decimal STRING (D11; never a float — `applySequestration` in domain/money.ts consumes

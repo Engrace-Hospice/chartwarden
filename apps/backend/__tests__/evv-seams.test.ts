@@ -3,7 +3,7 @@ import type {
   EvvBracketDto,
   EvvEventDto,
   EvvLocationDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // apps/backend/__tests__/evv-seams.test.ts — M18-T05 (§4.3 the six published reader seams). All six are pure
 // READ-only orchestration over an injected EvvSeamStore; these cover the EvvBracketResolver mapping down to M8's
 // EXISTING `resolveBracket` contract (present → evv_present with authoritative instants; documented → null-safe

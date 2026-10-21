@@ -1,4 +1,4 @@
-// @wardenx/db — `cahps_vendor_binding` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `cahps_vendor_binding` (M30 §3.3; non-partitioned; retention class `compliance`).
 // The per-org binding to an approved CAHPS Hospice survey vendor (or `manual`), carrying the
 // envelope-encrypted vendor credentials and the size-exemption determination. At most one active
 // binding per org (V-7 partial-unique). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id

@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_record_recipient` (M39 Consent §3.3 #4). The per-recipient grant join (D6)
+// @chartwarden/db — `consent_record_recipient` (M39 Consent §3.3 #4). The per-recipient grant join (D6)
 // for the four per-recipient consent types: each named recipient (M40 entity by kind, or free-text)
 // with an optional purpose limitation + per-recipient expiry. Adding/removing a recipient does NOT
 // supersede the parent consent record (§2.2.2). Org-scoped child of consent_record (no patient

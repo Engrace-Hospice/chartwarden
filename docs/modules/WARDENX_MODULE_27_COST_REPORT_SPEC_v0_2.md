@@ -943,7 +943,7 @@ M27 registers the following `eraseFn` callbacks with M4 at boot per the M4 destr
 
 ```ts
 // packages/cost-report/src/boot.ts
-import { registerEraseFn } from '@wardenx/audit/eraser';
+import { registerEraseFn } from '@chartwarden/audit/eraser';
 
 registerEraseFn('m27.cost_report', async ({ tx, organizationId, costReportId }) => {
   // Refuse destruction if the cost report has ever been submitted accepted-not-disputed
@@ -1159,7 +1159,7 @@ M27 publishes seven typed reader/factory interfaces. All are registered at boot 
 
 ```ts
 // packages/cost-report/src/seams.ts
-import type { ProviderEntityId, OrganizationId, CostReportId, EcrSubmissionId } from '@wardenx/types';
+import type { ProviderEntityId, OrganizationId, CostReportId, EcrSubmissionId } from '@chartwarden/types';
 
 export interface CostReportProvider {
   /** Per-day drug cost feeding M30 HQRP / M33 financial dashboards. */
@@ -1268,9 +1268,9 @@ The factory is registered at boot:
 
 ```ts
 // packages/cost-report/src/boot.ts
-import { seamRegistry } from '@wardenx/shared/seams';
-import { xeroClientFactory } from '@wardenx/xero-client';
-import { gustoClientFactory } from '@wardenx/gusto-client';
+import { seamRegistry } from '@chartwarden/shared/seams';
+import { xeroClientFactory } from '@chartwarden/xero-client';
+import { gustoClientFactory } from '@chartwarden/gusto-client';
 
 export function registerM27Seams() {
   seamRegistry.publish('XeroClientFactory', xeroClientFactory);
@@ -1673,7 +1673,7 @@ Two-tenant scenario: Organization A + Organization B each with one ProviderEntit
 - Two-person-control bypass: same membership tries to approve and submit. Expected: `TwoPersonControlViolationError` 403.
 - Past-deadline submit without permission: a Compliance Officer (no `cost_report:submit_past_deadline`) attempts the past-deadline endpoint. Expected: 403.
 - Permission-tag bypass: an attacker constructs a custom role with `regulatory_required` permissions. The M3 catalog returns 422 on role-create.
-- AI-platform import attempt: a PR that adds `import { ... } from '@wardenx/ai-platform'` to a file under `packages/cost-report/` fails CI on the dependency-cruiser rule.
+- AI-platform import attempt: a PR that adds `import { ... } from '@chartwarden/ai-platform'` to a file under `packages/cost-report/` fails CI on the dependency-cruiser rule.
 - Vendor-SDK leak: a PR adding `import { ... } from 'xero-node'` to a file outside `packages/xero-client/` fails CI.
 
 ### 9.6 E2E (Playwright)

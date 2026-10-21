@@ -1,4 +1,4 @@
-// @wardenx/db — `scheduled_dose` (M13 §3.3 / §2.3 D2). Precomputed administration slots materialized from
+// @chartwarden/db — `scheduled_dose` (M13 §3.3 / §2.3 D2). Precomputed administration slots materialized from
 // M12's sigStructured over the materialization window: one row per (order, due_at). PHI-bearing (patient_id)
 // → the three-column tenancy rule (provider_entity_id + location_id NOT NULL, denormalized from the admission
 // at materialization). Non-partitioned (§3.5 — bounded by active-orders × window). Cross-module refs (M5

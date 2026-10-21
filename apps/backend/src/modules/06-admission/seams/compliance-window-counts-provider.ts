@@ -22,8 +22,8 @@
 //    status:'overdue'. A window can still close (attest or override) AFTER passing through 'overdue' —
 //    closedAt/status reflect the final resolution regardless of the overdue detour, which is why the
 //    denominator below is DUE-DATE-scoped, not status-scoped.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, lt } from "drizzle-orm";
 
 const CW = schema.complianceWindows;
@@ -38,7 +38,7 @@ const SYSTEM_USER_ID = "";
 
 /** A numerator/denominator tally — the local mirror of `ComplianceWindowRateCounts`
  *  (packages/quality/src/seams/consumed/m6-compliance-window.ts). Duplicated, not imported: this seam is
- *  OPAQUE in the M1 registry (`unknown`) and M6 does not depend on `@wardenx/quality` (leaves-stay-leaves) —
+ *  OPAQUE in the M1 registry (`unknown`) and M6 does not depend on `@chartwarden/quality` (leaves-stay-leaves) —
  *  the two shapes are kept structurally identical by convention, not a type import. */
 export interface ComplianceWindowRateCounts {
   readonly numerator: number;

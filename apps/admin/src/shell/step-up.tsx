@@ -1,4 +1,4 @@
-import { StepUpCard } from "@wardenx/ui";
+import { StepUpCard } from "@chartwarden/ui";
 // apps/admin/src/shell — the console's step-up re-authentication page (`/step-up`, M2 Auth via the shared kit).
 // Platform-ops actions (wage-index load, refunds, plans, promos, dunning overrides, webhook replays…) are
 // step-up-gated server-side; a stale session gets 403 STEP_UP_REQUIRED and the screen offers a Re-verify link

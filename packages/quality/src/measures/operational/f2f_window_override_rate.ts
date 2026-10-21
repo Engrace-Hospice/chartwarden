@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: F2F compliance-window override rate (CoP 418.22). Pure. No IO.
+// @chartwarden/quality — operational measure: F2F compliance-window override rate (CoP 418.22). Pure. No IO.
 // Rate of F2F compliance windows closed via a documented Medical-Director override rather than a plain
 // on-time attestation — the escape-valve usage rate (LOWER is better: overrides should be rare, not
 // routine). Same population/denominator as `f2f_window_on_time_rate` (§7.5 W-OVR-02: the two are tracked

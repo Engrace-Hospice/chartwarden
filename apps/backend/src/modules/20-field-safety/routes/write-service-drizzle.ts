@@ -42,9 +42,9 @@
 //      a departed supervisor's row in place, which is the `all_subscriptions_deactivated` failure one step
 //      earlier. The gaps ride the response (the only moment they are cheap to fix) AND the §7.8 watchdog's
 //      own system-locked critical alert, because a DON who ignored the response still gets woken.
-import { type DbClient, schema } from "@wardenx/db";
-import { normalizeE164 } from "@wardenx/shared/phone";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { normalizeE164 } from "@chartwarden/shared/phone";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type IsoInstant,
   NotFoundError,
@@ -55,7 +55,7 @@ import {
   type SafetyPolygonRings,
   type SafetySosLifecycleState,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   buildCheckInOverdueAlert,

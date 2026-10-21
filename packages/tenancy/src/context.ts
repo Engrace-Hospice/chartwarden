@@ -1,4 +1,4 @@
-// @wardenx/tenancy — Context helpers (M1-T06; spec §3.14).
+// @chartwarden/tenancy — Context helpers (M1-T06; spec §3.14).
 //
 // `withOrgContext()` runs a unit of work inside a transaction with the canonical
 // tenant session variable `app.org_id` set, so Postgres RLS (the policies emitted by

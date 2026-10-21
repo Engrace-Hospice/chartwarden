@@ -1,4 +1,4 @@
-// @wardenx/db — `scale_license` (M9 §3.3, D3). Per-tenant licensure for the proprietary scales (PPS,
+// @chartwarden/db — `scale_license` (M9 §3.3, D3). Per-tenant licensure for the proprietary scales (PPS,
 // FAST, GDS, Braden, Morse): without an active license the recording form is hidden and the API
 // rejects writes; historical values recorded under a prior active license stay readable. Org-level
 // licensing config, NOT patient PHI → carries organization_id only (the ARCH-011 org-level carve-out).

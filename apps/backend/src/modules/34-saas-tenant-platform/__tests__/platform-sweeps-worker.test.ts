@@ -1,5 +1,5 @@
 // GAP-163 — the BAA radar, the support-session close sweep and the onboarding fan-out, over injected ports.
-import { ACTIVATION_REFUSAL_ALERT_THRESHOLD as THRESHOLD } from "@wardenx/saas-tenant-platform";
+import { ACTIVATION_REFUSAL_ALERT_THRESHOLD as THRESHOLD } from "@chartwarden/saas-tenant-platform";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildActivateTenantPort,

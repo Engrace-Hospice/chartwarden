@@ -1,6 +1,6 @@
 // apps/backend/src/modules/37-ipu — M37 Inpatient Unit (IPU) Management backend module entrypoint.
 //
-// The pure §2 domain kernels live in @wardenx/inpatient (T03–T10); this module is the HTTP/adapter surface.
+// The pure §2 domain kernels live in @chartwarden/inpatient (T03–T10); this module is the HTTP/adapter surface.
 // As of T11b it exposes the §4.7 ABAC predicate registration; the §4.1 routes + Drizzle route service +
 // §4.4 outbox catalog + §7.7 eraser + SeamRegistry registration land across the remaining T11 slices.
 export {
@@ -10,9 +10,9 @@ export {
   registerM37AbacPredicates,
 } from "./abac/predicates";
 
-// §4.6 — the permission keys M37 contributes to M3 (declared in @wardenx/auth; re-exported for the route
+// §4.6 — the permission keys M37 contributes to M3 (declared in @chartwarden/auth; re-exported for the route
 // layer's requirePermission handlers).
-export { M37_CONTRIBUTED_PERMISSIONS, type M37ContributedPermissionKey } from "@wardenx/auth";
+export { M37_CONTRIBUTED_PERMISSIONS, type M37ContributedPermissionKey } from "@chartwarden/auth";
 
 // §4.4 — the outbox event catalog (the composition root merges it into the boot catalog).
 export { M37_OUTBOX_EVENTS } from "./events-by-m37";
@@ -82,13 +82,13 @@ export {
   registerIpuSeams,
 } from "./seams";
 
-// D16 — the AI-prohibited-zone boot validator (§8.6). Re-exported from @wardenx/inpatient; the composition
+// D16 — the AI-prohibited-zone boot validator (§8.6). Re-exported from @chartwarden/inpatient; the composition
 // root invokes it in a db-present onReady hook against the real M32 AIPromptRegistry seam.
 export {
   type IpuAiPromptRegistryPort,
   IpuAIBlockViolation,
   validateIpuAIBlock,
-} from "@wardenx/inpatient";
+} from "@chartwarden/inpatient";
 
 // F-071 (#174) — the §4.8 `ipu.rn-coverage-watchdog` cron: the producer for the `ipu_rn_coverage_window`
 // materialized invariant that four write paths read and nothing ever wrote.

@@ -9,13 +9,13 @@
 //   else `none`.
 // `stale` = past `verify_every_days` since `verified_at`: still returned (a labelled old number beats none),
 // flagged so the UI says "verify by voice". This function never invents a number: it only picks among rows.
-import { pointInRings, ringsBoundingArea } from "@wardenx/shared/geo";
+import { pointInRings, ringsBoundingArea } from "@chartwarden/shared/geo";
 import type {
   PsapJurisdictionSummary,
   PsapResolution,
   PsapResolutionConfidence,
   SafetyPolygonRings,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

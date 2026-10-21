@@ -1,4 +1,4 @@
-// @wardenx/assessments — PPS (Palliative Performance Scale v2) scorer (§4.3, §7.1).
+// @chartwarden/assessments — PPS (Palliative Performance Scale v2) scorer (§4.3, §7.1).
 //
 // PPS is read off the published v2 matrix by "leftward reading": ambulation is the primary band
 // determinant, then the remaining columns refine within that band to the best-fit level. The score is

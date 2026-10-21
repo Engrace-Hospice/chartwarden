@@ -1,4 +1,4 @@
-// @wardenx/quality — operational/HQRP measure: HOPE Symptom Follow-Up Visit (SFV) on-time rate. Pure.
+// @chartwarden/quality — operational/HQRP measure: HOPE Symptom Follow-Up Visit (SFV) on-time rate. Pure.
 // No IO. Rate of due SFVs completed within the 2-calendar-day window (higher is better). This is the
 // operational upstream of the FY2028 TFP-PI / TFP-NPSI measures (§1.1). Source: M10 `HopeJ2051Provider`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

@@ -1,4 +1,4 @@
-// @wardenx/db — `standing_order` (M11 §3.3 / §2.4 D5). A signed template that spawns concrete
+// @chartwarden/db — `standing_order` (M11 §3.3 / §2.4 D5). A signed template that spawns concrete
 // `order_record` rows on a cadence (daily / weekly / biweekly / monthly / prn); the service layer limits
 // `kind` to lab / supply / ancillary_service. PHI-bearing (patient/admission-scoped) → the three-column
 // tenancy rule (provider_entity_id + location_id NOT NULL). Low-volume (typically <10 per admission),

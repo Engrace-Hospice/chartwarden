@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T06 unit tests for the §2.5 D6 IRC 5-day cap enforcer.
+// @chartwarden/inpatient — M37-T06 unit tests for the §2.5 D6 IRC 5-day cap enforcer.
 import { describe, expect, it } from "vitest";
 import { IpuStateError } from "../src/errors";
 import {

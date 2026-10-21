@@ -39,9 +39,9 @@ violation makes each gate go **red**, without writing any business logic.
 ### 2. Bun linker = **hoisted** (new, beyond the plan)
 
 Bun 1.3 defaults to the **isolated** linker, which scopes workspace deps to per-package
-`node_modules` and leaves no top-level `node_modules/@wardenx/*` symlinks. TypeScript
+`node_modules` and leaves no top-level `node_modules/@chartwarden/*` symlinks. TypeScript
 (`moduleResolution: Bundler`) and dependency-cruiser both resolve cross-package imports from the
-repo root, so we pin `[install] linker = "hoisted"` in `bunfig.toml`. Without this, `@wardenx/*`
+repo root, so we pin `[install] linker = "hoisted"` in `bunfig.toml`. Without this, `@chartwarden/*`
 imports fail to resolve and the boundary graph is blind to cross-package edges.
 
 ### 3. Manifest-driven scaffold + a new `arch:parity` gate
@@ -58,7 +58,7 @@ The example root `boot.ts` is promoted to `apps/backend/src/bootstrap/` (M1 `cod
 `seams/registry.ts` (`REQUIRED_SEAMS`, `registerSeam`/`getSeam`, `validateSeams()`),
 `seams/providers.ts` (deny-stubs), `erasers/{registry,providers}.ts` (`validateErasers()`), and
 `index.ts` (`bootSeams()`/`buildServer()`). Both validators **fail closed**. Seam interfaces live in
-the leaf `@wardenx/types` (ADR-0005 D1/D3 — never `packages/foundation`). Placing the registry under
+the leaf `@chartwarden/types` (ADR-0005 D1/D3 — never `packages/foundation`). Placing the registry under
 `seams/` **arms** the previously-inert seam sub-check of `check-fitness-gaps.ts`.
 
 ### 5. Fitness fixtures prove the gates enforce
@@ -70,7 +70,7 @@ the baseline.
 
 ## Deviations from the plan (recorded)
 
-- **Package count is 31, not 33.** `@wardenx/mobile-offline` and `packages/iqies-client` are
+- **Package count is 31, not 33.** `@chartwarden/mobile-offline` and `packages/iqies-client` are
   referenced in specs but are in **no manifest `codePath`** (mobile-offline is manifest-exempt —
   on-device sqlcipher, manifest header scope note). The plan's §2 sub-decision allowed scaffolding
   them as non-fitness-governed packages **or deferring**; we **defer** them (no code imports them

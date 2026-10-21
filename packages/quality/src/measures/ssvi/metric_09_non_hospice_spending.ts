@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 9: Total non-hospice spending, scored 0-8 by octile of hospices
+// @chartwarden/quality — SSVI metric 9: Total non-hospice spending, scored 0-8 by octile of hospices
 // (CMS-1851-F Table 9). Pure. No IO.
 //
 // Medicare Part A/B/D amounts paid to OTHER providers on hospice election days (excluding admission and

@@ -37,15 +37,15 @@ import {
   bereavementWindowEnd,
   isClosedPlanStatus,
   requiresSourceEncounter,
-} from "@wardenx/bereavement";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ForbiddenError,
   NotFoundError,
   type PatientCaregiverRosterReader,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   BereavedContactRelationship,
   BereavementAnniversaryMark,
@@ -59,7 +59,7 @@ import type {
   BereavementRiskTier,
   IsoInstant,
   MembershipId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { NotImplementedError, getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher, BereavementCipherColumn } from "../bereavement-crypto";

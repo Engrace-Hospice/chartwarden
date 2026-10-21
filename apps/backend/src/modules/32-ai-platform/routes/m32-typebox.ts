@@ -4,8 +4,8 @@
 // `m32-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one — the M21-T01 gotcha, where even the WORD "alerts" in a comment tripped `arch:tables`.
 //
-// THE STRING-LITERAL UNIONS MIRROR the frozen `@wardenx/types` unions (`packages/types/src/ai-platform.ts`,
-// M32-T01), which themselves mirror the `@wardenx/db` pgEnums and the §3 CHECK vocabularies. The DB wins
+// THE STRING-LITERAL UNIONS MIRROR the frozen `@chartwarden/types` unions (`packages/types/src/ai-platform.ts`,
+// M32-T01), which themselves mirror the `@chartwarden/db` pgEnums and the §3 CHECK vocabularies. The DB wins
 // on conflict. A wire enum published as `Type.String()` is a silent lie (the M30 lesson) — a bare string
 // here becomes a 500 from the driver on a typo, at the moment an operator is trying to activate a kill
 // switch, instead of a 422 naming the field.
@@ -27,7 +27,7 @@
 //      verifying that assertion against the bytes is the only thing that makes the pin mean anything.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

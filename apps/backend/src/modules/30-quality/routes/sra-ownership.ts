@@ -3,7 +3,7 @@
 // §4.7 `ownsSraCycle`: the cycle owner (`opened_by_membership_id`) OR an `sra.admin`-bearing role. The route
 // predicate only fires for `:cycleId` paths; finding/remediation routes key on `:findingId`/`:remediationId`,
 // so the write service enforces the same rule after loading the row → cycle.
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError } from "@chartwarden/types";
 import { type M30WriteActor, isM30SystemActor } from "./actor";
 
 /** Roles that hold `sra.admin` in the system role templates. */

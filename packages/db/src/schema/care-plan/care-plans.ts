@@ -1,4 +1,4 @@
-// @wardenx/db — `care_plan` (M7 §3.3). The IPOC root: one care plan per active hospice episode.
+// @chartwarden/db — `care_plan` (M7 §3.3). The IPOC root: one care plan per active hospice episode.
 // PHI-bearing → the three-column tenancy rule; provider_entity_id + location_id are NOT NULL (a care
 // plan is a patient/admission-scoped clinical record, always sited — denormalized from the admission
 // at bootstrap so IDG/overdue dashboards run location-/PE-scoped without joining M5/M6). Cross-module

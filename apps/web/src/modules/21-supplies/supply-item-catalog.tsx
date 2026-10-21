@@ -19,7 +19,7 @@
 // §5.10's per-row "detail drawer listing tenant extensions" is not built: the list already returns the
 // overlay rows as first-class entries (they are what `localSkuCode` marks), and M21 publishes no
 // "extensions of this canonical SKU" read to hang a drawer on.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

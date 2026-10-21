@@ -1,4 +1,4 @@
-// @wardenx/auth · rbac — the RBAC engine (M3 — Authorization, M3-T06; spec §2.2, §7.2).
+// @chartwarden/auth · rbac — the RBAC engine (M3 — Authorization, M3-T06; spec §2.2, §7.2).
 //
 // The §2.2 pipeline step "Resolve effective permissions: membership_role → role_permission
 // for active_organization_id". `require-role.ts` (M3-T05) gates on this set through the
@@ -9,7 +9,7 @@
 // `packages/auth` stays infra-agnostic (like the M2 session seam): the resolver reads grants
 // through an injected `EffectivePermissionStore` PORT. Production injects the store that runs
 // `membership_role ⋈ role ⋈ role_permission` under `withOrgContext` (so RLS scopes the read
-// by `app.org_id`); the slice/tests use the in-memory store below. No `@wardenx/db` runtime
+// by `app.org_id`); the slice/tests use the in-memory store below. No `@chartwarden/db` runtime
 // import crosses this leaf — the import boundary (.dependency-cruiser.cjs) stays clean.
 //
 // Two resolution rules, both load-bearing:
@@ -19,7 +19,7 @@
 //     window closes — the RBAC half of §7.2 (the `oncall_shift_active` ABAC predicate is M3-T07).
 //     The cache TTL is capped by the soonest upcoming expiry so caching cannot serve a grant
 //     past its window.
-import type { HttpRequestContext } from "@wardenx/types";
+import type { HttpRequestContext } from "@chartwarden/types";
 import {
   type Clock,
   type EffectivePermissionCache,

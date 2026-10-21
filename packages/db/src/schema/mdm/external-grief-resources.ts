@@ -1,4 +1,4 @@
-// @wardenx/db — `external_grief_resource` (M40; migration 0463, GAP-158). The grief-counseling referral catalog
+// @chartwarden/db — `external_grief_resource` (M40; migration 0463, GAP-158). The grief-counseling referral catalog
 // M16 references and M31's bereaved portal lists. TENANT-CURATED: organization_id NOT NULL, RLS on app.org_id.
 // Reference data, no PHI. A row retires with `is_active = false` (never deleted: referral history points at it).
 import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

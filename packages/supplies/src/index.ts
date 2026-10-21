@@ -1,4 +1,4 @@
-// @wardenx/supplies — Module 21 (Supplies, DME & Comfort Kits) feature package.
+// @chartwarden/supplies — Module 21 (Supplies, DME & Comfort Kits) feature package.
 //
 // M21-T01 lands the §2 domain layout + the pure-data policy every later M21 task builds on:
 //   · `policy.ts`      — the §2.2 72h caregiver-confirm grace, the §2.10 24h vendor-confirmation window,
@@ -23,10 +23,10 @@
 //
 // The cross-module enum / seam / outbox / alert CONTRACTS — the §3.1.1 enum mirrors, the §3.1 owned-table
 // names + D13 audit denylists, the §4.5 `m21.*` event names and payloads, the §4.7 M36 alert union, and
-// the §4.8 published-seam interfaces + read DTOs — live in the leaf `@wardenx/types` (`supplies.ts`) per
+// the §4.8 published-seam interfaces + read DTOs — live in the leaf `@chartwarden/types` (`supplies.ts`) per
 // ADR-0005 D1/D2, so M11/M13/M22/M27/M30/M33/M36/M37 import them with no `dependsOn` edge. The spec's §4.8
 // writes the seam file as `packages/seams/src/supplies.ts`; that package does not exist and the repo's
-// convention is the `@wardenx/types` leaf — architecture wins over the spec's proposed path.
+// convention is the `@chartwarden/types` leaf — architecture wins over the spec's proposed path.
 //
 // The §2.2/§2.5/§2.6/§2.7 machines that consume this package landed in M21-T03 under
 // `apps/backend/src/modules/21-supplies/lifecycle/` — they are pure deciders over already-resolved facts,
@@ -38,7 +38,7 @@
 // D15 — supplies is an AI-PROHIBITED zone. Nothing in this package is reachable from an M32 prompt, and
 // `validateSupplyAIBlock()` (M21-T05) fails boot if M32's registry ever names a supplies surface.
 //
-// PURE — no IO, `@wardenx/types` + TypeBox + decimal.js only.
+// PURE — no IO, `@chartwarden/types` + TypeBox + decimal.js only.
 
 export * from "./policy";
 export * from "./kinds";

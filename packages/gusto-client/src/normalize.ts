@@ -1,4 +1,4 @@
-// @wardenx/gusto-client — raw Gusto → normalized mapping (pure, IO-free). Mirrors the M30 cahps-vendors
+// @chartwarden/gusto-client — raw Gusto → normalized mapping (pure, IO-free). Mirrors the M30 cahps-vendors
 // `result.ts` parser style: defensive type-guards, structured throw on a malformed payload, money as
 // INTEGER CENTS (M27 invariant — no floats past this boundary). No Gusto SDK shapes leak past here.
 //

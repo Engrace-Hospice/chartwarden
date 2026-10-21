@@ -10,11 +10,11 @@
 // `m5.patient.*` event (GAP-016) through the injected m5 outbox port ON THE SAME TRANSACTION, so a failed
 // publish rolls the write back. Remaining follow-ups: SSN + name-alias storage on admit, soft_review
 // match-review rows.
-import { audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
-import { ChartWardenError } from "@wardenx/types";
+import { audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   assertAdmitDemographicsStorable,

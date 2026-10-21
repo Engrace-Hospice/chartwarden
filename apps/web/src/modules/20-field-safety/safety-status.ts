@@ -12,7 +12,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 import type { SafetyConsentPurpose, SafetySubscriptionAlertKind } from "./safety-api";
 
 /**

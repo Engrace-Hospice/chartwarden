@@ -22,9 +22,9 @@
 // link and holds no staff permission. It is created in the same transaction as the use-count claim: a failure to
 // create it rolls the claim back.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   type CollaboratorLinkStore,

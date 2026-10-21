@@ -1,6 +1,6 @@
 // apps/backend/src/modules/27-cost-report/published-seams.ts — M27's FIRST M1 publish.
 //
-// M27 declared seven §4.3 seams in `@wardenx/cost-report` (registerM27PublishedSeams) but registered
+// M27 declared seven §4.3 seams in `@chartwarden/cost-report` (registerM27PublishedSeams) but registered
 // none: its seam names were not members of the M1 `SeamContracts`/`REQUIRED_SEAMS`, so M27 was a pure
 // CONSUMER with an outbox-only outbound posture (`modules/27-cost-report/index.ts:9-15` says so).
 //
@@ -12,8 +12,8 @@
 //
 // What crosses: the filing STATE + the statutory deadline + how far past it the report is. No worksheet
 // figures, no wage data, no patient anything — metadata, hence phi:false in REQUIRED_SEAMS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq } from "drizzle-orm";
 import { registerSeam } from "../../bootstrap/index";
 

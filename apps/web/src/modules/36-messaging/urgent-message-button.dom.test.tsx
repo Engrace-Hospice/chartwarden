@@ -3,7 +3,7 @@
 // sends exactly what the server needs (an SBAR document, one recipient, a client id); the outcome stays on screen.
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ApiClientProvider } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

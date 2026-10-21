@@ -1,4 +1,4 @@
-// @wardenx/dosespot — DEA schedule-authorization check (§2.4 §1311.120 / §4.7, M12-T05). Pure, IO-free.
+// @chartwarden/dosespot — DEA schedule-authorization check (§2.4 §1311.120 / §4.7, M12-T05). Pure, IO-free.
 //
 // 21 CFR §1311.120 — logical access controls. EPCS controlled-substance signing is gated by both RBAC (the
 // `prescribing.sign_controlled_substance` permission key) and the ABAC `dea_schedule_authorized[:schedule]`
@@ -6,8 +6,8 @@
 // prescriber authorized for II/III but not IV/V cannot sign a Schedule IV order even with the role. This
 // module owns the pure membership check the M12-T08 ABAC predicate (`dea_schedule_authorized`) and the EPCS
 // sign route both compose; the prescriber's authorized-schedule array is injected as data (resolved upstream
-// from MDM / the `dosespot_prescriber` row) — `@wardenx/types` + the sibling errors only.
-import type { DeaSchedule } from "@wardenx/types";
+// from MDM / the `dosespot_prescriber` row) — `@chartwarden/types` + the sibling errors only.
+import type { DeaSchedule } from "@chartwarden/types";
 import { requireEpcs } from "./errors";
 
 /**

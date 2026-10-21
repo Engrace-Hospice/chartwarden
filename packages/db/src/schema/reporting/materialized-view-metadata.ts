@@ -1,4 +1,4 @@
-// @wardenx/db — `materialized_view_metadata` (M33 §3.3). The platform-global registry of the
+// @chartwarden/db — `materialized_view_metadata` (M33 §3.3). The platform-global registry of the
 // `report_mv.*` materialized views: refresh strategy, debounce window, MV dependency DAG, the
 // outbox topics each MV subscribes to, the freshness SLO, and the last-refresh telemetry.
 // PLATFORM-scoped: NO organization_id (retention class `platform`, immutable except by migration);

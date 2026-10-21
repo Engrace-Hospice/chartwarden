@@ -11,15 +11,15 @@
 //
 // §7.6 Part 2: a `sud_related` proposal is invisible to a caller without SUD disclosure — it is omitted from
 // the list (`redacted: true`) and accept/dismiss answer the non-leaking 404, exactly like a SUD problem.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   NotFoundError,
   type ProblemKind,
   ValidationError,
   ChartWardenError,
   normalizeIcd10CmShape,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { CarePlanWriteOutboxPort } from "./care-plan-route-service-db";
 import { CarePlanStateError } from "./lifecycle/errors";

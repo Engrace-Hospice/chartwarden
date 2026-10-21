@@ -1,11 +1,11 @@
-// @wardenx/scheduling — the §1.1 / §2.3 pure-data scheduling policy constants (M17-T01).
+// @chartwarden/scheduling — the §1.1 / §2.3 pure-data scheduling policy constants (M17-T01).
 //
-// IO-free, `@wardenx/types`-only data the later pure domain reads: the §1.1 D8-predicate-3
+// IO-free, `@chartwarden/types`-only data the later pure domain reads: the §1.1 D8-predicate-3
 // (`discipline_matches_visit`) visit-purpose → acceptable-discipline map, the §1.1 D8 seven-predicate
 // pre-schedule gate ordering, and the §1.1 D7 EVV-missing self-attest reason floor. The state machine
 // (M17-T03), proposers (M17-T04), and the pre-schedule-gate orchestrator (M17-T07) consume these.
 
-import type { VisitPurpose } from "@wardenx/types";
+import type { VisitPurpose } from "@chartwarden/types";
 
 /**
  * The discipline vocabulary (mirrors `encounter_discipline` / the M2-M3 catalog).

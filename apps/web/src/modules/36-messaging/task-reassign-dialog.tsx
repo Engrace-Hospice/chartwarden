@@ -1,7 +1,7 @@
 // M36 WP 3.4 - hand a task to another member of its conversation. Same picker as the convert dialog; the server checks
 // the person can read the channel and does not already hold an active task on the message.
-import type { TaskDto } from "@wardenx/types";
-import { Button, Modal } from "@wardenx/ui";
+import type { TaskDto } from "@chartwarden/types";
+import { Button, Modal } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { type Assignee, AssigneePicker } from "./task-assignee-picker";

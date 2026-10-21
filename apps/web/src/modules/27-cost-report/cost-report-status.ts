@@ -4,7 +4,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/safe · warning≈needs-attention · error≈failed
 // · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** cost_report.state → §6.6 tone. submitted/accepted are terminal-ish; reopened is the audit-heavy amber. */
 export const STATE_TONE: Record<string, StatusTone> = {

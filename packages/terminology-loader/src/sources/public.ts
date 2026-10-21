@@ -5,7 +5,7 @@ import {
   fetchBytes,
   isoDay,
 } from "./adapter";
-// @wardenx/terminology-loader — tier-1 PUBLIC adapters, gated by the egress flag (`TERMINOLOGY_LOADER_EGRESS=on`).
+// @chartwarden/terminology-loader — tier-1 PUBLIC adapters, gated by the egress flag (`TERMINOLOGY_LOADER_EGRESS=on`).
 //
 // What exists, and what does not:
 //   icd10cm  CDC/NCHS FTP — fetches the Code Descriptions zip for the target fiscal year. NCHS names that file

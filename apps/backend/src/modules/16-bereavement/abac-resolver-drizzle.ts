@@ -15,9 +15,9 @@
 // The second hop exists because M16's `assigned_counselor_user_id` column is a MEMBERSHIP id under a
 // spec-mandated `user_id` NAME (see the §3.3.1 schema header) — looking it up as a user id alone would
 // silently return zero grants and deny every counselor assignment.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { MembershipId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { MembershipId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import {
   type BereavedContactAbacFacts,

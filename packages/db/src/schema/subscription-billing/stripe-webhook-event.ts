@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `stripe_webhook_event` (M35 §3.3). PLATFORM-ONLY (not tenant-scoped) — a single Stripe
+// @chartwarden/db — `stripe_webhook_event` (M35 §3.3). PLATFORM-ONLY (not tenant-scoped) — a single Stripe
 // webhook may carry data spanning multiple tenants. `derived_organization_id` is a best-effort match
 // (nullable) and is NOT the RLS org column (it has no `\borganization_id\b` word boundary, so the tenancy
 // gate does not treat it as org-scoped — listed in NON_ORG_SCOPED). The `payload_ciphertext` is

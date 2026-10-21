@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_step_up_policy_override` (M2 Identity §3.7, M02-F04). Lets a
+// @chartwarden/db — `tenant_step_up_policy_override` (M2 Identity §3.7, M02-F04). Lets a
 // tenant TIGHTEN — never loosen — the platform-floor step-up policy per operation
 // (the tighten-only invariant is enforced by a trigger in Module 2's later tasks; the
 // STEP_UP_POLICY floor constant lands in M2-T04). Org-scoped: carries `organization_id`,

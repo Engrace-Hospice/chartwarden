@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `sia_calculation` (the Service Intensity Add-on math for the
+// @chartwarden/billing · repositories — `sia_calculation` (the Service Intensity Add-on math for the
 // last-7-days-of-life window, §3.3; 0..1 with `claim` via `sia_calculation_claim_uq`). APPEND-ONLY —
 // mirrors the `validation_run` exemplar: INSERT + READ ONLY, deliberately NO update/delete method (the DB
 // carries an append-only write-audit trigger from P1; the SIA math is recorded once at assembly and never
@@ -8,7 +8,7 @@
 // SIA calculator for the same claim collapses to the original row. ENUM BOUNDARY: there is NO enum on this
 // table — each qualifying care record's `discipline` lives inside the typed `qualifying_visits` jsonb as the
 // raw discipline token, so rows pass through un-mapped. No PHI / MBI (D13 / §8.7); money is integer cents (D8).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { eq } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

@@ -13,7 +13,7 @@ import {
   WorkQueueLayout,
   formatDateOnly,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 

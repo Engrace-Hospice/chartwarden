@@ -1,4 +1,4 @@
-// @wardenx/db — `telehealth_visit` (M31 §3.3, M31-T02). D8/D14's video-visit root: one row per M17 visit
+// @chartwarden/db — `telehealth_visit` (M31 §3.3, M31-T02). D8/D14's video-visit root: one row per M17 visit
 // that runs as telehealth (unique on m17_visit_id). It tracks the vendor room, the join/start/end
 // lifecycle, the audio-only Tier-3 fallback flag and the two-party-recording request state; on
 // `visit_ended` M8 attaches the encounter (`linked_encounter_id`) via the §4.3 TelehealthVisitReader seam.
@@ -14,7 +14,7 @@
 //
 // CROSS-MODULE FK POLICY: organization/provider_entity/location (M1 core) carry real FKs. m17_visit_id
 // (M17), patient_id (M5), assigned_membership_id (M2), linked_encounter_id (M8) are LOGICAL uuid,
-// app-validated. `scheduled_visit_setting` / `end_reason` are text validated against the @wardenx/types
+// app-validated. `scheduled_visit_setting` / `end_reason` are text validated against the @chartwarden/types
 // `TelehealthScheduledVisitSetting` / `TelehealthEndReason` unions at the write boundary (not pgEnums).
 import { sql } from "drizzle-orm";
 import {
@@ -55,7 +55,7 @@ export const telehealthVisits = pgTable(
     vendorRoomIdCipher: text("vendor_room_id_cipher").notNull(), // §3.6 audit-denylisted
     vendorRoomUrlCipher: text("vendor_room_url_cipher").notNull(), // §3.6 audit-denylisted
 
-    // §2.2.3 text columns validated against the @wardenx/types unions at the write boundary.
+    // §2.2.3 text columns validated against the @chartwarden/types unions at the write boundary.
     scheduledVisitSetting: text("scheduled_visit_setting").notNull(),
     audioOnlyFallbackActive: boolean("audio_only_fallback_active").notNull().default(false),
     recordingEnabled: boolean("recording_enabled").notNull().default(false),

@@ -16,8 +16,8 @@
 //        - `manual`               (partial_paid / denied)       — no replacement route from this state: adjust
 //                                   the claim with the MAC directly (the manual step is stated in the UI).
 //      Replaced / voided / rejected claims are superseded and never flagged.
-import type { ClaimDischargeFact, TypeOfBill } from "@wardenx/billing";
-import { deriveDischargeClaimCodes } from "@wardenx/billing";
+import type { ClaimDischargeFact, TypeOfBill } from "@chartwarden/billing";
+import { deriveDischargeClaimCodes } from "@chartwarden/billing";
 import { rederivedTypeOfBill, resolveClaimDischarge } from "./claim-discharge";
 
 /**

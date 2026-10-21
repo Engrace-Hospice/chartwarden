@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.4 / §3.2.13 / W8 routing resolution (M32-T04).
+// @chartwarden/ai-platform — §3.2.4 / §3.2.13 / W8 routing resolution (M32-T04).
 //
 // WHICH BACKEND SERVES THIS CALL — and, separately, WHICH BACKEND THE LEDGER ROW NAMES when nothing
 // serves it. Pure: the registry rows, the capability's chain, the tenant's consented routing preference
@@ -47,7 +47,7 @@ import type {
   AiRoutingPreference,
   AiRoutingReason,
   AiZdrStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The `ai_model_backend` columns the routing gate reads. */
 export interface AiBackendRoutingRow {

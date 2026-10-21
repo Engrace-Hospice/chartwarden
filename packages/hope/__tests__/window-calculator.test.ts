@@ -1,4 +1,4 @@
-// @wardenx/hope — timepoint window calculator (§2.2.1, §2.3, D2) — M10-T03.
+// @chartwarden/hope — timepoint window calculator (§2.2.1, §2.3, D2) — M10-T03.
 import { describe, expect, it } from "vitest";
 import {
   ADMISSION_ANCHORED_WINDOWS,

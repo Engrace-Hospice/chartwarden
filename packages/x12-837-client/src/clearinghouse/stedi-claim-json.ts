@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — maps the typed 837I claim input onto Stedi's JSON institutional-claims request
+// @chartwarden/x12-837-client — maps the typed 837I claim input onto Stedi's JSON institutional-claims request
 // (ADR-0053 D9). The same input builds the raw X12 (`build837iClaim`); this is the JSON route's twin, and
 // `compareStediClaimJsonToX12` proves the two agree on charges, dates and codes before either is sent.
 //

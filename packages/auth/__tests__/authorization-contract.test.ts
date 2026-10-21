@@ -12,7 +12,7 @@ import {
   type HttpRequestContext,
   NotFoundError,
   UnauthorizedError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BREAK_GLASS_ATTRIBUTE,

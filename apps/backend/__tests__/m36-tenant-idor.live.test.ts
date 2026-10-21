@@ -31,10 +31,10 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { computeRoomSet } from "@wardenx/messaging";
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { computeRoomSet } from "@chartwarden/messaging";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { Redis } from "ioredis";
 import { Client } from "pg";

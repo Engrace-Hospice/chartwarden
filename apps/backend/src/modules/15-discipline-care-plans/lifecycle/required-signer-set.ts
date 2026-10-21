@@ -1,8 +1,8 @@
-import { requiredSignersFor } from "@wardenx/discipline-plans";
+import { requiredSignersFor } from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/required-signer-set.ts — M15-T03 (§2.3 / D11).
 //
 // The pure quorum core for `discipline_care_plan_version` sign-off. The §3.5 D11 per-kind sets are pure
-// data in `@wardenx/discipline-plans` (`requiredSignersFor`); this module decides whether a collected set
+// data in `@chartwarden/discipline-plans` (`requiredSignersFor`); this module decides whether a collected set
 // of signer roles satisfies the quorum the version SEALED at `in_review` — §2.3 is explicit that the
 // evaluation runs against `state_snapshot.required_signer_set`, not against today's constants, so a
 // mid-admission policy change can never retroactively unsign (or re-open) a signed version.
@@ -16,7 +16,7 @@ import type {
   DisciplineRequiredSigner,
   DisciplineRequiredSignerSet,
   DisciplineSignerRole,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 
 /** §3.5 / D11 — the floor quorum for a (plan kind × version kind). Re-exported so the machines have one door. */

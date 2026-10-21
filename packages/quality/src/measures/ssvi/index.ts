@@ -1,4 +1,4 @@
-// @wardenx/quality — Service and Spending Variation Index (SSVI) COMPOSITE (0-16) + family barrel. Pure. No IO.
+// @chartwarden/quality — Service and Spending Variation Index (SSVI) COMPOSITE (0-16) + family barrel. Pure. No IO.
 //
 // The total is the SUM of the nine metrics' points: eight binary metrics (0/1) plus non-hospice spending (0-8).
 // A total ≥ 13 is an outlier (FR-F: ≈ the 99th percentile). Higher = more CMS concern — the reverse of the HCI.

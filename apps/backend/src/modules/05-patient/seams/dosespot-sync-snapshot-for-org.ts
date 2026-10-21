@@ -11,14 +11,14 @@
 // is that seam. Injected as a PORT into M12's `PatientSyncSnapshotResolver`
 // (`12-dosespot/jobs/vendor-boundary.ts`) at the composition root, the F-160 `CapConsumerStore` /
 // `bereavementPlanSitingForOrg` shape.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 /** The 48-hour-unbound-worker system-actor convention (§3.3 / F-102) for a read with no acting human. */
 const PATIENT_READER_SYSTEM_USER_ID = "";
 
-/** The demographic fields `@wardenx/dosespot`'s `PatientSyncSnapshot` needs, before the `patientId`/
+/** The demographic fields `@chartwarden/dosespot`'s `PatientSyncSnapshot` needs, before the `patientId`/
  *  `active`/`updatedAt` fields the caller already has from its own trigger event are folded in. */
 export interface DosespotSyncDemographics {
   readonly firstName: string;

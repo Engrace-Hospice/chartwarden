@@ -6,7 +6,7 @@
  * Clause map lives in the PR / report; per-clause names are prefixed G1..G10.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

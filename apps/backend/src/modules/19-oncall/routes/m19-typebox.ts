@@ -4,8 +4,8 @@
 // `m19-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one — the M21-T01 gotcha, where even the WORD "alerts" in a comment tripped `arch:tables`.
 //
-// The string-literal unions MIRROR the frozen `@wardenx/types` enum unions (`packages/types/src/oncall.ts`,
-// M19-T01), which themselves mirror the `@wardenx/db` pgEnums. The DB wins on conflict, and where §4.2's
+// The string-literal unions MIRROR the frozen `@chartwarden/types` enum unions (`packages/types/src/oncall.ts`,
+// M19-T01), which themselves mirror the `@chartwarden/db` pgEnums. The DB wins on conflict, and where §4.2's
 // own sketch disagrees with either, the sketch loses. Three places where it does, recorded rather than
 // silently reconciled:
 //
@@ -30,8 +30,8 @@
 // assert it could assert its absence.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
-import type { PortalTriageSummary } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
+import type { PortalTriageSummary } from "@chartwarden/types";
 import type { CursorPage } from "./concurrency";
 import type {
   CurrentOnCallView,
@@ -635,7 +635,7 @@ export const CreateVendorBindingBody = Type.Object(
     /** M40 canonical vendor entity — validated through M40's reader at write. */
     mdmVendorId: Uuid,
     name: FreeText(2, 200),
-    /** §8.5 — selects the `@wardenx/triage-vendors` adapter. */
+    /** §8.5 — selects the `@chartwarden/triage-vendors` adapter. */
     adapterKey: Type.String({ minLength: 2, maxLength: 200 }),
     rnCoverageAttested: Type.Boolean(),
     baaInEffect: Type.Boolean(),

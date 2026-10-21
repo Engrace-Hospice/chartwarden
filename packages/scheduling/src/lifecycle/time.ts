@@ -1,12 +1,12 @@
-// @wardenx/scheduling — org-timezone clock math for the §7.7 RRULE materializer (M17-T03).
+// @chartwarden/scheduling — org-timezone clock math for the §7.7 RRULE materializer (M17-T03).
 // PURE, IO-free, `Date.now()`-free: every fact (the anchor calendar date, the org timezone, the local
 // time-of-day) is passed in, so the math is deterministic across timezones and DST boundaries. This mirrors
-// the M11 `@wardenx/orders` `lifecycle/time.ts` precedent but lives here because `packages/scheduling` is a
-// leaf feature lib (the backend depends on it, never the reverse) and may only import `@wardenx/types`.
+// the M11 `@chartwarden/orders` `lifecycle/time.ts` precedent but lives here because `packages/scheduling` is a
+// leaf feature lib (the backend depends on it, never the reverse) and may only import `@chartwarden/types`.
 // `Intl` (ICU ships with the runtime) resolves the zone offset, so DST is handled exactly — the §9.8
 // DST-boundary fixture day round-trips because `atOrgLocalTime` re-resolves the offset at the target wall
 // instant (a 10:00 local visit is 10:00 local on both sides of the spring-forward / fall-back boundary).
-import type { IsoDate, IsoInstant, RruleByDay } from "@wardenx/types";
+import type { IsoDate, IsoInstant, RruleByDay } from "@chartwarden/types";
 
 /** Org timezone default when M2 `organization.timezone` is unset (matches the M6/M10/M11 default). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";

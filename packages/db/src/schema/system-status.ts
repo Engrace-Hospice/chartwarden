@@ -1,4 +1,4 @@
-// @wardenx/db — `system_status` (M1 Foundation §3.10). Platform/global operational
+// @chartwarden/db — `system_status` (M1 Foundation §3.10). Platform/global operational
 // status per component (id = 'system' or '<component>' e.g. 'dosespot'). Not tenant
 // scoped: NON_ORG_SCOPED in check-tenancy.ts, with its own global read policy added
 // in the initial migration (M1-T04). Drives the degraded-mode banner (M1-T11).

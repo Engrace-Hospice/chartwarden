@@ -21,10 +21,10 @@
 // Both are set by M2 when it mints a portal session (the same posture as `membershipId` / `sessionClass`);
 // until a real portal session carries them, the portal predicates fail CLOSED (403) — never fall back to a
 // caller-supplied value.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const str = (value: unknown): string | null =>

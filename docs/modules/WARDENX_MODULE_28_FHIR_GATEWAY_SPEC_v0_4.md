@@ -817,7 +817,7 @@ M28 registers a single `eraseFn` into the M4 destruction-cert callback registry 
 
 ```typescript
 // apps/backend/src/modules/28-fhir/boot.ts
-import { registerEraser } from '@wardenx/audit/erasers'
+import { registerEraser } from '@chartwarden/audit/erasers'
 import { fhirEraseFn } from './services/eraser'
 
 export function bootstrapModule28(): void {
@@ -1086,9 +1086,9 @@ Registered at boot via the M1 seam registry:
 
 ```typescript
 // apps/backend/src/modules/28-fhir/boot.ts
-import { registerEraser } from '@wardenx/audit/erasers'
-import { validateFhirAIBlock } from '@wardenx/fhir/ai-block'
-import { registerPredicate } from '@wardenx/auth/predicates'
+import { registerEraser } from '@chartwarden/audit/erasers'
+import { validateFhirAIBlock } from '@chartwarden/fhir/ai-block'
+import { registerPredicate } from '@chartwarden/auth/predicates'
 
 export function bootstrapModule28(reg: SeamRegistry): void {
   reg.publish<FhirGatewayMetricsProvider>('m28.fhir-gateway-metrics', fhirGatewayMetricsProvider)
@@ -1115,25 +1115,25 @@ export function bootstrapModule28(reg: SeamRegistry): void {
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { PatientReader, CaregiverReader, PatientAddressReader, PatientPayerReader } from '@wardenx/patient/seams'   // M5
+import type { PatientReader, CaregiverReader, PatientAddressReader, PatientPayerReader } from '@chartwarden/patient/seams'   // M5
 import type {
   ElectionPeriodReader, CertificationReader, FaceToFaceReader, LevelOfCareReader, AdmissionStatusReader,
-} from '@wardenx/admission/seams'                                                                                          // M6
-import type { CarePlanReader, ProblemReader, GoalReader, InterventionReader } from '@wardenx/care-plan/seams'             // M7
-import type { SignedEncountersReader, BillableEncounterReader } from '@wardenx/encounters/seams'                          // M8
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from '@wardenx/assessments/seams'                            // M9
-import type { HopeTimepointProvider } from '@wardenx/hope/seams'                                                            // M10
-import type { OrderProvider } from '@wardenx/orders/seams'                                                                  // M11 (Phase-2 ServiceRequest + DiagnosticReport)
-import type { MedicationOrderProvider } from '@wardenx/dosespot/seams'                                                       // M12
-import type { MedicationAdministrationProvider, ReconciliationProvider } from '@wardenx/emar/seams'                       // M13
-import type { DisciplinePlanReader } from '@wardenx/discipline-care-plans/seams'                                            // M15
-import type { DocumentReader, RenderedDocumentProvider, ExtractionProvenanceReader } from '@wardenx/documents/seams'      // M22
-import type { ClaimReader } from '@wardenx/billing/seams'                                                                    // M23 (Phase-2; deny-stub-OK)
-import type { LabObservationReader } from '@wardenx/external-interfaces/seams'                                              // M29 (DiagnosticReport)
-import type { AlertEmitter } from '@wardenx/messaging/seams'                                                                // M36
-import type { TerminologyProvider } from '@wardenx/terminology'                                                              // M38
-import type { ConsentEvaluator } from '@wardenx/consent/seams'                                                               // M39
-import type { ExternalPhysicianReader, PharmacyReader, FacilityReader, ReferralSourceReader } from '@wardenx/mdm/seams'   // M40
+} from '@chartwarden/admission/seams'                                                                                          // M6
+import type { CarePlanReader, ProblemReader, GoalReader, InterventionReader } from '@chartwarden/care-plan/seams'             // M7
+import type { SignedEncountersReader, BillableEncounterReader } from '@chartwarden/encounters/seams'                          // M8
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from '@chartwarden/assessments/seams'                            // M9
+import type { HopeTimepointProvider } from '@chartwarden/hope/seams'                                                            // M10
+import type { OrderProvider } from '@chartwarden/orders/seams'                                                                  // M11 (Phase-2 ServiceRequest + DiagnosticReport)
+import type { MedicationOrderProvider } from '@chartwarden/dosespot/seams'                                                       // M12
+import type { MedicationAdministrationProvider, ReconciliationProvider } from '@chartwarden/emar/seams'                       // M13
+import type { DisciplinePlanReader } from '@chartwarden/discipline-care-plans/seams'                                            // M15
+import type { DocumentReader, RenderedDocumentProvider, ExtractionProvenanceReader } from '@chartwarden/documents/seams'      // M22
+import type { ClaimReader } from '@chartwarden/billing/seams'                                                                    // M23 (Phase-2; deny-stub-OK)
+import type { LabObservationReader } from '@chartwarden/external-interfaces/seams'                                              // M29 (DiagnosticReport)
+import type { AlertEmitter } from '@chartwarden/messaging/seams'                                                                // M36
+import type { TerminologyProvider } from '@chartwarden/terminology'                                                              // M38
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'                                                               // M39
+import type { ExternalPhysicianReader, PharmacyReader, FacilityReader, ReferralSourceReader } from '@chartwarden/mdm/seams'   // M40
 
 function requireConsumedSeams(reg: SeamRegistry): void {
   reg.require<PatientReader>('m5.patient-reader')
@@ -1174,7 +1174,7 @@ function requireConsumedSeams(reg: SeamRegistry): void {
 }
 ```
 
-The `LabObservationReader` requirement ensures M28 boot fails if M29 doesn't register the seam — the boot-gate enforces that M29's lab observation read path and M28's `DiagnosticReport` projection ship together. The dependency-cruiser boundary check (architecture §25.15 check 5) verifies that `packages/fhir/src/r4/mappers/*` files import only from the seam interface barrels (`@wardenx/{module}/seams`) and never from `packages/db/src/schema/*` directly. A direct schema import from any mapper file is a CI-blocking violation.
+The `LabObservationReader` requirement ensures M28 boot fails if M29 doesn't register the seam — the boot-gate enforces that M29's lab observation read path and M28's `DiagnosticReport` projection ship together. The dependency-cruiser boundary check (architecture §25.15 check 5) verifies that `packages/fhir/src/r4/mappers/*` files import only from the seam interface barrels (`@chartwarden/{module}/seams`) and never from `packages/db/src/schema/*` directly. A direct schema import from any mapper file is a CI-blocking violation.
 
 ### 4.5 The `FhirMapper` and `FhirSearchTranslator` Contracts (D6)
 
@@ -1411,11 +1411,11 @@ packages/fhir/src/r4/mappers/diagnostic-report/
 ```ts
 // packages/fhir/src/r4/mappers/diagnostic-report/projector.ts
 
-import type { OrderProvider } from '@wardenx/orders/seams'
-import type { LabObservationReader } from '@wardenx/external-interfaces/seams'   // M29
-import type { PatientReader } from '@wardenx/patient/seams'
-import type { ExternalPhysicianReader, FacilityReader } from '@wardenx/mdm/seams'
-import type { TerminologyProvider } from '@wardenx/terminology'
+import type { OrderProvider } from '@chartwarden/orders/seams'
+import type { LabObservationReader } from '@chartwarden/external-interfaces/seams'   // M29
+import type { PatientReader } from '@chartwarden/patient/seams'
+import type { ExternalPhysicianReader, FacilityReader } from '@chartwarden/mdm/seams'
+import type { TerminologyProvider } from '@chartwarden/terminology'
 
 export interface DiagnosticReportProjectorDeps {
   readonly orderProvider: OrderProvider
@@ -1602,7 +1602,7 @@ export function applySudRedactionToDiagnosticReport(report: DiagnosticReport): D
 ```ts
 // Added to packages/fhir/src/seams/consumed.ts
 
-import type { LabObservationReader } from '@wardenx/external-interfaces/seams'   // M29
+import type { LabObservationReader } from '@chartwarden/external-interfaces/seams'   // M29
 
 function requireV03Seams(reg: SeamRegistry): void {
   reg.require<LabObservationReader>('m29.lab-observation-reader')
@@ -1674,9 +1674,9 @@ Per D21 the `nppes-last-synced-at` extension is ALWAYS included when the source 
 ```ts
 // apps/backend/src/modules/28-fhir/consumers/cache-invalidation.ts
 
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
-import type { ValkeyClient } from '@wardenx/foundation/valkey'
+import type { ValkeyClient } from '@chartwarden/foundation/valkey'
 
 export function registerCacheInvalidationConsumers(
   outbox: Outbox,
@@ -2099,7 +2099,7 @@ Enforced at boot via `validateFhirAIBlock()` in `packages/fhir/src/ai-block.ts`:
 
 ```typescript
 // packages/fhir/src/ai-block.ts
-import { promptRegistry } from '@wardenx/ai-platform/prompts'
+import { promptRegistry } from '@chartwarden/ai-platform/prompts'
 
 const PROHIBITED_PROMPT_KINDS = [
   'fhir.resource.generate',

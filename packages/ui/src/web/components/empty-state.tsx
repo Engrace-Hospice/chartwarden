@@ -1,4 +1,4 @@
-// @wardenx/ui — empty-state (spec §5.1). Shown when a list/query has no rows.
+// @chartwarden/ui — empty-state (spec §5.1). Shown when a list/query has no rows.
 // Lantern (DESIGN.md §3.1): empty states are a Fraunces "human moment"; body in muted on-surface.
 import type { JSX, ReactNode } from "react";
 import { t } from "../theme/tokens";

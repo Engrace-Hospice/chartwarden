@@ -1,6 +1,6 @@
 // M36 WP 2.6 — the composer's "Schedule send" control: a button beside Send that opens the dialog, and a polite status
 // line after a message was scheduled. The composer owns clearing its own draft (`onScheduled`).
-import { Button } from "@wardenx/ui";
+import { Button } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { type ScheduleAttemptMemory, ScheduleSendDialog } from "./schedule-send-dialog";

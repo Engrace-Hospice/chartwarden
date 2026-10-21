@@ -5,8 +5,8 @@
 //   * `keys` defaults to the throwing provider (every call fails closed); the composition root passes the ring-backed one;
 //   * `rateLimit` defaults to a hook that answers 503 DEGRADED; the composition root passes the WP 2.14 limiter only on a shared store;
 //   * nothing here reads or writes anything until a request passes all of the above.
-import type { DbClient } from "@wardenx/db";
-import type { SearchKeyProvider } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import type { SearchKeyProvider } from "@chartwarden/messaging";
 import type { FastifyInstance } from "fastify";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "../part2-channel-gate";

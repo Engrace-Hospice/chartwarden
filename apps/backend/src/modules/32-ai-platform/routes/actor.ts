@@ -19,13 +19,13 @@
 // `resolveActorPermissions` — the check-don't-gate seam, the same resolver `requirePermission` gates on —
 // and the read service applies it (read-service.ts's `maskInvocationForActor`). Extracting it once,
 // server-side, is what keeps "may see the patient" from becoming a query parameter.
-import { resolveActorPermissions } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { resolveActorPermissions } from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 import type { AiPlatformReadActor } from "./read-service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The M5-contributed permission key that unmasks PHI in the §164.528 disclosure ledger. */

@@ -1,4 +1,4 @@
-// @wardenx/db — `platform_retained_invoice_line` (M35 §3.7, M35-F06). PLATFORM-ONLY, NOT tenant-scoped.
+// @chartwarden/db — `platform_retained_invoice_line` (M35 §3.7, M35-F06). PLATFORM-ONLY, NOT tenant-scoped.
 // Line rows copied from the tenant-scoped `invoice_line` table alongside their parent invoice on tenant
 // offboarding. `retained_invoice_id` is a REAL FK to the parent `platform_retained_invoice`. The
 // `original_*` columns are forensic cross-refs only. 7-year IRS §6001 retention floor per D13.

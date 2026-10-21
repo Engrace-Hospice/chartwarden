@@ -18,7 +18,7 @@
 // ADR-0008 — EVV is operational, never a Medicare claim gate: only an `open` (unresolved_missing) row blocks
 // downstream billing; every `closed_*` state (including `closed_documented_at_encounter` — documented_missing)
 // is non-blocking. The classifiers at the foot encode that rule for the M8/M23 bracket/compliance readers.
-import type { EvvMissingResolutionStatus } from "@wardenx/types";
+import type { EvvMissingResolutionStatus } from "@chartwarden/types";
 import type { EvvSideEffect } from "./effects";
 import { EvvStateError, require_ } from "./errors";
 

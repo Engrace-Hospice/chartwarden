@@ -12,7 +12,7 @@
 // as headers) and a spy over the api client would not distinguish sending them from forgetting them.
 // (`__tests__/care-plan-workspace.dom.test.tsx` covers the same screen through a mocked client.)
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

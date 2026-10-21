@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `usage_event` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Append-only, high
+// @chartwarden/db — `usage_event` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Append-only, high
 // volume, MONTHLY-PARTITIONED by `recorded_at` (declared `PARTITION BY RANGE (recorded_at)` in migration
 // 0142). PostgreSQL requires the partition key in every unique/primary constraint, so the REAL keys in
 // SQL are the composite PK `(id, recorded_at)` and the dedup unique

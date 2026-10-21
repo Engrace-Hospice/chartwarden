@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 8 (Encounters & Visit Notes) action catalog (M8-T12; M8 §8.1).
+// @chartwarden/audit — Module 8 (Encounters & Visit Notes) action catalog (M8-T12; M8 §8.1).
 //
 // M8's APP-level explicit-emit audit actions, under the D9 `m8.<resource>.<verb>` namespace. Row-diff
 // mutation captures for the encounter/vitals/mileage/hearthnote rows flow through the M4 write-audit

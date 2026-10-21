@@ -2,12 +2,12 @@
  * GAP-087 — M30 CAHPS-Hospice pipeline: monthly sample selection + sealed insert, and the vendor export
  * build/storage. No database: the Drizzle surface is a small recording fake (the pipeline's SQL is plain
  * select/insert/update chains inside `withOrgContext`), the cipher is the real AES-GCM envelope over throwaway
- * keys, and the vendor adapter is the real `manual` one from `@wardenx/cahps-vendors`.
+ * keys, and the vendor adapter is the real `manual` one from `@chartwarden/cahps-vendors`.
  */
 import { randomBytes } from "node:crypto";
-import { CAHPS_ADAPTER_FACTORIES } from "@wardenx/cahps-vendors";
-import type { DbClient } from "@wardenx/db";
-import { type CahpsExportJob, cahpsExportProcessor, runCahpsMonthlySample } from "@wardenx/quality";
+import { CAHPS_ADAPTER_FACTORIES } from "@chartwarden/cahps-vendors";
+import type { DbClient } from "@chartwarden/db";
+import { type CahpsExportJob, cahpsExportProcessor, runCahpsMonthlySample } from "@chartwarden/quality";
 import { describe, expect, it, vi } from "vitest";
 import { createCahpsPhiCipher, keyVersionInt } from "../src/modules/30-quality/cahps/phi-cipher";
 import {

@@ -16,8 +16,8 @@
 // BEST EFFORT, BOUNDED. Replays are harmless: the consumed row's `correlation_id` is the MinIO request id, and an
 // existing row with that id is skipped. Only `GetObject` with a 2xx status counts (HEAD/PUT/list are not downloads).
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gte } from "drizzle-orm";
 
 /** A signed URL's maximum life (planSignedUrl clamps to 300s) plus slack for clock skew and a slow download. */

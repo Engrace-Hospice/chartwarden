@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M19 (After-Hours Triage). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M19 (After-Hours Triage). ABSENT producer (§4.4).
 //
 // M19 is not yet implemented → forward-seam DENY-STUB. M19 registers the real `TriageCallMetricsProvider`
 // over this stub when it lands (P2C).

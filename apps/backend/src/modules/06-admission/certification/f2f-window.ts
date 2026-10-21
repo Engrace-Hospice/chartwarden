@@ -8,7 +8,7 @@
 //   2. which start a period's F2F window is anchored to (`resolveF2fWindowStart`).
 //   3. whether a supplied encounter date is sane (not future, not absurdly old) before the R-F2F-02 window
 //      arithmetic (`state-machines/validation.ts` `checkF2fWindow`) is applied to it.
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import { AdmissionStateError } from "../state-machines/errors";
 import { addCalendarDays } from "./window-math";
 

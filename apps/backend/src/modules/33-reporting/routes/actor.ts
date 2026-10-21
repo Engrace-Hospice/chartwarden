@@ -3,11 +3,11 @@
 // The org/actor binding for every M33 route is ALWAYS server-side (the M2-assembled `request.context`,
 // NEVER the body/query). This is the single home for that extraction (the M34 routes/tenant/actor.ts
 // precedent), so no handler reads an org id off the wire.
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { M33ReadActor } from "./read-service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /**

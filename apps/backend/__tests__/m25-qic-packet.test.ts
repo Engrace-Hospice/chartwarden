@@ -1,7 +1,7 @@
 // M25 milestone 4 - the reconsideration block of the appeal packet payload: when it is required, that every document it
 // points at is an enclosure the letter lists, and that the rendered request shows the CMS elements and never claims
 // to hold an identity this system does not have.
-import { appealPacketViolations, buildAppealPacketRenderPayload } from "@wardenx/types";
+import { appealPacketViolations, buildAppealPacketRenderPayload } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { buildAppealPacketDoc } from "../src/modules/22-documents/render-pdf/appeal-packet-doc";
 

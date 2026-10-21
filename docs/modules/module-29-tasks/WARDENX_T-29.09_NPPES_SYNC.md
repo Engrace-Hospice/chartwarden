@@ -377,11 +377,11 @@ function luhnCheckDigit(input: string): number {
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/nppes/provider-cache.ts
-import { db } from '@wardenx/db'
-import { nppesProvider } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { nppesProvider } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
-import type { NppesIndividualProvider } from '@wardenx/nppes-client/types'
+import { withPlatformContext } from '@chartwarden/tenancy'
+import type { NppesIndividualProvider } from '@chartwarden/nppes-client/types'
 import type { Logger } from 'pino'
 import * as crypto from 'node:crypto'
 
@@ -485,15 +485,15 @@ export class ProviderCache {
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/nppes/sync-orchestrator.ts
-import { db } from '@wardenx/db'
-import { nppesSyncRun, nppesProvider } from '@wardenx/db/schema/external-interfaces'
-import { externalPhysician } from '@wardenx/db/schema/mdm'
+import { db } from '@chartwarden/db'
+import { nppesSyncRun, nppesProvider } from '@chartwarden/db/schema/external-interfaces'
+import { externalPhysician } from '@chartwarden/db/schema/mdm'
 import { sql, eq, and, isNotNull } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
+import { withPlatformContext } from '@chartwarden/tenancy'
 import { ulid } from 'ulid'
-import type { NppesClient } from '@wardenx/nppes-client'
+import type { NppesClient } from '@chartwarden/nppes-client'
 import { ProviderCache } from './provider-cache'
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 
 const CIRCUIT_BREAKER_CONSECUTIVE_FAILURES = 50
@@ -614,7 +614,7 @@ export class SyncOrchestrator {
     return (rows as Array<{ npi: string }>).map(r => r.npi)
   }
 
-  private async handleFetchResult(npi: string, result: import('@wardenx/nppes-client/types').NppesFetchResult, agg: SyncResult): Promise<void> {
+  private async handleFetchResult(npi: string, result: import('@chartwarden/nppes-client/types').NppesFetchResult, agg: SyncResult): Promise<void> {
     switch (result.kind) {
       case 'invalid_format':
         agg.providersInvalid++
@@ -737,11 +737,11 @@ export class SyncOrchestrator {
 // apps/backend/src/modules/29-external-interfaces/workers/nppes-sync-platform.worker.ts
 import { Worker, Queue, type Job } from 'bullmq'
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { NppesClient } from '@wardenx/nppes-client'
+import { db } from '@chartwarden/db'
+import { NppesClient } from '@chartwarden/nppes-client'
 import { ProviderCache } from '../nppes/provider-cache'
 import { SyncOrchestrator } from '../nppes/sync-orchestrator'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
 
 const logger = pino({ name: 'nppes-sync-platform' })
 const outbox = mkOutbox(db, logger)
@@ -788,13 +788,13 @@ The nightly window 02:30 UTC was chosen because:
 // apps/backend/src/modules/29-external-interfaces/routes/nppes-admin.ts
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
-import { db } from '@wardenx/db'
-import { nppesSyncRun, nppesProvider } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { nppesSyncRun, nppesProvider } from '@chartwarden/db/schema/external-interfaces'
 import { eq, desc } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
+import { withPlatformContext } from '@chartwarden/tenancy'
 import { Queue } from 'bullmq'
-import { requirePermissions } from '@wardenx/foundation/auth'
-import { requirePredicate } from '@wardenx/foundation/abac'
+import { requirePermissions } from '@chartwarden/foundation/auth'
+import { requirePredicate } from '@chartwarden/foundation/abac'
 
 export function registerNppesAdminRoutes(app: FastifyInstance): void {
   const queue = new Queue('nppes-sync-platform', { connection: { url: process.env.VALKEY_URL! } })
@@ -890,10 +890,10 @@ The seam was declared as published in M29 v0.3 §4.3. T-29.09 ships the implemen
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/seams/nppes-provider-reader.ts
-import { db } from '@wardenx/db'
-import { nppesProvider } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { nppesProvider } from '@chartwarden/db/schema/external-interfaces'
 import { eq, inArray } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
+import { withPlatformContext } from '@chartwarden/tenancy'
 
 export interface NppesProvider {
   readonly npi: string

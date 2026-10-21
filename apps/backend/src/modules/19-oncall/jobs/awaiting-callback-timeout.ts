@@ -9,9 +9,9 @@
 // SAME OPTIMISTIC-CONCURRENCY RULE AS EVERY WRITER (§2.5): the call is locked `FOR UPDATE`, re-checked, and the
 // UPDATE is guarded on `(id, version)` and bumps it, so a clinician who resumed the call first makes the
 // cron's item a skip.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { stateHistoryPort } from "../consumers/bindings";
 import { autoTimeoutCallback } from "../lifecycle/triage-call";

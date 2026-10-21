@@ -4,7 +4,7 @@
 // activation demands a DISTINCT compliance co-approver (D18) AND the M40 BAA gate (D16, the
 // `external_feed_baa_satisfied` predicate); revocation is dual-approval (D20). A minted channel credential's
 // plaintext never lands in the clear or comes back on the wire.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";

@@ -10,7 +10,7 @@
 // and the server is the only place that knows the tenant's configuration — so this screen states the floor
 // and then reports what the server ACTUALLY materialized, rather than drawing a preview it would have had
 // to invent.
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

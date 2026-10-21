@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T05, §2.6 D7. Builds the `ipu_iv_safety_overlay` row from a signed
+// @chartwarden/inpatient — M37-T05, §2.6 D7. Builds the `ipu_iv_safety_overlay` row from a signed
 // `medication_iv_continuous` M11 order, and evaluates M13's pre-administration gate against it. This is the
 // core that CLOSES the M13 (Wave-E) IV-pump-overlay deferral: M13's pre-administration gate consults the
 // overlay via the `IpuIvSafetyOverlayProvider.getOverlayForOrder(orderId)` seam (bound in M37-T10) before

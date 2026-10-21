@@ -19,7 +19,7 @@
 // audit row (which has the field denylist) and deliberately NOT here — an outbox row has no such
 // protection. `targetPatientId` is a reference, not a patient record.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

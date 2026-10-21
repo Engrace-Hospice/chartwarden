@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — LOINC parser (Regenstrief; tier 2: free licence + attribution).
+// @chartwarden/terminology-loader — LOINC parser (Regenstrief; tier 2: free licence + attribution).
 //
 // Input: `Loinc.csv` from the LOINC release (a zip with the file under `LoincTable/`, or the CSV raw). Columns are
 // read BY NAME, so the several releases that reorder or add columns all parse. Status mapping:

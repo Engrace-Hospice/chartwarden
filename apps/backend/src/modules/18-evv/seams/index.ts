@@ -18,7 +18,7 @@ import type {
   EvvLocationProvider,
   EvvMetricsProvider,
   EvvVerificationProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   createEvvAggregatorReferenceReader,

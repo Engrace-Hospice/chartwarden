@@ -9,7 +9,7 @@
 //     (`fail_accuracy`), never a pass, and it cannot rescue a fix outside the radius;
 //   - only a good-accuracy fix inside the radius is a `pass` (the only outcome that confirms the patient address).
 // Advisory-not-block (D3/D4): every outcome still records the capture; this decides how it is labelled.
-import type { EvvEventGpsQuality } from "@wardenx/types";
+import type { EvvEventGpsQuality } from "@chartwarden/types";
 import {
   type Coordinate,
   type GeofenceSettings,

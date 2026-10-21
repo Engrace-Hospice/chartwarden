@@ -1,4 +1,4 @@
-// @wardenx/billing — HIPPS pricing across a federal fiscal-year boundary (pure).
+// @chartwarden/billing — HIPPS pricing across a federal fiscal-year boundary (pure).
 //
 // The hospice rates and the wage index change on Oct 1 (CMS publishes both per fiscal year). A claim whose
 // from-through range crosses Oct 1 therefore prices each day with ITS OWN fiscal year's rate table and wage index —

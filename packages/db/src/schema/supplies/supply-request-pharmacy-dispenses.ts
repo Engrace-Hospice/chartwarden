@@ -1,4 +1,4 @@
-// @wardenx/db — `supply_request_pharmacy_dispense` (M21, migration 0306, F-233 #248). The append-only fact
+// @chartwarden/db — `supply_request_pharmacy_dispense` (M21, migration 0306, F-233 #248). The append-only fact
 // "the order behind this request was dispensed at T", written by M21's consumer of
 // `m12.medication_order.dispensed_at_pharmacy`. It is NOT a dispatch and never fabricates §1304 custody
 // facts (see the migration header). `dispensing_pharmacy_mdm_id` is the order's pharmacy OF RECORD, not a

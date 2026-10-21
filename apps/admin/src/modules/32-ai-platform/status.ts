@@ -2,7 +2,7 @@
 // console (GAP-049). Every screen resolves a wire enum to the §6.6 StatusPill taxonomy through these
 // maps, so the badge vocabulary is applied once. The keys mirror the backend's `m32-typebox.ts` literal
 // unions verbatim — including the lifecycle states' UPPERCASE form, which is what the wire carries.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /**
  * §2.2 capability lifecycle FSM (8 states) → tone. The one judgement worth stating: `MONITORING` reads

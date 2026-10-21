@@ -3,9 +3,9 @@
 // before validateSeams(); consumers (M23/M26/M27/M13/M30/M31/M34) resolve them via getSeam. Every seam
 // scopes its read to the passed organizationId via withOrgContext (RLS backstop); the returned shapes are
 // PHI-lean (ids + counts + policy flags), never a raw PHI row (D17/§8.5).
-import { type DbClient, schema } from "@wardenx/db";
-import { evaluateVisitorCheckIn } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { evaluateVisitorCheckIn } from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AdmissionId,
   IpuAdmissionReader,
@@ -20,7 +20,7 @@ import type {
   PatientPrivacyFlagReader,
   SeamContracts,
   SeamName,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type {
@@ -275,7 +275,7 @@ export function buildIpuSeams(db: DbClient): {
 
 /**
  * GAP-061 — M5's §3.5 `PatientPrivacyFlagReader`, the sex-class + privacy-flag read the §2.2 shared-room
- * occupancy gate consults before `assignBed`. Leaf-typed in @wardenx/types, so this resolves through the
+ * occupancy gate consults before `assignBed`. Leaf-typed in @chartwarden/types, so this resolves through the
  * M1 registry with NO import edge into M5's code (ADR-0005 D1) — the M12 `getDoseSpotMdmValidator`
  * precedent. The route service takes it as a lazy thunk so the seam is read after `wireModuleSeams()`.
  */
@@ -285,7 +285,7 @@ export function getIpuRoomingFactsReader(): PatientPrivacyFlagReader {
 
 /**
  * GAP-062 — M39's `ConsentEvaluator`, narrowed to the one method §2.7's visitor gate calls. The seam is
- * held OPAQUELY by the M1 registry (its rich interface lives in @wardenx/consent, which M37 does not
+ * held OPAQUELY by the M1 registry (its rich interface lives in @chartwarden/consent, which M37 does not
  * import), so this narrows with a cast — to `evaluate`, a method the real evaluator actually implements.
  */
 export function getIpuVisitorConsentGate(): VisitorConsentGate {

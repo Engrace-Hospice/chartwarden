@@ -1,4 +1,4 @@
-// @wardenx/db — `onboarding_task` (M34 SaaS Tenant Platform §3.4). The per-tenant RUNTIME
+// @chartwarden/db — `onboarding_task` (M34 SaaS Tenant Platform §3.4). The per-tenant RUNTIME
 // onboarding task rows (one per template key per tenant_account), driven through the
 // `onboarding_task_status` state machine (pending → in_progress → done | skipped | blocked).
 // Tenancy (§3.10 M34-F02 / ADR-0010): ORG-SCOPED — carries its own `organization_id` NOT NULL so

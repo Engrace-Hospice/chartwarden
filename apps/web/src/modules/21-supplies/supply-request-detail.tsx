@@ -21,7 +21,7 @@
 // surface is M4's own screen and its own permission (`audit.read`), and re-rendering a filtered slice of it
 // inside a supplies screen would put a second, unaudited copy of the accounting trail in a second place.
 // The lifecycle timeline below is reconstructed from the request's OWN columns and says so.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

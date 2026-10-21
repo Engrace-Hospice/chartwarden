@@ -2,8 +2,8 @@
 // and the claim-range seam's `rhcPriorHospiceDays` fallback (used by M23 when no stays list and no HETS history
 // reach it). It must count a transfer-in's SENDING-hospice span (CMS Pub. 100-04 ch. 11 §20.1.3 / §30.2) with the
 // same rules as M23's `computeRhcCarryOver`: the transfer day is day 1 of the new stay, a day shared by two spans
-// counts once, and a gap of more than 60 days resets the count. Both share `@wardenx/shared/rhc`.
-import { computeRhcCarryOver } from "@wardenx/billing";
+// counts once, and a gap of more than 60 days resets the count. Both share `@chartwarden/shared/rhc`.
+import { computeRhcCarryOver } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { rhcCarryOver } from "../src/modules/06-admission/intake/benefit-period";
 import { buildBenefitPeriodPlan } from "../src/modules/06-admission/intake/readmission-plan";

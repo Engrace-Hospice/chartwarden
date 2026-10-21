@@ -30,7 +30,7 @@
 // `m19_triage_call_state_history_actor` CHECK ("either a named person's or explicitly the system's") is an
 // invariant of the TRANSITION, not of the command — putting it in the caller would mean nine call sites
 // each had to remember it, and the one that forgot would be the 2 a.m. path.
-import type { M19EventName } from "@wardenx/types";
+import type { M19EventName } from "@chartwarden/types";
 import type { TriageSideEffect } from "../lifecycle/effects";
 import type { AlertPort, OutboxEmission, WriteOutboxPort } from "./write-service";
 

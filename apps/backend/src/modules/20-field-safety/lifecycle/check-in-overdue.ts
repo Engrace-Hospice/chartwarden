@@ -12,12 +12,12 @@
 //
 //   • the STORED state ladder is `proposed → overdue → escalated`, exactly what the enum and migration
 //     0110's `m20_scis_overdue_stamped` / `m20_scis_escalated_stamped` CHECKs support; and
-//   • the D4 RUNG is DERIVED from `expected_at` against the four policy thresholds. @wardenx/types already
+//   • the D4 RUNG is DERIVED from `expected_at` against the four policy thresholds. @chartwarden/types already
 //     anticipated this — `SafetyOverdueBadge` is documented there as "not a stored column: it is computed
 //     from `expectedAt` against the effective policy".
 //
 // THE LADDER HAS FOUR RUNGS AND THE ROW REACHES `escalated` AT THE SECOND. That is why M20-T03 widened
-// `SAFETY_SCHEDULE_ACTIONABLE_STATES` (@wardenx/types) and migration 0110's `scis_overdue_scan_idx`
+// `SAFETY_SCHEDULE_ACTIONABLE_STATES` (@chartwarden/types) and migration 0110's `scis_overdue_scan_idx`
 // (migration 0112) to include `escalated`: with the two-member set, the detector stopped acting on the row
 // at +15 minutes and the +30 and +60 rungs — the two that exist because nobody has reached the clinician
 // yet — could never fire.
@@ -45,13 +45,13 @@ import type {
   SafetyOverdueTier,
   SafetyPolicyEffectiveDto,
   VisitId,
-} from "@wardenx/types";
-import { SAFETY_SCHEDULE_ACTIONABLE_STATES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { SAFETY_SCHEDULE_ACTIONABLE_STATES } from "@chartwarden/types";
 import { type SafetySideEffect, withAudit } from "./effects";
 import { requireSafety } from "./errors";
 
 /** The four D4 thresholds as a ladder of named rungs, plus `none`, in ascending order — the comparison
- *  basis for "has a NEW rung been crossed?". The type itself lives in @wardenx/types because it rides the
+ *  basis for "has a NEW rung been crossed?". The type itself lives in @chartwarden/types because it rides the
  *  §4.10 `check_in_escalated` payload. */
 export const SAFETY_OVERDUE_TIERS = [
   "none",

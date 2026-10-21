@@ -1,4 +1,4 @@
-// @wardenx/ui — correlation-id-badge (spec §5.1). Shows the correlationId so a user can
+// @chartwarden/ui — correlation-id-badge (spec §5.1). Shows the correlationId so a user can
 // quote it to support; correlationId is the per-request id from the M1 error envelope
 // (spec §4.3/§4.5). Click-to-copy is best-effort (clipboard may be unavailable).
 // Lantern (DESIGN.md §3.1): correlationId is a code → IBM Plex Mono on a tonal surface, no line.

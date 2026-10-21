@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — validation helpers shared by every per-system parser. A parser is strict by
+// @chartwarden/terminology-loader — validation helpers shared by every per-system parser. A parser is strict by
 // design: a row it cannot read FAILS the load (with a line number or code, never the row's text), because a
 // silently-skipped row in a code system is a code that validates as "unknown" for every tenant.
 import { LoaderDataError } from "../errors";

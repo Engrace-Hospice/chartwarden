@@ -3,8 +3,8 @@
 // statement to the acting org. Projection reads take the LATEST snapshot per scope (computed_at DESC);
 // accrual-line paging is keyset over (posted_at DESC, id DESC). numeric() columns arrive as strings →
 // coerced to number at the edge; bigint(mode:'number') arrive as numbers.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { type CursorPage, decodeCursor, toPage } from "./concurrency";
 import type {

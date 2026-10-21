@@ -1,4 +1,4 @@
-// @wardenx/ui core — the platform-neutral, react-dom-free layer (ADR-0035): typed API client,
+// @chartwarden/ui core — the platform-neutral, react-dom-free layer (ADR-0035): typed API client,
 // context providers, hooks, theme tokens, and native-capability ports. Safe for the web build,
 // the Capacitor native build, and a future React Native consumer. This layer may NOT import the
 // web rendering layer (`../web`) — enforced by dependency-cruiser `ui-core-renderer-free`.

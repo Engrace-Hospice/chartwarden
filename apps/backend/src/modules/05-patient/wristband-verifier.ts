@@ -9,14 +9,14 @@
 //
 // FAIL CLOSED everywhere: an unknown token is never `verified`; a patient that is unreadable under the caller's
 // org (unknown / cross-tenant) is `not_on_file`; a voided generation never verifies, online or offline.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   OFFLINE_WRISTBAND_MAX_AGE_MS,
   type PatientWristbandVerifier,
   type WristbandVerdict,
   parseWristbandPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { wristbandDigest } from "./wristband-digest";
 

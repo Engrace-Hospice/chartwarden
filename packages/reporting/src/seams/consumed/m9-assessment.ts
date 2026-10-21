@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M9 (Clinical Assessments). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M9 (Clinical Assessments). PRESENT producer (§4.4).
 //
 // M33 reads AGGREGATE-only scale series + assessment-compliance counts (the M9 `ScaleSeriesProvider`
 // is consumed aggregate-only — no per-patient scores cross, D6). Bound via `getSeam` at boot (P2C).

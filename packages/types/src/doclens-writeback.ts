@@ -1,4 +1,4 @@
-// @wardenx/types — the DocLens → M5 demographics WRITEBACK contract (F-235, #248).
+// @chartwarden/types — the DocLens → M5 demographics WRITEBACK contract (F-235, #248).
 //
 // The M22 §7.1 W1 steps 11–13 chart-writeback handshake, narrowed by two decisions recorded in
 // docs/history/outbox-248-builds.md (F-231 options A1 + B, decided 2026-10-03):
@@ -14,7 +14,7 @@
 //        (MBI/SSN/MRN — never mutable from an external source, M5 D12) and terminology-coded fields
 //        (language, marital status — need an M38 value-set mapping nobody has specified) are NOT on it.
 //
-// Both modules import this one file (M5 and M22 share no `dependsOn` edge; `@wardenx/types` is the leaf
+// Both modules import this one file (M5 and M22 share no `dependsOn` edge; `@chartwarden/types` is the leaf
 // both may read), so the allowlist the M22 planner applies and the one M5 re-checks on receipt cannot drift.
 
 import type { ChartTargetModule } from "./documents";

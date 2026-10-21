@@ -1,4 +1,4 @@
-// @wardenx/db — `extraction_decision` (M22 §3.3). The reviewer's per-candidate attestation
+// @chartwarden/db — `extraction_decision` (M22 §3.3). The reviewer's per-candidate attestation
 // (approve|approve_with_edit|reject) — the surveyor-defensible "every approved field is the
 // reviewer's attestation" record (§1.4). Org-scoped; partial-UNIQUE per (candidate, review) gives
 // one decision per candidate. `edited_value` / `reason` are DENYLISTED (§3.6 — PHI / free-form

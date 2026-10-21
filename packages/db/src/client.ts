@@ -1,4 +1,4 @@
-// @wardenx/db — production Postgres client factory (M1 infra, AUTH-T01, ADR-0033).
+// @chartwarden/db — production Postgres client factory (M1 infra, AUTH-T01, ADR-0033).
 //
 // The ONE place a pooled `pg` client + Drizzle handle is constructed. The composition root
 // (apps/backend/src/index.ts) builds it from DATABASE_URL and injects it where a real DB is needed

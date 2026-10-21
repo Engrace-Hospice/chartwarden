@@ -16,14 +16,14 @@ import { randomUUID } from "node:crypto";
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import {
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
   narrativeVocabReleaseById,
-} from "@wardenx/narrative-vocab";
-import { runWithRequestContext } from "@wardenx/tenancy";
+} from "@chartwarden/narrative-vocab";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -65,7 +65,7 @@ const USER_RN_CM = "88888888-8888-8888-8888-888888888888";
 /** A session id the store never seeds — `resolveStepUpState` resolves it to `null` (never fresh). */
 const STALE_SESSION = "77777777-7777-7777-7777-777777777777";
 
-/** §2.6 selection trees (#114). Real template sections + real `@wardenx/narrative-vocab` codes. */
+/** §2.6 selection trees (#114). Real template sections + real `@chartwarden/narrative-vocab` codes. */
 const EMPTY_TREE = { sections: [] };
 const TREE = {
   sections: [
@@ -665,7 +665,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(atFinalize.pinned).toBe(true);
     expect(atFinalize.final).toContain("cardiovascularly stable");
 
-    // Rewrite the inputs underneath the signed note — the shape of a `@wardenx/narrative-vocab` release
+    // Rewrite the inputs underneath the signed note — the shape of a `@chartwarden/narrative-vocab` release
     // that edits a shipped phrase, or of the `${patient}` slot resolving for the first time. Done in SQL
     // because the service itself refuses to edit a finalized encounter (§2.7), which is exactly why the
     // recompute-at-read behaviour was invisible: nothing a CLINICIAN can do changes the tree afterwards.

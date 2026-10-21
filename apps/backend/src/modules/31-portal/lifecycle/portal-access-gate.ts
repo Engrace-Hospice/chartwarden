@@ -3,7 +3,7 @@
 // THE FOUNDATION GATE. Every portal PHI route evaluates M39 consent before serving a byte (§8.2 Layer-3 /
 // the plan's "M39 ConsentEvaluator gate on every route"). M31 `dependsOn` includes M39, but the established
 // idiom for consuming `ConsentEvaluator` is a locally-declared structural port + `getSeam("ConsentEvaluator")`
-// resolved OPAQUELY from the M1 registry — the M22/M15 precedent — so this stays off a `@wardenx/consent`
+// resolved OPAQUELY from the M1 registry — the M22/M15 precedent — so this stays off a `@chartwarden/consent`
 // import edge (`ConsentEvaluator` is `unknown` in the leaf SeamContracts). M39 owns the canonical rich
 // interface; {@link PortalConsentEvaluatorPort} is the M31-side projection of the one arm M31 calls.
 //
@@ -11,12 +11,12 @@
 // resolver ({@link resolvePortalAccessConsent}) produces that fact via the real seam, FAIL-CLOSED on any
 // error / missing seam / not-allowed (§8.2 — a consent read that throws must refuse, never disclose). The
 // route binding (wrapping every handler) lands in M31-T07; T03 ships the reusable gate.
-import type { PortalAccessGrantKind, PortalSessionClass } from "@wardenx/types";
+import type { PortalAccessGrantKind, PortalSessionClass } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { requirePortal } from "./errors";
 
 /** The M31-side structural projection of M39's `ConsentEvaluator.evaluate` (the only arm the portal calls).
- *  The real (richer) contract lives in @wardenx/consent; M31 reads it opaquely from the M1 registry. */
+ *  The real (richer) contract lives in @chartwarden/consent; M31 reads it opaquely from the M1 registry. */
 export interface PortalConsentEvaluatorPort {
   evaluate(args: {
     organizationId: string;

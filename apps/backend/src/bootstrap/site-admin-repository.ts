@@ -8,8 +8,8 @@
 // statement joins through its provider entity — the explicit predicate is the wall (the same posture as the
 // read-only `/locations` lookup), run inside `withOrgContext` as the belt. The tax id is only ever WRITTEN
 // here, already enveloped by the caller's cipher, and is never selected back.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 export type LifecycleStatus = "created" | "active" | "suspended" | "closed";

@@ -16,13 +16,13 @@
  * naming any RESTRICTS the release to those named. It narrows, never widens, so no existing consent
  * record changes meaning.
  */
-import type { AbacContext } from "@wardenx/auth";
+import type { AbacContext } from "@chartwarden/auth";
 import {
   type StoredConsent,
   type StoredRecipient,
   createConsentEvaluator,
   createInMemoryConsentStore,
-} from "@wardenx/consent";
+} from "@chartwarden/consent";
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

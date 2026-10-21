@@ -28,7 +28,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import {
   type DsarExportJobInput,
   M34_DSAR_EXPORT_COMPLETED,
@@ -36,8 +36,8 @@ import {
   __resetModule34SeamsForTest,
   registerTenantExportShard,
   runDsarExportJob,
-} from "@wardenx/saas-tenant-platform";
-import { runWithRequestContext } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

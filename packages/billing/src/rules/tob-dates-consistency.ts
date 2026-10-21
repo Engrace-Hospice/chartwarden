@@ -1,5 +1,5 @@
 import { dateLte } from "./_util";
-// @wardenx/billing — §4.5 rule `tob_and_dates_consistency` (tob_dates, error, regulatory). The UB-04
+// @chartwarden/billing — §4.5 rule `tob_and_dates_consistency` (tob_dates, error, regulatory). The UB-04
 // Type of Bill must match the claim's semantics and the service dates must be contiguous with the prior
 // claim (D4 / D14): 811 admit-through-discharge requires a discharge in range; 812 first-interim requires
 // no prior claim; 813 continuing-interim requires a prior 812/813; 814 last-interim-before-discharge.

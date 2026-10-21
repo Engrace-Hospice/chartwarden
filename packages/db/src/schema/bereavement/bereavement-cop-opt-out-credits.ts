@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_cop_opt_out_credit` (M16, F-206 #248). One durable row per
+// @chartwarden/db — `bereavement_cop_opt_out_credit` (M16, F-206 #248). One durable row per
 // `m16.bereavement.plan_skipped_per_patient_opt_out` outbox delivery that M30's CoP 418.64(d)
 // `bereavement_coverage_rate` measure should count as SATISFIED rather than silently absent — the
 // user's own decision on the `scripts/outbox-deferred-consumers.ts` `no-consumer-surface` gap: a death

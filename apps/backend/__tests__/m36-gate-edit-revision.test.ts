@@ -9,7 +9,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { M36_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@wardenx/auth";
+import { M36_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { ResolvedMessageSchema } from "../src/modules/36-messaging/routes/messaging-typebox";
 

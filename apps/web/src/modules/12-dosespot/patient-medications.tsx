@@ -10,7 +10,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — the patient chart's Medications tab (2026-09-25 redesign, mockup
 // "Medications"): KPI cards, status chips with counts, the medication list with a colored class bar,
 // and an inline detail card for the selected order; the right rail carries Patient Summary, the

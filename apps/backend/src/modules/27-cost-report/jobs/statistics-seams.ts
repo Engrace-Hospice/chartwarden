@@ -1,4 +1,4 @@
-import { ImportsRepository } from "@wardenx/cost-report";
+import { ImportsRepository } from "@chartwarden/cost-report";
 // apps/backend/src/modules/27-cost-report/jobs/statistics-seams.ts — GAP-080. The REAL Worksheet S-3 statistics
 // sources (M27 spec §4.5 / D6 / D18), replacing the four fail-closed `statisticsSeams.*` thunks that made every
 // `statistics-refresh` job throw `M27WorkerPortUnbound`:
@@ -13,8 +13,8 @@ import { ImportsRepository } from "@wardenx/cost-report";
 // Every cross-module fact arrives through a locally-declared PORT bound at the composition root (the F-160 shape), so M27
 // reads no M5 / M6 / M8 / M16 table. Everything persisted is AGGREGATE-ONLY (D18): the per-patient rows the M6 census
 // returns are folded into counts here and never stored.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { StatisticsSeamScope, StatisticsSeams } from "./m27-jobs";
 
 // ── the ports (structural; the owning module's function satisfies each) ─────────────────────────────────────────────

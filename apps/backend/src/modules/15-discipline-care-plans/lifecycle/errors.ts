@@ -6,7 +6,7 @@
 // extends the M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation) so the
 // M1 Fastify error handler renders the exact code + status the UI keys its message off, with no
 // cross-module import edge. Mirrors the M7 `CarePlanStateError` precedent verbatim (§2.2.2 is M7 D1).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §4.2 machine-readable failure-code catalog → HTTP status. */
 export const M15_ERROR_STATUS = {

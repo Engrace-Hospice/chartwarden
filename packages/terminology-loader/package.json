@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/terminology-loader",
+  "name": "@chartwarden/terminology-loader",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@wardenx/terminology": "workspace:*"
+    "@chartwarden/terminology": "workspace:*"
   }
 }

@@ -1,4 +1,4 @@
-// @wardenx/db — `order_discontinuation` (M11 §3.3 / §6.x). One row per discontinuation of an active /
+// @chartwarden/db — `order_discontinuation` (M11 §3.3 / §6.x). One row per discontinuation of an active /
 // pending / verbal order — clinician-initiated (clinical_judgement / patient_request / adverse_event /
 // replaced_by_corrected_order …) or a system cascade (admission_discharged / level_of_care_change /
 // standing_order_discontinued, where `actor_membership_id` is NULL and `source_outbox_event_id` captures

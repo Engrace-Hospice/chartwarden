@@ -11,10 +11,10 @@
 // Runs inside `withOrgContext` so RLS (`tenant_step_up_policy_override_org_isolation`, migration
 // 0006) scopes the read by `app.org_id` — an override belonging to another tenant cannot resolve
 // here even if the operation key matches.
-import type { StepUpOverrideRecord, StepUpOverrideStore } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { StepUpFactor } from "@wardenx/types";
+import type { StepUpOverrideRecord, StepUpOverrideStore } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { StepUpFactor } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 /** Build the live override store (org-scoped under RLS). */

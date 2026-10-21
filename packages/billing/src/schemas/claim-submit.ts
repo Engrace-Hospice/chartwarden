@@ -1,4 +1,4 @@
-// @wardenx/billing — schemas for route #7 `POST /api/v1/billing/claims/:id:submit` (§4.1 / §4.2).
+// @chartwarden/billing — schemas for route #7 `POST /api/v1/billing/claims/:id:submit` (§4.1 / §4.2).
 //
 // READY → SUBMITTED; emits `m23.claim.submit_requested`; M2 step-up auth is required (D2). The service
 // re-asserts the blocking guard server-side (every fail-without-override blocks); `acknowledgeAllOverrides`

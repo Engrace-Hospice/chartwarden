@@ -1,4 +1,4 @@
-// @wardenx/ui — Panel (2026-09-25 redesign). The mockups' workhorse card: white surface, hairline
+// @chartwarden/ui — Panel (2026-09-25 redesign). The mockups' workhorse card: white surface, hairline
 // edge, a header row of [blue outline icon · bold title · optional count] with a right-aligned
 // action ("Edit", "View all →", "Manage"), then the body. `InfoRows` is the two-column label/value
 // list those panels carry (Patient Information, Clinical Snapshot). Presentational only.

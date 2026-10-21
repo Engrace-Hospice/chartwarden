@@ -10,9 +10,9 @@
 // membership with no default provider entity ⇒ `null` ⇒ the seam refuses. It never picks "some" entity of
 // the org — a §164.528 accounting naming the wrong certified provider is worse than none. `actorUserId:
 // null` (the ambient-context arm the M19 pair uses) is not resolved here: refuse.
-import { roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq } from "drizzle-orm";
 import type { AiSeamActorContext, AiSeamActorResolver } from "./published";
 

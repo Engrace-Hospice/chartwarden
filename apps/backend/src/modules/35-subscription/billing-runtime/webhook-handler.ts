@@ -11,21 +11,21 @@
 // Without this, nothing ever put a subscription into `past_due`, so the dunning engine had no rows to walk.
 // The tenant is derived SERVER-SIDE from the Stripe customer id (`subscription.stripe_customer_id`), never from
 // the payload's own claims. A poison event (5 failed attempts) stays unprocessed with its error text.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DunningStateMachineService,
   InvoiceMirrorService,
   SubscriptionLifecycleService,
   canTransitionSubscription,
-} from "@wardenx/subscription-billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   InvoiceLineKind,
   InvoiceStatus,
   OrgId,
   SubscriptionId,
   SubscriptionStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   createDrizzleDunningStore,

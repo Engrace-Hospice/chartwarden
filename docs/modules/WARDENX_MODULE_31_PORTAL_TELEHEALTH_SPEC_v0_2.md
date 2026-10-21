@@ -939,7 +939,7 @@ export const PortalDtoLayLanguageGuard = Type.Object({
 
 ```typescript
 // packages/domain/portal/seam-interfaces.ts
-import type { OrgId, PatientId, PortalAccountId, PortalSessionId, MembershipId, IsoDateTime } from '@wardenx/domain/ids'
+import type { OrgId, PatientId, PortalAccountId, PortalSessionId, MembershipId, IsoDateTime } from '@chartwarden/domain/ids'
 
 /** Used by M28 SMART user-launch, M30 quality, M33 reporting, M34 SaaS console. */
 export interface PortalAccountReader {
@@ -1028,26 +1028,26 @@ export function setPortalDisclosureAccountingProvider(p: PortalDisclosureAccount
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { MembershipReader, CredentialReader, AuditorSessionMinter } from '@wardenx/auth/seams'  // M2
-import type { PatientReader, CaregiverReader, PatientCaregiverReader, PatientAddressReader } from '@wardenx/patient/seams'  // M5
-import type { ElectionPeriodReader, AdmissionStatusReader } from '@wardenx/admission/seams'  // M6
-import type { CarePlanReader } from '@wardenx/care-plan/seams'  // M7
-import type { SignedEncountersReader } from '@wardenx/encounters/seams'  // M8
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from '@wardenx/assessments/seams'  // M9
-import type { HopeTimepointProvider } from '@wardenx/hope/seams'  // M10
-import type { OrderProvider } from '@wardenx/orders/seams'  // M11
-import type { MedicationOrderProvider } from '@wardenx/dosespot/seams'  // M12
-import type { MedicationAdministrationProvider } from '@wardenx/emar/seams'  // M13
-import type { DisciplinePlanReader } from '@wardenx/discipline-plans/seams'  // M15
-import type { BereavedPortalScopeProvider, BereavementPlanProvider } from '@wardenx/bereavement/seams'  // M16
-import type { PortalVisitReader, VisitReader } from '@wardenx/scheduling/seams'  // M17
-import type { SupplyFulfillmentProvider } from '@wardenx/supplies/seams'  // M21
-import type { PortalDocumentReader, DocumentReader } from '@wardenx/documents/seams'  // M22
-import type { MessagingProvider, RecipientResolver } from '@wardenx/messaging/seams'  // M36
-import type { TerminologyProvider } from '@wardenx/terminology/seams'  // M38
-import type { ConsentEvaluator } from '@wardenx/consent/seams'  // M39
-import type { DisciplineTaxonomyReader, ExternalGriefResourceReader, FacilityReader } from '@wardenx/mdm/seams'  // M40
-import type { TelehealthProvider } from '@wardenx/telehealth-client'  // M31-owned adapter (Daily.co default per D1)
+import type { MembershipReader, CredentialReader, AuditorSessionMinter } from '@chartwarden/auth/seams'  // M2
+import type { PatientReader, CaregiverReader, PatientCaregiverReader, PatientAddressReader } from '@chartwarden/patient/seams'  // M5
+import type { ElectionPeriodReader, AdmissionStatusReader } from '@chartwarden/admission/seams'  // M6
+import type { CarePlanReader } from '@chartwarden/care-plan/seams'  // M7
+import type { SignedEncountersReader } from '@chartwarden/encounters/seams'  // M8
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from '@chartwarden/assessments/seams'  // M9
+import type { HopeTimepointProvider } from '@chartwarden/hope/seams'  // M10
+import type { OrderProvider } from '@chartwarden/orders/seams'  // M11
+import type { MedicationOrderProvider } from '@chartwarden/dosespot/seams'  // M12
+import type { MedicationAdministrationProvider } from '@chartwarden/emar/seams'  // M13
+import type { DisciplinePlanReader } from '@chartwarden/discipline-plans/seams'  // M15
+import type { BereavedPortalScopeProvider, BereavementPlanProvider } from '@chartwarden/bereavement/seams'  // M16
+import type { PortalVisitReader, VisitReader } from '@chartwarden/scheduling/seams'  // M17
+import type { SupplyFulfillmentProvider } from '@chartwarden/supplies/seams'  // M21
+import type { PortalDocumentReader, DocumentReader } from '@chartwarden/documents/seams'  // M22
+import type { MessagingProvider, RecipientResolver } from '@chartwarden/messaging/seams'  // M36
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'  // M38
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'  // M39
+import type { DisciplineTaxonomyReader, ExternalGriefResourceReader, FacilityReader } from '@chartwarden/mdm/seams'  // M40
+import type { TelehealthProvider } from '@chartwarden/telehealth-client'  // M31-owned adapter (Daily.co default per D1)
 ```
 
 At M31 init:
@@ -1211,7 +1211,7 @@ M31 registers these predicates into M3's named-predicate registry. Each is a typ
 
 ```typescript
 // packages/auth/src/abac/portal-predicates.ts
-import type { AbacContext, AbacPredicate } from '@wardenx/auth/abac'
+import type { AbacContext, AbacPredicate } from '@chartwarden/auth/abac'
 
 export const portalAccountActive: AbacPredicate = {
   name: 'portal_account_active',

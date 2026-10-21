@@ -23,7 +23,7 @@
 // recorded. (2) THE DRAIN DESERVES ITS OWN SCHEDULED WORKER PROCESS, NOT AN INLINE CALL: unlike M30's
 // `enqueueRecompute` (a same-process DB write with no network I/O), draining THIS queue means an outbound
 // HTTP call to a third-party vendor (DoseSpot) with its own retry/circuit-breaker/backoff policy
-// (`@wardenx/dosespot`'s `client/circuit-breaker.ts` + `retry.ts`) — exactly the "real vendor call
+// (`@chartwarden/dosespot`'s `client/circuit-breaker.ts` + `retry.ts`) — exactly the "real vendor call
 // justifies a distinct worker process" case this pass's own instructions named. So: a Postgres table
 // (`./schema.ts`, `./repository.ts`) is the debounced work list the outbox consumers write into
 // transactionally (`./sync-trigger-bindings.ts`), and a BullMQ repeatable Queue+Worker (below) is the
@@ -32,7 +32,7 @@
 // recomputing from scratch.
 //
 // THE VENDOR-CALL BOUNDARY IS HONEST, NOT FABRICATED. `deps.doseSpotClient` defaults to
-// `createUnboundDoseSpotClient()` (`@wardenx/dosespot`) — confirmed no `DOSESPOT_*` env var or HTTP base
+// `createUnboundDoseSpotClient()` (`@chartwarden/dosespot`) — confirmed no `DOSESPOT_*` env var or HTTP base
 // URL exists anywhere in this repository, so building a "working" transport here would fabricate an
 // integration that does not exist. Every processed row therefore fails closed with a `DegradedError`
 // (`retryable: false`, INT-009's own contract) and is marked `failed` with a clear, structured
@@ -50,15 +50,15 @@
 // `dosespotSyncDemographicsForOrg` seam, injected as a port (M5's `patient_address`/`patient_phone` are
 // not in `check-table-ownership.ts`'s cross-module-read exempt set, so a direct schema read here would
 // be a boundary violation even though M5 is a declared dependency) — see `./vendor-boundary.ts`'s header.
-import type { DbClient, schema } from "@wardenx/db";
+import type { DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotClient,
   buildPatientUpsertPayload,
   createUnboundDoseSpotClient,
   isDegradedError,
   patientSyncIdempotencyKey,
-} from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";

@@ -1,4 +1,4 @@
-// @wardenx/db — `delivery_endpoint` (M36 Secure Messaging §3.5). A user's registered
+// @chartwarden/db — `delivery_endpoint` (M36 Secure Messaging §3.5). A user's registered
 // out-of-band destination (web-push subscription, E.164 phone, email). Endpoints belong to
 // the human, not the tenant, so the table carries NO organization_id and is opted out of the
 // three-column rule via the check-tenancy NON_ORG_SCOPED allowlist (a reviewed change) —

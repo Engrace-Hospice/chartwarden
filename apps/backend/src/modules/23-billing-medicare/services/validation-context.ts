@@ -14,8 +14,8 @@ import type {
   ValidationContext,
   calculatePerDiemClass,
   repositories,
-} from "@wardenx/billing";
-import { claimAdmissionCodes, claimValueCodes } from "@wardenx/billing";
+} from "@chartwarden/billing";
+import { claimAdmissionCodes, claimValueCodes } from "@chartwarden/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
 import { qCodeForPlaceOfService, visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
 import { claimDischargeCodes } from "./claim-discharge";

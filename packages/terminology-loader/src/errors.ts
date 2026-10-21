@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — error taxonomy. The orchestrator marks a version `failed` for a
+// @chartwarden/terminology-loader — error taxonomy. The orchestrator marks a version `failed` for a
 // {@link LoaderDataError} (a deterministic fault in the source or the request: retrying cannot help) and
 // RETHROWS everything else so BullMQ retries it (a Valkey/Postgres/object-store blip must not fail a version).
 

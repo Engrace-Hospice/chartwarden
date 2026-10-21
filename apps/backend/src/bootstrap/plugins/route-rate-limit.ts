@@ -11,7 +11,7 @@
 // PHI or query text. Expiry is the store's job (Valkey PEXPIRE on the first hit of a window, see
 // `rate-limit-store.ts`), so cardinality is bounded by active callers per window and no
 // application clock participates in the window (clock skew between replicas is irrelevant).
-import { DegradedError, RateLimitedError, UnauthorizedError } from "@wardenx/types";
+import { DegradedError, RateLimitedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { RateLimitStore } from "./rate-limit-store";
 

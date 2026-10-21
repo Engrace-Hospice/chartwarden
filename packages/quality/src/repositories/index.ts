@@ -1,4 +1,4 @@
-// @wardenx/quality · repositories barrel (M30 §3.3).
+// @chartwarden/quality · repositories barrel (M30 §3.3).
 //
 // Ten Drizzle data ports over the eighteen M30-owned tables. Each repo is a thin reader/writer that takes
 // the Drizzle client (`QualityDb` — the pooled client or a `withOrgContext` transaction handle) in its

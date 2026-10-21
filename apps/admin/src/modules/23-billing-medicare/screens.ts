@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/23-billing-medicare — M23's platform-admin slice (§4.1 #42, GAP-144), registered into the
 // M34 admin shell (the same pattern as 35-subscription-billing). `billing.rule_config.platform_admin` is the REAL key
 // the route gates on (the platform administrator's; a tenant org_admin never holds it) — the server stays the

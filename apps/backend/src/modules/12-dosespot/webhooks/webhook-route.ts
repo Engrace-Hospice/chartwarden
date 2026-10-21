@@ -11,8 +11,8 @@
 // RAW BODY: HMAC verification needs the exact bytes, so the route lives in an ENCAPSULATED scope whose JSON
 // parser hands the handler the unparsed string (re-serializing a parsed body breaks the signature). The
 // override is local to this scope; no other route's parsing changes.
-import { DOSESPOT_WIRE_MAPPING_VERIFIED } from "@wardenx/dosespot";
-import { ChartWardenError } from "@wardenx/types";
+import { DOSESPOT_WIRE_MAPPING_VERIFIED } from "@chartwarden/dosespot";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type DoseSpotWebhookIngestDeps, ingestDoseSpotWebhook } from "./ingest";
 

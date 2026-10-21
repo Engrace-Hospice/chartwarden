@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the `tenant.provision` job handler (§2.5 r2 / §7.1, M34).
+// @chartwarden/saas-tenant-platform · services — the `tenant.provision` job handler (§2.5 r2 / §7.1, M34).
 //
 // The provisioning side-effects of the `provisioning → onboarding` transition (§2.5 r2 / §7.1 step 2):
 //   (1) insert `tenant_key_ring` (v1 DEK) via the `m34_provision_tenant_key_ring` SECURITY DEFINER fn,
@@ -17,7 +17,7 @@
 // — this package adds NO direct M1/M2/M4/M22 import and NO new manifest `dependsOn` edge (M34 stays
 // `[1,2,3,4,36]`). The repositories (`TenantAccountRepository`, `TenantKeyRingRepository`,
 // `OnboardingRepository`) ARE used — through ports too, so the service layer owns the `withOrgContext`
-// (M1 @wardenx/tenancy) RLS-scoping and the single optimistic-locked transaction.
+// (M1 @chartwarden/tenancy) RLS-scoping and the single optimistic-locked transaction.
 //
 // IDEMPOTENCY (§2.6 "Provision worker idempotency", keyed by `tenant_account_id`): every step is a
 // SELECT-then-INSERT-IF-NOT-EXISTS, so a failure / replay re-runs cleanly. The handler resolves the

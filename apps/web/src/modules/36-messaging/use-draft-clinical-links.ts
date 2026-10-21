@@ -1,4 +1,4 @@
-import { RICH_BODY_LIMITS } from "@wardenx/types";
+import { RICH_BODY_LIMITS } from "@chartwarden/types";
 import { useCallback, useState } from "react";
 import type { DraftClinicalLink } from "./clinical-link-kinds";
 

@@ -1,4 +1,4 @@
-// @wardenx/db — M33 Reporting: shared TypeScript shapes for the jsonb columns in the reporting
+// @chartwarden/db — M33 Reporting: shared TypeScript shapes for the jsonb columns in the reporting
 // schema (§3.3). These are the row-stored projections of the catalog/spec structures; the
 // authoritative runtime validators are the TypeBox schemas in packages/reporting/src/schemas
 // (§4.2). Kept minimal-but-real (no `any`) so the Drizzle `$type<...>()` generics carry real

@@ -5,7 +5,7 @@ import {
   TransportError,
   computeTwilioSignature,
   createFakeTransports,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import type { DeliveryDispatchStore } from "../src/modules/36-messaging/delivery/delivery-dispatch-store-db";

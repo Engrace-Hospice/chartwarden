@@ -15,7 +15,7 @@
 //
 // A SIGNED INITIAL assessment is what closes the §1.1 D10 clock (`./initial-clock` owns that math): the
 // signed transition therefore declares the `initial_assessment_signed_at` timestamp effect on the plan.
-import type { DisciplineAssessmentKind, IsoInstant } from "@wardenx/types";
+import type { DisciplineAssessmentKind, IsoInstant } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { DisciplinePlanStateError, require_ } from "./errors";
 import { TEXT_MINIMUMS } from "./validation";

@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 6 (Admission, Election & Certification) action catalog (M6-T12; M6 §8.1.2).
+// @chartwarden/audit — Module 6 (Admission, Election & Certification) action catalog (M6-T12; M6 §8.1.2).
 //
 // M6's APP-level explicit-emit audit actions, under the D9 `m6.<resource>.<verb>` namespace. Row-diff
 // mutation captures flow through the M4 write-audit triggers (M6-T03); the entries below are the

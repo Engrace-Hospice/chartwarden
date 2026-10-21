@@ -5,7 +5,7 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type DocLensCapabilityPort,
   buildProvenance,
@@ -15,7 +15,7 @@ import {
   groupContiguousRuns,
   planCommitIntents,
   runExtractionPipeline,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -28,7 +28,7 @@ import type { DocLensIntakeEnqueue } from "../src/modules/22-documents/extractio
 // (4) D4 — HIGH-risk candidates disable bulk-approve; rejected candidates emit no commit intent but persist;
 // (5) provenance links each committed chart row back to (jobId, fieldPath, sourceDocumentId, sourcePage).
 //
-// The pure pipeline is exercised directly from @wardenx/intake-extraction (no infra). The route 503 gate is
+// The pure pipeline is exercised directly from @chartwarden/intake-extraction (no infra). The route 503 gate is
 // exercised through the FULL M1 middleware chain via Fastify `inject` + the REAL Authorization Contract.
 import { mountDocumentRoutes } from "../src/modules/22-documents/index";
 import {

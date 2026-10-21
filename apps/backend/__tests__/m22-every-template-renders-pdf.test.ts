@@ -7,7 +7,7 @@ import {
   RenderPayloadError,
   appealPacketViolations,
   buildAppealPacketRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PDF_RENDERERS,

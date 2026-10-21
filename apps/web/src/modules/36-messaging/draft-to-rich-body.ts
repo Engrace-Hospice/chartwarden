@@ -10,7 +10,7 @@ import {
   type RichParagraph,
   safeLinkHref,
   sanitizeRichBody,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { MessageReferenceInput } from "./messaging-types";
 
 /** What the body needs of a chosen clinical link: ids only. */

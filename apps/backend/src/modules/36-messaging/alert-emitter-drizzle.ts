@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/alert-emitter-drizzle.ts — GAP-096.
 //
 // The Drizzle-backed AlertEmitterPorts the M36-T04 resolution/fan-out engine (`createAlertEmitter`,
-// @wardenx/messaging) composes over in production. Before this file, `registerMessagingSeams` never
+// @chartwarden/messaging) composes over in production. Before this file, `registerMessagingSeams` never
 // received `emitter:`, so it always fell back to `createInMemoryAlertEmitter()` — every alert emitted
 // platform-wide ran in a per-process in-memory engine: no `alert`/`notification_delivery` row was ever
 // written, and state never survived a restart or a second instance.
@@ -17,7 +17,7 @@
 // through `getSeam`, never a direct import. `roleSetMembers`/`tenantAdmins`/`orgMembers` are plain
 // Drizzle joins over the M1/M3-owned `membership`/`membership_role`/`role` tables (M36 dependsOn 1,3 —
 // no seam needed, mirrors GAP-021's M13 witness-facts membership_role→role join precedent).
-// `tenantAdmins` mirrors `createDbAdminMembershipReader`'s real query (@wardenx/auth) — role key
+// `tenantAdmins` mirrors `createDbAdminMembershipReader`'s real query (@chartwarden/auth) — role key
 // `org_admin`, enabled, non-expired grant — rather than re-importing it, since this store needs the
 // membership's userId in the same query, not just the membershipId that reader returns.
 //
@@ -27,8 +27,8 @@
 // have, and no platform-default alert_rule uses the `discipline` resolver today). A silent `[]` would
 // make a tenant-configured `discipline` rule notify NOBODY forever with no error — the exact
 // WIRED-but-fake-predicate trap GAP-020 already taught this codebase to avoid.
-import { createDbPermissionHolderReader, roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
+import { createDbPermissionHolderReader, roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   AlertEmitter,
   AlertEmitterPorts,
@@ -39,7 +39,7 @@ import type {
   RecipientSourcePorts,
   ResolverArgs,
   RoutingMap,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   type AlertCategory,
   type AlertRecipientResolver,
@@ -48,9 +48,9 @@ import {
   createAlertEmitter,
   rollUpAlertOutcome,
   selectEffectiveAlertRules,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import {
@@ -62,7 +62,7 @@ import { createSnoozedUsersPort } from "./snooze-reminders/snoozed-users-port";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-/** Mirrors `createDbAdminMembershipReader`'s role key (@wardenx/auth's `ORG_ADMIN_ROLE_KEY`) — kept as
+/** Mirrors `createDbAdminMembershipReader`'s role key (@chartwarden/auth's `ORG_ADMIN_ROLE_KEY`) — kept as
  *  its own local constant since that one isn't exported, and this query needs `membership.userId`
  *  directly rather than the membershipId that reader returns. */
 const ORG_ADMIN_ROLE_KEY = "org_admin";

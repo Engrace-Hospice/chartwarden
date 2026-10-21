@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/10-hope — M10 screen registration (Track B, ADR-0030).
 // The §5.1 HOPE Engine screens that have a backing M10 read route on the generated client: the org-wide
 // Timepoint Dashboard (§5.2), the per-patient HOPE Timeline (§5.2), the SFV Worklist (§5.2), the HOPE

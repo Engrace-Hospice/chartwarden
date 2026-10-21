@@ -10,7 +10,7 @@
 //
 // Like M12/M13, M17 has NO state-transition DB triggers (only the M4 audit triggers) — the service performs
 // every visit / time-off / recurring / availability transition itself via INSERT/UPDATE, composing the PURE
-// `@wardenx/scheduling` deciders: the §2.2.1 eight-state visit machine (`transitionVisit` / `planVisitProposed`)
+// `@chartwarden/scheduling` deciders: the §2.2.1 eight-state visit machine (`transitionVisit` / `planVisitProposed`)
 // and the §2.2.6 time_off machine (`transitionTimeOff`). Each machine returns a declarative side-effect list
 // (`write_state_history` / `outbox` / `set_*` / `capture_reason` / `bump_version` / `audit` / `alert`); the
 // service EXECUTES it inside the mutation's `withOrgContext` tx — writing the `visit_state_history` append and
@@ -48,7 +48,7 @@ import {
   organizationSettingsReader,
   organizationTimezone,
   schema,
-} from "@wardenx/db";
+} from "@chartwarden/db";
 import {
   MATERIALIZE_HORIZON_DAYS,
   PROPOSE_HORIZON_DAYS,
@@ -61,9 +61,9 @@ import {
   planVisitProposed,
   transitionTimeOff,
   transitionVisit,
-} from "@wardenx/scheduling";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/scheduling";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   type EncounterType,
@@ -76,8 +76,8 @@ import {
   type VisitPurpose,
   type VisitSetting,
   type VisitStatus,
-} from "@wardenx/types";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";

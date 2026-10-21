@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM VALIDATION WORKLIST (R2,
 // §5.1 #5 + #6 override modal). The §11.A worklist: a role="table" of the selected run's per-rule results,
 // each with a §6.6 severity StatusPill, a PHI-free remediation hint that deep-links into the owning module's

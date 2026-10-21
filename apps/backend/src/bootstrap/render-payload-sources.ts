@@ -5,8 +5,8 @@
 // (ADR-0005). Resolved lazily through the boot-registered seams; a seam that is unregistered or throws reads as
 // "did not resolve" (null) - the producer then omits the payload and M22 refuses the id-only event loudly,
 // instead of the signing transaction failing on a lookup.
-import { type DbClient, schema } from "@wardenx/db";
-import { RenderPayloadError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { RenderPayloadError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { buildFoundationSiteReader } from "./foundation-site-reader";
 import { getSeam } from "./index";

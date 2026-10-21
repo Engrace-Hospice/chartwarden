@@ -3036,7 +3036,7 @@ Nodes (28): buildDrilldownAuditRow(), DrilldownAuditAppendPort, DrilldownAuditIn
 
 ### Community 386 - "Admin package.json · admin/package.json"
 Cohesion: 0.05
-Nodes (43): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @wardenx/admin-ui-shell, @wardenx/types (+35 more)
+Nodes (43): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @chartwarden/admin-ui-shell, @chartwarden/types (+35 more)
 
 ### Community 387 - "Backend Tests · m23-claim-assembly-seams.live."
 Cohesion: 0.06
@@ -3192,7 +3192,7 @@ Nodes (35): RFC-7523, apiKeyFingerprint(), FHIR_API_KEY_FINGERPRINT_CHARS, verif
 
 ### Community 425 - "Portal package.json · portal/package.json"
 Cohesion: 0.05
-Nodes (39): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @wardenx/types, @wardenx/ui (+31 more)
+Nodes (39): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @chartwarden/types, @chartwarden/ui (+31 more)
 
 ### Community 426 - "M32 Ai Platform UI · compliance-ai"
 Cohesion: 0.06
@@ -3388,7 +3388,7 @@ Nodes (29): blankNonCode(), BODY_METHODS, checkRoutes(), Disagreement, extractRo
 
 ### Community 474 - "Backend package.json · dependencies"
 Cohesion: 0.06
-Nodes (33): dependencies, bullmq, cron-parser, fastify, ioredis, pino, prom-client, @wardenx/audit (+25 more)
+Nodes (33): dependencies, bullmq, cron-parser, fastify, ioredis, pino, prom-client, @chartwarden/audit (+25 more)
 
 ### Community 475 - "M12 Dosespot API · medication-order-safety-gates"
 Cohesion: 0.09
@@ -4004,7 +4004,7 @@ Nodes (20): ADR-0017 Medicaid R&B, TPL/crossover, cap separation, Medicaid R&B a
 
 ### Community 629 - "pkg cost-report · cost-report/package.json"
 Cohesion: 0.10
-Nodes (19): dependencies, @sinclair/typebox, @wardenx/db, @wardenx/gusto-client, @wardenx/shared, @wardenx/types, @wardenx/xero-client, exports (+11 more)
+Nodes (19): dependencies, @sinclair/typebox, @chartwarden/db, @chartwarden/gusto-client, @chartwarden/shared, @chartwarden/types, @chartwarden/xero-client, exports (+11 more)
 
 ### Community 630 - "pkg db · 0026_admission_m6_tables.sql"
 Cohesion: 0.27
@@ -4192,7 +4192,7 @@ Nodes (17): "aide_supervisory_visit", "discipline_assessment", "discipline_care_
 
 ### Community 676 - "pkg db · db/package.json"
 Cohesion: 0.11
-Nodes (17): dependencies, drizzle-orm, pg, @wardenx/shared, devDependencies, @types/pg, exports, ./schema (+9 more)
+Nodes (17): dependencies, drizzle-orm, pg, @chartwarden/shared, devDependencies, @types/pg, exports, ./schema (+9 more)
 
 ### Community 677 - "pkg orders · src/kinds"
 Cohesion: 0.13
@@ -4216,7 +4216,7 @@ Nodes (11): activeMemberIds(), createMessageBodyCipher(), insertEncryptedMessage
 
 ### Community 683 - "Web package.json · dependencies"
 Cohesion: 0.12
-Nodes (17): dependencies, @fontsource/ibm-plex-mono, @fontsource-variable/inter, react, react-dom, react-router-dom, @wardenx/auth, @wardenx/types (+9 more)
+Nodes (17): dependencies, @fontsource/ibm-plex-mono, @fontsource-variable/inter, react, react-dom, react-router-dom, @chartwarden/auth, @chartwarden/types (+9 more)
 
 ### Community 684 - "Web package.json · devDependencies"
 Cohesion: 0.12
@@ -4304,7 +4304,7 @@ Nodes (12): assertCosignSatisfied(), COSIGN_ELIGIBLE_DISCIPLINES, CosignAttest, 
 
 ### Community 706 - "pkg billing · billing/package.json"
 Cohesion: 0.12
-Nodes (15): dependencies, @sinclair/typebox, @wardenx/db, @wardenx/shared, @wardenx/types, exports, @sinclair/typebox, @wardenx/db (+7 more)
+Nodes (15): dependencies, @sinclair/typebox, @chartwarden/db, @chartwarden/shared, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/db (+7 more)
 
 ### Community 707 - "pkg billing schemas · schemas/eligibility-check"
 Cohesion: 0.13
@@ -4312,7 +4312,7 @@ Nodes (14): CursorPageQuery, EligibilityOutcomeApi, PageOf(), EligibilityCheckDe
 
 ### Community 708 - "pkg cap-management · cap-management/package.json"
 Cohesion: 0.12
-Nodes (15): dependencies, @sinclair/typebox, @wardenx/db, @wardenx/shared, @wardenx/types, exports, @sinclair/typebox, @wardenx/db (+7 more)
+Nodes (15): dependencies, @sinclair/typebox, @chartwarden/db, @chartwarden/shared, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/db (+7 more)
 
 ### Community 709 - "pkg db · 0004_foundation_audit_triggers"
 Cohesion: 0.23
@@ -4404,7 +4404,7 @@ Nodes (14): hash-wasm, dependencies, @better-auth/passkey, hash-wasm, @simpleweb
 
 ### Community 731 - "pkg admin-ui-shell · admin-ui-shell/package.json"
 Cohesion: 0.13
-Nodes (14): dependencies, react, @wardenx/ui, devDependencies, @types/react, exports, react, @types/react (+6 more)
+Nodes (14): dependencies, react, @chartwarden/ui, devDependencies, @types/react, exports, react, @types/react (+6 more)
 
 ### Community 732 - "pkg db · 0034_hope_m10_tables.sql"
 Cohesion: 0.26
@@ -4504,7 +4504,7 @@ Nodes (11): evaluateRoomOccupancy(), IpuRoomKindValue, isPrivateRoom(), MIXED_SE
 
 ### Community 759 - "pkg supplies · supplies/package.json"
 Cohesion: 0.14
-Nodes (13): dependencies, decimal.js, @sinclair/typebox, @wardenx/types, exports, decimal.js, @sinclair/typebox, @wardenx/types (+5 more)
+Nodes (13): dependencies, decimal.js, @sinclair/typebox, @chartwarden/types, exports, decimal.js, @sinclair/typebox, @chartwarden/types (+5 more)
 
 ### Community 760 - "services · test_render.py"
 Cohesion: 0.25
@@ -4624,7 +4624,7 @@ Nodes (11): AllowlistEntry, AllowlistParse, AllowlistViolation, checkAllowlist()
 
 ### Community 793 - "pkg ai-platform · ai-platform/package.json"
 Cohesion: 0.17
-Nodes (11): @anthropic-ai/sdk, dependencies, @anthropic-ai/sdk, @wardenx/types, exports, @wardenx/types, name, private (+3 more)
+Nodes (11): @anthropic-ai/sdk, dependencies, @anthropic-ai/sdk, @chartwarden/types, exports, @chartwarden/types, name, private (+3 more)
 
 ### Community 794 - "Docs adr · ADR-0015-election-certificatio"
 Cohesion: 0.18
@@ -4692,7 +4692,7 @@ Nodes (11): canTransition(), findTransition(), guardPasses(), isTerminal(), redu
 
 ### Community 810 - "pkg cahps-vendors · cahps-vendors/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/quality, @wardenx/types, exports, @wardenx/types, name, private, type (+3 more)
+Nodes (11): dependencies, @chartwarden/quality, @chartwarden/types, exports, @chartwarden/types, name, private, type (+3 more)
 
 ### Community 811 - "pkg db · 0008_authorization_m3_tables.s"
 Cohesion: 0.27
@@ -4744,23 +4744,23 @@ Nodes (7): AIDE_POC_REQUIRED_SIGNERS, RequiredSignersByVersionKind, REQUIRED_SIG
 
 ### Community 825 - "pkg hearthnote · hearthnote/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/narrative-vocab, @wardenx/types, exports, @wardenx/types, name, private, type (+3 more)
+Nodes (11): dependencies, @chartwarden/narrative-vocab, @chartwarden/types, exports, @chartwarden/types, name, private, type (+3 more)
 
 ### Community 826 - "pkg inpatient · inpatient/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @sinclair/typebox, @wardenx/types, exports, @sinclair/typebox, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @sinclair/typebox, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/types, name, private (+3 more)
 
 ### Community 827 - "pkg orders · orders/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @sinclair/typebox, @wardenx/types, exports, @sinclair/typebox, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @sinclair/typebox, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/types, name, private (+3 more)
 
 ### Community 828 - "pkg quality · quality/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/db, @wardenx/types, exports, @wardenx/db, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @chartwarden/db, @chartwarden/types, exports, @chartwarden/db, @chartwarden/types, name, private (+3 more)
 
 ### Community 829 - "pkg reporting · reporting/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/db, @wardenx/types, exports, @wardenx/db, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @chartwarden/db, @chartwarden/types, exports, @chartwarden/db, @chartwarden/types, name, private (+3 more)
 
 ### Community 830 - "pkg saas-tenant-platform · SaasTenantPlatformEraseStore"
 Cohesion: 0.29
@@ -4888,7 +4888,7 @@ Nodes (8): order_transmission_attestation_append_only, audit_phi_write_order_tra
 
 ### Community 866 - "pkg assessments · assessments/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 867 - "pkg assessments · assessments/src/catalog"
 Cohesion: 0.20
@@ -4896,7 +4896,7 @@ Nodes (9): isLicensedScale(), LICENSED, SCALE_CATALOG, SCALE_FAMILY, SCALE_LABEL
 
 ### Community 868 - "pkg audit · audit/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/db, exports, @wardenx/db, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/db, exports, @chartwarden/db, name, private, type, types (+1 more)
 
 ### Community 869 - "pkg audit jobs · runSealPartition"
 Cohesion: 0.27
@@ -4904,7 +4904,7 @@ Nodes (5): IntegritySampleRow, SealCheckpoint, runSealPartition(), SealPartition
 
 ### Community 870 - "pkg bereavement · bereavement/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 871 - "pkg billing schemas · schemas/noe"
 Cohesion: 0.20
@@ -5036,75 +5036,75 @@ Nodes (9): globalRead, m2, m3, m3TemplateRead, m4, m4Tables, MIGRATIONS, rls (+1
 
 ### Community 903 - "pkg discipline-plans · discipline-plans/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 904 - "pkg dosespot · dosespot/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 905 - "pkg emar · emar/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 906 - "pkg evv-aggregators · evv-aggregators/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 907 - "pkg fhir · fhir/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 908 - "pkg forms · forms/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 909 - "pkg hope · hope/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 910 - "pkg idg · idg/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 911 - "pkg intake-extraction · intake-extraction/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 912 - "pkg iqies-client · iqies-client/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 913 - "pkg medicaid-adapters · medicaid-adapters/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/billing, exports, name, private, type, types, version (+1 more)
+Nodes (9): dependencies, @chartwarden/billing, exports, name, private, type, types, version (+1 more)
 
 ### Community 914 - "pkg messaging · messaging/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 915 - "pkg narrative-vocab · narrative-vocab/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 916 - "pkg saas-tenant-platform · saas-tenant-platform/package.j"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/db, exports, @wardenx/db, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/db, exports, @chartwarden/db, name, private, type, types (+1 more)
 
 ### Community 917 - "pkg scheduling · scheduling/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 918 - "pkg subscription-billing · subscription-billing/package.j"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 919 - "pkg terminology-loader · terminology-loader/package.jso"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/terminology, exports, name, private, type, types, version (+1 more)
+Nodes (9): dependencies, @chartwarden/terminology, exports, name, private, type, types, version (+1 more)
 
 ### Community 920 - "pkg triage-vendors · triage-vendors/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 923 - "Docs plans · Wave F Plan (M14, M17, M18, M2"
 Cohesion: 0.25

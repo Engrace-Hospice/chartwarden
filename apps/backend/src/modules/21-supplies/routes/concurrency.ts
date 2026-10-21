@@ -23,7 +23,7 @@
 // every M21 write goes through the service layer, which sets `updated_at` from one clock per transaction;
 // it would NOT be sound if a trigger could bump the column without the service seeing it, which is why
 // migration 0106's triggers only compute discrepancy columns and never touch `updated_at`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

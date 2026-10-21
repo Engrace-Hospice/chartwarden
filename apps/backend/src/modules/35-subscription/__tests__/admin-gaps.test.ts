@@ -14,7 +14,7 @@ import {
   M35_BILLING_ADMIN_READ_KEYS,
   M35_CONTRIBUTED_PERMISSIONS,
   rolesForPermission,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { organizationReaderDenyStub } from "../../../bootstrap/seams/providers";

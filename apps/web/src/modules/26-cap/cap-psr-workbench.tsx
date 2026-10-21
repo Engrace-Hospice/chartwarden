@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — M26, the PS&R RECONCILIATION WORKBENCH (R2, §5.1.5). The reimbursement
 // specialist's surface: upload the quarterly CMS PS&R CSV, then reconcile the per-beneficiary variance lines
 // (M26 ledger vs the MAC figure) above the per-tenant threshold (default $50). Phase 1 is upload-driven — the

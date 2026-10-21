@@ -1,4 +1,4 @@
-import { computeOpioidOnAdmissionRate } from "@wardenx/quality";
+import { computeOpioidOnAdmissionRate } from "@chartwarden/quality";
 // apps/backend/__tests__/m30-opioid-on-admission.test.ts — opioid_on_admission_rate's resolver.
 //
 // Mirrors the HVLDL/HCI-10 shape: M6's AdmissionOnsetReader supplies the LIST of admissions started in

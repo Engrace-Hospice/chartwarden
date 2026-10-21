@@ -1,4 +1,4 @@
-import { StatusPill, t } from "@wardenx/ui";
+import { StatusPill, t } from "@chartwarden/ui";
 import { useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 

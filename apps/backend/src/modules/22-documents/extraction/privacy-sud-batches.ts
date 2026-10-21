@@ -7,8 +7,8 @@
 // the detection. NEVER the detection evidence (`sud_evidence_cipher`), the resolution reason, or any page
 // content: the officer page links to the intake review (`/intake/:batchId/review`), where a licensed
 // reviewer sees the evidence under its own permission.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { IntakeSudBatchFact, IntakeSudBatchReader } from "../../05-patient/index";
 

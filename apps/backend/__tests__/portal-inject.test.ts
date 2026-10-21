@@ -48,7 +48,7 @@
 //      guard was both broken AND redundant with a check that was already right.
 //   2. `POST /api/v1/portal/administrations/caregiver-attested` — `write.routes.ts`'s local `MedSummaryArm`
 //      structural interface typed the medication-summary row's redaction flag as `redacted?: boolean`; the
-//      real upstream DTO (`PortalMedicationSummary` in `@wardenx/types`) names it `isRedacted`. Fixed by
+//      real upstream DTO (`PortalMedicationSummary` in `@chartwarden/types`) names it `isRedacted`. Fixed by
 //      deleting the local structural type and importing the real `MedicationOrderProvider`/
 //      `PortalMedicationSummary` types instead, so a future rename can't silently drift again the same way.
 //   3. `POST /api/v1/portal/documents/upload-init` — the route's own comment said magic-byte verification is
@@ -73,7 +73,7 @@ import {
   resetBreakGlassChecker,
   resetRbacEngine,
   setBreakGlassChecker,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type {
   ExternalGriefResource,
   ExternalGriefResourceReader,
@@ -86,7 +86,7 @@ import type {
   TelehealthEndReason,
   TelehealthLifecycleState,
   TelehealthVisitDigest,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";

@@ -15,7 +15,7 @@
  * No database is touched — `createDbClient` builds a `pg.Pool` lazily, and `toSQL()` renders without
  * connecting.
  */
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { refillInboxWhere } from "../src/modules/12-dosespot/dosespot-route-service-db";
 

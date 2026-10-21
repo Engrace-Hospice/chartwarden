@@ -14,9 +14,9 @@
 //   • address candidates (`patient.address.*`, the M5 writeback allowlist) that are not rejected and not on a
 //     document a reviewer marked as ANOTHER patient's (`identity_resolution = 'other_patient'`, which the
 //     writeback excludes too).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { DOCLENS_M5_WRITEBACK_FIELDS } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { DOCLENS_M5_WRITEBACK_FIELDS } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, ne, notInArray, or } from "drizzle-orm";
 
 const BATCH = schema.intakeUploadBatches;

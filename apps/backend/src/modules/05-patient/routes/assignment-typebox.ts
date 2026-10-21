@@ -1,7 +1,7 @@
 // apps/backend/src/modules/05-patient/routes/assignment-typebox.ts — TypeBox contract of the M5 §4.3
 // assignment routes (GAP-015). Role values come from the DB enum so the route cannot drift from it.
 import { Type } from "@sinclair/typebox";
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 
 // `admitting_staff` is the system-issued access grant (create-patient); it is never assigned by hand.
 const ROLES = schema.patientAssignments.role.enumValues.filter((r) => r !== "admitting_staff");

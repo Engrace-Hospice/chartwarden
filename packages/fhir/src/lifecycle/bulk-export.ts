@@ -1,4 +1,4 @@
-// @wardenx/fhir — §2.2 `fhir_bulk_export_job` state machine (M28-T01).
+// @chartwarden/fhir — §2.2 `fhir_bulk_export_job` state machine (M28-T01).
 //
 // The §2.2 async-export diagram as a PURE function. The worker (M28-T07 `bulk-export-worker.ts`) walks a
 // job accepted → in_progress → completed; the sweeper (`bulk-export-sweeper.ts`) walks completed →
@@ -6,14 +6,14 @@
 //
 // ONE INVARIANT THIS FILE GUARDS beyond the edge set: at most one job per client may sit in an ACTIVE
 // status (`accepted` or `in_progress`) — the §2.5 Valkey lock backstop. A second `$export` while one is
-// active is `429 Too Many Requests`, so `FHIR_BULK_EXPORT_ACTIVE_STATUSES` (in `@wardenx/types`) is the
+// active is `429 Too Many Requests`, so `FHIR_BULK_EXPORT_ACTIVE_STATUSES` (in `@chartwarden/types`) is the
 // set the submission gate counts, and `isFhirBulkExportActive` is the predicate it counts with.
 
 import {
   FHIR_BULK_EXPORT_ACTIVE_STATUSES,
   type FhirBulkExportStatus,
   type FhirStatusTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The status a newly-accepted job lands in (§2.2 "POST /$export returns 202"). */
 export const FHIR_BULK_EXPORT_INITIAL_STATUS: FhirBulkExportStatus = "accepted";

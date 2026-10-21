@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 HQRP & Quality: the permission-key catalog (§4.6).
+// @chartwarden/quality — M30 HQRP & Quality: the permission-key catalog (§4.6).
 //
 // The authoritative list of every permission key Module 30 owns. In a LATER phase the backend
 // re-exports this and registers it into Module 3's catalog via `permissionRegistry.declare(30, [...])`;

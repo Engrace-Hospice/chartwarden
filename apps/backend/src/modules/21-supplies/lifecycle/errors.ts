@@ -9,7 +9,7 @@
 // CASING NOTE: §7's edge-case tables spell M21's codes `M21_*` (unlike M16's bare SCREAMING_SNAKE). The six
 // codes the spec writes VERBATIM keep that prefix because the wire code is the contract; the codes the spec
 // only describes in prose follow the same shape so one module speaks one dialect.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7 / §2.10 machine-readable failure-code catalog → HTTP status. */
 export const M21_ERROR_STATUS = {

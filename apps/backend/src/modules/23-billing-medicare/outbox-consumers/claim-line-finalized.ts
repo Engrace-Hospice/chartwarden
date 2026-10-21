@@ -9,7 +9,7 @@
 // read 0%. The day count is the line's own `unit_count` for per-diem lines (0651/0655/0656); a continuous-
 // home-care line (0652) bills 15-minute units, so its days are the inclusive service-date span. Pure — the
 // caller owns the transaction and the publish.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { OutboxEmitInput } from "../services/claim-state-service";
 
 /** The revenue codes the 20% inpatient cap's NUMERATOR counts (42 CFR 418.309(b)). */

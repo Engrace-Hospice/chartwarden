@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, Panel } from "@wardenx/ui";
+import { EmptyState, Glyph, Panel } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — "Readmit" (`/admissions/readmit`, nav: Admissions, right after Discharge /
 // transfer). The patients who can come back: live discharges, revocations and transfers out of the last 90 days
 // (deaths never), whose patient has no later admission — the discharge worklist's `recently_discharged` bucket, drawn

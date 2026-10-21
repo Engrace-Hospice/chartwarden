@@ -5,8 +5,8 @@ import {
   IDG_REQUIRED_QUORUM,
   attendableDisciplinesForRoleKeys,
   evaluateQuorum,
-} from "@wardenx/idg";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/idg";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type AttendancePlanInput,

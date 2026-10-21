@@ -1,4 +1,4 @@
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 // apps/backend/src/modules/35-subscription/billing-runtime/webhook-ingest.ts - GAP-058.
 //
 // Binds the M35 inbound webhook route to the §4.14 ingestion core (`ingestStripeWebhook`): HMAC verify with
@@ -15,7 +15,7 @@ import {
   type StripeWebhookEventStore,
   type WebhookPayloadEncryptor,
   ingestStripeWebhook,
-} from "@wardenx/subscription-billing";
+} from "@chartwarden/subscription-billing";
 import type { PlatformRunner } from "../routes/service-drizzle";
 import type { M35WebhookIngest } from "../routes/webhooks.routes";
 

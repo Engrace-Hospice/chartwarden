@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_merge` (M5 §3.5, §2.4). The audit record of a patient merge: source folds
+// @chartwarden/db — `patient_merge` (M5 §3.5, §2.4). The audit record of a patient merge: source folds
 // into target, `patient.merged_into_id` redirects, and `merged_field_diff` records what changed for
 // reversibility (`unmerged_at`). PHI-bearing → three-column tenancy rule. No self-merge.
 import { sql } from "drizzle-orm";

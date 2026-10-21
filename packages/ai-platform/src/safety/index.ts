@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.10/§3.2.11/§3.2.12 safety governance (M32-T05).
+// @chartwarden/ai-platform — §3.2.10/§3.2.11/§3.2.12 safety governance (M32-T05).
 //
 //   · ./kill-switch            §3.2.12/W3 — the mixed-scope switch, its attribution rules and D16's demotion
 //   · ./hallucination-triage   §3.2.10/D9/W5 — file → triage → follow-up, with the follow-up COMPUTED

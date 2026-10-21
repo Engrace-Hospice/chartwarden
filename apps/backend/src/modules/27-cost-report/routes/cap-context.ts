@@ -1,13 +1,13 @@
 // apps/backend/src/modules/27-cost-report/routes/cap-context.ts — the M27 cap-context RESOLVER (the M26
 // cost-report cap bind). Resolves M26's published `CapAccrualReader` seam (registered into the M1 registry by
 // M26 at boot) and maps its cap-period aggregate to M27's own `CapContext` (the opaque rich-seam pattern —
-// M27 casts the seam to a consumer-defined view, it does NOT import @wardenx/cap-management). This is the cap
+// M27 casts the seam to a consumer-defined view, it does NOT import @chartwarden/cap-management). This is the cap
 // PORTION of the eventual full ValidationContextBuilder; the rest (worksheet totals / statistics / mapping /
 // deadline) assembles in M27's own follow-up.
 //
 // Fail-closed (D13): a thrown SEAM_NOT_BOUND/NotImplementedError (the M1 deny-stub when M26 isn't db-bound) or
 // a null result → `capProviderBound: false`, so the cap validation rules SKIP rather than fabricate a figure.
-import type { CapContext } from "@wardenx/cost-report";
+import type { CapContext } from "@chartwarden/cost-report";
 
 /** M27's consumer-defined view of M26's CapAccrualReader (cents-as-string; M27 parses to integer cents). */
 export interface CapAggregateSeam {

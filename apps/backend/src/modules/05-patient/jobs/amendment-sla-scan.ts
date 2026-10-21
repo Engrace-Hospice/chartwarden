@@ -11,8 +11,8 @@
 //
 // The fan-out is org-explicit (a cron tick is not a request): one org's failure never skips the others, and the
 // pass rejects at the end so BullMQ retries.
-import { type DbClient, schema } from "@wardenx/db";
-import { registerPlatformJob, systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { registerPlatformJob, systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, gt, isNull, lte } from "drizzle-orm";
 import type { M5OutboxPort } from "../deceased-db";

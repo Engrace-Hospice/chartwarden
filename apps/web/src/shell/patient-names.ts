@@ -2,7 +2,7 @@
 // `GET /api/v1/patients/{id}` per distinct id on screen (the same read the census, discharge and transfer-notice
 // worklists make), so the M5 patient read stays the only place a name comes from and the caller's own scope applies:
 // a patient the caller cannot read resolves to `null` and callers show a neutral "Patient" label (never the id).
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useResolvedNames } from "./resolved-names";
 
 export interface PatientNameEntry {

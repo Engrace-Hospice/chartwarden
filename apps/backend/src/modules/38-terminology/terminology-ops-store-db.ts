@@ -16,8 +16,8 @@
 // ⚠️ `db.execute` returns every timestamptz as a STRING, not a Date (WX-PR-024). The row mappers below
 // therefore normalise with `String(...)` rather than calling `.toISOString()` on a value that is not a
 // Date at runtime and only looks like one to the type-checker.
-import { type DbClient, schema } from "@wardenx/db";
-import type { CodeSystemId } from "@wardenx/terminology";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { CodeSystemId } from "@chartwarden/terminology";
 import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { rethrowRefusal } from "./db-errors";
 import type {

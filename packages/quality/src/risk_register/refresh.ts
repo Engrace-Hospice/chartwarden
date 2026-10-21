@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §7.9 / D13 (WF-20/21): the unified risk-register row shaping + severity bands.
+// @chartwarden/quality — M30 §7.9 / D13 (WF-20/21): the unified risk-register row shaping + severity bands.
 //
 // The risk register is the cross-cutting risk landscape — the UNION of four open-risk sources:
 //   (a) open `sra_finding` rows with residual 5×5 score ≥ medium,
@@ -14,7 +14,7 @@
 // PURE DOMAIN (P2a): no SQL, no `REFRESH MATERIALIZED VIEW CONCURRENTLY`, no DB. The score constants
 // and inclusion predicates mirror the §3.3 `risk_register_view` definition verbatim so the two cannot
 // drift. Row date columns are Drizzle `Date`s; the helpers emit ISO-8601 instants.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { CopStatus, IncidentSeverity } from "../contracts";
 
 /** The four risk sources unioned into the register (the SQL view's `source_kind` values, D13). */

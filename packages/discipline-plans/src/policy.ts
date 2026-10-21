@@ -1,8 +1,8 @@
-// @wardenx/discipline-plans — §1.1 / §2.3 / §7.6 pure-data policy constants (M15-T01 domain layout).
+// @chartwarden/discipline-plans — §1.1 / §2.3 / §7.6 pure-data policy constants (M15-T01 domain layout).
 //
 // The discipline-boundary matrix the RBAC/ABAC composition enforces, the CoP 418.78 volunteer out-of-scope
 // list, and the 418.78(e) ratio thresholds — declared once here rather than re-derived in each service.
-// PURE DATA — no IO, `@wardenx/types`-only.
+// PURE DATA — no IO, `@chartwarden/types`-only.
 
 import type {
   DisciplineAssessmentKind,
@@ -10,7 +10,7 @@ import type {
   DisciplinePlanKind,
   VolunteerGateKind,
   VolunteerRatioStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * §1.1 / D1 — the plan-kind ↔ authoring-discipline matrix. An MSW cannot author the Aide POC, a chaplain

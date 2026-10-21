@@ -7,7 +7,7 @@
 // the org's provider entities, weighted by the period's actual GIP/IRC day mix. The settlement worksheet is a
 // reviewed-then-finalised document; the wage-adjusted cents are a reviewer correction until the claim-level
 // paid-per-day source is wired. No rate row => `null` and the cents overage stays days-only (0), never a guess.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];

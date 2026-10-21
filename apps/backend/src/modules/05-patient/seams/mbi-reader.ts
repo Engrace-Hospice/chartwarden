@@ -16,8 +16,8 @@
 // applies only to ssn/state_id — and `patient_identifier_mbi_format` already CHECKs the canonical CMS
 // format (`^[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y]{9}$`, no hyphens) on write, so the stored value IS
 // already the canonical join key M26 wants; nothing here re-normalizes it.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const ID = schema.patientIdentifiers;

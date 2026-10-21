@@ -1,4 +1,4 @@
-// @wardenx/db — `passkey` (M2 Identity §3.4). A user's registered WebAuthn credential.
+// @chartwarden/db — `passkey` (M2 Identity §3.4). A user's registered WebAuthn credential.
 // Like `two_factor`, passkeys are USER-level and work at every org the user belongs to
 // (M02-F01), so this table is user-owned and NON_ORG_SCOPED in check-tenancy.ts —
 // protected by a user-ownership RLS predicate, not by `app.org_id`. Only the public key

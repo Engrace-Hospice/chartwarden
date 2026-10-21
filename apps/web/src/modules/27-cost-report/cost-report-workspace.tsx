@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/27-cost-report — the COST REPORT WORKSPACE (R2, §5.1 cost-report workbench). Pick a
 // report → its lifecycle state, the filing-deadline countdown, the latest validation roll-up, and the
 // realigned Form CMS-1984-14 worksheet navigation (A → B/B-1 → C per-diem; no D/E-1/G/H). Nav surface plus the

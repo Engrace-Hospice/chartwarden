@@ -1,4 +1,4 @@
-// @wardenx/messaging - M36 WP 4.10 (ADR-0077): a conversation snooze quiets ONLY the out-of-band rows of an allowlisted, non-urgent
+// @chartwarden/messaging - M36 WP 4.10 (ADR-0077): a conversation snooze quiets ONLY the out-of-band rows of an allowlisted, non-urgent
 // alert. The in-app row is always planned, and no urgent or acknowledgment-bound alert is ever quieted - by construction, whatever the
 // snooze set holds. Every instant is a fixed ISO string.
 import { describe, expect, it } from "vitest";

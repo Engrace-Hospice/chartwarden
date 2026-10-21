@@ -5,7 +5,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — "File corrected NOE / NOTR" on a notice Medicare rejected (CMS Pub.
 // 100-04 ch. 11 §20.1.1 / §20.1.2; M23 §2.2 "corrected NOE is its own row"): the rejection (stage + reason codes)
 // beside a short form — the notice date to keep or correct and why — that drafts a NEW notice linked to the

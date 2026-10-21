@@ -29,7 +29,7 @@
 // pure client-side theatre — ADR-0030 puts every enforcement point on the server — so this offers the
 // signature the server actually accepts. If M11 SHOULD require step-up that is a spec decision and a
 // server change, not a modal.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (same four helpers as emar-api.ts) ───────────────────────────────────
 

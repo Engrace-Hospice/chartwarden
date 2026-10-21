@@ -1,7 +1,7 @@
 // M36 WP 4.10 (ADR-0077) - the caller's snooze of ONE conversation. One read per mount of a channel (no polling: the end of a snooze is
 // compared with the clock at render, and a snooze ended elsewhere shows on the next visit). The server is the authority on whether the
 // conversation can be snoozed: the control follows `snoozable`. A 404 means the feature is off for the tenant (nothing is shown).
-import type { SnoozeDto } from "@wardenx/types";
+import type { SnoozeDto } from "@chartwarden/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-promotions-enabled";
 

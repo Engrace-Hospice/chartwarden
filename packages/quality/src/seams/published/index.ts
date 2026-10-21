@@ -1,4 +1,4 @@
-// @wardenx/quality — published-seam barrel (M30 §4.3).
+// @chartwarden/quality — published-seam barrel (M30 §4.3).
 //
 // The FIVE seams M30 PUBLISHES (QualityMeasureProvider / IncidentRegisterProvider / QapiProjectProvider /
 // ComplianceStatusProvider / SecurityRiskAssessmentReader). The INTERFACES + the published-name tuple live

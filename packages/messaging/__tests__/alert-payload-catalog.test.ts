@@ -1,11 +1,11 @@
-// @wardenx/messaging — M36-T05 alert-payload catalog boot-validation tests (spec §3.11–3.12).
+// @chartwarden/messaging — M36-T05 alert-payload catalog boot-validation tests (spec §3.11–3.12).
 //
 // The Foundation Registry mirrors M1's outbox-event catalog: a per-module CONTRIBUTION is
 // aggregated, namespace-/shape-validated, and projected to `alert_payload_catalog` rows at boot.
 // Because M36 is foundation-tier (M36-F01) it imports NO producer module, so these tests drive the
 // aggregator + boot gate with SYNTHETIC contributions (exactly as the outbox collision test does).
 import { Type } from "@sinclair/typebox";
-import type { AlertPayloadEntry, ModuleAlertContribution } from "@wardenx/types";
+import type { AlertPayloadEntry, ModuleAlertContribution } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   AlertPayloadCollisionError,

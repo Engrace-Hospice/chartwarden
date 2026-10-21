@@ -1,4 +1,4 @@
-// @wardenx/db — `payer` (M40 MDM §3.3). The CANONICAL payer record: one org-less row per
+// @chartwarden/db — `payer` (M40 MDM §3.3). The CANONICAL payer record: one org-less row per
 // real-world payer, keyed by the X12 5010 payer id (UNIQUE where non-null). `kind` is the §3.3
 // payer subtype; `state_code` scopes Medicaid. Per-tenant negotiated contract terms are NOT
 // canonical — they live in the (Phase-2) payer overlay (§2.3); Phase 1 ships the canonical

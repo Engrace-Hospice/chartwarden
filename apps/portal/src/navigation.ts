@@ -1,4 +1,4 @@
-import type { GlyphName } from "@wardenx/ui";
+import type { GlyphName } from "@chartwarden/ui";
 import { PORTAL_SCREEN_MANIFEST } from "./screens/manifest";
 
 export type PortalNavSection = "primary" | "secondary";

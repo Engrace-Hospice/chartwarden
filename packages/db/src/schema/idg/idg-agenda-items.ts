@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `idg_agenda_item` (M14 §3.3.1 / §2.7). One ordered agenda row per meeting: a patient-review
+// @chartwarden/db — `idg_agenda_item` (M14 §3.3.1 / §2.7). One ordered agenda row per meeting: a patient-review
 // slot, a carried-forward overdue action item, or an administrative note. PHI-bearing when patient-scoped
 // (`patient_id`) → the three-column tenancy rule (provider_entity_id + location_id), nullable here because
 // administrative items are meeting/org-level (no patient), denormalized from the admission only for patient

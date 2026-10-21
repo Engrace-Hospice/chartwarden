@@ -3,7 +3,7 @@
 // threshold-event acknowledge each send the right request and re-read; a STEP_UP_REQUIRED refusal goes to
 // `/step-up?returnTo=`; any other refusal stays an inline error.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

@@ -9,14 +9,14 @@
 // of the same task). The trigger reference is the outbox event id: the payload has no assignment id and the id is stable
 // across redelivery. The removed clinician is NOT alerted (the 3.8 wording says the patient left care, which is false here).
 // Logs carry counts only.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type AlertEmitter,
   careTeamTriggerRef,
   reviewItemBatches,
   shouldRoute,
-} from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { Tx } from "../messaging-write-core";
 import { type ReviewWarn, emitReviewQueuedAlert } from "../review/review-alerts";
 import type { ReviewStore } from "../review/review-store-db";

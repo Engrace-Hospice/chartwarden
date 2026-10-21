@@ -2,7 +2,7 @@
 //
 // The fourteen permission keys Module 27 (Cost Report) registers into Module 3's catalog — the §4.6
 // binding cross-module handshake (mirrored from the pure `M27_PERMISSIONS` tuple in
-// `@wardenx/cost-report`). M3 must include these before M27's cost-report / worksheet / mapping / import /
+// `@chartwarden/cost-report`). M3 must include these before M27's cost-report / worksheet / mapping / import /
 // bad-debt / validation / submission routes (§4.1) can be authorized; those routes gate on
 // `requirePermission(key)`. The catalog `abac` field is the DEFAULT predicate per key; the route layer
 // additionally composes the explicit §4.7 chain M27 owns (./abac-predicates) over the M3-base `inOrg`.
@@ -11,12 +11,12 @@
 // rule management, the approval/submit/reopen ladder) are `cost_report_admin` (the M30
 // quality/quality_admin and M33 reporting/reporting_admin split precedent).
 //
-// REGISTRATION: this map is consumed by `@wardenx/auth`'s contributed-permission registry exactly as the
+// REGISTRATION: this map is consumed by `@chartwarden/auth`'s contributed-permission registry exactly as the
 // M30 `M30_CONTRIBUTED_PERMISSIONS` map is; the companion mirror-row projector + wiring lands in the
-// Integrate phase (P3). The KEYS here are kept in lock-step with `@wardenx/cost-report`'s `M27_PERMISSIONS`
+// Integrate phase (P3). The KEYS here are kept in lock-step with `@chartwarden/cost-report`'s `M27_PERMISSIONS`
 // tuple (the pure source of truth) and the §4.1 route inventory — asserted equal in test.
-import type { PermissionDef } from "@wardenx/auth";
-import { type M27PermissionKey, M27_PERMISSIONS } from "@wardenx/cost-report";
+import type { PermissionDef } from "@chartwarden/auth";
+import { type M27PermissionKey, M27_PERMISSIONS } from "@chartwarden/cost-report";
 
 /**
  * The §4.6 permission keys M27 owns (registered into M3). Single-owner across the platform registry.
@@ -115,7 +115,7 @@ export const M27_CONTRIBUTED_PERMISSIONS = {
   },
 } as const satisfies Record<M27PermissionKey, PermissionDef>;
 
-/** The ordered key list — kept identical to `@wardenx/cost-report`'s `M27_PERMISSIONS` (asserted in test). */
+/** The ordered key list — kept identical to `@chartwarden/cost-report`'s `M27_PERMISSIONS` (asserted in test). */
 export const M27_PERMISSION_KEY_LIST: readonly M27PermissionKey[] = M27_PERMISSIONS;
 
 export type M27ContributedPermissionKey = keyof typeof M27_CONTRIBUTED_PERMISSIONS;

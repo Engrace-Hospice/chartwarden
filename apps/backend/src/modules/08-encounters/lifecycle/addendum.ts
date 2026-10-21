@@ -1,4 +1,4 @@
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import { type EncounterSideEffect, type TransitionResult, result } from "./effects";
 // apps/backend/src/modules/08-encounters/lifecycle/addendum.ts — M8-T04 (§2.3).
 //

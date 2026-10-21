@@ -1,9 +1,9 @@
 // M19-T02 — the DB-side / code-side drift guard for M19's ten owned tables.
 //
 // WHY IT LIVES HERE. The two facts this compares sit in packages that cannot see each other:
-// `M19_AUDIT_DENYLIST` / `M19_AUDIT_RETENTION_CLASS` are in `@wardenx/types` (M19-T01) and the scrub that
-// must obey them is PL/pgSQL inside `packages/db/migrations/0108`. `@wardenx/db` does not depend on
-// `@wardenx/types`, so a test inside either package could only assert half of it. apps/backend imports both
+// `M19_AUDIT_DENYLIST` / `M19_AUDIT_RETENTION_CLASS` are in `@chartwarden/types` (M19-T01) and the scrub that
+// must obey them is PL/pgSQL inside `packages/db/migrations/0108`. `@chartwarden/db` does not depend on
+// `@chartwarden/types`, so a test inside either package could only assert half of it. apps/backend imports both
 // — the same reason M19-T01's pgEnum↔union lock-step test landed in `oncall-contracts.test.ts`.
 //
 // The failure this exists to catch is silent and one-directional: someone adds a PHI column to
@@ -17,7 +17,7 @@ import {
   M19_AUDIT_DENYLIST,
   M19_AUDIT_RETENTION_CLASS,
   M19_TABLE_NAMES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = join(__dirname, "..", "..", "..", "packages", "db", "migrations");

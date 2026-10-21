@@ -1,5 +1,5 @@
-import { StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.7 evaluation runs (`/admin/ai-platform/evaluations`,
 // `ai.capability.read`). D10's evidence ledger: which run backs which lifecycle gate.
 //

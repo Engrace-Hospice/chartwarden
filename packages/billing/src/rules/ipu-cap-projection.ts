@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `ipu_cap_projection` (cap, regulatory). The inpatient (GIP + IRC) day
+// @chartwarden/billing — §4.5 rule `ipu_cap_projection` (cap, regulatory). The inpatient (GIP + IRC) day
 // projection must be below the inpatient cap for the cap period (42 CFR §418.302(f) — the 20% inpatient
 // limitation). Like `aggregate_cap_projection`, this SKIPs (`seam_not_bound`) while the M26 cap provider
 // is a deny-stub (warn-degraded, never a hard block) and tightens to an `error` block once bound (D8).

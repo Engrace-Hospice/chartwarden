@@ -1,4 +1,4 @@
-// @wardenx/db — `merge_request` (M40 MDM §3.5). The dedup workflow record: a proposal that
+// @chartwarden/db — `merge_request` (M40 MDM §3.5). The dedup workflow record: a proposal that
 // `duplicate_id` is the same real-world entity as `canonical_id` (kind-switched FK app-side),
 // with `evidence` (npiMatch/nameScore/addressScore/…) and a §2.4.2 lifecycle (pending →
 // approved → executed | rejected). On `executed` the duplicate flips to `merged` and FK

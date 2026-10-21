@@ -1,4 +1,4 @@
-// @wardenx/iqies-client — the M10 iQIES adapter package (D6, spec §4.10 / §4.10.1). The ONLY package
+// @chartwarden/iqies-client — the M10 iQIES adapter package (D6, spec §4.10 / §4.10.1). The ONLY package
 // allowed to talk to iQIES: it owns the CMS HOPE submission envelope model, the per-PE circuit breaker,
 // the typed `DegradedError`, the MinIO envelope-storage convention, and the typed adapter contract that
 // M10's submission workers consume. M10-T07 lands the typed surface + pure logic + the Phase-1 deny-stub

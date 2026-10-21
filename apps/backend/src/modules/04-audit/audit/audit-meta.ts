@@ -8,9 +8,9 @@
 // The full append-only integrity verification + hash-chain seal are the integrity layer (M4-T11);
 // this is just the read-side meta-event the query routes emit.
 //
-// Like every audit write, it goes through the mandated @wardenx/audit `audit()` surface (the
+// Like every audit write, it goes through the mandated @chartwarden/audit `audit()` surface (the
 // field denylist runs there) — never a direct `audit_event` insert.
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
 /** Role prefix that marks a WardenX platform/cross-tenant actor (vs. a tenant member). */
 const PLATFORM_ROLE_PREFIX = "platform";

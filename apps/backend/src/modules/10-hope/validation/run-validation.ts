@@ -2,7 +2,7 @@
 // runner (F-057; M10 spec §2.3, §3, line 89 "Validation re-runs on every signed assessment").
 //
 // This is the IO half the pure engine was written against and never got. `validateHopeAssessment`
-// (@wardenx/hope) is a 268-line deterministic rule set with its own unit suite and, until now, NO
+// (@chartwarden/hope) is a 268-line deterministic rule set with its own unit suite and, until now, NO
 // production caller anywhere in the repo — so `hope_validation_finding` had exactly one writer (the D8
 // missing-PPS warning in `signTimepoint`) and `GET /hope/assessments/:id/validation` returned an empty
 // findings list for every assessment ever recorded. An assessment carrying none of its 17 CMS-required
@@ -26,8 +26,8 @@ import {
   projectHopeSections,
   validateHopeAssessment,
   valueSetOracle,
-} from "@wardenx/hope";
-import type { HopeDischargeReason, HopeRfaKind } from "@wardenx/types";
+} from "@chartwarden/hope";
+import type { HopeDischargeReason, HopeRfaKind } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /** The M38 value sets M10 consumes (`PLATFORM_VALUE_SETS` ids). */
@@ -52,7 +52,7 @@ interface HopeTerminologyReader {
 export interface HopeValidationSubject {
   readonly rfaKind: HopeRfaKind;
   readonly dischargeReason: HopeDischargeReason | null;
-  /** The `data` jsonb exactly as stored — projected by `@wardenx/hope`, never trusted structurally. */
+  /** The `data` jsonb exactly as stored — projected by `@chartwarden/hope`, never trusted structurally. */
   readonly data: unknown;
   /** The assessment's `target_date` — the as-of instant for every M38 lookup. */
   readonly targetDate: Date;

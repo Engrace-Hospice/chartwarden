@@ -2,8 +2,8 @@
 // opening sends only the colleague read, a fresh Idempotency-Key per open, a generic refusal for every status, focus returns to the
 // button on Escape or Cancel and goes to the card's status line after a saved reassign, and no id is ever shown.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { AckRequestDto } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import type { AckRequestDto } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

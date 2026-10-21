@@ -66,7 +66,7 @@ describe("delivery-failure handling stays inside its lane", () => {
     expect(files.length).toBeGreaterThan(3);
     for (const file of files) {
       const src = read(file);
-      expect(src, file).not.toMatch(/from "@wardenx\/(oncall|triage)|modules\/(19|11|12|13)-/);
+      expect(src, file).not.toMatch(/from "@chartwarden\/(oncall|triage)|modules\/(19|11|12|13)-/);
       expect(src, file).not.toMatch(/\bsetTimeout\b|\bsetInterval\b/);
       expect(src, file).not.toMatch(/shift-window|scheduleContains|tenant_oncall_policy/);
     }

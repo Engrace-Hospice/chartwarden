@@ -1,8 +1,8 @@
 // M36 WP 4.10 (ADR-0077) - the caller's own pending reminders. ONE read per API client (`GET /reminders`) serves every message row:
 // its success is the signal that the feature is on (a 404 reads as OFF; any other failure keeps the last good index and shows OFF only when there was none) and its rows feed the per-message "Reminder set" state. A failure is cached only briefly; a 404 ("off") is cached. A set or cancel calls `refreshReminders` so the rows
 // re-read. No polling. The server stays the authority: with the flag off its routes answer 404.
-import type { ReminderDto } from "@wardenx/types";
-import type { ApiClient } from "@wardenx/ui";
+import type { ReminderDto } from "@chartwarden/types";
+import type { ApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-promotions-enabled";
 

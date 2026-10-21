@@ -25,9 +25,9 @@
 // IDEMPOTENT: a redelivery finds the chart already `discharged` and writes/emits nothing. `deceased`,
 // `merged` and `prospective` charts have no §2.4.1 discharge edge and are left alone without an error.
 // The write runs as the NULL (system) audit actor (`systemOrgContext`).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { endAdmittingAssignments } from "../assignments-db";

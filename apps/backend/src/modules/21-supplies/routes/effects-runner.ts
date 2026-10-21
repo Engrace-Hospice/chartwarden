@@ -26,7 +26,7 @@
 //
 // Effects the runner deliberately does NOT execute are listed at {@link UNHANDLED_EFFECT_KINDS} with the
 // reason, so "it silently did nothing" is never the explanation for a missing write.
-import type { M21EventName } from "@wardenx/types";
+import type { M21EventName } from "@chartwarden/types";
 import type { SupplySideEffect } from "../lifecycle/index";
 import type { AlertPort, OutboxEmission, WriteOutboxPort } from "./write-service";
 

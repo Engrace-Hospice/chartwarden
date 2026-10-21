@@ -5,7 +5,7 @@
 // T04 `decideProposal` core and are gated by `hl7_inbound_proposal_owner_module_match` (the reviewer must
 // hold the owner module's native write path) + step-up (D18). Defer punts to a caseload-RN task (M19
 // forward-seam) and leaves the proposal `pending`.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";

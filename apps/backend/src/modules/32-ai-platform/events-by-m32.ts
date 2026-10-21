@@ -42,7 +42,7 @@
 //      `orgId: null` instead of omitting it, because "this stopped every tenant" and "we did not record
 //      which tenant" must not be the same value.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdOrNull = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

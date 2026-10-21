@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/medication-questions/deps.ts - WP 3.10: the composition-root factory the boot calls
 // once. It supplies what the binding leaves to the caller: the channel-facts lookup, the display-name resolver, the
 // active-user check and the Part 2 gate default to the platform's own, and the task store is the database one.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { isActiveMessagingUser } from "../messaging-route-service-db";

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/14-idg/routes/service.ts — M14-T05 the §4.1 route service over an in-memory
 // backend (the M8-T09 / M9-T05 / M10-T06 / M11-T06 / M12-T08 / M13-T08 in-mem-slice precedent; Drizzle in prod
-// under `withOrgContext` so RLS backstops every read). The service composes the PURE M14 domain (`@wardenx/idg`):
+// under `withOrgContext` so RLS backstops every read). The service composes the PURE M14 domain (`@chartwarden/idg`):
 // the §2.2 meeting state machine (`transitionMeeting`), the §2.7 decision record/supersede deciders
 // (`planDecisionRecord` / `planDecisionSupersede`), the §1.1/D8 action-item machine (`transitionActionItem` /
 // `planActionItemCreate`), and the §2.6 minutes-amendment decider — and emits the §4.4 outbox events the relay
@@ -20,7 +20,7 @@ import {
   planMinutesAmendmentRequest,
   transitionActionItem,
   transitionMeeting,
-} from "@wardenx/idg";
+} from "@chartwarden/idg";
 import type {
   IdgActionItemLinkedKind,
   IdgActionItemStatus,
@@ -31,14 +31,14 @@ import type {
   IdgDecisionStatus,
   IdgMeetingStatus,
   QuorumSnapshot,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
 import {
   CHART_PROMOTION_DECIDED_EVENT,

@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: late-encounter-entry rate. Pure. No IO.
+// @chartwarden/quality — operational measure: late-encounter-entry rate. Pure. No IO.
 // Rate of signed encounters whose documentation was entered after the agency's late-entry threshold
 // (LOWER is better). Source: M8 `SignedEncountersReader` (late-entry tiers).
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

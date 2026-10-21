@@ -3,7 +3,7 @@
 -- Until batch 7 NOTHING wrote medication_order.is_sud_treatment (it stayed at its DEFAULT false), so every
 -- reader (M13 portal/FHIR, M19 triage context, M22 medication-list render, M28 FHIR gate) saw false for every
 -- SUD-treatment order. The draft create / edit / request-signature writers now derive it from the SUD-treatment
--- drug list in `@wardenx/dosespot` (classes/sud-treatment-drugs.ts, the single source of truth). This migration
+-- drug list in `@chartwarden/dosespot` (classes/sud-treatment-drugs.ts, the single source of truth). This migration
 -- brings EXISTING rows into line.
 --
 -- The list below is the TS list rendered as a Postgres regex; `m12-sud-treatment-drug-list.test.ts` asserts the

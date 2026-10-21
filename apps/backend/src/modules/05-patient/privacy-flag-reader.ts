@@ -10,9 +10,9 @@
 // deliberately narrow: the gate reads the CURRENT ROOMMATES' records, and a roommate is a patient the
 // assigning nurse may have no other right to see. Sex class + flags cross the seam; name, MRN and DOB
 // never do.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientPrivacyFlagReader, PatientSexClass } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientPrivacyFlagReader, PatientSexClass } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 
 /**

@@ -1,17 +1,17 @@
-// @wardenx/quality — M30 HQRP & Quality: canonical shared DOMAIN VALUE TYPES (§2.1, §4.2, §4.3).
+// @chartwarden/quality — M30 HQRP & Quality: canonical shared DOMAIN VALUE TYPES (§2.1, §4.2, §4.3).
 //
 // This file is the SINGLE SOURCE OF TRUTH for the domain value types referenced by M30's five
 // published seams (./seams) and consumed by every other M30 P2a surface. Two kinds of type live here:
 //
 //   1. Row-backed concepts — where exactly one M30 Drizzle table backs the concept, the type is
-//      DERIVED from that table's `$inferSelect` projection (exposed via the `@wardenx/db` `schema`
+//      DERIVED from that table's `$inferSelect` projection (exposed via the `@chartwarden/db` `schema`
 //      namespace, per ADR-0005 D4: schema TYPES are universally importable even though table ACCESS
 //      is ownership-gated). Deriving keeps these locked to the FROZEN schema — no drift.
 //   2. Enum unions — string-literal unions whose members mirror, verbatim, the `pgEnum` value lists in
 //      `packages/db/src/schema/quality/*.ts`. The schema is frozen, so these are stable contracts.
 //
 // P2a is PURE DOMAIN: no Fastify, no DB queries, no I/O. These are type declarations only.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 // -----------------------------------------------------------------------------
 // Enum unions (mirror the M30 pgEnum value lists, verbatim)

@@ -2,8 +2,8 @@
 //
 // M2 publishes two boot-validated cross-module seams; this is the module-owned init that
 // registers their REAL implementations into the M1 seam registry, overwriting the Phase-0
-// deny-stubs. Per ADR-0005 D1 the interfaces live in @wardenx/types (leaf) and the producer
-// implementations in @wardenx/auth (M2's own codePath, a foundation-helper package) — so a
+// deny-stubs. Per ADR-0005 D1 the interfaces live in @chartwarden/types (leaf) and the producer
+// implementations in @chartwarden/auth (M2's own codePath, a foundation-helper package) — so a
 // consumer module resolves them via getSeam() with no dependsOn edge on M2.
 //
 //   • SessionContextResolver — the authenticated, org-scoped request context. M3's
@@ -40,8 +40,8 @@ import {
   createPortalSessionBinder,
   createSessionContextResolver,
   createVendorSessionBinder,
-} from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import { registerSeam } from "../../bootstrap/index";
 import { createDbAuditorMagicLinkIssuer } from "./auditor-magic-link-store";
 import {

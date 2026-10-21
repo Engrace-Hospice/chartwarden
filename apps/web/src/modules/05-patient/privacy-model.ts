@@ -1,6 +1,6 @@
 // apps/web/src/modules/05-patient — shared vocabulary for the Privacy Officer screens (M5 §5.1 "Privacy
 // flags", §4.2 resync). Labels only: the SERVER decides every restriction, origin and permission.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 export type PrivacyFlagOrigin =
   | "consent"

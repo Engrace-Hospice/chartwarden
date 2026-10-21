@@ -8,14 +8,14 @@
 // Available only once the review is complete (409 REVIEW_NOT_COMPLETE before): approvals can still change
 // while a review is open, and a summary built to be copied out of the screen must not present a picture the
 // reviewer has not finished attesting.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DegradedError,
   type DocLensBatchSudStatus,
   NotFoundError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import {

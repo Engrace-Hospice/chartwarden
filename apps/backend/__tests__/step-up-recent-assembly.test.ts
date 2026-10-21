@@ -21,8 +21,8 @@ import {
   PORTAL_SESSION_CLASSES,
   VENDOR_SESSION_CLASSES,
   isPortalSessionClass,
-} from "@wardenx/auth";
-import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";

@@ -1,4 +1,4 @@
-// @wardenx/db — M32's organization-settings contributions (M1 Foundation §3.15.1; F-236).
+// @chartwarden/db — M32's organization-settings contributions (M1 Foundation §3.15.1; F-236).
 //
 // `ai_token_budgets` is the monthly per-capability token budget the M32 invocation pipeline's cap gate
 // reads. M32 §1.1 places the figure on the tenant's configuration and names no platform default, so the

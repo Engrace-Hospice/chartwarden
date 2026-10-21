@@ -9,7 +9,7 @@ import {
   cardSurface,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — M39 CONSENT LIFECYCLE DETAIL (report 09 mini-spec #2, WX-PR-010).
 // Route `/patients/:patientId/consents/:consentId`.
 //

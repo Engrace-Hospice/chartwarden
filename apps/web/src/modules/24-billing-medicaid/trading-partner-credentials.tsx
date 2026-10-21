@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the STATE TRADING PARTNER CREDENTIALS (R2, §5.1 #16). The
 // org admin's per-ProviderEntity per-state channel configuration: trading-partner id, channel, MCO scope,
 // active window, and a sandbox connectivity test. Secrets are WRITE-ONLY — the read surface returns only

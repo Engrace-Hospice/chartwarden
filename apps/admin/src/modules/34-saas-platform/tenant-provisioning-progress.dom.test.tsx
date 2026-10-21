@@ -3,8 +3,8 @@
 // about the job. The list refreshes itself while any tenant is provisioning, and the overview shows the
 // provisioning card (job state + retry) for a provisioning tenant only.
 import { render, screen } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantInventory } from "./tenant-inventory";

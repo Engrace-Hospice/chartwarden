@@ -12,8 +12,8 @@
 // question: the CALLER's own membership in the org their session is bound to, not the id this route
 // wants to attribute the transition to, which may be a platform-ops actor's membership in a
 // DIFFERENT org than the one being suspended).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   OrganizationLifecycleEvent,

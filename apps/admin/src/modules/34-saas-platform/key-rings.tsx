@@ -9,13 +9,13 @@ import {
   TextField,
   useApiClient,
   useRequestGuard,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Key Rings dashboard (M34 Phase-3, §4.1 platform-ops; §3.5 DEK
 // lifecycle). Spec: docs/modules/... §5.1 screen inventory. The READ-ONLY per-tenant DEK-metadata
 // dashboard (GET /api/v1/platform/tenants/{orgSlug}/key-ring — ciphertext is NEVER exposed) + the
 // Rotate-DEK CTA (POST .../{orgSlug}/dek-rotate, a §10 step-up ceremony) + the destroyed state.
 // The route keys by org slug; there is no cross-tenant list, so the operator resolves one tenant at
-// a time. Live-wired over the typed client; imports only @wardenx/ui leaves + the Foundation map.
+// a time. Live-wired over the typed client; imports only @chartwarden/ui leaves + the Foundation map.
 // Laid out in the redesign's page frame (wx-page-head, a lookup row, the metadata as flat cards).
 import { useCallback, useState } from "react";
 import type { JSX } from "react";

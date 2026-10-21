@@ -1,13 +1,13 @@
 // apps/backend/src/modules/15-discipline-care-plans/permission-keys.ts — M15-T06 (§4.4).
 //
 // The twenty permission keys Module 15 (Discipline Care Plans) registers into Module 3's catalog. The
-// canonical map is `M15_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// canonical map is `M15_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it + the ordered key list so the §4.1
 // routes gate on `requirePermission(key)` without re-declaring the map (the M24/M26 posture — references
 // the auth package directly, no drift).
-import { type M15ContributedPermissionKey, M15_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M15ContributedPermissionKey, M15_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
-export { M15_CONTRIBUTED_PERMISSIONS, type M15ContributedPermissionKey } from "@wardenx/auth";
+export { M15_CONTRIBUTED_PERMISSIONS, type M15ContributedPermissionKey } from "@chartwarden/auth";
 
 /** Union of every §4.4 permission key M15 owns. */
 export type M15PermissionKey = M15ContributedPermissionKey;

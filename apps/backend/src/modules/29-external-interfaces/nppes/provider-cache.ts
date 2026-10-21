@@ -6,8 +6,8 @@
 //
 // `nppes_provider` has no `profile_hash`/`last_processed_npi` column (schema is fixed at 11 tables) — the
 // diff is a direct field comparison over the M40-syncable projection, not a stored hash.
-import type { NewNppesProviderRow } from "@wardenx/db/schema";
-import type { NppesProviderStatus } from "@wardenx/types";
+import type { NewNppesProviderRow } from "@chartwarden/db/schema";
+import type { NppesProviderStatus } from "@chartwarden/types";
 import { type NppesIndividualProvider, primaryTaxonomyCode } from "./response-projection";
 import type { NppesProviderSnapshot } from "./sync-events";
 

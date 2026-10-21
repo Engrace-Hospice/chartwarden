@@ -5,7 +5,7 @@
 // server-side from the route's path param / body field (mapped onto the ABAC target). The §D12 step-up gate
 // composes on submit / replace / void / arrangement activate-terminate / override / credential upsert (the
 // operation key is the permission key so M3 resolves the per-op freshness policy).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { PreHandler } from "./actor";
 
 type TargetRequest = {

@@ -2,7 +2,7 @@
 // open one in the drawer, enter a new value (decimal STRING, Idempotency-Key), supersede the live one, and render
 // the standard error envelope's 409 / 422 / 403 as copy an administrator can act on.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";

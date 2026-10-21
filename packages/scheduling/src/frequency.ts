@@ -1,4 +1,4 @@
-// @wardenx/scheduling — the §2.2.4 / §7.7 D5 care-plan FrequencyValue parser (M17-T04). Pure, IO-free.
+// @chartwarden/scheduling — the §2.2.4 / §7.7 D5 care-plan FrequencyValue parser (M17-T04). Pure, IO-free.
 //
 // M7 stores an intervention's cadence as a structured `frequency` string in the canonical hospice form the
 // frequency-driven proposal worker reads via `CarePlanReader.activeInterventionsWithFrequency` (D5). The
@@ -10,7 +10,7 @@
 // per episode, "1:prn:prn" / "1:continuous:day" are as-needed / continuous cadences that DO NOT auto-propose
 // (the scheduler/clinician drives those). This module parses+validates the string and derives the cadence
 // interval (the whole-day spacing between consecutive proposed visits) the proposal builder steps on. The
-// `frequency` value mirrors `@wardenx/types` `RelevantIntervention.frequencyText` but the parsed form is
+// `frequency` value mirrors `@chartwarden/types` `RelevantIntervention.frequencyText` but the parsed form is
 // local to M17's proposal domain (the spec calls it "a tiny type shared by import"). No DB, no cross-module
 // schema import.
 import { SchedulingStateError } from "./lifecycle/errors";

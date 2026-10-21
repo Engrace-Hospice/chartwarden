@@ -7,9 +7,9 @@
 // deliberately: M30's resolver loops it and calls M12's EXISTING per-admission `MedicationOrderProvider.
 // listForAdmission` read (the HVLDL/HCI-10 precedent — a per-item cross-module loop at the RESOLVER, never a
 // bulk join inside one producer), so no new M12 seam surface is needed for the opioid classification.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AdmissionOnsetReader, AdmissionOnsetRow } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AdmissionOnsetReader, AdmissionOnsetRow } from "@chartwarden/types";
 import { and, eq, gte, lt } from "drizzle-orm";
 
 const ADM = schema.admissions;

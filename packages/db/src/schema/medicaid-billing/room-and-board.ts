@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — the Room & Board domain (42 CFR §418.302/.310/.318).
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — the Room & Board domain (42 CFR §418.302/.310/.318).
 // rb_arrangement is the per-patient-per-NF-stay contract instance (NON-partitioned; one ACTIVE window per
 // patient enforced by an EXCLUDE USING gist no-overlap constraint in SQL 0093). rb_day is the per-patient-
 // per-service-date billing day, PARTITION BY LIST(organization_id) (composite PK (id, organization_id) in

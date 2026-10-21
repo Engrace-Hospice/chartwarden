@@ -1,7 +1,7 @@
 // apps/web/src/modules/25-remittance — the small presentation kit the M25 write panels share (GAP-074): one
 // right-rail chrome (the admissions drawer pattern), one modal chrome, one label/value fact list, one reason
 // box with the server's length floor shown, one alert. Flat sections; tokens and kit components only.
-import { Button, Glyph, InlineAlert, Modal, TextAreaField, useDrawerA11y } from "@wardenx/ui";
+import { Button, Glyph, InlineAlert, Modal, TextAreaField, useDrawerA11y } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 export interface ActionModalProps {

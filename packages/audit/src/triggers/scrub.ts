@@ -1,4 +1,4 @@
-// @wardenx/audit — trigger-side denylist scrubbing (M4-T02, M4 spec §3.3, §5.1, D10).
+// @chartwarden/audit — trigger-side denylist scrubbing (M4-T02, M4 spec §3.3, §5.1, D10).
 //
 // The PHI write-audit trigger writes a column-level before/after diff into audit_event, but
 // the *values* of high-sensitivity columns must not be duplicated into the log (§2.3 "the fact

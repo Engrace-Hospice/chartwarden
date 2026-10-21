@@ -6,8 +6,8 @@ import {
   ONCALL_DIRECTORY_ROLES,
   type OnCallCoverageDto,
   type OnCallDirectoryRole,
-} from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@wardenx/ui";
+} from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";

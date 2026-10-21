@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T06 unit tests for the pure §7.7 BAA-gate engine (§4.6.2 computeStatus).
+// @chartwarden/mdm — M40-T06 unit tests for the pure §7.7 BAA-gate engine (§4.6.2 computeStatus).
 //
 // Locks the as-of decision: no-BAA-needed → n_a (disclosure allowed); an executed record covering
 // asOf → executed; the §7.10 time-travel case (active at attempt-time, expired at transmit-time) →

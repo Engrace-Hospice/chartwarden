@@ -1,4 +1,4 @@
-// @wardenx/types — Module 32 (AI Platform) leaf contracts (M32-T01).
+// @chartwarden/types — Module 32 (AI Platform) leaf contracts (M32-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package, so every downstream consumer
 // (M8's HearthNote Layer 2, M14's IDG packet polish, M16's bereavement risk narrative, M19's protocol
@@ -21,7 +21,7 @@
 // seams; M32 consumes those declarations rather than re-declaring them (a second declaration would be a
 // TS2308 collision under this package's wholesale `export *`).
 //
-// NAMING: every exported symbol carries an `Ai` / `AI_` / `M32_` prefix. `@wardenx/types` is re-exported
+// NAMING: every exported symbol carries an `Ai` / `AI_` / `M32_` prefix. `@chartwarden/types` is re-exported
 // wholesale from `./index.ts`, so a bare `RiskTier` / `LifecycleState` / `BackendKind` would collide the
 // day another module wants the same word (the M14 `IdgDecisionPayload` and M19 `TriageDisposition`
 // precedents). `Ai` — not `AI` — matches the repo's PascalCase convention for type names.
@@ -35,7 +35,7 @@
 import type { OrgId, PatientId } from "./admission";
 import type { IsoInstant, MembershipId } from "./care-plan";
 
-// ── M32-owned id aliases (mirror the §3.2 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── M32-owned id aliases (mirror the §3.2 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 
 export type AiCapabilityId = string;
 export type AiCapabilityLifecycleEventId = string;

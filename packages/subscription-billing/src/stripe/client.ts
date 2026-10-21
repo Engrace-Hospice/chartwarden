@@ -1,6 +1,6 @@
-// @wardenx/subscription-billing — §8.7 the typed Stripe client SHAPE (M35-T04).
+// @chartwarden/subscription-billing — §8.7 the typed Stripe client SHAPE (M35-T04).
 //
-// Mirrors `@wardenx/xero-client`'s `LiveXeroClient`: a thin, SDK-free wrapper over the injected
+// Mirrors `@chartwarden/xero-client`'s `LiveXeroClient`: a thin, SDK-free wrapper over the injected
 // {@link StripeHttpPort}. It imports NO vendor SDK and performs NO direct network I/O — every call routes
 // through the injected port, so the whole `packages/subscription-billing` tree stays inside the
 // VENDOR_ADAPTERS boundary even though the `stripe` npm package is never `import`ed here (the T06
@@ -35,7 +35,7 @@ export class LiveStripeClient implements StripeClient {
 /**
  * The fail-closed default transport. Until T06 wires a live Stripe transport, every outbound call throws
  * {@link STRIPE_NOT_CONFIGURED} rather than silently succeeding — a mis-wired env can never appear to have
- * billed a customer. Matches `@wardenx/xero-client`'s `XERO_NOT_CONNECTED` default-port posture.
+ * billed a customer. Matches `@chartwarden/xero-client`'s `XERO_NOT_CONNECTED` default-port posture.
  */
 export function failClosedStripeHttpPort(): StripeHttpPort {
   return {

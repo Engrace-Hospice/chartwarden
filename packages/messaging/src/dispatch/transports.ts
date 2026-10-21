@@ -1,4 +1,4 @@
-// @wardenx/messaging — out-of-band transport SEAMS (M36 GAP-101, spec §4.4 / §4.7).
+// @chartwarden/messaging — out-of-band transport SEAMS (M36 GAP-101, spec §4.4 / §4.7).
 //
 // The push / SMS / voice / email vendors (web-push, Twilio, Postmark) are EXTERNAL. M36 owns the dispatch
 // policy; the vendor call itself sits behind these four ports, and the ONLY thing that may cross them is a

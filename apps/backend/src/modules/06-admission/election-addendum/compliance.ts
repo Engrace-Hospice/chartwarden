@@ -1,12 +1,12 @@
 // apps/backend/src/modules/06-admission/election-addendum/compliance.ts — the two org-explicit reads that run
 // outside a request: the M23 claim-assembly snapshot (`election_addendum_signed` billing rule) and the
 // overdue scan (`admission.window_alert` cron). Both are FY2027, 42 CFR 418.24(c)/(d).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   ElectionAddendumComplianceSnapshot,
   ElectionAddendumExemptionReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, lte, ne } from "drizzle-orm";
 import type { AddendumOutboxPort as AdmissionWriteOutboxPort } from "./outbox-port";
 import { ADDENDUM_WINDOW_KINDS, loadAddendumAdmissionFacts } from "./store";

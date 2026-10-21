@@ -1,4 +1,4 @@
-// @wardenx/quality — boot-time seam registration + consumed-seam binding (M30 §4.3 / §4.4).
+// @chartwarden/quality — boot-time seam registration + consumed-seam binding (M30 §4.3 / §4.4).
 //
 // Mirrors M33's M1-bootstrap-registry posture: the FIVE published-seam contracts are registered into the
 // M1 SeamRegistry; the consumed seams are resolved through it (`getSeam`). M30 takes NO `apps/backend`

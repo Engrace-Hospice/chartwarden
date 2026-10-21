@@ -1,6 +1,6 @@
 // WP 3.4 - offboarding: the creator is preferred, the care team is the fallback in stable order, a throwing care-team
 // seam never fails the job, no successor flags needs_owner, and a second run is a no-op.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { type ReassignDeps, reassignTasksForLeaver } from "./task-reassign";
 import { createMemoryTaskStore } from "./task-store-memory";

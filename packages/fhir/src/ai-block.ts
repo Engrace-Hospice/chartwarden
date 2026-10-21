@@ -1,4 +1,4 @@
-// @wardenx/fhir — the D14 AI-prohibited-zone boot validator (§8.6, W-FHIR-11, M28-T05).
+// @chartwarden/fhir — the D14 AI-prohibited-zone boot validator (§8.6, W-FHIR-11, M28-T05).
 //
 // D14: Module 32's LLM may not synthesize, modify, redact, or decide on a FHIR resource — projections
 // must be DETERMINISTIC mappings from authoritative module data so the §164.528 disclosure record is
@@ -19,8 +19,8 @@
 // text, which a paraphrase defeats. Keeping a parallel `{kind, template}` shape M32 does not serve is the
 // exact registry-drift trap to avoid.
 //
-// The registry is INJECTED as a LOCAL port (T03/T04 idiom); T06 binds the real `@wardenx/ai-platform`
-// `AIPromptRegistry`. No `@wardenx/ai-platform` import, no `dependsOn` edge, ahead of that bind.
+// The registry is INJECTED as a LOCAL port (T03/T04 idiom); T06 binds the real `@chartwarden/ai-platform`
+// `AIPromptRegistry`. No `@chartwarden/ai-platform` import, no `dependsOn` edge, ahead of that bind.
 
 /** Thrown when an active M32 prompt targets a FHIR output-entity zone. Aborts M28 boot (W-FHIR-11). */
 export class FhirAIBlockViolation extends Error {

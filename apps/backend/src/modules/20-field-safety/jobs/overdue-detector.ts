@@ -28,9 +28,9 @@
 // row write; `check_in_escalated` is keyed `[scheduleId, tier]` so each rung is its own event. The §4.9
 // `alert` effects are skipped on purpose (no `AlertPort` is bound for M20 — M36 resolves the OUTBOX event
 // through its own seam; see the index.ts composition-root note).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
   MembershipId,
@@ -39,8 +39,8 @@ import type {
   SafetyCheckInScheduleId,
   SafetyCheckInState,
   VisitId,
-} from "@wardenx/types";
-import { SAFETY_SCHEDULE_ACTIONABLE_STATES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { SAFETY_SCHEDULE_ACTIONABLE_STATES } from "@chartwarden/types";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import {
   type SafetyCheckInScheduleFacts,

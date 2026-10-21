@@ -4,7 +4,7 @@
 // `packages/db/src/schema/oncall` (migrations 0107/0108). The eraser is here rather than in a feature
 // package because M19 has none: Wave P2-2 acceptance #1 limits this wave's manifest changes to
 // `packages/triage-vendors` and the two Track B web codePaths, so M19's CONTRACTS live in
-// `@wardenx/types` (`oncall.ts`, M19-T01) and its domain services under this path (the M6 precedent).
+// `@chartwarden/types` (`oncall.ts`, M19-T01) and its domain services under this path (the M6 precedent).
 //
 // M19-T03 lands the §2.2–§2.7 domain core in `lifecycle/` — the nine-state triage-call machine, the
 // protocol engine (apply-and-pin, the server-authoritative ordered walk, the D5 red-flag evaluator), the

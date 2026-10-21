@@ -1,4 +1,4 @@
-import { createInMemoryTerminologyStore } from "@wardenx/terminology";
+import { createInMemoryTerminologyStore } from "@chartwarden/terminology";
 // apps/backend/__tests__/terminology-eraser.test.ts — M38-T10 the `terminology_tenant_extensions`
 // data eraser (spec §11 D8).
 //

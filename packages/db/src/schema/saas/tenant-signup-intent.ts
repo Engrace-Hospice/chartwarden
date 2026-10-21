@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_signup_intent` (M34 §3.9). The Phase-3 self-serve / platform-ops-manual
+// @chartwarden/db — `tenant_signup_intent` (M34 §3.9). The Phase-3 self-serve / platform-ops-manual
 // pre-provision intake row: a prospective tenant's "signup intent" before any `tenant_account`
 // or `organization` exists. M34-F02 / ADR-0010: this table is DELIBERATELY org-less — it is
 // genuinely PRE-ORGANIZATION (the org/tenant_account does not exist until the intent is

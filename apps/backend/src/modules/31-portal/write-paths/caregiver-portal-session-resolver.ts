@@ -18,7 +18,7 @@
 // unknown/closed/idle-expired session, an account that is not active, or a session whose bound patient has no
 // active grant all resolve to `{ bound: false }`. A read failure in the port is the caller's to catch and map
 // to a deny (never a default-allow), the §8.2 layering rule the whole module obeys.
-import type { PatientId } from "@wardenx/types";
+import type { PatientId } from "@chartwarden/types";
 
 /** Why a caregiver portal session could not be resolved to a bound patient (all fail-closed). The boot
  *  adapter collapses every value to M13's single `M31_NOT_BOUND` literal when handing this to M13's route. */

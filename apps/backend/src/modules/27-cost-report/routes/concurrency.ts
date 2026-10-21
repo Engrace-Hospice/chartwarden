@@ -8,10 +8,10 @@
 //     {@link CursorKeyset} so this one helper serves every list route.
 //   - base64url JSON in the slice, HMAC-signed in prod — the route surface is stable either way. A
 //     malformed/tampered cursor is a 400 VALIDATION_FAILED (never page-from-start).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — a mutating route did not carry the required `Idempotency-Key` header. */

@@ -23,14 +23,14 @@ import { randomUUID } from "node:crypto";
 // while no embeddings backend is bound (the BGE-small sidecar is not built — nothing fakes a vector).
 // `POST /uploads` presigns the platform-bucket PUT an operator needs to hand a release file to the loader;
 // `…/license-attestation` records the licence the gate checks and the attribution text served with the data.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import type { CodeSystemId } from "@wardenx/terminology";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { CodeSystemId } from "@chartwarden/terminology";
 import {
   type LoadableSystemId,
   isLoadableSystem,
   validateAttestationInput,
-} from "@wardenx/terminology-loader";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/terminology-loader";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { terminologyRefusalOf } from "../db-errors";
 import type { PlatformUploadSigner, TerminologyJobProducer } from "../jobs-ports";
@@ -47,7 +47,7 @@ import {
   parse,
 } from "./terminology-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for M38's platform-ops routes. */

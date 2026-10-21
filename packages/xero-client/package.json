@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/xero-client",
+  "name": "@chartwarden/xero-client",
   "version": "0.0.0",
   "private": true,
   "type": "module",

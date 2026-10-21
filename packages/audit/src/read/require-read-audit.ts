@@ -1,4 +1,4 @@
-// @wardenx/audit — read-audit completeness declaration (M4-T03, M4 spec §2.5, §3.4).
+// @chartwarden/audit — read-audit completeness declaration (M4-T03, M4 spec §2.5, §3.4).
 //
 // §2.5 "Read-audit completeness" is a build-time lint: EVERY PHI resource route must either
 // emit a read event (call `auditPhiRead`/`auditListRead`) or carry an explicit, justified

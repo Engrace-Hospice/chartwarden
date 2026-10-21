@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T05, §2.6 D7. The per-medication titration-window catalog + sedation classifier
+// @chartwarden/inpatient — M37-T05, §2.6 D7. The per-medication titration-window catalog + sedation classifier
 // for the IV-continuous safety overlay. Seeded from CMS hospice-pharmacy guidance (a platform floor); a
 // tenant overlay can tighten a window at the service layer (M37-T11). Pure data + predicates, IO-free.
 import type { IvRateUnit } from "../gip-criteria/schema";

@@ -3,8 +3,8 @@
 // consumed only the SBAR form: the text the sender was typing alongside it stays (resealed without the `sbar` field),
 // and the row goes only when nothing else is left. Same envelope and owner pinning as draft-service-db.ts (the filter
 // names org and owner, and the draft table's RLS pins them again).
-import { schema } from "@wardenx/db";
-import type { MessageReferenceInput } from "@wardenx/messaging";
+import { schema } from "@chartwarden/db";
+import type { MessageReferenceInput } from "@chartwarden/messaging";
 import { and, eq, isNull } from "drizzle-orm";
 import type { MessageBodyCipher, Tx } from "../messaging-write-core";
 

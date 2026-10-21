@@ -11,7 +11,7 @@ import type {
   PatientMutator,
   PatientMutatorInput,
   PatientMutatorResult,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The §4.9.1 / D12 forbidden patch keys — present in the shape for caller convenience, stripped here. */
 export const FORBIDDEN_PATCH_FIELDS = [

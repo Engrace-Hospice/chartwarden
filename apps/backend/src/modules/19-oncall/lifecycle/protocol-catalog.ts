@@ -39,7 +39,7 @@ import type {
   TriageEscalationTier,
   TriageProtocolAnswerType,
   TriageRedFlagMatch,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { TriageActorDiscipline } from "./protocol";
 
 /** SNOMED CT "Other" — the honest placeholder for a floor protocol with no loaded finding concept. */

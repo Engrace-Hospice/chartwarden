@@ -3,7 +3,7 @@
 // Idempotency-Key presence guard, and the If-Match version parser the PATCH routes 412 on. Mirrors the
 // M27/M30 routes/concurrency.ts precedent: base64url JSON in the slice (HMAC-signed in prod); a malformed/
 // tampered cursor or a missing/invalid If-Match is a 400, never a page-from-start / blind write.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;

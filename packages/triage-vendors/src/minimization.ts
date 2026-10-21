@@ -1,4 +1,4 @@
-// @wardenx/triage-vendors — D13 PHI minimization at the external-triage-vendor boundary (M19-T01).
+// @chartwarden/triage-vendors — D13 PHI minimization at the external-triage-vendor boundary (M19-T01).
 //
 // HIPAA §164.502(b) / §164.514(d) minimum necessary: the vendor operator needs enough to run a triage
 // protocol, not the chart. D13 fixes two Phase-1 profiles and makes the outbound body a discriminated
@@ -15,7 +15,7 @@
 // Layer 2 exists because layer 1 is the guarantee people believe they have and layer 2 is the one that
 // survives contact with an adapter written by someone else.
 
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** D13 — the two Phase-1 minimization profiles. `centralized` vendors select dispositions inside their
  *  own scope and therefore need slightly more structured chart context than `hybrid` vendors, who only

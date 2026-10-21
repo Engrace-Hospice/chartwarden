@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §2.2 / D8 incident_report domain subtree (P2a). PURE.
+// @chartwarden/quality — M30 §2.2 / D8 incident_report domain subtree (P2a). PURE.
 //
 // Public surface of the incident domain: the §2.3 kind catalog + per-kind required-field rules
 // (./kinds), the §10 mandatory external-report determination (./mandatory_reporter), the §2.2 lifecycle

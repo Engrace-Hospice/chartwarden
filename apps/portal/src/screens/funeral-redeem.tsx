@@ -1,5 +1,5 @@
-import { Button, CenteredCardLayout, InlineAlert, t, useApiClient } from "@wardenx/ui";
-// @wardenx/portal — Redeem a secure link (`/funeral/redeem#token=…`, also `/collaborator/redeem`). A funeral home (or an
+import { Button, CenteredCardLayout, InlineAlert, t, useApiClient } from "@chartwarden/ui";
+// @chartwarden/portal — Redeem a secure link (`/funeral/redeem#token=…`, also `/collaborator/redeem`). A funeral home (or an
 // external collaborator) lands here from an emailed single-use link. The token rides in the URL FRAGMENT, so a browser
 // never sends it to a server, a proxy or a log; this page reads it client-side, clears it from the address bar at once,
 // and POSTs it. The server redeems it ONCE into a scoped session (cookie) — a replayed, expired or revoked link gets one

@@ -243,15 +243,15 @@ The consumer subscribes to all three cascade-resolved events from T-29.05 and cr
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/proposals/cascade-consumer.ts
-import type { Outbox, OutboxConsumerHandler } from '@wardenx/foundation/outbox'
+import type { Outbox, OutboxConsumerHandler } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 import { ulid } from 'ulid'
-import { hl7MessageInbound, hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
+import { hl7MessageInbound, hl7InboundProposal } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import type { KmsEnvelopeEncryptor } from '@wardenx/foundation/seams'
+import { withOrgContext } from '@chartwarden/tenancy'
+import type { KmsEnvelopeEncryptor } from '@chartwarden/foundation/seams'
 import { MESSAGE_TYPE_ROUTING, isSupportedAdt, type Hl7InboundProposalKind, type OwnerModule } from './message-type-routing'
-import { db } from '@wardenx/db'
+import { db } from '@chartwarden/db'
 
 const PROPOSAL_TTL_DAYS = 30  // per M29 §8.4 retention — pending >30d auto-expires
 
@@ -498,11 +498,11 @@ Path: `apps/backend/src/modules/29-external-interfaces/proposals/decision-engine
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/proposals/decision-engine.ts
-import { hl7InboundProposal, type Hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
+import { hl7InboundProposal, type Hl7InboundProposal } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { db } from '@wardenx/db'
-import type { Outbox } from '@wardenx/foundation/outbox'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { db } from '@chartwarden/db'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 
 export class ConcurrentDecisionError extends Error {
@@ -764,12 +764,12 @@ Path: `apps/backend/src/modules/29-external-interfaces/routes/proposals.ts`.
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Type } from '@sinclair/typebox'
 import { DecisionEngine, ConcurrentDecisionError, DecisionNoteRequiredError, UnknownProposalError } from '../proposals/decision-engine'
-import { hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
+import { hl7InboundProposal } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq, desc } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { db } from '@wardenx/db'
-import { requirePermissions } from '@wardenx/foundation/auth'
-import { requirePredicate } from '@wardenx/foundation/abac'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { db } from '@chartwarden/db'
+import { requirePermissions } from '@chartwarden/foundation/auth'
+import { requirePredicate } from '@chartwarden/foundation/abac'
 
 const AcceptBody = Type.Object({
   appliedFields: Type.Optional(Type.Array(Type.String())),
@@ -967,9 +967,9 @@ This predicate is **owned by M3** (Authorization) per the architecture; M29 cont
 ```ts
 // apps/backend/src/modules/03-authorization/predicates/hl7_inbound_proposal_owner_module_match.ts
 import type { PredicateContext } from '../predicate-types'
-import { hl7InboundProposal } from '@wardenx/db/schema/external-interfaces'
+import { hl7InboundProposal } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 /**
  * Enforces that the caller deciding a proposal holds the EDIT permission on the
@@ -1045,7 +1045,7 @@ M5 and M6 are locked at v0.2; they do not yet consume `m29.hl7_inbound_proposal.
 
 ```ts
 // apps/backend/src/modules/05-patient/outbox-consumers/m29-proposal-accepted.stub.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 
 export function registerM5ProposalAcceptedStub(outbox: Outbox, logger: Logger): void {
@@ -1081,10 +1081,10 @@ A BullMQ scheduled job that runs every 10 minutes per tenant. Idempotent — onl
 // apps/backend/src/modules/29-external-interfaces/workers/proposal-expire-sweep.worker.ts
 import { Worker, type Job } from 'bullmq'
 import { DecisionEngine } from '../proposals/decision-engine'
-import { organization } from '@wardenx/db/schema/organization'
-import { withPlatformContext } from '@wardenx/tenancy'
-import { db } from '@wardenx/db'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
+import { organization } from '@chartwarden/db/schema/organization'
+import { withPlatformContext } from '@chartwarden/tenancy'
+import { db } from '@chartwarden/db'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
 import { pino } from 'pino'
 
 const logger = pino({ name: 'proposal-expire-sweep' })

@@ -1,9 +1,9 @@
 // M11's live M14 order-request consumer. IDG recommendations become reviewable draft orders;
 // no signature, activation, transmission, or other privileged clinical action is automated.
-import { type DbClient, schema } from "@wardenx/db";
-import { ORDER_KIND_VERSION, validateOrderData } from "@wardenx/orders";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { RequestedOrderInput } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { ORDER_KIND_VERSION, validateOrderData } from "@chartwarden/orders";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { RequestedOrderInput } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const ORDER = schema.orderRecords;

@@ -8,8 +8,8 @@ import {
   calculatePerDiemClass,
   derivePerDiemClassCode,
   levelOfCareToCode,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 HIPPS calculator (D7, spec §1.1 / §3.3 `per_diem_rate_calculation`) pure-domain tests.
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 HIPPS calculator (D7, spec §1.1 / §3.3 `per_diem_rate_calculation`) pure-domain tests.
 //
 // The calculator maps M6 level-of-care periods within a claim's from-through range to per-diem segments,
 // buckets RHC days by day-of-stay from the hospice ADMISSION date (days 1-7 vs 8+), applies the wage index

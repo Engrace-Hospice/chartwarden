@@ -1,4 +1,4 @@
-// @wardenx/terminology — Clinical Terminology Service (Module 38).
+// @chartwarden/terminology — Clinical Terminology Service (Module 38).
 //
 // Public surface of the package. M38-T01 ships the seam contract + the type-level
 // code-system identity and per-system concept shapes (§2.3, §3.1, §3.2, §4.5).

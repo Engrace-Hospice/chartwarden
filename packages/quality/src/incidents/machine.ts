@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §2.2 / D8 incident_report lifecycle machine (P2a). Pure, IO-free.
+// @chartwarden/quality — M30 §2.2 / D8 incident_report lifecycle machine (P2a). Pure, IO-free.
 //
 // The incident aggregate lifecycle (§2.2, routes R-54..R-60):
 //
@@ -14,7 +14,7 @@
 // resolver-vs-assignee identity, corrective-action text length) is resolved UPSTREAM and injected as event
 // data — no IO, no DB, no clock. The two-person corrective-action control (M30-F03 / ADR-0022, WF-12) is
 // encoded as the `resolve` guard: the resolver MUST NOT be the incident's assignee.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { IncidentKind, IncidentSeverity, IncidentState } from "../contracts";
 import { isSeverityAtLeastModerate } from "./kinds";
 

@@ -1,4 +1,4 @@
-// @wardenx/messaging — Postmark webhook verification (M36-T08, spec §4.9.2 / INT-016 / SD-056).
+// @chartwarden/messaging — Postmark webhook verification (M36-T08, spec §4.9.2 / INT-016 / SD-056).
 //
 // Per INT-016, Postmark authenticity rests on TWO complementary controls — both active, both must
 // pass:

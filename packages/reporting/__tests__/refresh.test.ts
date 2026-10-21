@@ -1,4 +1,4 @@
-// @wardenx/reporting — three-tier MV-refresh WORKER + lag-probe UNIT TESTS (M33 §2.4–§2.6 / §4.8 / D2 / D14).
+// @chartwarden/reporting — three-tier MV-refresh WORKER + lag-probe UNIT TESTS (M33 §2.4–§2.6 / §4.8 / D2 / D14).
 //
 // PURE port-injected workers driven by in-memory recording fakes (the M34 `shred-worker.test.ts` template):
 // a `makePorts()` factory builds the full port bundle over in-memory state + a `const calls: string[] = []`
@@ -10,8 +10,8 @@
 //     (`already_fresh`) rather than re-refreshing;
 //   • the singleton lag-probe crosses the 10-min freshness SLO (two-probe hysteresis) → emits `m33.lag.exceeded`
 //     + flips the degraded-tile advisory.
-import type { schema } from "@wardenx/db";
-import type { LagProbeState } from "@wardenx/reporting";
+import type { schema } from "@chartwarden/db";
+import type { LagProbeState } from "@chartwarden/reporting";
 import {
   INITIAL_LAG_PROBE_STATE,
   REPLICA_LAG_THRESHOLD_SECONDS,
@@ -22,7 +22,7 @@ import {
   handleMvRefresh,
   mvRefreshJobId,
   runLagProbe,
-} from "@wardenx/reporting";
+} from "@chartwarden/reporting";
 import { describe, expect, it } from "vitest";
 
 const FIXED_NOW = new Date("2026-06-25T12:00:07.000Z");

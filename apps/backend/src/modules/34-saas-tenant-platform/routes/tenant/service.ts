@@ -10,8 +10,8 @@
 // emit their m34.* outbox in the same tx. Mirrors the M22 routes/service.ts precedent: pure-ish (only an
 // injected `now()` so timestamps are deterministic in tests), org-scoped reads (a missing/cross-tenant id
 // is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on every list.
-import type { OrgId } from "@wardenx/types";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import type { OrgId } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (Phase 2D worker-trigger seam) ───────────────────────────────────────────────────

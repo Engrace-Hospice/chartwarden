@@ -10,7 +10,7 @@ import {
   humanizeIdentifier,
   useApiClient,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 payment methods (§5.1 `/billing/payment_methods`).
 // The stored payment methods over GET /api/v1/payment_methods, with "Set default"/"Detach" affordances
 // and the "Add card" CTA. Card entry itself is the Stripe Payment Element (the only iframe-mounted,

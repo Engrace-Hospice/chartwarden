@@ -8,7 +8,7 @@
 // Each ABAC name below is a COMPILE-TIME STRING LITERAL passed straight to `requireAbac`, so
 // `arch:abac-predicates` sees it (the gate scans for the literal second argument; a `names: string[]`
 // loop would make every name invisible — the M30 finding it was built for).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 
 import type { PreHandler } from "./actor";
 

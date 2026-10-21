@@ -1,11 +1,11 @@
-// @wardenx/cost-report · repositories — the financial-import audit-replay records: `trial_balance_import`
+// @chartwarden/cost-report · repositories — the financial-import audit-replay records: `trial_balance_import`
 // (every Xero trial-balance pull or manual CSV; `normalized_accounts` holds the post-normalization GL
 // rows) and `wage_data_import` (every Gusto wage-data pull or manual entry feeding Worksheet S-3 Part II;
 // `normalized_wage_rows` holds per-discipline paid-hours/salary/fringe — D6) (M27 §3.3). HISTORY IS
 // PRESERVED (never updated post-completion) — the latest `status='complete'` row per (cost_report,
 // source) is canonical. ORG-SCOPED; the import worker wraps these in `withOrgContext`. `raw_payload_cipher`
 // is envelope-encrypted + audit-denylisted (§3.6) — this port returns the row; the service decrypts/projects.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

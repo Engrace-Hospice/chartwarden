@@ -35,7 +35,7 @@ import type {
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   type BereavementSeamClock,

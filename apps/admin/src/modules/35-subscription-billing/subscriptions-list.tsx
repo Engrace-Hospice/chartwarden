@@ -6,8 +6,8 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscriptions list (`/admin/subscriptions`,
 // subscription.admin.read). The cross-tenant subscription roster over GET /api/admin/subscriptions, filtered
 // by status (server) with the org DISPLAY NAME (M35A-T03 seam) rendered instead of a raw UUID, plus plan,

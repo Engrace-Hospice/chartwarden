@@ -156,13 +156,13 @@ orm-transmit.worker.ts:
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/outbound/orm-dispatcher.ts
-import type { Outbox, OutboxConsumerHandler } from '@wardenx/foundation/outbox'
+import type { Outbox, OutboxConsumerHandler } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 import { ulid } from 'ulid'
-import { db } from '@wardenx/db'
-import { externalFeed, hl7MessageOutbound } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { externalFeed, hl7MessageOutbound } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext, withPlatformContext } from '@wardenx/tenancy'
+import { withOrgContext, withPlatformContext } from '@chartwarden/tenancy'
 import type { Queue } from 'bullmq'
 
 interface OrmRequestedPayload {
@@ -334,7 +334,7 @@ Projects the M11 typed payload into HL7 v2.5.1 ORM^O01 segments and calls the si
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/outbound/orm-builder.ts
-import { createSidecarClient, type SidecarClient } from '@wardenx/hl7-worker'
+import { createSidecarClient, type SidecarClient } from '@chartwarden/hl7-worker'
 import type { Logger } from 'pino'
 
 export interface OrmBuildInput {
@@ -485,8 +485,8 @@ function projectOrderToSegments(input: OrmBuildInput): Array<{ name: string; fie
 ```ts
 // apps/backend/src/modules/29-external-interfaces/outbound/mllp-outbound-client.ts
 import * as tls from 'node:tls'
-import type { ExternalFeed, ExternalFeedCredential } from '@wardenx/db/schema/external-interfaces'
-import type { KmsEnvelopeEncryptor } from '@wardenx/foundation/seams'
+import type { ExternalFeed, ExternalFeedCredential } from '@chartwarden/db/schema/external-interfaces'
+import type { KmsEnvelopeEncryptor } from '@chartwarden/foundation/seams'
 import type { RevocationList } from '../listener/revocation-list'
 import type { Logger } from 'pino'
 
@@ -716,14 +716,14 @@ The orchestrator. Loads the row, runs the BAA gate, builds, transmits, classifie
 // apps/backend/src/modules/29-external-interfaces/workers/orm-transmit.worker.ts
 import { Worker, type Job } from 'bullmq'
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { hl7MessageOutbound, externalFeed, externalFeedCredential } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { hl7MessageOutbound, externalFeed, externalFeedCredential } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
-import { mkKmsEnvelope } from '@wardenx/foundation/seams/kms'
-import { mkMdmClient } from '@wardenx/foundation/seams/mdm'
-import { createSidecarClient } from '@wardenx/hl7-worker'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
+import { mkKmsEnvelope } from '@chartwarden/foundation/seams/kms'
+import { mkMdmClient } from '@chartwarden/foundation/seams/mdm'
+import { createSidecarClient } from '@chartwarden/hl7-worker'
 import { RevocationList } from '../listener/revocation-list'
 import { MllpOutboundClient } from '../outbound/mllp-outbound-client'
 import { buildOrmMessage } from '../outbound/orm-builder'
@@ -943,7 +943,7 @@ Same shape as the inbound listener's `HealthProbe` breaker but key per-feed and 
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/outbound/circuit-breaker.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 
 const FAILURE_THRESHOLD = 5

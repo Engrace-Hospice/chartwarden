@@ -3,7 +3,7 @@
 // M20-T02 lands the §3.7 `safety_record` eraser (`erasers/`) alongside the thirteen owned tables in
 // `packages/db/src/schema/safety` (migrations 0110/0111). The eraser is here rather than in a feature
 // package because M20 has none: Wave P2-2 acceptance #1 limits this wave's manifest changes to
-// `packages/triage-vendors` and the two Track B web codePaths, so M20's CONTRACTS live in `@wardenx/types`
+// `packages/triage-vendors` and the two Track B web codePaths, so M20's CONTRACTS live in `@chartwarden/types`
 // (`safety.ts`, M20-T01) and its domain services under this path (the M6 / M19 precedent).
 //
 // The eraser is the one place this task had to decide something the spec states twice in different words.
@@ -27,7 +27,7 @@
 //     ladder is `proposed → overdue → escalated` and the D4 RUNG is derived from `expected_at`; the rung is
 //     reconstructed from `escalated_at` so each fires exactly once with no new column.
 //   • TWO §4.10 IDEMPOTENCY KEYS WOULD HAVE SUPPRESSED THE REPETITION THEY KEY — `check_in_escalated`
-//     (once per rung) and `sos_terminus_reached` (once per loop). Both are composite now (@wardenx/types).
+//     (once per rung) and `sos_terminus_reached` (once per loop). Both are composite now (@chartwarden/types).
 //   • THE TERMINUS LOOP WRITES NO STATE-HISTORY ROW: §3.3's `m20_ssash_no_self` CHECK refuses `from = to`,
 //     so a loop that emitted one would die on a constraint at the moment nobody is answering.
 //
@@ -86,7 +86,7 @@
 //     rate upward when a consumer was down, and is why every rate method ships `visitCount` beside it.
 //
 // M20-T06 lands the §4.1 route surface (`routes/`), the §4.6 permission keys (`permission-keys.ts`, whose
-// canonical map is `M20_CONTRIBUTED_PERMISSIONS` in @wardenx/auth), the six §4.7 ABAC predicates
+// canonical map is `M20_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth), the six §4.7 ABAC predicates
 // (`abac-predicates.ts` + its Drizzle resolver), the §4.9 M36 alert rules and payload builders
 // (`alerts.ts`) and the §4.10 outbox catalog contribution (`events-by-m20.ts`).
 //

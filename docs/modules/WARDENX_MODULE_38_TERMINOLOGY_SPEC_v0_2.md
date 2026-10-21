@@ -754,7 +754,7 @@ Every platform terminology table and the tenant extension table install the M4 `
 
 ```typescript
 // in 0038_terminology migration
-import { generateAuditTrigger } from '@wardenx/audit/triggers'
+import { generateAuditTrigger } from '@chartwarden/audit/triggers'
 
 const platformTables = [
   'code_system','code_system_version',
@@ -1092,7 +1092,7 @@ Registered at boot via the M1 seam registry:
 ```typescript
 // apps/backend/src/bootstrap/seams.ts
 import { setTerminologyProvider } from './terminology'
-import { realTerminologyProvider } from '@wardenx/terminology'
+import { realTerminologyProvider } from '@chartwarden/terminology'
 
 setTerminologyProvider(realTerminologyProvider)
 // validateSeams() will refuse to start the server if no provider is registered.
@@ -1102,7 +1102,7 @@ Consumers import only the interface. Example (claim §11.A ICD-10 sequencing rul
 
 ```typescript
 // apps/backend/src/modules/23-billing-medicare/rules/icd10-sequencing.ts
-import type { TerminologyProvider } from '@wardenx/terminology'
+import type { TerminologyProvider } from '@chartwarden/terminology'
 
 async function validatePrimaryIsTerminal(
   claim: Claim, terminology: TerminologyProvider,

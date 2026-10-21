@@ -1,10 +1,10 @@
 import type {
   ExternalTriageVendorAdapter,
   VendorMinimizationProfile,
-} from "@wardenx/triage-vendors";
+} from "@chartwarden/triage-vendors";
 // apps/backend/src/modules/19-oncall/vendor/registry.ts — M19-T07 (§8.5, architecture §25.14).
 //
-// THE ADAPTER MANDATE, made operational. `@wardenx/triage-vendors` owns the `ExternalTriageVendorAdapter`
+// THE ADAPTER MANDATE, made operational. `@chartwarden/triage-vendors` owns the `ExternalTriageVendorAdapter`
 // interface and is the ONLY package permitted to name a vendor endpoint or SDK; this file is the M19-side
 // REGISTRY that resolves `external_triage_vendor.adapter_key` → an adapter instance. The backend calls the
 // interface and nothing else, which is what makes a vendor swap "a new adapter behind the same interface"
@@ -22,7 +22,7 @@ import type {
 // call in-agency" — never as "transmit anyway with a default adapter", and never as a silent no-op that
 // would leave a caller on hold while M19 believed a vendor had them. There is no fallback adapter and
 // there is no default; a registry miss is a refusal with the key in the message.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** Raised when a tenant's configured `adapter_key` resolves to no registered adapter (§8.5). */
 export class TriageVendorAdapterUnavailableError extends ChartWardenError {

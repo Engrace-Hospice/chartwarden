@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.8 D17 medication-reconciliation worksheet — M13-T06.
+// @chartwarden/emar — §2.8 D17 medication-reconciliation worksheet — M13-T06.
 import { describe, expect, it } from "vitest";
 import {
   RECONCILIATION_DUE_WARNING_HOURS,

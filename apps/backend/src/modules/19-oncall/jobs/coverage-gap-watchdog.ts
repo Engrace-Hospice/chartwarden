@@ -20,11 +20,11 @@
 // idempotency key and an unfilled hole is still a hole; M36 collapses the pages to one per ProviderEntity per
 // hour (correlation key on the event's hour), which is the "two check opportunities per hour" the spec wants
 // without a page storm. One org's failure never stops the others.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ONCALL_COVERAGE_LOOKAHEAD_HOURS } from "@wardenx/types";
-import type { IsoInstant } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ONCALL_COVERAGE_LOOKAHEAD_HOURS } from "@chartwarden/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import type { FoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import { firstRnCoverageGap } from "../roster/coverage-gap";

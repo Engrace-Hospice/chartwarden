@@ -12,14 +12,14 @@
 //
 // Every query runs under `withOrgContext` (RLS); a batch of another tenant is a 404. Values are decrypted
 // here and only here, for the person reviewing them — never logged, never put on an outbox payload.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type IdentityStatus,
   type IntakeDocumentType,
   findExtractionField,
   worstIdentity,
-} from "@wardenx/intake-extraction";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/intake-extraction";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
@@ -28,7 +28,7 @@ import {
   M22_INTAKE_SUD_REJECTED_EVENT,
   NotFoundError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {

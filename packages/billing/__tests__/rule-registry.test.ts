@@ -1,12 +1,12 @@
-import type { Rule } from "@wardenx/billing";
+import type { Rule } from "@chartwarden/billing";
 import {
   BillingRuleRegistry,
   DEFAULT_BILLING_RULES,
   DEFAULT_RULE_SET_VERSION,
   createDefaultBillingRegistry,
   summarizeRuleRun,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 §4.5 the validation RULE REGISTRY pure-domain unit tests (D1). Covers the
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 §4.5 the validation RULE REGISTRY pure-domain unit tests (D1). Covers the
 // freeze-at-boot invariant (registration is rejected after `freeze()`, duplicate keys throw), the
 // platform-default registry factory (26 rules, 23 regulatory), `runRules` producing exactly one result per
 // registered rule in registration order, the determinism that underpins the §2.6 `run_input_hash`

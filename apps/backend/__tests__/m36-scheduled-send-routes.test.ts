@@ -8,15 +8,15 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import {
   type AnnouncementService,
   type ScheduledMessageView,
   type ScheduledSendService,
   createInMemoryMessagingService,
-} from "@wardenx/messaging";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

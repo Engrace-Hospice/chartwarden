@@ -13,7 +13,7 @@ import {
   createAnthropicSdkTransport,
   createModelBackendRegistry,
   createOllamaModelBackend,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import { describe, expect, it } from "vitest";
 import { restrictionOf } from "../src/modules/05-patient/admission-clearance-reader";
 import { decideSudFlag } from "../src/modules/05-patient/index";

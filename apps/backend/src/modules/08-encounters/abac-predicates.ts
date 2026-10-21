@@ -32,7 +32,7 @@ import {
   type AbacTarget,
   hasOrgWideScope,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
 import type { EncounterAbacResolver } from "./routes/service";
 

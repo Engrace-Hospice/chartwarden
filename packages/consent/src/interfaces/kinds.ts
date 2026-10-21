@@ -1,4 +1,4 @@
-// @wardenx/consent — consent kind/enum type-level mirrors + the §2.3 structural descriptor.
+// @chartwarden/consent — consent kind/enum type-level mirrors + the §2.3 structural descriptor.
 //
 // M39-T01 (spec §2.2, §2.3, §3.1, §3.2). This file is the TYPE-LEVEL home for the M39 enums
 // and the per-consent-type STRUCTURAL facts the validation rules (§2.3) and the evaluate path

@@ -276,7 +276,7 @@ Path: `apps/backend/src/modules/29-external-interfaces/inbound/match-cascade.ts`
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/match-cascade.ts
-import type { PatientReader, PatientIdentity } from '@wardenx/foundation/seams'
+import type { PatientReader, PatientIdentity } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 /**
@@ -604,8 +604,8 @@ Replace the T-29.04 stub for ADT branch:
 
 import { matchPatient, type CascadeInput, type MatchOutcome } from '../inbound/match-cascade'
 import { routeOutcome } from '../inbound/outcome-router'
-import { projectPid } from '@wardenx/hl7-worker/segments/pid'
-import { findPidSegment } from '@wardenx/hl7-worker/messages/adt-shared'
+import { projectPid } from '@chartwarden/hl7-worker/segments/pid'
+import { findPidSegment } from '@chartwarden/hl7-worker/messages/adt-shared'
 
 // In the worker's body, after parse-success:
 
@@ -671,9 +671,9 @@ await outbox.publish('m29.hl7_message.parsed_other', { messageId, feedId, organi
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/cascade-persistence.ts
-import { hl7MessageInbound } from '@wardenx/db/schema/external-interfaces'
+import { hl7MessageInbound } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 import type { MatchOutcome } from './match-cascade'
 
 export async function persistCascadeResult(
@@ -762,7 +762,7 @@ Path: `apps/backend/src/modules/29-external-interfaces/inbound/outcome-router.ts
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/outcome-router.ts
 import type { MatchOutcome } from './match-cascade'
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 
 export interface RouteOutcomeInput {
@@ -840,7 +840,7 @@ Path: `apps/backend/src/modules/29-external-interfaces/inbound/__tests__/match-c
 // apps/backend/src/modules/29-external-interfaces/inbound/__tests__/match-cascade.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { matchPatient, type CascadeInput, type CascadeDeps } from '../match-cascade'
-import type { PatientReader, PatientIdentity } from '@wardenx/foundation/seams'
+import type { PatientReader, PatientIdentity } from '@chartwarden/foundation/seams'
 import { mkLogger } from '../../../__test-utils__/logger'
 
 const ORG = 'org_engrace'

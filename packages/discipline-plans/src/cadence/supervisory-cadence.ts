@@ -1,10 +1,10 @@
-// @wardenx/discipline-plans — §2.2.4 / §7.1 / D3 supervisory-cadence policy (M15-T01 domain layout).
+// @chartwarden/discipline-plans — §2.2.4 / §7.1 / D3 supervisory-cadence policy (M15-T01 domain layout).
 //
 // The single source of the 42 CFR §418.76(h) RN supervisory rules the cadence service (M15-T03), the
 // 6-hourly overdue cron, the encounter-sign gate, and the M36 alert builders read instead of re-deriving
-// inline. PURE DATA — no IO, `@wardenx/types`-only.
+// inline. PURE DATA — no IO, `@chartwarden/types`-only.
 
-import type { AideSupervisoryAttestationMode } from "@wardenx/types";
+import type { AideSupervisoryAttestationMode } from "@chartwarden/types";
 
 /**
  * §2.2.4 / D3 — the typed `SUPERVISORY_CADENCE` catalog. `platformFloorDays` is the 42 CFR §418.76(h)(1)

@@ -1,8 +1,8 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/13-emar/outbox-consumers/m12-medication-order-active.ts — the §2.3 D2
 // scheduled-dose materializer, live for the first time (F-166, #248).
 //
-// `materializeForOrder` (`@wardenx/emar`, `schedule/schedule-parser.ts`) has been a complete, pure,
+// `materializeForOrder` (`@chartwarden/emar`, `schedule/schedule-parser.ts`) has been a complete, pure,
 // IO-free DST-exact schedule stepper since M13-T03 with NO caller anywhere in this repository —
 // `M13_OUTBOX_SUBSCRIPTIONS` (`consumers/index.ts`) has named `m12.medication_order.active` with a real
 // consumer (`m13.materialize-schedule`) since the list was written; nothing has ever bound it. One layer
@@ -21,7 +21,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // TIMEZONE. Administration instants are DST-exact in the order's LOCATION timezone
 // (`schedule-parser.ts`'s own header). `location.timezone` resolves through M1's `FoundationSiteReader`
 // (the sanctioned direct-import path — M13's manifest already depends on module 1, the same precedent
-// M6's `admission-route-service-db.ts` uses). An unresolvable location falls back to `@wardenx/emar`'s
+// M6's `admission-route-service-db.ts` uses). An unresolvable location falls back to `@chartwarden/emar`'s
 // own documented `DEFAULT_ORDER_TIME_ZONE` — the same fallback M10's `m6-admission-workflow.ts` consumer
 // already uses for the identical "location timezone unknown" case.
 //
@@ -39,9 +39,9 @@ import { type DbClient, schema } from "@wardenx/db";
 // a future rolling-window cron, only) materialization pass for a given order; the column exists (per its
 // own schema comment) to de-duplicate a REACTIVE pass against a future CRON pass extending the window
 // further out, which this change does not add.
-import { DEFAULT_ORDER_TIME_ZONE, materializeForOrder, orderLocalDate } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { SigStructuredDto } from "@wardenx/types";
+import { DEFAULT_ORDER_TIME_ZONE, materializeForOrder, orderLocalDate } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { SigStructuredDto } from "@chartwarden/types";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 
 const SD = schema.scheduledDoses;

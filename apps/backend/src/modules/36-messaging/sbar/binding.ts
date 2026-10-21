@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/sbar/binding.ts - WP 3.3: the composition-root binding for SBAR.
 // The tenant flag `messaging.sbar` is read through the platform's FeatureFlagReaderPort (tenant row wins; absent = off,
 // a kill switch = off), cached a few seconds per org like presence and clinical links.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { cacheFlagRead } from "../presence/binding";
 import type { SbarRouteDeps } from "../routes/sbar-routes";
 import { createDbSbarPolicyStore } from "./sbar-policy-store-db";

@@ -1,4 +1,4 @@
-// @wardenx/db — M5's organization-settings contributions (M1 Foundation §3.15.1).
+// @chartwarden/db — M5's organization-settings contributions (M1 Foundation §3.15.1).
 //
 // The contribution file lives in M1's foundation registry (schema-adjacent, M1-owned)
 // even though the key belongs to M5: M1 hosts the single registry + the one

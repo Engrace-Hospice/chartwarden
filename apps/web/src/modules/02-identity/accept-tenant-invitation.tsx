@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Accept tenant invitation (M34 first admin, /tenant-invite/:token).
 // The provisioning job emails the first admin a link built from M34_INVITATION_ACCEPT_URL. That token lives in
 // `tenant_invitation`, which the M2 page (`/invite/:token`, `organization_invitation`) cannot see — so this page

@@ -1,10 +1,10 @@
 // apps/backend/src/modules/38-terminology/jobs/queues.ts — the §4.3 worker layer's constants (GAP-108). The nine
-// queue names and the cron cadences are M38's own pure catalog (`@wardenx/terminology` TERMINOLOGY_QUEUES /
+// queue names and the cron cadences are M38's own pure catalog (`@chartwarden/terminology` TERMINOLOGY_QUEUES /
 // TERMINOLOGY_JOB_SCHEDULES); this file adds only what the BullMQ wiring needs. BullMQ job ids and queue names
 // must not contain ':'.
-import { TERMINOLOGY_QUEUES } from "@wardenx/terminology";
+import { TERMINOLOGY_QUEUES } from "@chartwarden/terminology";
 
-export { TERMINOLOGY_JOB_SCHEDULES, TERMINOLOGY_QUEUES } from "@wardenx/terminology";
+export { TERMINOLOGY_JOB_SCHEDULES, TERMINOLOGY_QUEUES } from "@chartwarden/terminology";
 
 /** The platform job id the active-org enumerator enters `withPlatformContext` under (must be allowlisted). */
 export const M38_PLATFORM_JOB_ID = "m38-terminology-workers";

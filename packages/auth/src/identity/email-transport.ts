@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — outbound transactional email transport (M2 delivery seam).
+// @chartwarden/auth · identity — outbound transactional email transport (M2 delivery seam).
 //
 // Better Auth mints the single-use tokens (password reset, magic-link sign-in) and hands them to the
 // `sendResetPassword` / `sendMagicLink` callbacks; THIS is the thin PORT those callbacks send through —
@@ -6,7 +6,7 @@
 //
 // FB-T14: M36 OWNS outbound email in the integration catalog (manifest VENDOR_ADAPTERS["postmark"] =
 // packages/messaging; M2_DR_INT_INVENTORY §2.2 #14). The composition root therefore binds this PORT to
-// M36's `selectTransactionalEmailTransport` (`@wardenx/messaging`) — so auth links dispatch through M36,
+// M36's `selectTransactionalEmailTransport` (`@chartwarden/messaging`) — so auth links dispatch through M36,
 // while M2 neither imports a vendor SDK nor takes a `dependsOn` edge on M36 (the bridge is the
 // composition root, which may import both). These sends are TRANSACTIONAL and PHI-free (a sign-in link
 // to one address) with no in-perimeter `Alert`/`Message` source, so they bypass §4.7

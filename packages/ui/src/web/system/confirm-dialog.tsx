@@ -1,4 +1,4 @@
-// @wardenx/ui web — ConfirmDialog (UI-010): the missing confirmation primitive for destructive or
+// @chartwarden/ui web — ConfirmDialog (UI-010): the missing confirmation primitive for destructive or
 // consequential actions. Built on the shared, focus-trapped `Modal` (UI-005) so every confirmation
 // gets Escape-to-close, a real focus trap, and focus restore for free instead of each caller
 // re-inventing an arm-then-confirm two-click pattern (see the M2 staff-management containment this

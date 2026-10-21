@@ -4,7 +4,7 @@
 // admission. Read through M22's published `DocumentReader` seam (M6 does not list M22 in `dependsOn`, so it may not
 // import M22 — the seam's leaf-typed contract is the sanctioned path). The seam is resolved per call, so boot
 // registration order never matters.
-import { type DocumentReader, ChartWardenError } from "@wardenx/types";
+import { type DocumentReader, ChartWardenError } from "@chartwarden/types";
 import type { AdmissionEvidenceDocumentValidator } from "./admission-evidence-service";
 
 export function createDocumentReaderEvidenceValidator(

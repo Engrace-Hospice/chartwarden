@@ -7,7 +7,7 @@
 // pseudonym KEK. This is a direct key, not a KMS-wrapped envelope: stronger (per-row DEK under a KMS KEK) is a
 // deployment hardening the key id leaves room for.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import type { WebhookPayloadEncryptor } from "@wardenx/subscription-billing";
+import type { WebhookPayloadEncryptor } from "@chartwarden/subscription-billing";
 
 const KEY_BYTES = 32;
 const IV_BYTES = 12;

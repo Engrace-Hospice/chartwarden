@@ -35,7 +35,7 @@ import type {
   SafetyMetricsProvider,
   SafetyPolicyProvider,
   SafetySupervisorProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import type { SafetyClinicianSignalCache } from "../consumers/m18-gps-spoof";
 import {

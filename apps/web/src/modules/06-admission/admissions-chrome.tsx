@@ -1,7 +1,7 @@
 // apps/web/src/modules/06-admission — the Admissions area chrome shared by its tabbed list pages
 // (All Admissions, Pending Referrals): the sub-tab bar, KPI stat cards, labeled filter selects and
 // the initials avatar, so every tab of the area lays out the same way.
-import { type GlyphName, KpiCard, t } from "@wardenx/ui";
+import { type GlyphName, KpiCard, t } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 

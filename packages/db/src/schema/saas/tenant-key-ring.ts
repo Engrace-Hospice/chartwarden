@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_key_ring` (M34 SaaS Tenant Platform §3.5). The per-tenant envelope-encryption
+// @chartwarden/db — `tenant_key_ring` (M34 SaaS Tenant Platform §3.5). The per-tenant envelope-encryption
 // key ring: holds the current DEK ciphertext wrapped by the platform KEK plus prior versions retained
 // for decrypt-only during rotation windows. The cryptographic-shred state is `current_dek_kek_wrapped_ciphertext
 // IS NULL` (DEK zeroized) — enforced by the destroyed-consistency CHECK. The DEK is destroyed only via the

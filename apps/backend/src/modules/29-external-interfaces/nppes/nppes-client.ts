@@ -6,7 +6,7 @@
 // Behaviour: Luhn-invalid NPIs short-circuit as `invalid_format` (no request spent); 429 / 5xx are retried
 // with exponential backoff up to `maxRetries`; the rate limiter caps request cadence. Every request carries
 // the CMS-requested `User-Agent` courtesy header.
-import type { Npi } from "@wardenx/types";
+import type { Npi } from "@chartwarden/types";
 import { isValidNpi } from "./npi-validate";
 import { RateLimiter } from "./rate-limiter";
 import {

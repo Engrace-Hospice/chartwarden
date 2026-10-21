@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 §4.5 rule fan-out SHARED PURE HELPERS. Date arithmetic on ISO calendar dates
+// @chartwarden/billing — M23 §4.5 rule fan-out SHARED PURE HELPERS. Date arithmetic on ISO calendar dates
 // is lexicographic (`YYYY-MM-DD` sorts == chronological), so every comparison below is a clock-free
 // string compare — no `Date`, no timezone, no I/O. Election-/LOC-period coverage helpers are the common
 // spine of the period/cert/f2f/loc rules. PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no clock.

@@ -4,8 +4,8 @@
 //
 // The caller has already authorised the read (the `channel_visibility` ABAC predicate at the route); this module
 // decrypts bodies under the tenant DEK, so it must only ever be given rows of a channel the viewer may read.
-import { schema } from "@wardenx/db";
-import type { MessageBodyKind, ResolvedMessage } from "@wardenx/messaging";
+import { schema } from "@chartwarden/db";
+import type { MessageBodyKind, ResolvedMessage } from "@chartwarden/messaging";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { loadAttachmentViews } from "./attachments/attachment-service-db";
 import { loadClinicalLinkViews } from "./clinical-link/clinical-link-store-db";

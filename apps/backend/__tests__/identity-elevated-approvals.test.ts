@@ -6,7 +6,7 @@
 // and the reader answers `false` for an unknown kind instead of throwing (its only consumer is a
 // fail-closed ABAC predicate). The DB-backed half — RLS, the partial unique index, the CHECK floors, and
 // M27's predicate reading the seam — is `gap-043-m27-elevated-approval.live.test.ts`.
-import { ConflictError, NotFoundError } from "@wardenx/types";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   COST_REPORT_APPROVAL_KIND,

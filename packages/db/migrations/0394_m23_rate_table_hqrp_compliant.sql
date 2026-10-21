@@ -6,7 +6,7 @@
 -- non-compliant, CMS-1851-F 91 FR 49118). The rate table is already one version per (provider entity,
 -- fiscal year), so the declaration lives ON the version: `hqrp_compliant` says which national column the keyed
 -- rates are meant to be, and the rate-table service warns (never blocks) when they match the other column or
--- neither (`checkRatesAgainstNationalReference` in @wardenx/billing). NULLable: versions entered before this
+-- neither (`checkRatesAgainstNationalReference` in @chartwarden/billing). NULLable: versions entered before this
 -- column existed are "undeclared", which the check reports as such rather than guessing.
 --
 -- The column joins the append-only freeze (CREATE OR REPLACE of the 0280 guard, which is otherwise unchanged):

@@ -5,7 +5,7 @@ import {
   PageHeader,
   humanizeIdentifier,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — INTAKE.BatchDetail (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "INTAKE.BatchDetail" — the per-batch DocLens view: batch metadata + per-page extraction-job
 // pipeline status. The DocLens side-by-side review (§5.1 INTAKE.ReviewSideBySide, F-237) is its own screen,
@@ -14,7 +14,7 @@ import {
 // `awaiting_capability`, which renders as an in-progress pill, never a hard error). Built to the Lantern look:
 // Detail Page pattern, §6.2 Lantern Card, §6.6 status pills (per-job pipeline state), §3.1 mono identifiers,
 // No-Line tables. The SERVER owns authz (ADR-0030); reads GET /api/v1/intake/uploads/:id + .../jobs via the
-// typed client. Leaves only (@wardenx/ui).
+// typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

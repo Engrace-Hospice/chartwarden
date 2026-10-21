@@ -1,7 +1,7 @@
 // M36 WP 2.9 — create a department channel (an existing `location` or `discipline` channel kind). Only offered to a
 // holder of messaging.announce; the server enforces it. The channel is found if it already exists, so creating twice
 // opens the same conversation. Members are added afterwards from the channel's member list.
-import { Button, LoadingSpinner, Modal, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { apiErrorMessage } from "./messaging-utils";

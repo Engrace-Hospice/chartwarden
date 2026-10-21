@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — the `TenantExportShard` seam (M34 §4.6).
+// @chartwarden/saas-tenant-platform — the `TenantExportShard` seam (M34 §4.6).
 //
 // THE FAN-OUT EXPORT CONTRACT. Every PHI-bearing module implements this interface and registers its
 // shard with M34 ({@link registerTenantExportShard}, M34's seam-bootstrap); M34's export worker

@@ -13,7 +13,7 @@
  *   DATABASE_URL="$(docker compose exec -T worker printenv DATABASE_URL | sed 's/@postgres:/@localhost:/')" \
  *   REDIS_URL=redis://localhost:6379 bun run db:idg:packet-build
  */
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import IORedis from "ioredis";
 import { registerSeam } from "../../apps/backend/src/bootstrap/index";
 import {

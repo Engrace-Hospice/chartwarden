@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_renewal_cycle` (M39 Consent §3.3 #11). One row per expiring/expired consent
+// @chartwarden/db — `consent_renewal_cycle` (M39 Consent §3.3 #11). One row per expiring/expired consent
 // record (D8/D13): opened when the first 30-day reminder fires, drives the re-capture workflow, and
 // closes when a new record is signed (renewed_from = source) or the source expires unrenewed. The
 // renewal chain is distinct from the supersession chain. PHI-bearing (carries patient_id) → the

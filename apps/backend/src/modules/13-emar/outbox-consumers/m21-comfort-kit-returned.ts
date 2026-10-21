@@ -1,7 +1,7 @@
 // apps/backend/src/modules/13-emar/outbox-consumers/m21-comfort-kit-returned.ts — the §2.6 comfort-kit
 // disposal-status flip, live for the first time (F-166, #248).
 //
-// `applyKitReturn` (`@wardenx/emar`, `comfort-kit/comfort-kit.ts`) has been a complete, pure, unit-tested
+// `applyKitReturn` (`@chartwarden/emar`, `comfort-kit/comfort-kit.ts`) has been a complete, pure, unit-tested
 // core since M13-T05, and `M13_OUTBOX_SUBSCRIPTIONS` (`../consumers/index.ts`) has named
 // `m21.comfort_kit.returned` with a real consumer (`m13.comfort-kit-returned`) since the list was written
 // — nothing has ever bound it. Two things had to be fixed BEFORE this could bind honestly:
@@ -31,10 +31,10 @@
 // IDEMPOTENCY WITHOUT A VERSION COLUMN (the `m6-admission-discharged-cascade.ts` precedent): the UPDATE's
 // WHERE conditions on `disposal_status != 'returned'`, so a redelivery after the first commit matches zero
 // rows and is a silent no-op rather than re-stamping `returned_at`.
-import { type DbClient, schema } from "@wardenx/db";
-import { applyKitReturn } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { M21ComfortKitReturnedPayload } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { applyKitReturn } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { M21ComfortKitReturnedPayload } from "@chartwarden/types";
 import { and, eq, ne } from "drizzle-orm";
 
 const DEPLOYMENT = schema.comfortKitDeployments;

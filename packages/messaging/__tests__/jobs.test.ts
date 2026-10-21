@@ -7,7 +7,7 @@ import {
   createInMemoryHashVerifyPorts,
   planRetentionDestruction,
   runHashVerify,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // M36-T08 — messaging job processors + queue parameters (M36 spec §4.4 / §4.4.1 / §8.1.2).
 //
 // Accept: every §4.4 queue declares full §4.4.1 parameters with a `.dlq`; hash_verify partitions a

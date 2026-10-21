@@ -16,8 +16,8 @@
 // send). None of these routes use the `channel_visibility` ABAC predicate: it keys on a CHANNEL id in the path, and
 // here the id is an attachment's (or a body field); the service applies the same rule itself and answers every
 // refusal with the 404 a random id gets, so break-glass can never open a quarantined or foreign file.
-import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AttachmentService } from "../attachments/attachment-service-db";
 import { REQUIRE_IDEMPOTENCY_KEY } from "./messaging-routes";

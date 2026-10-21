@@ -1,4 +1,4 @@
-import { type ApiClient, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { type ApiClient, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the F-238 PROSPECT SUMMARY panel of the DocLens review workspace: once a
 // review is complete, GET /api/v1/intake/uploads/:id/summary — the reviewer-approved values as one cited
 // picture of the prospect plus copyable plain text (built deterministically by the server; no model). The

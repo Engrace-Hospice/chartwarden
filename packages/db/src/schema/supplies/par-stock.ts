@@ -1,11 +1,11 @@
-// @wardenx/db — `par_stock` (M21 §3.1.6). D5's supply-hub inventory posture: one row per
+// @chartwarden/db — `par_stock` (M21 §3.1.6). D5's supply-hub inventory posture: one row per
 // (org, location, SKU) recording what is on the shelf and the three thresholds the nightly `par-monitor`
 // cron compares against. NOT patient data — this is agency inventory at a Location, which is why the
-// `M21ParThresholdPayload` in @wardenx/types carries no patientId at all.
+// `M21ParThresholdPayload` in @chartwarden/types carries no patientId at all.
 //
 // §3.0 / M21-F04: the §3.1 `reorder_point` / `reorder_quantity` / `min_safety_stock` model is normative and
 // the §3.2 draft's `parMinimum` / `parTarget` / stored `currentSeverity` fork is dropped. Severity is
-// DERIVED (`ok` / `low` at ≤ reorder_point / `critical` at ≤ min_safety_stock) in `@wardenx/supplies`, not
+// DERIVED (`ok` / `low` at ≤ reorder_point / `critical` at ≤ min_safety_stock) in `@chartwarden/supplies`, not
 // stored: a stored severity is a second source of truth that goes stale the moment a threshold is edited,
 // and the screen that reads it would then show a green shelf that is actually empty.
 //

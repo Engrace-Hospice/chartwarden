@@ -1,4 +1,4 @@
-import { LoadingSpinner } from "@wardenx/ui";
+import { LoadingSpinner } from "@chartwarden/ui";
 // apps/admin/src/shell — the admin console's auth guard (M1/M34, ADR-0030). Ported from
 // apps/web/src/shell/app.tsx's `RequireChrome`, plus one addition this app needs that web's doesn't:
 // once authenticated, the actor must also hold the `platform_ops` role — the same role the backend's

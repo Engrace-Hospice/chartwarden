@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_type_catalog` (M39 Consent §3.3 #1). PLATFORM-SHARED reference: the ten
+// @chartwarden/db — `consent_type_catalog` (M39 Consent §3.3 #1). PLATFORM-SHARED reference: the ten
 // v1 consent types + the post-mortem bereavement type + the tenant `custom` slot, each with its
 // typed scope discriminator, platform-floor expiration / capture / reminder policy, and the M22
 // form-template binding. Dual-grant pattern (M40 §3.6): PLATFORM-scope writes only, read-all within

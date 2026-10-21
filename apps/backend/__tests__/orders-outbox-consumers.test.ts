@@ -4,7 +4,7 @@
 // and exercises the three pure consumer decision cores: the M6 discharge-cascade auto-discontinue
 // (§2.6 D13 / W-DC-02), and the M9 / M10 order-suggestion banner consumers (§2.7 D7 / W-AS-01).
 import { Value } from "@sinclair/typebox/value";
-import { M11_EVENT_NAMES } from "@wardenx/types";
+import { M11_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type AdmissionDischargedPayload,

@@ -1,4 +1,4 @@
-import { Button, useApiClient } from "@wardenx/ui";
+import { Button, useApiClient } from "@chartwarden/ui";
 // M30 incident lifecycle actions (GAP-048): submit / resolve / close / reopen from the incident detail panel.
 // Every write is the existing, typed `/api/v1/quality/incidents/{id}/...` route; the server keeps the final say
 // (state machine, `capVerifyAuthority`, resolver-is-not-assignee), so a refusal is shown, never second-guessed.

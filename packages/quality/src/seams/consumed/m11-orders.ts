@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M11 (Orders). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M11 (Orders). PRESENT producer (§4.4).
 //
 // M30 consumes M11's `OrderProvider.getVerbalOrderTimeliness` for the verbal-order-signature-on-time
 // CoP 418.104(b) indicator and `OrderProvider.getOrderCompletionRate` for the order-completion measure;

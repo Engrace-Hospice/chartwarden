@@ -1,7 +1,7 @@
 // apps/backend/src/modules/37-ipu/consumers/m6-admission-discharged.ts — M37's §4.5 "If patient has open
 // `ipu_admission` → cascade-discharge" subscription, live for the first time (F-156-followup, #248).
 //
-// `transitionAdmission`'s `discharge` case (`@wardenx/inpatient`, `machines/ipu-admission.ts`) has been a
+// `transitionAdmission`'s `discharge` case (`@chartwarden/inpatient`, `machines/ipu-admission.ts`) has been a
 // complete, pure, unit-tested transition since M37-T04 — the SAME machine the route-driven `discharge()`
 // op in `../routes/service-drizzle.ts` already calls. M37's own §4.5 table names this event with a
 // designated (but never built) consumer file, `m6-admission-discharged.ts`, and no `consumers/` directory
@@ -49,9 +49,9 @@
 // M37 already established for exactly this purpose in `routes/system-actor.ts`'s
 // `M37_SYSTEM_MEMBERSHIP_ID` (restated here rather than importing across an unrelated file) — a fixed, module-scoped sentinel rather than a fresh one, so every system-attributed
 // M37 write shares one identifiable non-human actor.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionAdmission, transitionBedCleaning } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionAdmission, transitionBedCleaning } from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 

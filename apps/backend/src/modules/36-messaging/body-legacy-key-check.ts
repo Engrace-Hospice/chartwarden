@@ -7,8 +7,8 @@
 // belt for the day it is relaxed: if legacy rows exist and the key is missing or malformed, a production boot FAILS
 // CLOSED rather than starting with unreadable history. With zero legacy rows a missing key is the legitimate
 // "retired" state. Outside production it only reports (a dev database may hold rows and no key).
-import { type DbClient, schema } from "@wardenx/db";
-import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { eq, sql } from "drizzle-orm";
 import type { LegacyBodyCounts } from "./jobs/body-backfill";
 

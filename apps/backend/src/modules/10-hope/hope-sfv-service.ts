@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 import type { HopeIsc } from "./hope-spec-registry";
 

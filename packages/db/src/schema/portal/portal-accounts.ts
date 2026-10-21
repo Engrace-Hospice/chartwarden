@@ -1,4 +1,4 @@
-// @wardenx/db — `portal_account` (M31 §3.3, M31-T02). D2's account root: one row per (org, backing M2
+// @chartwarden/db — `portal_account` (M31 §3.3, M31-T02). D2's account root: one row per (org, backing M2
 // user, relationship) — the caregiver/DPOA/personal-representative/bereaved identity that logs into the
 // portal. Per-patient access is a SEPARATE `portal_access_grant` row (an account may reach several
 // patients), so the account itself is NOT patient-scoped and carries no provider_entity_id/location_id —
@@ -7,7 +7,7 @@
 // The FOUR `*_cipher` columns (display name, email, phone, status-change reason) are DEK envelope-encrypted
 // at the application layer (M34 key ring) and are §3.6 audit-denylisted — free-text contact PHI, and the
 // operator's reason for the last suspend/reinstate, whose plaintext must never enter
-// `audit_event.before/after` (mirrors `M31_AUDIT_DENYLIST.portal_account` in @wardenx/types).
+// `audit_event.before/after` (mirrors `M31_AUDIT_DENYLIST.portal_account` in @chartwarden/types).
 //
 // TENANCY: organization_id NOT NULL; RLS keys on app.org_id ALONE (0139). CROSS-MODULE FK POLICY: only
 // organization_id (M1 core) and user_id (M2 `user`) carry real FKs — both are foundation tables. The

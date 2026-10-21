@@ -6,8 +6,8 @@
 // `tenant_lifecycle_platform_ops` ABAC predicate; the write route additionally requires §6 step-up.
 // The catalog is platform-shared/org-less, so reads run under `withPlatformContext` (F03/F09, audited)
 // in prod. Mirrors the M22 route-plugin shape.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   OnboardingTemplateListQuerySchema,
@@ -16,7 +16,7 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OnboardingTemplateRouteDeps {

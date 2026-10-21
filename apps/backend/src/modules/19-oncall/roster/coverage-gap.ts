@@ -9,7 +9,7 @@
 // `./shift-machine`), and a `cancelled` one never covered anything, so the caller filters both out before
 // calling. ONE gap per call — the earliest — because the page is "this ProviderEntity has a hole", and the
 // 30-minute cadence re-reports the next one once the first is filled.
-import type { IsoInstant } from "@wardenx/types";
+import type { IsoInstant } from "@chartwarden/types";
 
 /** A clinical_rn coverage window, already filtered to the statuses that count. */
 export interface RnShiftWindow {

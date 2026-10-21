@@ -1,4 +1,4 @@
-// @wardenx/messaging — the M36 HTTP route-facing application service (M36-T07, spec §4.1–4.2).
+// @chartwarden/messaging — the M36 HTTP route-facing application service (M36-T07, spec §4.1–4.2).
 //
 // This is the surface the backend's §4.1 route inventory composes over — DISTINCT from the
 // cross-module §4.6 `MessagingProvider`/`AlertEmitter` seams (which are the contracts OTHER
@@ -6,7 +6,7 @@
 // needs (list my channels, channel detail + member CRUD, edit/delete a message, notification
 // preferences + delivery endpoints, the alert inbox, and alert-rule read/override) — operations
 // that are M36-internal and never crossed a module boundary. The interface lives HERE in the
-// feature package (not the leaf @wardenx/types) so the in-memory slice impl and the production
+// feature package (not the leaf @chartwarden/types) so the in-memory slice impl and the production
 // Drizzle/Valkey impl share one typed contract, and the backend route module injects it the way
 // M38's routes inject `TerminologyProvider`.
 //
@@ -15,7 +15,7 @@
 // is the backstop; the slice default (createInMemoryMessagingService) keeps it all in memory so
 // the route inventory is integration-testable with no live infra.
 
-import type { ClinicalLinkKind, RichBody } from "@wardenx/types";
+import type { ClinicalLinkKind, RichBody } from "@chartwarden/types";
 import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import type { MessageSearchService } from "../search/message-search";

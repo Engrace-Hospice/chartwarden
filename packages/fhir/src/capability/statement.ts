@@ -1,4 +1,4 @@
-// @wardenx/fhir — the `CapabilityStatement` deterministic generation + signing (§2.2 / D11 / W-FHIR-09,
+// @chartwarden/fhir — the `CapabilityStatement` deterministic generation + signing (§2.2 / D11 / W-FHIR-09,
 // M28-T03).
 //
 // D11: the `CapabilityStatement` is a DETERMINISTIC boot-time generation from the route registry + the
@@ -20,7 +20,7 @@
 // IO-free; the persistence + the platform-key resolution are the route/boot concern (M28-T08).
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-import type { FhirVersion, PlatformReleaseTag } from "@wardenx/types";
+import type { FhirVersion, PlatformReleaseTag } from "@chartwarden/types";
 
 /** A FHIR RESTful interaction a resource supports. Phase 1 is READ-ONLY US Core R4, so a resource offers
  *  at most `read` (instance-level) + `search-type` (type-level search); the write interactions arrive with

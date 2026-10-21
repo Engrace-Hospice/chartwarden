@@ -10,9 +10,9 @@
 // elections), so this reads both tables and computes the overlap in application code rather than a single
 // SQL join — the per-org row counts here are small (hundreds, not millions), and an explicit overlap
 // predicate in TypeScript is far more auditable than a correlated-subquery EXISTS for a compliance measure.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { LevelOfCarePeriodReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { LevelOfCarePeriodReader } from "@chartwarden/types";
 import { and, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 
 const EP = schema.electionPeriods;

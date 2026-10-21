@@ -11,7 +11,7 @@ import {
   WorkQueueLayout,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM WORKBENCH (R2, §5.1 #2).
 // The §10 PR-J Work Queue: a FilterBar (state / TOB / ProviderEntity / patient) over a cursor-paginated
 // ("Load more") No-Line claim table with §6.6 StatusPills, and a RightDetailPanel preview of the selected

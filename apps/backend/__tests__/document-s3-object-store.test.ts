@@ -11,7 +11,7 @@
 // Plus: presign shape/TTL/determinism with an injected clock, the ListObjectVersions XML parser on
 // fixtures, and putObject/destroyAllVersions flows over a mocked fetch (no network anywhere).
 import { createHash } from "node:crypto";
-import type { OrgId, SignedUrlDescriptor } from "@wardenx/types";
+import type { OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRESIGN_TTL_SECONDS,

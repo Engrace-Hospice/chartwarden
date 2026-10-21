@@ -7,10 +7,10 @@
 // cross-module import edge. Mirrors the M7 `CarePlanStateError` / M15 `DisciplinePlanStateError` precedent.
 //
 // CASING NOTE: the catalog is SCREAMING_SNAKE except for the three D18 external-source gate codes, which
-// §2.5 / §4.3.2 spell in lower snake (`external_source_cosign_pending`, …) and which `@wardenx/bereavement`
+// §2.5 / §4.3.2 spell in lower snake (`external_source_cosign_pending`, …) and which `@chartwarden/bereavement`
 // already exports as `BereavementExternalGateDenialCode`. The wire code is the contract, so they are kept
 // verbatim rather than normalized into a shape the spec never wrote.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.5 / §4.2 machine-readable failure-code catalog → HTTP status. */
 export const M16_ERROR_STATUS = {

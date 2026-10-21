@@ -31,8 +31,8 @@
 // nuance instead.
 import type { FastifyInstance } from "fastify";
 
-import type { AIPromptRegistry } from "@wardenx/ai-platform";
-import { NotFoundError } from "@wardenx/types";
+import type { AIPromptRegistry } from "@chartwarden/ai-platform";
+import { NotFoundError } from "@chartwarden/types";
 
 import type { AiPromptServiceDeps } from "../prompts/service";
 import { activateAiPromptTemplate } from "../prompts/service";

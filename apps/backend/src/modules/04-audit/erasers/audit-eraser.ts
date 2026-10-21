@@ -6,12 +6,12 @@
 // AFTER wireErasers() and before validateErasers(), so the real eraser stands and a right-to-erasure
 // request hits a working eraser, not a silent no-op (mirrors the M2 identity eraser).
 //
-// Erasure is NOT unconditional: it runs the subject's audit rows through the @wardenx/audit
+// Erasure is NOT unconditional: it runs the subject's audit rows through the @chartwarden/audit
 // destruction eraser, which enforces legal-hold supremacy (§10.6) and Part 2 lifetime retention
 // (§6) row-by-row — so a right-to-erasure can never blow away SUD audit history a patient is still
 // entitled to (W-M4-09). Like the rest of the slice it runs over an injected store + ports with an
 // in-memory default; production injects `createDrizzleAuditEraserStore` (row-group enumeration over
-// the sanctioned @wardenx/audit query reader) + `createDrizzleAuditEraserPorts` (live legal-hold /
+// the sanctioned @chartwarden/audit query reader) + `createDrizzleAuditEraserPorts` (live legal-hold /
 // patient-lifecycle guards). The `performErasure` leg is CONDITIONAL — see its note: `audit_event`
 // is HELPER_ONLY and `wardenx_app` holds no DELETE grant, so the partitioned-DELETE adapter lives
 // in packages/audit (`createDbAuditEraseExecutor`) and binds only when the composition root
@@ -27,10 +27,10 @@ import {
   eraseAuditRows,
   firstCoveringHold,
   widenSpan,
-} from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser, OrgScope } from "@wardenx/types";
+} from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser, OrgScope } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

@@ -1,4 +1,4 @@
-// @wardenx/mdm — MDM job queue catalog (M40-T08, spec §4.3).
+// @chartwarden/mdm — MDM job queue catalog (M40-T08, spec §4.3).
 //
 // The canonical names + cadences of the §4.3 background jobs (BullMQ on Valkey). Pure data, no
 // BullMQ import — the thin Worker/Queue construction lives in the app composition root once a Valkey

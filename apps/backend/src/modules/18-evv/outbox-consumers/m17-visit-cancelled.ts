@@ -21,9 +21,9 @@
 // (`void_for_cancelled_visit` requires `isSystemActor: true` and never stamps a resolver — "the
 // cancellation reason lives on the M17 visit") — `resolved_by_membership_id` stays NULL there, matching
 // every other system close (`closed_system_checkout_received`).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { EvvAggregatorSubmissionStatus, EvvMissingResolutionStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { EvvAggregatorSubmissionStatus, EvvMissingResolutionStatus } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   isAggregatorSubmissionCancellable,

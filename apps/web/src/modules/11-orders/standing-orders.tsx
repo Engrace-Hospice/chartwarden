@@ -8,14 +8,14 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — standing-order admin (M11 §4.1/§5 §2.4 D5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Standing orders). A signed template
 // spawns instances on cadence (spawned instances do NOT re-require signature — the template is the signature
 // anchor, D5). This worklist lists every standing-order template with its cadence, status (active/paused/
 // discontinued), next-spawn time, and spawn count. The create / pause / resume / discontinue / PRN-spawn write
 // actions fill in as their write surfaces harden. Reads GET /api/v1/standing-orders via the typed client; the
-// server enforces every scope (ADR-0030 — no frontend authz). Leaves only (@wardenx/ui).
+// server enforces every scope (ADR-0030 — no frontend authz). Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { STANDING_TONE, stateLabel } from "./orders-status";

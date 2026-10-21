@@ -2,12 +2,12 @@
 //
 // The QAPI surface: programs (annual charter), indicators (threshold + current band), PI projects, PIP
 // cycles, and governance-committee minutes. Every route is gated by the REAL Authorization Contract
-// (`requirePermission` from @wardenx/auth, M3) on the §4.6 `qapi.*` keys; the project-scoped mutations
+// (`requirePermission` from @chartwarden/auth, M3) on the §4.6 `qapi.*` keys; the project-scoped mutations
 // (R-28 phase/intervention edit, R-30 add-PIP) additionally layer the `ownsQapiProject` predicate M30
 // OWNS (§4.7 — project lead OR `qapi.admin`), resolved off the route's `:projectId` param. R-31 (close
 // a PIP) is the TWO-PERSON co-sign route (V-11): the route gates RBAC on `qapi.close` and passes the
 // cosigner + actor to the write service, where `assertPipCloseSplitActor` (DELEGATING to the
-// @wardenx/quality canonical guard) enforces the split-actor invariant against the persisted charterer —
+// @chartwarden/quality canonical guard) enforces the split-actor invariant against the persisted charterer —
 // the `qapiCloseAuthority` predicate keys on a `cosignerUserId` the route cannot resolve synchronously
 // from the body's membership ids, so the authoritative close-authority check is the service's V-11 +
 // the §3 DB check constraint (the route layer never trusts a body-supplied identity).
@@ -17,7 +17,7 @@
 // (presence guard; the M1 `applyIdempotency` middleware does the 24h replay caching). READS disclose the
 // actor's own-org QAPI rows (aggregate; no PHI) cursor-paginated per §4.1.2. Org/actor/owner binding is
 // ALWAYS server-side (`request.context`, never the body). Mirrors M33 routes/definitions.routes.ts.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";

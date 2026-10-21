@@ -7,7 +7,7 @@
 // step 4), writes them through the injected {@link ObjectStorePort}, and upserts the `document` (+ genesis
 // `document_version`, or a NEW version on the addendum/correction path — W2 step: an addendum is a new
 // VERSION, not a new DOCUMENT). It returns `{ documentId }` per the leaf-typed `DocumentRenderer` contract
-// (@wardenx/types); the `m22.document.rendered` outbox dispatch + the source-module back-ref are the
+// (@chartwarden/types); the `m22.document.rendered` outbox dispatch + the source-module back-ref are the
 // downstream half of the handshake (separate task). Pure orchestration over the two injected ports — no DB,
 // no MinIO SDK, no real PDF library here.
 import type {
@@ -15,7 +15,7 @@ import type {
   DocumentRenderer,
   DocumentRetentionClass,
   OrgScope,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { deriveObjectKey, deriveTenantBucket } from "../lifecycle/storage";
 import {
   DEFAULT_PDF_RENDERERS,
@@ -121,7 +121,7 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     defaultTitle: "Medication Reconciliation Worksheet",
   },
   // F-171 (#248) — the patient-facing active-medication list. `patient_medication_list` has been a real
-  // `document_aggregate_type` enum value (mig 0048) and a `@wardenx/forms` `TemplateDescriptor` since
+  // `document_aggregate_type` enum value (mig 0048) and a `@chartwarden/forms` `TemplateDescriptor` since
   // M22-T01 — but that is a SEPARATE golden-template-diff/overlay registry (`packages/forms/src/templates/
   // registry.ts`), never consulted by this table or by render-consumer.ts's REQUEST_SHAPES; this table is
   // the one `createDocumentRenderer`/`render()` actually resolves `templateKey` against, and it had no

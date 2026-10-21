@@ -1,4 +1,4 @@
-// @wardenx/db — `extraction_provenance` (M22 §3.3 / §3.4). The "what extraction produced this chart
+// @chartwarden/db — `extraction_provenance` (M22 §3.3 / §3.4). The "what extraction produced this chart
 // row?" surveyor record: one per committed decision, binding source document/page/bbox + model
 // versions to the target module field path + draft aggregate. Org-scoped; `source_bounding_box` /
 // `target_field_path` are DENYLISTED (§3.6 — structural; field-paths may reveal clinical context).

@@ -3,7 +3,7 @@
 // physician discharge order when one was required (418.26(b)), the filer (authorship, 418.104(b)) and - for a
 // for-cause discharge - the medical-director cosign. A cosigned version MUST carry the cosigner's signature
 // (fail closed); a pending-cosign version is watermarked so it is never mistaken for the final record.
-import { assertDischargeRenderPayload, assertTransferRenderPayload } from "@wardenx/types";
+import { assertDischargeRenderPayload, assertTransferRenderPayload } from "@chartwarden/types";
 import { fmtDate, humanize } from "../shared";
 import { defineForm } from "./compile";
 

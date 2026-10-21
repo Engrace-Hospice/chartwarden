@@ -1,6 +1,6 @@
 // M30 D9 backfill cron — unit tests over a fake transactional db (the SQL itself is proven live in
 // apps/backend/__tests__/gap-089-090-m30-worker-inputs.live.test.ts).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   M30_ASSIGN_UNASSIGNED_MORTALITY_QUEUE,

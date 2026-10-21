@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `claim_total_matches_lines` (charges, error, regulatory). The 837I claim-level
+// @chartwarden/billing — §4.5 rule `claim_total_matches_lines` (charges, error, regulatory). The 837I claim-level
 // charge (CLM02) must equal the sum of the service-line charges; Stedi (and payers) reject a claim that does
 // not balance. The expected-payment add-ons (SIA) are paid by the MAC from the visit lines and are never part
 // of the billed total, so a header that includes them cannot balance. PURE: reads ctx only.

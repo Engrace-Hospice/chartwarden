@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T10 D7 eraser (§7.8) + cache key grammar (§4.8).
+// @chartwarden/mdm — M40-T10 D7 eraser (§7.8) + cache key grammar (§4.8).
 //
 // Locks: the tenant-offboarding erase deletes overlay/provisional/baa rows and reports per-class
 // counts (canonical never appears); re-running an erase is idempotent (0 the second time); and the

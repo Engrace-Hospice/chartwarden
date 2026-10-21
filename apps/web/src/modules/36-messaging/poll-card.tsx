@@ -1,9 +1,9 @@
-import type { PollDetailView, PollView } from "@wardenx/types";
+import type { PollDetailView, PollView } from "@chartwarden/types";
 // WP 2.10: the poll on a message. A single-choice radio group with NAMED votes: choosing an option saves the vote
 // (a different choice later changes it, until the poll is closed). Results are text first ("3 votes (60%)"), the bar is
 // decoration; a polite live region says what changed. Everything is a native control, so it is keyboard operable
 // (arrow keys move the choice, Tab leaves the group). The question itself is the message body above this card.
-import { Button, useApiClient } from "@wardenx/ui";
+import { Button, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { type PollAction, pollFailureCopy, pollStatusText, voteSummary } from "./poll-utils";

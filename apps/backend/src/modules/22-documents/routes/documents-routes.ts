@@ -1,5 +1,5 @@
 // apps/backend/src/modules/22-documents/routes/documents-routes.ts — M22-T07 the §4.1 route inventory
-// (33 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (33 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.6 keys M22 registers into M3's catalog (M22_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected DocumentRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops). PHI list routes paginate by
@@ -7,8 +7,8 @@
 // SignedUrlService (T03 plan + T04 presign port + §4.12 BAA gate); the overlay PUT layers `If-Match`
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { DegradedError, NotFoundError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { DegradedError, NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   RECORDS_REQUEST_FILEABLE,
@@ -67,7 +67,7 @@ import { decodeBase64Content } from "./server-upload";
 import type { DocumentRouteService, DocumentWriteActor } from "./service";
 import type { SignedUrlService } from "./signed-url-service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface DocumentRouteDeps {

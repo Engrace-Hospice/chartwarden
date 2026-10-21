@@ -67,7 +67,7 @@ import type {
   SafetyMetricsWindow,
   SafetySosAlertId,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   SafetyCoverageSubjectFacts,
   SafetySubscriptionFacts,

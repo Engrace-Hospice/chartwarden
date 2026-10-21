@@ -1,8 +1,8 @@
-// @wardenx/inpatient — M37-T07, §2.3 D3. Builds the materialized `ipu_rn_coverage_window` invariant from a
+// @chartwarden/inpatient — M37-T07, §2.3 D3. Builds the materialized `ipu_rn_coverage_window` invariant from a
 // unit's shifts + staff assignments. The `rn-coverage-watchdog` worker (M37-T11 cron) rebuilds these rows
 // every 5 minutes per unit over a rolling 168h-back + 48h-forward window. Pure & IO-free — the worker loads
 // the confirmed RN assignments under RLS and injects them as plain facts.
-import type { IpuShiftAssignmentState, IpuShiftRole } from "@wardenx/types";
+import type { IpuShiftAssignmentState, IpuShiftRole } from "@chartwarden/types";
 
 /** §2.3 — the RN-equivalent discipline set that satisfies the 24/7 coverage invariant (platform floor). */
 export const RN_EQUIVALENT_ROLES: readonly IpuShiftRole[] = ["rn", "charge_rn", "np_in_rn_role"];

@@ -22,7 +22,7 @@ import {
   SNOOZE_MIN_MINUTES,
   type SnoozeDto,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export interface Actor {
   readonly orgId: string;

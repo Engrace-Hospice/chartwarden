@@ -1,4 +1,4 @@
-// @wardenx/db — `message_receipt` (M36 Secure Messaging §3.4). Per-recipient delivered/read
+// @chartwarden/db — `message_receipt` (M36 Secure Messaging §3.4). Per-recipient delivered/read
 // state for a message (delivered = fanned out server-side, read = explicitly read; never an acknowledgement,
 // ADR-0056 item 1; migration 1079 CHECK-blocks the retired `ack` status and `acked_at`).
 // M36-F04 / ADR-0010: organization_id is carried DIRECTLY (canonical app.org_id RLS + the SD-028

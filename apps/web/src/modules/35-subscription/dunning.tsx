@@ -5,7 +5,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 dunning (§5.1 `/billing/dunning`).
 // Visible only when the org is in dunning: the current stage, the next-retry / suspension countdown, and
 // the "Update payment method" remediation CTA (via the shared §5.5 DunningBanner). Composed from GET

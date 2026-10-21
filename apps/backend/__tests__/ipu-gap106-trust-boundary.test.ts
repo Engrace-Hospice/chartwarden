@@ -16,8 +16,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { IpuStateError, transitionBodyRelease } from "@wardenx/inpatient";
+} from "@chartwarden/auth";
+import { IpuStateError, transitionBodyRelease } from "@chartwarden/inpatient";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -1,10 +1,10 @@
-// @wardenx/quality · repositories — the SRA subdomain (annual HIPAA Security Risk Assessment, NIST
+// @chartwarden/quality · repositories — the SRA subdomain (annual HIPAA Security Risk Assessment, NIST
 // 800-66r2): `sra_cycle` (the annual cycle, ≤1 per (org, cycle_year), dual-cosign closure + reopen
 // trail), its children `sra_finding` (5×5-scored findings, sequential per cycle), and `sra_remediation`
 // (remediation actions, evidence-gated completion) (M30 §3.3). ORG-SCOPED; the SRA service wraps these
-// in `withOrgContext` and owns the lifecycle/cosign guards (the pure reducer lives in @wardenx/quality).
+// in `withOrgContext` and owns the lifecycle/cosign guards (the pure reducer lives in @chartwarden/quality).
 // Vulnerability / impact / remediation narratives are security-posture sensitive + audit-denylisted (§3.6).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq, max, notInArray } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

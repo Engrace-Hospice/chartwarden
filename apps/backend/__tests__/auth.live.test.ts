@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { isSealed } from "@wardenx/auth";
+import { isSealed } from "@chartwarden/auth";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -87,8 +87,8 @@ describe.skipIf(!DB_URL)(
       admin = new Client({ connectionString: DB_URL });
       await admin.connect();
       await resetAndMigrate();
-      const { createDbClient: mkDb } = await import("@wardenx/db");
-      const { createIdentityAuth } = await import("@wardenx/auth");
+      const { createDbClient: mkDb } = await import("@chartwarden/db");
+      const { createIdentityAuth } = await import("@chartwarden/auth");
       const handle = mkDb({ connectionString: DB_URL as string });
       close = handle.close;
       auth = createIdentityAuth(handle.db as never);
@@ -119,7 +119,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("provisions and authenticates a username-only identity through the production Better Auth extension", async () => {
-      const { createIdentityCredentialAdmin } = await import("@wardenx/auth");
+      const { createIdentityCredentialAdmin } = await import("@chartwarden/auth");
       const credentials = createIdentityCredentialAdmin(auth);
       const username = `user.${Date.now()}`;
       const temporaryPassword = `Wx9$${crypto.randomUUID()}Qz!`;
@@ -188,8 +188,8 @@ describe.skipIf(!DB_URL)(
       // The token-capturing override gives the single-use token directly (Better Auth puts it in the
       // reset-URL path, not a ?token= query — so the callback arg, not URL parsing, is the reliable source).
       let captured: { token: string } | null = null;
-      const { createDbClient: mkDb2 } = await import("@wardenx/db");
-      const { createIdentityAuth: mk2 } = await import("@wardenx/auth");
+      const { createDbClient: mkDb2 } = await import("@chartwarden/db");
+      const { createIdentityAuth: mk2 } = await import("@chartwarden/auth");
       const handle2 = mkDb2({ connectionString: DB_URL as string });
       const authR = mk2(handle2.db as never, {
         sendResetPassword: ({ token }) => {
@@ -260,9 +260,9 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M3 RBAC: the live effective-permission store resolves grants from membership ⋈ role ⋈ role_permission", async () => {
-      const { createDbClient: mkDb3 } = await import("@wardenx/db");
+      const { createDbClient: mkDb3 } = await import("@chartwarden/db");
       const { createDbEffectivePermissionStore, resolveEffectivePermissions } = await import(
-        "@wardenx/auth"
+        "@chartwarden/auth"
       );
       const handle3 = mkDb3({ connectionString: DB_URL as string });
       const store = createDbEffectivePermissionStore(handle3.db as never);
@@ -339,8 +339,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M2/M3 actor enrichment: the live reader returns membershipId + current role keys", async () => {
-      const { createDbClient: mkDb4 } = await import("@wardenx/db");
-      const { createDbActorEnrichmentReader } = await import("@wardenx/auth");
+      const { createDbClient: mkDb4 } = await import("@chartwarden/db");
+      const { createDbActorEnrichmentReader } = await import("@chartwarden/auth");
       const handle4 = mkDb4({ connectionString: DB_URL as string });
       const reader = createDbActorEnrichmentReader(handle4.db as never);
 
@@ -434,9 +434,9 @@ describe.skipIf(!DB_URL)(
     });
 
     it("GAP-096: every authority read drops a reserved key on a tenant-owned row (wardenx_app)", async () => {
-      const { createDbClient: mkDbR } = await import("@wardenx/db");
+      const { createDbClient: mkDbR } = await import("@chartwarden/db");
       const { createDbActorEnrichmentReader, createDbEffectivePermissionStore } = await import(
-        "@wardenx/auth"
+        "@chartwarden/auth"
       );
       const { membershipRoleKeysForOrg } = await import(
         "../src/modules/03-authorization/membership-role-keys-for-org"
@@ -571,9 +571,9 @@ describe.skipIf(!DB_URL)(
     });
 
     it("platform-role CLI: idempotent grant, refusals, audit trail and revoke (GAP-003 follow-up)", async () => {
-      const { createDbClient: mkDbC } = await import("@wardenx/db");
+      const { createDbClient: mkDbC } = await import("@chartwarden/db");
       const { createDbActorEnrichmentReader, PLATFORM_OPS_ROLE_GRANTS } = await import(
-        "@wardenx/auth"
+        "@chartwarden/auth"
       );
       const { runPlatformRoleCommand } = await import("../../../scripts/db/lib/platform-role-cli");
       const { grantPlatformRole } = await import("../../../scripts/db/lib/platform-role");
@@ -667,7 +667,7 @@ describe.skipIf(!DB_URL)(
 
       // A template grant is materialized onto the platform-owned row and reaches the effective set.
       await run("grant", "platform_billing_admin");
-      const { createDbEffectivePermissionStore } = await import("@wardenx/auth");
+      const { createDbEffectivePermissionStore } = await import("@chartwarden/auth");
       const grants = await createDbEffectivePermissionStore(handleC.db as never).loadGrants(
         org,
         userId,
@@ -741,8 +741,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("GAP-002: the live enforcer expires idle/absolute sessions and stamps activity (wardenx_app)", async () => {
-      const { createDbClient: mkDbT } = await import("@wardenx/db");
-      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const { createDbClient: mkDbT } = await import("@chartwarden/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@chartwarden/auth");
       const handleT = mkDbT({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });
@@ -785,8 +785,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("GAP-009: closed registration — sign-up needs an invite token that names a pending invitation for that email (as wardenx_app)", async () => {
-      const { createDbClient: mkDbS } = await import("@wardenx/db");
-      const { createIdentityAuth, INVITE_TOKEN_HEADER } = await import("@wardenx/auth");
+      const { createDbClient: mkDbS } = await import("@chartwarden/db");
+      const { createIdentityAuth, INVITE_TOKEN_HEADER } = await import("@chartwarden/auth");
       const { createHash } = await import("node:crypto");
       const handleS = mkDbS({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -860,8 +860,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("GAP-001: a deactivated or suspended user cannot sign in, and a surviving session is revoked on use", async () => {
-      const { createDbClient: mkDbD } = await import("@wardenx/db");
-      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const { createDbClient: mkDbD } = await import("@chartwarden/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@chartwarden/auth");
       const handleD = mkDbD({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });
@@ -909,7 +909,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M3 RBAC: the live RoleStore lists the org's catalog (templates + own roles) with permission keys", async () => {
-      const { createDbClient: mkDb5 } = await import("@wardenx/db");
+      const { createDbClient: mkDb5 } = await import("@chartwarden/db");
       const { createDbRoleStore } = await import("../src/modules/03-authorization/role-store");
       const handle5 = mkDb5({ connectionString: DB_URL as string });
       // Under the RLS-enforced wardenx_app role: this exercises the 0025 policy fix (templates org_id
@@ -967,8 +967,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M2 members: the live repository lists the roster with isAdmin from the M3 org_admin reader", async () => {
-      const { createDbClient: mkDb6 } = await import("@wardenx/db");
-      const { createDbAdminMembershipReader } = await import("@wardenx/auth");
+      const { createDbClient: mkDb6 } = await import("@chartwarden/db");
+      const { createDbAdminMembershipReader } = await import("@chartwarden/auth");
       const { createDbMembershipRepository } = await import(
         "../src/modules/02-identity/membership-repository"
       );
@@ -1016,7 +1016,7 @@ describe.skipIf(!DB_URL)(
         [org, adminMem, adminRole],
       );
 
-      const { runWithRequestContext } = await import("@wardenx/tenancy");
+      const { runWithRequestContext } = await import("@chartwarden/tenancy");
       const inOrg = <T>(fn: () => T): T =>
         runWithRequestContext({ organizationId: org, userId: adminUser } as never, fn);
 
@@ -1051,11 +1051,11 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M3 MembershipRoleStore: assign/list/revoke role grants, RLS-scoped (wardenx_app)", async () => {
-      const { createDbClient: mkDb7 } = await import("@wardenx/db");
+      const { createDbClient: mkDb7 } = await import("@chartwarden/db");
       const { createDbMembershipRoleStore } = await import(
         "../src/modules/03-authorization/membership-role-store"
       );
-      const { runWithRequestContext } = await import("@wardenx/tenancy");
+      const { runWithRequestContext } = await import("@chartwarden/tenancy");
       const handle7 = mkDb7({ connectionString: DB_URL as string });
       const store = createDbMembershipRoleStore(asTenantRole(handle7.db) as never);
 
@@ -1124,8 +1124,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M4 Audit: the live AuditQuery searches/filters the org's audit_event log, RLS-scoped (wardenx_app)", async () => {
-      const { createDbClient: mkDb8 } = await import("@wardenx/db");
-      const { createDbAuditQuery } = await import("@wardenx/audit");
+      const { createDbClient: mkDb8 } = await import("@chartwarden/db");
+      const { createDbAuditQuery } = await import("@chartwarden/audit");
       const handle8 = mkDb8({ connectionString: DB_URL as string });
       const query = createDbAuditQuery(asTenantRole(handle8.db) as never);
 
@@ -1193,7 +1193,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M5 Patient census: the live read service lists/filters/paginates patients, RLS-scoped (wardenx_app)", async () => {
-      const { createDbClient: mkDb9 } = await import("@wardenx/db");
+      const { createDbClient: mkDb9 } = await import("@chartwarden/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
       const handle9 = mkDb9({ connectionString: DB_URL as string });
       const svc = createDbPatientRouteService(asTenantRole(handle9.db) as never, {
@@ -1258,7 +1258,7 @@ describe.skipIf(!DB_URL)(
       // production composition (mountIdentityRoutes, registerIdentityAuth, createSessionAuthenticate,
       // createSessionContextResolver over createDbSessionContextStore) and drives it with a REAL
       // Better-Auth session cookie obtained via a real HTTP sign-in — no shim, no stub session.
-      const { createDbClient: mkDb11 } = await import("@wardenx/db");
+      const { createDbClient: mkDb11 } = await import("@chartwarden/db");
       const {
         getIdentitySession,
         registerIdentityAuth,
@@ -1269,7 +1269,7 @@ describe.skipIf(!DB_URL)(
         registerDbEffectivePermissionResolver,
         resetAuthorizationContract,
         resetRbacEngine,
-      } = await import("@wardenx/auth");
+      } = await import("@chartwarden/auth");
       const { createSessionAuthenticate, buildServer } = await import("../src/bootstrap/index");
       const { mountIdentityRoutes } = await import("../src/modules/02-identity/index");
       const { createDbPatientRouteService, createDrizzleCaseloadStore, registerPatientRoutes } =
@@ -1529,7 +1529,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("M5 admission: admit inserts a patient (appears in census) and §7.1 MBI dedup hard-blocks (wardenx_app)", async () => {
-      const { createDbClient: mkDb10 } = await import("@wardenx/db");
+      const { createDbClient: mkDb10 } = await import("@chartwarden/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
       const handle10 = mkDb10({ connectionString: DB_URL as string });
       const svc = createDbPatientRouteService(asTenantRole(handle10.db) as never, {
@@ -1726,8 +1726,8 @@ describe.skipIf(!DB_URL)(
     });
 
     it("GAP-002 LOW: a pre-deploy row (7-day expires_at) and a portal session are bounded by policy, not expires_at", async () => {
-      const { createDbClient: mkDbP } = await import("@wardenx/db");
-      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const { createDbClient: mkDbP } = await import("@chartwarden/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@chartwarden/auth");
       const handleP = mkDbP({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });

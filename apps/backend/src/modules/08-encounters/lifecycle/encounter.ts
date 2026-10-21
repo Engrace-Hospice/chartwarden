@@ -8,7 +8,7 @@
 // freshness, the F2F dual-write presence, whether a cosign-eligible RN exists) is resolved upstream and
 // passed in as a boolean. Addendum authoring is its own small machine (see ./addendum) — the parent row
 // never leaves signed/cosigned, so it is not an event on this aggregate.
-import type { EncounterDiscipline, EncounterStatus, LocalDate } from "@wardenx/types";
+import type { EncounterDiscipline, EncounterStatus, LocalDate } from "@chartwarden/types";
 import { type EncounterSideEffect, type TransitionResult, result } from "./effects";
 import { EncounterStateError, require_ } from "./errors";
 import { COSIGN_REQUIRED_DISCIPLINES, TEXT_MINIMUMS } from "./validation";

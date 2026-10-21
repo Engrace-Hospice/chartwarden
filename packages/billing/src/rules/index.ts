@@ -1,9 +1,9 @@
-// @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
+// @chartwarden/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
 // REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 26 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
-// BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
+// BullMQ, no `@chartwarden/db`, no `getSeam`, no clock; no PHI.
 //
 // RULE COUNT (§4.5): the §4.5 table enumerates 17 rule CATEGORIES across NINETEEN rule rows (the
 // `eligibility` and `cap` categories each ship two default rules). The Phase-boundary "18 default rules"

@@ -1,4 +1,4 @@
-// @wardenx/audit — action catalog barrel (M4-T10; M4 spec §4.6). The typed, queryable taxonomy
+// @chartwarden/audit — action catalog barrel (M4-T10; M4 spec §4.6). The typed, queryable taxonomy
 // of every auditable action, consolidated from each owner module's slice, with the boot-time
 // namespace/uniqueness validation (§4.6.7) and the `audit_action_catalog` UPSERT projection.
 export type { ActionCatalogEntry, ModuleActionCatalog } from "./types";

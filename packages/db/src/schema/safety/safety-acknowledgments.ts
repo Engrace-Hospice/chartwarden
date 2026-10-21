@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_acknowledgment` (M20 §3.3 / §2.2.6). One row per act of acknowledging: an SOS, an
+// @chartwarden/db — `safety_acknowledgment` (M20 §3.3 / §2.2.6). One row per act of acknowledging: an SOS, an
 // incident, or an overdue check-in. This is the row that proves a human answered, which is the fact a
 // workers-comp carrier, a plaintiff's counsel and a surveyor each ask for first.
 //

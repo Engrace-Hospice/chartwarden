@@ -1,5 +1,5 @@
 // M36 WP 4.4 - the pure rules of the escalation timers: the per-tier window, the deterministic job id, the record cadence.
-import { ACK_CLASSES, ACK_DEADLINE_POLICY } from "@wardenx/types";
+import { ACK_CLASSES, ACK_DEADLINE_POLICY } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   ACK_TIER_WINDOW_MINUTES,

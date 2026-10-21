@@ -5,7 +5,7 @@
 // M15/M23/M24/M25/M26/M27 events-by-mN precedent), and the dispatcher validates each `m16.*` publish
 // against the TypeBox payloadSchema inside the SAME transaction as the mutation (transactional outbox).
 //
-// The shapes MIRROR the §4.4 payload interfaces frozen in `@wardenx/types`
+// The shapes MIRROR the §4.4 payload interfaces frozen in `@chartwarden/types`
 // (packages/types/src/bereavement.ts, M16-T01) — those are the contract M22/M28/M30/M31/M32/M33/M36
 // type-check against; this file is their runtime validator. The envelope carries `organizationId`, so no
 // payload repeats it — with ONE deliberate exception, `external_source_cosign_received`, whose §4.4 row
@@ -18,7 +18,7 @@
 // of death IS identifying, which is why the event's `declaredConsumers` is a closed list and the payload
 // carries no name, address or contact channel.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdN = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

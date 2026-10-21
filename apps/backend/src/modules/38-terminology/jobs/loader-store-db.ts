@@ -6,7 +6,7 @@
 // run as the NOLOGIN `terminology_loader` role. Reads are plain selects (the platform-shared `USING (true)` policies).
 // A deterministic refusal raised by a function (`TERMINOLOGY_<REASON>: …`) becomes a `LoaderDataError` so the
 // orchestrator fails the version; any other error propagates and the job retries.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type ActivationSummary,
   type LicenseAttestation,
@@ -18,7 +18,7 @@ import {
   type StageSummary,
   type StagedRow,
   isLoadableSystem,
-} from "@wardenx/terminology-loader";
+} from "@chartwarden/terminology-loader";
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { isUniqueViolation, terminologyRefusalOf } from "../db-errors";

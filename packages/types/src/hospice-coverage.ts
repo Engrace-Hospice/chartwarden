@@ -1,4 +1,4 @@
-// @wardenx/types — hospice coverage determinations (FY2027 CoP workstream B, 42 CFR 418.24(b)(6)/(c)).
+// @chartwarden/types — hospice coverage determinations (FY2027 CoP workstream B, 42 CFR 418.24(b)(6)/(c)).
 //
 // From 2026-10-01 every hospice election must come with the "Patient Notification of Hospice Non-Covered
 // Items, Services, and Drugs" addendum (§ 418.24(c)): the conditions, items, services and drugs the hospice

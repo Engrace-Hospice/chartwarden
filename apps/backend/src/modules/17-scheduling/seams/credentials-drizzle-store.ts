@@ -9,9 +9,9 @@
 // from inside an M17 route) — the M5 `createDrizzleCredentialStore`-sibling `createDrizzleCaseloadStore`
 // precedent. `SEAM_SYSTEM_USER_ID` is the actor for the read path (a cross-module identity read has
 // no acting membership); grant/revoke pass the REAL caller membership id as the audit actor.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialRecord, CredentialStore } from "./credentials";
 

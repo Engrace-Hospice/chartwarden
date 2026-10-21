@@ -1,4 +1,4 @@
-// @wardenx/db — `caregiver` (M5 §3.4). A caregiver person (org-scoped). Linked to patients via
+// @chartwarden/db — `caregiver` (M5 §3.4). A caregiver person (org-scoped). Linked to patients via
 // `patient_caregiver` (many-to-many) — carries no patient_id itself. Three-column tenancy rule.
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M25 Remittance & Denials §3.3 — the denial worklist cluster:
+// @chartwarden/db — M25 Remittance & Denials §3.3 — the denial worklist cluster:
 //   denial_case (worklist aggregate) ─┬─ denial_case_assignment (assignee history)
 //                                     └─ appeal_case (spawned; in appeal.ts)
 //   denial_taxonomy_overlay (per-tenant plain-language + suggested-action layer over the M38 catalog)

@@ -2,8 +2,8 @@
 // ("Check who is on call") and again after a changed-resolution refusal; it is never cached between opens (a shift boundary changes the
 // answer). A 401/403/404 is a definitive "not available" (fail closed, no retry); a thrown/5xx failure is "failed" and may be retried.
 // An answer for an older request (a different role, or a retry that overtook it) is dropped.
-import type { OnCallDirectoryRole, RoleSendResolutionDto } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { OnCallDirectoryRole, RoleSendResolutionDto } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type RoleResolutionView =

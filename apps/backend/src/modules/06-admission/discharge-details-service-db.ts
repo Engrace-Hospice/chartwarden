@@ -11,8 +11,8 @@
 //   - the same value again is a no-op (no version bump, no event).
 // Each change publishes `m6.discharge.details_recorded` on the same transaction (outbox); M23 re-validates the
 // admission's open claims from it.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { AdmissionWriteOutboxPort } from "./admission-route-service-db";
 import {

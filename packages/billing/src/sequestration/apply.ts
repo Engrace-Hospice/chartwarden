@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 sequestration applier (D11, spec §1.1 / §3.3 `sequestration_policy`). A PURE
+// @chartwarden/billing — M23 sequestration applier (D11, spec §1.1 / §3.3 `sequestration_policy`). A PURE
 // wrapper over the penny-exact `applySequestration` money primitive that resolves WHICH percentage to
 // apply: the active `sequestration_policy` snapshot supplied for the claim's service period, or — when no
 // policy row is supplied — the platform-default constant exported here (currently 2%, the CMS-announced
@@ -7,7 +7,7 @@
 // sum back to the gross EXACTLY) plus which percentage was applied and from where, so the Phase-3 service
 // can snapshot `claim.sequestration_applied_pct` for reproducible audit math.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D18).
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. No PHI (D18).
 import type { Cents, SequestrationResult } from "../domain/money";
 import { applySequestration } from "../domain/money";
 

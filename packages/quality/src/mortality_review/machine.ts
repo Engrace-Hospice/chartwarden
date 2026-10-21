@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — M30 §2.2 / D9 / §4.12 mortality_review lifecycle machine (P2a). Pure, IO-free.
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — M30 §2.2 / D9 / §4.12 mortality_review lifecycle machine (P2a). Pure, IO-free.
 //
 // The mortality-review aggregate lifecycle (§2.2 — mirrors `m30_mortality_review_status`):
 //
@@ -14,7 +14,7 @@ import type { schema } from "@wardenx/db";
 // on an illegal transition or guard failure. Every fact a guard needs (dimensions complete, reviewer
 // signature present, the W-M30-27 external-source cosign status, the system-actor + deadline facts for the
 // overdue sweep) is resolved UPSTREAM and injected as event data — no IO, no DB, no clock.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.2 mortality_review lifecycle state (mirrors `m30_mortality_review_status`). */
 export type MortalityReviewState = schema.MortalityReview["status"];

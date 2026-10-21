@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-// @wardenx/portal — the Better Auth calls the sign-in screen makes, and the pure helpers around the redemption /
+// @chartwarden/portal — the Better Auth calls the sign-in screen makes, and the pure helpers around the redemption /
 // signed-in screens. The fetch is injected, so every outcome (including throttling and the second-factor redirect) is
 // proven without a network.
 import { requestMagicLink, signInWithPassword, signOut, verifyTotp } from "../src/auth-http";

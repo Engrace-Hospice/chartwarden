@@ -12,8 +12,8 @@
 // the rest drain on later ticks); IDEMPOTENT + OPTIMISTIC (`UPDATE ... WHERE assigned_reviewer_membership_id IS
 // NULL`, so a human/consumer assignment racing the cron is never overwritten, and a re-run is a no-op); a
 // per-org failure is logged and does not stop the other orgs.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
 /** BullMQ queue name (no ':' — BullMQ reserves it in ids; hyphens are fine). */

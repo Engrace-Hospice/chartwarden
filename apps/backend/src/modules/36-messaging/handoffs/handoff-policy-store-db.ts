@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/handoffs/handoff-policy-store-db.ts - WP 3.5: the tenant's handoff expiry row
 // (`tenant_handoff_policy`, one row per organisation, FORCE RLS). Org comes from the request context, never the client.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

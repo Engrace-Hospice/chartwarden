@@ -4,13 +4,13 @@
 // Renders the ONE error envelope (spec §4.3) for every error path: a thrown ChartWardenError
 // (or any subclass — ValidationError, ForbiddenError, RateLimitedError, DegradedError, …)
 // maps to its declared code + statusCode; a Postgres `23505` on a constraint whose meaning is
-// registered beside its index (`businessRule()` in @wardenx/db) maps to 409 carrying that meaning;
+// registered beside its index (`businessRule()` in @chartwarden/db) maps to 409 carrying that meaning;
 // anything else is an unexpected 500 logged in
 // full and returned as a generic INTERNAL_ERROR — internal details are NEVER leaked. The
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
-import { classifyDatabaseError } from "@wardenx/db";
-import { ConflictError, ChartWardenError } from "@wardenx/types";
+import { classifyDatabaseError } from "@chartwarden/db";
+import { ConflictError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.wardenx.app/errors";

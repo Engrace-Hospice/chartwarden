@@ -1,7 +1,7 @@
 // apps/backend/__tests__/supervisor-reader.test.ts — M3's SupervisorReader seam over a scripted fake db.
 // Each `select()` pops the next scripted result, so the tests also pin the query ORDER (fail-closed
 // short-circuits must not issue the later queries).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
   SUPERVISORY_ROLE_KEYS,

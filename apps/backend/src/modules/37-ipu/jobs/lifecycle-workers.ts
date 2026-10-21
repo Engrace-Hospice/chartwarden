@@ -5,9 +5,9 @@
 // tx per org, empty-string system actor so the PHI audit trigger's actor FK reads NULL, one org's failure
 // collected and rethrown after the rest ran), 2000-row cap per org per tick, events through the transactional
 // outbox in the SAME tx as the write they announce, stateless nag windows keyed by deterministic cycle ids.
-import { organizationTimezone } from "@wardenx/db";
-import { transitionAdmission } from "@wardenx/inpatient";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
+import { organizationTimezone } from "@chartwarden/db";
+import { transitionAdmission } from "@chartwarden/inpatient";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import {
   M37_LIFECYCLE_QUEUES,
   M37_LIFECYCLE_QUEUE_PARAMS,

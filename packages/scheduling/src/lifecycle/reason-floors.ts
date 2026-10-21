@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.3 documented-reason length floors (M17-T03).
+// @chartwarden/scheduling — §2.3 documented-reason length floors (M17-T03).
 //
 // The §2.2.1 / §2.3 minimum-length guards the visit + time_off machines enforce, repeated by the §2.3 DB
 // CHECK constraints (M17-T02) as defense in depth. The EVV-missing self-attest floor (40 chars) is a

@@ -6,8 +6,8 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/web/src/modules/32-ai-platform — M32 §5.4 clinician personal AI opt-out
 // (`/me/ai-preferences`, `ai.clinician_opt_out.read`). GAP-049.
 //

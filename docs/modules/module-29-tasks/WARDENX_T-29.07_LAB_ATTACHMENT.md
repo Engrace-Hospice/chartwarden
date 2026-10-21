@@ -97,7 +97,7 @@ The simplest and highest-confidence patient resolution path. If the ORU carries 
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/lab-placer-resolver.ts
-import type { OrderRecordReader } from '@wardenx/foundation/seams'
+import type { OrderRecordReader } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 export interface PlacerResolutionResult {
@@ -158,7 +158,7 @@ Reuses T-29.05's `matchPatient()` cascade. The wrapper exists because the lab pi
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/lab-cascade.ts
 import { matchPatient, type MatchOutcome, type CascadeInput } from './match-cascade'
-import type { PatientReader, MasterDataProvider } from '@wardenx/foundation/seams'
+import type { PatientReader, MasterDataProvider } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 export interface LabCascadeOutcome {
@@ -249,13 +249,13 @@ Single transaction that persists `lab_observation` + N × `lab_observation_value
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/lab-attacher.ts
 import { ulid } from 'ulid'
-import { db } from '@wardenx/db'
+import { db } from '@chartwarden/db'
 import {
   labObservation,
   labObservationValue,
   labObservationInboundLink,
-} from '@wardenx/db/schema/external-interfaces'
-import { withOrgContext } from '@wardenx/tenancy'
+} from '@chartwarden/db/schema/external-interfaces'
+import { withOrgContext } from '@chartwarden/tenancy'
 import type { Logger } from 'pino'
 
 export interface ProjectedObr {
@@ -425,7 +425,7 @@ Per M29 v0.3 §4.5 (consumed-seams) — `TerminologyProvider.validate(loincCode)
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/terminology-check.ts
-import type { TerminologyProvider } from '@wardenx/foundation/seams'
+import type { TerminologyProvider } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 import type { ProjectedObx } from './lab-attacher'
 
@@ -490,8 +490,8 @@ Per M29 v0.3 §4.5 — `ConsentEvaluator.evaluateForIngressRedaction(patientId, 
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/sud-redaction.ts
-import type { ConsentEvaluator } from '@wardenx/foundation/seams'
-import type { TerminologyProvider } from '@wardenx/foundation/seams'
+import type { ConsentEvaluator } from '@chartwarden/foundation/seams'
+import type { TerminologyProvider } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 import type { ProjectedObx } from './lab-attacher'
 
@@ -564,7 +564,7 @@ export async function shouldRedactSud(
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/abnormal-flag.ts
-import type { AlertDispatcher, CaseloadProvider } from '@wardenx/foundation/seams'
+import type { AlertDispatcher, CaseloadProvider } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 import type { ProjectedObx } from './lab-attacher'
 
@@ -659,7 +659,7 @@ Some labs send the human-readable PDF report as an OBX with `OBX-2='ED'` and `OB
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/obx-pdf-handler.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 import type { ProjectedObx } from './lab-attacher'
 
@@ -731,12 +731,12 @@ And the M22 back-ref consumer:
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/consumers/m22-document-backref.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
-import { db } from '@wardenx/db'
-import { labObservation } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { labObservation } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 export function registerM22DocumentBackrefConsumer(outbox: Outbox, logger: Logger): void {
   outbox.registerConsumer({
@@ -776,7 +776,7 @@ import { checkTerminology } from '../inbound/terminology-check'
 import { shouldRedactSud } from '../inbound/sud-redaction'
 import { routeAbnormalFlags } from '../inbound/abnormal-flag'
 import { handlePdfAttachments } from '../inbound/obx-pdf-handler'
-import { projectObr, projectObxList } from '@wardenx/hl7-worker/segments/oru'
+import { projectObr, projectObxList } from '@chartwarden/hl7-worker/segments/oru'
 
 // In worker body, replacing the T-29.04 ORU stub:
 if (message.messageType.startsWith('ORU^')) {
@@ -919,11 +919,11 @@ When patient_id is null (cascade candidate / ambiguous / no_match), the observat
 // apps/backend/src/modules/29-external-interfaces/routes/unmatched-labs.ts
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
-import { db } from '@wardenx/db'
-import { labObservation, labObservationInboundLink } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { labObservation, labObservationInboundLink } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq, isNull, desc } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { requirePermissions } from '@wardenx/foundation/auth'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { requirePermissions } from '@chartwarden/foundation/auth'
 
 const BindBody = Type.Object({
   patientId: Type.String({ format: 'uuid' }),
@@ -1042,7 +1042,7 @@ M11 v0.3 will consume `m29.lab_observation.attached` and `m29.lab_observation.bo
 
 ```ts
 // apps/backend/src/modules/11-orders/outbox-consumers/m29-lab-attached.stub.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
 
 export function registerM11LabAttachedStub(outbox: Outbox, logger: Logger): void {

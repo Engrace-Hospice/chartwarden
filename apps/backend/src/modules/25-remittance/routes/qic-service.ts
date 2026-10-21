@@ -7,9 +7,9 @@
 // the escalation request records a filing made outside WardenX (electronic submission is milestone 6). No outbox
 // events (nothing consumes them); the appeal_case audit trigger and appeal_case_event rows are the trail, and
 // the overdue signal is a nightly alert (jobs/qic-overdue.ts).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
   DEFAULT_DEADLINE_ZONE,

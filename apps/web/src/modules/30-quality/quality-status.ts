@@ -4,7 +4,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈meets target · warning≈at-risk · error≈breach ·
 // critical(gold)≈reserved irreversible ceremony · neutral≈inert/insufficient data.
-import type { StatusTone, paths } from "@wardenx/ui";
+import type { StatusTone, paths } from "@chartwarden/ui";
 
 // ── the wire vocabularies, DERIVED ────────────────────────────────────────────────────────────
 //

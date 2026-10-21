@@ -60,7 +60,7 @@
 // reported via the ALREADY-CATALOGUED `m14.packets.build_failed_for_patient` (§4.4), never fabricated, and
 // never aborts the meeting's other patients' builds.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CarePlanSummaryInput,
   POST_DISCHARGE_WRAP_UP_FLOOR_DAYS,
@@ -70,8 +70,8 @@ import {
   buildPacketSnapshot,
   resolveSinceCursor,
   transitionMeeting,
-} from "@wardenx/idg";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/idg";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   DisciplineKey,
   DisciplineViewBlock,
@@ -79,7 +79,7 @@ import type {
   PacketActionItemCarryForwardDigest,
   PacketFlaggedEventDigest,
   PacketSnapshot,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, lt, lte, ne, sql } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";

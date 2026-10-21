@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §2.2 / D9 mortality_review domain subtree (P2a). PURE.
+// @chartwarden/quality — M30 §2.2 / D9 mortality_review domain subtree (P2a). PURE.
 //
 // Public surface of the mortality-review domain: the D9 three-dimension form structure + completeness
 // predicates (./dimensions), the §2.2 lifecycle machine + its failure-code catalog (./machine), and the

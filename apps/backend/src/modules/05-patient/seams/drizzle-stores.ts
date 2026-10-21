@@ -9,9 +9,9 @@
 // `withOrgContext` envelope AND keeps the explicit organization_id predicate as the second wall —
 // the M7 drizzle-store precedent. `userId: ""` (an identity read/apply on behalf of the platform
 // carries no acting membership; withOrgContext maps "" to a NULL audit actor).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientIdentity, PatientLifecycleStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientIdentity, PatientLifecycleStatus } from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
 import {

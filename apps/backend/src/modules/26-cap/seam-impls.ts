@@ -22,9 +22,9 @@ import {
   computeCostReportCapAggregate,
   toAggregateBandLabel,
   toInpatientBandLabel,
-} from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/cap-management";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { selectCapPeriodForCcn } from "./cap-period-selection";
 import type { M26ReadActor } from "./routes/actor";

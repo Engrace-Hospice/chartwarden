@@ -1,4 +1,4 @@
-// @wardenx/types - the typed render payloads of the billing correspondence M22 draws (GAP-033, Wave 3): the NOE and
+// @chartwarden/types - the typed render payloads of the billing correspondence M22 draws (GAP-033, Wave 3): the NOE and
 // NOTR confirmation receipts, the Medicare and Medicaid claim acknowledgment letters, the denial-appeal cover
 // letter and the denial-resolution letter. Unlike the M6 CoP documents these producers (M23 `consumers/
 // document-render.ts`, M24 `submission-jobs.ts`, M25 `write-service-drizzle.ts`) already ship the content, so the

@@ -33,9 +33,9 @@
 // write-audit triggers resolve `app.user_id` to `audit_event.actor_user_id`, which FKs to `"user"`; the worker
 // pseudo-user id the review-clock sweep once used (`…000000000014`) has no `user` row, so a PHI write under it fails the FK
 // (proven live). An empty actor records a system write (actor NULL).
-import { type DbClient, schema } from "@wardenx/db";
-import { isComplianceCrossing } from "@wardenx/idg";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { isComplianceCrossing } from "@chartwarden/idg";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
 import { recomputeCarryForwardCounts } from "./carry-forward-count";

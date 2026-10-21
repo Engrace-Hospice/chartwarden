@@ -4,7 +4,7 @@
  * The API mock is strict: any call other than the search route fails the test, and nothing may reject unhandled.
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GlobalSearch } from "./global-search";

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/13-emar/routes/service.ts — M13-T08 the §4.1 route service over an in-memory
 // backend (the M8-T09 / M9-T05 / M10-T06 / M11-T06 / M12-T08 in-mem-slice precedent; Drizzle in prod under
-// `withOrgContext` so RLS backstops every read). The service composes the PURE M13 domain (`@wardenx/emar`):
+// `withOrgContext` so RLS backstops every read). The service composes the PURE M13 domain (`@chartwarden/emar`):
 // the §2.5 D8 late-entry tier (`resolveLateEntryTier`), the §2.8 reconciliation finalize/decision rules, the
 // §2.7 comfort-kit drawdown — and emits the §4.4 outbox events the relay publishes (drainable for tests).
 //
@@ -35,7 +35,7 @@ import {
   planReconciliationDecision,
   resolveLateEntryTier,
   transitionAdministration,
-} from "@wardenx/emar";
+} from "@chartwarden/emar";
 import type {
   AdministrationActorKind,
   AdministrationLateEntryTier,
@@ -46,14 +46,14 @@ import type {
   ReconciliationWorksheetStatus,
   ScheduledDoseStatus,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type MedClass,
   NotFoundError,
   ValidationError,
   type WristbandVerdictStatus,
   parseWristbandPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   CaregiverReviewAbacFacts,
   EmarAbacResolver,
@@ -242,7 +242,7 @@ export interface RecordDecisionArgs {
   readonly decision: ReconciliationDecisionKind;
   /** Real, caller-typed drug content for a decision that mints an M12 draft (`carry_forward` of a
    *  `caregiver_reported` line, or any `new_order`) — required in that case, never fabricated. See
-   *  `@wardenx/emar`'s `ReconciliationMedicationDetails` for why `m12_medhx` cannot use this at all yet. */
+   *  `@chartwarden/emar`'s `ReconciliationMedicationDetails` for why `m12_medhx` cannot use this at all yet. */
   readonly medicationDetails?: ReconciliationMedicationDetails;
 }
 

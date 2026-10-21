@@ -1,7 +1,7 @@
 // M36 WP 2.9 — the sender's view of who has read an announcement. Opened from a message in the announcement channel
 // by a holder of messaging.announce; the server refuses everyone else (403), so a client that shows the button to the
 // wrong person still learns nothing.
-import { Button, LoadingSpinner, Modal, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { apiErrorMessage } from "./messaging-utils";

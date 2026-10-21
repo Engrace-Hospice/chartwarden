@@ -1,4 +1,4 @@
-import type { ClinicalLinkKind, MessageReactionSummary, PollView, RichBody } from "@wardenx/types";
+import type { ClinicalLinkKind, MessageReactionSummary, PollView, RichBody } from "@chartwarden/types";
 
 export type ChannelKind =
   | "care_team"

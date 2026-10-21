@@ -12,7 +12,7 @@
 //   • Step-up (§D15): appeal submit, close-with-write-off, manual adjustment override. A 403 `STEP_UP_REQUIRED`
 //     is surfaced as `stepUp: true` so the caller can send the user through `/step-up?returnTo=`.
 //   • `Idempotency-Key` is attached to every mutating request by the shared client middleware.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 type Ok<Op> = Op extends { responses: { 200: infer R } } ? Json<R> : never;

@@ -2,7 +2,7 @@
 // sign-off is recorded; see docs/messaging-hub/brief-clinical-lead-signoff.md): change the text here, never the codes.
 // Taking responsibility is an explicit action; opening or reading a message never does it, nothing here pages anyone, and
 // messaging is not the emergency path. No tenant can remove the notice.
-import type { AckAddressedRole, AckEscalationNote, AckStatus } from "@wardenx/types";
+import type { AckAddressedRole, AckEscalationNote, AckStatus } from "@chartwarden/types";
 
 export const ACK_NOTICE =
   "Taking responsibility is an explicit action: opening or reading this message does not do it. This does not page anyone and is not the emergency path; for critical symptoms follow the agency telephone/emergency procedure.";

@@ -7,7 +7,7 @@ import {
   ageYears,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/shell — the patient identity pieces every chart tab shares (2026-09-25 redesign): the
 // banner (avatar · name · status · DOB/sex/MRN/Medicare · actions) and the right-rail "Patient
 // Summary" card. They live in the shell, like the tab strip, because the tabs belong to different

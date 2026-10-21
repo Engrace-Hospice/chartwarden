@@ -5,7 +5,7 @@
 // Waves C/D, had nothing to consume). Folded into `buildBootOutboxCatalog` at the composition root;
 // the Drizzle store publishes each within the deciding mutation's own tx.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** Shared core — every proposal-decision event names the proposal + org (decision.ts payloads). */
 const coreProposal = {

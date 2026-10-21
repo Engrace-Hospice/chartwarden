@@ -1,4 +1,4 @@
-// @wardenx/audit — the audit() / auditRead() foundation helper (M1-T12, spec §6–§8) +
+// @chartwarden/audit — the audit() / auditRead() foundation helper (M1-T12, spec §6–§8) +
 // the Module 4 capture-architecture skeleton (M4-T01, M4 spec §2.1, §3.1).
 //
 // The canonical, helper-only writer of the M1-owned `audit_event` table: it redacts PHI

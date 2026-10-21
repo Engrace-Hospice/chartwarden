@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 DDE work-queue item lifecycle reducer (ADR-0052 D4).
+// @chartwarden/billing — M23 DDE work-queue item lifecycle reducer (ADR-0052 D4).
 //
 // Shape-identical to `machines/noe.ts`: a flat transition table, a pure `canTransition`, and a non-throwing
 // `reduce(state, event, ctx?) => { state, attemptNumber, error? }`. No clock, no DB, no PHI/MBI. The queue is

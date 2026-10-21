@@ -16,10 +16,10 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { calculatePerDiemClass } from "@wardenx/billing";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { createSandboxHetsTransport } from "@wardenx/x12-837-client";
+import { calculatePerDiemClass } from "@chartwarden/billing";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { createSandboxHetsTransport } from "@chartwarden/x12-837-client";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

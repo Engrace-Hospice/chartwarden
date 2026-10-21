@@ -1,4 +1,4 @@
-// @wardenx/db — `report_definition_version` (M33 §3.3). An immutable-ish version snapshot of a
+// @chartwarden/db — `report_definition_version` (M33 §3.3). An immutable-ish version snapshot of a
 // report definition's spec (the persisted ReportDefinitionSpec jsonb); publish promotes it to the
 // definition's latest and supersedes the prior. ORG-SCOPED: carries organization_id NOT NULL →
 // standard app.org_id RLS (writes additionally require report.definition.write, §3.5).

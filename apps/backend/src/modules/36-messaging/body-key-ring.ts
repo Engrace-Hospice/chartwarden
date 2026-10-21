@@ -14,8 +14,8 @@
 // destroyed ring is never cached (the provider throws and a rejection is not memoised). A rotation is harmless for reads
 // (the envelope names its version); a stale "current" only means a write is sealed under the previous, still-retained,
 // version for up to one TTL.
-import type { RingBodyDek } from "@wardenx/messaging";
-import { DegradedError } from "@wardenx/types";
+import type { RingBodyDek } from "@chartwarden/messaging";
+import { DegradedError } from "@chartwarden/types";
 
 /**
  * The key for a body could not be obtained (provider outage, unbound KEK, destroyed or missing ring, absent legacy key). This is

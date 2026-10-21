@@ -1,7 +1,7 @@
-// @wardenx/quality · workers barrel — the §4.8 ASYNC/WORKER layer (P2c).
+// @chartwarden/quality · workers barrel — the §4.8 ASYNC/WORKER layer (P2c).
 //
 // PURE, port-injected processors for M30's four BullMQ queues + four crons. The job LOGIC lives here
-// (unit-testable against in-memory ports, the M33 `@wardenx/reporting/refresh` precedent); the thin,
+// (unit-testable against in-memory ports, the M33 `@chartwarden/reporting/refresh` precedent); the thin,
 // infra-touching BullMQ `Worker`/`Queue` construction binds at app boot in the backend `jobs/m30-jobs.ts`
 // adapter (NOT in this package — constructing a Worker is what opens Valkey). Nothing here runs at import.
 //

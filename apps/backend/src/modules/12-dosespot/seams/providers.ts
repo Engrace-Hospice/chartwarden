@@ -1,6 +1,6 @@
 // apps/backend/src/modules/12-dosespot/seams/providers.ts — M12-T07 the §2.10 D17 seam implementations: pure
 // orchestration over an injected {@link DoseSpotSeamStore}. Each returns the leaf-typed seam interface
-// (@wardenx/types) the M1 registry validates and M13/M14/M19/M28/M30/M31/M33 resolve. The providers add NO
+// (@chartwarden/types) the M1 registry validates and M13/M14/M19/M28/M30/M31/M33 resolve. The providers add NO
 // tenant logic — RLS scopes every store read by the consumer's `app.org_id` (§3.6); they project store DTOs and
 // derive the read-side signals (administration gate, FHIR projection, lay-language portal summary with the
 // §7.8 / D7 SUD redaction). Both seams are READ-only — M12 owns the medication-order lifecycle internally and
@@ -13,7 +13,7 @@ import type {
   PortalMedicationSummary,
   RefillInboxProvider,
   RefillRequestDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { DoseSpotSeamStore } from "./store";
 
 /** The temporal anchor `getMedicationsSince` keys on: when the medication became clinically effective

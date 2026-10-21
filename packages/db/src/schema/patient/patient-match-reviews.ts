@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_match_review` (M5 §3.5, §7.3). The SOFT-duplicate review queue: when the
+// @chartwarden/db — `patient_match_review` (M5 §3.5, §7.3). The SOFT-duplicate review queue: when the
 // matching pipeline (M5-T06) scores an incoming patient in the suggestion band (not a hard block,
 // not a clean miss), it queues a review here for a human to merge / mark not-a-match. PHI-bearing →
 // three-column tenancy rule.

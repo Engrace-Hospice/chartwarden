@@ -1,6 +1,6 @@
 // apps/backend/src/modules/40-mdm/jobs/nppes-fallback.ts — M40 §4.3 `mdm.nppes_nightly_delta` (02:00, FALLBACK-ONLY)
 // and `mdm.nppes_weekly_full` (Sun 03:00) production ports (GAP-173). The decision logic (`runNppesNightlyDelta` /
-// `runNppesWeeklyFull`, `detectNppesDrift`) shipped and was unit-tested in `@wardenx/mdm` since M40-T08; what never
+// `runNppesWeeklyFull`, `detectNppesDrift`) shipped and was unit-tested in `@chartwarden/mdm` since M40-T08; what never
 // existed was anything to bind its ports to.
 //
 // WHY BOTH, WHEN M29 SYNCS: M29's D11 platform sync is the AUTHORITATIVE path (GAP-099 delivers its events to the
@@ -15,8 +15,8 @@
 // recorded through the migration-0473 `mdm_canonical_writer_record_nppes_sync`, and provenance is stamped
 // `m40_legacy_nightly` so a reader can tell a fallback write from an M29 one. A per-NPI fetch failure is counted,
 // not fatal; if EVERY fetch failed the run is recorded `failed` and the job throws (BullMQ retries / DLQ alert).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import {
   type NppesFreshRecord,
   type NppesKnownPhysician,
@@ -24,7 +24,7 @@ import {
   type NppesNightlyResult,
   runNppesNightlyDelta,
   runNppesWeeklyFull,
-} from "@wardenx/mdm";
+} from "@chartwarden/mdm";
 import { and, asc, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {

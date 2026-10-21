@@ -5,7 +5,7 @@
 // route would act on it (resendable state + `orders.transmission.recover`). The net asserts what is SENT and that the
 // order is re-read afterwards.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OrderDetail } from "./order-detail";

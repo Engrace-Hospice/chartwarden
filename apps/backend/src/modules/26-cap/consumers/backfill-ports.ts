@@ -3,8 +3,8 @@
 // replay emits only for those and REPORTS the rest instead of silently dropping them. A cap year with no
 // `cap_period` is a product act (open the period, then re-run); a settled/closed period is not rewritten by a
 // backfill (a past year's roll-up must not move under a filed cost report), so it is reported too.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 
 const P = schema.capPeriod;

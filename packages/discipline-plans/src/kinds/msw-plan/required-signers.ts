@@ -1,4 +1,4 @@
-// @wardenx/discipline-plans — §3.5 / D11 MSW Plan required-signer set (M15-T01).
+// @chartwarden/discipline-plans — §3.5 / D11 MSW Plan required-signer set (M15-T01).
 
 import type { RequiredSignersByVersionKind } from "../aide-poc/required-signers";
 

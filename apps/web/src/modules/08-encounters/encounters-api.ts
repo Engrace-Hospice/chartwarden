@@ -10,8 +10,8 @@
 // guarded and contract-enriched since M8-T09, and #114 fixed it actually persisting. It carries
 // `sectionId` and `code` as free strings and the server REJECTS an unknown one — so a composer needs to
 // know which sections the encounter's template has and which vocabulary codes each accepts. Both have
-// existed as pure leaf packages since M8-T05 (`@wardenx/hearthnote`'s `resolveTemplate`,
-// `@wardenx/narrative-vocab`'s `entriesFor` — whose own header calls it "the entries a menu surfaces …
+// existed as pure leaf packages since M8-T05 (`@chartwarden/hearthnote`'s `resolveTemplate`,
+// `@chartwarden/narrative-vocab`'s `entriesFor` — whose own header calls it "the entries a menu surfaces …
 // so the selection UI and the template engine see the same deterministic ordering"). Neither was ever
 // on the wire, so there was no selection UI for them to agree with. `GET .../template` (F-063) is that
 // menu, and this file consumes it rather than shipping a second copy of the corpus to the browser: the
@@ -29,8 +29,8 @@
 //   • The Layer-1 NARRATIVE. `layer1Preview` comes back from the read and from every PATCH: the note as
 //     it currently reads, assembled deterministically server-side. The composer never assembles prose.
 //   • §2.2 the encounter lifecycle, and the late-entry tier the service date implies.
-import { ENCOUNTER_DISCIPLINE_RULES } from "@wardenx/types";
-import type { ApiClient, operations } from "@wardenx/ui";
+import { ENCOUNTER_DISCIPLINE_RULES } from "@chartwarden/types";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
 
@@ -81,7 +81,7 @@ export type MileageSource = CaptureMileageBody["source"];
 // composed.
 //
 // The `satisfies` pin is what keeps the two vocabularies in step. The types above are derived from the
-// generated OpenAPI client, `ENCOUNTER_DISCIPLINE_RULES` from `@wardenx/types`; they are the same
+// generated OpenAPI client, `ENCOUNTER_DISCIPLINE_RULES` from `@chartwarden/types`; they are the same
 // vocabulary by construction and NOTHING checked that. A route that gained an encounter type would
 // leave this map short of a key, and the composer would silently stop offering it.
 const DISCIPLINE_RULES = ENCOUNTER_DISCIPLINE_RULES satisfies {

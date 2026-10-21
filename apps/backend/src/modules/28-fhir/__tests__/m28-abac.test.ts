@@ -1,5 +1,5 @@
 // apps/backend/src/modules/28-fhir/__tests__/m28-abac.test.ts — M28-T08 §4.7 predicate unit tests.
-import type { AbacContext, AbacTarget } from "@wardenx/auth";
+import type { AbacContext, AbacTarget } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 import {

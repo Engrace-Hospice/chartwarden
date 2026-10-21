@@ -22,10 +22,10 @@
 // both M12-owned (`medication_order`) inside one `withOrgContext`; no cross-module seam read is needed
 // (`medicationOrderId` is already the M12 primary key on the wire). The consumed event name is a STRING
 // literal and no M13 schema is imported, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionMedicationOrder } from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { MedicationOrderStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { MedicationOrderStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";

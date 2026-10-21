@@ -10,8 +10,8 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { StatusTone } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { StatusTone } from "@chartwarden/ui";
 // apps/web/src/modules/27-cost-report — the SNAPSHOTS & ECR surface (R2, §5 / D10). Pick a report → its
 // content-hashed submit/reopen snapshot chain (the lockdown that survives reopens). Read-only; the server
 // is the only authz point (ADR-0030). The snapshot detail read is itself audit-logged at the route.

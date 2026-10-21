@@ -3,7 +3,7 @@
  * status: "pending"}`: no stripe-dispatcher worker exists to provision a SetupIntent. The Drizzle route service
  * refuses 503 and never touches the database.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
 import { buildDrizzleM35RouteService } from "../src/modules/35-subscription/routes/service-drizzle";

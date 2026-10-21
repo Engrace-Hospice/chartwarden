@@ -1,10 +1,10 @@
-// @wardenx/messaging — channel-member administration authority (M36 spec §4.5, GAP-103).
+// @chartwarden/messaging — channel-member administration authority (M36 spec §4.5, GAP-103).
 //
 // `messaging.manage_members` is held by org_admin and by clinical_lead "limited to their location
 // channels" (`location_membership`). The permission alone is NOT enough: a holder could otherwise add
 // themselves to any care_team channel, and because channel visibility is a membership check that is a
 // PHI read grant. This pure rule is shared by the route predicate and both service implementations.
-import { ForbiddenError, ChartWardenError } from "@wardenx/types";
+import { ForbiddenError, ChartWardenError } from "@chartwarden/types";
 import type { ChannelKind } from "./interfaces/kinds";
 
 /** Who is administering members. Internal/system callers pass the explicit `system` marker — it is

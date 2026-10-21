@@ -6,7 +6,7 @@ import {
   cardSurface,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — M39 CONSENT RECIPIENTS & DPOA (§5.1, Track B / ADR-0030).
 // Spec: docs/design/screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md.
 //

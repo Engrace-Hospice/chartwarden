@@ -19,8 +19,8 @@
 // consumer, the same as a registered `getSeam(...)` accessor, and dependency-cruiser's M30 rule ("seam
 // packages only, no schema-table imports across boundaries") is satisfied because this file — not the raw
 // `bereavement_plan` Drizzle table — is what M30's consumer imports.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const PLAN = schema.bereavementPlan;

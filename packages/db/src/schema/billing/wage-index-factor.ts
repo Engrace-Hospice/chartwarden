@@ -1,4 +1,4 @@
-// @wardenx/db — `wage_index_factor` (M23 Billing-Medicare §3.3, D12; non-partitioned; retention class
+// @chartwarden/db — `wage_index_factor` (M23 Billing-Medicare §3.3, D12; non-partitioned; retention class
 // `reference`). The CMS per-CCN wage-index schedule consumed by HIPPS math (snapshotted onto
 // per_diem_rate_calculation at calculation time so the math is reproducible).
 //

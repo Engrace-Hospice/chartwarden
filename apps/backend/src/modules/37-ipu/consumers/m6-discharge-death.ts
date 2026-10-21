@@ -1,6 +1,6 @@
 // apps/backend/src/modules/37-ipu/consumers/m6-discharge-death.ts — the SEPARATE, previously
 // catalog-unbindable `m6.discharge.death` consumer `m6-admission-discharged.ts`'s own header names
-// (F-172, #248). `transitionAdmission`'s `recordDeath` case (`@wardenx/inpatient`,
+// (F-172, #248). `transitionAdmission`'s `recordDeath` case (`@chartwarden/inpatient`,
 // `machines/ipu-admission.ts`) has been a complete, pure, unit-tested transition since M37-T04 — its own
 // `isSystemActor` guard's message says outright "recordDeath is driven by the M6 death consumer (system
 // actor), never a human route" — and had NO CALLER anywhere outside its own unit test until this file.
@@ -57,9 +57,9 @@
 // no later than this consumer's own delivery, regardless of whether an IPU stay was ever involved. A
 // third M16 path off `death_recorded` would be strictly redundant — see that event's own catalog entry
 // (`events-by-m37.ts`) for the drop.
-import { type DbClient, schema } from "@wardenx/db";
-import { planOpenBodyRelease, transitionAdmission } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { planOpenBodyRelease, transitionAdmission } from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 

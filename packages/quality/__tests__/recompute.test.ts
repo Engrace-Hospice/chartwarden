@@ -1,4 +1,4 @@
-// @wardenx/quality — §4.8 measure-recompute END-TO-END + worker fail-closed UNIT TESTS (M30 §7.1 / §3.1 /
+// @chartwarden/quality — §4.8 measure-recompute END-TO-END + worker fail-closed UNIT TESTS (M30 §7.1 / §3.1 /
 // §4.8 / V-8 / D2). The companion to `workers.test.ts`: where that file drives the recompute worker with a
 // hand-rolled `trivialRegistration`, THIS file drives it through the REAL `buildMeasureRegistry()` binding
 // (the Registry-binding phase) so the test exercises the actual catalog→calculator wiring the composition
@@ -10,7 +10,7 @@
 //
 // PURE port-injected, NO DB / Valkey / BullMQ — every fact + effect is an in-memory recording fake (the
 // M33 `refresh.test.ts` / M34 `shred-worker.test.ts` template). Stays green under the default `bun run test`.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   type CahpsExportPorts,
   M30WorkerPortUnbound,
@@ -27,7 +27,7 @@ import {
   handleOutbreakDetection,
   handleRiskRegisterRefresh,
   unboundWorkerPort,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { describe, expect, it } from "vitest";
 
 // ── shared in-memory recompute harness (drives the REAL registry) ───────────────────────────────────────

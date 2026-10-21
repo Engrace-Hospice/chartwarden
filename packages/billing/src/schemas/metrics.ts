@@ -1,4 +1,4 @@
-// @wardenx/billing — metrics schema: route #38 `GET /metrics` (per-window aggregate metrics for the M33
+// @chartwarden/billing — metrics schema: route #38 `GET /metrics` (per-window aggregate metrics for the M33
 // reporting consumer) — §4.1. Mirrors `ClaimMetricsProvider.windowAggregate` (aggregate-only; no PHI).
 import { type Static, Type } from "@sinclair/typebox";
 import { CentsSchema, IsoDateTimeSchema, Uuid } from "./common";

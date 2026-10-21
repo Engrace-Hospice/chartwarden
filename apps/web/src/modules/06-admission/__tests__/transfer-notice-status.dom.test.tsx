@@ -1,7 +1,7 @@
 // The transferred-in admission's view of its Medicare transfer notice (TOB 8xC), read from M23's worklist API.
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TransferNoticeStatus } from "../transfer-notice-status";

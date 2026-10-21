@@ -15,8 +15,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createInMemoryMessagingService } from "@wardenx/messaging";
+} from "@chartwarden/auth";
+import { createInMemoryMessagingService } from "@chartwarden/messaging";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

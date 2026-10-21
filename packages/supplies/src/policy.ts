@@ -1,4 +1,4 @@
-// @wardenx/supplies — §2 pure-data policy constants (M21-T01 domain layout).
+// @chartwarden/supplies — §2 pure-data policy constants (M21-T01 domain layout).
 //
 // Every timing window, threshold and tenant-tightening bound M21 measures against, declared once here
 // rather than re-derived in each service, worker and route. PURE DATA — no IO, no clock reads; every

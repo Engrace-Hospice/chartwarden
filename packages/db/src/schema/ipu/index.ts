@@ -1,4 +1,4 @@
-// @wardenx/db — Module 37 (Inpatient Unit / IPU Management) schema barrel: the twenty-six `ownedTables`
+// @chartwarden/db — Module 37 (Inpatient Unit / IPU Management) schema barrel: the twenty-six `ownedTables`
 // `architecture/module-manifest.ts` gives M37 (§3.3). ALL are TENANT-SCOPED PHI/compliance tables with
 // RLS keyed on canonical app.org_id; M37 is fully outbox-decoupled (D17) — it never FKs into another
 // module's schema, so every cross-module id (patient_id, M6 admission/LoC/death ids, M8 encounter,

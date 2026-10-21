@@ -8,7 +8,7 @@
 // `provider_entity_billing_scope` over the item's provider entity (a denied object is a 404), every mutation the
 // §D13 AI-block + `Idempotency-Key`. Reads are read-audited with a `resourceIdParam`. Org / actor / membership are
 // server-side. Notes never reach a log or an event.
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { billingScopeReach } from "../abac-predicates";
 import type { DdeQueueService } from "../services/dde-queue-service";

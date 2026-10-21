@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — M32's governance failure catalog (M32-T03; extended by M32-T05).
+// @chartwarden/ai-platform — M32's governance failure catalog (M32-T03; extended by M32-T05).
 //
 // Every guard in the capability-lifecycle, calibration, tenant-opt-in, clinician-opt-out, kill-switch,
 // hallucination-triage, evaluation-run and prompt-activation rules refuses with a code from THIS table —
@@ -20,7 +20,7 @@
 // §2.2/W9 envelope. Duplicating them here would create two vocabularies for one refusal and guarantee
 // they drift. M32-T05's `AI_KILL_SWITCH_*` codes are the opposite direction and belong here: they
 // refuse an attempt to CHANGE a switch, which no consumer ever sees.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M32-T03 governance failure catalog → HTTP status. */
 export const AI_GOVERNANCE_ERROR_STATUS = {

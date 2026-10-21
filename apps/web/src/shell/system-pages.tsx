@@ -1,5 +1,5 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { CenteredStatusLayout, Glyph, useCorrelationId } from "@wardenx/ui";
+import type { ScreenRegistryModule } from "@chartwarden/types";
+import { CenteredStatusLayout, Glyph, useCorrelationId } from "@chartwarden/ui";
 // apps/web/src/shell — System / Utility Pages (M1 cross-cutting, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md — "Use System Page."
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `dT1Bt`): each state is a System Page —

@@ -1,4 +1,4 @@
-import { useApiClient, useToast } from "@wardenx/ui";
+import { useApiClient, useToast } from "@chartwarden/ui";
 import {
   type CSSProperties,
   type JSX,

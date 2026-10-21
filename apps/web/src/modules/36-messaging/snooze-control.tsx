@@ -3,7 +3,7 @@
 // is the sender or assignee of an open acknowledgment request) no button is offered: a short note and a full sentence say why. Nothing
 // renders while loading, when the tenant has the feature off, or when the first read failed. Results and refusals are announced in a
 // persistent polite live region; a refusal closes the dialog, keeps the error on screen and puts focus on a real element.
-import { Button, Glyph, Modal } from "@wardenx/ui";
+import { Button, Glyph, Modal } from "@chartwarden/ui";
 import { type JSX, useEffect, useRef, useState } from "react";
 import {
   SNOOZE_ENDED_TEXT,

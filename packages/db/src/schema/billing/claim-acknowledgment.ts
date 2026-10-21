@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `claim_acknowledgment` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// @chartwarden/db — `claim_acknowledgment` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). Append-only: one row per inbound 999 / 277CA / 835 acknowledgment file processed for a
 // submission. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).
 //
@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 // FORBIDDEN. Only `organization_id` (core) and the intra-M23 parents `submission_id` (claim_submission)
 // + `claim_id` (claim, back-link) get real `.references(...)`. No PHI / MBI is ever stored here
 // (D13, §8.7); `parsed_payload` carries only X12 status / reason codes (typed loosely at the DB layer —
-// the deep per-kind shape is TypeBox-typed in `@wardenx/billing` P2).
+// the deep per-kind shape is TypeBox-typed in `@chartwarden/billing` P2).
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
@@ -15,7 +15,7 @@ import { claimSubmission } from "./claim-submission";
 import { m23ClaimAcknowledgmentKind, m23MacJurisdiction } from "./types";
 
 // claim_acknowledgment.parsed_payload — parsed 999/277CA/835 result, typed by `kind` at the service
-// layer (`@wardenx/billing` P2). Opaque at the DB layer; NEVER contains PHI/MBI (D13, §8.7).
+// layer (`@chartwarden/billing` P2). Opaque at the DB layer; NEVER contains PHI/MBI (D13, §8.7).
 // NOTE FOR INTEGRATE: the kernel `types.ts` is the canonical home for jsonb helper types — relocate
 // this `ClaimAcknowledgmentParsedPayload` interface there (it was not present in the kernel report).
 export interface ClaimAcknowledgmentParsedPayload {

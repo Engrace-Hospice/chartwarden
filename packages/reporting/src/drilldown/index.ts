@@ -1,4 +1,4 @@
-// @wardenx/reporting · drilldown barrel — the drilldown emitter (M33 §5.1.3 / W-R-05 / §4.10 / D16).
+// @chartwarden/reporting · drilldown barrel — the drilldown emitter (M33 §5.1.3 / W-R-05 / §4.10 / D16).
 //
 // PURE port-injected handlers for the synchronous `POST /api/reporting/drilldown/emit` path (audit flush via the
 // `report.drilldown_audit_flush` queue; the live route + outbox dispatcher binding land at app boot in P2C). The

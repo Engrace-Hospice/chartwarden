@@ -15,8 +15,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import type { PatientId } from "@wardenx/types";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import type { PatientId } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzlePortalEraseStore, erasePortalRecord } from "../src/modules/31-portal/eraser";

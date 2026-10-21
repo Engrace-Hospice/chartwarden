@@ -13,8 +13,8 @@
 //                    transfer-out, or a completed non-death discharge — in the last RECENTLY_DISCHARGED_DAYS days,
 //                    whose patient has no later admission: the readmission candidates (newest first).
 // The page's discharge/transfer facts are read with ONE extra query per table, bounded by the page size.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { type DischargeDetailKind, missingDischargeDetail } from "./discharge";

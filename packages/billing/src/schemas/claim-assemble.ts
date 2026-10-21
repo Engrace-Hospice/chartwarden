@@ -1,4 +1,4 @@
-// @wardenx/billing — schemas for route #1 `POST /api/v1/billing/claims:assemble` (§4.1 / §4.2).
+// @chartwarden/billing — schemas for route #1 `POST /api/v1/billing/claims:assemble` (§4.1 / §4.2).
 //
 // Server-authoritative claim assembly: takes (provider_entity_id, patient_id, service_from, service_to,
 // tob) and produces a DRAFT `claim` with lines + HIPPS + SIA snapshots, then runs the initial

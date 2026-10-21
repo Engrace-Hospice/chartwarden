@@ -13,7 +13,7 @@
 //
 // All three flags are read from the org-NULL platform row only (`readPlatformGlobalFlag`), never through `forOrg`: a tenant-scoped
 // `feature_flag` row for any of these keys can never satisfy a check. A read error THROWS (the route answers 5xx, never "ON").
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import { readPlatformGlobalFlag } from "../../../bootstrap/feature-flag-store";
 import { excludedChannelMembersExist } from "../member-category-gate";

@@ -1,4 +1,4 @@
-// @wardenx/forms — §3.1 / §1.2 the PrintVendorAdapter contract (Architecture §25.14 adapter mandate).
+// @chartwarden/forms — §3.1 / §1.2 the PrintVendorAdapter contract (Architecture §25.14 adapter mandate).
 //
 // M22 owns the adapter CONTRACT; the per-tenant configuration lives on `tenant_template_overlay`. The
 // default is the deny-stub (no print vendor configured → M22 emits the rendered PDF as a tenant-

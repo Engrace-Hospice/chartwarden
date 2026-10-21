@@ -1,4 +1,4 @@
-import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@wardenx/types";
+import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@chartwarden/types";
 // packages/hearthnote/__tests__/templates.test.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 // The default template registry: one template per legal pair, spec-mandated required sections.
 import { describe, expect, it } from "vitest";

@@ -5,8 +5,8 @@
 // flag is held until the reload after an action has settled, so a second click cannot overlap it. The list is re-read when the
 // channel's messages change, when the window regains focus, and on a modest interval while any request is still open. The
 // server stays the authority on every action. Nothing here runs on open or read.
-import type { AckRequestDto } from "@wardenx/types";
-import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
+import type { AckRequestDto } from "@chartwarden/types";
+import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { REASSIGN_BUSY_TEXT } from "./ack-reassign-wording";
 import {

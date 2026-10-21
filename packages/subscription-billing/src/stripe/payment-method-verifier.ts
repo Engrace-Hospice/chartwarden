@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — GAP-060 the payment-method ownership check (pure over the Stripe client).
+// @chartwarden/subscription-billing — GAP-060 the payment-method ownership check (pure over the Stripe client).
 //
 // `POST /api/v1/payment_methods/attach` receives a `stripePaymentMethodId` from the browser. A client-supplied
 // id proves nothing: it can be forged (`pm_fake`), belong to another tenant's customer, or squat the global

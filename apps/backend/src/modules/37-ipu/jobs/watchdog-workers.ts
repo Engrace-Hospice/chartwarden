@@ -9,10 +9,10 @@
 // deterministic correlation id collapses into the one already raised; and (4) ISOLATED — one org's failure is
 // collected and rethrown AFTER the others ran, so the job still fails into the DLQ without denying every org
 // that sorts after it. Events go through the transactional outbox in the SAME tx as the write they announce.
-import { type DbClient, organizationTimezone } from "@wardenx/db";
-import { buildCensusSnapshotPayload } from "@wardenx/inpatient";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, organizationTimezone } from "@chartwarden/db";
+import { buildCensusSnapshotPayload } from "@chartwarden/inpatient";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 import {
   M37_WATCHDOG_QUEUES,

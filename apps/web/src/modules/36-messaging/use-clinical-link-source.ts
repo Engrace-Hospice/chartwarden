@@ -5,7 +5,7 @@
 //   care_plan   GET /patients/{patientId}/care-plan   (one aggregate; 404 = no plan yet)
 // order, visit, document and idg_meeting have no patient-scoped typed list route yet, so they are hidden. Add a kind by
 // adding a branch here once its route exists; nothing else changes.
-import { type ApiClient, useApiClient } from "@wardenx/ui";
+import { type ApiClient, useApiClient } from "@chartwarden/ui";
 import { useMemo } from "react";
 import type { ClinicalLinkCandidate, ClinicalLinkCandidateSource } from "./clinical-link-kinds";
 

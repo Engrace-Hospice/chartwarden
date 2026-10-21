@@ -4,9 +4,9 @@
 // The partial unique index `intake_records_request_fax_one_live_uq` is the idempotency wall: two concurrent
 // sends of one request cannot both insert a `sending` row — the loser re-reads and gets `existing`.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   FAX_INTERRUPTED_REASON,

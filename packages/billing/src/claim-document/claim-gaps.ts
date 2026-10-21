@@ -1,4 +1,4 @@
-// @wardenx/billing — the structured failure the claim-to-837I loader returns. A field with no source today is an
+// @chartwarden/billing — the structured failure the claim-to-837I loader returns. A field with no source today is an
 // explicit, typed gap (never an invented value). Gaps name the FIELD only, never its value (PHI).
 
 export type ClaimGapReason =

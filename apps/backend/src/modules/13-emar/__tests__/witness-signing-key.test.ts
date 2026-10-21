@@ -1,4 +1,4 @@
-import { buildWitnessAttestationToken, verifyWitnessAttestationToken } from "@wardenx/emar";
+import { buildWitnessAttestationToken, verifyWitnessAttestationToken } from "@chartwarden/emar";
 /**
  * TASK-008/SEC-001 — the §7.4 witness-attestation HMAC secret is externalized via
  * `M13_WITNESS_SIGNING_KEY`, read once at module load (mirrors `bootstrap/env.ts`'s fail-closed

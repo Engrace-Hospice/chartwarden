@@ -1,7 +1,7 @@
 // apps/web/src/modules/20-field-safety/safety-status.test.ts — the M20 presentation vocabulary
 // (§5 / §6.6 / §9.1).
 //
-// The pure helpers live in `safety-status.ts` (it imports only the `StatusTone` *type* from @wardenx/ui,
+// The pure helpers live in `safety-status.ts` (it imports only the `StatusTone` *type* from @chartwarden/ui,
 // erased at runtime), so this suite is colocated in apps/web — a `packages/` test importing it would
 // create a forbidden package→app dependency-cruiser edge (the M19 oncall-status.test.ts precedent).
 //

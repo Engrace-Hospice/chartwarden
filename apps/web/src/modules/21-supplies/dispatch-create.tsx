@@ -23,7 +23,7 @@
 // The per-line lot / expiration fields stay OPTIONAL in the form exactly as they are in §4.2's TypeBox: the
 // DOMAIN raises `M21_LOT_NUMBER_REQUIRED` with its own code on a controlled line, and letting the boundary
 // pre-empt it with a generic "required field" would hide which rule actually refused.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

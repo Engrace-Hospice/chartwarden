@@ -51,9 +51,9 @@
 // The event name is a STRING literal and no M11 schema is imported — M6 reads M11 solely through the
 // foundation outbox (the `m22-document-rendered.ts` / `m29-proposal-accepted.ts` precedent one file
 // over), so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { LevelOfCare } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { LevelOfCare } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { AdmissionWriteOutboxPort } from "../admission-route-service-db";
 import { transitionLevelOfCare } from "../state-machines/level-of-care";

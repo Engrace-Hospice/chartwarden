@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §2.2/§3.2.3/§5.3/§5.4 governance rules (M32-T03).
+// @chartwarden/ai-platform — §2.2/§3.2.3/§5.3/§5.4 governance rules (M32-T03).
 //
 //   · ./errors                 the T03 refusal catalog + the M1 error envelope
 //   · ./capability-lifecycle   who may walk a §2.2 edge, with what evidence, and what the row becomes

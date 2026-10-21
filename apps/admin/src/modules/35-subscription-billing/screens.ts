@@ -1,8 +1,8 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/35-subscription-billing — M35 §5.2 platform-ops screen registration (ADR-0030).
 // The fourteen WardenX-staff subscription-billing screens contributed into the M34 admin shell. Each
 // `requiredPermission` is a REAL §4.7 M35 `billing_admin.*` key the matching /api/admin route gates on
-// (M35_CONTRIBUTED_PERMISSIONS in @wardenx/auth) — the server stays the authoritative enforcer; this only
+// (M35_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) — the server stays the authoritative enforcer; this only
 // gates nav visibility. M34 owns the apps/admin shell; M35 owns this slice and registers into it at
 // composition (apps/admin/src/main.tsx), never importing the shell's internals — the frontend seam analogue.
 import type { ComponentType } from "react";

@@ -27,8 +27,8 @@
 // same reason it did there: M32's `*_membership_id` columns hold MEMBERSHIP ids and M3's grant store is
 // keyed on USER id, so a direct lookup would return zero grants — denying every legitimate operator for
 // the wrong reason.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 
 import type {

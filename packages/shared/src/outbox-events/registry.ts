@@ -1,4 +1,4 @@
-// @wardenx/shared — Outbox Event Catalog aggregator (M1 Foundation §3.17).
+// @chartwarden/shared — Outbox Event Catalog aggregator (M1 Foundation §3.17).
 //
 // Aggregates every module's ModuleEventContribution (events-by-mN.ts) into one
 // validated catalog map, mirroring the organization-settings registry pattern. The
@@ -6,7 +6,7 @@
 // OutboxEventCollisionError rather than letting one silently shadow the other
 // (spec §3.17.4 collision check). The map is the source the dispatcher validates each
 // publish against (unknown_event / namespace / payload — see ../outbox/publish.ts).
-import type { ModuleEventContribution, OutboxEventEntry } from "@wardenx/types";
+import type { ModuleEventContribution, OutboxEventEntry } from "@chartwarden/types";
 import { M1_OUTBOX_EVENTS } from "./events-by-m1";
 
 // Every producer module appends its events-by-mN.ts contribution here.

@@ -1,4 +1,4 @@
-// @wardenx/terminology — the platform `code_system` catalog seed (M38-T08, spec §3.9).
+// @chartwarden/terminology — the platform `code_system` catalog seed (M38-T08, spec §3.9).
 //
 // Phase-1 bootstrap seeds one catalog row per code system M38 owns. This is the typed,
 // deterministic source of truth a seed runner inserts into `code_system`; the actual concept

@@ -1,4 +1,4 @@
-import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/shell — concrete screen registry for the Platform-Ops console (M34, ADR-0030). The
 // admin analogue of apps/web/src/shell/screen-registry.ts + apps/portal's registry: an empty registry
 // the composition root (main.tsx) registers each platform-module slice into. The shell reads the merged

@@ -1,5 +1,5 @@
 // Shared by the WP 3.5 handoff tests: a handoff and its items in the shape the API returns.
-import type { HandoffDto, HandoffItemDto } from "@wardenx/types";
+import type { HandoffDto, HandoffItemDto } from "@chartwarden/types";
 
 export const ITEM_FIXTURE: HandoffItemDto = {
   id: "i1",

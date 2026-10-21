@@ -1,11 +1,11 @@
-// @wardenx/billing — M23 pure calendar-date helpers (D6 / D7). The HIPPS day-bucketing (days 1-7 vs
+// @chartwarden/billing — M23 pure calendar-date helpers (D6 / D7). The HIPPS day-bucketing (days 1-7 vs
 // days 8+ of the hospice stay) and the SIA last-7-days-of-life window are CALENDAR-DAY arithmetic, so
 // these helpers operate over ISO `YYYY-MM-DD` strings via UTC epoch-day math — never a local-timezone
 // `Date` (a DST or tz offset would shift a day boundary and mis-bill a per-diem). Every function is a
 // PURE total function of its arguments and reads NO clock; the "today" comparisons (`service_to <= today`)
 // that a real submission needs live in the Phase-3 service layer, never here.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no `Date.now()`.
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no `Date.now()`.
 import type { IsoDate } from "../contracts";
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;

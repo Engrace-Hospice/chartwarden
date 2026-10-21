@@ -5,9 +5,9 @@
 // `M34_PLATFORM_JOB_ID`, the `platform.bypass_invoked` row on entry), the catalog-validated `m34.*` outbox
 // publisher, M36's `AlertEmitter` (resolved lazily — `getSeam` throws on an unregistered name) and the
 // critical audit writer. The bootstrap flag store takes no edge on any of them; they arrive here as ports.
-import type { DbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
-import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import type { FeatureFlagKillSwitchPorts } from "../../bootstrap/feature-flag-store";
 import { getSeam } from "../../bootstrap/index";
 import type { OutboxPublishPort } from "./routes/platform/service-drizzle";

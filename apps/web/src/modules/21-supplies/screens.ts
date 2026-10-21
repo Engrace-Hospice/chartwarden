@@ -1,11 +1,11 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/21-supplies — M21 Supplies / DME / Comfort-Kit screen registration
 // (Track B / ADR-0030, §5.1). The read + write surface over the live /api/v1/supplies backend
 // (37 routes, M21-T05).
 //
 // Each `requiredPermission` is the REAL §4.3 M21 key the matching route gates on
 // (apps/backend/src/modules/21-supplies/permission-keys.ts → `M21_CONTRIBUTED_PERMISSIONS` in
-// @wardenx/auth) — this gates NAV VISIBILITY only; the server stays the authoritative enforcer, and a row
+// @chartwarden/auth) — this gates NAV VISIBILITY only; the server stays the authoritative enforcer, and a row
 // outside the caller's organization is a non-leaking 404 from the server, never a frontend hide.
 //
 // THE PERPETUAL LOG IS A SEPARATE ENTRY BECAUSE IT IS A SEPARATE PERMISSION. §4.3 gives

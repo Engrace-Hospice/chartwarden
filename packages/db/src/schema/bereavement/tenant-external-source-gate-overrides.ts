@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_bereavement_external_source_gate_override` (M16 §3.3.9). The TIGHTEN-ONLY surface
+// @chartwarden/db — `tenant_bereavement_external_source_gate_override` (M16 §3.3.9). The TIGHTEN-ONLY surface
 // for D18's external-source first-contact gate.
 //
 // D18 is a platform floor: for a plan opened from an `hl7_external` death notification, the counselor's

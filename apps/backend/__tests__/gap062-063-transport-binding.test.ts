@@ -1,8 +1,8 @@
 // GAP-062 / GAP-063 — the env-gated binding of the out-of-band vendor transports and the endpoint-verification
 // sender. Driven with a fake fetch; the real adapters' wire behaviour is covered in packages/messaging.
 import { createECDH } from "node:crypto";
-import { TRANSPORT_NOT_CONFIGURED, sanitizeForOutOfBand } from "@wardenx/messaging";
-import { ChartWardenError } from "@wardenx/types";
+import { TRANSPORT_NOT_CONFIGURED, sanitizeForOutOfBand } from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { bindOutOfBandTransports } from "../src/modules/36-messaging/delivery/transport-binding";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";

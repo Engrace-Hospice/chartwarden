@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `usage_period_aggregate` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). One row
+// @chartwarden/db — `usage_period_aggregate` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). One row
 // per (subscription, event_type, period). `organization_id` is a logical uuid (M35-F04); `subscription_id`
 // is a REAL FK. The §3.6 posture audits only when `stripe_usage_record_id` is set (partial-exclusion).
 import {

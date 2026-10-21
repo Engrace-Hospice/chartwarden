@@ -1,4 +1,4 @@
-// @wardenx/audit — In-memory adapters for the audit job processors (M4-T11, §4.4, §12.7).
+// @chartwarden/audit — In-memory adapters for the audit job processors (M4-T11, §4.4, §12.7).
 //
 // Deterministic, infra-free ports the job unit/integration tests run against — the same forward
 // pattern as ../lifecycle/ports (eraser) and the in-memory AuditQuery. Each adapter records what

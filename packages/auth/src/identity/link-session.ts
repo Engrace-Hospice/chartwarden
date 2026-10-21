@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — minting a session for a REDEEMED magic link (M2 §3.6 / ADR-0026).
+// @chartwarden/auth · identity — minting a session for a REDEEMED magic link (M2 §3.6 / ADR-0026).
 //
 // ADR-0026: Better Auth is the SINGLE authentication surface; no module mints its own session tokens. A redeemed
 // external-collaborator or funeral-home link has to end in a real `session` row plus a signed session cookie, and

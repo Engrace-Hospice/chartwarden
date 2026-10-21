@@ -9,15 +9,15 @@
 // reaction can never become, replace or imply a read receipt or a sign-off. Pin and unpin are audited by the
 // `message_pin` write-audit trigger (actor = the session user). Both operations are idempotent; the realtime hint
 // (`m36.message.annotated`, ids and one timestamp) is published only when a row actually changed.
-import { type DbClient, schema } from "@wardenx/db";
-import type { MessageReactionPinService, MessagingRouteService } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { MessageReactionPinService, MessagingRouteService } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   MAX_PINS_PER_CHANNEL,
   NotFoundError,
   ChartWardenError,
   isMessageReactionKey,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { loadReactionSummaries } from "./message-annotations";
 import { type HintOutboxPort, publishMessageHint } from "./message-hint-events";

@@ -1,4 +1,4 @@
-// @wardenx/x12-835-client — lightweight ISA/ST envelope-header extraction. PURE string parsing, no pyx12,
+// @chartwarden/x12-835-client — lightweight ISA/ST envelope-header extraction. PURE string parsing, no pyx12,
 // no sidecar round-trip. WX-PR-012: the M25 receive step needs the dedup key (ISA13 interchange control
 // number + ST02 transaction-set control number) BEFORE it can insert the `remittance_advice` row — the
 // full CLP-level parse only happens after that row exists (the queued → parsing → parsed state machine,

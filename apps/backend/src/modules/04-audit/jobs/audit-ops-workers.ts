@@ -4,8 +4,8 @@
 //
 // build_export and execute_destruction are SWEEPS (every few minutes) rather than per-request jobs: the
 // export/approve routes only persist a row, and a sweep needs no enqueue seam in those routes and
-// survives a lost job. retention_scan is the daily §4.4 schedule from @wardenx/audit.
-import { AUDIT_JOB_SCHEDULES, AUDIT_QUEUES } from "@wardenx/audit";
+// survives a lost job. retention_scan is the daily §4.4 schedule from @chartwarden/audit.
+import { AUDIT_JOB_SCHEDULES, AUDIT_QUEUES } from "@chartwarden/audit";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type AuditIntegrityDeps,

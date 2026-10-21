@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — the ICD-10-CM CODE SCANNER (F-238).
+// @chartwarden/intake-extraction — the ICD-10-CM CODE SCANNER (F-238).
 //
 // WHY CODES ARE NOT TAKEN FROM THE MODEL. AI Governance §2.1.1 hard-blocks AI-introduced changes to codes.
 // A diagnosis code DocLens shows a reviewer must be the code PRINTED on the page, so this scanner — not the

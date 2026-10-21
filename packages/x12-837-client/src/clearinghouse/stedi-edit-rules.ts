@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — a pre-flight check of the edits Stedi's engine applied in the sandbox (ADR-0053 D9).
+// @chartwarden/x12-837-client — a pre-flight check of the edits Stedi's engine applied in the sandbox (ADR-0053 D9).
 //
 // Every rule below was observed as a rejection on 2026-10-09; none is inferred from the implementation guide, and
 // the check says nothing about payer or MAC acceptance ("passed these edits" only). A finding names the rule and

@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M17 (Scheduling & Route Optimization). PRESENT (§4.4).
+// @chartwarden/reporting — consumed-seam view of M17 (Scheduling & Route Optimization). PRESENT (§4.4).
 //
 // M33 reads visit productivity/quality + route-efficiency aggregates. Bound to the live M17
 // `VisitMetricsProvider` / `RouteEfficiencyReader` / `VisitReader` via `getSeam` at boot (P2C).

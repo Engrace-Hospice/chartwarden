@@ -1,10 +1,10 @@
-// @wardenx/auth · identity — the published `SessionContextResolver` seam (M2-T07; M2 spec §4.7).
+// @chartwarden/auth · identity — the published `SessionContextResolver` seam (M2-T07; M2 spec §4.7).
 //
 // M2 publishes the authenticated, org-scoped request context as a boot-registered seam so
 // consumers need NO dependsOn edge on M2: Module 3's `step_up_recent` predicate reads
 // `lastStepUpAt`/`lastStepUpFactor` through `resolveStepUpState`, Module 4 reads the actor
 // for the audit trail, and every module needing an authenticated context resolves the actor.
-// The contract type lives in @wardenx/types (leaf); the IMPLEMENTATION here is injected at
+// The contract type lives in @chartwarden/types (leaf); the IMPLEMENTATION here is injected at
 // boot and validated by validateSeams().
 //
 // Resolution is org-scoped by construction: a session row whose `organizationId` ≠ the
@@ -21,7 +21,7 @@ import type {
   SessionContextResolver,
   SessionStepUpFields,
   StepUpFactor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type StepUpOverrideStore, tightenStepUpPolicy } from "./step-up-policy";
 
 /** A session row as the resolver needs it (sourced from the M1-owned `session` table). */

@@ -1,8 +1,8 @@
 // M36 WP 3.5 - start a handoff: (1) choose caseload patients, (2) review the pre-filled open work (pointers only, each
 // removable; a source that could not be read is named and not offered), (3) choose a colleague and offer. Nothing is
 // stored or visible to the receiver until Offer. No free text anywhere: the narrative belongs in the care-team thread.
-import type { HandoffDto, HandoffItemKind } from "@wardenx/types";
-import { Button, Modal } from "@wardenx/ui";
+import type { HandoffDto, HandoffItemKind } from "@chartwarden/types";
+import { Button, Modal } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { HandoffRecipientPicker, type Recipient } from "./handoff-recipient-picker";

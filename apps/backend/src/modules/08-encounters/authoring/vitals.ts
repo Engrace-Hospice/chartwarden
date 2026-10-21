@@ -8,7 +8,7 @@
 // runs the returned §2.8 effects inside the encounter's optimistic-locked transaction. "Clinically not
 // indicated" is a first-class value (§2.2) — a non-empty CNI field list requires a documented reason,
 // never a silent NULL the surveyor can't explain.
-import type { PainScale, VitalUnit } from "@wardenx/types";
+import type { PainScale, VitalUnit } from "@chartwarden/types";
 import type { EncounterSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
 

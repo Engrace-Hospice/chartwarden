@@ -1,4 +1,4 @@
-// @wardenx/db — the seven Phase-1 per-system concept tables that carry only the COMMON concept shape (§2.3):
+// @chartwarden/db — the seven Phase-1 per-system concept tables that carry only the COMMON concept shape (§2.3):
 // ICD-10-PCS, NDC, HCPCS, CVX, UB-04 revenue, CARC, RARC. (ICD-10-CM / SNOMED / LOINC / RxNorm have bespoke
 // columns and their own files.) One table per system, never one polymorphic table — the system-specific detail
 // (NDC labeller, HCPCS short description, CARC group code …) rides `properties` until a hot-path column is earned.

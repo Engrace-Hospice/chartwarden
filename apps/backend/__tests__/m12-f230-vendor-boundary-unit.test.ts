@@ -10,8 +10,8 @@
 //   • the packet builder passes the slot through and the Part 2 redactor zeroes the count;
 //   • the packet read model never renders 'not pulled' / 'not captured' as 'no external history'.
 import { createHash } from "node:crypto";
-import type { DbClient } from "@wardenx/db";
-import { type PacketBuildInput, applySudRedaction, buildPacketSnapshot } from "@wardenx/idg";
+import type { DbClient } from "@chartwarden/db";
+import { type PacketBuildInput, applySudRedaction, buildPacketSnapshot } from "@chartwarden/idg";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import {

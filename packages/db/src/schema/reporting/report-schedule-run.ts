@@ -1,4 +1,4 @@
-// @wardenx/db — `report_schedule_run` (M33 §3.3). The per-occurrence run ledger for a scheduled
+// @chartwarden/db — `report_schedule_run` (M33 §3.3). The per-occurrence run ledger for a scheduled
 // report: the scheduled_for slot, lifecycle status, the M22 document back-ref once rendered, and
 // failure/row-count telemetry. ORG-SCOPED: carries organization_id NOT NULL → standard app.org_id
 // RLS. PARTITION BY RANGE (scheduled_for) monthly (retention class `operational`): the Drizzle

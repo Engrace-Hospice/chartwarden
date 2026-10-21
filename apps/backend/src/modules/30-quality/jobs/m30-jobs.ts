@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 // apps/backend/src/modules/30-quality/jobs/m30-jobs.ts — M30 Phase-2C LIVE BullMQ wiring for the §4.8 jobs.
 //
-// The thin, infra-touching adapter that turns the @wardenx/quality PURE processors (the four §4.8 work-queue
+// The thin, infra-touching adapter that turns the @chartwarden/quality PURE processors (the four §4.8 work-queue
 // workers + the four crons) into running BullMQ `Worker`s + the cron-schedule `Queue`s. ALL job LOGIC lives
 // in the package (unit-tested against in-memory ports); this module only constructs `Worker`/`Queue` over a
 // Valkey connection and BINDS each worker's PORTS to real adapters — the M30 repositories (measure-value /
@@ -37,7 +37,7 @@ import { createHash, randomUUID } from "node:crypto";
 //     them unbound every `m30.cahps_export` run reaches the §4.8 terminal `export_failed` gate on its final
 //     attempt — fail-closed, never a plaintext leak.
 //   • the risk-register MV REFRESH runs on the PRIMARY pool (CONCURRENTLY keeps R-95 reads live, D3/D13).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type ActiveOrgListPort,
   type CahpsAdapterResolvePort,
@@ -104,8 +104,8 @@ import {
   skilledNursingMinutesOnRhcDays,
   sraRemindersCronProcessor,
   unboundWorkerPort,
-} from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AdmissionOnsetReader,
   DeathDischargeReader,
@@ -114,7 +114,7 @@ import type {
   LevelOfCarePeriodReader,
   MedicationOrderProvider,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { getSeam } from "../../../bootstrap/index";
 import { buildProcessingLogPort } from "../../../bootstrap/processing-log";
@@ -160,7 +160,7 @@ export interface M30WorkerDeps {
   readonly primaryDb?: DbClient;
   /** The LIVE M10 HOPE consumer (bound via `getSeam` at boot — the one consumed seam, §4.4 / M10-real). */
   readonly hope: QualityHopeConsumer;
-  /** The per-org CAHPS adapter resolver (a `CahpsAdapterRegistry` seeded from @wardenx/cahps-vendors); a job
+  /** The per-org CAHPS adapter resolver (a `CahpsAdapterRegistry` seeded from @chartwarden/cahps-vendors); a job
    *  for an org with no live binding 503s (degraded, not 404). Fail-closed thunk when absent. */
   readonly cahpsAdapters?: CahpsAdapterResolvePort;
   /**
@@ -341,7 +341,7 @@ function hashSnapshot(snapshot: unknown): string {
 
 /**
  * The per-measure `ThresholdRule` the four HOPE-family calculators each take in their input. No per-FY HOPE
- * threshold table exists in @wardenx/quality (unlike `HCI_THRESHOLDS_v2025`), so the resolver supplies a
+ * threshold table exists in @chartwarden/quality (unlike `HCI_THRESHOLDS_v2025`), so the resolver supplies a
  * documented platform default per measure. All four are higher-is-better (`gte`).
  *
  * ★ ASSUMPTION (flagged): only `hope_submission_acceptance_rate`'s 0.90 is CMS-sourced (the §1.3 APU floor —
@@ -1220,7 +1220,7 @@ function daysBetween(from: string, to: string): number {
  *
  * Both follow the CMS HCI definitions, so both populations are ROUTINE HOME CARE days: indicator 8 divides
  * the SN minutes on those days by the days, indicator 9 divides the Saturday/Sunday share of those minutes
- * by all of them. The reduction is the pure `skilledNursingMinutesOnRhcDays` in `@wardenx/quality`.
+ * by all of them. The reduction is the pure `skilledNursingMinutesOnRhcDays` in `@chartwarden/quality`.
  *
  * Aggregate-by-default: two org-level reads in, totals out (D6).
  */
@@ -1806,7 +1806,7 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             bereavementCompliance: getSeam("BereavementComplianceProvider") as never,
             disciplineCompliance: getSeam("DisciplineComplianceProvider") as never,
             // F-178 (#248) — M6's F2F compliance-window aggregate. Opaque (`unknown`) in the M1 registry;
-            // the concrete view lives in @wardenx/quality's m6-compliance-window.ts consumer-side leaf.
+            // the concrete view lives in @chartwarden/quality's m6-compliance-window.ts consumer-side leaf.
             complianceWindow: getSeam("ComplianceWindowCountsProvider") as never,
           });
         return resolveHopeMeasureInput(request, seams);

@@ -1,6 +1,6 @@
 // F-212 - the sequestration-policy service's VALIDATION runs before any database access: a rejected entry provably never
 // opens a transaction (the `db` stub throws on ANY property access), so a bad percentage/window cannot half-write.
-import type { BillingDb } from "@wardenx/billing";
+import type { BillingDb } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import type { M23WriteActor } from "../routes/actor";
 import { buildDrizzleSequestrationPolicyService } from "../routes/sequestration-policy-service";

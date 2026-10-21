@@ -1,4 +1,4 @@
-// @wardenx/db — `wage_data_import` (M27 §3.3, D6; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `wage_data_import` (M27 §3.3, D6; non-partitioned; retention class `compliance`).
 // Audit-replay record of every Gusto wage-data pull (or manual entry) feeding Worksheet S-3 Part II.
 // `raw_payload_cipher` is envelope-encrypted + audit-denylisted (§3.6); `normalized_wage_rows` holds the
 // per-discipline paid-hours/salary/fringe rows. Reuses the m27_import_source / m27_import_status enums

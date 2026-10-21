@@ -1,5 +1,5 @@
 // apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts — M12-T08 the §4.1 route inventory behind
-// the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the §4.6 keys
+// the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the §4.6 keys
 // M12 registers into M3's catalog (M12_CONTRIBUTED_PERMISSIONS). Org binding is server-side
 // (`request.context`, never the body). Handlers compose over the injected MedicationOrderRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -24,8 +24,8 @@
 // service inside the sign transaction from the STORED order and the signer's roster row — no discipline or
 // ordering-physician flag is read from the body. M11's `signer_eligible` / `cosigner_role_match` resolve against
 // M11's order store (no row for a medication_order id) so they are not bound here; cosign (GAP-034) is enforced in the service from the session + stored order.
-import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { prescriberDisciplinesOf } from "../abac-predicates";
@@ -62,7 +62,7 @@ import {
 } from "./dosespot-typebox";
 import type { DoseSpotAbacActor, MedicationOrderRouteService, OrderListScope } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface DoseSpotRouteDeps {

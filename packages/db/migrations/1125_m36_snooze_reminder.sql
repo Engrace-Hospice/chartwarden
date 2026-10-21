@@ -30,7 +30,7 @@ CREATE TABLE "message_snooze" (
     FOREIGN KEY ("organization_id", "channel_id")
     REFERENCES "channel"("organization_id", "id") ON DELETE CASCADE,
   CONSTRAINT "message_snooze_one_per_channel" UNIQUE ("organization_id", "user_id", "channel_id"),
-  -- The hard maximum (SNOOZE_MAX_MINUTES in @wardenx/types, pinned by a test).
+  -- The hard maximum (SNOOZE_MAX_MINUTES in @chartwarden/types, pinned by a test).
   CONSTRAINT "message_snooze_bounded" CHECK (
     "snoozed_until" > "snoozed_at" AND "snoozed_until" <= "snoozed_at" + interval '24 hours')
 );--> statement-breakpoint
@@ -128,7 +128,7 @@ CREATE TABLE "message_reminder" (
     FOREIGN KEY ("organization_id", "channel_id", "message_id")
     REFERENCES "message"("organization_id", "channel_id", "id") ON DELETE CASCADE,
   CONSTRAINT "message_reminder_one_per_message" UNIQUE ("organization_id", "user_id", "message_id"),
-  -- The hard horizon (REMINDER_MAX_HORIZON_DAYS in @wardenx/types, pinned by a test).
+  -- The hard horizon (REMINDER_MAX_HORIZON_DAYS in @chartwarden/types, pinned by a test).
   CONSTRAINT "message_reminder_bounded" CHECK (
     "remind_at" > "set_at" AND "remind_at" <= "set_at" + interval '30 days')
 );--> statement-breakpoint

@@ -12,8 +12,8 @@
 // `.submitted` event or confirmation-receipt render; the `.accepted` event carries a null acknowledgment id.
 // A notice that is ALREADY `ack_accepted` (the electronic path got there first) is left untouched: the electronic
 // answer stays the notice's truth and the queue item just records its own outcome.
-import { type NoticeState, noeMachine, notrMachine, repositories } from "@wardenx/billing";
-import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@wardenx/types";
+import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
+import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
 export type DdeNoticeKind = "noe" | "notr";

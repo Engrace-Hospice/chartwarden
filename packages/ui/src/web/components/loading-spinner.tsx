@@ -1,4 +1,4 @@
-// @wardenx/ui — loading-spinner (spec §5.1). Presentational; no app/feature imports.
+// @chartwarden/ui — loading-spinner (spec §5.1). Presentational; no app/feature imports.
 import type { JSX } from "react";
 
 export interface LoadingSpinnerProps {

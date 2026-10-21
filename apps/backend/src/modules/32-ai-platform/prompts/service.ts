@@ -9,7 +9,7 @@ import {
   type AiPromptActivationRequest,
   evaluateAiPromptActivation,
   requireAiGovernance,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 
 import type {
   AiPromptArtifactReader,

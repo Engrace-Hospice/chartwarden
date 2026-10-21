@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §3.7 / M35-F06 platform-retention transfer (pure over ports, M35-T03).
+// @chartwarden/subscription-billing — §3.7 / M35-F06 platform-retention transfer (pure over ports, M35-T03).
 //
 // The COPY-THEN-DELETE that lets an offboarded tenant's invoices survive erasure (D13, IRS §6001 7-year
 // floor) WITHOUT the M35-F06-rejected in-place `organization_id` rewrite. For each tenant `invoice`:
@@ -16,7 +16,7 @@
 // PURE: the store owns the transactional Drizzle reads/writes/deletes (the caller runs it INSIDE the M4
 // destruction `tx`); this orchestration is deterministic given (store, now, retainYears).
 
-import type { OrgId } from "@wardenx/types";
+import type { OrgId } from "@chartwarden/types";
 import type { PlatformRetentionStore } from "./ports";
 
 /** The IRS §6001 platform retention floor (D13) — 7 years from the transfer instant. */

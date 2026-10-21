@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the shared port idiom every §4.8 processor composes over.
+// @chartwarden/quality · workers — the shared port idiom every §4.8 processor composes over.
 //
 // EVERY fact + effect a worker touches is one of these tiny injected ports; the processors
 // (`./measure-recompute.ts` / `./cahps-export.ts` / `./outbreak-detection.ts` /

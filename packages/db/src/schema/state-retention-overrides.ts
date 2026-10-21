@@ -1,4 +1,4 @@
-// @wardenx/db — `state_retention_override` (M4 Audit §3.5, §3.6). Platform-reference table:
+// @chartwarden/db — `state_retention_override` (M4 Audit §3.5, §3.6). Platform-reference table:
 // per-state, per-data-class retention specs (with citation) that override the federal floor.
 // NON_ORG_SCOPED (no organization_id) — read-all reference data; writes only via the platform
 // role (check-tenancy allowlist). Composite PK on (state_code, data_class).

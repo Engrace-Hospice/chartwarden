@@ -1,4 +1,4 @@
-// @wardenx/audit — the audit field denylist (M1 spec §7.3, §8.5).
+// @chartwarden/audit — the audit field denylist (M1 spec §7.3, §8.5).
 //
 // An audit record proves WHAT a subject did to WHICH resource — it must not become a second
 // copy of the PHI it describes (HIPAA §164.312(b)). Every before/after/context snapshot

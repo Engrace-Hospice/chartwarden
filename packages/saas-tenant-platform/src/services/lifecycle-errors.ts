@@ -1,14 +1,14 @@
-// @wardenx/saas-tenant-platform · services — M34 tenant-lifecycle failure-code catalog (§2.2 / §2.4).
+// @chartwarden/saas-tenant-platform · services — M34 tenant-lifecycle failure-code catalog (§2.2 / §2.4).
 //
 // Every guard / validation failure in the pure tenant-lifecycle domain raises a
 // `TenantLifecycleError` carrying the machine-readable code below. The error extends the M1
-// `ChartWardenError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1
+// `ChartWardenError` envelope base (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1
 // Fastify error handler renders it with the precise code + HTTP status with no cross-module import
 // edge (the M11 `OrderStateError` convention, packages/orders/src/lifecycle/errors.ts). Nothing
 // transitions on a string match — each code is an enumerated constant; the §3.3 DB CHECK constraints
 // (e.g. `(status='destroyed') = (destroyed_at IS NOT NULL)`) repeat the strongest of these at the
 // schema layer as defense in depth. The route/worker layer reuses these codes verbatim.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M34 tenant-lifecycle failure-code catalog → canonical HTTP status. */
 export const M34_LIFECYCLE_ERROR_STATUS = {

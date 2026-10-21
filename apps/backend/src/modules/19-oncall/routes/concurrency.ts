@@ -23,7 +23,7 @@
 // enumeration oracle: a caller who cannot read another PE's calls can still learn how many there were.
 // {@link toCursorPage} has no field for it, which is the compile-time half of that rule.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

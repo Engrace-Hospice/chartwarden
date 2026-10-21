@@ -1,4 +1,4 @@
-// @wardenx/types — Module 31 (Patient/Family Portal & Telehealth) leaf contracts (M31-T01).
+// @chartwarden/types — Module 31 (Patient/Family Portal & Telehealth) leaf contracts (M31-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M31 spec's references to
 // `packages/domain/portal/{seam-interfaces,schemas,lay-language}.ts` resolve their TYPE surface HERE, so the
@@ -15,9 +15,9 @@
 // derived values or stay deferred). This mirrors the M16 `bereavement.ts` T01 precedent: ship the
 // type-level surface every later M31 task builds on. The pure-data policy (the D9 two-party recording
 // matrix, the D17 lay-language redaction, the session lifecycle) lives in the M31 backend + the
-// `@wardenx/telehealth-client` adapter — never here. This file is type-only and importable by everyone.
+// `@chartwarden/telehealth-client` adapter — never here. This file is type-only and importable by everyone.
 //
-// NAMING: every exported symbol carries the `Portal`/`Telehealth`/`M31` prefix. `@wardenx/types` is
+// NAMING: every exported symbol carries the `Portal`/`Telehealth`/`M31` prefix. `@chartwarden/types` is
 // re-exported wholesale from `./index.ts`, so a bare `AccountStatus` / `GrantKind` / `Vendor` would be a
 // TS2308 collision the day another module wants the same word (the M14 `IdgDecisionPayload` precedent).
 
@@ -31,7 +31,7 @@ import type { EncounterId, VisitId } from "./encounter";
 import type { PortalSessionId } from "./oncall";
 
 // ── M31-owned id aliases (mirror the §3.3 uuid PKs of the three owned tables; packages/types cannot
-// import @wardenx/db) ──────────────────────────────────────────────────────────────────────────────────
+// import @chartwarden/db) ──────────────────────────────────────────────────────────────────────────────────
 export type PortalAccountId = string;
 export type PortalAccessGrantId = string;
 export type TelehealthVisitId = string;

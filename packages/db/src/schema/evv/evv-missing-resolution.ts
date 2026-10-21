@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `evv_missing_resolution` (M18 §3.3 / §2.2.4 D6). The missing-EVV resolution state machine
+// @chartwarden/db — `evv_missing_resolution` (M18 §3.3 / §2.2.4 D6). The missing-EVV resolution state machine
 // (open → closed_clinician_attested | closed_supervisor_override | closed_visit_voided |
 // closed_documented_at_encounter | closed_system_checkout_received). `documented_missing` is allowed and is
 // never a Medicare claim gate (ADR-0008); only `unresolved_missing` (a still-`open` row) blocks downstream.

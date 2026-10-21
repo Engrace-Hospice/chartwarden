@@ -1,4 +1,4 @@
-// @wardenx/quality — the HCI indicators whose input a provider-side EHR structurally cannot assemble.
+// @chartwarden/quality — the HCI indicators whose input a provider-side EHR structurally cannot assemble.
 // Pure data. No IO.
 //
 // The other seven indicators are computable here because their populations are things the agency itself

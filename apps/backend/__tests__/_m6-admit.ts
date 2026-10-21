@@ -10,7 +10,7 @@
 //
 // This is the same ceremony `m6-admission-write-lifecycle.live.test.ts` (`qualifiedReferral`) runs, plus the
 // admission-details step (`updateAdmission` with an admission date), which readiness requires before activation.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { Client } from "pg";
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import { buildPatientAdmissionClearanceReader } from "../src/modules/05-patient/admission-clearance-reader";

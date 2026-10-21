@@ -3,9 +3,9 @@
 // plaintext, no token list), the number of distinct stored (channel, tag) values and the total stored rows (the input of the T sizing
 // rule, security review H2). With per-channel keys a bucket belongs to one channel, so a head bucket is a (channel, tag) pair; a channel
 // whose query lands entirely in head buckets is skipped up front (C3), and the response says the scan was capped.
-import type { DbClient } from "@wardenx/db";
-import { HEAD_BUCKET_ROWS, MAX_HEAD_PAIRS } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { HEAD_BUCKET_ROWS, MAX_HEAD_PAIRS } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
 export interface IndexStats {

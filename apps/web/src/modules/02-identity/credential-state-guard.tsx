@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Navigate } from "react-router-dom";

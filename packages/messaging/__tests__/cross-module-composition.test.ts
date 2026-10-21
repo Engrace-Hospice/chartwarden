@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T09 cross-module notification composition tests (spec §4.11, §3.13,
+// @chartwarden/messaging — M36-T09 cross-module notification composition tests (spec §4.11, §3.13,
 // ADR-0024). The composer loads a `notification_template`, applies a tighten-only tenant overlay,
 // renders title/body from the SOURCE event payload, resolves recipients via the ADR-0024 resolvers
 // (registered onto M36's open registry), and dispatches catalog-validated. PHI in the composed

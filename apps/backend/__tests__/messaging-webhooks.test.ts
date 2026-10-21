@@ -5,7 +5,7 @@
 // three vendor callbacks over an in-memory reconcile service. A correctly-signed, fresh Twilio
 // callback is accepted (204) and reconciled; a forged signature, a stale timestamp, a non-Postmark
 // IP, and a bad bearer are each rejected before the service is touched.
-import { computeTwilioSignature } from "@wardenx/messaging";
+import { computeTwilioSignature } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {

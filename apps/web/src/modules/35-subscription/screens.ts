@@ -1,8 +1,8 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/35-subscription — M35 Subscription Billing tenant screen registration (§5.1, ADR-0030).
 // The eight tenant-facing §5.1 screens (org_admin / billing_admin / accounts_receivable). Each
 // `requiredPermission` is a REAL §4.7 M35 tenant key the matching list/read route gates on
-// (M35_CONTRIBUTED_PERMISSIONS in @wardenx/auth) — the server stays the authoritative enforcer, this only
+// (M35_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) — the server stays the authoritative enforcer, this only
 // gates nav visibility. There is no tenant-facing `promo`/`dunning` read key, so those two screens gate on
 // `subscription.read` (the tenant billing scope). The platform-ops §5.2 admin console is a separate
 // forward surface (apps/admin) and is NOT registered here.

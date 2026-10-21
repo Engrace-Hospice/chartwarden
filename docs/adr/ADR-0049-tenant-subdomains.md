@@ -119,7 +119,7 @@ On those paths it applies D3's validation to the host and does nothing more.
 - **Format:** an RFC 1123 DNS label, lower-case only: `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`. It
   also must not start with `xn--` (no punycode, which blocks homograph look-alikes).
 - **Reserved names:** D2's reserved list is a single exported constant (`RESERVED_TENANT_SLUGS` in
-  `@wardenx/types`). Both the API validator and a DB `CHECK` enforce it, so it holds even for inserts
+  `@chartwarden/types`). Both the API validator and a DB `CHECK` enforce it, so it holds even for inserts
   that bypass the API, the same defense-in-depth shape as the 2026-10-04 audit's GAP-003 role-key fix.
 - **Who sets it:** the slug is set at tenant provisioning (M34) and is validated there and on any
   rename.

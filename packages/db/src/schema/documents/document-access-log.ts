@@ -1,4 +1,4 @@
-// @wardenx/db — `document_access_log` (M22 §3.3). The §164.528 disclosure-accounting ledger: one
+// @chartwarden/db — `document_access_log` (M22 §3.3). The §164.528 disclosure-accounting ledger: one
 // row per document content access (metadata read, content download, signed-URL issue/consume,
 // portal view, disclosure export), written by `auditRead()`. Feeds M4's accounting-of-disclosures
 // surface. Org-scoped; high-volume → cross-module FKs (document, version, accessor) are plain uuid.

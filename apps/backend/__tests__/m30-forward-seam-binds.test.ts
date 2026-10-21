@@ -1,4 +1,4 @@
-import { bindQualityConsumedSeams } from "@wardenx/quality";
+import { bindQualityConsumedSeams } from "@chartwarden/quality";
 // apps/backend/__tests__/m30-forward-seam-binds.test.ts — M30's M23/M27 forward-seam binds (§4.4).
 //
 // `QUALITY_FORWARD_SEAM_DENY_STUBS` stubbed `billing` (M23) and `costReport` (M27) as ABSENT producers

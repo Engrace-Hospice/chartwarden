@@ -2,7 +2,7 @@
 //
 // The tenant flag `messaging.clinical_links` is read through the platform's FeatureFlagReaderPort (tenant row wins; absent
 // = off, a kill switch = off), cached a few seconds per org like presence. The source ports are the owning modules' seams.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { cacheFlagRead } from "../presence/binding";
 import type { ClinicalLinkRouteDeps } from "../routes/clinical-link-routes";
 import { CLINICAL_LINKS_FLAG_KEY } from "./clinical-link-service";

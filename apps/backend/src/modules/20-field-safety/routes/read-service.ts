@@ -40,7 +40,7 @@ import type {
   SafetySosLifecycleState,
   SafetySosOutcome,
   SafetySubscriptionScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { M20ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 

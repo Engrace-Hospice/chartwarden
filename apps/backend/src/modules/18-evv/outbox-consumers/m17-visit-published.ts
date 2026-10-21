@@ -1,7 +1,7 @@
 // M18's live M17 publication consumer. It owns a tenant-scoped visit snapshot used to seed the EVV
 // capture window, removing the capture path's direct dependency on M17 persistence.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 
 const REGISTRATION = schema.evvVisitRegistrations;
 

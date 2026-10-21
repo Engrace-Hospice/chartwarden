@@ -1,9 +1,9 @@
-// @wardenx/billing · repositories — the shared Drizzle surface + load-bearing conventions every M23
-// repository builds on (the @wardenx/cost-report `repositories/db.ts` precedent, M27).
+// @chartwarden/billing · repositories — the shared Drizzle surface + load-bearing conventions every M23
+// repository builds on (the @chartwarden/cost-report `repositories/db.ts` precedent, M27).
 //
-// CONVENTION (mirrors @wardenx/cost-report + @wardenx/quality + @wardenx/reporting): each repo takes the
+// CONVENTION (mirrors @chartwarden/cost-report + @chartwarden/quality + @chartwarden/reporting): each repo takes the
 // Drizzle client (`BillingDb`) in its constructor and issues plain Drizzle queries; the read/write SERVICE
-// layer (P3 apps/backend) wraps each call in `withOrgContext` (M1 @wardenx/tenancy) so Postgres RLS scopes
+// layer (P3 apps/backend) wraps each call in `withOrgContext` (M1 @chartwarden/tenancy) so Postgres RLS scopes
 // every statement to `app.org_id`. The repo therefore accepts either the pooled `DbClient` or a
 // transaction handle opened by `withOrgContext` — both satisfy `BillingDb` structurally. The repo never
 // opens its own transaction and never sets RLS GUCs: scoping is the service's job (single home).
@@ -20,14 +20,14 @@
 //      `versionConflict` constructors every version-checked `*WithVersion` update returns.
 //
 // No PHI / no MBI is ever read or written through these ports (D13 / §3.6 / §8.7).
-// IMPORT BOUNDARY (M23 does NOT `dependsOn` M1/Foundation, so the `@wardenx/db` ROOT barrel —
+// IMPORT BOUNDARY (M23 does NOT `dependsOn` M1/Foundation, so the `@chartwarden/db` ROOT barrel —
 // `packages/db/src/index.ts`, which carries the M1-owned client — is off-limits): the M23 repos source the
-// runtime Drizzle table objects + row types from the `@wardenx/db/schema` SUBPATH, which resolves to
+// runtime Drizzle table objects + row types from the `@chartwarden/db/schema` SUBPATH, which resolves to
 // `packages/db/src/schema` — a universal FOUNDATION_HELPER leaf every module may import. `BillingDb` is
 // reconstructed from drizzle-orm's own `NodePgDatabase<typeof schema>` (identical to the M1 `DbClient`,
 // so a `DbClient` / `withOrgContext` tx handle is structurally assignable) without taking the M1 edge.
-import * as schema from "@wardenx/db/schema";
-import { ChartWardenError } from "@wardenx/types";
+import * as schema from "@chartwarden/db/schema";
+import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, eq, lt, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
@@ -55,7 +55,7 @@ export interface EnumCodec<TDomain extends string, TDb extends string> {
 
 /** Fail-closed: a mapping table did not cover a value. A programming error (mirrors M27's repo `throw new Error`). */
 function unmappable(kind: string, value: string): never {
-  throw new Error(`@wardenx/billing enum codec: unmappable ${kind} value "${value}"`);
+  throw new Error(`@chartwarden/billing enum codec: unmappable ${kind} value "${value}"`);
 }
 
 /**

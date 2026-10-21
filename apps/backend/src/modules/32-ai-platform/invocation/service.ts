@@ -1,7 +1,7 @@
 // apps/backend/src/modules/32-ai-platform/invocation/service.ts — `aiSdk.invoke` (§4.1), M32-T04.
 //
 // The entry point every consumer-module AI call goes through: gates → route → dispatch → token capture
-// → `ai_invocation` row. The ORDER lives in `evaluateAiInvocationGates` (pure, `@wardenx/ai-platform`),
+// → `ai_invocation` row. The ORDER lives in `evaluateAiInvocationGates` (pure, `@chartwarden/ai-platform`),
 // the ROUTE in `resolveAiRoute`, the CAP in `aiTokenCapStateFor`; this file resolves the facts those
 // three need and performs the writes their decisions imply. No rule is decided here.
 //
@@ -56,7 +56,7 @@ import {
   aiTokenSoftCapCrossedBy,
   evaluateAiInvocationGates,
   resolveAiRoute,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import type {
   AiCapabilityLifecycleState,
   AiCapabilityUnavailable,
@@ -65,8 +65,8 @@ import type {
   AiInvocationStatus,
   AiModelModality,
   AiRoutingPreference,
-} from "@wardenx/types";
-import { AI_FULL_FLAG } from "@wardenx/types";
+} from "@chartwarden/types";
+import { AI_FULL_FLAG } from "@chartwarden/types";
 
 import type { AiTenantConsentStore } from "../governance/store";
 import type {

@@ -6,7 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — order detail (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
 // per-order facts the §5 detail pane renders: kind/priority/status, ordering physician + drafter, signature
@@ -16,7 +16,7 @@ import {
 // are OFFERED follows the server's own `allowedActions`; which are PERMITTED is the server's alone, and a
 // refusal renders as the domain message it is.
 // Reads GET /api/v1/orders/:id via the typed client; the server enforces every scope
-// incl. ABAC (ADR-0030 — no frontend authz; out-of-scope orders 404, never 403). Leaves only (@wardenx/ui).
+// incl. ABAC (ADR-0030 — no frontend authz; out-of-scope orders 404, never 403). Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";

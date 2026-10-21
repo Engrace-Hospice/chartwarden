@@ -1,11 +1,11 @@
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/38-terminology/routes/terminology-routes.ts — M38-T06 the terminology
 // route inventory (M38 spec §4.1–4.2; the §4.4 permission handshake; §7.4 canonical lockdown).
 //
 // These are M38's consumer-facing routes: the version-aware read surface (validate / lookup /
 // search / value-set expand / is-member / deprecation) and the ONLY mutating surface a tenant has
 // — the add-only value-set extension pair (§2.4.3, §7.6). Every route is gated by the REAL
-// Authorization Contract (`requirePermission` from @wardenx/auth, M3) on the §4.4 keys M38
+// Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.4 keys M38
 // registers into M3's catalog (M38_CONTRIBUTED_PERMISSIONS). The read keys default to everyone
 // (`terminology.read` is a foundational utility, like reading a dictionary, §4.4); the protective
 // key sits at the one boundary where meaning can change per tenant — `terminology.value_set.extend`.
@@ -21,8 +21,8 @@ import { requirePermission } from "@wardenx/auth";
 // injects the Drizzle/Valkey-backed store, whose org-scoped extension writes run inside
 // `withOrgContext` so RLS on `app.org_id` is the backstop. Org binding is always server-side: the
 // actor's org/user come from `request.context`, never the body.
-import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@wardenx/terminology";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@chartwarden/terminology";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   ATTRIBUTION_HEADER,
@@ -51,7 +51,7 @@ import {
   parse,
 } from "./terminology-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /**

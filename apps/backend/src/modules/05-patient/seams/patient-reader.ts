@@ -6,7 +6,7 @@
 // still reads the live chart. Pure orchestration over an injected `PatientReaderStore` (Drizzle over
 // patient + patient_identifier in prod, under withOrgContext so RLS scopes by app.org_id; in-memory
 // in the slice). RLS is the backstop even if ABAC is bypassed (§9.4).
-import type { PatientIdentity, PatientReader } from "@wardenx/types";
+import type { PatientIdentity, PatientReader } from "@chartwarden/types";
 
 /** Max merge hops the redirect chase follows before treating the chain as corrupt (§4.8.2). */
 export const MAX_MERGE_HOPS = 3;

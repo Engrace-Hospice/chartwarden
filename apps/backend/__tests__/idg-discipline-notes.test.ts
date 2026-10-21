@@ -9,8 +9,8 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS } from "@wardenx/idg";
+} from "@chartwarden/auth";
+import { DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS } from "@chartwarden/idg";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

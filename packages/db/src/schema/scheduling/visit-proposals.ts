@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `visit_proposal` (M17 §3.3 / §2.2.4 D5). The scheduler's inbox: a system-generated
+// @chartwarden/db — `visit_proposal` (M17 §3.3 / §2.2.4 D5). The scheduler's inbox: a system-generated
 // suggestion to schedule a visit, sourced from M7 frequency (D5), M15 supervisory cadence, M11 order-
 // required, or M14 IDG decision. Carries the typed upstream payload + idempotency key (one proposal per
 // source event), the proposed discipline/date/duration, an optional best-fit membership suggestion, and the

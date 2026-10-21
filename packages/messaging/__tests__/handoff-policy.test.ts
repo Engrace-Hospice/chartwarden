@@ -3,7 +3,7 @@ import {
   HANDOFF_EXPIRY_MIN_MINUTES,
   HANDOFF_EXPIRY_PLATFORM_MINUTES,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   effectiveHandoffMinutes,

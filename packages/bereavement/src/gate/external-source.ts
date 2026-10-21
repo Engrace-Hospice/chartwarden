@@ -1,4 +1,4 @@
-// @wardenx/bereavement — D18 external-source first-contact gate (M16-T01 domain layout).
+// @chartwarden/bereavement — D18 external-source first-contact gate (M16-T01 domain layout).
 //
 // An external HL7 death notification is a strong signal, not a hospice clinician witnessing the death — and
 // the sending system can still retract it. The medical-director cosign closes that loop, so counselor
@@ -7,9 +7,9 @@
 //
 // This module is the pure decision; the M16 service layer supplies the facts (M22 death-certificate
 // presence, the coordinator acknowledgment flag) and turns a denial into the §4.3.2 409 envelope.
-// PURE — no IO, `@wardenx/types`-only.
+// PURE — no IO, `@chartwarden/types`-only.
 
-import type { BereavementExternalSourceMetadata } from "@wardenx/types";
+import type { BereavementExternalSourceMetadata } from "@chartwarden/types";
 
 /** D18 — the tenant-tightened preconditions from `tenant_bereavement_external_source_gate_override`.
  *  Absent (or all-false) is the platform floor: cosign only. */

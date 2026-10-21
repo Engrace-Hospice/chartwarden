@@ -1,5 +1,5 @@
-import type { AiPromptTemplateStatus } from "@wardenx/types";
-// @wardenx/ai-platform — §4.5 / §4.10 `AIPromptRegistry` (M32-T05).
+import type { AiPromptTemplateStatus } from "@chartwarden/types";
+// @chartwarden/ai-platform — §4.5 / §4.10 `AIPromptRegistry` (M32-T05).
 //
 // The typed query API D13/D18 make load-bearing: M12, M13, M18, M21, M27 and M28 each call
 // `getActivePromptsTargeting(<prefix>)` at their OWN boot and refuse to start if any active prompt

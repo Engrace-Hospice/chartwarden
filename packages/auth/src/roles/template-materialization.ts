@@ -1,4 +1,4 @@
-// @wardenx/auth · roles — the plan for materializing ROLE_TEMPLATES into one tenant's `role` rows (GAP-006).
+// @chartwarden/auth · roles — the plan for materializing ROLE_TEMPLATES into one tenant's `role` rows (GAP-006).
 //
 // WHAT WAS MISSING. `ROLE_TEMPLATES` was a TypeScript catalog with NO writer: a tenant provisioned through M34
 // started with an empty `role` table, the first-admin acceptance threw "org_admin role template is unavailable",

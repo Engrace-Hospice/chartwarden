@@ -22,7 +22,7 @@
 // change the answer. The second half is the load-bearing one: it means a future producer of that key
 // cannot silently widen seven modules' clinical floors — controlled-substance prescribing, medication
 // administration, order authoring, scale recording — without a deliberate edit here.
-import type { AbacContext } from "@wardenx/auth";
+import type { AbacContext } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { disciplineScopeOf } from "../src/modules/07-care-plan/abac-predicates";
 import { buildEncounterAbacPredicates } from "../src/modules/08-encounters/abac-predicates";
@@ -58,7 +58,7 @@ const DERIVATIONS = [
     expect: "RN",
   },
   {
-    module: "M11 orders (lower-cased for the @wardenx/orders matrices)",
+    module: "M11 orders (lower-cased for the @chartwarden/orders matrices)",
     of: (c: AbacContext) => [...orderDisciplinesOf(c)],
     role: "np",
     expect: "np",

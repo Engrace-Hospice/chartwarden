@@ -1,4 +1,4 @@
-// @wardenx/db — `facility` (M40 MDM §3.3). The CANONICAL facility record: one org-less row
+// @chartwarden/db — `facility` (M40 MDM §3.3). The CANONICAL facility record: one org-less row
 // per real-world facility, keyed by CCN and/or NPI (each UNIQUE where non-null). `kind` is the
 // §3.3 facility subtype. `sending_facility_codes` carries the HL7 MSH-4 sending-facility codes
 // that anchor inbound-message routing + the §7.9/§7.10 BAA gate (gin-indexed for containment

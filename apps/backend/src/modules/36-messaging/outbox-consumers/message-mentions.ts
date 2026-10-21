@@ -1,4 +1,4 @@
-import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingRouteService } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

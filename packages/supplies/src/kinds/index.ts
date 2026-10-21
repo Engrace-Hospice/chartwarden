@@ -1,4 +1,4 @@
-// @wardenx/supplies — the §2.1 / D1 per-kind `supply_request.data` registry and the §2.10 cross-field
+// @chartwarden/supplies — the §2.1 / D1 per-kind `supply_request.data` registry and the §2.10 cross-field
 // rules TypeBox alone cannot express.
 //
 // NAMING: the per-kind files are `typebox.ts`, not the spec's `schema.ts`. `arch:tables` reads an import
@@ -10,7 +10,7 @@
 
 import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { SupplyRequestKind } from "@wardenx/types";
+import type { SupplyRequestKind } from "@chartwarden/types";
 
 import { ComfortKitDeployRequestDataSchema } from "./comfort-kit-deploy/typebox";
 import { ComfortKitReplenishRequestDataSchema } from "./comfort-kit-replenish/typebox";

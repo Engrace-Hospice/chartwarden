@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/34-saas-platform — M34 platform-ops control-plane screens (§5.1),
 // migrated from apps/web/src/modules/34-saas/screens.ts's "Platform" navGroup entries. These belong
 // in the dedicated admin console, not the tenant web app (a live-browser audit finding: the tenant

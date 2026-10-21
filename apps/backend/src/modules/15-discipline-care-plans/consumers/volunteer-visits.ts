@@ -10,7 +10,7 @@
 // `aggregateVolunteerHours` reports those candidates as `unresolvedDurationEncounterIds` instead of counting
 // them as zero minutes, so the ledger is only ever as complete as the brackets M8 holds, and what was
 // skipped is visible on every run.
-import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@wardenx/types";
+import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@chartwarden/types";
 import { getSignedEncountersReader } from "../seams/index";
 import type { VolunteerVisitCandidate } from "../volunteer/hours";
 

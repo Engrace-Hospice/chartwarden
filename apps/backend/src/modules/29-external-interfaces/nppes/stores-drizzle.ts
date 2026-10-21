@@ -18,8 +18,8 @@
 // `arch:tables` refused that read from M29 code — correctly. It lives at its owner
 // (`modules/40-mdm/nppes-npi-source.ts`) and the composition root adapts it into the port, so M29 receives
 // a list of NPIs rather than reaching into another module's table.
-import { type DbClient, schema } from "@wardenx/db";
-import type { NppesSyncRunId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { NppesSyncRunId } from "@chartwarden/types";
 import { desc, eq, sql } from "drizzle-orm";
 import {
   type CachedProviderView,

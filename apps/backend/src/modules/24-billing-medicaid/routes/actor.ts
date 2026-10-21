@@ -7,10 +7,10 @@
 //
 // §8 / D12 — the `actor_kind='ai_*'` reject (`rejectAiActor`) is composed on every MUTATING M24 route
 // alongside the §4.7 permission + §4.8 ABAC gates, so an AI principal can never reach a write handler.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles, all server-assembled from `request.context`. */

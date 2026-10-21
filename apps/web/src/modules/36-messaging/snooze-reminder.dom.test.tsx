@@ -5,8 +5,8 @@ import { join } from "node:path";
 // results are announced; a refusal is words; nothing polls.
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageReminderButton } from "./message-reminder-button";

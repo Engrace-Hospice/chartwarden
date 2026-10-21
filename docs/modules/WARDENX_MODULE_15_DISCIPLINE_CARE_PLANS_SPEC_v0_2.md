@@ -990,18 +990,18 @@ export interface DisciplineComplianceProvider {
 
 **Seams M15 consumes:**
 
-> **M15-F01 (ADR-0005 D2):** Consumed seam *interfaces* live in the leaf `packages/types`, never in a feature package. M15 imports the type from `@wardenx/types/seams/<seam>` and consumes the runtime via the boot-registered seam (deny-stub until the producing module registers its implementation). M15 never imports a feature package.
+> **M15-F01 (ADR-0005 D2):** Consumed seam *interfaces* live in the leaf `packages/types`, never in a feature package. M15 imports the type from `@chartwarden/types/seams/<seam>` and consumes the runtime via the boot-registered seam (deny-stub until the producing module registers its implementation). M15 never imports a feature package.
 
 ```typescript
-import type { CarePlanReader } from '@wardenx/types/seams/care-plan'              // M7 required
-import type { SignedEncountersReader } from '@wardenx/types/seams/encounters'     // M8 required
-import type { BillableEncounterReader } from '@wardenx/types/seams/encounters'    // M8 required
-import type { AdmissionStatusReader } from '@wardenx/types/seams/admission'       // M6 required
-import type { LatestAssessmentProvider } from '@wardenx/types/seams/assessments'  // M9 optional+deny-stub
-import type { ConsentEvaluator } from '@wardenx/types/seams/consent'              // M39 required
-import type { CaseloadProvider } from '@wardenx/types/seams/identity'             // M5/M17 required
-import type { TerminologyProvider } from '@wardenx/types/seams/terminology'       // M38 required
-import type { CostBasisProvider } from '@wardenx/types/seams/cost-report'         // M27 optional+deny-stub
+import type { CarePlanReader } from '@chartwarden/types/seams/care-plan'              // M7 required
+import type { SignedEncountersReader } from '@chartwarden/types/seams/encounters'     // M8 required
+import type { BillableEncounterReader } from '@chartwarden/types/seams/encounters'    // M8 required
+import type { AdmissionStatusReader } from '@chartwarden/types/seams/admission'       // M6 required
+import type { LatestAssessmentProvider } from '@chartwarden/types/seams/assessments'  // M9 optional+deny-stub
+import type { ConsentEvaluator } from '@chartwarden/types/seams/consent'              // M39 required
+import type { CaseloadProvider } from '@chartwarden/types/seams/identity'             // M5/M17 required
+import type { TerminologyProvider } from '@chartwarden/types/seams/terminology'       // M38 required
+import type { CostBasisProvider } from '@chartwarden/types/seams/cost-report'         // M27 optional+deny-stub
 ```
 
 M15 init registers seams via the boot pattern; `validateSeams()` refuses to start if any required seam is missing.
@@ -1114,7 +1114,7 @@ The list routes for goals, interventions, assessments, aide-supervisory-visits, 
 // packages/ops/src/alerts/m15.alerts.ts
 // Authority: M15-F10 / OPS-035 / OPS-043
 
-import type { AlertRuleSeed } from '@wardenx/alerting/types'
+import type { AlertRuleSeed } from '@chartwarden/alerting/types'
 
 export const M15_ALERT_RULES: AlertRuleSeed[] = [
   // ── Aide supervisory overdue ──────────────────────────────────────────

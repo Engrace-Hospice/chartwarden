@@ -1,25 +1,25 @@
-// @wardenx/types — Module 35 (Subscription Billing / Stripe) leaf contracts (M35-T01).
+// @chartwarden/types — Module 35 (Subscription Billing / Stripe) leaf contracts (M35-T01).
 //
 // Per ADR-0005 D1/D3 the cross-module CONTRACTS live in this leaf package: the M35 spec's references to
 // `packages/subscription-billing/src/seams/**` resolve their TYPE surface HERE, so the downstream
 // consumers (M33 platform-ops revenue dashboard, M34 tenant SaaS console, M28/M29/M32 quota checks, M36
 // alerts, M2 org-lifecycle) import them with NO `dependsOn` edge (ADR-0025 keeps M34↔M35 seam-based both
-// ways). The `@wardenx/subscription-billing` package IMPLEMENTS these interfaces; it never re-declares the
-// wire types, and it takes a `@wardenx/types` edge for them.
+// ways). The `@chartwarden/subscription-billing` package IMPLEMENTS these interfaces; it never re-declares the
+// wire types, and it takes a `@chartwarden/types` edge for them.
 //
 // SCOPE (authority: architecture/module-manifest.ts wins over the spec's §2.1 ERD — ADR-0005). The
 // manifest owns 21 tables; this leaf ships the concrete type foundation for the module's forward-facing
 // wire surface: the §3.3 pgEnum value mirrors, the owned-table-name set, the §4.11/§4.12 outbox taxonomy
 // (published + subscribed), the §4.11 payload shapes, and the §4.5/§4.6 seam interfaces. The pure §2
 // domain kernels (state-transition maps, validation predicates, audit-posture hints) live in the
-// `@wardenx/subscription-billing` package — NOT here; this file is type-only and importable by everyone.
+// `@chartwarden/subscription-billing` package — NOT here; this file is type-only and importable by everyone.
 //
 // PHI/SECRETS boundary (D3/D8/§8.4): every wire shape here is PHI-free and secret-free by construction —
 // ids are uuids or opaque Stripe ids, never `patient_id` / name / MRN; the pseudonym tables surface only
 // the 32-hex HMAC digest, never the raw subject; Stripe secret keys / card PANs never appear in any type.
 //
 // NAMING: exported symbols carry a billing-domain prefix (`Subscription`/`Invoice`/`Plan`/`Usage`/
-// `Dunning`/`Refund`/`Promo`/`Stripe`/`M35`). `@wardenx/types` is re-exported wholesale from `./index.ts`,
+// `Dunning`/`Refund`/`Promo`/`Stripe`/`M35`). `@chartwarden/types` is re-exported wholesale from `./index.ts`,
 // so a bare `Status` / `Tier` / `Cadence` would be a TS2308 collision the day another module wants the
 // same word (the M14 `IdgDecisionPayload` precedent).
 
@@ -29,7 +29,7 @@ import type { OrgId, PatientId } from "./admission";
 import type { IsoInstant, MembershipId } from "./care-plan";
 
 // ── M35-owned id aliases (mirror the §3.3 uuid PKs of the 21 owned tables; packages/types cannot import
-// @wardenx/db) ─────────────────────────────────────────────────────────────────────────────────────────
+// @chartwarden/db) ─────────────────────────────────────────────────────────────────────────────────────────
 export type PlanId = string;
 export type PlanMeterId = string;
 export type SubscriptionId = string;
@@ -57,7 +57,7 @@ export type BillingYearMonth = string;
  *  tables (§2.3 CHECK `^[a-f0-9]{32}$`). The raw `patient_id` / `membership_id` never lands here. */
 export type BillingPseudonym = string;
 
-// ── §3.3 pgEnum value mirrors (kept in lock-step with `@wardenx/subscription-billing`'s `enums.ts` and the
+// ── §3.3 pgEnum value mirrors (kept in lock-step with `@chartwarden/subscription-billing`'s `enums.ts` and the
 // `packages/db/src/schema/subscription-billing/*` pgEnums the T02 migration lands) ─────────────────────
 
 /** §3.3 `plan_tier` — the plan grade (platform-shared catalog, D11). */

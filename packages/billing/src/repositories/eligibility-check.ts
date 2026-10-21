@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `eligibility_check` (HETS 270/271 result cache per (patient, as-of-date),
+// @chartwarden/billing · repositories — `eligibility_check` (HETS 270/271 result cache per (patient, as-of-date),
 // §3.3, D13; non-partitioned; retention class `compliance`). ORG-SCOPED; APPEND-ONLY (the P1 DB write-audit
 // trigger denies UPDATE/DELETE — this repo mirrors that by offering NO mutating surface).
 //
@@ -16,7 +16,7 @@
 // domain `EligibilityOutcome` (`indeterminate` / `error`), so every read maps through
 // `eligibilityOutcomeCodec.fromDb` and every write through `.toDb` (`mbi_invalid` and the two Part A values
 // are 1:1). The DB spelling never leaks past this boundary.
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import type { EligibilityOutcome } from "../contracts";
 import { type BillingDb, eligibilityOutcomeCodec } from "./db";

@@ -10,8 +10,8 @@
 // scheduleId/sfvId to drive a transition + a targeted UPDATE). Its TENANCY pattern is reused: one
 // `withOrgContext` per org (opened by the caller, cron-workers.ts) PLUS a belt-and-suspenders
 // `WHERE organization_id = $org` predicate on top of RLS (its own HARD RULE 1 comment).
-import { type DbClient, schema } from "@wardenx/db";
-import type { HopeScheduleStatus, HopeSfvStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { HopeScheduleStatus, HopeSfvStatus } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { HopeScheduleSnapshot, SfvWatchdogSnapshot } from "./index";
 

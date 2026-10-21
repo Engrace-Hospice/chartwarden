@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: volunteer compliance gate rate (CoP 418.78). Pure. No IO.
+// @chartwarden/quality — operational measure: volunteer compliance gate rate (CoP 418.78). Pure. No IO.
 // Rate of reporting periods where the 5%-volunteer-cost-savings gate was met (higher is better). Source:
 // M15 `DisciplineComplianceProvider` (volunteer gate).
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

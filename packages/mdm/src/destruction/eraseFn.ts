@@ -1,4 +1,4 @@
-// @wardenx/mdm — the D7 tenant-offboarding eraseFn (M40-T10, spec §7.8).
+// @chartwarden/mdm — the D7 tenant-offboarding eraseFn (M40-T10, spec §7.8).
 //
 // Registered with the M4 destruction registry (over the app boundary's DataEraser) to satisfy a
 // tenant-offboarding / right-to-erasure request for the `mdm_tenant_overlays` data class. M40's

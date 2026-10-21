@@ -1,4 +1,4 @@
-// @wardenx/hope — central HOPE attention evaluator (Phase 3).
+// @chartwarden/hope — central HOPE attention evaluator (Phase 3).
 //
 // Workflow status remains M10's persisted/read lifecycle. This module layers operational attention on top
 // of those statuses so routes, watchdogs, and React do not each invent their own due-soon/late rules.

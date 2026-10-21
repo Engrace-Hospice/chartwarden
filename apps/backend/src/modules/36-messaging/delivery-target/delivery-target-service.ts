@@ -2,8 +2,8 @@
 // Reader (recipient + organisation + the target still exists) THEN the same channel check the rest of M36 uses, so a user who
 // lost access since the alert was sent resolves nothing. Every failure is the one NotFoundError. The channel check runs on a
 // nil id when the reader missed, so a hit and a miss do the same work (no cheap timing oracle).
-import type { MessagingRouteService } from "@wardenx/messaging";
-import { NotFoundError } from "@wardenx/types";
+import type { MessagingRouteService } from "@chartwarden/messaging";
+import { NotFoundError } from "@chartwarden/types";
 import type { OpenRequestLookup } from "../ack-requests/open-request-lookup";
 import type { DeliveryTarget, DeliveryTargetReader } from "./delivery-target-reader-db";
 

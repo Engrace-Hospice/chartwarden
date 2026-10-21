@@ -55,7 +55,7 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 | consume | M5 (Patient) | `PatientReader` — patient identity / caseload linkage | yes (ids) |
 | consume | M6 (Admission) | admission linkage (encounter belongs to an active election period) | minimal (ids) |
 | consume | M36 (Messaging) | `AlertEmitter` seam — cosignature SLA + late-entry-override alerts | minimal (ids) |
-| consume | M38 (Terminology) | HearthNote vocabulary / value-set pins (`@wardenx/narrative-vocab` `VOCAB_VERSION`) | no |
+| consume | M38 (Terminology) | HearthNote vocabulary / value-set pins (`@chartwarden/narrative-vocab` `VOCAB_VERSION`) | no |
 | consume | M18 (EVV) | `EvvBracketResolver` forward-seam (inert deny-stub; M18 in Wave F) | yes (ids) |
 | consume | M17 (Scheduling) | canonical `m17.visit.published` → live `seed-visit-encounter` handler with per-tenant visit idempotency | minimal (ids + scheduling/siting fields) |
 | consume | M32 (AI Platform) | HearthNote Layer-2 enhancement (flag-gated OFF Phase 1; deterministic Layer-1 fallback) | yes (in-perimeter) |

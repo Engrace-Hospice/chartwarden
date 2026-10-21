@@ -15,7 +15,7 @@
 //      every night with no "already alerted" bookkeeping of its own. Bookkeeping here would be a second
 //      source of truth that goes stale the first time a threshold is edited.
 //
-// The dispatch decrement REFUSES rather than clamps (see `@wardenx/supplies` `applyParDelta`): a hub asked
+// The dispatch decrement REFUSES rather than clamps (see `@chartwarden/supplies` `applyParDelta`): a hub asked
 // for more than it had is the reorder signal, and clamping to zero deletes it.
 import {
   type ParStockLevels,
@@ -25,8 +25,8 @@ import {
   isBelowReorderPoint,
   isStockoutImminent,
   parStockSeverity,
-} from "@wardenx/supplies";
-import type { IsoInstant, M21EventName, ParStockId } from "@wardenx/types";
+} from "@chartwarden/supplies";
+import type { IsoInstant, M21EventName, ParStockId } from "@chartwarden/types";
 import { type SupplySideEffect, withAudit } from "./effects";
 import { SupplyStateError, require_ } from "./errors";
 

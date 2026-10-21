@@ -3,7 +3,7 @@
 // Coarse payload caps live here; the precise bounds, the PHI lint and the platform floor are the service's (field-level
 // 422s), so a refusal always names the field and never echoes the text.
 import { type Static, Type } from "@sinclair/typebox";
-import { TEMPLATE_CATEGORIES } from "@wardenx/messaging";
+import { TEMPLATE_CATEGORIES } from "@chartwarden/messaging";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 const CategorySchema = Type.Union(TEMPLATE_CATEGORIES.map((c) => Type.Literal(c)));

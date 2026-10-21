@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the pluggable `ModelBackend` port (D1, architecture §10.7.3) (M32-T04).
+// @chartwarden/ai-platform — the pluggable `ModelBackend` port (D1, architecture §10.7.3) (M32-T04).
 //
 // One interface, six Phase-1 implementations eventually behind it (§2.3): two Anthropic models, two
 // Ollama-hosted local LLMs, one sentence-transformers embedder, one custom classifier. The invocation
@@ -24,7 +24,7 @@ import type {
   AiModelBackendFeatures,
   AiModelBackendKind,
   AiModelModality,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** What a backend advertises about itself, for the routing gate and the §5.1 admin console. */
 export interface ModelBackendCapabilities {

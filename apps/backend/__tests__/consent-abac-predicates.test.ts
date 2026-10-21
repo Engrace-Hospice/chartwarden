@@ -9,9 +9,9 @@
 // keyed on its own planId/elementId targets), `family_violence_disclosure_allowed` (M15 owns it), and
 // `telehealth_consent_active` (M31 owns it, keyed on telehealthVisitId) — see the ownership note atop
 // `../src/modules/39-consent/abac-predicates.ts`.
-import { abacRegistry } from "@wardenx/auth";
-import { type StoredConsent, createInMemoryConsentStore } from "@wardenx/consent";
-import { createConsentEvaluator } from "@wardenx/consent";
+import { abacRegistry } from "@chartwarden/auth";
+import { type StoredConsent, createInMemoryConsentStore } from "@chartwarden/consent";
+import { createConsentEvaluator } from "@chartwarden/consent";
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

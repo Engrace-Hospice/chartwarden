@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 measure registry: the platform catalog of computed measures + a pure binder for
+// @chartwarden/quality — M30 measure registry: the platform catalog of computed measures + a pure binder for
 // wiring a measure code to its calculator + period rule (§3.1, D2/D14). Pure, IO-free.
 //
 // `MEASURE_CATALOG` is the descriptor-only source of truth — for each measure: its code, family, the

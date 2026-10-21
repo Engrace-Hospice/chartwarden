@@ -1,4 +1,4 @@
-// @wardenx/fhir — Encounter mapper (us-core-encounter, M6/M8, M28-T04).
+// @chartwarden/fhir — Encounter mapper (us-core-encounter, M6/M8, M28-T04).
 
 import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { Encounter } from "../types";

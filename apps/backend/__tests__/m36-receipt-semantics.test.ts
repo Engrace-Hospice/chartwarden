@@ -2,8 +2,8 @@
 // (ADR-0056 item 1: clinical acknowledgement lives in the Phase 4 message_acknowledgment_* tables, never
 // on a receipt). This file is checked by `typecheck:tests`: an `@ts-expect-error` that stops erroring
 // means `"ack"` became assignable again.
-import { type DbClient, schema } from "@wardenx/db";
-import type { MessageReceiptStatus } from "@wardenx/messaging";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { MessageReceiptStatus } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 
 describe("M36 receipt semantics", () => {

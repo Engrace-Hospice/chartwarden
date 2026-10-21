@@ -1,4 +1,4 @@
-import { CenteredCardLayout } from "@wardenx/ui";
+import { CenteredCardLayout } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Reset Password (M2 Auth, AUTH polish).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "password reset" (step 2, /reset-password). The reset
 // link from /forgot lands here with `?token=…` (or `?error=…` if Better Auth rejected it before redirect).

@@ -1,5 +1,5 @@
 // WP 5.9 (ADR-0084): the per-item decisions, idempotency and fail-closed behaviour of the offboarding orchestration, on fake steps.
-import { NotFoundError, OFFBOARDING_ITEM_KEYS, type OffboardingItemKey } from "@wardenx/types";
+import { NotFoundError, OFFBOARDING_ITEM_KEYS, type OffboardingItemKey } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { createOffboardingService } from "./offboarding-service";
 import type {

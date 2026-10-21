@@ -25,8 +25,8 @@ import type {
   OnCallShiftId,
   TriageCallSource,
   TriagePaperReentryWorklistId,
-} from "@wardenx/types";
-import { TRIAGE_PAPER_REENTRY_WORKLIST_TTL_HOURS } from "@wardenx/types";
+} from "@chartwarden/types";
+import { TRIAGE_PAPER_REENTRY_WORKLIST_TTL_HOURS } from "@chartwarden/types";
 import { type TriageSideEffect, withAudit } from "./effects";
 import { require_ } from "./errors";
 

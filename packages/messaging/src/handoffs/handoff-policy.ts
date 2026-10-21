@@ -6,7 +6,7 @@ import {
   HANDOFF_EXPIRY_PLATFORM_MINUTES,
   type HandoffPolicyView,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The minutes in force: the platform ceiling, tightened by the stored row (when there is one). */
 export function effectiveHandoffMinutes(stored: number | null): number {

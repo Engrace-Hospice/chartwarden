@@ -1,13 +1,13 @@
 // apps/backend/src/modules/16-bereavement/permission-keys.ts — M16-T06 (§4.7).
 //
 // The twenty-nine permission keys Module 16 (Bereavement) registers into Module 3's catalog. The canonical
-// map is `M16_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// map is `M16_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it + the ordered key list so the §4.1
 // routes gate on `requirePermission(key)` without re-declaring the map (the M15/M24/M26 posture —
 // references the auth package directly, no drift).
-import { type M16ContributedPermissionKey, M16_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M16ContributedPermissionKey, M16_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
-export { M16_CONTRIBUTED_PERMISSIONS, type M16ContributedPermissionKey } from "@wardenx/auth";
+export { M16_CONTRIBUTED_PERMISSIONS, type M16ContributedPermissionKey } from "@chartwarden/auth";
 
 /** Union of every §4.7 permission key M16 owns. */
 export type M16PermissionKey = M16ContributedPermissionKey;

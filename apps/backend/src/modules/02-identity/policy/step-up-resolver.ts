@@ -2,7 +2,7 @@
 // §4.3.2, D9).
 //
 // Resolves the effective step-up policy for an (organization, operation) by TIGHTENING the
-// platform floor `STEP_UP_POLICY` (re-homed to @wardenx/types per ADR-0005 D3) with an
+// platform floor `STEP_UP_POLICY` (re-homed to @chartwarden/types per ADR-0005 D3) with an
 // optional per-tenant override row. Tighten-only is the security invariant (D9): a tenant
 // may shrink the qualifying-factor set and the freshness window, never grow them. The
 // resolution takes `intersect(floor, tenant)` on factors and `min(floorDefault, tenant)` on
@@ -13,7 +13,7 @@
 // the contract has ONE definition; M3 consumes it through M2's published session seam
 // (M2-T07) rather than re-deriving the freshness/factor math (which would risk drift).
 //
-// AC-03 — the tighten math itself now lives in @wardenx/auth (`identity/step-up-policy.ts`) and is
+// AC-03 — the tighten math itself now lives in @chartwarden/auth (`identity/step-up-policy.ts`) and is
 // re-exported below. It had to move because the `SessionContextResolver` seam implementation is in
 // that package, and that seam is what M3's predicate actually calls; while the only copy sat here,
 // the seam had no way to reach it and the resolver had ZERO production callers. Read the override
@@ -22,8 +22,8 @@
 // SLICE NOTE: the override is read through an injected `StepUpOverrideReader` port — the slice
 // has no live DB. Production injects the reader that selects `tenant_step_up_policy_override`
 // (M2-owned, org-scoped) inside `withOrgContext` so RLS scopes the read by `app.org_id`.
-import { type StepUpOverrideRecord, tightenStepUpPolicy } from "@wardenx/auth";
-import type { ResolvedStepUpPolicy, StepUpFactor } from "@wardenx/types";
+import { type StepUpOverrideRecord, tightenStepUpPolicy } from "@chartwarden/auth";
+import type { ResolvedStepUpPolicy, StepUpFactor } from "@chartwarden/types";
 
 /** A resolved (post-tighten) step-up policy for one (organization, operation). */
 export type { ResolvedStepUpPolicy };
@@ -32,7 +32,7 @@ export type { ResolvedStepUpPolicy };
 export type StepUpOverride = StepUpOverrideRecord;
 
 /**
- * Tighten-only resolution (§4.3.2, D9) — re-exported from @wardenx/auth, which is where the ONE
+ * Tighten-only resolution (§4.3.2, D9) — re-exported from @chartwarden/auth, which is where the ONE
  * definition lives now. It moved because the seam implementation M3's `step_up_recent` predicate
  * calls sits in that package and could not import this module; a copy here would be the drift this
  * file's header warns about.

@@ -4,10 +4,10 @@
 // the one 404 a random channel id gets. This lists NAMES ONLY (no email, role, MRN or thread text), needs a 2+ character
 // query, is capped, and never grants access: a mention reference is still only accepted for a current member (see
 // `sendMessage`), and joining the channel is the separate, permission-gated `addMember`.
-import { type DbClient, schema } from "@wardenx/db";
-import type { MentionNonMember, MessagingRouteService } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { MentionNonMember, MessagingRouteService } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 const CH = schema.channels;

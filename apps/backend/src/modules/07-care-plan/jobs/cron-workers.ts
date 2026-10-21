@@ -13,8 +13,8 @@
 // the composition root constructs it unconditionally whenever a DB client exists, so by the time a cron
 // tick runs it is guaranteed bound. Only `activeOrgs` gets the lazy fail-closed thunk (`unbound()`,
 // `M7_WORKER_PORT_UNBOUND: <port> — <hint>`, the M25 convention).
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   applyReviewGateMarkers,

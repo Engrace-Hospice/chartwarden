@@ -35,8 +35,8 @@
 //      evaluated against `disciplineOf(actor)` INSIDE the transaction, so a grant revoked between the
 //      preHandler and the commit still cannot select a clinician-judgment disposition.
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type IsoInstant,
   type M19EventName,
@@ -44,7 +44,7 @@ import {
   M19_AI_OVERRIDE_REASON_MIN_CHARS,
   type TriageDispositionData,
   type TriageEscalationTier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import {
   buildCaseOpenedAlert,

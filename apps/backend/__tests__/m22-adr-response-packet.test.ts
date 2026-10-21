@@ -1,7 +1,7 @@
 // Milestone 2b — the ADR response packet render: the typed payload, the cover-and-index document, the real PDF,
 // and the render-time enclosure guard (a Part 2 reclassification stops the retained copy; a superseded document
 // does not, because it is still what was filed).
-import { buildAdrPacketRenderPayload } from "@wardenx/types";
+import { buildAdrPacketRenderPayload } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   adrEnclosureIds,

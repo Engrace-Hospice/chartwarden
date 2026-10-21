@@ -5,7 +5,7 @@
 // here from GET /orgs/{id}/care-team-staff, the same read the live surface uses). Both are CONTEXT: when the
 // server sent no patient, or the member list is unavailable, the id-prefix fallback is shown so a row is
 // never blank and nothing is invented.
-import { type ApiClient, useApiClient } from "@wardenx/ui";
+import { type ApiClient, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 

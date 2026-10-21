@@ -8,7 +8,7 @@
 // `withOrgContext(db, {organizationId, userId}, …)` transaction on the PRIMARY so Postgres RLS scopes each
 // statement to `app.org_id` (the M30 routes/write-service-drizzle precedent). Org/actor/owner binding is
 // ALWAYS the server-assembled {@link M27WriteActor} (never the body). The lifecycle methods do NOT
-// re-implement state logic — they drive the pure @wardenx/cost-report reducer (`canTransition` /
+// re-implement state logic — they drive the pure @chartwarden/cost-report reducer (`canTransition` /
 // `applyTransition` over `COST_REPORT_TRANSITIONS`) and persist the result with the §2.5 version check
 // (`updateWithVersion` → VERSION_CONFLICT). The §4.10 `m27.*` events are emitted through the injected
 // {@link WriteOutboxPort} in the SAME unit of work as the mutation (transactional outbox); the §4.8 worker
@@ -41,10 +41,10 @@ import {
   canTransition,
   contentHashSha256,
   resolveWorksheetSchema,
-} from "@wardenx/cost-report";
-import type { DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/cost-report";
+import type { DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M27WriteActor } from "./actor";
 import type {
   BadDebtRecordView,

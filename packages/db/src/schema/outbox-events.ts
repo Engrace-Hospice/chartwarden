@@ -1,4 +1,4 @@
-// @wardenx/db — `outbox_event` (M1 Foundation §3.10). The transactional outbox for
+// @chartwarden/db — `outbox_event` (M1 Foundation §3.10). The transactional outbox for
 // reliable cross-module event publication (mN.<resource>.<verb>). HELPER-ONLY:
 // written exclusively by the packages/shared outbox dispatcher — never a direct
 // insert/select from a feature module (HELPER_ONLY_TABLES, manifest). org-scoped:

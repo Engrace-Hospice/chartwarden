@@ -1,14 +1,14 @@
-// @wardenx/inpatient — the M37 domain failure-code catalog. Every guard failure in the pure IPU domain
+// @chartwarden/inpatient — the M37 domain failure-code catalog. Every guard failure in the pure IPU domain
 // kernels (the bed-cleaning machine, the admission machine, IRC cap, restraint cadence, GIP validators,
 // RN-coverage evaluator, …) raises an `IpuStateError` carrying an enumerated machine-readable code. The
-// error extends the M1 `ChartWardenError` envelope (`@wardenx/types` — the M18 `EvvStateError` / M6
+// error extends the M1 `ChartWardenError` envelope (`@chartwarden/types` — the M18 `EvvStateError` / M6
 // `AdmissionStateError` convention) so the Fastify error handler renders code + HTTP status with NO
 // cross-module import edge; the §3.x DB CHECK / partial-unique backstops repeat the strongest of these at
 // the schema layer as defense in depth. The route layer (M37-T11) reuses these codes verbatim.
 //
 // The catalog grows per task: T03 seeds the §2.12 bed-cleaning codes; T04–T10 append the admission / IRC /
 // restraint / GIP / RN-coverage / census codes below. All share one `IpuStateError` envelope.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M37 domain failure-code catalog → HTTP status. */
 export const M37_ERROR_STATUS = {

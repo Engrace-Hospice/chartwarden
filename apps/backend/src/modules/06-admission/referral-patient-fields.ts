@@ -4,7 +4,7 @@
 // The grant holder is whoever ran "create patient from intake"; that actor is recorded only on the referral's
 // `patient_created` activity row (the referral has no creator column), so it is read from there. Absent for a
 // matched (not created) patient or a referral that never resolved one; M5 then falls back to a patient-wide end.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 
 const RA = schema.referralActivities;

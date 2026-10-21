@@ -23,7 +23,7 @@
 //
 // The retry sweep resolves by the queued row's OWN feed id (`resolveById`) — the wire was built at queue time,
 // so a second feed appearing later must not stall a row that is already bound to a specific feed.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 import type { OrmEndpoint } from "./orm-o01";
 

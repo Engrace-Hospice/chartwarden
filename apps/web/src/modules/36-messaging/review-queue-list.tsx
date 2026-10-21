@@ -1,8 +1,8 @@
 // M36 WP 3.8 - the Review tab of Notifications & Tasks: open tasks of patients who were discharged, died or transferred,
 // waiting for a supervisor to reassign or close them. Row buttons come only from each item's allowed_actions; a restricted
 // row shows no patient and no actions; a row changes only when the server's answer replaces the list.
-import type { ReviewAction, ReviewItemDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, StatusPill } from "@wardenx/ui";
+import type { ReviewAction, ReviewItemDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ReviewResolveDialog } from "./review-resolve-dialog";

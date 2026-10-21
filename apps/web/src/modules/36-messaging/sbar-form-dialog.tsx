@@ -1,10 +1,10 @@
 // M36 WP 3.3 - the SBAR form: four labelled sections, a sender urgency label, and the always-visible emergency-path note.
 // Stateless about its text (the thread keeps it, see use-sbar-compose.ts); it builds the RichSbar document and checks it
 // with the shared validator so the client says what the server will. Server field errors come in as `serverIssues`.
-import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, SBAR_URGENCY_HINTS } from "@wardenx/types";
-import type { RichBody, SbarIssue, SbarSectionKey } from "@wardenx/types";
-import { validateSbar } from "@wardenx/types";
-import { Button, Modal } from "@wardenx/ui";
+import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, SBAR_URGENCY_HINTS } from "@chartwarden/types";
+import type { RichBody, SbarIssue, SbarSectionKey } from "@chartwarden/types";
+import { validateSbar } from "@chartwarden/types";
+import { Button, Modal } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { createPortal } from "react-dom";

@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.3 D4 / §7.7 RRULE materializer + discontinuation — M17-T03.
+// @chartwarden/scheduling — §2.2.3 D4 / §7.7 RRULE materializer + discontinuation — M17-T03.
 import { describe, expect, it } from "vitest";
 import {
   type MaterializeInput,

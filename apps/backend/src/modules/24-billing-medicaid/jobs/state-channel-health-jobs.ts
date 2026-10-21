@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 // a MAC jurisdiction serves many tenants off ONE platform-wide bearer/URL pair from env), M24's Oregon
 // gateway resolves a health probe against `state_medicaid_trading_partner_credential` — a row keyed
 // `(organizationId, providerEntityId, serviceState, channel)`, §3.3, the M23 `mac_submitter_credential`
-// mirror — and `OregonGatewayPort.healthy(credentials)` (`@wardenx/medicaid-adapters`'s launch-gateway.ts)
+// mirror — and `OregonGatewayPort.healthy(credentials)` (`@chartwarden/medicaid-adapters`'s launch-gateway.ts)
 // does a REAL `GET {credentials.portalUrl}/health` with `credentials.clientSecret` as the bearer token:
 // the base URL AND the auth token are both per-credential-row, so two different tenants' rows can answer
 // differently (a misconfigured/expired credential is a per-tenant fact; a genuine OHA MMIS outage happens
@@ -48,9 +48,9 @@ import { createHash } from "node:crypto";
 // argument at all, so `deps.credentials.resolve(...)` in `runClaimSubmit`/`runClaimPoll` runs outside the
 // `withOrgContext` tx those functions otherwise thread everywhere else — a second genuine, pre-existing
 // defect this build surfaced; reported, not fixed here, out of this task's scope).
-import { type DbClient, schema } from "@wardenx/db";
-import type { OregonGatewayPort, TradingPartnerCredentials } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { OregonGatewayPort, TradingPartnerCredentials } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { type CredentialCipherPort, isUsableCipher } from "../credential-crypto";

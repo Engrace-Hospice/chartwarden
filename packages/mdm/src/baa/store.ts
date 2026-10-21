@@ -1,4 +1,4 @@
-// @wardenx/mdm — the `BaaStore` data port + an in-memory slice default (M40-T06, §4.6.2).
+// @chartwarden/mdm — the `BaaStore` data port + an in-memory slice default (M40-T06, §4.6.2).
 //
 // The `BaaStatusProvider` seam (provider.ts) composes the pure {@link decideBaaStatus} engine over
 // the rows this port returns. Production implements it over the `facility` / `mdm_baa_required` /

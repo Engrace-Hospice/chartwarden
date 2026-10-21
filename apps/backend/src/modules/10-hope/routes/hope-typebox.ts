@@ -10,8 +10,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@wardenx/types";
-import { ValidationError } from "@wardenx/types";
+import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   HopeAnswerPatchResult as ServiceAnswerPatchResult,
   HopeAssessmentView as ServiceAssessmentView,
@@ -36,7 +36,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-/** The canonical RFA-kind union, mirrored from @wardenx/types `HOPE_RFA_KINDS` (single source). */
+/** The canonical RFA-kind union, mirrored from @chartwarden/types `HOPE_RFA_KINDS` (single source). */
 const RFA_KIND = lit(HOPE_RFA_KINDS);
 /** The §4.3 HOPE author disciplines accepted at the route boundary (the ABAC predicate is authoritative). */
 const AUTHOR_DISCIPLINE = Type.Union([Type.Literal("RN"), Type.Literal("NP"), Type.Literal("MD")]);
@@ -111,7 +111,7 @@ const JScreeningItem = Type.Object(
  * opioid / bowel-regimen triple. Every other section stays opaque and is narrowed by the server-side
  * per-section validators (§4.3).
  *
- * They are typed HERE, and not only in `@wardenx/hope`'s projection, because the emitted OpenAPI is
+ * They are typed HERE, and not only in `@chartwarden/hope`'s projection, because the emitted OpenAPI is
  * what the generated client can express: a field the contract does not declare is one no caller can
  * send (F-031's M11 finding, one module over). The projection stays TOLERANT of anything — these types
  * describe the intended payload, they are not a second validation layer.

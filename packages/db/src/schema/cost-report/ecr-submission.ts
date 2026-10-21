@@ -1,4 +1,4 @@
-// @wardenx/db — `ecr_submission` (M27 §3.3, D11; non-partitioned; retention class `compliance`). One row
+// @chartwarden/db — `ecr_submission` (M27 §3.3, D11; non-partitioned; retention class `compliance`). One row
 // per submission attempt: ECR + PI files generated (via M22) and the manual MCReF upload/acknowledgment.
 // The ECR/PI/supporting-docs are M22 document refs (M27 holds back-references; no MinIO code). CHECK:
 // mcref_acknowledgment_number and mcref_rejection_code are mutually exclusive (added in migration).

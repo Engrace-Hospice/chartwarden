@@ -10,7 +10,7 @@
 // The §7.8/§7.9 confidentiality gates are NOT route guards: withholding a SUD goal is a filtered body plus
 // a `redacted_categories` marker, not a 403 — the read service resolves them per patient and applies them
 // in SQL (see `./disclosure.ts`).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";

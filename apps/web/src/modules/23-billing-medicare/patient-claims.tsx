@@ -11,7 +11,7 @@ import {
   type StatusTone,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — the patient chart's Claims tab (M23, Track B / ADR-0030;
 // 2026-09-25 redesign, mockup "Billing / Claims" patient variant). Every claim billed for one patient:
 // four headline cards, a payer switch (All · Medicare · Medicaid), and a claims table, with a right rail

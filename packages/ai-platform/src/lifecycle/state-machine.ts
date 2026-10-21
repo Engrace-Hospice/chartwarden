@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §2.2 capability lifecycle state machine (M32-T01).
+// @chartwarden/ai-platform — §2.2 capability lifecycle state machine (M32-T01).
 //
 // D2's eight-state governance FSM as a PURE function of (fromState, approvalKind) → toState. No IO, no
 // DB, no clock: `ai_capability_lifecycle_event` is the ledger, this is the rule the ledger must obey,
@@ -33,7 +33,7 @@ import type {
   AiCapabilityLifecycleState,
   AiLifecycleApprovalKind,
   AiLifecycleTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The state a newly registered capability lands in (§2.2 `[*] --> PROPOSED`). */
 export const AI_LIFECYCLE_INITIAL_STATE: AiCapabilityLifecycleState = "PROPOSED";

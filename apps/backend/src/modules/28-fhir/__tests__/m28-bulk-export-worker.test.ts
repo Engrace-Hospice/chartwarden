@@ -3,7 +3,7 @@
 // the D3-gated projection is the only source of bytes, a cancel or an over-cap job never reports `completed`,
 // and a failure destroys whatever it had put and fails the job with a PHI-free reason.
 import { createHash } from "node:crypto";
-import type { FhirReadDisclosureEnvelope } from "@wardenx/types";
+import type { FhirReadDisclosureEnvelope } from "@chartwarden/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = vi.hoisted(() => ({

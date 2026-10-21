@@ -10,8 +10,8 @@ import {
   StatusPill,
   TextAreaField,
   useApiClient,
-} from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 

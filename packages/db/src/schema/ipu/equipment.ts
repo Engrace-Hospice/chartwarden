@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 equipment + biomed inspection (§2.9 D10, §3.3): ipu_equipment (the asset), its
+// @chartwarden/db — M37 equipment + biomed inspection (§2.9 D10, §3.3): ipu_equipment (the asset), its
 // maintenance ledger, and its inspection ledger (an overdue inspection blocks bed assignment, §5.8).
 // TENANT-SCOPED, RLS on app.org_id. inspection `notes` is PHI-denylisted. equipment_id is a REAL FK;
 // current_unit/room/bed ids are intra-module FKs; current_assigned_patient_id and

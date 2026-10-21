@@ -2,7 +2,7 @@
 // per order. The DB service takes `SELECT ... FOR UPDATE` on the medication_order row and holds it through the
 // standing checks AND the M11 seam write, so two concurrent cosigns can never both commit an immutable
 // `order_signature` cosignature row. Driven over a fake db whose `.for("update")` emulates a real row lock.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const seamCosign = vi.fn(async (_input: unknown) => ({ cosignatureId: "sig" }));

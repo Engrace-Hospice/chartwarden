@@ -18,7 +18,7 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -286,7 +286,7 @@ describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
   it("GET /scales publishes the item definitions a capture form is built from (F-067)", async () => {
     // The reason there was no record modal: `POST .../assessments` publishes `data` as a bare object,
     // and which items a scale needs — how many, what kind, what range, which option values — existed
-    // only as TypeScript interfaces in `@wardenx/assessments`. A client cannot read a type.
+    // only as TypeScript interfaces in `@chartwarden/assessments`. A client cannot read a type.
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/api/v1/scales", headers: RN });
     expect(res.statusCode).toBe(200);

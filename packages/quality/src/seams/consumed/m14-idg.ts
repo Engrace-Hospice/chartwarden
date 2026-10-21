@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M14 (IDG). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M14 (IDG). PRESENT producer (§4.4).
 //
 // M30 consumes M14's `IdgScheduleProvider.getCadenceAdherence` for the IDG-cadence-compliance measure
 // and `IdgDecisionProvider.getDecisionsForCarePlan` for the decision-to-care-plan-update latency measure;

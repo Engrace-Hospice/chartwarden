@@ -20,8 +20,8 @@
 // ORG-EXPLICIT — a cron tick is not a request: the job passes `organizationId` explicitly, runs as the
 // system (`userId: ""`, audited as system by the M4 trigger), and the fan-out enumerates orgs through the
 // audited platform enumerator. The manual admin route runs the same per-org rebuild as the acting officer.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt } from "drizzle-orm";
 import type { M5OutboxPort } from "../deceased-db";
 import type { PrivacyOfficerPorts } from "../privacy/officer";

@@ -11,9 +11,9 @@
 // recomputes the SAME pseudonym (deterministic within a key epoch) for the SAME period, so
 // `ON CONFLICT DO NOTHING` is the exact "already recorded this month, no-op" outcome
 // `UsageMeteringService`'s `{inserted: boolean}` contract expects.
-import { type DbClient, schema } from "@wardenx/db";
-import type { ActivePeriodStore } from "@wardenx/subscription-billing";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { ActivePeriodStore } from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const PAP = schema.patientActivePeriod;

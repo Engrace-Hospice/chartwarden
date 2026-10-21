@@ -1,4 +1,4 @@
-// @wardenx/db — `assessment_reassessment_due` (M9 §4.8 `reassessment-due-scan`, GAP-181). One row per
+// @chartwarden/db — `assessment_reassessment_due` (M9 §4.8 `reassessment-due-scan`, GAP-181). One row per
 // (organization, patient, scale_type): the next reassessment due instant derived from the last capture and
 // the effective cadence (CoP 42 CFR 418.54(d) floor, tenant-tightenable only). Written solely by the daily
 // cadence cron (system actor); read by the chart banner and the M36 alert path. Overdue is a SOFT state — it

@@ -7,15 +7,15 @@
 // GET is a 404 while the tenant flag `messaging.sbar` is off (the feature does not exist). Org and actor are always the
 // server-side request context. The write-time checks on a message live in sbar/sbar-write-check.ts, not here; this file
 // also exports the route-level flag check the send and edit routes call when a body contains an sbar block.
-import { requirePermission } from "@wardenx/auth";
-import { effectiveSbarPolicy, prepareSbarPolicy } from "@wardenx/messaging";
+import { requirePermission } from "@chartwarden/auth";
+import { effectiveSbarPolicy, prepareSbarPolicy } from "@chartwarden/messaging";
 import {
   NotFoundError,
   type RichBody,
   SBAR_MAX_SECTION_CHARS,
   UnauthorizedError,
   richBodySbar,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SbarPolicyStore } from "../sbar/sbar-policy-store-db";
 import { sbarNotAvailable } from "../sbar/sbar-write-check";

@@ -5,8 +5,8 @@
 // enumerator, the M36 alert router, the transactional outbox) carry a LAZY fail-closed thunk default until
 // the integrator binds them — so constructing the workers at boot stays green; a port only throws WHEN A
 // CRON TICK RUNS (never at import). Nothing here runs at import (constructing a Worker opens Valkey).
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import {

@@ -1,4 +1,4 @@
-// @wardenx/types · policy — the platform-floor `STEP_UP_POLICY` constant (M2-T04; M2
+// @chartwarden/types · policy — the platform-floor `STEP_UP_POLICY` constant (M2-T04; M2
 // spec §4.3.1, D9).
 //
 // Re-homed from the banned `packages/foundation/src/policy` per ADR-0005 D3 / M02-F03:

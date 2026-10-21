@@ -3,7 +3,7 @@
 //
 // Reconciled from two independent concurrent builds of this same tier: a durable Postgres debounce table
 // (this barrel) and a pure-BullMQ `jobId`-dedup mechanism. The table wins as the queue backend — its
-// partial-unique `dosespot_sync_queue_pending_uq` (`@wardenx/db`'s `schema.dosespotSyncQueue`) collapses
+// partial-unique `dosespot_sync_queue_pending_uq` (`@chartwarden/db`'s `schema.dosespotSyncQueue`) collapses
 // TWO DIFFERENT trigger events for the same patient arriving close together (e.g. `.created` then
 // `.updated` seconds apart) onto one pending row, which a BullMQ `jobId: sourceEventId` dedupe cannot do
 // (that only catches an exact redelivery of the SAME event) — proven by `m12-sync-triggers.live.test.ts`.
@@ -16,7 +16,7 @@ export type {
   DosespotSyncQueueKind,
   DosespotSyncQueueReason,
   DosespotSyncQueueRow,
-} from "@wardenx/db/schema";
+} from "@chartwarden/db/schema";
 export { type EnqueueInput, type EnqueueResult, DosespotSyncQueueRepository } from "./repository";
 export {
   M12DosespotPatientIdUnbound,

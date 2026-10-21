@@ -7,16 +7,16 @@
 //    subject belongs to the organization. The creator becomes its owner; further membership uses the member-admin routes.
 //  - isAnnouncementChannel: the probe behind the org_admin-only send guard.
 // Every statement runs under withOrgContext (RLS on app.org_id is the backstop).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type AnnouncementReader,
   type AnnouncementReceiptPerson,
   type AnnouncementService,
   type CreateDepartmentChannelInput,
   RECEIPT_LIST_LIMIT,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 import { createDrizzleSiteAdminRepository } from "../../bootstrap/site-admin-repository";
 import { assertMemberCategoryAllowed } from "./member-category-gate";

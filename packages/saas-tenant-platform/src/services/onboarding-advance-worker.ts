@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the `tenant.onboarding_advance` worker (M34 §2.3 / §4.8).
+// @chartwarden/saas-tenant-platform · services — the `tenant.onboarding_advance` worker (M34 §2.3 / §4.8).
 //
 // The IO-bearing companion of the strictly-observable §2.3 onboarding machine (../onboarding/machine.ts).
 // The machine EMITS (never mutates); this worker CONSUMES the emits and effects them: it (a) drives the
@@ -13,7 +13,7 @@
 // here), the outbox publisher, the M36 alert router, and the lifecycle-activation hook. No clock/RNG/DB
 // import in this file, so a run's emitted effects are deterministic and assertable with in-memory ports.
 //
-// withOrgContext / withPlatformContext (M1 @wardenx/tenancy) RLS-scoping is the ADAPTER's job: the boot
+// withOrgContext / withPlatformContext (M1 @chartwarden/tenancy) RLS-scoping is the ADAPTER's job: the boot
 // adapter wraps each port's DB touch in the tenant org's context (onboarding_task is org-scoped, §3.10);
 // the template catalog is platform-shared read-only (§3.12) so its read needs no org scope. This pure
 // orchestrator names WHAT to read/write; the adapter owns the RLS envelope.
@@ -31,7 +31,7 @@ import type { OnboardingRepository } from "../repositories/onboarding";
  *  re-fires the blocked outbox/alert so a stuck onboarding is re-surfaced. Five days, in milliseconds. */
 const BLOCKED_AGE_REFIRE_MS = 5 * 24 * 60 * 60 * 1000;
 
-/** The §4.9 outbox payloads this worker publishes. Pinned structurally (no `@wardenx/types` edge from the
+/** The §4.9 outbox payloads this worker publishes. Pinned structurally (no `@chartwarden/types` edge from the
  *  pure package) to the apps/backend events-by-m34.ts schemas — the adapter passes them to the dispatcher
  *  verbatim. `tenantAccountId` keys every payload; ISO instants are pre-formatted by the worker. */
 export type OnboardingOutboxPayload =

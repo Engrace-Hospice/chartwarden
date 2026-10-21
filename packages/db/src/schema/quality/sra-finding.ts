@@ -1,4 +1,4 @@
-// @wardenx/db — `sra_finding` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `sra_finding` (M30 §3.3; non-partitioned; retention class `compliance`).
 // A finding within an SRA cycle: threat/vulnerability/impact narrative, 5x5 inherent + residual scores,
 // status, and accepted-risk attestation with auto-reopen. Real intra-M30 FK to sra_cycle; parent of
 // sra_remediation. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). The vulnerability

@@ -5,14 +5,14 @@
 //     by active membership; returns channel names only, never an endpoint value).
 // Both let an error propagate: the emit fails and the outbox retries. A flag or endpoint read we could not make must never silently turn a
 // safety route into "no route".
-import type { DbClient } from "@wardenx/db";
-import type { NotificationChannel } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import type { NotificationChannel } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ACK_REQUESTS_FLAG_KEY,
   NOTIFICATION_POLICY_FLAG_KEY,
   URGENT_CLINICAL_FLAG_KEY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 
 export interface PolicyFlagReader {

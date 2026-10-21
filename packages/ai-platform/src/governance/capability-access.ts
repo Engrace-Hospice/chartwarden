@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the composed §2.2 + §5.3 + §5.4 access gate (M32-T03).
+// @chartwarden/ai-platform — the composed §2.2 + §5.3 + §5.4 access gate (M32-T03).
 //
 // Three of the SDK's gates, in one pure function: the lifecycle posture the registry publishes, the
 // tenant's opt-in, and the clinician's opt-out. Every refusal is the §2.2/W9 `AiCapabilityUnavailable`
@@ -34,7 +34,7 @@ import type {
   AiCapabilityLifecycleState,
   AiCapabilityUnavailable,
   AiTenantOptInStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { aiConsumerPostureFor } from "../lifecycle/state-machine";
 

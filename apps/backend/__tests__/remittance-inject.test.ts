@@ -42,8 +42,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 
 // DEVIATION (documented, not fixed here — out of scope, module source is off-limits for this file):

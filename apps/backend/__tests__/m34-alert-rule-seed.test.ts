@@ -16,7 +16,7 @@
 import {
   PLATFORM_OPS_ROLE_KEY as AUTH_OPS_KEY,
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   M34_ALERT_RESOLVER_NAMES,

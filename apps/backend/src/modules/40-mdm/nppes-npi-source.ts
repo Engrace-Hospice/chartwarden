@@ -10,7 +10,7 @@
 // A `merged` canonical is EXCLUDED. Its NPI, if it has one, belongs to the survivor it points at, and the
 // survivor is in the list on its own account — fetching both would spend two rate-limited CMS requests to
 // learn the same registry fact. Provisional rows carry a null NPI and drop out for free.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, isNotNull, ne } from "drizzle-orm";
 
 const PHYSICIAN = schema.externalPhysicians;

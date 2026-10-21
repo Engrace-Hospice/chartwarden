@@ -1,7 +1,7 @@
 // M36 WP 3.5 - the calls behind the compose drawer: caseload, pre-fill (a pure read), the offer, and the expiry policy.
 // Nothing here is stored client-side; the draft lives in component state until Offer.
-import type { HandoffDto, HandoffItemKind } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { HandoffDto, HandoffItemKind } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useMemo } from "react";
 import { type HandoffResult, NETWORK_FAILURE, toResult } from "./use-handoffs";
 

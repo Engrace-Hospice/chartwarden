@@ -1,6 +1,6 @@
 /**
  * F-197 (#248) — the §7.16 SUD-consent MINT-TIME gate, proven against real Postgres and the real M39
- * `ConsentEvaluator` (in-memory-backed, `@wardenx/consent`'s own real evaluation logic — not a stand-in).
+ * `ConsentEvaluator` (in-memory-backed, `@chartwarden/consent`'s own real evaluation logic — not a stand-in).
  *
  * `consent-gate.ts`'s `resolveSudConsentPresent` was already called once, at RENDER time — but nothing
  * re-checked consent at any LATER signed-URL mint, so a document rendered while a 42 CFR Part 2 consent was
@@ -21,10 +21,10 @@ import {
   type InMemoryConsentDataset,
   type StoredConsent,
   createInMemoryConsentStore,
-} from "@wardenx/consent";
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+} from "@chartwarden/consent";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDbSignedUrlObjectResolver } from "../src/modules/22-documents/documents-route-service-db";

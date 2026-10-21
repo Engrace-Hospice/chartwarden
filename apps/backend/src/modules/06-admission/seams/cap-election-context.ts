@@ -20,8 +20,8 @@
 // has no reader of it, and the existing M26 routes (`routes/read-service-drizzle.ts`) only echo the
 // stored column back on read — so this records an honest, once-written fact, not a value derived for a
 // downstream calculation this change does not also own.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, isNotNull, lte, sql } from "drizzle-orm";
 
 const EP = schema.electionPeriods;

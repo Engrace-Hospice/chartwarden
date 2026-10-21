@@ -244,19 +244,19 @@ Orchestrates the full lifecycle. Uses the XState machine internally but exposes 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/credentials/rotation-service.ts
 import { ulid } from 'ulid'
-import { db } from '@wardenx/db'
+import { db } from '@chartwarden/db'
 import {
   credentialRotationRequest,
   externalFeedCredential,
   externalFeed,
-} from '@wardenx/db/schema/external-interfaces'
+} from '@chartwarden/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 import { rotationMachine } from './rotation-state-machine'
 import { createActor } from 'xstate'
 import type { CredentialBuilder } from './credential-builder'
-import type { Outbox } from '@wardenx/foundation/outbox'
-import type { AuditLogger } from '@wardenx/foundation/seams'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import type { AuditLogger } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 export class DistinctApproverRequiredError extends Error {
@@ -568,7 +568,7 @@ KMS-backed mint. Supports both inbound (server cert + client-CA) and outbound (c
 ```ts
 // apps/backend/src/modules/29-external-interfaces/credentials/credential-builder.ts
 import * as forge from 'node-forge'
-import type { KmsEnvelopeEncryptor, KeyManagementSystem } from '@wardenx/foundation/seams'
+import type { KmsEnvelopeEncryptor, KeyManagementSystem } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 export interface CredentialMintInput {
@@ -705,8 +705,8 @@ The credential builder is purposefully thin — most of the heavy crypto lives i
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
 import { RotationService, DistinctApproverRequiredError, RotationNotInRequiredStateError, RotationExpiredError, RotationNotFoundError } from '../credentials/rotation-service'
-import { requirePermissions } from '@wardenx/foundation/auth'
-import { requirePredicate } from '@wardenx/foundation/abac'
+import { requirePermissions } from '@chartwarden/foundation/auth'
+import { requirePredicate } from '@chartwarden/foundation/abac'
 
 export function registerCredentialRotationRoutes(app: FastifyInstance, service: RotationService): void {
   // POST request rotation
@@ -849,9 +849,9 @@ Per M29 v0.3 §4.7 (D20), the predicate `external_feed_compliance_co_approver_di
 ```ts
 // apps/backend/src/modules/03-authorization/predicates/external_feed_compliance_co_approver_distinct.ts
 import type { PredicateContext } from '../predicate-types'
-import { credentialRotationRequest } from '@wardenx/db/schema/external-interfaces'
+import { credentialRotationRequest } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 export const externalFeedComplianceCoApproverDistinct = {
   name: 'external_feed_compliance_co_approver_distinct' as const,
@@ -910,12 +910,12 @@ A scheduled BullMQ job (10-minute cadence) that does two things:
 // apps/backend/src/modules/29-external-interfaces/workers/credential-expiration-sweep.worker.ts
 import { Worker } from 'bullmq'
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { credentialRotationRequest, externalFeedCredential } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { credentialRotationRequest, externalFeedCredential } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq, lt, gt, isNull } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
-import { mkAlertsClient } from '@wardenx/foundation/seams/alerts'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
+import { withPlatformContext } from '@chartwarden/tenancy'
+import { mkAlertsClient } from '@chartwarden/foundation/seams/alerts'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
 
 const logger = pino({ name: 'credential-expiration-sweep' })
 const outbox = mkOutbox(db, logger)

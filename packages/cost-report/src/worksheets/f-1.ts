@@ -1,10 +1,10 @@
-// @wardenx/cost-report — Worksheet F-1 (Statement of Changes in Fund Balances) TypeBox schema (Form
+// @chartwarden/cost-report — Worksheet F-1 (Statement of Changes in Fund Balances) TypeBox schema (Form
 // CMS-1984-14, Pub 15-2 §4351). F-1 reconciles the opening fund balance to the closing fund balance via the
 // net income/loss and other equity changes — it ties Worksheet F (balance sheet) period over period. Money
 // is INTEGER CENTS; no PHI (D18).
 //
 // CMS-CERT: certified against the form + Ch.43 §4351 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet F-1 — statement of changes in fund balances. */

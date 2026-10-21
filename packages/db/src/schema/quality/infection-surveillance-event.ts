@@ -1,4 +1,4 @@
-// @wardenx/db — `infection_surveillance_event` (M30 §3.3; PARTITIONED monthly by `observed_at`;
+// @chartwarden/db — `infection_surveillance_event` (M30 §3.3; PARTITIONED monthly by `observed_at`;
 // retention class `phi`). Per-event infection/exposure surveillance feeding outbreak detection.
 // Registers a §3.7 eraser (null patient_id + exposure_source → <erased>; retain categorical pathogen
 // surveillance for public health). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).

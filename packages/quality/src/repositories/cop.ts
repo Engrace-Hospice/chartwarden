@@ -1,8 +1,8 @@
-// @wardenx/quality · repositories — the CoP-citation compliance posture: `cop_compliance_status` (the
+// @chartwarden/quality · repositories — the CoP-citation compliance posture: `cop_compliance_status` (the
 // self-assessed Condition-of-Participation status per (provider_entity, CoP citation), with evidence
 // document refs + a six-month review cadence) (M30 §3.3, §7.7). ORG-SCOPED; the CoP service wraps these
 // in `withOrgContext`. No PHI; no audit denylist.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

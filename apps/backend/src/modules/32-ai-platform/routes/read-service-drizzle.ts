@@ -24,8 +24,8 @@
 // §3.8 partitions `ai_token_ledger` monthly and §1.1's budget is a monthly figure. Computing a forecast
 // over a rolling 30 days would straddle two partitions for no benefit and would answer a different
 // question from the one the cap enforces.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AiEvaluationRunDecision,
   AiEvaluationRunStage,
@@ -33,7 +33,7 @@ import type {
   AiInvocationHitlOutcome,
   AiInvocationStatus,
   AiRoutingDecision,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 
 import type { AiTokenBudgetResolver } from "../invocation/store";

@@ -1,4 +1,4 @@
-import { Button, InlineAlert, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, SelectField, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Channel members (`/admin/messaging/channels/:id/members`, M36 spec §4.1).
 // List, add (POST) and remove (DELETE) members of one channel, with role + source shown per row. The server is the
 // authority on who may manage members (`messaging.manage_members` plus channel-scoped authority); a 403 on the list

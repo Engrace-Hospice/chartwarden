@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_read_disclosure` (M28, F-035). The 45 CFR §164.528 accounting ledger: one row per
+// @chartwarden/db — `fhir_read_disclosure` (M28, F-035). The 45 CFR §164.528 accounting ledger: one row per
 // FHIR read SERVED to an external client, recording who read what, about whom, and when.
 //
 // The Phase-1 gateway served nothing, so no disclosure existed to account for and the M30 scorecard's

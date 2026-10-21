@@ -1,14 +1,14 @@
-// @wardenx/quality — M30 §4.5 CAHPS vendor adapter contract (resolves ADR-005).
+// @chartwarden/quality — M30 §4.5 CAHPS vendor adapter contract (resolves ADR-005).
 //
 // M30 ships a pluggable CAHPS-Hospice survey-vendor adapter pattern with Strategic Healthcare Programs
-// (SHP) as the platform default. The CONCRETE adapter classes live in `@wardenx/cahps-vendors` (one
+// (SHP) as the platform default. The CONCRETE adapter classes live in `@chartwarden/cahps-vendors` (one
 // folder per vendor); this file owns the published INTERFACE they implement plus the two supporting
 // domain shapes. Keeping the interface here (rather than in `cahps-vendors/src/types.ts`, where the spec
-// drafts it) lets `@wardenx/cahps-vendors` depend on `@wardenx/quality` for the contract without a
+// drafts it) lets `@chartwarden/cahps-vendors` depend on `@chartwarden/quality` for the contract without a
 // dependency cycle — both packages are M30-owned (manifest codePaths), so the edge is intra-module.
 //
 // P2a is PURE DOMAIN: this is an interface + value types only. No I/O, no DB, no Fastify.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /**
  * The vendor's display identity as carried on the adapter instance (§4.5). Mixed-case, human-facing —
@@ -76,7 +76,7 @@ export interface CahpsResultSummaryInput {
 
 /**
  * The published CAHPS vendor-adapter contract (§4.5, verbatim). One class per vendor in
- * `@wardenx/cahps-vendors` implements this; the per-org live instance is resolved through a
+ * `@chartwarden/cahps-vendors` implements this; the per-org live instance is resolved through a
  * {@link import("./registry").CahpsAdapterRegistry} keyed by `orgId`, so cross-tenant invocation is
  * structurally impossible. All methods are pure with respect to the platform — the only side-effect a
  * concrete adapter may have is the (injected) vendor HTTP call inside `pushExport`.

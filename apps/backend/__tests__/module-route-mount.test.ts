@@ -1,7 +1,7 @@
 // apps/backend/__tests__/module-route-mount.test.ts — the buildServer `registerModuleRoutes` hook.
 // Proves the composition-root mount mechanism: module REST routes mount behind the same auth/security
 // chain as the foundation routes, and the hook is opt-in (absent → only foundation routes are served).
-import { requireRequestContext } from "@wardenx/tenancy";
+import { requireRequestContext } from "@chartwarden/tenancy";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 

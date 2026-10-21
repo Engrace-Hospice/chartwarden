@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/34-saas — M34 SaaS Tenant Platform screen registration (R2, ADR-0030).
 // The tenant-facing /admin/* surface only — the platform-ops control plane (§5.1: Tenants, Support
 // Sessions, Feature Flags, DSAR/Tenant Exports, Onboarding Templates, BAA Register, Signup Intents,

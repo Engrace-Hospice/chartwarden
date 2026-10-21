@@ -9,7 +9,7 @@
 //
 // STEP-UP (D18, W-XI-13): rotation is a step-up-gated operator action — enforced at the T08 route, not
 // here; this file is the state-shape the route walks the rows through.
-import type { ExternalFeedCredentialStatus } from "@wardenx/types";
+import type { ExternalFeedCredentialStatus } from "@chartwarden/types";
 
 /** A fresh credential row lands `active` (§3.3 default). */
 export const EXTERNAL_FEED_CREDENTIAL_INITIAL_STATUS: ExternalFeedCredentialStatus = "active";

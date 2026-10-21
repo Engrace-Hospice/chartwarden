@@ -1,7 +1,7 @@
 // apps/backend/__tests__/orders-workflow-acceptance.test.ts — M11-T09 the §5 workflow-acceptance suite
 // + §9.3 race tests. One scenario per named §5 workflow, exercised end-to-end over the in-memory
 // OrderRouteService (the same backend the §4.1 routes compose over, M11-T06) plus the pure
-// `@wardenx/orders` verbal-timer / standing-order engines the §4.8 workers drive. Deterministic: no infra,
+// `@chartwarden/orders` verbal-timer / standing-order engines the §4.8 workers drive. Deterministic: no infra,
 // injected clock. The route-auth handshake (§4.6/§4.7) + the wire status codes live in orders-routes.test.ts;
 // the pure machines have their own unit suites — this asserts the WORKFLOW outcomes (state transitions,
 // verbal-window timer math, cosign routing, standing-order signature inheritance, expiry side-effects) and
@@ -22,7 +22,7 @@ import {
   planStandingSpawn,
   planVerbalExpiry,
   transitionOrder,
-} from "@wardenx/orders";
+} from "@chartwarden/orders";
 import { describe, expect, it } from "vitest";
 import { SYSTEM_ORDER_ACTOR, createInMemoryOrderBackend } from "../src/modules/11-orders/index";
 

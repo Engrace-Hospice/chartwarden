@@ -2,8 +2,8 @@
 // Idempotency-Key is minted per dialog open and sent on the POST; it is replaced after a definite refusal (a changed choice is a new
 // attempt) and kept after an indeterminate one (the same attempt may have been saved, so its replay must be recognised). A refusal never says why a person is ineligible. The caller's `run` owns the busy
 // state, the live announcement and the list refresh; this hook only builds the call and maps the answer to words.
-import type { AckReassignCandidate, AckSupervisorReasonCode } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { AckReassignCandidate, AckSupervisorReasonCode } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   REASSIGN_CANNOT_TAKE_TEXT,

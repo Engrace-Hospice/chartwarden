@@ -1,4 +1,4 @@
-import { Glyph } from "@wardenx/ui";
+import { Glyph } from "@chartwarden/ui";
 import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

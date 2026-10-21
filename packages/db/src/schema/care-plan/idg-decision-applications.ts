@@ -1,4 +1,4 @@
-// @wardenx/db - M7's durable, tenant-scoped IDG proposal/application record for the
+// @chartwarden/db - M7's durable, tenant-scoped IDG proposal/application record for the
 // `idg.decision_recorded` care-plan consumer. The unique decision key is committed with the proposed
 // mutation set, and the row moves to `applied` only when the governed idg_review version publishes.
 import {

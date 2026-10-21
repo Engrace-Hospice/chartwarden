@@ -1,4 +1,4 @@
-// @wardenx/auth · roles — GAP-003: platform authority is never tenant-mintable.
+// @chartwarden/auth · roles — GAP-003: platform authority is never tenant-mintable.
 //
 // Every platform predicate (M22 form-template publish, M26 cap constants, M29 queue ops, M34 tenant
 // lifecycle, M35 platform billing) decides on a role KEY carried in `context.roles`. Tenants may create

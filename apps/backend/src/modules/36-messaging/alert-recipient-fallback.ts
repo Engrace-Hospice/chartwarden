@@ -9,7 +9,7 @@
 // recipients it logs a structured warning and re-emits the SAME alert ONCE under the fallback event type (a seeded
 // `tenant_admins` rule) and a `:fb` correlation id of its own, so the dedupe cannot swallow it. Whether to provision
 // those tenant roles is the GAP-006 tenant-role-template cluster's question, not this module's.
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
 
 export const QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE = "m30.alerts.recipient_fallback";
 

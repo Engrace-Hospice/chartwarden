@@ -1,4 +1,4 @@
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/22-documents/render-variants/medication-list-bindings.ts — F-171 (#248) the
 // LIVE `m12.medication_order.list_changed` → `patient_medication_list` render binding. Unlike
 // `lab-backref-bindings.ts` (deny-stub, M29 unbuilt), M12's `MedicationOrderProvider` seam is real and
@@ -15,7 +15,7 @@ import { runWithRequestContext } from "@wardenx/tenancy";
 // "MedicationOrderProvider")` is ever invoked. `CONSUMER_USER_ID = ""` is the established dispatcher
 // convention (F-102) for a system-attributed read — this is a READ, so it never reaches an
 // `actorMembershipId` column the way F-102's write-path convention does.
-import type { MedicationOrderDto } from "@wardenx/types";
+import type { MedicationOrderDto } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import type {
   DispatchableOutboxEvent,
@@ -65,7 +65,7 @@ const CONSUMER_USER_ID = "";
 
 /** Mirrors M12's own (private) `layInstructions` (`12-dosespot/seams/providers.ts`) — the lay-language sig
  * summary every M12 read projection derives the same way. Duplicated rather than imported: M22 `dependsOn`
- * is `[1, 5]` and cannot import `@wardenx/dosespot`/M12's own module code (only its leaf `@wardenx/types`
+ * is `[1, 5]` and cannot import `@chartwarden/dosespot`/M12's own module code (only its leaf `@chartwarden/types`
  * DTO + the opaque seam). */
 function sigSummaryOf(order: MedicationOrderDto): string {
   const s = order.sigStructured;
@@ -75,12 +75,12 @@ function sigSummaryOf(order: MedicationOrderDto): string {
 
 /**
  * `MedicationOrderProvider` is typed (not `unknown`) in the leaf `SeamContracts` map
- * (`packages/types/src/seams.ts`), since `MedicationOrderProvider` itself already lives in `@wardenx/types`
+ * (`packages/types/src/seams.ts`), since `MedicationOrderProvider` itself already lives in `@chartwarden/types`
  * — unlike `ConsentEvaluator`/`TerminologyProvider`, which are opaque there because their rich interfaces
  * live in a producer package M22 has no edge to. So `getSeam("MedicationOrderProvider")` returns the real
  * interface directly below — no local structural port or cast needed (the M30 `index.ts` composition-root
  * precedent: `getSeam("MedicationOrderProvider")` with no cast), resolved opaquely from the M1 registry,
- * never a `@wardenx/dosespot` import.
+ * never a `@chartwarden/dosespot` import.
  *
  * Resolve the patient's CURRENT active-medication set via M12's real `MedicationOrderProvider` seam (the
  * fresh-at-delivery-time read this event's diff payload cannot supply; see the consumer file header).

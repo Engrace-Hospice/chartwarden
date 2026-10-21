@@ -5,8 +5,8 @@
 // M34 / M5 / M12) reaches these under its OWN org context, so the store opens `withOrgContext` on the
 // `organizationId` argument (asserted against the scope, never used to select across tenants) and RLS is
 // the backstop. Metrics are aggregate COUNTS only — NO PHI leaves through this surface.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   FhirClientDetail,
   FhirClientSummary,
@@ -15,7 +15,7 @@ import type {
   FhirInboundOwnerModule,
   FhirInboundProposalDetail,
   FhirInboundProposalSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import type { FhirPublishedSeamStore } from "./published";

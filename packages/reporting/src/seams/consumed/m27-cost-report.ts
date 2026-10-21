@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M27 (Cost Report). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M27 (Cost Report). ABSENT producer (§4.4).
 //
 // M27 is not yet implemented → forward-seam DENY-STUB. M27 registers the real
 // `CostReportFilingStatusReader` / `CostReportProvider` / `CostReportValidationReader` over this stub

@@ -33,7 +33,7 @@
 // The clock and fetch are injectable so the SigV4 math is deterministic under test (the exported
 // `sigV4*` helpers are verified against the official AWS SigV4 test-suite example values).
 import { createHash, createHmac } from "node:crypto";
-import type { IsoInstant, OrgId, SignedUrlDescriptor } from "@wardenx/types";
+import type { IsoInstant, OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "./store";
 

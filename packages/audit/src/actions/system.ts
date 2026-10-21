@@ -1,4 +1,4 @@
-// @wardenx/audit — system (`m0`) action catalog (M4-T10; M4 spec §4.6.1 `system.ts`, §11.1).
+// @chartwarden/audit — system (`m0`) action catalog (M4-T10; M4 spec §4.6.1 `system.ts`, §11.1).
 //
 // The un-prefixed `audit.*` / `data.*` / `disclosure.*` system actions M4 owns — including the
 // audit-of-audit meta-events of §11.1 ("the watchers are watched"). Un-prefixed by D9 convention

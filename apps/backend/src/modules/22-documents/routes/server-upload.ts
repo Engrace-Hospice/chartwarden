@@ -15,10 +15,10 @@
 // No store bound -> 503 `document-storage` (the only remaining DegradedError). Org and actor are server
 // facts handed in by the route; nothing here reads them from the body.
 import { createHash, randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DocumentAggregateType, OrgId } from "@wardenx/types";
-import { DegradedError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
+import { DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";

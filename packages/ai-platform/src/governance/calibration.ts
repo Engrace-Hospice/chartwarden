@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.3 calibration publication rules (M32-T03, R5/W6).
+// @chartwarden/ai-platform — §3.2.3 calibration publication rules (M32-T03, R5/W6).
 //
 // A calibration is the (capability, backend) pair's THRESHOLDS plus the metric baseline the W7 drift
 // monitor measures the live window against. Publishing one is therefore two writes, never one: the

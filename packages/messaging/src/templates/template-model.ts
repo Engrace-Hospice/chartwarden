@@ -1,4 +1,4 @@
-// @wardenx/messaging - message template model (M36 WP 2.8): types, write validation, the platform floor and the
+// @chartwarden/messaging - message template model (M36 WP 2.8): types, write validation, the platform floor and the
 // effective (platform + overlay) resolution. Pure: shared by the Drizzle service, the in-memory double and the routes.
 //
 // OWNERSHIP (decided in WP 2.8):
@@ -9,7 +9,7 @@
 // category or the required phrases, cannot drop a required phrase, and is held to the same PHI lint. The floor is
 // re-checked when the overlay is RESOLVED, not only when it is saved, so a stored overlay that no longer satisfies a
 // (later tightened) floor silently falls back to the platform text instead of being served.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import {
   PHI_FINDING_MESSAGES,
   PHI_LINT_VERSION,

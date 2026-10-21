@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `evv_aggregator_submission` (M18 §3.3 / §2.2.5 D7). The per-state aggregator submission state
+// @chartwarden/db — `evv_aggregator_submission` (M18 §3.3 / §2.2.5 D7). The per-state aggregator submission state
 // machine (pending → queued → submitting → submitted → accepted | rejected | timeout | cancelled); resubmit
 // only from rejected/timeout, cancel only from non-terminal states. Idempotency on (state_code, visit_id,
 // event_pair_hash). Org-scoped (no `patient_id` column — joinable to PHI only via `visit_id`). The submission

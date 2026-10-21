@@ -6,7 +6,7 @@ import {
   type OnCallRank,
   ROLE_SEND_ERROR_CODES,
   ROLE_SEND_TELEPHONE_PROCEDURE,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { RANK_LABELS, asOfText, untilText } from "./oncall-directory-wording";
 
 export const ROLE_SEND_BUTTON_LABEL = "Message on-call role";

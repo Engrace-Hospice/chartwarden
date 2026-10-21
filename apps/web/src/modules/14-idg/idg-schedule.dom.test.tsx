@@ -2,7 +2,7 @@
 // replaced short ids (coordinator via /orgs/{id}/care-team-staff, patient via `patient.displayName`).
 // Asserts on RECORDED FETCH CALLS (method, path, body), like idg-writes.dom.test.tsx.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

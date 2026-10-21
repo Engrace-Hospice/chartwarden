@@ -7,7 +7,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM EDITOR (R2, §5.1 #3, #7, #10).
 // The full claim detail surface: the claim_line projection (rev/Q codes, LOC, modifiers, ICD pointers), the
 // HIPPS / SIA / sequestration pricing cards, the latest validation-run summary (with a deep-link into the

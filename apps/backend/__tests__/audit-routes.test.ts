@@ -3,17 +3,17 @@
 //
 // Exercises M4's audit-query routes through the FULL M1 middleware chain via Fastify `inject`
 // with no live infra: buildServer() mounts the foundation host, registerAuditRoutes() mounts the
-// query routes against the in-memory `AuditQuery` adapter (@wardenx/audit) seeded with the rows a
+// query routes against the in-memory `AuditQuery` adapter (@chartwarden/audit) seeded with the rows a
 // PHI write trigger / read helper would produce. The REAL Authorization Contract gates every
 // route (`requirePermission("audit.read")`); a header-auth shim populates request.context.
-import { createInMemoryAuditQuery } from "@wardenx/audit";
-import type { AuditEventRecord } from "@wardenx/audit";
+import { createInMemoryAuditQuery } from "@chartwarden/audit";
+import type { AuditEventRecord } from "@chartwarden/audit";
 import {
   createInMemoryEffectivePermissionStore,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

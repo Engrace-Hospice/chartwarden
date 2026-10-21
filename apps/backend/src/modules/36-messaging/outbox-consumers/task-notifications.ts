@@ -2,7 +2,7 @@
 // The tenant comes from the envelope, never the payload. The recipient's channel access is re-checked now (a stale
 // event must not alert someone who lost access). The text is fixed and PROVISIONAL (clinical-lead sign-off pending):
 // no names, no patient, no message text. Tasks do not page anyone; this is an inbox entry, not the emergency path.
-import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingRouteService } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

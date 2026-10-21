@@ -1,7 +1,7 @@
 // GAP-091 follow-up — (1) the M30-specific org-wide READ arm (spec §6.5 / §6.6 ✓ cells) for
 // qapi_coordinator / infection_control_lead, never applied to writes; (2) incident LIFECYCLE writes are
 // caseload-scoped at the service layer with an own-record arm (reporter / triager / assigned investigator).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type M30WriteActor, m30SystemWriteActor } from "../routes/actor";
 import { incidentOwnedBy } from "../routes/incident-ownership";

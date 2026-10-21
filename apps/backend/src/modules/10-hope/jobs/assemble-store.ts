@@ -10,7 +10,7 @@
 // emitted `m10.hope.submission_queued` with `itemCount: 0`. Every call produced an empty batch and
 // reported 201 Created.
 //
-// SCOPE. This is stage 1 of the three §4.10 stages. Stages 2 and 3 terminate in `@wardenx/iqies-client`,
+// SCOPE. This is stage 1 of the three §4.10 stages. Stages 2 and 3 terminate in `@chartwarden/iqies-client`,
 // whose sole adapter is `createUnboundIqiesAdapter` — a deny-stub, because the live transport (CMS HOPE
 // submission XML, per-MAC submitter auth, sandbox/prod selection) does not exist. That is a genuine
 // declared absence, and `./cron-workers.ts` states it. Stage 1 is different: it needs nothing outside
@@ -19,7 +19,7 @@
 //
 // TENANCY. Every query carries an explicit `organization_id` predicate on top of the caller's
 // `withOrgContext` RLS envelope — the org-rollup store's HARD RULE 1, reused here.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { correctsIqiesRecordIdSql, outerColumn } from "./correlated-sql";
 import { type AssemblableAssessment, submissionPeriodFor } from "./submission";

@@ -2,7 +2,7 @@
 //
 // The read-only dashboard + tile surface: list/read dashboards available in the actor's scope, and
 // read a tile (compile + execute its spec on the read replica) + its freshness badge. Every route is
-// gated by the REAL Authorization Contract (`requirePermission` / `requireAbac` from @wardenx/auth, M3)
+// gated by the REAL Authorization Contract (`requirePermission` / `requireAbac` from @chartwarden/auth, M3)
 // on the §4.6 keys M33 registers into M3's catalog (M33_CONTRIBUTED_PERMISSIONS). The `reportable_scope`
 // ABAC predicate M33 owns (./abac-predicates) is composed on the scope-filtered reads (dashboard.read /
 // tile.read) per the catalog's declared `abac` binding; the cross-tenant-safe scope envelope is sealed
@@ -12,7 +12,7 @@
 // RLS-scoped, tiered-statement_timeout path, §8.1.2 / D3); HIPAA §164.312(b) read-audit is the standard
 // M4 read-audit anchor on that path (the M34 read-route precedent — no per-handler audit call). Org/actor
 // binding is ALWAYS server-side (request.context, never the body/query). Mirrors M34 routes/platform/tenants.ts.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";

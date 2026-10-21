@@ -18,7 +18,7 @@
 // signed-note reader; when linked, the separate ≥ 100-char narrative is not required.
 //
 // No IO: every fact is resolved by the caller and passed in.
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import { AdmissionStateError, require_ } from "./errors";
 
 /** The §3.2 `f2f_encounter_location` values. */

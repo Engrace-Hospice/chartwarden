@@ -1,4 +1,4 @@
-// @wardenx/supplies — the §2.4 / D4 deterministic vendor-routing precedence ladder.
+// @chartwarden/supplies — the §2.4 / D4 deterministic vendor-routing precedence ladder.
 //
 // PURE — the resolver takes the candidate rules the repository already loaded and returns the resolution
 // plus the full evaluation trace. No IO here on purpose: the trace is what a surveyor reads years later
@@ -12,7 +12,7 @@ import type {
   SupplyFulfillmentMode,
   VendorRoutingRuleId,
   VendorRoutingScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The resolver's version stamp, written into every resolution record. Bump when the ladder changes so an
  *  old record is never replayed through new logic. */

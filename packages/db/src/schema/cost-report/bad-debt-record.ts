@@ -1,4 +1,4 @@
-// @wardenx/db — `bad_debt_record` (M27 §3.3, D7; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `bad_debt_record` (M27 §3.3, D7; non-partitioned; retention class `compliance`).
 // Opt-in per cost report (`cost_report.bad_debt_claimed`): the un-collectible portion of Medicare
 // deductibles/coinsurance claimed under PRM I Ch 3-4 allowability (collection efforts documented). Add/
 // edit only while parent is draft/populating; soft-delete (`deleted_at` tombstone) preserves the row for

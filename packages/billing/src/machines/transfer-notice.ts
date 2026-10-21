@@ -1,4 +1,4 @@
-// @wardenx/billing — the `transfer_notice_record` lifecycle reducer: the Medicare hospice Change of Provider /
+// @chartwarden/billing — the `transfer_notice_record` lifecycle reducer: the Medicare hospice Change of Provider /
 // Transfer Notice (TOB 81C/82C), its date correction and its 8xD void (CMS Pub. 100-04 ch. 11 §20.1.3 /
 // §20.1.4, Rev. 12847). Shape-identical to `machines/noe.ts` / `machines/notr.ts` (a flat transition table + a
 // pure guard + a non-throwing `reduce`) and over the SAME `NoticeState` alphabet, so the notice worklist, the

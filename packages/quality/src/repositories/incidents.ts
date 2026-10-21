@@ -1,10 +1,10 @@
-// @wardenx/quality · repositories — the safety-incident ledger: `incident_report` (falls, med errors,
+// @chartwarden/quality · repositories — the safety-incident ledger: `incident_report` (falls, med errors,
 // complaints, abuse allegations, exposures; PARTITIONED monthly by `occurred_at`, composite PK
 // id + occurred_at; retention class `phi`) (M30 §3.3). ORG-SCOPED; the incident service wraps these in
 // `withOrgContext` and the PHI list routes drive cursor pagination off `listByOrg` / `listForPatient`
 // (keyset on (occurred_at, id) desc, §4.1.2). The free-text members of `kind_data` are audit-denylisted
 // (§3.6). Auto-creation idempotency runs through `findByTriggeringEvent` (the per-leaf partial-unique).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { type SQL, and, desc, eq, lt, ne, or } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

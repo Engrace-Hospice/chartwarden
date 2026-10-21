@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 snapshot → ECR/PI adapter (D11, §2.4 / §4.10). The submit transaction freezes
+// @chartwarden/cost-report — M27 snapshot → ECR/PI adapter (D11, §2.4 / §4.10). The submit transaction freezes
 // the cost report into a `cost_report_snapshot` row whose `worksheet_snapshot` jsonb holds the 21
 // worksheets' `data` payloads; this adapter is the single pure entry point the `ecr-generation` worker
 // calls to turn that frozen snapshot into the two artifact strings — the machine ECR file and the human-
@@ -7,7 +7,7 @@
 // outbox/MinIO machinery lives here (it is P3 worker wiring) — this file is the deterministic byte
 // production only.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no MinIO, no M22 code.
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no MinIO, no M22 code.
 // No PHI — the snapshot is aggregate financial / statistical only (D18).
 import { type PiFormat, renderPi } from "./pi-renderer";
 import { type EcrHeaderContext, type SnapshotWorksheets, writeEcr } from "./writer";

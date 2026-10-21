@@ -1,4 +1,4 @@
-// @wardenx/assessments — discipline × scale eligibility matrix (§4.7 / D8, M9-T05). Pure, IO-free.
+// @chartwarden/assessments — discipline × scale eligibility matrix (§4.7 / D8, M9-T05). Pure, IO-free.
 //
 // D8: "which discipline may record which scale is a clinical-practice rule, not a configuration knob"
 // (§ Design decisions). The matrix is a TYPED constant the recording boundary enforces via the
@@ -12,8 +12,8 @@
 //   • AIMS — RN + MD/NP only (psych-trained roles); the Part 2 release is a READ gate, not a write gate
 // the symptom instruments (ESAS-r / PAINAD / FLACC) and GDS follow §4.6's author defaults (MSW/Chaplain
 // may record ESAS-r; CHHA records the broad-discipline risk/pain instruments).
-import type { ScaleType } from "@wardenx/types";
-import { SCALE_TYPES } from "@wardenx/types";
+import type { ScaleType } from "@chartwarden/types";
+import { SCALE_TYPES } from "@chartwarden/types";
 
 /** The clinical disciplines that can appear in `clinical_assessment.captured_by_discipline` (lower-case
  * keys the matrix compares; resolved from the actor's membership discipline / role tokens at the route). */

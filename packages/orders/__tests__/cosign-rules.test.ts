@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.5 cosignature rules — M11-T03.
+// @chartwarden/orders — §2.5 cosignature rules — M11-T03.
 import { describe, expect, it } from "vitest";
 import {
   type CosignAttest,

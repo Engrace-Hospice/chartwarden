@@ -5,8 +5,8 @@
  * server code read them: Better Auth's 7-day rolling default was the only bound. These tests pin the
  * pure decision the authenticate hook now enforces, driven by `SESSION_POLICY.byClass` alone.
  */
-import { SESSION_CLASSES, SESSION_MAX_ABSOLUTE_SEC, evaluateSessionTimeout } from "@wardenx/auth";
-import { SESSION_POLICY } from "@wardenx/types";
+import { SESSION_CLASSES, SESSION_MAX_ABSOLUTE_SEC, evaluateSessionTimeout } from "@chartwarden/auth";
+import { SESSION_POLICY } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const MIN = 60_000;

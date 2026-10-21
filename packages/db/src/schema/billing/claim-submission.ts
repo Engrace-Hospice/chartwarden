@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `claim_submission` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// @chartwarden/db — `claim_submission` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). Append-only: one row per dispatch attempt of an 837I claim, an NOE, or an NOTR to the
 // MAC (via the x12-837-client sidecar / portal). ORG-SCOPED: organization_id NOT NULL (canonical
 // app.org_id RLS).

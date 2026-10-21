@@ -1,4 +1,4 @@
-// @wardenx/types - the typed render payloads of M6's CoP compliance documents (GAP-033, Wave 1): CTI, face-to-face
+// @chartwarden/types - the typed render payloads of M6's CoP compliance documents (GAP-033, Wave 1): CTI, face-to-face
 // attestation, notice of rights acknowledgment, revocation, discharge summary and transfer summary. M6 builds
 // each in the transaction that signs the artifact (apps/backend/src/modules/06-admission/render-payloads) and
 // publishes it as `renderPayload` on the existing `m6.*` event; M22's form compiler validates it at the render

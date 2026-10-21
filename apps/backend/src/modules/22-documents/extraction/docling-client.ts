@@ -12,7 +12,7 @@
 //
 // Unconfigured (no DOCLING_WORKER_URL or no DOCLING_WORKER_TOKEN) ⇒ `createUnboundDoclingClient`, which refuses with a
 // typed 503 — never a silent empty parse that the pipeline would read as "a document with no text".
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 export type DoclingBBox = readonly [number, number, number, number];
 

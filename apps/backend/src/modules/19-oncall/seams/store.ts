@@ -48,7 +48,7 @@ import type {
   TriageDisposition,
   TriageEscalationTier,
   TriageMetricsWindow,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** One covering `clinical_rn` shift interval, as the coverage-gap arithmetic needs it. */
 export interface RnCoverageWindow {

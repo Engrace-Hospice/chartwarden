@@ -36,8 +36,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import {
   CANDIDATE_CAP,
   DECRYPT_BUDGET,
@@ -54,7 +54,7 @@ import {
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1217,7 +1217,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       });
       expect([absent.statusCode, errorCode(absent)]).toEqual([503, "DEGRADED"]);
       limiter = async () => {
-        const { RateLimitedError } = await import("@wardenx/types");
+        const { RateLimitedError } = await import("@chartwarden/types");
         throw new RateLimitedError();
       };
       const limited = await search(u, "limiterword");

@@ -6,7 +6,7 @@
 // boot-registered seam registry and passed into the pure machines as a plain value.
 //
 // The seams M15 PUBLISHES live in `./index.ts` + `./providers.ts` (M15-T05).
-import type { CarePlanReader, SignedEncountersReader } from "@wardenx/types";
+import type { CarePlanReader, SignedEncountersReader } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /** M15 CONSUMES M7's §7.8 CarePlanReader — the IPOC problems/goals a discipline plan references (§2.1). */

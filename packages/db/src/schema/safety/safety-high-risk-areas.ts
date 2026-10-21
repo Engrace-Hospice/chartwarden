@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_high_risk_area` (M20 §3.3 / §2.2.7, D12). An advisory polygon: it never blocks a
+// @chartwarden/db — `safety_high_risk_area` (M20 §3.3 / §2.2.7, D12). An advisory polygon: it never blocks a
 // visit, it surfaces a warning and — per tenant policy — makes the pre-visit check-in mandatory or flags a
 // buddy visit for M17 to route. Every category is advisory; there is no blocking category by design.
 //

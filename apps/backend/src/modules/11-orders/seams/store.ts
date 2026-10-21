@@ -13,7 +13,7 @@
 // at sign); when `targetKind === 'medication_order'` there is no local M11 row — the signature/verbal row
 // is recorded and M12 owns the med-order lifecycle. Reads project read-only DTOs (never Drizzle rows); no
 // per-kind `data` jsonb (PHI) crosses the seam.
-import { DEFAULT_VERBAL_POLICY, type VerbalDeadlinePolicy } from "@wardenx/orders";
+import { DEFAULT_VERBAL_POLICY, type VerbalDeadlinePolicy } from "@chartwarden/orders";
 import type {
   AdmissionId,
   ClinicalLinkSummary,
@@ -29,7 +29,7 @@ import type {
   PatientId,
   VerbalOrderId,
   VerbalOrderStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The verbal-timeliness projection `OrderProvider.getVerbalOrderTimeliness` reads (sans the derived
  * `onTime`, which the provider computes). One row per order that was ever recorded as a verbal order. */

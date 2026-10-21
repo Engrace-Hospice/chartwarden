@@ -1,4 +1,4 @@
-// @wardenx/db — `admission` (M6 §3.3). The episode root: one row per hospice episode for a patient.
+// @chartwarden/db — `admission` (M6 §3.3). The episode root: one row per hospice episode for a patient.
 // PHI-bearing → the three-column tenancy rule; here provider_entity_id + location_id are NOT NULL
 // (an admission is always sited). The "one open admission per patient" invariant is a partial unique
 // index. Cross-module refs (M5 patient/caregiver, M40 physicians) are plain uuid app-validated; the
@@ -74,7 +74,7 @@ export const admissions = pgTable(
     attendingPhysicianId: uuid("attending_physician_id"), // M40 physician (app-validated)
     primaryCaregiverId: uuid("primary_caregiver_id"), // M5 caregiver (app-validated)
     // Migration 1057 — the UB-04 Type of Admission (FL 14 → 837I CL101) and Point of Origin (FL 15 → CL102) a hospice
-    // claim carries (NUBC codes; the sets live in `@wardenx/types` `ADMISSION_TYPE_CODES` / `ADMISSION_SOURCE_CODES`).
+    // claim carries (NUBC codes; the sets live in `@chartwarden/types` `ADMISSION_TYPE_CODES` / `ADMISSION_SOURCE_CODES`).
     // NULL until recorded — M23's `admission_codes_present` rule blocks a claim without them; a historical admission
     // is never backfilled with an invented code.
     admissionTypeCode: text("admission_type_code"),

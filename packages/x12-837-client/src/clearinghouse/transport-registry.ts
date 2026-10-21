@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — which ClearinghouseTransport is bound (ADR-0053 D3).
+// @chartwarden/x12-837-client — which ClearinghouseTransport is bound (ADR-0053 D3).
 //
 // WardenX resells ONE clearinghouse, so the binding is platform configuration (the CLEARINGHOUSE_VENDOR env var),
 // not a tenant or ProviderEntity setting, and it needs no migration. Binding fails closed:

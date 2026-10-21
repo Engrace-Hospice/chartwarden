@@ -1,4 +1,4 @@
-import type { PatientRoomingFacts } from "@wardenx/types";
+import type { PatientRoomingFacts } from "@chartwarden/types";
 // GAP-061 — the §2.2 shared-room occupancy gate (route-table row 170). The kernel that computes the
 // `roomOccupancyAllowed` fact the admission machine has always accepted and nothing ever produced.
 import { describe, expect, it } from "vitest";

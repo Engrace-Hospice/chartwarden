@@ -1,4 +1,4 @@
-// @wardenx/db — `device_attestation` (M2 Identity, SecHardening §12.2/§12.4; adjudicates ADR-0023 D2).
+// @chartwarden/db — `device_attestation` (M2 Identity, SecHardening §12.2/§12.4; adjudicates ADR-0023 D2).
 //
 // THE PLATFORM'S OWN VERDICT about the device a session is running on. `AbacContext.attributes
 // .deviceAttestation` is read from here and nowhere else — never from a request header, body or query,

@@ -5,9 +5,9 @@
 // partial unique index (one PROPOSED request per message and target) is the idempotency arbiter for insert, and the key
 // is locked (`FOR UPDATE`) before a decision so two racing requests serialise and the loser replays the winner's row.
 // There is no event table: the M4 audit trigger is the history.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import type { ChartPromotionReasonCode, ChartPromotionTargetModule } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import type { ChartPromotionReasonCode, ChartPromotionTargetModule } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

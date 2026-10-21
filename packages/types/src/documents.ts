@@ -1,4 +1,4 @@
-// @wardenx/types — Module 22 (Document Management) leaf contracts (M22-T01).
+// @chartwarden/types — Module 22 (Document Management) leaf contracts (M22-T01).
 //
 // Per ADR-0005 D1/D3 the cross-module CONTRACTS live in this leaf package: the M22 spec's references to
 // the §4.3 published-seam interfaces (`packages/domain/documents/seam-interfaces.ts`) and the §4.10 outbox
@@ -11,7 +11,7 @@
 // M22-T01 ships the type-level surface every later M22 task builds on: the §3.2 pgEnum value mirrors, the
 // §4.10 `m22.*` outbox event names, the §3.6 per-table audit denylist (the M4 trigger arguments for
 // M22-T03), and the §4.3 published reader-seam interfaces + their read DTOs. The two FEATURE packages
-// `@wardenx/forms` (Pillar 2 render + form-template domain) and `@wardenx/intake-extraction` (Pillar 3
+// `@chartwarden/forms` (Pillar 2 render + form-template domain) and `@chartwarden/intake-extraction` (Pillar 3
 // DocLens domain) carry the pure-data domain layout. This file is type-only and importable by everyone
 // with no edge.
 
@@ -21,7 +21,7 @@ import type { AdmissionId, OrgId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
 import type { ClinicalLinkSummary } from "./clinical-link";
 
-// ── M22-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M22-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type DocumentId = string;
 export type DocumentVersionId = string;
 export type DocumentTagId = string;

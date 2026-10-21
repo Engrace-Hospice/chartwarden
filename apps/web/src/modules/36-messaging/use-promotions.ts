@@ -4,7 +4,7 @@ import type {
   ChartPromotionDto,
   ChartPromotionTargetKind,
   ChartPromotionTargetModule,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { refreshPromotions, useOptionalApiClient } from "./use-promotions-enabled";
 

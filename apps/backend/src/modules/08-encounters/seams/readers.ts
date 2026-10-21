@@ -1,6 +1,6 @@
 // apps/backend/src/modules/08-encounters/seams/readers.ts — M8-T08 the §4.7 owned-seam implementations:
 // pure orchestration over an injected {@link EncounterReaderStore}. Each factory returns the leaf-typed
-// seam interface (@wardenx/types) the M1 registry validates and downstream modules resolve. The impls
+// seam interface (@chartwarden/types) the M1 registry validates and downstream modules resolve. The impls
 // add NO tenant logic — RLS scopes every store read/write by the consumer's `app.org_id`; they only
 // project store DTOs and apply the one derived rule with a single home: the §2.4/D3/D4/D12 billability
 // verdict (`deriveBillability`).
@@ -11,7 +11,7 @@ import type {
   EncounterId,
   MileagePayrollReader,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";
 import type { EncounterReaderStore, StoredEncounterFacts } from "./store";
 

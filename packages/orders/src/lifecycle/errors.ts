@@ -1,14 +1,14 @@
-// @wardenx/orders — M11 order-lifecycle failure-code catalog (§2.2 / §2.5, M11-T03).
+// @chartwarden/orders — M11 order-lifecycle failure-code catalog (§2.2 / §2.5, M11-T03).
 //
 // Every guard / validation failure in the pure order-lifecycle domain raises an `OrderStateError`
 // carrying the machine-readable code below. The error extends the M1 `ChartWardenError` envelope base
-// (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders it
+// (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders it
 // with the precise code + HTTP status with no cross-module import edge (the M8/M9 lifecycle convention).
 // Nothing transitions on a string match — each code is an enumerated constant; the §3.4 DB triggers
 // (`ACTIVE_ORDER_IMMUTABLE`, `TARGET_NOT_PENDING_SIGNATURE`, `REPLACED_ORDER_NOT_REPLACEABLE`, M11-T02)
 // repeat the strongest of these at the schema layer as defense in depth. The route layer (M11-T06)
 // reuses these codes verbatim.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M11 order-lifecycle failure-code catalog → canonical HTTP status. */
 export const M11_ERROR_STATUS = {

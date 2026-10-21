@@ -1,7 +1,7 @@
 // M36 WP 3.4 - "Convert to task": pick an assignee (required), an optional due date, and whether the task is a clinical
 // concern. The patient link is never sent: the server derives it from the channel. Server refusals land next to the
 // field they describe; the notice that tasks do not page anyone stays on screen.
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { type Assignee, AssigneePicker } from "./task-assignee-picker";

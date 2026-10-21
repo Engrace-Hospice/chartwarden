@@ -1,4 +1,4 @@
-// @wardenx/db — `medicaid_state_rate_schedule` (M24 Billing-Medicaid §3.3/D8-adjacent; non-partitioned;
+// @chartwarden/db — `medicaid_state_rate_schedule` (M24 Billing-Medicaid §3.3/D8-adjacent; non-partitioned;
 // retention class `reference`). Per-line rate resolution for the hospice-care-level lines
 // (RHC/CHC/IRC/GIP) `medicaid_claim.state_rate_schedule_id_snapshot` snapshots at assembly. Same D8-spec-
 // vs-actual-precedent posture as `medicaid_state_plan_code` (self-owned here, not routed through M40's

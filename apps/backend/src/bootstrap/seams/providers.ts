@@ -11,10 +11,10 @@
 // wireSeams() is where boot invokes those Phase-1 registrations.
 
 // M32-T06 — the §2.2/W9 refusal envelope M32's ten inference deny-stubs answer with. A LEAF type
-// (`@wardenx/types`), imported directly rather than through `../interfaces` because it is not a seam
-// contract: it is the value those seams return. M1 may not import `@wardenx/ai-platform`, which is
+// (`@chartwarden/types`), imported directly rather than through `../interfaces` because it is not a seam
+// contract: it is the value those seams return. M1 may not import `@chartwarden/ai-platform`, which is
 // exactly why T01 put this shape in the leaf.
-import type { AiCapabilityUnavailable } from "@wardenx/types";
+import type { AiCapabilityUnavailable } from "@chartwarden/types";
 import type {
   AITokenMeterProvider,
   AdmissionCensusReader,
@@ -248,7 +248,7 @@ export const mbiUnlockReaderDenyStub: MbiUnlockReader = {
 
 /**
  * M31 `portal_caregiver_is_primary_or_dpoa` ABAC read — deny-stub ONLY, no real impl to register: no
- * caregiver→user schema link exists (see the interface doc in @wardenx/types). Denying loudly on call
+ * caregiver→user schema link exists (see the interface doc in @chartwarden/types). Denying loudly on call
  * (rather than the unregistered-name `SeamError` the cast-resolved call site used to throw) keeps the
  * same fail-closed behavior the ABAC predicate already relies on, just through a registered contract.
  */
@@ -366,7 +366,7 @@ export const documentStorageProviderDenyStub: DocumentStorageProvider = {
   },
 };
 
-// M22 (§4.3) the five PUBLISHED reader seams. LEAF-TYPED (interfaces in @wardenx/types) → concrete typed
+// M22 (§4.3) the five PUBLISHED reader seams. LEAF-TYPED (interfaces in @chartwarden/types) → concrete typed
 // deny-stubs (like M6/M17's readers). Each denies LOUDLY until M22 registers the real Drizzle-backed reader
 // over it (M22-T05). All five are READ-only document/provenance/metrics projections.
 
@@ -476,7 +476,7 @@ export const organizationReaderDenyStub: OrganizationReader = {
 
 /**
  * Generic fail-closed deny-stub for a seam whose interface is too rich to live in the leaf
- * @wardenx/types (so M1 cannot name it here). Every property access yields a function that
+ * @chartwarden/types (so M1 cannot name it here). Every property access yields a function that
  * throws NotImplementedError, so an unregistered such seam denies LOUDLY on its first call
  * rather than failing open. M38's `TerminologyProvider` is the first of these (M40's
  * MdmEntityProvider/BaaStatusProvider and M36's AlertEmitter follow the same shape).
@@ -500,12 +500,12 @@ export const terminologyProviderDenyStub: unknown = denyingSeamProxy("Terminolog
 /** M36 — event → rules/recipients/fan-out. Denies until M36 registers the real emitter (T06). */
 export const alertEmitterDenyStub: unknown = denyingSeamProxy("AlertEmitter");
 
-/** M33 — the embedded dashboard-metric read seam. Opaque rich-seam (interface in @wardenx/reporting).
+/** M33 — the embedded dashboard-metric read seam. Opaque rich-seam (interface in @chartwarden/reporting).
  *  Denies until M33 registers the real provider (which returns forward-seam-empty until its MVs populate). */
 export const metricsProviderDenyStub: unknown = denyingSeamProxy("MetricsProvider");
 
 /** M26 — the cap-period aggregate read for the M27 cost-report cap calc. Opaque rich-seam (interface in
- *  @wardenx/cap-management). Denies until M26 registers the real provider (db-present boot). */
+ *  @chartwarden/cap-management). Denies until M26 registers the real provider (db-present boot). */
 export const capAccrualReaderDenyStub: unknown = denyingSeamProxy("CapAccrualReader");
 
 /** M26 — the agency/patient/inpatient cap projection for the M23 §11.A cap rules. Opaque rich-seam. The M23
@@ -537,7 +537,7 @@ export const costReportFilingStatusReaderDenyStub: unknown = denyingSeamProxy(
   "CostReportFilingStatusReader",
 );
 
-/** M30 §4.3 — the five HQRP/Quality read seams. Opaque rich-seams (interfaces in @wardenx/quality);
+/** M30 §4.3 — the five HQRP/Quality read seams. Opaque rich-seams (interfaces in @chartwarden/quality);
  *  M22 / M28 / M33 / M34 resolve via `getSeam` + cast. Deny until M30 registers the live Drizzle-backed
  *  providers (db-present boot) — a quality number is never fabricated when the seam is unbound (D6/D13). */
 export const qualityMeasureProviderDenyStub: unknown = denyingSeamProxy("QualityMeasureProvider");
@@ -564,7 +564,7 @@ export const mdmEntityProviderDenyStub: unknown = denyingSeamProxy("MdmEntityPro
  *  (M40-T06). M22/M28/M29 consume this before any PHI leaves the perimeter. */
 export const baaStatusProviderDenyStub: unknown = denyingSeamProxy("BaaStatusProvider");
 
-/** M39 — the §4.3 disclosure/redaction gate. Rich-seam pattern (interface in @wardenx/consent).
+/** M39 — the §4.3 disclosure/redaction gate. Rich-seam pattern (interface in @chartwarden/consent).
  *  Denies until M39 registers the real evaluator (M39-T05). Every PHI-egress module consumes it. */
 export const consentEvaluatorDenyStub: unknown = denyingSeamProxy("ConsentEvaluator");
 
@@ -637,7 +637,7 @@ export const externalFeedReaderDenyStub: unknown = denyingSeamProxy("ExternalFee
  *  M29 registers the real reader (M29-T08). */
 export const nppesProviderReaderDenyStub: unknown = denyingSeamProxy("NppesProviderReader");
 
-// M6 (Admission) reader seams (§4.7). These are LEAF-TYPED (interfaces in @wardenx/types), so —
+// M6 (Admission) reader seams (§4.7). These are LEAF-TYPED (interfaces in @chartwarden/types), so —
 // unlike the opaque rich-seams above — they get concrete typed deny-stubs (like CaseloadProvider /
 // PatientReader). Each denies LOUDLY until M6 registers the real Drizzle-backed reader (M6-T05).
 
@@ -786,13 +786,13 @@ export const admissionOnsetReaderDenyStub: AdmissionOnsetReader = {
 };
 
 /** M6 — F2F/compliance-window on-time + override rate counts (F-178, #248; M30 batch pull). Opaque rich-seam
- *  (interface in @wardenx/quality, `ComplianceWindowCountsView`); M30 resolves via `getSeam` + a cast.
+ *  (interface in @chartwarden/quality, `ComplianceWindowCountsView`); M30 resolves via `getSeam` + a cast.
  *  Denies until M6 registers the real Drizzle-backed provider over this fail-closed deny-stub. */
 export const complianceWindowCountsProviderDenyStub: unknown = denyingSeamProxy(
   "ComplianceWindowCountsProvider",
 );
 
-// M7 (Care Plan) reader seam (§7.8). LEAF-TYPED (interface in @wardenx/types), so — like M6's readers
+// M7 (Care Plan) reader seam (§7.8). LEAF-TYPED (interface in @chartwarden/types), so — like M6's readers
 // — it gets a concrete typed deny-stub. Denies LOUDLY until M7 registers the real reader (M7-T04).
 
 /** M7 — encounter-relevance picker + the 5-/15-day overdue sign-gate. Denies until M7 registers it. */
@@ -814,7 +814,7 @@ export const carePlanReaderDenyStub: CarePlanReader = {
   },
 };
 
-// M8 (Encounters) owned seams (§4.7). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7's readers,
+// M8 (Encounters) owned seams (§4.7). LEAF-TYPED (interfaces in @chartwarden/types) like M6/M7's readers,
 // so each gets a concrete typed deny-stub. Denies LOUDLY until M8 registers the real impl (M8-T08).
 
 /** M8 — per-encounter claim-line eligibility (M23/M24). Denies until M8 registers the real reader. */
@@ -857,7 +857,7 @@ export const encounterCreatorDenyStub: EncounterCreator = {
   },
 };
 
-// M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9). LEAF-TYPED (interface in @wardenx/types), so it gets a
+// M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9). LEAF-TYPED (interface in @chartwarden/types), so it gets a
 // concrete typed deny-stub. Denies LOUDLY until M18 registers the real resolver (Wave F); M8's
 // EVV-missing-documented fallback path (route 10) stays operative while this denies.
 
@@ -868,7 +868,7 @@ export const evvBracketResolverDenyStub: EvvBracketResolver = {
   },
 };
 
-// M18 (EVV) other five owned seams (§4.3 / D15). LEAF-TYPED (interfaces in @wardenx/types) like M6..M17's readers,
+// M18 (EVV) other five owned seams (§4.3 / D15). LEAF-TYPED (interfaces in @chartwarden/types) like M6..M17's readers,
 // so each gets a concrete typed deny-stub. Denies LOUDLY until M18 registers the real impls (M18-T05).
 
 /** M18 — billing compliance gate (M23/M24 pre-submission) + M30 HQRP rate. Denies until M18 registers it. */
@@ -936,7 +936,7 @@ export const evvVerificationProviderDenyStub: EvvVerificationProvider = {
   },
 };
 
-// M9 (Clinical Assessments) owned seams (§4.7 / D7). LEAF-TYPED (interfaces in @wardenx/types) like
+// M9 (Clinical Assessments) owned seams (§4.7 / D7). LEAF-TYPED (interfaces in @chartwarden/types) like
 // M6/M7/M8's readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M9 registers the real
 // impls (M9-T04).
 
@@ -963,7 +963,7 @@ export const scaleSeriesProviderDenyStub: ScaleSeriesProvider = {
   },
 };
 
-// M10 (HOPE Engine) owned seams (§2 / D10). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7/M8/M9's
+// M10 (HOPE Engine) owned seams (§2 / D10). LEAF-TYPED (interfaces in @chartwarden/types) like M6/M7/M8/M9's
 // readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M10 registers the real impls
 // (M10-T05).
 
@@ -1016,7 +1016,7 @@ export const hopeOrgRollupProviderDenyStub: HopeOrgRollupProvider = {
   },
 };
 
-// M11 (Orders) owned seams (§2.8 D14 / §4.3). LEAF-TYPED (interfaces in @wardenx/types) like M6..M10's
+// M11 (Orders) owned seams (§2.8 D14 / §4.3). LEAF-TYPED (interfaces in @chartwarden/types) like M6..M10's
 // seams, so each gets a concrete typed deny-stub. Denies LOUDLY until M11 registers the real impls (M11-T05).
 
 /** M11 — the polymorphic signature-write primitive (sign / verbal / cosign / discontinue; M12 med-orders).
@@ -1074,7 +1074,7 @@ export const orderProviderDenyStub: OrderProvider = {
   },
 };
 
-// M12 (DoseSpot Integration) owned seams (§2.10 D17). LEAF-TYPED (interfaces in @wardenx/types) like M6..M11's
+// M12 (DoseSpot Integration) owned seams (§2.10 D17). LEAF-TYPED (interfaces in @chartwarden/types) like M6..M11's
 // seams, so each gets a concrete typed deny-stub. Both are READ-only surfaces over M12's `medication_order` /
 // `refill_request` tables; deny LOUDLY until M12 registers the real impls (M12-T07).
 
@@ -1144,7 +1144,7 @@ export const refillInboxProviderDenyStub: RefillInboxProvider = {
   },
 };
 
-// M13 (eMAR & Med Administration) owned seams (§2.12 D16). LEAF-TYPED (interfaces in @wardenx/types) like
+// M13 (eMAR & Med Administration) owned seams (§2.12 D16). LEAF-TYPED (interfaces in @chartwarden/types) like
 // M6..M12's seams, so each gets a concrete typed deny-stub. Both are READ-only surfaces over M13's
 // `administration_record` / `medication_reconciliation_*` tables; deny LOUDLY until M13 registers the real
 // impls (M13-T07).
@@ -1315,7 +1315,7 @@ export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
   },
 };
 
-// M15 (Discipline Care Plans) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types), so each
+// M15 (Discipline Care Plans) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @chartwarden/types), so each
 // gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) never hard-required M15 to boot — these
 // stand fail-closed for any boot that does not wire M15 (registerDisciplinePlanSeams, M15-T05). The volunteer
 // gate denies LOUDLY exactly when a `volunteer_visit` is scheduled without M15 wired (a non-volunteer visit
@@ -1400,7 +1400,7 @@ export const disciplineComplianceProviderDenyStub: DisciplineComplianceProvider 
   },
 };
 
-// M16 (Bereavement) §4.6 / D13 PUBLISHED seams (M16-T05). LEAF-TYPED (interfaces in @wardenx/types), so each
+// M16 (Bereavement) §4.6 / D13 PUBLISHED seams (M16-T05). LEAF-TYPED (interfaces in @chartwarden/types), so each
 // gets a concrete typed deny-stub that denies until `registerBereavementSeams()` stands the real impl over it.
 // A deny here is the right answer for every consumer: M36 must not open a bereavement channel it cannot prove
 // a window for, M31 must not mint a bereaved-family session scope it cannot resolve, and M30/M33 must show a
@@ -1489,7 +1489,7 @@ export const bereavementRiskTierProviderDenyStub: BereavementRiskTierProvider = 
 };
 
 // M21 (Supplies, DME & Comfort Kits) §4.8 / D14 PUBLISHED seams (M21-T05). LEAF-TYPED (interfaces in
-// @wardenx/types), so each gets a concrete typed deny-stub that denies until `registerSuppliesSeams()`
+// @chartwarden/types), so each gets a concrete typed deny-stub that denies until `registerSuppliesSeams()`
 // stands the real impl over it. A deny is the right answer for every consumer here, and one of them is
 // safety-critical: M13 must NOT be told a comfort kit's controlled-substance inventory is empty when the
 // truth is that M21 could not answer. An empty list would read at the bedside as "there is no morphine in
@@ -1532,7 +1532,7 @@ export const supplyCostProviderDenyStub: SupplyCostProvider = {
   },
 };
 
-// M19 (On-Call Triage) §4.3 PUBLISHED seams (M19-T06). LEAF-TYPED (interfaces in @wardenx/types), so each
+// M19 (On-Call Triage) §4.3 PUBLISHED seams (M19-T06). LEAF-TYPED (interfaces in @chartwarden/types), so each
 // gets a concrete typed deny-stub that denies until `registerOncallSeams()` stands the real impl over it.
 //
 // ALL FIVE THROW, and `OnCallProvider` is the one that decides the shape. It answers "who is on call right
@@ -1650,7 +1650,7 @@ export const hospitalizationRiskProviderDenyStub: HospitalizationRiskProvider = 
   },
 };
 
-// M20 (Field Safety) §4.3 PUBLISHED seams (M20-T05). LEAF-TYPED (interfaces in @wardenx/types), so each
+// M20 (Field Safety) §4.3 PUBLISHED seams (M20-T05). LEAF-TYPED (interfaces in @chartwarden/types), so each
 // gets a concrete typed deny-stub that denies until `registerFieldSafetySeams()` stands the real impl over
 // it.
 //
@@ -1765,8 +1765,8 @@ export const safetySupervisorProviderDenyStub: SafetySupervisorProvider = {
 // deny-stub would hand six boot validators a clean bill of health minted by an unwired registry — the
 // one answer §4.5 says it must never invent. It throws, and those boots refuse to start.
 //
-// The refusal literal is built structurally from `@wardenx/types` values rather than imported from
-// `@wardenx/ai-platform`: M1 may not import a downstream module's package (ARCHITECTURE §25.15), and
+// The refusal literal is built structurally from `@chartwarden/types` values rather than imported from
+// `@chartwarden/ai-platform`: M1 may not import a downstream module's package (ARCHITECTURE §25.15), and
 // `AiCapabilityUnavailable` is a leaf type precisely so this boundary can be spoken here.
 
 /**
@@ -1845,7 +1845,7 @@ export const copilotProviderDenyStub: unknown = refusingAiSeamProxy("CopilotProv
 export const aiPromptRegistryDenyStub: unknown = denyingSeamProxy("AIPromptRegistry");
 
 // ── M35 (Subscription Billing) §4.5 published + §4.6 forward-consumed deny-stubs (M35-T05) ───────────────
-// All LEAF-TYPED (interfaces in @wardenx/types), so — like M6/M28's readers — each gets a concrete typed
+// All LEAF-TYPED (interfaces in @chartwarden/types), so — like M6/M28's readers — each gets a concrete typed
 // deny-stub whose every method throws. M35 registers the real Drizzle-backed impls over these when its
 // routes/stores land (M35-T06); until then `validateSeams()` leaves them wired FAIL-CLOSED. A subscription
 // header, an MRR number, and a plan catalog entry are never fabricated when the seam is unbound.

@@ -7,7 +7,7 @@
 // `expire` event), emit `m12.medication_order.list_changed`, and raise the M36 high-severity alert. The
 // consumed event name is a STRING literal only (no M11 schema import); M12 reads M11 solely through the
 // foundation outbox (M11 is already in M12's dependsOn for the seam, but this consumer adds no schema edge).
-import type { MedicationOrderStatus } from "@wardenx/types";
+import type { MedicationOrderStatus } from "@chartwarden/types";
 
 /** The `m11.order.verbal_expired_unsigned` payload subset M12 reads (only the medication-order target). */
 export interface VerbalExpiredPayload {

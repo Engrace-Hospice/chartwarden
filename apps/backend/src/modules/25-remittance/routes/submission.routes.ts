@@ -5,7 +5,7 @@
 // stale) and requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
 // Nothing here sends anything outside WardenX: there is no send route in 6a.
 import { Type } from "@sinclair/typebox";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";

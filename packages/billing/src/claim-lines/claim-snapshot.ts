@@ -1,4 +1,4 @@
-// @wardenx/billing — the claim's assembly-time SNAPSHOT of the physicians' names and the diagnosis sequence
+// @chartwarden/billing — the claim's assembly-time SNAPSHOT of the physicians' names and the diagnosis sequence
 // (migration 1068), so a claim already sent does not change when the physician master data or the problem list
 // does. The snapshot FOLLOWS the NPIs until submission: assembly and every re-validation write NPIs, names and
 // diagnoses together (`ClaimRepository.refreshSnapshot`), so a name never belongs to a different physician than the

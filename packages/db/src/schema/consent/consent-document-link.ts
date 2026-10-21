@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_document_link` (M39 Consent §3.3 #9). The back-ref join to the M22 signed
+// @chartwarden/db — `consent_document_link` (M39 Consent §3.3 #9). The back-ref join to the M22 signed
 // PDF (D15): consent_record_id (PK, 1:1) ↔ M22 document_id + version. Stamped by the
 // m22-document-backref consumer when m22.document.rendered fires for the consent_record template.
 // M39 stores only the link; M22 holds the bytes. Org-scoped child of consent_record → standard

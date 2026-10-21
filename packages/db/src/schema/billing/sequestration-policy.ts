@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `sequestration_policy` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// @chartwarden/db — `sequestration_policy` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `operational`). The per-provider-entity sequestration-percentage schedule applied at claim assembly
 // (snapshotted onto claim.sequestration_applied_pct). ORG-SCOPED: organization_id NOT NULL (canonical
 // app.org_id RLS).

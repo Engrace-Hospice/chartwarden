@@ -1,7 +1,7 @@
 // apps/backend/src/modules/31-portal/provisioning/adapters.ts — GAP-092. The two provisioning ports M31 can build from
 // seams it already owns: the M39 consent port (over the registered `ConsentEvaluator`) and the invitation email
 // delivery (over the platform's transactional email transport, injected by the root).
-import type { PortalAccessGrantKind } from "@wardenx/types";
+import type { PortalAccessGrantKind } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { consentTypeForGrantKind, portalSessionClass } from "../lifecycle/portal-access-gate";
 import type { PortalConsentPort, PortalInvitationDeliveryPort } from "./types";

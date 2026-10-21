@@ -24,7 +24,7 @@
 // is returned to the prospect's email channel (M36), NEVER in the HTTP response, and only its SHA256 hash is
 // persisted (value-capture-denylisted in the audit projection, §3.10).
 import { type Static, Type } from "@sinclair/typebox";
-import { RateLimitedError, ChartWardenError } from "@wardenx/types";
+import { RateLimitedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AcceptInvitationRequest,

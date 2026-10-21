@@ -4,11 +4,11 @@
 //
 // `telehealth_visit` IS an M31-owned table, so these routes drive the real lifecycle over the Drizzle store
 // (`../write-paths` / `../telehealth` cores decide the transitions; the store persists them). The video
-// vendor is M31's own adapter (`@wardenx/telehealth-client`, injected via `deps.telehealth`) — the vendor
+// vendor is M31's own adapter (`@chartwarden/telehealth-client`, injected via `deps.telehealth`) — the vendor
 // never sees a real identity (per-participant short-TTL tokens), and the room url/token are cipher-only in
 // the row (never projected). The Record button is D9-gated by `state_two_party_recording_consent_present`
 // (+ step-up), composed in `./mount`; the webhooks verify the vendor HMAC before touching the row.
-import { ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
 import {

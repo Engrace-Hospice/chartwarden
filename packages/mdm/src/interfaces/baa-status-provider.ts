@@ -1,4 +1,4 @@
-// @wardenx/mdm — the `BaaStatusProvider` seam (M40-T06, spec §4.6, §7.7).
+// @chartwarden/mdm — the `BaaStatusProvider` seam (M40-T06, spec §4.6, §7.7).
 //
 // The FOCUSED BAA-gate seam, registered SEPARATELY from the omnibus `MdmEntityProvider` (§4.6.1).
 // M29's HL7 paths and M22/M28's disclosure paths have needs the chart-load omnibus does not: an

@@ -9,9 +9,9 @@
 //
 // A probe that throws or exceeds the timeout records `unhealthy`: "we could not ask" never reads as fine.
 // Runs in the worker process only (one writer), once at start and then on an interval.
-import type { ModelBackend } from "@wardenx/ai-platform";
-import { type DbClient, schema } from "@wardenx/db";
-import type { AiBackendHealthStatus } from "@wardenx/types";
+import type { ModelBackend } from "@chartwarden/ai-platform";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { AiBackendHealthStatus } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 
 const PROBE_TIMEOUT_MS = 10_000;

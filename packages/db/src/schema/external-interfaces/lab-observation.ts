@@ -1,4 +1,4 @@
-// @wardenx/db — `lab_observation` + `lab_observation_value` + `lab_observation_inbound_link` (M29 §3.3).
+// @chartwarden/db — `lab_observation` + `lab_observation_value` + `lab_observation_inbound_link` (M29 §3.3).
 // An ORU^R01 lab result auto-attached to an M5 patient / M11 order (§2.2 auto-attach lifecycle,
 // W-XI-05/06). A `lab_observation` row exists ONLY once the result matches a patient — an unmatched result
 // stays as the inbound message + a `lab_observation_inbound_link` with a `candidate_patient_id`.

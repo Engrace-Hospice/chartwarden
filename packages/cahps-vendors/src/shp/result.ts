@@ -1,4 +1,4 @@
-// @wardenx/cahps-vendors — SHP aggregate-result parser (M30 §4.5 / WF-06). Pure, IO-free.
+// @chartwarden/cahps-vendors — SHP aggregate-result parser (M30 §4.5 / WF-06). Pure, IO-free.
 //
 // SHP returns a monthly aggregate as an XLSX workbook. XLSX byte-decoding requires a heavy binary codec
 // that is wired at the worker boundary in a later phase; this P2a parser consumes the NORMALIZED
@@ -6,8 +6,8 @@
 // maps it into our `CahpsResultSummaryInput` shape (vendor-of-record = `shp`). The dedup hash is computed
 // here over the raw payload bytes so re-ingesting the same export is idempotent.
 import { createHash } from "node:crypto";
-import type { CahpsResultSummaryInput } from "@wardenx/quality";
-import { ChartWardenError } from "@wardenx/types";
+import type { CahpsResultSummaryInput } from "@chartwarden/quality";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** One entry in the normalized SHP aggregate (the XLSX-to-JSON decoder's per-provider/period row). */
 interface ShpAggregateEntry {

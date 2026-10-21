@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_capability_lifecycle_event` (M32 §3.2.2). The append-only governance ledger: one
+// @chartwarden/db — `ai_capability_lifecycle_event` (M32 §3.2.2). The append-only governance ledger: one
 // row per D2 lifecycle transition, naming the gate that was passed, who signed it, and the rationale.
 //
 // PLATFORM-SHARED (§3.3): the transition is a fact about the CAPABILITY, not about any tenant, so there

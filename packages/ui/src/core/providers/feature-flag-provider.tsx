@@ -1,4 +1,4 @@
-// @wardenx/ui — feature-flag-provider (spec §5.1). Holds the org's resolved flags
+// @chartwarden/ui — feature-flag-provider (spec §5.1). Holds the org's resolved flags
 // (GET /api/v1/system/feature-flags). Phase-1 scope flags stay default-off, so an unknown
 // key resolves to false (PHASE_1_PLAN §3 — no route may hard-depend on a flag being on).
 import { createContext, useContext } from "react";

@@ -1,4 +1,4 @@
-// @wardenx/billing — the hospice CBSA value code by level of care (CMS Pub. 100-04 ch. 11 §30.3; FISS "Value
+// @chartwarden/billing — the hospice CBSA value code by level of care (CMS Pub. 100-04 ch. 11 §30.3; FISS "Value
 // Codes FL 39-41"): value code 61 carries the CBSA of the beneficiary's residence on home levels of care
 // (revenue 0651/0652); value code G8 carries the CBSA of the facility on inpatient levels (0655/0656). The CBSA
 // itself (the code amount) is NOT derived here — it needs the beneficiary-residence / facility location.

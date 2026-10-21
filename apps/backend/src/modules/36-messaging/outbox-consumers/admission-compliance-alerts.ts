@@ -10,7 +10,7 @@
 // event is matched by name. IDEMPOTENCY: one deterministic correlation id per (window, audience), and `alert`
 // is UNIQUE on (organization_id, correlation_id), so a redelivery never pages twice. NO PHI: ids, the window
 // kind and the due instant only. A malformed event THROWS (retry → DLQ, never a silently dropped alert).
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

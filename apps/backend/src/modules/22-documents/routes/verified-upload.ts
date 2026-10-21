@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DocumentAggregateType, DocumentRetentionClass } from "@wardenx/types";
-import { DegradedError, ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
+import { DegradedError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";

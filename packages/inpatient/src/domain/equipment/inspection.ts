@@ -1,8 +1,8 @@
-// @wardenx/inpatient — M37-T08, §2.9 D10. The biomed-inspection due-date calculator + the
+// @chartwarden/inpatient — M37-T08, §2.9 D10. The biomed-inspection due-date calculator + the
 // inspection-current gate. An overdue inspection makes the equipment fail the ABAC
 // `m37.equipment.inspection_current`, and the assign-to-patient route returns 412 EQUIPMENT_INSPECTION_OVERDUE.
 // Pure & IO-free — the caller injects `asOfMs` (no ambient clock).
-import type { IpuEquipmentInspectionKind } from "@wardenx/types";
+import type { IpuEquipmentInspectionKind } from "@chartwarden/types";
 import { IpuStateError, requireIpu } from "../../errors";
 
 const DAY_MS = 86_400_000;

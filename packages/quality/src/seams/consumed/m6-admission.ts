@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M6 (Admission / Census). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M6 (Admission / Census). PRESENT producer (§4.4).
 //
 // M30 consumes M6's `LevelOfCarePeriodReader`, `AdmissionCensusReader`, `DischargeReader`, and
 // `ComplianceWindowReader` for the HVLDL last-three-days-of-life denominator, the HCI patient-days

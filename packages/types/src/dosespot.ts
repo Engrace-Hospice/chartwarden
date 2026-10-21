@@ -1,4 +1,4 @@
-// @wardenx/types — Module 12 (DoseSpot Integration) leaf contracts (M12-T01).
+// @chartwarden/types — Module 12 (DoseSpot Integration) leaf contracts (M12-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M12 spec's references to
 // `packages/dosespot/src/seams.ts` (the §2.10 D17 `MedicationOrderProvider` / `RefillInboxProvider`),
@@ -11,8 +11,8 @@
 // §4.4 `m12.*` outbox event names, the §7.6 audit denylists (the M4 trigger arguments for M12-T02), the
 // §4.9 typed alert payloads, the §2.10 owned-seam interfaces + read DTOs, and the §3.4 structured-sig
 // projection. The per-class TypeBox `data` schemas + the `MED_CLASS_CATALOG` metadata live in the
-// `@wardenx/dosespot` FEATURE package; the pure lifecycle machines + eligibility matrices land in
-// `@wardenx/dosespot` in later tasks. This file is type-only and importable by everyone with no edge.
+// `@chartwarden/dosespot` FEATURE package; the pure lifecycle machines + eligibility matrices land in
+// `@chartwarden/dosespot` in later tasks. This file is type-only and importable by everyone with no edge.
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
@@ -20,7 +20,7 @@ import type { AdmissionId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
 import type { ClinicalLinkSource } from "./clinical-link";
 
-// ── M12-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M12-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type MedicationOrderId = string;
 export type MedicationOrderTransmissionId = string;
 export type MedicationOrderDiscontinuationId = string;
@@ -214,7 +214,7 @@ export const M12_EVENT_NAMES = [
 export type M12EventName = (typeof M12_EVENT_NAMES)[number];
 
 // ── §4.9 M36 typed alert payloads (the deterministic messages M12 emits; M36 doesn't re-template) ─────
-// M12 emits typed alerts through M36's dispatch seam. The builders land in `@wardenx/dosespot` (M12-T08);
+// M12 emits typed alerts through M36's dispatch seam. The builders land in `@chartwarden/dosespot` (M12-T08);
 // this discriminated union is the shape M36 type-checks against. No PHI in the payloads — only IDs; M36
 // resolves PHI per recipient permission scope (§4.9).
 
@@ -335,7 +335,7 @@ export interface SigStructuredDto {
   readonly prnMinimumIntervalMinutes?: number;
   /**
    * §2.11 D11 — the titration bounds a CONTINUOUS INFUSION order authorises, read by M13's
-   * `assertIvRateBounds` before it commits an `iv_continuous_rate_change`. @wardenx/emar's IV core has
+   * `assertIvRateBounds` before it commits an `iv_continuous_rate_change`. @chartwarden/emar's IV core has
    * always named this path (`sigStructured.ivContinuousPolicy.[minRate, maxRate]`) and the DTO never
    * carried it, so the bounds check had no inputs and no caller.
    *

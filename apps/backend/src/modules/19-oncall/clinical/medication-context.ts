@@ -26,14 +26,14 @@ import type {
   OrgId,
   PatientId,
   RefillRequestDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "../lifecycle/errors";
 import { getMedicationOrderProvider, getRefillInboxProvider } from "../seams/consumed";
 
 /** One active medication as the §5.1 triage panel shows it — the minimum-necessary projection of M12's
  *  `MedicationOrderDto`. Prescriber ids, pharmacy ids, NDC/RxCUI codes and the transmission timeline are
  *  all omitted: none of them changes a triage disposition, and the same projection is what a §7.5 vendor
- *  boundary would have to start from (the vendor filter itself is T07's `@wardenx/triage-vendors` work). */
+ *  boundary would have to start from (the vendor filter itself is T07's `@chartwarden/triage-vendors` work). */
 export interface TriageMedicationSummary {
   readonly medicationOrderId: MedicationOrderId;
   /** `drugName strength doseForm` — what the RN reads back to the caller. */

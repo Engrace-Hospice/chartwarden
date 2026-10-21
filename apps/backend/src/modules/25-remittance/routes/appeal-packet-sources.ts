@@ -15,8 +15,8 @@
 //     (and byte-level handling) that this reference-only packet does not make.
 // Every refusal is a 422 `APPEAL_DOCUMENT_NOT_ATTACHABLE` carrying the document id and a REASON CODE, never the
 // document's title or any content.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import {
   type AppealClaimCopy,
   type AppealEnclosureRefusal,
@@ -26,7 +26,7 @@ import {
   MAX_APPEAL_ENCLOSURES,
   ChartWardenError,
   appealEnclosureRefusal,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 

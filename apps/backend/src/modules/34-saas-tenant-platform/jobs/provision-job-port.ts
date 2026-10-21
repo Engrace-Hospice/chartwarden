@@ -2,7 +2,7 @@
 // enqueues one BullMQ job per tenant under `provisionJobId`; BullMQ keeps a failed job (`removeOnFail: false`),
 // so this port is how platform ops see that a tenant is stuck in `provisioning` and re-run it (spec §7.7: "the
 // tenant remains in `provisioning` until manual intervention").
-import type { ProvisionJob } from "@wardenx/saas-tenant-platform";
+import type { ProvisionJob } from "@chartwarden/saas-tenant-platform";
 import { addJobCoalescingInFlight } from "../../../bootstrap/queue-dedupe";
 import { M34_QUEUES } from "./index";
 

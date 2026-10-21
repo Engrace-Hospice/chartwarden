@@ -11,8 +11,8 @@
 // unattributed — that is an accepted audit gap, not a delivery failure); 401 on a bad/missing token; 503 when
 // unconfigured OR when the database is unavailable (MinIO retries a non-2xx delivery from its own queue).
 import { timingSafeEqual } from "node:crypto";
-import type { DbClient } from "@wardenx/db";
-import { ChartWardenError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { ingestConsumptions, parseConsumptions } from "./minio-access-log";
 

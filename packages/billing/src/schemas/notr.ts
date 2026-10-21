@@ -1,4 +1,4 @@
-// @wardenx/billing — NOTR schemas: route #28 `GET /notr-records` (list), #29 `GET /notr-records/:id`
+// @chartwarden/billing — NOTR schemas: route #28 `GET /notr-records` (list), #29 `GET /notr-records/:id`
 // (detail), #30 `POST /notr-records/:id:submit` (step-up), #31 `POST /notr-records/:id:cancel` — §4.1.
 // The NOTR shares the NOE 7-state shape; exactly one trigger-event id is populated per `trigger_kind`.
 import { type Static, Type } from "@sinclair/typebox";

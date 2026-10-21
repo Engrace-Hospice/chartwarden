@@ -6,9 +6,9 @@
 // membership id, so they resolve the org from the AMBIENT request context (withOrgContextFromRequest) —
 // the route is already org-scoped, and a bare `WHERE membership_id=…` would return nothing under the
 // real wardenx_app role.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { and, count, eq, gt, isNull, or } from "drizzle-orm";
 import type { M3OutboxPublisher, MembershipRoleStore, MembershipRoleView } from "./authz-ports";
 

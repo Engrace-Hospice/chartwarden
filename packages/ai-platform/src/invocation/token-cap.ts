@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.9 / D6 / D7 / W2 token budget rules (M32-T04).
+// @chartwarden/ai-platform — §3.2.9 / D6 / D7 / W2 token budget rules (M32-T04).
 //
 // The hard cap is the one gate that refuses a call for a reason unrelated to safety or consent, so D7
 // pins exactly how it must feel to a clinician: "hard cap forces capability fallback to Layer-1, never

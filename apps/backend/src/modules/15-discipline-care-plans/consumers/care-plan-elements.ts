@@ -16,7 +16,7 @@ import type {
   InterventionDiscipline,
   PatientId,
   RelevantCarePlanElements,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { checkOptionalParentElement, checkParentProblem } from "../lifecycle/index";
 import { getCarePlanReader } from "../seams/index";
 

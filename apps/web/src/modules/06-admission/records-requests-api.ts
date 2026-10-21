@@ -2,7 +2,7 @@
 // (older PCP / hospital records for a prospect). Wire shapes are DERIVED from the generated `operations`, so
 // a contract change is a compile error here. Writes return a discriminated result: the panel renders the
 // server's refusal in place.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 type Ok<Op, S extends number = 200> = Op extends { responses: { [K in S]: infer R } }

@@ -1,4 +1,4 @@
-import { unsupportedScopes } from "@wardenx/fhir";
+import { unsupportedScopes } from "@chartwarden/fhir";
 // apps/backend/src/modules/28-fhir/routes/admin-clients.routes.ts — §4.1 R23-R30: the FHIR client
 // registry admin surface.
 //
@@ -6,8 +6,8 @@ import { unsupportedScopes } from "@wardenx/fhir";
 // (revoke/suspend → sessions revoked + in-flight exports cancelled) live in the store's §2.2 FSM path; the
 // routes bind the §4.6 permission + §4.7 ABAC and shape the request. `rate_limit_rps` is a PLATFORM-FLOOR /
 // tenant-tighten-only value (§2.3): the tier's floor is the default and an override may only LOWER it.
-import { NotFoundError, ValidationError } from "@wardenx/types";
-import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
+import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import type { FhirBaaStatusView } from "../seams/index";

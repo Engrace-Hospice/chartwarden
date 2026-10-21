@@ -1,4 +1,4 @@
-// @wardenx/terminology — the REAL `TerminologyProvider` (M38-T05, spec §4.5).
+// @chartwarden/terminology — the REAL `TerminologyProvider` (M38-T05, spec §4.5).
 //
 // This is the implementation that M38 registers into the M1 seam registry at boot — the read
 // surface every clinical/billing/interop module consumes (M5/M7/M8/M9/M10/M11/M12/M13/M21/
@@ -19,7 +19,7 @@
 // `contains`, byte-identical for the same (id, asOf)); the flag-gated semantic search §7.7 itself
 // is gated at the route (`ai.full`) — the pgvector HNSW kNN lands in the Drizzle store.
 
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import {
   type TenantExtensionRefusal,
   classifyTenantExtension,

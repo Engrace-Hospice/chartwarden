@@ -4,7 +4,7 @@
 // withOrgContext with the CALLER as the context user: RLS (migration 1085) pins rows to org AND owner, and the queries
 // below also name the owner, so a forgotten filter cannot surface a colleague's draft. Org and user come from the
 // server-side request context, never the body. The caller has already authorised the channel (channel_visibility).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DraftKey,
   type DraftView,
@@ -16,9 +16,9 @@ import {
   draftConflictError,
   isEmptyDraft,
   sbarToStore,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, type SbarSections, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, type SbarSections, ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";
 

@@ -1,4 +1,4 @@
-// @wardenx/messaging - the tenant SBAR policy (M36 WP 3.3): tighten-only over the platform floor.
+// @chartwarden/messaging - the tenant SBAR policy (M36 WP 3.3): tighten-only over the platform floor.
 //
 // A tenant may raise a section's minimum length, require a patient (care_team) channel and re-word the per-section hint.
 // It may not go below the floor and may not turn SBAR off (the `messaging.sbar` ops flag is the off switch).
@@ -10,7 +10,7 @@ import {
   SBAR_SECTION_KEYS,
   type SbarSectionKey,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   PHI_FINDING_MESSAGES,
   lintTemplateText,

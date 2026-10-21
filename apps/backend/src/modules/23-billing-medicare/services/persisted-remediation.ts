@@ -8,7 +8,7 @@
 // object (`{ remediation: {...}, observed }`), so a re-validated result's summary sat one level down and the
 // worklist showed no remediation for it. Rows written before this change keep their shape; readers accept both
 // (`apps/web/.../validation-remediation.ts`).
-import type { RuleResult } from "@wardenx/billing";
+import type { RuleResult } from "@chartwarden/billing";
 
 export function persistedRemediation(r: RuleResult): Record<string, unknown> {
   const a = r.annotations;

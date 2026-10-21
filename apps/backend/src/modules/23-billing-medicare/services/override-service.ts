@@ -24,9 +24,9 @@ import {
   type OverrideRole,
   canonicalRuleKey,
   repositories,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingTx,

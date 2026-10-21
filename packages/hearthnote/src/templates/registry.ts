@@ -1,7 +1,7 @@
 // packages/hearthnote/src/templates/registry.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 //
 // The Phase-1 default template registry: one resolved template per LEGAL (encounter_type × discipline)
-// pair. Legality is sourced from the single `ENCOUNTER_DISCIPLINE_RULES` matrix in `@wardenx/types`, so
+// pair. Legality is sourced from the single `ENCOUNTER_DISCIPLINE_RULES` matrix in `@chartwarden/types`, so
 // the templates and the M8-T04 sync validator never drift. Each template's section set is composed from
 // a discipline base plus the encounter-type-specific required sections the spec §2.2 table enumerates
 // (admission → med-rec/advance-directive/caregiver/baseline; recert → PPS/ESAS/prognosis/summary; F2F →
@@ -10,7 +10,7 @@ import {
   ENCOUNTER_DISCIPLINE_RULES,
   type EncounterDiscipline,
   type EncounterType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HearthnoteTemplate, TemplateSection } from "./types";
 import { templateKey } from "./types";
 

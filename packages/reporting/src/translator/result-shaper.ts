@@ -1,4 +1,4 @@
-// @wardenx/reporting — translator step 6: map executed SQL rows to the typed `TileReadResponse`
+// @chartwarden/reporting — translator step 6: map executed SQL rows to the typed `TileReadResponse`
 // (M33 §4.2, D6).
 //
 // The query the SQL step emits aggregates by design, so the rows it returns carry NO row-level PHI —

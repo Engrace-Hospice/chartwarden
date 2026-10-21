@@ -2,7 +2,7 @@
 // candidate set. There is NO index of any kind: the query is matched in memory against bodies opened under the tenant
 // DEK, and nothing derived from a body (token, hash, n-gram) is stored. A numeric or id-like token therefore has no
 // special handling here; D10's "not indexed" rule binds the future global index (2.7b), which must not reuse this.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { ResolvedMessage } from "../interfaces/provider";
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;

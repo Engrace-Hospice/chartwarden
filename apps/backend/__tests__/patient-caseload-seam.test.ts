@@ -4,7 +4,7 @@
 // validateSeams() passes with the real impl, and the resolver enforces §7.5 caseload narrowing
 // (an RN sees ONLY her assigned patients; a third patient is not in caseload). Fail-closed baseline
 // (unregistered ⇒ deny-stub throws) is asserted too.
-import { abacRegistry } from "@wardenx/auth";
+import { abacRegistry } from "@chartwarden/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";

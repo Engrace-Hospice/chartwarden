@@ -23,8 +23,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { IdempotencyStore } from "@wardenx/shared";
+import { createDbClient } from "@chartwarden/db";
+import type { IdempotencyStore } from "@chartwarden/shared";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";

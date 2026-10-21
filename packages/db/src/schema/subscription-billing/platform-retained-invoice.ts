@@ -1,4 +1,4 @@
-// @wardenx/db — `platform_retained_invoice` (M35 §3.7, M35-F06 / ARCH-186/085/251). PLATFORM-ONLY, NOT
+// @chartwarden/db — `platform_retained_invoice` (M35 §3.7, M35-F06 / ARCH-186/085/251). PLATFORM-ONLY, NOT
 // tenant-scoped. Holds invoice rows COPIED out of the tenant-scoped `invoice` table on tenant offboarding
 // (copy-then-delete, NEVER an in-place organization_id rewrite). `original_organization_id` is forensic
 // traceability only (no `\borganization_id\b` word boundary → listed in NON_ORG_SCOPED; the phi-guards

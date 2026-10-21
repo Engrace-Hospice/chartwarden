@@ -21,12 +21,12 @@
 // A REFUSAL is audited and COMMITTED, then thrown by the caller: throwing inside the transaction would roll
 // the refusal's audit row back with everything else.
 //
-import { type AuditContext, audit } from "@wardenx/audit";
-import { isUserStatusBlocked } from "@wardenx/auth";
-import type { AuditorSessionIssuer, IssuedAuditorSession } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { isUserStatusBlocked } from "@chartwarden/auth";
+import type { AuditorSessionIssuer, IssuedAuditorSession } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, ne } from "drizzle-orm";
 import {
   type AuditorLinkRow,

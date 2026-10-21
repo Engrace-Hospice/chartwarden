@@ -27,8 +27,8 @@ import {
   type RemediationLine,
   type TenantCodeRecord,
   buildRemediationReport,
-} from "@wardenx/terminology";
-import type { CarePlanCodeUsageRecord, CarePlanReader } from "@wardenx/types";
+} from "@chartwarden/terminology";
+import type { CarePlanCodeUsageRecord, CarePlanReader } from "@chartwarden/types";
 import type { SystemDeprecation, TerminologyOpsStore } from "./ops-store";
 
 /** Default lookback for the report — §4.2's "default last 18 months". */

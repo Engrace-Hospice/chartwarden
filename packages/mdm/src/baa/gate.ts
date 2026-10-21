@@ -1,4 +1,4 @@
-// @wardenx/mdm — the pure §7.7 BAA-gate decision engine (M40-T06).
+// @chartwarden/mdm — the pure §7.7 BAA-gate decision engine (M40-T06).
 //
 // Given the per-(org,kind) "is a BAA required?" policy flag, the candidate `mdm_baa_record` rows
 // for a (org, kind, canonicalId), and the disclosure moment `asOf`, decide whether PHI may leave

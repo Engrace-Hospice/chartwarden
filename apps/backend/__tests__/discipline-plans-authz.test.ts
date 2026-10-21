@@ -17,9 +17,9 @@ import {
   M15_CONTRIBUTED_PERMISSIONS,
   allPermissionMirrorRows,
   resetAbacRegistry,
-} from "@wardenx/auth";
-import type { AbacContext } from "@wardenx/auth";
-import type { IsoInstant } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { AbacContext } from "@chartwarden/auth";
+import type { IsoInstant } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type DisciplinePlanAbacResolver,

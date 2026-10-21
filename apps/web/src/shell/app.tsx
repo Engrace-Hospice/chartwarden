@@ -1,4 +1,4 @@
-import type { ScreenRegistry } from "@wardenx/types";
+import type { ScreenRegistry } from "@chartwarden/types";
 import {
   ApiClientProvider,
   CorrelationIdProvider,
@@ -6,8 +6,8 @@ import {
   LoadingSpinner,
   SystemStatusProvider,
   ToastProvider,
-} from "@wardenx/ui";
-import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@chartwarden/ui";
 // apps/web/src/shell — the app shell (M1, ADR-0030). Composes the cross-cutting providers
 // (error boundary, correlation id, API client, session, feature flags, system status) around a
 // react-router router built from the screen registry. The shell reads the registry but never

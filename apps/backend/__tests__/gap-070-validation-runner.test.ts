@@ -7,7 +7,7 @@ const fakes = vi.hoisted(() => ({
   runs: new Set<string>(),
 }));
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
+vi.mock("@chartwarden/billing", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   const repos = original.repositories as Record<string, unknown>;
   class ClaimRepository {

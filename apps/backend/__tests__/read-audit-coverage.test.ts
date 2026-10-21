@@ -6,8 +6,8 @@
  * PHI prefix unless it declares `config.auditRead` (emission config or a justified waiver) — so the
  * server cannot boot with an undeclared PHI read route.
  */
-import { resetReadAuditDeclarations } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
+import { resetReadAuditDeclarations } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_READ_AUDIT_PREFIXES, buildServer } from "../src/bootstrap/index";
 import {

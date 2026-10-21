@@ -1,4 +1,4 @@
-// @wardenx/billing — the CMS NATIONAL hospice per-diem base rates, as a platform REFERENCE (FY2027 workstream E).
+// @chartwarden/billing — the CMS NATIONAL hospice per-diem base rates, as a platform REFERENCE (FY2027 workstream E).
 // PURE data + pure checks. No IO.
 //
 // The rate table stays TENANT-ENTERED (F-210): claim assembly prices only from `hospice_rate_table`, never from

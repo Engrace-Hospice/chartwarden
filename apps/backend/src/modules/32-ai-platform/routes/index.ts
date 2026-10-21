@@ -62,7 +62,7 @@ export {
 } from "./guards";
 export { parse, parseQuery } from "./m32-typebox";
 
-import type { AIPromptRegistry } from "@wardenx/ai-platform";
+import type { AIPromptRegistry } from "@chartwarden/ai-platform";
 
 import type { AiGovernanceServiceDeps } from "../governance/service";
 import type { AiRoutingOverrideStore } from "../invocation/store";

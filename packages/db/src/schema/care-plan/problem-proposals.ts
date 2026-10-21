@@ -1,4 +1,4 @@
-// @wardenx/db — `problem_proposal` (M7, F-238 dx-writeback). A DocLens-extracted, reviewer-attested
+// @chartwarden/db — `problem_proposal` (M7, F-238 dx-writeback). A DocLens-extracted, reviewer-attested
 // diagnosis waiting for a clinician. Deliberately a SEPARATE table from `problem`: nothing that reads
 // `problem` (M23 claim sequencing through the claim-diagnoses gate, HOPE, the IDG packet, the portal,
 // version snapshots, the encounter picker) can see a proposal, so an unaccepted AI-extracted diagnosis can

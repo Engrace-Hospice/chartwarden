@@ -9,7 +9,7 @@
 // snapshot and its sources, the change timeline, and who can clear what. The officer does NOT confirm or
 // reject a detection here — that is the licensed reviewer's act in the intake review (M22 §7.4 step 6),
 // so each packet links there.
-import { formatMrn } from "@wardenx/types";
+import { formatMrn } from "@chartwarden/types";
 import {
   Button,
   Card,
@@ -21,7 +21,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

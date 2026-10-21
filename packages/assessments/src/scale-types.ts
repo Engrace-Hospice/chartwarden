@@ -1,12 +1,12 @@
-// @wardenx/assessments — per-scale `data` payload shapes (§3.3 `clinical_assessment.data` jsonb, §4.3).
+// @chartwarden/assessments — per-scale `data` payload shapes (§3.3 `clinical_assessment.data` jsonb, §4.3).
 //
 // D1: one shared base table + per-scale `data jsonb`. The cross-module ENUM/seam surface lives in the
-// leaf `@wardenx/types` (`ScaleType` etc.); this FEATURE package owns the rich per-scale shapes the
+// leaf `@chartwarden/types` (`ScaleType` etc.); this FEATURE package owns the rich per-scale shapes the
 // scoring + TypeBox modules build on. M9-T01 pins the six §4.3-specified shapes (the representative set
 // the spec fixes); the remaining eight scales' shapes + each scale's `score()`/`interpret()`/
 // `eligibility`/`thresholds`/`loinc` land per-folder under `scales/<scale>/` in M9-T03.
 
-import type { ScaleType } from "@wardenx/types";
+import type { ScaleType } from "@chartwarden/types";
 
 export type { ScaleType };
 

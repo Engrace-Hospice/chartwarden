@@ -3,7 +3,7 @@
 //
 // `audit_export` is M4-OWNED (architecture/module-manifest.ts) so this file talks to the table
 // directly over Drizzle + `withOrgContext`. What this file does NOT do: actually RENDER and store
-// the artifact. `renderAuditExport` (@wardenx/audit `export/index.ts`) is pure and already wired
+// the artifact. `renderAuditExport` (@chartwarden/audit `export/index.ts`) is pure and already wired
 // into `runBuildExport` (`jobs/processors.ts`), but that processor needs a `BuildExportPorts.store`
 // object-storage adapter, and no MinIO/S3 client exists anywhere M4 can reach — M22's hand-rolled
 // signer (`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`) is module-local (M4's
@@ -18,11 +18,11 @@
 // extra infra: `justification` is a required, min-length TypeBox field (enforced below), and the
 // "1 export/hour/user" rate limit is a live COUNT against the very table this route writes to — no
 // Redis, no estimate.
-import { type AuditContext, audit } from "@wardenx/audit";
-import { requirePermission, requireStepUp } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, RateLimitedError, UnauthorizedError } from "@wardenx/types";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, RateLimitedError, UnauthorizedError } from "@chartwarden/types";
 import { and, eq, gte } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -32,7 +32,7 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the audit-exports routes. */

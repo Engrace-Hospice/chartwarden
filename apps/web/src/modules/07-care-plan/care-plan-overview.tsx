@@ -1,4 +1,4 @@
-import { Glyph, type GlyphName, KpiCard, Panel, StatusPill, t } from "@wardenx/ui";
+import { Glyph, type GlyphName, KpiCard, Panel, StatusPill, t } from "@chartwarden/ui";
 // apps/web/src/modules/07-care-plan — the redesigned Care Plans tab pieces (2026-09-25, mockup
 // "Plan of Care"): page header with the plan-version card, KPI cards, goal cards, the intervention
 // list, and the right rail (Active Diagnoses, Goals Overview donut, Quick Links). Presentational only:

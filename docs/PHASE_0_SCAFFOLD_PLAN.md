@@ -61,7 +61,7 @@ All six are decided; the scaffold builds against these.
 | D-e | Test runner | **Vitest** | Chosen over `bun test` for richer mocking/snapshot support that Phase 1 feature tests will want. Runs via `vitest run` in CI. |
 | D-f | Scaffold breadth | **All 33 packages, empty** | Makes the dependency-cruiser boundary graph complete on day one so fitness gates are fully exercised. Cheap (empty stubs). |
 
-Sub-decision (under D-f): `@wardenx/mobile-offline` and `packages/iqies-client` (spec-referenced,
+Sub-decision (under D-f): `@chartwarden/mobile-offline` and `packages/iqies-client` (spec-referenced,
 not in any codePath) are scaffolded as **non-fitness-governed** packages — present in the workspace
 for builds, excluded from the dependency-cruiser/table-ownership scan set (mobile-offline is
 manifest-exempt per the header scope note).
@@ -87,7 +87,7 @@ packages/             # 29 from codePaths + leaves(domain, ui) + foundation alre
   quality/ cahps-vendors/ subscription-billing/ inpatient/
 ```
 
-> Note: `@wardenx/mobile-offline` and `packages/iqies-client` are referenced in specs but are
+> Note: `@chartwarden/mobile-offline` and `packages/iqies-client` are referenced in specs but are
 > **not** in any manifest codePath. mobile-offline is intentionally manifest-exempt (on-device
 > sqlcipher; see the manifest header scope note). Decide per-package whether to scaffold them as
 > non-fitness-governed packages or defer. (Tracked as a sub-decision under D-f.)

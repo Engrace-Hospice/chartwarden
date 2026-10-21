@@ -7,7 +7,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID CLAIM EDITOR (R2, §5.1 #3, #7, #10). The
 // single-claim surface: the claim_line projection (rev/Q code, LOC, units, rate — with the R&B lines called
 // out), the R&B context panel, the COB context panel (populated only when the claim carries an M23 Medicare

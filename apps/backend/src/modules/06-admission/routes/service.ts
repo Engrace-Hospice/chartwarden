@@ -5,9 +5,9 @@
 // owner facts (patient / signer ids) without a cross-module schema import. Pure-ish: no clock except
 // the injected `now()` so version/date math is deterministic in tests.
 
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@wardenx/types";
-import { ChartWardenError } from "@wardenx/types";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@chartwarden/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { ActorSite } from "../actor-site";
 import {
   DEFAULT_ORG_TIME_ZONE,

@@ -1,6 +1,6 @@
 // ADR-0081: the role-based send decisions, over a FAKE router (and the REAL deny-stub for the unconnected path), with the real
 // escalation-router guard in front so a test source is refused as it is in production.
-import type { EscalationRank, EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+import type { EscalationRank, EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { escalationRouterDenyStub } from "../../../bootstrap/seams/providers";
 import { guardEscalationRouter } from "../ack-escalation/escalation-router-guard";

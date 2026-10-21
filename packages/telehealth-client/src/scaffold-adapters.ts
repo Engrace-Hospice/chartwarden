@@ -1,4 +1,4 @@
-// @wardenx/telehealth-client — the scaffold-only swap adapters (M31-T05, spec §4.5 D1 / §1.1). Twilio Video
+// @chartwarden/telehealth-client — the scaffold-only swap adapters (M31-T05, spec §4.5 D1 / §1.1). Twilio Video
 // and a native-WebRTC stack ship behind the SAME `TelehealthProvider` interface as Daily.co so the vendor can
 // be swapped without touching any M31 consumer, but they are NOT enabled: every method raises a non-retryable
 // {@link TelehealthDegradedError}. Their only load-bearing job today is the compile-time conformance test

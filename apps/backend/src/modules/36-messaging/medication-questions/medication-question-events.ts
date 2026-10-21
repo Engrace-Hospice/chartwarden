@@ -2,7 +2,7 @@
 // medication question emits when it has no nurse. PHI-free by construction: ids, an enum and an instant - no patient id and
 // no text. Published in the SAME transaction as the write that left the question unrouted (the caller passes its `tx`).
 // The catalog entry lives in events-by-m36.ts (S2).
-import type { MedicationQuestionUnroutedReason } from "@wardenx/types";
+import type { MedicationQuestionUnroutedReason } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 
 export const M36_MEDICATION_QUESTION_UNROUTED = "m36.medication_question.unrouted";

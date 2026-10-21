@@ -1,4 +1,4 @@
-// @wardenx/telehealth-client — the Daily.co `TelehealthProvider` (M31-T05, spec §4.5 D1 / §7.2 / §7.3 / D13).
+// @chartwarden/telehealth-client — the Daily.co `TelehealthProvider` (M31-T05, spec §4.5 D1 / §7.2 / §7.3 / D13).
 // The ONLY place a telehealth vendor is called (architecture §25.14 adapter mandate; dependency-cruiser
 // §25.15 forbids any other module from reaching Daily.co directly). Ships ENABLED by default (D1); Twilio +
 // native-WebRTC ship scaffold-only behind this same interface (`twilio-adapter.ts` / `native-webrtc-adapter.ts`).

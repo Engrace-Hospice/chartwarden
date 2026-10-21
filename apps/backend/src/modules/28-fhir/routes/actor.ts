@@ -6,10 +6,10 @@
 //
 // The FHIR-spec surface (R1-R22) authenticates with a SMART bearer token, not a WardenX session, and does
 // NOT go through this file — its actor is the `fhir_client`, resolved by ./bearer.ts.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 function str(value: unknown): string | null {

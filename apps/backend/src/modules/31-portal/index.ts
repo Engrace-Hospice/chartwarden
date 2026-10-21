@@ -6,7 +6,7 @@
 // ./read-surfaces lay-language read layer (§4.4/§8.4): consume the upstream portal-summary seams + M38 lay
 // labels, project to D17-minimized views, fail-CLOSED for disclosure. M31-T05 adds the ./telehealth domain
 // core (§7.2–§7.4 / D8 / D9 / D14): the visit lifecycle state machine, the audio-only Tier-3 fallback planner,
-// and the two-party recording-consent gate — paired with the live Daily.co adapter in @wardenx/telehealth-client.
+// and the two-party recording-consent gate — paired with the live Daily.co adapter in @chartwarden/telehealth-client.
 // The schema (T02) lives in packages/db; routes / permissions / ABAC / outbox consumers land in later tasks.
 // M31-T06 adds ./write-paths (the three clinical-record write surfaces — caregiver-attested administration
 // §7.7 incl. the resolver that CLOSES M13's deny-stub, document upload → M22 intake §7.8, amendment request →

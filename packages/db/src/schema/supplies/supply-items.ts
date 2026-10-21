@@ -1,4 +1,4 @@
-// @wardenx/db — `supply_item` (M21 §3.1.3). D11's PLATFORM-SHARED canonical SKU catalog: one row per
+// @chartwarden/db — `supply_item` (M21 §3.1.3). D11's PLATFORM-SHARED canonical SKU catalog: one row per
 // real-world billable HCPCS-keyed item (E0260 semi-electric hospital bed, E1390 oxygen concentrator, the
 // kit medications by RxNorm/NDC). The same answer for every tenant, so the row carries NO organization_id
 // at all — the M38 `code_system` / M39 `consent_type_catalog` / M22 `form_template` posture. Tenant-local,

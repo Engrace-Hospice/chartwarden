@@ -1,4 +1,4 @@
-// @wardenx/reporting · export barrel — the three export formats (M33 §4.8 / W-R-08 / D10).
+// @chartwarden/reporting · export barrel — the three export formats (M33 §4.8 / W-R-08 / D10).
 //
 // PURE port-injected export handlers (the M34 worker-package precedent: pure logic here; the live BullMQ
 // `report.export_render` `Worker` + the M22 reply consumer + the live outbox dispatcher binding land at app

@@ -15,7 +15,7 @@
 // the event never went out" is closed in the same transaction as the mutation (transactional outbox).
 // Every `event_id` is UUIDv5 over `(orgId, scope, businessKey)` for replay safety (§4.10).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

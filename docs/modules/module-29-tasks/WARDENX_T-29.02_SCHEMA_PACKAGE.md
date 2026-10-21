@@ -1370,7 +1370,7 @@ COMMIT;
 // Per M29 §3.6 and M4 §3.6. Registers the per-column denylist for M29 tables
 // at boot. The M4 audit-write trigger consults this registry at write time.
 
-import type { AuditDenylistRegistry } from '@wardenx/foundation/audit'
+import type { AuditDenylistRegistry } from '@chartwarden/foundation/audit'
 
 export function registerM29AuditDenylist(registry: AuditDenylistRegistry): void {
   // PHI-bearing or secret-bearing columns whose VALUES are replaced with a
@@ -1403,7 +1403,7 @@ Wire in boot:
 
 ```ts
 // apps/backend/src/boot.ts (excerpt — additions to the M29 registration block)
-import { registerM29AuditDenylist } from '@wardenx/db/audit-denylist/m29'
+import { registerM29AuditDenylist } from '@chartwarden/db/audit-denylist/m29'
 
 // ... before any M29 write path runs ...
 registerM29AuditDenylist(deps.auditRegistry)
@@ -1419,12 +1419,12 @@ registerM29AuditDenylist(deps.auditRegistry)
 // Per M29 §3.7 + M4 destruction-cert workflow. Combines per-row cryptographic
 // shred (DEK destruction) with row-metadata retention to keep audit chains intact.
 
-import { registerEraser } from '@wardenx/foundation/eraser-registry'
+import { registerEraser } from '@chartwarden/foundation/eraser-registry'
 import type {
   DataEraser,
   EraseInput,
   EraseResult,
-} from '@wardenx/foundation/interfaces'
+} from '@chartwarden/foundation/interfaces'
 import { and, eq, inArray } from 'drizzle-orm'
 import {
   externalFeed,
@@ -1436,7 +1436,7 @@ import {
   labObservationValue,
   labObservationInboundLink,
   externalFeedHealth,
-} from '@wardenx/db/schema/external-interfaces'
+} from '@chartwarden/db/schema/external-interfaces'
 
 export const externalInterfacesEraser: DataEraser = {
   className: 'external_interfaces',
@@ -1581,7 +1581,7 @@ Test path: `apps/backend/src/modules/29-external-interfaces/schema.test.ts`. Run
 ```ts
 // apps/backend/src/modules/29-external-interfaces/schema.test.ts
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { mkTestcontainerDb, mkTenantContext, mkPlatformContext } from '@wardenx/test-fixtures'
+import { mkTestcontainerDb, mkTenantContext, mkPlatformContext } from '@chartwarden/test-fixtures'
 import {
   externalFeed,
   externalFeedCredential,
@@ -1590,7 +1590,7 @@ import {
   labObservation,
   labObservationValue,
   nppesProvider,
-} from '@wardenx/db/schema/external-interfaces'
+} from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
 import { externalInterfacesEraser } from './eraser'
 

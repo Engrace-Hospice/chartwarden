@@ -1,7 +1,7 @@
 // apps/backend/src/modules/29-external-interfaces/outbound — ORM^O01 wire builder (M29-T06, §4.12). PURE.
 //
 // Builds the HL7 v2.5.1 ORM^O01 lab-order message from the typed `OrmRequestedPayload` M11 publishes on
-// `m11.order.hl7_orm_requested` (the pinned leaf contract in @wardenx/types — M11 has no HL7 knowledge; it
+// `m11.order.hl7_orm_requested` (the pinned leaf contract in @chartwarden/types — M11 has no HL7 knowledge; it
 // declares the typed body and M29 owns the wire format, §4.12). D8: OBR-2 = the M11 placer order number.
 //
 // NO HAPI SIDECAR (architecture wins over the §4.12.1 sketch's `ctx.sidecar.buildOrm`). The Phase-1
@@ -9,7 +9,7 @@
 // same stance the inbound `projectAdt`/`projectOru` projectors and the `buildAckMessage` emitter take. IO-
 // free: the message control id (MSH-10) and the MSH-7 datetime are INJECTED so the builder is fully
 // deterministic under test (never a clock or a uuid call inside a pure builder).
-import type { OrmRequestedPayload } from "@wardenx/types";
+import type { OrmRequestedPayload } from "@chartwarden/types";
 
 /** The two application/facility identity pairs the outbound MSH carries (resolved from `external_feed`). */
 export interface OrmEndpoint {

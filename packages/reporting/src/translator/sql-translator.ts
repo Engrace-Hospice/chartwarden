@@ -1,4 +1,4 @@
-// @wardenx/reporting — translator step 5: compose validator + filter-compiler + scope-injector into a
+// @chartwarden/reporting — translator step 5: compose validator + filter-compiler + scope-injector into a
 // final PARAMETERIZED `SELECT` against the base's MV (M33 §4, D4 + D6).
 //
 // The whole point of M33: a tenant supplies ONLY a typed spec + a base key; this function emits a single
@@ -17,7 +17,7 @@
 //     No row-level column is ever projected un-aggregated, so no row-level PHI can leave.
 //   • A base whose MV status is `registered` (the upstream producer has not landed) yields a
 //     forward-seam DENY-STUB result instead of SQL — the tile renders "Not yet available — M<n> required".
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import { type CompiledWhere, REL_ALIAS, compileFilters } from "./filter-compiler";
 import { type ReportableScopeEnvelope, injectScope } from "./scope-injector";
 import {

@@ -5,13 +5,13 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type DocLensCapabilityPort,
   buildProvenance,
   planCommitIntents,
   runExtractionPipeline,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

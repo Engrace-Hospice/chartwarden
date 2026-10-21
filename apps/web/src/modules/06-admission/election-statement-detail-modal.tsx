@@ -1,4 +1,4 @@
-import { StatusPill, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient } from "@chartwarden/ui";
 import { useMemo } from "react";
 import type { JSX } from "react";
 import { stateLabel } from "./admission-status";

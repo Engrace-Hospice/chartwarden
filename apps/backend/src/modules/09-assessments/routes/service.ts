@@ -23,7 +23,7 @@ import {
   scaleResponseDetail,
   scoreAssessment,
   transitionSignificantChange,
-} from "@wardenx/assessments";
+} from "@chartwarden/assessments";
 import type {
   AssessmentActingAs,
   AssessmentStatus,
@@ -33,8 +33,8 @@ import type {
   ScaleType,
   SignificantChangeRuleId,
   SignificantChangeStatus,
-} from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { NotFoundError } from "@chartwarden/types";
 
 /** The §4.7 recorder facts the `m9.cosigner_role_match` predicate resolves for one row (RLS-backstopped). */
 export interface AssessmentAbacFacts {

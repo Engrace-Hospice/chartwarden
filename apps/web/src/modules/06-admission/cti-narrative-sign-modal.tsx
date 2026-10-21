@@ -3,7 +3,7 @@
 // period with no narrative, and 42 CFR 418.22(b)(3) requires one on every certification, so the server
 // answers the plain sign with 422 `CTI_NARRATIVE_REQUIRED`. The signing physician writes the narrative here
 // and it is sent with the signature (`POST /cti/:id/sign-hospice-md` `narrative`). Kit Modal + fields only.
-import { Button, InlineAlert, Modal, TextAreaField, t } from "@wardenx/ui";
+import { Button, InlineAlert, Modal, TextAreaField, t } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 

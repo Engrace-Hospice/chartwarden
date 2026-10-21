@@ -7,8 +7,8 @@
 // on an outbox event: only its org-salted digest is persisted (`wristband-digest.ts`). Issue / void / supersede
 // are audited by the `patient_wristband` M4 write-audit trigger (which scrubs the digest). No outbox event is
 // emitted: nothing downstream consumes a print.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   NotFoundError,
@@ -16,7 +16,7 @@ import {
   type WristbandIssueReason,
   type WristbandVoidReason,
   parseWristbandPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { mintWristbandPayload, wristbandDigest } from "./wristband-digest";
 import {

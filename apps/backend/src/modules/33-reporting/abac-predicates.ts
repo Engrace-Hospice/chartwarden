@@ -9,7 +9,7 @@
 //      It resolves the actor's effective scope (self/team/location/org) into a SEALED envelope the
 //      route layer injects into the SQL translator's WHERE clause (`scope-injector.ts`). The team /
 //      location resolution COMPOSES M2's `SupervisorReader` and M5's `CaseloadProvider` (D5) — reached
-//      OPAQUELY through the injected resolver ports, so no `@wardenx/patient` / M2 import edge is created
+//      OPAQUELY through the injected resolver ports, so no `@chartwarden/patient` / M2 import edge is created
 //      (M33 `dependsOn` stays `[1, 2, 3, 4, 36]`; the M34/M22 precedent). Until P2C binds the real M2/M5
 //      seams, the deny-stub resolver returns empty sets → the actor collapses to `self` scope.
 //   2. `dashboard_visibility` — composes the view's `share_scope` with the actor to decide read/edit on
@@ -22,7 +22,7 @@ import {
   type AbacTarget,
   PLATFORM_OPS_ROLE_KEYS,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { canMutateSchedule, canReadSchedule, isScheduleAdmin } from "./routes/schedule-authz";
 
 /** The §4.7 predicate names M33 owns (registered into M3). Single-owner across the platform registry. */

@@ -1,11 +1,11 @@
-// @wardenx/db — `safety_policy` + `safety_policy_version` (M20 §3.3 / §2.2.4, D4). The per-tenant policy
+// @chartwarden/db — `safety_policy` + `safety_policy_version` (M20 §3.3 / §2.2.4, D4). The per-tenant policy
 // spine: one policy row per org, many version rows tracking the tenant's edits over time. Every other M20
 // row PINS the version it was written under (`safety_policy_version_id`), so a policy edit in 2027 cannot
 // retroactively change what cadence was in force during a 2025 incident.
 //
 // M20-F03 — THERE IS NO ORG-NULL PLATFORM ROW. §3.2 Phase E struck it: `organization_id` is NOT NULL, so
 // the prior seed could never have inserted and would never have matched the tenant-scoped RLS anyway. The
-// platform floor is the `SAFETY_POLICY_FLOOR` CODE CONSTANT in `@wardenx/types` (M18's geofence floor is
+// platform floor is the `SAFETY_POLICY_FLOOR` CODE CONSTANT in `@chartwarden/types` (M18's geofence floor is
 // the precedent) that the resolver merges under each tenant's row and the editor bounds every edit
 // against. `is_system_locked` stays on the policy row because §3.3 declares it and it means something
 // different — a policy platform ops have frozen for THIS tenant.

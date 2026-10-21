@@ -5,11 +5,11 @@
 // §4.11 outbox events for them (the M26 unconsumed-seam posture). The ninth, `claimMatch`
 // (`MedicaidClaimMatchProvider`), IS registered (F-172, #248, m24 group) — M25's `postAdvice` auto-match
 // is its first live consumer. When another of the eight gains a consumer, register it here following the
-// EXACT M26 precedent: add the SeamName to @wardenx/types' `SeamName` union + `SeamContracts` (opaque
+// EXACT M26 precedent: add the SeamName to @chartwarden/types' `SeamName` union + `SeamContracts` (opaque
 // `unknown`), add a fail-closed deny-stub provider in bootstrap/seams/providers.ts, list it in
 // REQUIRED_SEAMS, then `registerSeam(name, impls.x)` here. The read runs under withOrgContext (RLS-scoped).
-import type { DbClient } from "@wardenx/db";
-import { registerPlatformJob } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 import { registerSeam } from "../../bootstrap/index";
 import { buildDrizzleM24ReadService } from "./routes/read-service-drizzle";
 import { type M24SeamImpls, buildM24SeamImpls } from "./seam-impls";
@@ -28,7 +28,7 @@ export function registerM24PublishedSeams(db: DbClient | undefined): M24SeamImpl
 
 // F-172 (#248, m1 group) — platform-tenancy registration for the §4.9 `state-channel-health` cron (the
 // M25/M30/M33/M34 `wireM<N>Tenancy` precedent). The cron's active-org fan-out enters `withPlatformContext`
-// under this job id; the id must be on the `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST (starts empty →
+// under this job id; the id must be on the `@chartwarden/tenancy` PLATFORM_CONTEXT_ALLOWLIST (starts empty →
 // fail-closed) for the enumerator to be admitted.
 
 /** The platform job id M24's `state-channel-health` cron enters `withPlatformContext` under to enumerate

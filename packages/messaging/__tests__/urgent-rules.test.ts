@@ -1,5 +1,5 @@
 // WP 4.1 - the pure write rules of an urgent clinical message, and their in-memory twin wiring.
-import { type RichBody, ChartWardenError, sanitizeRichBody } from "@wardenx/types";
+import { type RichBody, ChartWardenError, sanitizeRichBody } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryMessagingService } from "../src/store/in-memory-service";
 import { assertUrgencyEditable, assertUrgentSend } from "../src/urgent/urgent-rules";

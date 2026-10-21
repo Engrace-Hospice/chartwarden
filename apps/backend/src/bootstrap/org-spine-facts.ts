@@ -4,8 +4,8 @@
 // jobs whose modules may not reference those tables directly (`arch:tables`): M34's onboarding context
 // (provider entities + CCNs, location count) and M30's CAP-overdue owner resolution (membership -> user id). The
 // composition root injects these as ports; each call opens its own `withOrgContext` (a cron tick is not a request).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 const SYSTEM_USER_ID = "";

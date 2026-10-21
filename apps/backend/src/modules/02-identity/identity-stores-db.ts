@@ -17,8 +17,8 @@ import { createHash, randomUUID } from "node:crypto";
 // token is never PERSISTED anywhere. It DOES leave the store on `create`/`resend` (TASK-030) — the
 // route is the only caller, and uses it exactly once, to build the accept link for the email transport
 // and (since no vendor sender is wired yet) to echo an admin-visible copyable link back to the inviter.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import {
   type InvitationDetail,

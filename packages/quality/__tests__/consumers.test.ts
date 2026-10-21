@@ -1,4 +1,4 @@
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   type BereavementPlanClosedEvent,
   type CahpsCandidateAddRequest,
@@ -28,8 +28,8 @@ import {
   handleMedicationErrorReported,
   handleRestraintApplied,
   measureCodesForFamilies,
-} from "@wardenx/quality";
-// @wardenx/quality — M30 §4.10 upstream-consumer unit tests (PURE; in-memory ports; no DB).
+} from "@chartwarden/quality";
+// @chartwarden/quality — M30 §4.10 upstream-consumer unit tests (PURE; in-memory ports; no DB).
 //
 // The inbound half of M30: the topic→effect subscription map (the §4.10 single source of truth) and the
 // per-topic handlers that project a structurally-minimal upstream event into its M30 effect and fan it out

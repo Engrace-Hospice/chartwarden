@@ -14,7 +14,7 @@
 //
 // Pure projection — no I/O. The verbatim/consent WRITE guards live in lifecycle/validation.ts and
 // routes/service.ts; this file only renders what those guards preserved.
-import type { GoalSource } from "@wardenx/types";
+import type { GoalSource } from "@chartwarden/types";
 
 /** The stored goal fields the attribution view reads (the slice/Drizzle row subset). */
 export interface AttributableGoal {

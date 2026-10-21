@@ -19,7 +19,7 @@ import {
   isMessageHintOutboxEvent,
   orgRoom,
   userRoom,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

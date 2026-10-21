@@ -1,4 +1,4 @@
-// @wardenx/idg — D10 minutes finalization + §164.526 amendment workflow — M14-T03.
+// @chartwarden/idg — D10 minutes finalization + §164.526 amendment workflow — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
   assertMinutesMutable,

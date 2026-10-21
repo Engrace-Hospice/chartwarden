@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.4 D3 PRN minimum-interval enforcement (M13-T04). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.4 D3 PRN minimum-interval enforcement (M13-T04). PURE, IO-free, `Date.now()`-free.
 //
 // The M12 order's `sigStructured.prnPolicy.minimumIntervalMinutes` (e.g. "no more than every 4 hours") is a
 // HARD rule at the PRN-administration write: the route queries M13 for the most-recent PRN administration of
@@ -9,7 +9,7 @@
 // warn audit event (the route writes the audit; this module only resolves the decision). PURE: the
 // most-recent-administration instant + the requested instant + the override facts are all injected, so the
 // boundary is unit-testable with no DB and no clock (the M12 webhook `verifyWebhookEnvelope` precedent).
-import type { IsoInstant } from "@wardenx/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { AdministrationStateError } from "../lifecycle/errors";
 
 /** §2.4 D3 — the minimum override-reason length (mirrors the §2.2 void-reason / M8 late-entry floor). */

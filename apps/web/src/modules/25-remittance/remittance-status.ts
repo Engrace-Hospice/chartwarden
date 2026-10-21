@@ -5,7 +5,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/posted/paid · warning≈needs-attention/
 // at-risk · error≈failed/denied · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** remittance_advice parse_status → §6.6 tone. */
 export const PARSE_STATUS_TONE: Record<string, StatusTone> = {

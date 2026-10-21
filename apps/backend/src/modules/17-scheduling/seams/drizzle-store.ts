@@ -29,8 +29,8 @@
 // M17's optimizer output is a proposal). An unreadable M8 seam PROPAGATES rather than answering
 // `totalActualMiles: 0` — an unreadable mileage ledger is not a clinician who drove zero miles. The
 // override rate is derived from data (per-day proposed sequence vs. the actual start order), never seeded.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   ClinicalLinkSummary,
   DateRange,
@@ -38,7 +38,7 @@ import type {
   PortalVisitSummary,
   VisitAssignmentDto,
   VisitDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { getMileagePayrollReader } from "./consumed";
 import { createDrizzleOnCallRotationStore } from "./oncall-rotation-store";

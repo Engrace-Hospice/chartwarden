@@ -1,4 +1,4 @@
-// @wardenx/mdm — the REAL `MdmEntityProvider` (M40-T05, spec §4.5).
+// @chartwarden/mdm — the REAL `MdmEntityProvider` (M40-T05, spec §4.5).
 //
 // This is the implementation M40 registers into the M1 seam registry at boot — the master-data
 // read surface every clinical/billing/interop consumer uses (a patient's attending physician, a

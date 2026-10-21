@@ -1,5 +1,5 @@
 // GAP-040 — m26.cap.threshold_crossed -> typed cap alert, with a seeded rule for every kind it can raise.
-import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import { buildM36CapThresholdAlertConsumer, planCapThresholdAlert } from "./cap-threshold-alerts";
 

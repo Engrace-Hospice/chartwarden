@@ -6,7 +6,7 @@
 // Every write runs in ONE `withOrgContext` unit of work (RLS on `app.org_id`), drives the pure
 // `transferNoticeMachine`, is version-checked (§2.5 → 412), and emits its `m23.transfer_notice.*` event through
 // the injected catalog-validating outbox in the same transaction. The §20.1.3 rules are `evaluateTransferNotice`
-// (pure, `@wardenx/billing`); this file only gathers the one cross-row fact they need (other transfers in the
+// (pure, `@chartwarden/billing`); this file only gathers the one cross-row fact they need (other transfers in the
 // benefit period) and the M6 refresh (our admission date and physicians, which M6 may learn after the draft).
 //
 // SUBMISSION follows the NOE/NOTR outbox-only posture (D2): `submit` appends the queued `claim_submission`
@@ -24,9 +24,9 @@ import {
   repositories,
   transferNoticeMachine,
   transferNoticeTob,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { TransferInFactsResolver } from "../outbox-consumers/m6-transfer-in-notice";
 import type { JobEnqueuePort } from "../routes/write-service";
 import {

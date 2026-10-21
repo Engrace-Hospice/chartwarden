@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: verbal-order signature on time (CoP 418.104(b)). Pure. No IO.
+// @chartwarden/quality — operational measure: verbal-order signature on time (CoP 418.104(b)). Pure. No IO.
 // Rate of verbal orders signed within the agency-defined window (higher is better). Source: M11
 // `OrderProvider.getVerbalOrderTimeliness`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

@@ -6,18 +6,18 @@
 // episode opened at day 1, so two 3-day respite stays a day apart each looked like a compliant 3 days — the
 // split-episode workaround the 30-day look-back exists to stop.
 //
-// The pure rule is `resumedStartingDayCount` (`@wardenx/inpatient`); this file is the IO around it: read the
+// The pure rule is `resumedStartingDayCount` (`@chartwarden/inpatient`); this file is the IO around it: read the
 // patient's closed episodes, insert the row at the inherited day, and report the cap state it opened IN so the
 // caller can announce it. A resumed episode can open at day 4 or 5+; the state is derived at the insert (the
 // `within_cap` billing gate reads it immediately) and the matching event is returned for the caller to publish
 // in the same transaction — the hourly watchdog only ever announces a state ENTRY it advances into.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   IRC_CAP_DAYS,
   type IrcOutboxEvent,
   computeIrcState,
   resumedStartingDayCount,
-} from "@wardenx/inpatient";
+} from "@chartwarden/inpatient";
 import { and, eq, isNotNull, ne } from "drizzle-orm";
 
 const IRC = schema.ircEpisode;

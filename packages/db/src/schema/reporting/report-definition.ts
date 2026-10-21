@@ -1,4 +1,4 @@
-// @wardenx/db — `report_definition` (M33 §3.3). A tenant- or system-authored report definition
+// @chartwarden/db — `report_definition` (M33 §3.3). A tenant- or system-authored report definition
 // bound to a base; carries the optimistic-concurrency lock (version_seq) and a pointer to the
 // latest published version. ORG-SCOPED: carries organization_id NOT NULL → standard app.org_id RLS
 // (writes additionally require report.definition.write, §3.5). `base_key` refs report_base_catalog;

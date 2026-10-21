@@ -54,8 +54,8 @@
 // where the count first crosses from 50 to 51) means a single dropped dispatch delays the signal by at
 // most one further occurrence rather than losing it until the window happens to dip back under 50 and
 // cross again — the simpler, more robust choice given `alerts` is fail-closed until bound.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { WorkerAlertPort } from "../jobs/m23-jobs";
 

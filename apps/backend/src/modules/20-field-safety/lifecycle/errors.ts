@@ -18,7 +18,7 @@
 // — both are recorded FACTS on a delivered alert (M20-F16, §2.2.2), never refusals. The codes that DO exist
 // refuse writes that would make the record lie: a cancel after the window, a resolve with no outcome, a
 // location-stream sample the consent gates do not authorise.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §7 machine-readable failure-code catalog → HTTP status. */
 export const M20_ERROR_STATUS = {

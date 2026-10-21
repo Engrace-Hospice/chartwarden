@@ -14,7 +14,7 @@ import {
   type SignatureRecord,
   type UndatedSignatureRecord,
   formatMrn,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { Block, DocModel, SignatureBlock } from "../doc-model";
 import { latestInstant } from "../doc-model";
 import { PART2_REDISCLOSURE_NOTICE, PART2_WITHHELD, fmtInstant, rec } from "../shared";

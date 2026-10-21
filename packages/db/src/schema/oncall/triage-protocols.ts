@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_protocol` (M19 §3.3). D4's hybrid catalog: a PLATFORM FLOOR of ≥25 protocols
+// @chartwarden/db — `triage_protocol` (M19 §3.3). D4's hybrid catalog: a PLATFORM FLOOR of ≥25 protocols
 // (organization_id IS NULL, system-locked, seeded by the migration) that every tenant reads and none may
 // edit, plus tenant rows ABOVE the floor that a tenant owns outright. Versions are first-class — a
 // revision is a NEW row with its own effective window, so a call in flight keeps the question set it

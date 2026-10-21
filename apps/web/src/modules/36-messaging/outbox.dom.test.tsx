@@ -3,7 +3,7 @@
  * "Not sent" row (React state only, never the browser's storage) and re-sent with the same ids until the server confirms.
  */
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

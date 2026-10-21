@@ -13,7 +13,7 @@
 // assertion meets a nonce that has already been spent. The `provider` column records which class of
 // evidence a row rests on, so a reviewer can tell a managed-fleet enrolment from a hardware attestation
 // rather than having to assume.
-import type { DeviceAttestationPosture } from "@wardenx/types";
+import type { DeviceAttestationPosture } from "@chartwarden/types";
 
 /**
  * The session facts the device routes act on, resolved SERVER-side from `request.context`.

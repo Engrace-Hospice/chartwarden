@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §2.3 / D1 / §8.4 model backends (M32-T04).
+// @chartwarden/ai-platform — §2.3 / D1 / §8.4 model backends (M32-T04).
 //
 //   · ./model-backend   the pluggable `ModelBackend` port + its registry
 //   · ./anthropic       the vendor adapter and its D19 ZDR constructor invariant

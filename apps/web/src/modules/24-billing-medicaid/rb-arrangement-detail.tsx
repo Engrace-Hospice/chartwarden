@@ -8,7 +8,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the R&B ARRANGEMENT DETAIL (R2, §5.1 #12 + the #13 day
 // override modal). One NF Room & Board arrangement: the contract facts, the activate/terminate lifecycle
 // actions, and the day-by-day status table. A single day's status can be flipped (pending ↔ billable ↔

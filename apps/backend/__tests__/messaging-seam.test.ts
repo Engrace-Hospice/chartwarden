@@ -5,7 +5,7 @@
 // validateSeams(); the real emitter resolves rules + recipients + the in-app fan-out floor (§2.1).
 // Also asserts `MessagingProvider` is declared fail-closed (its DB-backed impl lands T07/T08) and
 // that the composition-root `wireModuleSeams` hook wires M36's seam during a real buildServer() boot.
-import { createInMemoryAlertEmitter } from "@wardenx/messaging";
+import { createInMemoryAlertEmitter } from "@chartwarden/messaging";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";

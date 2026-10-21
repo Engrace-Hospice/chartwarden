@@ -14,7 +14,7 @@ import {
   M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
   M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
   type ModuleEventContribution,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const Iso = Type.String({ minLength: 1 });

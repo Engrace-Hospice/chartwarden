@@ -1,4 +1,4 @@
-// @wardenx/db — M30 HQRP & Quality: helper TS types for the module's jsonb columns (§3.3).
+// @chartwarden/db — M30 HQRP & Quality: helper TS types for the module's jsonb columns (§3.3).
 // These back the Drizzle `.$type<...>()` generics so the column payloads are typed (no `any`).
 // Filename intentionally avoids the substring "schema" (table-ownership/tenancy heuristic gotcha).
 

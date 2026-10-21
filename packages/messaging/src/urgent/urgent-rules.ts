@@ -1,8 +1,8 @@
-// @wardenx/messaging - the pure write-time rules of an urgent clinical message (M36 WP 4.1, ADR-0068), shared by the Drizzle
+// @chartwarden/messaging - the pure write-time rules of an urgent clinical message (M36 WP 4.1, ADR-0068), shared by the Drizzle
 // core and the in-memory twin so both refuse the same things. Structural only: who is QUALIFIED to receive is decided by the
 // service's eligibility ports before the write, never by reading message text. Never echoes message content, and the
 // recipient refusal names no reason (one answer for "not a member", "is the author" and "not qualified").
-import { type RichBody, type UrgentErrorCode, ChartWardenError } from "@wardenx/types";
+import { type RichBody, type UrgentErrorCode, ChartWardenError } from "@chartwarden/types";
 import { isSbarBody } from "../sbar/sbar-write";
 
 const refuse = (code: UrgentErrorCode, message: string): ChartWardenError =>

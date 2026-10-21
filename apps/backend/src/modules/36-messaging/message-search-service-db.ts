@@ -11,7 +11,7 @@
 // (`status <> 'deleted'`) mean a tombstone is never even opened; the body searched is the CURRENT one (an edit
 // replaces the cipher in place). Hydration (reactions, pins, scan-gated attachments) is the shared read path, so a
 // result can never show more than the channel history would.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type MessageSearchInput,
   type MessageSearchResult,
@@ -22,10 +22,10 @@ import {
   bodyMatchesTerms,
   normalizeSearchText,
   searchPageSize,
-} from "@wardenx/messaging";
-import type { MessageBodyKind } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { MessageBodyKind } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "./body-key-ring";
 import { decodeCursor, encodeCursor } from "./message-cursor";

@@ -1,4 +1,4 @@
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { AdmissionEvidenceRequirement } from "./admission-evidence-service";
 
 export type UploadedCtiMetadata =

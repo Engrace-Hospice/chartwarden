@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — the licensing gate (policy decided 2026-10-06; M38 §1.3, §3.9, §11 D4).
+// @chartwarden/terminology-loader — the licensing gate (policy decided 2026-10-06; M38 §1.3, §3.9, §11 D4).
 //
 // Tier 1 PUBLIC systems load freely. Tier 2 LICENSED-FREE systems — SNOMED CT US (UMLS), RxNorm full release
 // (UMLS) and LOINC (Regenstrief) — are free to use but only under a licence the platform operator has accepted

@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_emergency_contact_consent` (M20 §3.3 / §2.2.8, D6/D10/M20-F16). One row per
+// @chartwarden/db — `safety_emergency_contact_consent` (M20 §3.3 / §2.2.8, D6/D10/M20-F16). One row per
 // clinician per consent purpose. The CLINICIAN is the data subject here, not a patient: this is the
 // workforce's own consent to have their location captured during an SOS, streamed during an active SOS,
 // and their emergency contact called when the life-safety chain reaches its terminus.

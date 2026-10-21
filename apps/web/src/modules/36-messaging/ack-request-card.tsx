@@ -3,8 +3,8 @@
 // The fixed notice is shown ONCE per thread and wired to every button with aria-describedby. Results are announced in a
 // persistent polite live region and focus moves to the card's status line after a saved action. Rendering, focusing or
 // scrolling to the card sends nothing.
-import type { AckRequestDto } from "@wardenx/types";
-import { Button, Glyph } from "@wardenx/ui";
+import type { AckRequestDto } from "@chartwarden/types";
+import { Button, Glyph } from "@chartwarden/ui";
 import {
   type JSX,
   type ReactNode,

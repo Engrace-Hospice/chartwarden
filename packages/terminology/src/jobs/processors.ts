@@ -1,4 +1,4 @@
-// @wardenx/terminology — terminology job processors (M38-T10, spec §4.3, §7.3, §7.5, §8.1).
+// @chartwarden/terminology — terminology job processors (M38-T10, spec §4.3, §7.3, §7.5, §8.1).
 //
 // The pure, infra-free logic the §4.3 workers run, each a function over injected ports — the same
 // pattern as the M4 audit jobs: unit-tested against in-memory ports (./ports), with the production

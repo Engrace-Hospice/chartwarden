@@ -15,7 +15,7 @@
 // THE ORG ID IS IN THE KEY. A process-local map has no RLS, so tenancy has to be structural: two
 // memberships from different tenants can only collide if the org id is part of what identifies them. It is
 // also what lets a single-tenant sweep exist without walking every entry.
-import type { IsoInstant, MembershipId, OrgId } from "@wardenx/types";
+import type { IsoInstant, MembershipId, OrgId } from "@chartwarden/types";
 
 /** §7.7 — how long a suspicion stays on the board. */
 export const SAFETY_GPS_SPOOF_BADGE_TTL_HOURS = 12;

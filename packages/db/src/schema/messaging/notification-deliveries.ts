@@ -1,4 +1,4 @@
-// @wardenx/db — `notification_delivery` (M36 Secure Messaging §3.6). One row per recipient ×
+// @chartwarden/db — `notification_delivery` (M36 Secure Messaging §3.6). One row per recipient ×
 // channel for a dispatched alert, tracking the per-channel delivery lifecycle and vendor id.
 // It is a pure child of `alert` (ON DELETE cascade) and inherits tenancy through that parent
 // FK, so it carries NO organization_id and is opted out of the three-column rule via the

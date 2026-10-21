@@ -1,4 +1,4 @@
-import { Button, Glyph, useApiClient } from "@wardenx/ui";
+import { Button, Glyph, useApiClient } from "@chartwarden/ui";
 // M31 bereavement support: M16 owns the program and resource content. M31 renders only the
 // authorized projection and the existing opt-out operation. Do not invent outreach or services.
 import { useEffect, useRef, useState } from "react";

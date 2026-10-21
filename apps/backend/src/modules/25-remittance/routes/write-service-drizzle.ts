@@ -5,10 +5,10 @@
 // injected {@link WriteOutboxPort}. A failed transition → INVALID_TRANSITION; a stale version →
 // VERSION_CONFLICT; a missing row → NOT_FOUND. Free-text reason/narrative is stored in the audit-denylisted
 // columns (override_payload / appeal_narrative / assignment.reason), NEVER in an outbox payload.
-import { repositories } from "@wardenx/billing";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { repositories } from "@chartwarden/billing";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,

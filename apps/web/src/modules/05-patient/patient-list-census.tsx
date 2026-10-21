@@ -13,8 +13,8 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { DataTableColumn } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { DataTableColumn } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).
 // Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
 // Filterable, cursor-paginated census over GET /api/v1/patients via the generated typed client.

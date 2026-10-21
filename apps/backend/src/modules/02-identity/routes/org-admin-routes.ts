@@ -28,8 +28,8 @@
 // The envelope cipher is an injected port; until the KMS-backed key ring binds it, POST /provider-entities
 // refuses with 503 `TAX_ID_CIPHER_UNBOUND` (the M8/M20/M32 `*_CIPHER_UNBOUND` posture) — everything else works.
 import { randomUUID } from "node:crypto";
-import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@wardenx/auth";
-import { ChartWardenError } from "@wardenx/types";
+import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@chartwarden/auth";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   auditLocationCreated,

@@ -1,4 +1,4 @@
-// @wardenx/xero-client — the shared adapter CONTRACT types (no IO, no SDK). Extracted into their own
+// @chartwarden/xero-client — the shared adapter CONTRACT types (no IO, no SDK). Extracted into their own
 // leaf so client.ts / normalize.ts / index.ts all import them WITHOUT closing an index↔client cycle
 // (the no-circular fitness rule). No Xero SDK shapes leak past this boundary; money is INTEGER CENTS.
 
@@ -29,7 +29,7 @@ export interface XeroClient {
   refreshTokens(): Promise<void>;
 }
 
-/** The published `XeroClientFactory` seam shape (mirrors `@wardenx/cost-report`'s seam interface). */
+/** The published `XeroClientFactory` seam shape (mirrors `@chartwarden/cost-report`'s seam interface). */
 export interface XeroClientFactory {
   forTenant(input: { organizationId: string; xeroTenantId?: string }): Promise<XeroClient>;
 }

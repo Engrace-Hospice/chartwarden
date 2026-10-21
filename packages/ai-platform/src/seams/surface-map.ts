@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the seam-surface → `ai_capability.capability_key` map (M32-T06).
+// @chartwarden/ai-platform — the seam-surface → `ai_capability.capability_key` map (M32-T06).
 //
 // M32 owns this mapping so that no consumer can name a capability row directly. A seam takes a SURFACE
 // (`encounter_note`, `clinical`, `signature_presence`) and M32 decides which registered capability

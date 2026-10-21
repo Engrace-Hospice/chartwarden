@@ -1,6 +1,6 @@
 // A recording fake of the Drizzle select / insert / update chains inside `withOrgContext` — enough for
 // pipeline-style code that issues plain statements, without a database. `rowsByTable` programs what a select — and an insert/update `returning()` — resolves to, keyed by table name; inserts and updates are recorded.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 
 export interface Recorded {
   readonly inserts: Array<{ table: string; values: Record<string, unknown> }>;

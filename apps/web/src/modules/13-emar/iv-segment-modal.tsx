@@ -1,4 +1,4 @@
-import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — the §2.11 D11 IV-CONTINUOUS SEGMENT ceremony (F-031 / #134).
 //
 // A continuous infusion is not a dose, it is a SESSION: an append-only sequence of rows sharing one

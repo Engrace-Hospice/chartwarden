@@ -42,12 +42,12 @@
 //
 // The read and the write are M14-owned tables inside one `withOrgContext`. Every consumed event name is a
 // STRING literal and no upstream schema is imported, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // Imported from the concrete module rather than the `./index` barrel: the barrel re-exports THIS file,
 // so going through it would be a cycle (`arch:boundaries` no-circular).
-import { transitionActionItem } from "@wardenx/idg";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IdgActionItemLinkedKind } from "@wardenx/types";
+import { transitionActionItem } from "@chartwarden/idg";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IdgActionItemLinkedKind } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";

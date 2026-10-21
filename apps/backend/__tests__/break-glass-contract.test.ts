@@ -5,9 +5,9 @@
  * interface), an ABAC-denied access is ALLOWED, the request is flagged, and one `m3.breakglass.access`
  * row is written at `critical` UNDER withOrgContext (the fake tx records the set_config + insert).
  */
-import type { GuardRequest } from "@wardenx/auth";
-import { BREAK_GLASS_ATTRIBUTE, requireAbac, resetAuthorizationContract } from "@wardenx/auth";
-import type { HttpRequestContext } from "@wardenx/types";
+import type { GuardRequest } from "@chartwarden/auth";
+import { BREAK_GLASS_ATTRIBUTE, requireAbac, resetAuthorizationContract } from "@chartwarden/auth";
+import type { HttpRequestContext } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BreakGlassStore } from "../src/modules/03-authorization/authz-ports";
 import { registerBreakGlassContract } from "../src/modules/03-authorization/contract";

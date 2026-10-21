@@ -1,4 +1,4 @@
-// @wardenx/terminology — cache (key grammar + port) barrel (M38-T10, §4.6).
+// @chartwarden/terminology — cache (key grammar + port) barrel (M38-T10, §4.6).
 export {
   TERMINOLOGY_CACHE_TTL_SECONDS,
   lookupKey,

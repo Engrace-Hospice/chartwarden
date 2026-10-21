@@ -1,4 +1,4 @@
-// @wardenx/db — M22 Document Management schema barrel (§3.3, 17 tables). Re-exported from the
+// @chartwarden/db — M22 Document Management schema barrel (§3.3, 17 tables). Re-exported from the
 // central schema barrel (../index.ts). Ordering follows FK dependency: document → version/tag/
 // access-log/legal-hold; form_template → version → overlay/fill; intake_upload_batch →
 // classified_page → extraction_job → candidate/discrepancy/review → decision → provenance.

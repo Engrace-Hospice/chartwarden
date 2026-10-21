@@ -1,4 +1,4 @@
-import { formatMrn, isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
+import { formatMrn, isValidMedicaidNumber, isValidMedicareNumber } from "@chartwarden/types";
 import {
   Button,
   CodeSearchInput,
@@ -9,7 +9,7 @@ import {
   StatusPill,
   formatDateOnly,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";

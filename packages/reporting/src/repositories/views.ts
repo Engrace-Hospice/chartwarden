@@ -1,8 +1,8 @@
-// @wardenx/reporting · repositories — the saved-view aggregate: `report_view` (a saved view over a
+// @chartwarden/reporting · repositories — the saved-view aggregate: `report_view` (a saved view over a
 // definition version: owner, pinned filters, share scope, org-default flag) (M33 §3.3–§3.4). The view
 // SERVICE wraps these in `withOrgContext` and owns the ownership / `report.view.set_org_default`
 // (org_admin) guard; the `dashboard_visibility` ABAC predicate (§4.7) decides read/edit at the route.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq, not } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

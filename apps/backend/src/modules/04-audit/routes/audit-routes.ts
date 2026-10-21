@@ -3,18 +3,18 @@
 //
 // These are the read surface over the M1-owned, append-only `audit_event` log: the Compliance
 // event search, single-event detail, and the per-patient internal access history. Each is gated by
-// the REAL Authorization Contract (`requirePermission("audit.read")` from @wardenx/auth, M3) — the
+// the REAL Authorization Contract (`requirePermission("audit.read")` from @chartwarden/auth, M3) — the
 // §4.5 permission handshake key M4 registers into M3's catalog in M4-T10. Reads are org-scoped:
 // the injected `AuditQuery` port takes the actor's org and (in production) runs inside
 // `withOrgContext` so RLS on `app.org_id` is the backstop; the slice default is the in-memory
-// adapter from @wardenx/audit. An ELEVATED / cross-tenant read additionally emits the
+// adapter from @chartwarden/audit. An ELEVATED / cross-tenant read additionally emits the
 // `audit.elevated_access` meta-event (§2.6) — the watchers are watched.
 //
 // `audit_event` is HELPER-ONLY: this route file never SELECTs the schema directly; it consumes the
-// typed query port from @wardenx/audit (the only sanctioned reader).
-import type { AuditContext, AuditExecutor, AuditQuery } from "@wardenx/audit";
-import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+// typed query port from @chartwarden/audit (the only sanctioned reader).
+import type { AuditContext, AuditExecutor, AuditQuery } from "@chartwarden/audit";
+import { requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditElevatedAccess, isElevatedAuditRead } from "../audit/audit-meta";
 import {
@@ -25,7 +25,7 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the audit query routes (mirrors M3's `AuthzRouteDeps`). */

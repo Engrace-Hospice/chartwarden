@@ -47,9 +47,9 @@
 // directives), M6's rule already evaluated the flag one transaction earlier, and §2.6 gives the flip a
 // complete post-hoc path. Refusing to open a plan because a fact was unreadable would deny a grieving
 // family a regulatory service to defend against a race the cascade already handles.
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AdmissionId, IsoInstant, PatientId } from "@wardenx/types";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AdmissionId, IsoInstant, PatientId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import {
   type AdmissionAnchorResolver,

@@ -1,4 +1,4 @@
-// @wardenx/types — Standard error envelope + error class hierarchy (M1 Foundation
+// @chartwarden/types — Standard error envelope + error class hierarchy (M1 Foundation
 // §4.3; M1-T10).
 //
 // Every error response the platform emits uses the ONE envelope shape below, so clients

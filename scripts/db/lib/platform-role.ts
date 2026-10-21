@@ -21,7 +21,7 @@ import {
   type PlatformGrantableRoleKey,
   ROLE_TEMPLATES,
   isPlatformGrantableRoleKey,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { Client } from "pg";
 import { firstRow } from "./query-rows";
 

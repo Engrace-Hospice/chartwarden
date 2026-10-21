@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — stage-and-diff, the pure half (M38 §3.1 `stage-and-diff.ts`).
+// @chartwarden/terminology-loader — stage-and-diff, the pure half (M38 §3.1 `stage-and-diff.ts`).
 //
 // The authoritative diff against the prior active version is computed by the database at `markStaged` /
 // activation (set arithmetic over the staged rows and the prior version's concept rows — see migration 0364).

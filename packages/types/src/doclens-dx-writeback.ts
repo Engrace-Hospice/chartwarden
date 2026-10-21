@@ -1,4 +1,4 @@
-// @wardenx/types — the DocLens → M7 DIAGNOSIS writeback contract (F-238 dx-writeback).
+// @chartwarden/types — the DocLens → M7 DIAGNOSIS writeback contract (F-238 dx-writeback).
 //
 // A completed DocLens review's reviewer-attested diagnoses become PROPOSED problems on M7 — never a
 // charted problem. AI Governance v0.2 §2.1.1 ("hard blocks on AI-introduced changes to … codes";
@@ -15,7 +15,7 @@
 //     terminal/related/unrelated is the hospice physician's determination, never the document's
 //     "principal" label) which creates the `problem` row (`source = 'intake_extraction'`), or DISMISSES it.
 //
-// Both modules import this one file (M7 and M22 share no `dependsOn` edge; `@wardenx/types` is the leaf
+// Both modules import this one file (M7 and M22 share no `dependsOn` edge; `@chartwarden/types` is the leaf
 // both may read), so the shape/SUD rules M22 applies and M7 re-checks on receipt cannot drift.
 
 /** M22 → M7: a completed review's approved diagnoses for ONE resolved patient. */

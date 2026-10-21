@@ -7,7 +7,7 @@
 // id, gets the one not-found); accountability stays with the sender until an item is accepted. It is flag-independent -
 // the routes gate `messaging.handoffs`. It never writes another module's data: the only cross-aggregate write is the
 // module's own communication task, reassigned through the task store when its handoff item is accepted.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   HANDOFF_MAX_ITEMS,
   HANDOFF_MAX_PATIENTS,
@@ -18,8 +18,8 @@ import {
   isPastDeadline,
   prepareHandoffPolicy,
   validateOfferShape,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ForbiddenError,
   type HandoffDto,
@@ -28,7 +28,7 @@ import {
   type HandoffPolicyView,
   NotFoundError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import type { Part2ChannelGate } from "../part2-channel-gate";

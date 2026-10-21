@@ -20,10 +20,10 @@
 // consumer reuses the identical constant and the identical `cancelledByMembershipId: userId || null`
 // shape `cancelFuturePublishedVisitsForAdmission` already established, rather than inventing a third
 // system-actor convention in the same module.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionVisit } from "@wardenx/scheduling";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { VisitStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionVisit } from "@chartwarden/scheduling";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { VisitStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;

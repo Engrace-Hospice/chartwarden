@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — ICD-10-CM parser (CDC/NCHS release; tier 1 public).
+// @chartwarden/terminology-loader — ICD-10-CM parser (CDC/NCHS release; tier 1 public).
 //
 // Input: a zip (or raw file) holding `icd10cm-order-YYYY.txt` and, optionally, the Tabular List XML
 // (`icd10cm-tabular*.xml`). The order file alone yields every code with its billable flag, parent and

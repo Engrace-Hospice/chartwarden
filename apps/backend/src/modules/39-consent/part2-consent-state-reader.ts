@@ -8,8 +8,8 @@
 //   active   — a non-expired `active` release exists (the newest by effective date is reported);
 //   inactive — releases exist but none is in force (the most recently changed one is reported);
 //   none     — M39 holds no non-draft Part 2 release for the patient.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, ne } from "drizzle-orm";
 import {
   NO_PART2_CONSENT,

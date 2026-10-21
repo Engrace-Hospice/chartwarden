@@ -1,4 +1,4 @@
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { provisionUser, resetUserPassword } from "../user-management-api";
 

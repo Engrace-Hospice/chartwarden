@@ -6,7 +6,7 @@
 // An INCOMPLETE draft is not blocked: the signed paper copy IS the furnished addendum, so the form says plainly
 // that the scan will stand as the addendum's content (the server records `contentSource: scanned_paper`).
 // Kit controls only (the shared scanned-upload kit); the server re-checks every rule, its message shown verbatim.
-import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@wardenx/ui";
+import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import type { UploadStage } from "../../shell/document-workflows";

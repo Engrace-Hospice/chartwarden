@@ -1,5 +1,5 @@
 // apps/backend/src/modules/11-orders/routes/orders-routes.ts — M11-T06 the §4.1 route inventory (28 routes)
-// behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the
+// behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the
 // §4.6 keys M11 registers into M3's catalog (M11_CONTRIBUTED_PERMISSIONS). Org binding is server-side
 // (`request.context`, never the body). Handlers compose over the injected OrderRouteService (in-memory slice;
 // Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -27,8 +27,8 @@ import {
   requirePermission,
   requireStepUp,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -66,7 +66,7 @@ import {
   inReadScope,
 } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OrderRouteDeps {

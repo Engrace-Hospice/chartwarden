@@ -1,4 +1,4 @@
-// @wardenx/billing — FY2027 rule `election_addendum_signed` (42 CFR 418.24(c); MLN Connects 2026-10-01): the
+// @chartwarden/billing — FY2027 rule `election_addendum_signed` (42 CFR 418.24(c); MLN Connects 2026-10-01): the
 // 2026-10-01 applicability cutoff, the enforcement-discretion warn window (claim through date < 2027-01-01) and
 // the blocking boundary, and every passing exception.
 import { describe, expect, it } from "vitest";

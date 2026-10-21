@@ -1,4 +1,4 @@
-// @wardenx/consent — the consent_renewal_cycle status machine (§2.4, D8/D13).
+// @chartwarden/consent — the consent_renewal_cycle status machine (§2.4, D8/D13).
 //
 // M39-T04. A cycle opens when the first 30-day reminder fires and no open cycle exists for the
 // source record. It closes when (a) a new consent record is signed with renewed_from = source

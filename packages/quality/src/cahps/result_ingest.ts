@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — M30 §7.2 (WF-06) CAHPS result-ingest transform + min-cell suppression. Pure, IO-free.
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — M30 §7.2 (WF-06) CAHPS result-ingest transform + min-cell suppression. Pure, IO-free.
 //
 // A vendor's `parseResultIngest` returns the raw per-period aggregate it found in the upload. Before those
 // aggregates are persisted as `cahps_result_summary` rows, CMS small-cell protection applies: any reporting
@@ -8,7 +8,7 @@ import type { schema } from "@wardenx/db";
 // score payloads of under-sized cells (blanking `topBoxPercentages` / `compositeScores` to `{}`) while
 // retaining the aggregate counts and the dedup hash so the row is still an auditable "results were
 // ingested" record. No DB, no I/O.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { CahpsResultSummaryInput, CahpsVendorAdapterId } from "./adapter";
 
 /**

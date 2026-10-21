@@ -26,8 +26,8 @@
 //      "clinicians see their own state only" cannot be expressed by `caseload_or_scope` — an ABAC
 //      predicate answers yes/no for a request, not which rows come back. The guard admits her to the
 //      route; this layer narrows the snapshot.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type IsoInstant,
   NotFoundError,
@@ -51,7 +51,7 @@ import {
   type SafetySosOutcome,
   type SafetySubscriptionScopeKind,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { ACTIVE_SOS_RESPONDER_STATES, decideSafetySupervisorOrAbove } from "../abac-predicates";
 import { mergeEffectivePolicy, safetyPolicyFloorSeed } from "../lifecycle/policy";

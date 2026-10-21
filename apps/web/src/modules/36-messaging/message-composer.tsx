@@ -1,8 +1,8 @@
 // The composer area of ConversationThread: the read-only notice, or the draft sync notice plus the message form (moved
 // out of it unchanged in WP 2.11 to keep that file under the line ceiling). State and effects stay in the thread; this
 // only renders what it is given.
-import type { RichBody, SbarIssue } from "@wardenx/types";
-import { Button, Glyph } from "@wardenx/ui";
+import type { RichBody, SbarIssue } from "@chartwarden/types";
+import { Button, Glyph } from "@chartwarden/ui";
 import { useEffect, useRef } from "react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/28-fhir/routes/projection.ts — the read-time FHIR projection (F-035, #95).
 //
 // M28 owns no clinical PHI (§1.2). Every resource served here is composed at request time from an OWNER
-// module's data, reached through the M1 seam registry, shaped by a PURE mapper from `@wardenx/fhir`, and
+// module's data, reached through the M1 seam registry, shaped by a PURE mapper from `@chartwarden/fhir`, and
 // then put through the D3 egress consent gate before a single byte reaches the wire. This file is that
 // pipeline; it holds no data and no SQL.
 //
@@ -48,9 +48,9 @@ import {
   medicationAdministrationMapper,
   medicationRequestMapper,
   patientMapper,
-} from "@wardenx/fhir";
-import type { MapperContext, OperationOutcome } from "@wardenx/fhir";
-import type { AdministrationDto, MedicationOrderDto, PatientIdentity } from "@wardenx/types";
+} from "@chartwarden/fhir";
+import type { MapperContext, OperationOutcome } from "@chartwarden/fhir";
+import type { AdministrationDto, MedicationOrderDto, PatientIdentity } from "@chartwarden/types";
 
 import {
   getFhirDisclosureConsentEvaluator,

@@ -9,8 +9,8 @@ import {
   type OutOfBandTransport,
   TransportError,
   sanitizeForEmergencyContactCall,
-} from "@wardenx/messaging";
-import type { SosContactCallResult, SosContactCaller } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { SosContactCallResult, SosContactCaller } from "@chartwarden/types";
 
 const NOT_CONFIGURED = "transport_not_configured";
 

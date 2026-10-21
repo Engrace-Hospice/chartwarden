@@ -1,4 +1,4 @@
-// @wardenx/db — `cop_compliance_status` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `cop_compliance_status` (M30 §3.3; non-partitioned; retention class `compliance`).
 // The self-assessed Condition-of-Participation compliance posture per (provider_entity, CoP citation),
 // with evidence document refs and review cadence. ORG-SCOPED: organization_id NOT NULL (canonical
 // app.org_id RLS). provider_entity_id is a logical FK to M40. No PHI; no audit denylist.

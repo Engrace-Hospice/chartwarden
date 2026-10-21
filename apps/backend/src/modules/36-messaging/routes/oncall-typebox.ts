@@ -2,7 +2,7 @@
 // accepts ONLY a role from the closed list and a patient id (the router is patient-scoped); an unknown key is a 422. The response is
 // display names, enums and instants: no user id, no contact detail, no patient data.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { ONCALL_DIRECTORY_ROLES, ONCALL_DIRECTORY_STATUSES, ONCALL_RANKS } from "@wardenx/types";
+import { ONCALL_DIRECTORY_ROLES, ONCALL_DIRECTORY_STATUSES, ONCALL_RANKS } from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);

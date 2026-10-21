@@ -1,7 +1,7 @@
 // GAP-107 — the early-exit branches of M37's overlay writer/retirer that need no database. The insert,
 // idempotency, cross-tenant and gate behaviour are proven on real Postgres in
 // `m37-iv-safety-overlay.live.test.ts`.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   type IvOverlayOrderFacts,

@@ -8,8 +8,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@wardenx/idg";
-import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@wardenx/types";
+import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@chartwarden/idg";
+import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
   ActionItemView as ServiceActionItemView,

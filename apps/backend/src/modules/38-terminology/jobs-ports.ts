@@ -1,7 +1,7 @@
 // apps/backend/src/modules/38-terminology/jobs-ports.ts — the narrow surfaces the admin routes need from the §4.3
 // job layer and the platform bucket, injected by the composition root so the routes stay unit-testable without
 // Valkey or MinIO (and so a deployment without them answers 503, never a silent success).
-import type { LoadableSystemId } from "@wardenx/terminology-loader";
+import type { LoadableSystemId } from "@chartwarden/terminology-loader";
 
 /** Producer side of the §4.3 queues, as the admin routes use it. */
 export interface TerminologyJobProducer {

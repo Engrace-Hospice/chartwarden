@@ -6,7 +6,7 @@ import {
   aiPromptTargetsPrefix,
   aiTargetPrefixIsProhibited,
   findAiProhibitedZoneViolations,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 // apps/backend/__tests__/ai-platform-seams.test.ts — M32-T06, the §4.2–§4.4 seam boundary.
 //
 // What these prove, in the order the failures would hurt:
@@ -26,7 +26,7 @@ import {
 //     contraband; the inverse reads false and fails OPEN. Asserted on a real pair, both ways.
 //   • a COMPLETED invocation with no §2.5 projector refuses — and the refusal is
 //     `output_validation_failed_after_retry`, not a fabricated payload.
-import type { IsoInstant, OrgId, PatientId } from "@wardenx/types";
+import type { IsoInstant, OrgId, PatientId } from "@chartwarden/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   REQUIRED_SEAMS,

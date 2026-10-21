@@ -17,7 +17,7 @@
 //   • It offers no edit or correction. The column is append-only: a corrected count is a NEW `adjustment`
 //     entry, because "what did the log say before someone changed it" is the first question an inspection
 //     asks.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

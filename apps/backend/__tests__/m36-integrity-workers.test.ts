@@ -4,7 +4,7 @@ import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 
 interface UpsertCall {

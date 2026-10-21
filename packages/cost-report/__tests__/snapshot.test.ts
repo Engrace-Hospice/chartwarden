@@ -1,5 +1,5 @@
-import { canonicalJson, contentHashSha256 } from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 snapshot canonicalization + content hash (D10) pure-domain unit tests.
+import { canonicalJson, contentHashSha256 } from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 snapshot canonicalization + content hash (D10) pure-domain unit tests.
 //
 // canonicalJson must be independent of object key insertion order at EVERY depth (the precondition for
 // a stable content hash), while preserving array order (semantically meaningful). contentHashSha256

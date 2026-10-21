@@ -1,8 +1,8 @@
 // apps/backend/src/modules/29-external-interfaces/listener/health-store-drizzle.ts — GAP-043. The Drizzle
 // `FeedHealthStorePort`: reads the latest breaker state + newest inbound frame, and upserts the hourly
 // `external_feed_health` row, all under the feed's own org context (tenant RLS, the `app.org_id` GUC).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 
 import type { ListenerCircuitState } from "./circuit-breaker";

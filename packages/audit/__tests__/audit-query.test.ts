@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T06 unit tests for the audit query surface (M4 spec §4.1–4.3, §10.2).
+// @chartwarden/audit — M4-T06 unit tests for the audit query surface (M4 spec §4.1–4.3, §10.2).
 //
 // Proves the query primitives without live infra:
 //   • ORG SCOPE — a tenant query never sees another org's rows (nor org-NULL system events).

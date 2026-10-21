@@ -1,10 +1,10 @@
-// @wardenx/db — todayForOrganization / organizationTimezone / serviceDateForOrganization
+// @chartwarden/db — todayForOrganization / organizationTimezone / serviceDateForOrganization
 // (PARAM-004 follow-up). The one shared "what calendar date is this for this tenant" read,
-// composing the org_timezone setting (settings-by-m1.ts) with the pure @wardenx/shared/dates
+// composing the org_timezone setting (settings-by-m1.ts) with the pure @chartwarden/shared/dates
 // helpers — so the backend call sites that used to slice a UTC instant (09-assessments, 37-ipu,
 // 16-bereavement, 17-scheduling) share ONE implementation instead of N copies, the same
 // convergence PARAM-004's frontend half already did for `ageYears`.
-import { isValidTimeZone, localDateInTimeZone, orgLocalDateToday } from "@wardenx/shared/dates";
+import { isValidTimeZone, localDateInTimeZone, orgLocalDateToday } from "@chartwarden/shared/dates";
 import { eq } from "drizzle-orm";
 import type { DbClient } from "../client";
 import { organizations } from "../schema/organizations";

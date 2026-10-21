@@ -12,7 +12,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the RULE-CONFIG OVERLAY editor (R2,
 // §5.1 admin / §4.1 #18-21). The tenant validation-rule overlay library: the platform §11.A registry
 // snapshot + the tenant overlays, presented as a selectable rule list (left rail) over a per-rule editor

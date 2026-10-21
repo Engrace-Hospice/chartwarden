@@ -3,7 +3,7 @@
  * rules, the request timeout, an unexpected throw, the beforeunload guard and the per-channel drain.
  */
 import { act, renderHook } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { type ReactNode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SendBody } from "./message-send-body";

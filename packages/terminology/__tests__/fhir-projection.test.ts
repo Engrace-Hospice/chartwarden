@@ -1,4 +1,4 @@
-// @wardenx/terminology — M38-T09 golden FHIR-projection tests (spec §7.9, §2.5).
+// @chartwarden/terminology — M38-T09 golden FHIR-projection tests (spec §7.9, §2.5).
 //
 // §7.9 done-means: `asFhirCodeSystem('loinc', '2024-08-01')` produces BYTE-IDENTICAL output to a
 // golden fixture for that asOf; Module 28 maps that internal projection to the FHIR R4 wire shape.

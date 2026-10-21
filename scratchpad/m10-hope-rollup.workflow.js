@@ -91,7 +91,7 @@ Run 'bun run build' and fix compile errors in the files you touched. Report the 
   { label: 'seam-contract', phase: 'Seam contract', schema: SCHEMA })
 
 const c1 = `Contract built. HopeOrgRollupProvider + QualityHopeConsumer signatures: ${(contract?.contractNotes ?? []).join(' | ')}.
-HOPE_J2051_PAIN_SYMPTOM_CODE='pain' exported from @wardenx/types. Assumptions: ${(contract?.assumptions ?? []).join(' | ') || 'none'}.`
+HOPE_J2051_PAIN_SYMPTOM_CODE='pain' exported from @chartwarden/types. Assumptions: ${(contract?.assumptions ?? []).join(' | ') || 'none'}.`
 
 // ---------------------------------------------------------------------------
 phase('Producer + consumer')
@@ -102,7 +102,7 @@ const [m10, m30] = await parallel([
 YOUR TASK — M10 PRODUCER side. Build the Drizzle-backed org-rollup store + provider + register it.
 1. A dedicated Drizzle aggregate reader (e.g. apps/backend/src/modules/10-hope/seams/org-rollup-store.ts or
    packages/hope/src/seams/org-rollup.ts) implementing the 5 HopeOrgRollupProvider methods over M10's tables
-   (import { schema } from '@wardenx/db'):
+   (import { schema } from '@chartwarden/db'):
    - timepointCompletionRollup: count hope_timepoint_schedule rows status='completed' in period; on-time =
      completed by lateDeadlineAt (join hope_assessment.signedAt of completedByAssessmentId <= lateDeadlineAt),
      late = the rest. Pick a sensible period anchor (the schedule's window or the completing assessment's signedAt).

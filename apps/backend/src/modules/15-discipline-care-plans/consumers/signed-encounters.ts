@@ -13,7 +13,7 @@
 // The reader returns SIGNED digests only (its name is its contract), so presence in the window IS the
 // signed check. FAIL-CLOSED: an unreachable seam throws and the write never happens; a miss returns
 // `false`, which the pure guards turn into `INVALID_ENCOUNTER_REFERENCE` (422).
-import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@wardenx/types";
+import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@chartwarden/types";
 import { getSignedEncountersReader } from "../seams/index";
 
 /**

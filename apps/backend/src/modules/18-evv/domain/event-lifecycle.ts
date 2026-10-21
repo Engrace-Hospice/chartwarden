@@ -19,7 +19,7 @@ import type {
   MembershipId,
   PatientId,
   VisitStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { EvvReasonField, EvvSideEffect } from "./effects";
 import { EvvStateError, require_ } from "./errors";
 import {

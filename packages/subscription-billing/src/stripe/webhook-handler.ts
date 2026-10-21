@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §4.14 the webhook INGESTION core (pure core, M35-T04).
+// @chartwarden/subscription-billing — §4.14 the webhook INGESTION core (pure core, M35-T04).
 //
 // The receive-side counterpart to the dispatcher: verify → age-check → dedup → single outbox emit, which
 // DECOUPLES receipt from processing (the `stripe-webhook-handler` worker drains `m35.stripe.webhook_received`
@@ -13,7 +13,7 @@
 //   3. dedup insert (ON CONFLICT DO NOTHING) — the payload is envelope-encrypted (D15) BEFORE it lands
 //   4. emit exactly ONE outbox event on a genuinely-new receipt
 
-import type { IsoInstant, M35StripeWebhookReceivedPayload, OrgId } from "@wardenx/types";
+import type { IsoInstant, M35StripeWebhookReceivedPayload, OrgId } from "@chartwarden/types";
 import { type OutboxIntent, outboxIntent } from "../service/ports";
 import type {
   StripeEventEnvelope,

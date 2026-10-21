@@ -21,9 +21,9 @@
 //
 // A visit with no telehealth room (the common case — most reschedules are non-telehealth) is the ordinary
 // no-op: `telehealth_visit_m17_visit_unique` means nothing matches.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { TelehealthLifecycleState } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { canTransitionTelehealth } from "../telehealth/visit-lifecycle";
 

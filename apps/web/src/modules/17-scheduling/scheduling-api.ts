@@ -25,7 +25,7 @@
 //     the server decides whether it is legal. A 403 is the answer, surfaced verbatim.
 //   • The §7.x conflict rules — double-booking, availability, approved time off. A reschedule that
 //     collides is refused with a 409 and the message names what it collided with.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 import { mapSchedulingApiError } from "./scheduling-errors";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────

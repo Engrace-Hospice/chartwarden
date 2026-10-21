@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `mac_submitter_credential` (per-ProviderEntity MAC trading-partner
+// @chartwarden/billing · repositories — `mac_submitter_credential` (per-ProviderEntity MAC trading-partner
 // identifiers + portal credentials, §3.3; non-partitioned; retention class `operational`). ORG-SCOPED;
 // VERSIONED (§3.5 "carries `version`; rare-edit; the M34 wizard's upsert serializes via version"); 1:1 per
 // provider entity (the `mac_submitter_credential_pe_uq` unique index).
@@ -14,7 +14,7 @@
 //     one exit" is enforceable by inspection.
 // `mac_jurisdiction` is a DB-native lowercase enum (`ngs_j6` … `noridian_je`) with no domain divergence, so
 // it passes through unmapped (the contract types `macJurisdiction` as plain `string`). No PHI / MBI (D13/D18).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type BillingDb,

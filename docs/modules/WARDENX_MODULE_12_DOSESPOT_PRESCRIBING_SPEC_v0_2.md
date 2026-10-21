@@ -593,7 +593,7 @@ source of truth for every hospice-prescribed drug, so the determination lives on
 
 - Enum `hospice_coverage` (shared with M21 `supply_request`; created by migration `0385`):
   `covered_related` | `not_covered_unrelated` | `not_covered_other`. Mirrored as `HOSPICE_COVERAGE_VALUES` /
-  `HospiceCoverage` in `@wardenx/types` (`packages/types/src/hospice-coverage.ts`) and `hospiceCoverage` in
+  `HospiceCoverage` in `@chartwarden/types` (`packages/types/src/hospice-coverage.ts`) and `hospiceCoverage` in
   `packages/db/src/enums.ts`.
 - Columns on `medication_order`: `hospice_coverage` (NOT NULL, default `covered_related`), `coverage_reason`
   (text — the patient-facing explanation), `coverage_determined_at` (timestamptz; NULL = never explicitly

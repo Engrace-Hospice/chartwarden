@@ -165,7 +165,7 @@ The v1 from T-29.07 made a binary `redact: true/false` decision. T-29.11 expands
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/sud-policy-engine.ts
-import type { ConsentEvaluator, TerminologyProvider, PatientReader } from '@wardenx/foundation/seams'
+import type { ConsentEvaluator, TerminologyProvider, PatientReader } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 import { lookupMinorConsentRule } from './minor-consent-rules'
 
@@ -429,10 +429,10 @@ Invoked from T-29.07's `POST /api/v1/hl7/unmatched-labs/:id/bind` route before t
 
 ```ts
 // apps/backend/src/modules/29-external-interfaces/inbound/sud-bind-recheck.ts
-import { db } from '@wardenx/db'
-import { labObservation, labObservationValue } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { labObservation, labObservationValue } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 import { SudPolicyEngine } from './sud-policy-engine'
 import type { Logger } from 'pino'
 
@@ -577,11 +577,11 @@ M39 emits `m39.consent.withdrawn` when a patient withdraws an existing SUD-discl
 // apps/backend/src/modules/29-external-interfaces/workers/sud-back-redaction.worker.ts
 import { Worker } from 'bullmq'
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { labObservation, labObservationValue } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { labObservation, labObservationValue } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
 
 interface ConsentWithdrawnPayload {
   readonly patientId: string
@@ -673,13 +673,13 @@ Per §2.51, the requester may set `emergency_basis_42cfr_2_51 = true` and exerci
 // apps/backend/src/modules/29-external-interfaces/routes/sud-unredact.ts
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
-import { db } from '@wardenx/db'
-import { labObservation, labObservationValue, labObservationSudUnredactGrant } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { labObservation, labObservationValue, labObservationSudUnredactGrant } from '@chartwarden/db/schema/external-interfaces'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 import { ulid } from 'ulid'
-import { requirePermissions } from '@wardenx/foundation/auth'
-import { requirePredicate } from '@wardenx/foundation/abac'
+import { requirePermissions } from '@chartwarden/foundation/auth'
+import { requirePredicate } from '@chartwarden/foundation/abac'
 
 const RequestBody = Type.Object({
   clinicalRationale: Type.String({ minLength: 50, maxLength: 4000 }),

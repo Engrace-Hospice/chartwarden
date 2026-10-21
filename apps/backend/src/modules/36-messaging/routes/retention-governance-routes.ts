@@ -8,13 +8,13 @@
 //                                                                         confirmed count; stale => 409 RELEASE_PREVIEW_STALE)
 // All behind messaging.retention.manage. Org, officer and session are the server-side request context; an unknown or another tenant's hold is
 // the same 404. Nothing returned is a message, a name or a patient.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import {
   MESSAGE_LEGAL_HOLD_APPLY_STEP_UP_KEY,
   MESSAGE_LEGAL_HOLD_RELEASE_STEP_UP_KEY,
   MESSAGING_RETENTION_MANAGE_PERMISSION,
   UnauthorizedError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   GovernanceActor,

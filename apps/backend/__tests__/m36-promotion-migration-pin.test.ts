@@ -8,7 +8,7 @@ import {
   CHART_PROMOTION_REASON_CODES,
   CHART_PROMOTION_STATUSES,
   CHART_PROMOTION_TARGETS,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

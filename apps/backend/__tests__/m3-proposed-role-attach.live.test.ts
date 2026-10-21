@@ -16,8 +16,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { registerDbEffectivePermissionResolver } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+import { registerDbEffectivePermissionResolver } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDbInvitationStore } from "../src/modules/02-identity/identity-stores-db";

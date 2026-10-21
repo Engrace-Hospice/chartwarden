@@ -20,16 +20,16 @@
 // route after the transaction (throwing inside `withOrgContext` rolls the audit row back with everything else).
 // Wrong codes count toward a lockout (5 in a row -> 15 minutes, in the Better Auth lockout columns); a TOTP step
 // cannot be replayed; a recovery code is single use. SMS is never a factor.
-import { type AuditContext, audit } from "@wardenx/audit";
+import { type AuditContext, audit } from "@chartwarden/audit";
 import {
   type TotpSecretOptions,
   createTotpEnrolment,
   generateRecoveryCodes,
   matchTotpStep,
-} from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, ne, sql } from "drizzle-orm";
 import {
   type AuditorAccessPort,

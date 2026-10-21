@@ -49,8 +49,8 @@
 // grants this ONE revoked consent record backs, not an account's full grant roster across every patient, so
 // deciding "does this account have any OTHER live grant left" from inside this handler would need a second,
 // broader read this file's narrow scope does not ask for. Left as a separate, undecided mechanism.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { type M31EventEmitter, emitGrantsRevoked } from "../events";
 

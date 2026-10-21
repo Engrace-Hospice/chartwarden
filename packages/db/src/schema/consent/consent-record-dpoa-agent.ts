@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_record_dpoa_agent` (M39 Consent §3.3 #5). The named-agent rows for DPOA
+// @chartwarden/db — `consent_record_dpoa_agent` (M39 Consent §3.3 #5). The named-agent rows for DPOA
 // consent records (D5): primary + up to two alternates, each with an activation condition, a per-
 // agent scope, and a per-agent term, plus per-state statute fields in state_specific_jsonb. Partial
 // unique indexes enforce ≤1 of each agent_kind active per consent record. Org-scoped child of

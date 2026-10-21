@@ -1,5 +1,5 @@
 // WP 3.1 read seam: IdgScheduleProvider.getLastMeetingForPatient over the in-memory M14 store.
-import type { IdgMeetingId, IsoInstant, PatientId } from "@wardenx/types";
+import type { IdgMeetingId, IsoInstant, PatientId } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createIdgScheduleProvider } from "../src/modules/14-idg/seams/providers";
 import { createInMemoryIdgSeamStore } from "../src/modules/14-idg/seams/store";

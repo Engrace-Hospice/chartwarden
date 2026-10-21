@@ -1,6 +1,6 @@
 // apps/admin/src/modules/36-messaging/settings — quiet-hours editor for the notification preferences screen:
 // time zone, the severity that breaks through quiet hours, and any number of weekly ranges.
-import { Button, SelectField, TextField } from "@wardenx/ui";
+import { Button, SelectField, TextField } from "@chartwarden/ui";
 import type { JSX } from "react";
 
 export interface QuietRange {

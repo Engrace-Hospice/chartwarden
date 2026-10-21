@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — the EXEMPLAR org-scoped repo: `claim` (the Medicare-claim root, §3.3;
+// @chartwarden/billing · repositories — the EXEMPLAR org-scoped repo: `claim` (the Medicare-claim root, §3.3;
 // the XState-free lifecycle lives in `machines/claim`, D2/D4/D14). ORG-SCOPED; the claim service wraps
 // these in `withOrgContext` and owns the lifecycle guards + outbox emit. This file is the PATTERN the
 // org-scoped fan-out repos mirror, demonstrating the THREE db.ts conventions in one place:
@@ -12,8 +12,8 @@
 //     with the If-Match `expectedVersion`; a stale version returns `VERSION_CONFLICT` (the service → 412).
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
-import * as schema from "@wardenx/db/schema";
-import { ChartWardenError } from "@wardenx/types";
+import * as schema from "@chartwarden/db/schema";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { ClaimAssemblySnapshot } from "../claim-lines/claim-snapshot";
 import type { ClaimPhysicianNpis } from "../claim-lines/physician-npis";

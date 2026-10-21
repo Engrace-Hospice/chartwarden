@@ -2,10 +2,10 @@
 // unauthenticated-or-pre-org caller becomes a SCOPED session: redeeming a collaborator / funeral-home link, and a
 // portal invitee binding their signed-in session to a portal account.
 //
-// Every row goes through the mandated @wardenx/audit `audit()` helper at `compliance` retention. IDS ONLY: the link
+// Every row goes through the mandated @chartwarden/audit `audit()` helper at `compliance` retention. IDS ONLY: the link
 // token, its hash, the invitee's address and any patient detail never enter a payload (the field denylist runs in
 // `audit()` as a second line, but the first line is that nothing sensitive is passed).
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
 export const SESSION_LINK_AUDIT_EVENTS = {
   linkRedeemed: "m2.link.redeemed",

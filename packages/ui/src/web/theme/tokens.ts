@@ -1,4 +1,4 @@
-// @wardenx/ui web — Lantern token pointers for the rendering layer (R0.2, DESIGN.md §2/§3/§10).
+// @chartwarden/ui web — Lantern token pointers for the rendering layer (R0.2, DESIGN.md §2/§3/§10).
 //
 // These are *CSS custom-property references*, not hex. The runtime values come from the consuming
 // app's Lantern stylesheet (apps/web/src/index.css `@theme` + `.dark`), so a component styled with

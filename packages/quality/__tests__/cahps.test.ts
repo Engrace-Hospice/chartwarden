@@ -10,7 +10,7 @@ import {
   ShpCahpsAdapter,
   renderCsv,
   shpExportFilename,
-} from "@wardenx/cahps-vendors";
+} from "@chartwarden/cahps-vendors";
 import {
   type CahpsDecedentSampleRow,
   type CahpsSampleCandidate,
@@ -18,18 +18,18 @@ import {
   type ParsedCahpsResultRow,
   applyMinimumCellSuppression,
   sampleDecedents,
-} from "@wardenx/quality";
-import { ChartWardenError } from "@wardenx/types";
-// @wardenx/quality — M30 §4.5 / §4.13 / §7.2 CAHPS unit tests (PURE; no DB).
+} from "@chartwarden/quality";
+import { ChartWardenError } from "@chartwarden/types";
+// @chartwarden/quality — M30 §4.5 / §4.13 / §7.2 CAHPS unit tests (PURE; no DB).
 //
 // Covers the platform-side CAHPS pipeline + the pluggable vendor adapters:
 //   (a) the decedent SAMPLER (WF-04): CMS exclusion priority, the monthly window guard, and the §4.13
 //       `deathSource` marker that is carried platform-side but NEVER forwarded to a vendor;
 //   (b) the result-INGEST min-cell suppression (WF-06): the CMS ≤30-respondent small-cell protection;
-//   (c) the @wardenx/cahps-vendors SHP + manual adapters (renderExport CSV shape, manual `no_push`,
+//   (c) the @chartwarden/cahps-vendors SHP + manual adapters (renderExport CSV shape, manual `no_push`,
 //       parseResultIngest) and the three Phase-2 stub adapters' fail-closed NOT_YET_IMPLEMENTED behavior.
 //
-// Both packages are M30 codePaths (intra-module edge), so importing @wardenx/cahps-vendors from this
+// Both packages are M30 codePaths (intra-module edge), so importing @chartwarden/cahps-vendors from this
 // quality test is an allowed boundary. The PURE design (no I/O) is asserted by injecting plain values.
 import { describe, expect, it } from "vitest";
 

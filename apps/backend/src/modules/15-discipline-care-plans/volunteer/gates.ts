@@ -22,14 +22,14 @@ import {
   LIFETIME_VOLUNTEER_GATE_KINDS,
   VOLUNTEER_GATE_EXPIRY_POLICY,
   volunteerGateAlertSeverity,
-} from "@wardenx/discipline-plans";
+} from "@chartwarden/discipline-plans";
 import type {
   IsoInstant,
   MembershipId,
   VolunteerComplianceGateId,
   VolunteerGateKind,
   VolunteerGateStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { DisciplinePlanSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
 

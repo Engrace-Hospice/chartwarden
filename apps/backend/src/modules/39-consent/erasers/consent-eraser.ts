@@ -6,16 +6,16 @@
 // legal hold (M4 §10.6) or a `42_cfr_part_2_release` while the patient is still alive (Part 2
 // lifetime retention). consent_eval_audit is never touched here — its destruction is M4's certified
 // audit-retention path (M39-F04). The decision engine is the pure `eraseConsentForSubject`
-// (@wardenx/consent); this is the thin DataEraser shell over an injected store (in-memory by default).
+// (@chartwarden/consent); this is the thin DataEraser shell over an injected store (in-memory by default).
 import {
   type ConsentEraseStore,
   type ConsentSubjectSummary,
   createInMemoryConsentEraseStore,
   eraseConsentForSubject,
-} from "@wardenx/consent";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+} from "@chartwarden/consent";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

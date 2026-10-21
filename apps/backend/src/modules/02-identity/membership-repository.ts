@@ -8,10 +8,10 @@
 // `isAdmin` (and `activeAdminCount`, for the last-admin lockout guard, §6) is an M3 fact — a membership
 // holding an active `org_admin` grant — which M2 must NOT read from M3's tables directly. It comes from
 // the injected `AdminMembershipReader` (the M3-owned `createDbAdminMembershipReader`).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest, withUserContext } from "@wardenx/tenancy";
-import type { AdminMembershipReader } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest, withUserContext } from "@chartwarden/tenancy";
+import type { AdminMembershipReader } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type {
   AccountStatus,

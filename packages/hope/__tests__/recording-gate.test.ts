@@ -1,4 +1,4 @@
-// @wardenx/hope — recording-boundary guards + discipline rule (§2.3, §4.7, D2/D9/D12) — M10-T03.
+// @chartwarden/hope — recording-boundary guards + discipline rule (§2.3, §4.7, D2/D9/D12) — M10-T03.
 import { describe, expect, it } from "vitest";
 import {
   assertAuthorDisciplineAllowed,

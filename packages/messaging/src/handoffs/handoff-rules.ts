@@ -8,7 +8,7 @@ import {
   type HandoffItemState,
   type HandoffRole,
   type HandoffState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export const HANDOFF_MAX_PATIENTS = 50;
 export const HANDOFF_MAX_ITEMS = 250;

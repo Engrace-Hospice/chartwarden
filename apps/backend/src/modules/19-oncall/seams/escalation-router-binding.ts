@@ -4,9 +4,9 @@
 // `ESCALATION_ROUTER_ORGS` (comma-separated organization uuids) names at least one org, and even then the registered seam answers the
 // real router for those orgs only; every other org gets EXACTLY what the seam held before (the deny-stub: `unavailable /
 // router_not_bound`, source `deny_stub`). Empty or unset = nothing is registered = today's behaviour, boot probe warning included.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
-import type { EscalationRouter, OncallModel, PatientReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContextFromRequest } from "@chartwarden/tenancy";
+import type { EscalationRouter, OncallModel, PatientReader } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { FoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import { registerSeam } from "../../../bootstrap/index";

@@ -29,13 +29,13 @@ import {
   contentHashSha256,
   runValidation,
   stepDownAllocate,
-} from "@wardenx/cost-report";
+} from "@chartwarden/cost-report";
 // apps/backend/src/modules/27-cost-report/jobs/m27-jobs.ts — M27 LIVE BullMQ wiring for the §4.8 jobs.
 //
-// The thin, infra-touching adapter that turns the @wardenx/cost-report PURE domain (the lifecycle reducer,
+// The thin, infra-touching adapter that turns the @chartwarden/cost-report PURE domain (the lifecycle reducer,
 // the allocation/apportionment/settlement chain, the ECR/PI writers, the validation rule engine, the
-// snapshot content hash) into running BullMQ `Worker`s + the cron-schedule `Queue`s. Unlike @wardenx/quality
-// (which ships its §4.8 processors in the package), @wardenx/cost-report ships NO processors and NO queue
+// snapshot content hash) into running BullMQ `Worker`s + the cron-schedule `Queue`s. Unlike @chartwarden/quality
+// (which ships its §4.8 processors in the package), @chartwarden/cost-report ships NO processors and NO queue
 // catalog (P1 was "no BullMQ"), so this file BOTH constructs the workers AND carries the processor LOGIC —
 // each processor orchestrates the M27 repositories + the pure domain functions + the consumed seams, exactly
 // the way the M30 `m30-jobs.ts` precedent binds repos + pure processors + seams.
@@ -60,8 +60,8 @@ import {
 // M27 carries NO PHI (D18) — every payload is IDs + aggregate financial/statistical facts only; money is
 // INTEGER CENTS (D8). The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system
 // sentinel the M4 write-audit trigger maps to a NULL actor (a background job has no acting user).
-import type { DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type M27CronQueueName,
@@ -71,7 +71,7 @@ import {
   M27_QUEUE_PARAMS,
 } from "./queues";
 
-// ── the fail-closed unbound-port thunk (the @wardenx/quality `unboundWorkerPort` precedent, local copy) ──
+// ── the fail-closed unbound-port thunk (the @chartwarden/quality `unboundWorkerPort` precedent, local copy) ──
 
 /**
  * Throw a typed `M27WorkerPortUnbound` for a still-missing infra/seam port. Called LAZILY inside a port
@@ -82,7 +82,7 @@ export function unboundWorkerPort(portName: string, hint: string): never {
   throw new Error(`M27WorkerPortUnbound: ${portName} — ${hint}`);
 }
 
-// The M27 jsonb payload helper types live on the `@wardenx/db` `schema` namespace (the schema barrel
+// The M27 jsonb payload helper types live on the `@chartwarden/db` `schema` namespace (the schema barrel
 // re-exports `./cost-report/types`); alias them locally so the port/processor signatures stay readable.
 type NormalizedAccount = schema.NormalizedAccount;
 type NormalizedWageRow = schema.NormalizedWageRow;
@@ -346,7 +346,7 @@ function trialBalanceSeamOf(deps: M27WorkerDeps): TrialBalancePullSeam {
       pull: () =>
         unboundWorkerPort(
           "trialBalanceSeam.pull",
-          "bind the M27 XeroClientFactory pull (resolve via getSeam at the composition root; @wardenx/xero-client)",
+          "bind the M27 XeroClientFactory pull (resolve via getSeam at the composition root; @chartwarden/xero-client)",
         ),
     }
   );
@@ -358,7 +358,7 @@ function wageDataSeamOf(deps: M27WorkerDeps): WageDataPullSeam {
       pull: () =>
         unboundWorkerPort(
           "wageDataSeam.pull",
-          "bind the M27 GustoClientFactory pull (resolve via getSeam at the composition root; @wardenx/gusto-client)",
+          "bind the M27 GustoClientFactory pull (resolve via getSeam at the composition root; @chartwarden/gusto-client)",
         ),
     }
   );
@@ -1204,8 +1204,8 @@ export function buildM27WorkerDeps(deps: {
 //     whose SELECT is revoked. Both are bound now (`apps/backend/src/bootstrap/tenant-kek.ts`, ADR-0045), so
 //     `getTenantKeyProvider().dekForOrg(orgId)` resolves and this port is a bind, not a build. What is still
 //     genuinely missing for the live pull is the OAuth credential storage below, not the DEK.
-//   • the M27 Xero/Gusto pull seams (`deps.trialBalanceSeam`/`deps.wageDataSeam`) — the @wardenx/xero-client
-//     / @wardenx/gusto-client packages are real, structured clients, but binding a LIVE pull additionally
+//   • the M27 Xero/Gusto pull seams (`deps.trialBalanceSeam`/`deps.wageDataSeam`) — the @chartwarden/xero-client
+//     / @chartwarden/gusto-client packages are real, structured clients, but binding a LIVE pull additionally
 //     requires OAuth token storage (M34 tenant-onboarding infra) that does not exist yet — a separate,
 //     larger project. `triggerTrialBalancePull`/`triggerWageDataPull` now enqueue for real (WX-PR-013) and
 //     the worker fails closed with a typed `M27WorkerPortUnbound` + `status='failed'` + `*.pull_failed` when

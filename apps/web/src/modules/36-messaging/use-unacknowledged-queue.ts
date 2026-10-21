@@ -11,8 +11,8 @@ import type {
   AckQueueItemDto,
   AckQueueResponse,
   AckQueueStatus,
-} from "@wardenx/types";
-import { ACK_QUEUE_LIMIT_DEFAULT, ACK_QUEUE_LIMIT_MAX } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ACK_QUEUE_LIMIT_DEFAULT, ACK_QUEUE_LIMIT_MAX } from "@chartwarden/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 import { useLatestPolling } from "./use-latest-polling";

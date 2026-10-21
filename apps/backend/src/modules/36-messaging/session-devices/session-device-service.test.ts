@@ -1,7 +1,7 @@
 // M36 WP 5.5 (ADR-0083) - the service rules over fake ports: own list marks the current session and never leaks tokens/IP/user agent;
 // revoke is one transaction (delete + endpoint expiry + audit), a foreign / unknown / repeated revoke is the SAME 404 and writes nothing,
 // the socket is closed only AFTER the commit and its failure does not undo the revoke, the admin variant is bounded to the organisation.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { createSessionDeviceService } from "./session-device-service";
 import type {

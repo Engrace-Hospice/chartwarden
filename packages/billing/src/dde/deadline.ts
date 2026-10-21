@@ -1,4 +1,4 @@
-// @wardenx/billing — DDE work-item deadline status (ADR-0052 D5). PURE: dates are `YYYY-MM-DD` strings.
+// @chartwarden/billing — DDE work-item deadline status (ADR-0052 D5). PURE: dates are `YYYY-MM-DD` strings.
 //
 // An NOE/NOTR item's deadline is the notice's `window_target_at`. The deadline is MET only when a MAC acceptance
 // date on or before it is recorded: a `submitted` item with no acceptance date is still AT RISK (keying it is not

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M25 Remittance & Denials §3.3 — the four-level X12 5010 835 posting hierarchy:
+// @chartwarden/db — M25 Remittance & Denials §3.3 — the four-level X12 5010 835 posting hierarchy:
 //   remittance_advice (envelope, one per 835 transaction)
 //     └─ remittance_line (one per CLP claim-payment segment; auto-matched to an M23 claim)
 //          ├─ remittance_service_line (one per SVC sub-segment)

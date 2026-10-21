@@ -58,7 +58,7 @@ CREATE TRIGGER "emergency_service_jurisdiction_audit"
   AFTER INSERT OR UPDATE OR DELETE ON emergency_service_jurisdiction
   FOR EACH ROW EXECUTE FUNCTION wardenx_audit_trigger();--> statement-breakpoint
 -- Permission mirror rows (role_permission.permission_key FKs to permission; the keys are catalogued in
--- @wardenx/auth M40_CONTRIBUTED_PERMISSIONS and mirrored here so a fresh environment can grant them).
+-- @chartwarden/auth M40_CONTRIBUTED_PERMISSIONS and mirrored here so a fresh environment can grant them).
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('mdm.psap_jurisdiction.manage', 'psap_jurisdiction', 'manage', 'admin', 'none', ''),
   ('mdm.psap_jurisdiction.read', 'psap_jurisdiction', 'read', 'clinical', 'none', '')

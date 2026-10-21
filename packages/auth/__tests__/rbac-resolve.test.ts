@@ -11,8 +11,8 @@
  *     that the cache TTL is capped by the soonest expiry so an expired grant is never served;
  *   • end-to-end through `requirePermission`, flipping it from fail-closed to real resolution.
  */
-import type { HttpRequestContext } from "@wardenx/types";
-import { ForbiddenError } from "@wardenx/types";
+import type { HttpRequestContext } from "@chartwarden/types";
+import { ForbiddenError } from "@chartwarden/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type RoleGrant,

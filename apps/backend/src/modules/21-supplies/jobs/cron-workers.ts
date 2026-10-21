@@ -18,13 +18,13 @@
 // Every row of the return / supply-request sweeps runs in ITS OWN transaction: one row that the machine refuses
 // must not roll back the rest of the org's work. Failures are collected and re-thrown as one AggregateError at
 // the end of the sweep so the job still fails loudly (retry / DLQ) rather than being swallowed.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   RETURN_UNRETURNABLE_DAYS_DEFAULT,
   VENDOR_CONFIRMATION_WINDOW_HOURS_DEFAULT,
-} from "@wardenx/supplies";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant } from "@wardenx/types";
+} from "@chartwarden/supplies";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 import {

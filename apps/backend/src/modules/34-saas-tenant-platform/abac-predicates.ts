@@ -6,7 +6,7 @@
 // owner facts are loaded through the injected {@link TenantPlatformAbacResolver} (org/platform-scoped,
 // RLS-backstopped). `dsar_export_patient_caseload_or_org_admin` COMPOSES M5's `CaseloadProvider`
 // (M3 D5) rather than duplicating caseload-lookup code; M34 reaches the M5 seam OPAQUELY via
-// `getSeam("CaseloadProvider")` so no `@wardenx/patient` import / dependency edge is created
+// `getSeam("CaseloadProvider")` so no `@chartwarden/patient` import / dependency edge is created
 // (M34 `dependsOn` stays `[2, 3, 4, 36]`; the M22-T07 precedent).
 //
 // PLATFORM-OPS (M34-F03): `platform_ops` is an M3 RBAC ROLE on a STAFF session, NOT a session class —
@@ -17,7 +17,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
 // is idempotent via registerPredicateIdempotent (the M22 `registerDocumentAbacPredicates` precedent).
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
 
 /** The §4.6 predicate names M34 owns (registered into M3). Single-owner across the platform registry. */

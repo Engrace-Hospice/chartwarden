@@ -31,7 +31,7 @@ import {
   PERMISSIONS,
   allPermissionMirrorRows,
   createPredicateRegistry,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 import {

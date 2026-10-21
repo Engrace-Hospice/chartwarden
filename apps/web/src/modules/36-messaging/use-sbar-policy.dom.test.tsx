@@ -1,7 +1,7 @@
 // M36 WP 3.3: the SBAR policy read retries a transient failure (network error / 5xx) with bounded backoff and never
 // retries a refusal (403/404) or an unreadable body.
 import { act, renderHook } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POLICY_RETRY_DELAYS_MS, useSbarPolicy } from "./use-sbar-policy";

@@ -8,8 +8,8 @@
  * single-owner names, the M3-intrinsic scope predicates, and the boot install over the
  * contract seam (so `requireAbac` goes live without leaving an unresolved consumer).
  */
-import type { HttpRequestContext } from "@wardenx/types";
-import { ForbiddenError } from "@wardenx/types";
+import type { HttpRequestContext } from "@chartwarden/types";
+import { ForbiddenError } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   type AbacContext,

@@ -15,8 +15,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { createMdmEntityProvider } from "@wardenx/mdm";
+import { createDbClient } from "@chartwarden/db";
+import { createMdmEntityProvider } from "@chartwarden/mdm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzleM24WriteService } from "../src/modules/24-billing-medicaid/index";

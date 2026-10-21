@@ -1,4 +1,4 @@
-import { Glyph, type GlyphName, t } from "@wardenx/ui";
+import { Glyph, type GlyphName, t } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — presentational pieces of the redesigned HOPE workspace (2026-09-25,
 // mockups "HOPE Assessment — A. Administrative" and "J. Health Conditions"). The backend still owns
 // the CMS spec, applicability, validation and signing; these components only draw it:

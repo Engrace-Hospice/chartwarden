@@ -2,7 +2,7 @@
 // medication-reconciliation worksheet, opened from M6's four trigger events (F-152, #248).
 //
 // `decideReconciliationTrigger` + `buildReconciliationWorksheet` (`../consumers/index.ts` /
-// `@wardenx/emar`) have been complete, pure, unit-tested cores since M13-T06/T08, and
+// `@chartwarden/emar`) have been complete, pure, unit-tested cores since M13-T06/T08, and
 // `M13_OUTBOX_SUBSCRIPTIONS` has named all four M6 events (`admission.activated`, `transfer.created`,
 // `discharge.created`, `cti.signed`) with a real consumer each since the list was written. **No
 // `OutboxConsumerBinding` existed for any of them** — the header on `consumers/index.ts` said "the live
@@ -26,9 +26,9 @@
 // none to name here regardless: `medication_reconciliation_worksheet.finalized_by_membership_id` is the
 // only actor column on the table, and it is set later, by the clinician who actually works the worksheet,
 // never at open time.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AdmissionId, IsoInstant, PatientId, ReconciliationWorksheetId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AdmissionId, IsoInstant, PatientId, ReconciliationWorksheetId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { M6_RECONCILIATION_TRIGGER_KIND, decideReconciliationTrigger } from "../consumers/index";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";

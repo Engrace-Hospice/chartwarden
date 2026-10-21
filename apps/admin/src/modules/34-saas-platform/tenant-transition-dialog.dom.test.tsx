@@ -3,8 +3,8 @@
 // unreachable from the console. The dialog offers only the targets the §2.2 machine accepts from the tenant's
 // current status, requires a reason, and keeps a refusal (e.g. unmet activation guards) visible.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { TenantTransitionDialog, transitionTargets } from "./tenant-transition-dialog";
 

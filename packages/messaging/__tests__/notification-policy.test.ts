@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36 WP 4.6 notification policy (ADR-0073).
+// @chartwarden/messaging — M36 WP 4.6 notification policy (ADR-0073).
 //
 // The acceptance ("routine suppressed in quiet hours, designated urgent still delivered"), the tighten-only property (no
 // preference, rule override, shift or clock can remove or delay a designated route's platform floor), the quiet-hours clock

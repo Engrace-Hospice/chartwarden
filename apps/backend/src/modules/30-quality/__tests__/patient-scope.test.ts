@@ -1,5 +1,5 @@
 // GAP-091 — the M30 PHI patient scope: server-derived, fail-closed, and applied in SQL.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   assertPatientInScope,

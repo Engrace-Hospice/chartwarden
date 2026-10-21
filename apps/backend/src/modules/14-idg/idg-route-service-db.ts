@@ -6,7 +6,7 @@
 // `app.org_id` as the unprivileged `wardenx_app` role.
 //
 // Like M12/M13, M14 has NO state-transition triggers (only the M4 audit triggers) — the service does every
-// meeting/decision/action-item/minutes transition itself via INSERT/UPDATE, composing the PURE `@wardenx/idg`
+// meeting/decision/action-item/minutes transition itself via INSERT/UPDATE, composing the PURE `@chartwarden/idg`
 // deciders: the §2.2 meeting machine (`transitionMeeting`, which raises STEP_UP_REQUIRED / the review-floor
 // guards), the §2.7 decision record/supersede deciders (`planDecisionRecord` / `planDecisionSupersede`), the
 // §1.1 D8 action-item machine (`transitionActionItem`), and the §2.6 minutes-amendment decider. Every
@@ -46,7 +46,7 @@
 //       deliberately out of scope: the `idg.review-clock-sweep` cron (T-3/T-0/T+1 escalation for a floor that
 //       lapses from pure inaction, never touching CANCEL/RESCHEDULE at all — GAP-092).
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   IDG_REQUIRED_QUORUM,
   IdgStateError,
@@ -58,10 +58,10 @@ import {
   planMinutesAmendmentRequest,
   transitionActionItem,
   transitionMeeting,
-} from "@wardenx/idg";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
-import { ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/idg";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@chartwarden/types";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   and,
   asc,

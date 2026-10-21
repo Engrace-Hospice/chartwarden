@@ -4,7 +4,7 @@
 // consumer (Wave P2-2 acceptance #2). M17 owns the RULE that a published visit whose window passed with no
 // check-in and no encounter is a no-show; M19 owns what the agency DOES about it: open a proactive
 // welfare-check call so somebody rings the family. Neither imports the other — the whole contract is one
-// outbox event name, read off `M19_SUBSCRIBED_EVENT_NAMES` in `@wardenx/types` so an upstream rename breaks
+// outbox event name, read off `M19_SUBSCRIBED_EVENT_NAMES` in `@chartwarden/types` so an upstream rename breaks
 // the build instead of orphaning this handler.
 //
 // §7.6's scenario end to end: RN Tom's 14:00 visit has no EVV check-in by 15:00; M17 marks the visit
@@ -22,7 +22,7 @@ import type {
   MembershipId,
   OrgId,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type InboundTriggerAction,
   type InboundTriggerFacts,

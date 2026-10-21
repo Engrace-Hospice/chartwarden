@@ -1,7 +1,7 @@
 // GAP-028 — the aggregator submission path is bindable by configuration: an HTTPS Sandata transport and a
 // config-driven credential store replace the deny/unbound defaults when (and only when) configured. Vendor
 // contract is exercised against a fake fetch; no Sandata sandbox was reachable.
-import { type FetchLike, createHttpSandataTransport } from "@wardenx/evv-aggregators";
+import { type FetchLike, createHttpSandataTransport } from "@chartwarden/evv-aggregators";
 import { describe, expect, it } from "vitest";
 
 import {

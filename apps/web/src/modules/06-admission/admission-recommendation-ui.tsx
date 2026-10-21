@@ -17,7 +17,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import {

@@ -13,8 +13,8 @@
 //
 // Every code path that writes a `channel_member` row (insert OR re-activation) must call this module; the unit ratchet
 // `member-category-gate.test.ts` fails when a new write path skips it.
-import { schema } from "@wardenx/db";
-import { ChartWardenError } from "@wardenx/types";
+import { schema } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { GLOBAL_SEARCH_ROLE_POLICY } from "./global-search/role-gate";
 import type { Tx } from "./messaging-write-core";

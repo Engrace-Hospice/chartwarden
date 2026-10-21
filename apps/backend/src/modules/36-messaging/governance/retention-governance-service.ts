@@ -5,9 +5,9 @@
 // M4 owns `legal_hold`; this module reaches it only through the injected `MessageGovernanceHoldPort` (bound in apps/backend/src/index.ts to
 // the transaction-scoped functions in 04-audit/messaging-hold-workflow.ts), so apply and release write the same row, audit event and
 // outbox payload as M4's own routes.
-import type { AuditContext, AuditQuery } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { AuditContext, AuditQuery } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ApplyMessageLegalHoldRequest,
   MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
@@ -24,7 +24,7 @@ import {
   type RetentionOverviewDto,
   ValidationError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import {
   type ActiveMessageHold,

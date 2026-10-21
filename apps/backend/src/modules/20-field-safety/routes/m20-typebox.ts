@@ -4,8 +4,8 @@
 // `m20-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one — the M21-T01 gotcha, where even the WORD "alerts" in a comment tripped `arch:tables`.
 //
-// The string-literal unions MIRROR the frozen `@wardenx/types` unions (`packages/types/src/safety.ts`,
-// M20-T01), which themselves mirror the `@wardenx/db` pgEnums and the §3.3 CHECK vocabularies. The DB wins
+// The string-literal unions MIRROR the frozen `@chartwarden/types` unions (`packages/types/src/safety.ts`,
+// M20-T01), which themselves mirror the `@chartwarden/db` pgEnums and the §3.3 CHECK vocabularies. The DB wins
 // on conflict, and where §4.2's own sketch disagrees with either, the sketch loses. FIVE places where it
 // does, recorded rather than silently reconciled:
 //
@@ -32,7 +32,7 @@
 // body that could assert it would file with a state agency on the clinician's own say-so.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -587,12 +587,12 @@ export const RevokeConsentBody = Type.Object({
 // pinned to them by the compile-time `Conforms` aliases at the foot of this section, so a view field added
 // or renamed breaks `bun run build` rather than silently drifting from the client. Enums are literal unions
 // (never `Type.String()` — the M30 "a wire enum published as a bare string is a silent lie" lesson). Every
-// id is a plain `string` on the wire (the `@wardenx/types` id aliases are unbranded), and every `| null`
+// id is a plain `string` on the wire (the `@chartwarden/types` id aliases are unbranded), and every `| null`
 // service field is a `Type.Union([_, Type.Null()])` — NEVER `Type.Optional`, which would drop the key.
 import type {
   SafetyDashboardSnapshot as _SafetyDashboardSnapshot,
   SafetyPolicyEffectiveDto as _SafetyPolicyEffectiveDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { CursorPage as _CursorPage } from "./concurrency";
 import type {
   ActiveSosView as _ActiveSosView,

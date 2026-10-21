@@ -1,5 +1,5 @@
 // apps/backend/src/modules/02-identity — M2's implementation of the `TenantOrgCreationProvider` seam
-// (contract in @wardenx/types) that M34's `tenant.provision` worker consumes at §7.1 step 3.
+// (contract in @chartwarden/types) that M34's `tenant.provision` worker consumes at §7.1 step 3.
 //
 // M2 owns the `organization` table, so it is the natural producer: M34 reaches it through the published
 // seam (no M34→M2-internal import; the M2 `dependsOn` edge already exists). SELECT-then-create, idempotent:
@@ -7,13 +7,13 @@
 //     CONFIRM (the row already exists → `available`).
 //   • Phase 3 — self-serve signup mints the org here (the create branch), behind `m34.self_serve_signup`.
 // It never fabricates an id and never fails open: a row it can neither find nor create resolves `unavailable`.
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   TenantOrgCreationIntent,
   TenantOrgCreationProvider,
   TenantOrgCreationResult,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 
 /** Composition-root hooks (M2 may not import M3, so the role materializer arrives as a port). */

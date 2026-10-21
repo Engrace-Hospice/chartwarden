@@ -29,8 +29,8 @@
 // (`../routes/effects-runner.ts`): a decider's mutation list type-checks against this file not at all, so
 // a silently-skipped member would be an obligation that was decided and never written — discovered in
 // production, on the surface whose whole job is to notice that nobody has heard from a clinician.
-import { type DbClient, schema } from "@wardenx/db";
-import type { IsoInstant, OrgId, SafetyPolicyVersionId, VisitId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { IsoInstant, OrgId, SafetyPolicyVersionId, VisitId } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { safetyPolicyFloorSeed } from "../lifecycle/policy";
 import type {

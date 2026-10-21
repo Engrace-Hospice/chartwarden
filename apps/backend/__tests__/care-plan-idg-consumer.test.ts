@@ -5,7 +5,7 @@
 // the T4 terminal-problem-discontinue rejection — no DB, the version/element machines stay the only path
 // to mutations. The worker composes M7's own services so there is no M14 schema import; the binding is
 // and checks the canonical live binding metadata.
-import type { IdgDecisionPayload } from "@wardenx/types";
+import type { IdgDecisionPayload } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type IdgApplyFacts,

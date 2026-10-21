@@ -1,4 +1,4 @@
-// @wardenx/db — Drizzle enums (M1 Foundation §3.2). The shared pgEnum type surface
+// @chartwarden/db — Drizzle enums (M1 Foundation §3.2). The shared pgEnum type surface
 // that the tenancy-spine and identity tables build on. Defined exactly once here
 // (check-ddl-legality.ts bans duplicate pgEnum definitions, ADR-0022 D1.3).
 import { pgEnum } from "drizzle-orm/pg-core";
@@ -334,7 +334,7 @@ export const messageStatus = pgEnum("message_status", ["sent", "edited", "delete
 export const messageUrgency = pgEnum("message_urgency", ["routine", "important", "urgent"]);
 
 // WP 4.2 (ADR-0069, migration 1107): the acknowledgment-request aggregate. Mirrors ACK_STATUSES / ACK_CLASSES / ACK_EVENT_TYPES in
-// @wardenx/types (pinned by a test). `escalated` and `failed_unreachable` have no writer until WP 4.4 / 4.5; `critical_symptom`
+// @chartwarden/types (pinned by a test). `escalated` and `failed_unreachable` have no writer until WP 4.4 / 4.5; `critical_symptom`
 // has none until the clinical lead signs off who may raise or take it.
 export const messageAckStatus = pgEnum("message_ack_status", [
   "pending",
@@ -735,7 +735,7 @@ export const consentCaptureMethod = pgEnum("consent_capture_method", [
 /** `consent_recipient_kind` — the named-recipient classes on consent_record_recipient (§3.2, D6).
  *  `workforce_member` (mig 0209) is the one INTERNAL class: `recipient_entity_id` holds an M2
  *  membership id, so a §2.31 release can name the individual staff members it authorizes rather than
- *  only external parties. See `evaluateForInternalAccess` in @wardenx/consent for what naming one
+ *  only external parties. See `evaluateForInternalAccess` in @chartwarden/consent for what naming one
  *  does (and for why a release that names none still authorizes the treating program). */
 export const consentRecipientKind = pgEnum("consent_recipient_kind", [
   "external_physician",
@@ -1360,7 +1360,7 @@ export const assembledOutputKind = pgEnum("assembled_output_kind", [
 // ── Module 9 (Clinical Assessments Suite) §3.2 ────────────────────────────────────────────────
 // The 14-scale shared-base `clinical_assessment` table keys on `scale_type`; per-scale `data` shape +
 // scoring live in `packages/assessments/src/scales/<scale>/` (D1). Enum values mirror the leaf type
-// surface in `@wardenx/types` (`assessment.ts`); the §3.3 tables (M9-T02) compile against the final
+// surface in `@chartwarden/types` (`assessment.ts`); the §3.3 tables (M9-T02) compile against the final
 // enum set (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
 
 /** `scale_type` — the 14 §1.1 validated instruments a `clinical_assessment` row may carry (D1). */
@@ -1424,7 +1424,7 @@ export const scaleLicenseStatus = pgEnum("scale_license_status", [
 // ── Module 10 (HOPE Engine) §3.2 ──────────────────────────────────────────────────────────────
 // The shared `hope_assessment` row keys on `rfa_kind` and carries a per-section TypeBox-typed `data`
 // jsonb (D1/D11 — single jsonb, no annual ALTER TABLE churn). Enum values mirror the leaf type surface
-// in `@wardenx/types` (`hope.ts`); the §3.3 tables (M10-T02) compile against the final enum set
+// in `@chartwarden/types` (`hope.ts`); the §3.3 tables (M10-T02) compile against the final enum set
 // (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
 
 /** `hope_rfa_kind` — the five §2 Reasons-For-Assessment a HOPE timepoint/assessment may carry. */
@@ -1535,7 +1535,7 @@ export const hopeScheduleGeneratedBy = pgEnum("hope_schedule_generated_by", [
 // The shared `order_record` row keys on `kind` and carries a per-kind TypeBox-typed `data` jsonb
 // (D1 — single jsonb, no per-kind ALTER TABLE churn). `transmission_status` / `results_status` are
 // the §2.2 orthogonal lab-only observed states (never lifecycle states). Enum values mirror the leaf
-// type surface in `@wardenx/types` (`orders.ts`); the §3.3 tables (M11-T02) compile against the final
+// type surface in `@chartwarden/types` (`orders.ts`); the §3.3 tables (M11-T02) compile against the final
 // enum set (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
 
 /** `order_kind` — the eight §2.1 non-medication order kinds. */
@@ -1647,7 +1647,7 @@ export const orderResultsStatus = pgEnum("order_results_status", [
 // The prescribing surface. `medication_order_status` is the §2.2 D2 lifecycle (note the EPCS-only
 // `epcs_identity_pending` branch + the `queued_for_transmission`/`transmitted`/`ack_received` wire
 // states). `dosespot_send_state` is the orthogonal transmission observed-state (mirrors M11's lab
-// dispatch split). Values mirror the leaf type surface in `@wardenx/types` (`dosespot.ts`); the §3.3
+// dispatch split). Values mirror the leaf type surface in `@chartwarden/types` (`dosespot.ts`); the §3.3
 // tables (M12-T02) compile against this final set (ADR-0022 D1.3: one definition site, no ALTER-redeclare).
 
 /** `medication_order_status` — the §2.2 D2 medication-order lifecycle (incl. EPCS + transmission states). */
@@ -1670,7 +1670,7 @@ export const medicationOrderStatus = pgEnum("medication_order_status", [
 
 /** `hospice_coverage` — COP27 (42 CFR 418.24(b)(6)/(c)): the hospice's coverage determination on a drug
  *  (M12 `medication_order`) or a dme/supply request (M21 `supply_request`). Shared by both owning tables;
- *  created once in migration 0385. Mirrors `HOSPICE_COVERAGE_VALUES` in `@wardenx/types`. */
+ *  created once in migration 0385. Mirrors `HOSPICE_COVERAGE_VALUES` in `@chartwarden/types`. */
 export const hospiceCoverage = pgEnum("hospice_coverage", [
   "covered_related",
   "not_covered_unrelated",
@@ -1976,7 +1976,7 @@ export const idgMinutesStatus = pgEnum("idg_minutes_status", ["in_progress", "fi
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // Module 17 — Scheduling & Route Optimization (§3.2). The reconciled (M17-F03) eight-state visit machine +
 // the proposal/recurring/time-off lifecycles + the EVV-bracket flag column. The Drizzle tables land in
-// M17-T02 (`packages/db/src/schema/scheduling/`); the leaf mirrors live in `@wardenx/types` (`scheduling.ts`).
+// M17-T02 (`packages/db/src/schema/scheduling/`); the leaf mirrors live in `@chartwarden/types` (`scheduling.ts`).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** `visit_status` — the §2.2.1 / D3 (M17-F03-reconciled) eight-state visit lifecycle. `proposed` is worker
@@ -2070,7 +2070,7 @@ export const timeOffState = pgEnum("time_off_state", [
 // Module 18 — Electronic Visit Verification (EVV) (§3.2 Phase-A). The eight M18-owned enums driving the
 // append-only `evv_event` (check-in/out), the three-layer geofence policy, per-clinician device lifecycle,
 // the §2.2.4 missing-EVV resolution machine, and the per-state aggregator submission machine. The Drizzle
-// tables land in M18-T02 (`packages/db/src/schema/evv/`); the leaf mirrors live in `@wardenx/types`
+// tables land in M18-T02 (`packages/db/src/schema/evv/`); the leaf mirrors live in `@chartwarden/types`
 // (`evv.ts`). M18 owns no shared EVV enum overlap with M8/M17 — the M17 `visit.evvBracketState` flag reuses
 // M8's `evv_bracket_state`; M18's discrete-event vocabulary below is distinct.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -2450,7 +2450,7 @@ export const tenantExportJobPurpose = pgEnum("tenant_export_job_purpose", [
 // (418.76 Aide POC · 418.64 MSW + Spiritual · 418.78 Volunteer) with the D2 hybrid version/signature
 // lifecycle, the D6 discipline-assessment vocabulary, the 418.76(h)(2) supervisory attestation mode, and
 // the 418.78(b)/(e) volunteer gate + hour-ledger vocabularies. The eleven Drizzle tables land in M15-T02
-// (`packages/db/src/schema/discipline-plans/`); the leaf mirrors live in `@wardenx/types`
+// (`packages/db/src/schema/discipline-plans/`); the leaf mirrors live in `@chartwarden/types`
 // (`discipline-plans.ts`) so M14/M16/M17/M22/M27/M28/M30/M33 read them with no `dependsOn` edge.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -2581,7 +2581,7 @@ export const volunteerHourEntrySource = pgEnum("volunteer_hour_entry_source", [
 // outreach cadence (kind × status × anniversary mark), the D3/D17 deterministic risk rubric's tier /
 // score-kind / completeness / confidence bands, and the D7/D9 closure + opt-out taxonomies. The nine
 // Drizzle tables land in M16-T02 (`packages/db/src/schema/bereavement/`); the leaf mirrors live in
-// `@wardenx/types` (`bereavement.ts`) so M22/M28/M30/M31/M32/M33/M36 read them with no `dependsOn` edge.
+// `@chartwarden/types` (`bereavement.ts`) so M22/M28/M30/M31/M32/M33/M36 read them with no `dependsOn` edge.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** `bereavement_plan_status` — the §2.2 / D2 plan-root lifecycle. `eligible` on the `m6.bereavement.eligible`
@@ -2761,7 +2761,7 @@ export const bereavementConfidenceBand = pgEnum("bereavement_confidence_band", [
 // the controlled-substance chain of custody the DEA 21 CFR §1304 perpetual log projects from: the D6
 // dispatch mode / source / schedule, the D17 deployment site, and the D8 return + disposal machine. The
 // eleven Drizzle tables land in M21-T02 (`packages/db/src/schema/supplies/`); the leaf mirrors live in
-// `@wardenx/types` (`supplies.ts`) so M11/M13/M22/M27/M30/M33/M36/M37 read them with no `dependsOn` edge.
+// `@chartwarden/types` (`supplies.ts`) so M11/M13/M22/M27/M30/M33/M36/M37 read them with no `dependsOn` edge.
 //
 // NAMING: M21's SQL enum names carry the spec's `m21_` prefix (§3.1.1 is the normative schema per §3.0 /
 // ADR-0023). Unlike every earlier module's unprefixed names this is deliberate — `delivery_method`,
@@ -2770,7 +2770,7 @@ export const bereavementConfidenceBand = pgEnum("bereavement_confidence_band", [
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** `m21_supply_request_kind` — the D1 shared-row discriminator; selects which per-kind TypeBox validates
- *  `supply_request.data` (`@wardenx/supplies/kinds/*`) and which §2.2 transitions the row may take. M11
+ *  `supply_request.data` (`@chartwarden/supplies/kinds/*`) and which §2.2 transitions the row may take. M11
  *  signs one order `kind='comfort_kit'`; M21 splits it into `comfort_kit_deploy` (first placement) vs
  *  `comfort_kit_replenish` (M13 drawdown crossed threshold) because only the latter has no M11 order. */
 export const supplyRequestKind = pgEnum("m21_supply_request_kind", [
@@ -2907,7 +2907,7 @@ export const comfortKitDispatchStatus = pgEnum("m21_comfort_kit_dispatch_status"
  *  capture mechanism M22 was never going to build (M22's own spec disclaims signature capture; F-191
  *  dropped the misdeclared `m22` consumer off `m21.supply_request.delivered`). This is M21's OWN capture,
  *  synchronous and always optional — mirrors the SHAPE (not the type; M21's manifest `dependsOn` has no
- *  edge to M39) of `@wardenx/consent`'s proven `ConsentCaptureEvidence.captureMethod`, narrowed to what is
+ *  edge to M39) of `@chartwarden/consent`'s proven `ConsentCaptureEvidence.captureMethod`, narrowed to what is
  *  plausible for a courier-delivery caregiver signature: no portal session, no uploaded PDF, no notary —
  *  just typed-in-app, a witnessed verbal account, or an explicit decline (still evidence: "asked, refused"
  *  is worth recording even though nothing downstream gates on it). */
@@ -3071,7 +3071,7 @@ export const triageAiConfidence = pgEnum("triage_ai_confidence", ["low", "medium
 // columns to the types below. The seven vocabularies §3.3 spells inline and Phase A does NOT create
 // (`cancel_biometric_result`, the SOS `outcome`, the acknowledgment `outcome`, `scope_kind`,
 // `alert_kinds`, `policy_for_visits_to_area`, `consent_purpose`) stay text + CHECK, and live as leaf
-// unions in `@wardenx/types`' `safety.ts` — adding pg types the spec never declared would be this
+// unions in `@chartwarden/types`' `safety.ts` — adding pg types the spec never declared would be this
 // module inventing DDL.
 
 /** `safety_check_in_kind` — §1.1 / D2. The discriminator that makes a check-in a discrete EVENT rather
@@ -3222,14 +3222,14 @@ export const safetyEmergencyContactConsentStatus = pgEnum(
 // The spec puts these in `packages/db/src/schema/ai-platform/enums.ts`; the repo defines every pgEnum
 // exactly once HERE (the file header's ADR-0022 D1.3 rule that `check-ddl-legality.ts` enforces), so
 // they resolve on the path the gates actually govern. M32-T02 binds the columns to the types below and
-// emits the `CREATE TYPE` statements; the value mirrors a consumer reads live in `@wardenx/types`'
+// emits the `CREATE TYPE` statements; the value mirrors a consumer reads live in `@chartwarden/types`'
 // `ai-platform.ts`, kept in lock-step with these tuples by an M32-T01 test.
 //
 // §3.1 declares TWENTY-ONE enums; the vocabularies §3.2 spells inline on `text` columns
 // (`ai_model_backend.zdr_status`, `ai_routing_override.override_reason`,
 // `ai_hallucination_report.triage_disposition`, `ai_tenant_opt_in_record.routing_preference_snapshot`,
 // `ai_prompt_template.output_entity_target_prefix` / `output_type_prefix`, the `actor_role` /
-// `reporter_role` free-text columns) stay text + CHECK and live as leaf unions in `@wardenx/types` —
+// `reporter_role` free-text columns) stay text + CHECK and live as leaf unions in `@chartwarden/types` —
 // adding pg types §3.1 never declared would be this module inventing DDL.
 
 /** `ai_capability_lifecycle_state` — D2's eight-state governance FSM. The ORDER is the promotion
@@ -3441,12 +3441,12 @@ export const aiLifecycleApprovalKind = pgEnum("ai_lifecycle_approval_kind", [
 // every pgEnum exactly once HERE (the file header's ADR-0022 D1.3 rule that `check-ddl-legality.ts`
 // enforces), so they resolve on the path the gates govern. M28-T02 binds the eight owned tables' enum
 // columns to these and emits the `CREATE TYPE` statements in `0028_fhir_gateway.sql` Phase A; the value
-// mirrors a consumer reads live in `@wardenx/types`' `fhir.ts`, kept in lock-step by an M28-T01 test.
+// mirrors a consumer reads live in `@chartwarden/types`' `fhir.ts`, kept in lock-step by an M28-T01 test.
 //
 // §3.2 declares TEN enums. Vocabularies the spec spells inline on `text` columns — the SMART/OAuth
 // `scopes` (`fhir_client.allowed_scopes[]`, whose closed set is `SUPPORTED_SCOPES` in
 // `packages/fhir/src/auth/scopes.ts`, not a pg type), the FHIR `resource_type` on projections, and the
-// `owner_module`-agnostic search parameters — stay text and live as leaf unions in `@wardenx/types`.
+// `owner_module`-agnostic search parameters — stay text and live as leaf unions in `@chartwarden/types`.
 
 /** `fhir_client_type` — the credential family a client authenticates with. Phase 1 onboards both, but
  *  §2.2 ships only `api_key` credential rows; `smart_backend_services` pins a `jwks_uri` (§2.3). */
@@ -3516,7 +3516,7 @@ export const fhirInboundOwnerModule = pgEnum("fhir_inbound_owner_module", ["m5",
 export const fhirVersionEnum = pgEnum("fhir_version_enum", ["4.0.1", "5.0.0", "6.0.0"]);
 // ── M31 Patient/Family Portal & Telehealth (§3.3, M31-T02) ──────────────────────────────────────────
 // The five pgEnums backing the manifest's THREE owned tables (portal_account, portal_access_grant,
-// telehealth_visit). The value lists mirror `@wardenx/types` `packages/types/src/portal.ts` (the T01
+// telehealth_visit). The value lists mirror `@chartwarden/types` `packages/types/src/portal.ts` (the T01
 // leaf contract) VERBATIM so the wire union and the DB enum cannot drift. The spec's text columns
 // (`revoke_cascade_source`, `scheduled_visit_setting`, `end_reason`) stay `text` — they are validated at
 // the write boundary against the corresponding T01 union, not pinned as pgEnums (§3.3).
@@ -3569,10 +3569,10 @@ export const telehealthVendor = pgEnum("telehealth_vendor", [
 // ── Module 35 (Subscription Billing) — §3.3 the fourteen enum types (M35-T02) ──────────────────────────
 //
 // The spec §3.3 code block imports these from `packages/subscription-billing/src/schema/enums.ts`; the
-// repo defines every pgEnum ONCE in this central @wardenx/db enums surface (check-ddl-legality bans
+// repo defines every pgEnum ONCE in this central @chartwarden/db enums surface (check-ddl-legality bans
 // duplicate pgEnum definitions, ADR-0022 D1.3), so they resolve on the path the gates govern. The value
-// tuples MIRROR `@wardenx/subscription-billing`'s `enums.ts` (each pinned there with
-// `as const satisfies readonly <LeafUnion>[]` against `@wardenx/types`), kept in lock-step so the two
+// tuples MIRROR `@chartwarden/subscription-billing`'s `enums.ts` (each pinned there with
+// `as const satisfies readonly <LeafUnion>[]` against `@chartwarden/types`), kept in lock-step so the two
 // definition sites cannot drift (the M30 "wire enum as Type.String()" precedent). Migrations 0140–0142
 // emit the matching `CREATE TYPE`s; RLS/grants + the M4 write-audit triggers land in 0143.
 

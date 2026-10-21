@@ -3,7 +3,7 @@
 // Resolve the cross-module EVIDENCE the D3/D17 rubric scores, through M1's seam registry only. M16 imports
 // no M15 and no M9 schema: the MSW psychosocial findings arrive over M15's §4.3 `MswRiskFactorReader` and
 // the pre-death trajectory over M9's §4.7 `ScaleSeriesProvider`. The derivation itself is the pure
-// `deriveRiskFactors` in `@wardenx/bereavement` — this module is only the IO shell around it, which is what
+// `deriveRiskFactors` in `@chartwarden/bereavement` — this module is only the IO shell around it, which is what
 // keeps the §7.13 survey reconstruction replayable from the captured vector alone.
 //
 // FAIL-SOFT, deliberately, and the OPPOSITE posture to the intake's fail-closed death fact. An unreadable
@@ -25,15 +25,15 @@ import type {
   BereavementRiskEvidence,
   BereavementRosterEvidence,
   DerivedRiskFactors,
-} from "@wardenx/bereavement";
-import { deriveRiskFactors } from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
+import { deriveRiskFactors } from "@chartwarden/bereavement";
 import type {
   AdmissionId,
   IsoInstant,
   MswRiskFactor,
   PatientId,
   ScaleSeriesPoint,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // Imported from ./consumed directly (not the seams barrel): the barrel now also exports the
 // Drizzle seam store, which imports risk/score → risk/extract — a barrel import here is a cycle.
 import { getMswRiskFactorReader, getScaleSeriesProvider } from "../seams/consumed";

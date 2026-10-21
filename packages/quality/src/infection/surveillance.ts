@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — M30 §7.8 / D11: infection-surveillance event normalization (coding helpers).
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — M30 §7.8 / D11: infection-surveillance event normalization (coding helpers).
 //
 // Each `infection_surveillance_event` row records a per-organism observation (pathogen, body site,
 // transmission context) keyed to a provider entity. Outbreak detection (./outbreak_detector) clusters
@@ -11,7 +11,7 @@ import type { schema } from "@wardenx/db";
 // M38 value-set lookup (V-17 validation against the M38 pathogen / body-site value sets is a route-layer
 // concern in a LATER phase) — these helpers only canonicalize an already-validated code into the form
 // the cluster key compares. Empty/blank codes throw a `ChartWardenError`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * The minimal surveillance observation the cluster pipeline consumes — a structural subset of the

@@ -1,8 +1,8 @@
-// @wardenx/auth/client — browser-safe Better Auth client (M2, AUTH-T07 / ADR-0034, ADR-0033 §4).
+// @chartwarden/auth/client — browser-safe Better Auth client (M2, AUTH-T07 / ADR-0034, ADR-0033 §4).
 //
 // The FRONTEND auth surface. Sign-in / MFA go through Better Auth's own client (NOT the generated REST
 // client — ADR-0032/0033). This file imports ONLY `better-auth/react` + its client plugins; it pulls in
-// NO server code (no @wardenx/db, drizzle, or the auth instance), so it is safe to bundle into apps/web.
+// NO server code (no @chartwarden/db, drizzle, or the auth instance), so it is safe to bundle into apps/web.
 // Exposed via the package's "./client" subpath export; the vendor-adapter rule is satisfied because
 // `better-auth` is imported inside packages/auth (its owner).
 //

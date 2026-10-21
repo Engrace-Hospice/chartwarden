@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_call_answer` (M19 §3.3 / §2.2.3). APPEND-ONLY: one row per answered protocol
+// @chartwarden/db — `triage_call_answer` (M19 §3.3 / §2.2.3). APPEND-ONLY: one row per answered protocol
 // question. A correction is a NEW row carrying `correction_of_answer_id` (the M9 D9 / M5 §164.526
 // correction-of-record pattern) — the original is never overwritten, which is what lets a surveyor see
 // that an answer changed and when.
@@ -13,7 +13,7 @@
 // cheap, non-racing way to read the parent question mid-write, and the conditional would fail OPEN —
 // capturing free-text cleartext whenever the lookup could not be resolved. The typed enum/boolean/integer
 // answers stay fully reconstructible from `answer_value_int` / `answer_value_bool`, neither denylisted.
-// (Recorded in `M19_AUDIT_DENYLIST`, @wardenx/types, at M19-T01.)
+// (Recorded in `M19_AUDIT_DENYLIST`, @chartwarden/types, at M19-T01.)
 //
 // TENANCY: organization_id + provider_entity_id NOT NULL, location_id nullable — denormalized from the
 // call so the row's OWN visibility is a flat app.org_id predicate (ADR-0010 D2), never a join.

@@ -1,4 +1,4 @@
-// @wardenx/db — `deprecation_mapping` (M38 Terminology §3.6). The successor record for a
+// @chartwarden/db — `deprecation_mapping` (M38 Terminology §3.6). The successor record for a
 // deprecated code: which code(s) replace it, the relationship kind (equivalent/broader/
 // narrower/none/see_other), and remediation guidance. Drives annual deprecation
 // remediation — the post-load tenant scan that finds records still using deprecated codes

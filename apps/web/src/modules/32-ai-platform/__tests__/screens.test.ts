@@ -1,4 +1,4 @@
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 // apps/web/src/modules/32-ai-platform — GAP-049 tenant screen-registry unit test.
 //

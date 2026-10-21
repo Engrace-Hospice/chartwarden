@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/19-oncall/consumers/roster-sync-debounce.ts — the live `m17.visit.assigned`
 // outbox consumer for the §4.5 path 1 / §4.8 `m19.shift-sync.debounced` roster sync (m19
 // `handlers-unbound` group, #248; F-155's own finding, now built).
@@ -21,8 +21,8 @@ import type { DbClient } from "@wardenx/db";
 // so `decideRosterSyncTrigger` is not called here: calling it and discarding its BullMQ-jobId-shaped
 // output would be dead code, not an honored decision (its rule — react to every assignment, unfiltered —
 // is already what "one debounce row per org, regardless of payload" implements).
-import { withOrgContext } from "@wardenx/tenancy";
-import type { OrgId } from "@wardenx/types";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { OrgId } from "@chartwarden/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS } from "../jobs/index";
 import { OnCallRosterSyncQueueRepository } from "../jobs/repository";

@@ -2,7 +2,7 @@
 // PROVISIONAL pending clinical-lead review: change the text here, never the codes. A refusal never says WHY a person is
 // ineligible. Reassigning does not acknowledge anything, the new person must sign in and take responsibility themselves, and
 // messaging is not the emergency path. No patient, message text or id appears here.
-import type { AckSupervisorReasonCode } from "@wardenx/types";
+import type { AckSupervisorReasonCode } from "@chartwarden/types";
 
 export const REASSIGN_LABEL = "Reassign";
 export const REASSIGN_CONFIRM_LABEL = "Reassign request";

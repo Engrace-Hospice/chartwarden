@@ -1,4 +1,4 @@
-// @wardenx/db — `admission_evidence` (M6 Phase 1 admission evidence). PHI-bearing: it carries
+// @chartwarden/db — `admission_evidence` (M6 Phase 1 admission evidence). PHI-bearing: it carries
 // patient/admission identifiers plus denormalized provider entity/location for the standard tenancy shape.
 // Uploaded bytes remain owned by M22; this table pins the exact document_version that satisfied an M6
 // requirement. Cross-module refs (M5 patient, M22 document/version) are app-validated UUIDs.

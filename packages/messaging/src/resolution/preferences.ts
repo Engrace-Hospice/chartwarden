@@ -1,4 +1,4 @@
-// @wardenx/messaging — per-recipient channel selection (M36-T04, spec §2.1, §2.5, §3.6).
+// @chartwarden/messaging — per-recipient channel selection (M36-T04, spec §2.1, §2.5, §3.6).
 //
 // The pure, DB-agnostic core of "which channels does THIS recipient get for THIS alert".
 // Reads the recipient's `user_notification_preferences` row shape (§3.6 routing_map /

@@ -5,14 +5,14 @@
 // `POST /api/v1/legal-holds/:id/release` (routes/legal-holds.ts), extracted so the route and a cross-module caller write
 // the SAME row, the SAME `data.legal_hold_*` audit event and the SAME `m4.legal_hold.*` outbox payload. The caller owns the
 // transaction (`withOrgContext`), the permission/step-up gates and the match count.
-import { type AuditContext, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   MESSAGING_GOVERNANCE_HOLD_ORIGIN,
   NotFoundError,
   ChartWardenError,
   messagingHoldLockName,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 

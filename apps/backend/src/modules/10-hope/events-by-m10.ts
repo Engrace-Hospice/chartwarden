@@ -4,7 +4,7 @@
 // for naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m10'), and valid declared consumers (real
 // module ids). The spec §2.4 lists in-module shorthand topics (`hope.timepoint.signed`); the canonical
 // wire `eventName` published to the M1 dispatcher follows M1 §3.17 (`m10.hope.<entity>_<verb>`) and
-// mirrors `M10_EVENT_NAMES` in @wardenx/types (the closed set the record/sign path + the §4.8 watchdog /
+// mirrors `M10_EVENT_NAMES` in @chartwarden/types (the closed set the record/sign path + the §4.8 watchdog /
 // submission workers may emit). This file adds the TypeBox `payloadSchema` + declared consumers the
 // dispatcher validates each publish against (§2.4 catalog).
 //
@@ -14,7 +14,7 @@
 // their subscriptions; M10 publishes them now. Per §2.4 idempotent dispatch keyed on
 // `hope_assessment_id` + `event_kind` (or `schedule_id` / `sfv_id` / `submission_id` per the §2.4 table).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const isoInstant = Type.String({ minLength: 1 });
 const rfaKind = Type.Union([

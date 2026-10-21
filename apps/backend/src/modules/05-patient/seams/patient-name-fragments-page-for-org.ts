@@ -10,8 +10,8 @@
 // every linked caregiver's first and last name, and every emergency contact's name. Merged-away duplicates are INCLUDED (their name is
 // still typed into messages). Bounded (a page is at most PATIENT_NAME_PAGE_MAX patients), ordered by patient id so `afterId` is a
 // stable cursor, run under `withOrgContext` so RLS is the wall; the explicit `organization_id` predicate is the belt behind it.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
 
 const P = schema.patients;

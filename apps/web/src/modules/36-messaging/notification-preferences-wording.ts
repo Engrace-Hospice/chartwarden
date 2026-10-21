@@ -1,5 +1,5 @@
 // M36 WP 4.6 (ADR-0073) - wording for "My notifications". The locked rows mirror the platform floor
-// (PLATFORM_CHANNEL_FLOOR in @wardenx/messaging): the clinical lead signs off the list (spec section 4.6), so it lives here as plain text, one place.
+// (PLATFORM_CHANNEL_FLOOR in @chartwarden/messaging): the clinical lead signs off the list (spec section 4.6), so it lives here as plain text, one place.
 export const PREFS_TITLE = "My notifications";
 export const PREFS_SUB = "Choose how and when you are alerted. These settings apply to you only.";
 export const PREFS_OFF = "Notification preferences are not turned on for your organization.";

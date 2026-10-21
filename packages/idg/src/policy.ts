@@ -1,17 +1,17 @@
-// @wardenx/idg — §1.1 / §2.2 / §2.5 pure-data policy constants (M14-T01 domain layout).
+// @chartwarden/idg — §1.1 / §2.2 / §2.5 pure-data policy constants (M14-T01 domain layout).
 //
 // The single source of the platform-floor IDG rules the lifecycle (§2.2), the quorum evaluator (D3), the
 // schedule worker (D2), and the packet builder's discipline-view derivation (D7) read instead of re-deriving
 // inline: the CoP 418.56(b)(3) required-quorum composition, the location-cadence backstop (with the 15-day
 // platform-floor max gap and tenant-tighten-to-7 floor), and the discipline → highlight-block mapping.
 //
-// PURE DATA — no IO, `@wardenx/types`-only. The XState meeting machine, the quorum evaluator, the schedule
+// PURE DATA — no IO, `@chartwarden/types`-only. The XState meeting machine, the quorum evaluator, the schedule
 // worker, and the packet builder that consume these constants live in `apps/backend/src/modules/14-idg`
 // (lifecycle in M14-T03, packet builder in M14-T04). Authority note (M14-F01 / ADR-0018 D2): the
 // location-cadence policy below is an OPERATIONAL BACKSTOP only — the citation-relevant control is the
 // per-patient (per-POC) 15-day review floor stamped on adjournment, enforced by `perPatientReviewFloorClear`.
 
-import type { DisciplineKey } from "@wardenx/types";
+import type { DisciplineKey } from "@chartwarden/types";
 
 /** One required quorum slot. `role` is a single discipline or an `a|b` either-of expression; `count` is the
  * minimum number of distinct present attendees satisfying it. */

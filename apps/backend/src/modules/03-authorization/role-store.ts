@@ -1,11 +1,11 @@
-import type { ScopeLevel } from "@wardenx/auth";
-import { floorViolations, isSystemLocked } from "@wardenx/auth";
+import type { ScopeLevel } from "@chartwarden/auth";
+import { floorViolations, isSystemLocked } from "@chartwarden/auth";
 // apps/backend/src/modules/03-authorization — the PRODUCTION RoleStore (M3 §3.4 / §7.6).
 //
 // The role catalog routes (GET /api/v1/roles, POST/PATCH/DELETE) run through an injected RoleStore.
 // This is the live Drizzle implementation over the M3-owned `role` + `role_permission` tables, run
 // inside `withOrgContext` so RLS scopes every row by `app.org_id` (system templates are org_id NULL and
-// readable in every scope; a tenant's own rows scope to its org). M3 may import @wardenx/db (dependsOn 1,
+// readable in every scope; a tenant's own rows scope to its org). M3 may import @chartwarden/db (dependsOn 1,
 // added with the effective-permission store) so the Drizzle store lives in the module dir.
 //
 // `customized` = the row is org-owned (a tenant clone/edit) rather than a platform template (org_id NULL).
@@ -33,9 +33,9 @@ import { floorViolations, isSystemLocked } from "@wardenx/auth";
 // column-only check would therefore have been a second inert control. Left as a stated finding: which
 // component materializes the catalog, and whether the ≈60 `system_default` templates the spec's
 // Appendix A enumerates (this file ships 13) come with it, is a provisioning decision.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { RoleLockedError, type RoleStore, type RoleView } from "./authz-ports";
 

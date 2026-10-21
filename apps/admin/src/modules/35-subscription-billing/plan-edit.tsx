@@ -1,5 +1,5 @@
-import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plan editor (`/admin/plans/:id/edit`, plan.admin.write).
 // Hydrates from GET /api/admin/plans/:id (M35A-T03 detail GET), then manages the plan's usage meters
 // (POST/PATCH .../meters) and drives the lifecycle: Activate (which the §4.13 outbox dispatcher syncs to a

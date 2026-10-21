@@ -4,7 +4,7 @@
 // `m36.integrity.systemic_decrypt_failure` (critical findings). The adapter is the only thing that touches the client,
 // so the tile logic below stays pure. GAP (reported): the route is tenant-scoped; whether org-less platform rows are
 // visible to a platform_ops session is unverified, and no dedicated M36 integrity-status route exists.
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { type ReadResult, toReadResult } from "./ui";
 
 export const RUN_EVENT = "m36.hash_verify.run";

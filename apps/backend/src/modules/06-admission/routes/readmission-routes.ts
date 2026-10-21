@@ -8,7 +8,7 @@
 // `admission_intake_scope` (an intake role, a patient of the caller's org, no active / on-hold admission) — passed in
 // by `registerAdmissionRoutes`, which owns them. The plan is a decision aid; creating the admission is still
 // `POST /api/v1/admissions` (`admission.create`, same OR'd scope).
-import { DegradedError, UnauthorizedError } from "@wardenx/types";
+import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { IdParamsSchema, PatientIdParamsSchema, parse } from "./admission-typebox";
 import type { ReadmissionService } from "./readmission-service";

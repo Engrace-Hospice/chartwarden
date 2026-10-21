@@ -1,4 +1,4 @@
-// @wardenx/db — `cahps_export_job` (M30 §4.1 R-14/R-15; migration 0421, GAP-087). The durable CAHPS vendor
+// @chartwarden/db — `cahps_export_job` (M30 §4.1 R-14/R-15; migration 0421, GAP-087). The durable CAHPS vendor
 // export job: one row per R-14 request, driven queued -> running -> completed|failed by the `m30.cahps_export`
 // worker. The rendered vendor file (caregiver names / phones / emails — PHI) is stored ONLY as a tenant-DEK
 // envelope in `file_cipher` (audit-denylisted, §3.6). ORG-SCOPED (canonical app.org_id RLS). `vendor_binding_id`

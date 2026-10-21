@@ -2,7 +2,7 @@
 // (M29-T07, §5 / D11). PURE data. The M29-T08 worker binds this to the BullMQ scheduler; keeping it as a
 // leaf constant means the cron pattern, the platform-singleton concurrency invariant, and the queue name are
 // all assertable without importing bullmq into the module cores.
-import type { NppesSyncKind, NppesSyncTrigger } from "@wardenx/types";
+import type { NppesSyncKind, NppesSyncTrigger } from "@chartwarden/types";
 
 export interface NppesSyncSchedule {
   readonly queueName: string;

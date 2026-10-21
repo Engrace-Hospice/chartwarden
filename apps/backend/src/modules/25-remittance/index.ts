@@ -1,6 +1,6 @@
 // apps/backend/src/modules/25-remittance — M25 Remittance & Denials backend surface. The pure
 // revenue-cycle domain (Phase 2) is in ./domain; the X12 5010 835 sidecar adapter is
-// @wardenx/x12-835-client. Phase 3 adds the contract surfaces (the §4.5 outbox catalog + the §4.6
+// @chartwarden/x12-835-client. Phase 3 adds the contract surfaces (the §4.5 outbox catalog + the §4.6
 // permission keys), then services (ingest/parse/post/match/classify/state), routes, workers, the eight
 // reader seams, the M36 recipient resolver, the two ABAC predicates, the destruction eraser, and boot
 // wiring. The composition root opts M25 in at boot (the M23/M27 NN-module/index.ts precedent).

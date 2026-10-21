@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the authentication audit trail (M2 §8.1, GAP-002 / GAP-004).
+// @chartwarden/auth · identity — the authentication audit trail (M2 §8.1, GAP-002 / GAP-004).
 //
 // WHAT WAS MISSING. Better Auth's HTTP surface (sign-in, sign-out, password reset, 2FA, passkey,
 // session revoke) wrote NO audit_event: only step-up, portal-session and link-redemption paths were
@@ -7,12 +7,12 @@
 //
 // SHAPE. This module is pure: it maps (path, status, response body, resolved actor) onto a typed
 // {@link AuthAuditEvent} and hands it to an injected {@link AuthAuditSink}. The sink (the backend's
-// M4 audit writer) owns persistence, so `@wardenx/auth` takes no dependency on the audit package.
+// M4 audit writer) owns persistence, so `@chartwarden/auth` takes no dependency on the audit package.
 // Nothing here ever carries a password, token, TOTP/backup code or raw email: the username is
 // reduced to {@link credentialKey}'s SHA-256 prefix and the IP to a network prefix.
 import { credentialKey } from "./credential-throttle";
 
-/** The persisted event types (catalogued in @wardenx/audit's M2 action catalog). */
+/** The persisted event types (catalogued in @chartwarden/audit's M2 action catalog). */
 export const AUTH_AUDIT_EVENTS = {
   loginSucceeded: "m2.auth.login_succeeded",
   loginFailed: "m2.auth.login_failed",

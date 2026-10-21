@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/22-documents/records-request/records-request-db.ts — the production, RLS-backed
 // RecordsRequestService (F-238). Every read and write runs under `withOrgContext` (FORCEd RLS on
 // `intake_records_request`); writes carry the acting user so the M4 audit trigger attributes them.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, count, desc, eq, inArray, isNotNull, lt } from "drizzle-orm";
 import {
   RECORDS_REQUEST_EXTENDABLE,

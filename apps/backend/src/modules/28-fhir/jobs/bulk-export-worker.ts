@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/28-fhir/jobs/bulk-export-worker.ts — the `fhir.bulk-export` worker (GAP-084, §4.8,
 // W-FHIR-04). Before this existed `POST /$export` inserted an `accepted` row that nothing ever picked up, and
 // the poll answered `output: []` forever.
@@ -32,10 +32,10 @@ import {
   bulkExportFailedEvent,
   computeBulkExportCompletion,
   planBulkExportArtifact,
-} from "@wardenx/fhir";
-import type { OperationOutcome } from "@wardenx/fhir";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import type { FhirBulkExportJobId, FhirClientId } from "@wardenx/types";
+} from "@chartwarden/fhir";
+import type { OperationOutcome } from "@chartwarden/fhir";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import type { FhirBulkExportJobId, FhirClientId } from "@chartwarden/types";
 
 import { isBaaInForce } from "../routes/client-gates";
 import {

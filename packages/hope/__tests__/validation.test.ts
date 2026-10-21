@@ -1,4 +1,4 @@
-// @wardenx/hope — CMS HOPE pre-submission validation engine (§2.3, §3, §86) — M10-T04.
+// @chartwarden/hope — CMS HOPE pre-submission validation engine (§2.3, §3, §86) — M10-T04.
 import { describe, expect, it } from "vitest";
 import { REQUIRED_SECTIONS_BY_RFA, missingRequiredSections } from "../src/sections/required-items";
 import { HOPE_VALIDATION_RULES, hasBlockingError } from "../src/validation/findings";

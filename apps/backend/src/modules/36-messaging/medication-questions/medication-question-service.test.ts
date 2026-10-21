@@ -1,8 +1,8 @@
 // WP 3.10 - the medication-question service over an in-memory task store and a fake send core with the real contract:
 // the hook runs inside the "transaction" and not on a replay, and a hook throw removes the message again. Proves routing,
 // the no-write-on-refusal rule, idempotent replay, unrouted handling and that the question text is never read.
-import type { MessagingRouteService, ValidatedClinicalLinkInput } from "@wardenx/messaging";
-import { ChartWardenError } from "@wardenx/types";
+import type { MessagingRouteService, ValidatedClinicalLinkInput } from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createMemoryTaskStore } from "../tasks/task-store-memory";
 import {

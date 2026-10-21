@@ -5,7 +5,7 @@
 // cross-module consumers (M16 bereavement, M22 DocLens/redaction, M23 final claim, M28 FHIR, M29
 // inbound-proposal expiry, M36 alert) subscribe when they land; the events are published now.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** Shared minimal payload core — every patient event carries the patient + org id. */
 const corePatient = {

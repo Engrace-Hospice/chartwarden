@@ -1,4 +1,4 @@
-// @wardenx/supplies — §2.1 `kind='comfort_kit_replenish'` request payload (D1).
+// @chartwarden/supplies — §2.1 `kind='comfort_kit_replenish'` request payload (D1).
 
 import { type Static, Type } from "@sinclair/typebox";
 

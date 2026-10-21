@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/__tests__/_billing-repo-fakes.ts — in-memory doubles for
-// the `@wardenx/billing` `repositories` namespace, shared by the M23 SERVICE tests (assembly / validation /
+// the `@chartwarden/billing` `repositories` namespace, shared by the M23 SERVICE tests (assembly / validation /
 // override). Each service constructs its repos internally as `new repositories.X(tx)`, so the tests swap the
-// real Drizzle-backed classes for these stores via a `vi.mock("@wardenx/billing")` PARTIAL override that
+// real Drizzle-backed classes for these stores via a `vi.mock("@chartwarden/billing")` PARTIAL override that
 // keeps all pure domain (the HIPPS/SIA calculators, the rule registry, control-number, reducers, money)
 // REAL and replaces only the data ports. NO DB, no Fastify, no BullMQ — plain Maps/arrays.
 //

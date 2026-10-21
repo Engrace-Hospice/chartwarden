@@ -14,7 +14,7 @@
 //
 // Pure data in / data out — no I/O, no clock. The caller's disciplines are assembled server-side from
 // the session (never client input); the IDG-coordinator flag is a role membership.
-import type { InterventionDiscipline } from "@wardenx/types";
+import type { InterventionDiscipline } from "@chartwarden/types";
 import { CarePlanStateError } from "../lifecycle/errors";
 
 /** The role key whose holder is the §7.4 cross-discipline exception (may author any discipline). */

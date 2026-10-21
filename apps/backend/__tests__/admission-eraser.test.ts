@@ -2,7 +2,7 @@
 // + the m6 audit-catalog actions (§8.1.2). Proves M6 registers the REAL admission_record eraser over
 // the Phase-0 deny-stub (validateErasers passes at boot), the eraser deletes the admission subtree +
 // tombstones the admission row, and the m6 action catalog is well-formed (namespace + uniqueness).
-import { ACTION_CATALOG, M6_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
+import { ACTION_CATALOG, M6_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

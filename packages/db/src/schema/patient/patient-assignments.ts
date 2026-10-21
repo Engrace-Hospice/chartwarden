@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_assignment` (M5 §3.5). The care-team membership that drives the
+// @chartwarden/db — `patient_assignment` (M5 §3.5). The care-team membership that drives the
 // CaseloadProvider seam (§4.1, M5-T07): a row links a clinician (M2 user) to a patient in a role,
 // open while `unassigned_at IS NULL`. PHI-bearing → three-column tenancy rule. One active primary_rn
 // per patient.

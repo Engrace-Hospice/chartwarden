@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";

@@ -1,6 +1,6 @@
 // F-237 — the deterministic DocLens SUD flagger (M22 §7.4 W4 / D8, 42 CFR Part 2). Pure: Docling-shaped
 // text blocks in, indicators (page, category, rule, block box) out.
-import { detectSudIndicators, dominantSudCategory } from "@wardenx/intake-extraction";
+import { detectSudIndicators, dominantSudCategory } from "@chartwarden/intake-extraction";
 import { describe, expect, it } from "vitest";
 
 const BOX = [10, 20, 300, 34] as const;

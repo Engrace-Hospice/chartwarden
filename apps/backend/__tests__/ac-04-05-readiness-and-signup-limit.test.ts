@@ -22,7 +22,7 @@ import {
   outcomeOfStatus,
   registerIdentityAuth,
   usernameFromBody,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {

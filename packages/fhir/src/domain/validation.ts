@@ -1,10 +1,10 @@
-// @wardenx/fhir — §2.3 domain validation (M28-T01).
+// @chartwarden/fhir — §2.3 domain validation (M28-T01).
 //
 // The pure §2.3 rules that are neither the scope set (`auth/scopes.ts`) nor a lifecycle edge
 // (`lifecycle/*`). No IO: an admin route calls these on the way in; the DB CHECK constraints M28-T02
 // writes are the second line of the same rule.
 
-import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@wardenx/types";
+import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@chartwarden/types";
 
 /**
  * §2.3 — the platform-floor / tenant-tighten-only rule for `fhir_client.rate_limit_rps`.

@@ -1,4 +1,4 @@
-// @wardenx/db — M30 HQRP & Quality schema barrel (§3.3, 18 tables). Re-exported from the central
+// @chartwarden/db — M30 HQRP & Quality schema barrel (§3.3, 18 tables). Re-exported from the central
 // schema barrel (../index.ts). Ordering follows FK dependency: the measures subdomain, then the
 // compliance-program subdomain (qapi_program → indicator/project/pip/minutes; sra_cycle → finding →
 // remediation; cop_compliance_status), then the safety-surveillance subdomain. Four tables are

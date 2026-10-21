@@ -2,7 +2,7 @@
 // submit/poll worker wiring. Mirrors apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts's
 // submit/retry processor shape file-for-file (per-job `withOrgContext`, RULE 4 fail-closed-unbound ports,
 // D2 outbox-only state transitions) — the one structural difference is M24's `dependsOn` DOES include M1, so
-// this file imports `@wardenx/db` directly instead of a package-level repository layer.
+// this file imports `@chartwarden/db` directly instead of a package-level repository layer.
 //
 // Unlike M23's platform-wide X12/MAC gateway (one bearer/URL pair from env), Oregon's OHA MMIS endpoint is
 // PER-PROVIDER-ENTITY (each PE's own `state_medicaid_trading_partner_credential` row, §3.3) — so the
@@ -14,13 +14,13 @@
 // assembleClaim comment). Real per-tenant OHA/CCO certification remains external-sandbox pending (same
 // posture as WX-PR-006/007/008): this binds against the launch-gateway's real HTTP transport when configured,
 // and is fully exercised against a fake transport in tests.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   MedicaidAdapterRegistry,
   TradingPartnerCredentials,
-} from "@wardenx/medicaid-adapters";
-import { medicaidClaimMachine } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/medicaid-adapters";
+import { medicaidClaimMachine } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";

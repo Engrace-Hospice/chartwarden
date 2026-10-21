@@ -1,4 +1,4 @@
-// @wardenx/billing — NOE timeliness and the late-NOE occurrence span 77 (M23-F05). PURE.
+// @chartwarden/billing — NOE timeliness and the late-NOE occurrence span 77 (M23-F05). PURE.
 //
 // CMS Pub. 100-04 ch. 11 §20.1.1 (Rev. 12847): "A timely-filed NOE is a NOE that is submitted to the A/B MAC (HHH)
 // and accepted by the A/B MAC (HHH) within 5 calendar days after the hospice admission date. … In instances where

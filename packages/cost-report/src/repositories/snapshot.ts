@@ -1,10 +1,10 @@
-// @wardenx/cost-report · repositories — the content-hashed snapshot lockdown: `cost_report_snapshot`
+// @chartwarden/cost-report · repositories — the content-hashed snapshot lockdown: `cost_report_snapshot`
 // (every seam-derived input + worksheet state materialized at submit/reopen with a SHA-256 content hash;
 // INSERT-ONLY — the RLS write policy is system-only, §3.5; `prior_snapshot_id` chains snapshots through
 // reopens; `cost_report.latest_snapshot_id` is the head — D10) (M27 §3.3). ORG-SCOPED; the snapshot
 // builder/service wraps these in `withOrgContext`. `materialized_inputs` + `worksheet_snapshot` are
 // audit-denylisted (§3.6); this port returns the whole `$inferSelect` row and the service projects.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

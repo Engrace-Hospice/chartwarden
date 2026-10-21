@@ -1,4 +1,4 @@
-// @wardenx/db — `portal_access_grant` (M31 §3.3, M31-T02). D5/D6/D7's per-patient authorization: one
+// @chartwarden/db — `portal_access_grant` (M31 §3.3, M31-T02). D5/D6/D7's per-patient authorization: one
 // active row per (account, patient) says "this account may read THIS patient's records, in THIS scope,
 // on the authority of THIS M39 consent". Revocation writes a terminal row and a re-grant is a NEW row
 // (§3.3 partial unique on `revoked_at IS NULL`).
@@ -52,7 +52,7 @@ export const portalAccessGrants = pgTable(
     patientId: uuid("patient_id").notNull(), // logical FK → M5 patient
 
     grantKind: portalAccessGrantKind("grant_kind").notNull(),
-    // §2.3 resolved scope set (platform-floor + tenant-tighten); shape = @wardenx/types `PortalScopeSet`.
+    // §2.3 resolved scope set (platform-floor + tenant-tighten); shape = @chartwarden/types `PortalScopeSet`.
     scopeSetJsonb: jsonb("scope_set_jsonb").notNull(), // §3.6 audit-denylisted (size)
 
     sourceConsentRecordId: uuid("source_consent_record_id").notNull(), // logical FK → M39 consent_record
@@ -68,7 +68,7 @@ export const portalAccessGrants = pgTable(
     revokeReasonCipher: text("revoke_reason_cipher"), // §3.6 audit-denylisted (free-text)
     revokedByMembershipId: uuid("revoked_by_membership_id"), // logical FK → M2 membership
     // §2.2.2 — WHY a grant was revoked; required whenever revoked_at is set (the CHECK below). Value set =
-    // @wardenx/types `PortalGrantRevokeCascadeSource` (text, app-validated).
+    // @chartwarden/types `PortalGrantRevokeCascadeSource` (text, app-validated).
     revokeCascadeSource: text("revoke_cascade_source"),
 
     version: integer("version").notNull().default(0), // §2.5 If-Match

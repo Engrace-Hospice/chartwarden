@@ -13,8 +13,8 @@
 // All of it is the caller's OWN preference: messaging.read, and the conversation must be visible to the caller to create one (a
 // withdraw needs only the flag, so someone who lost access can still undo). Org and actor come from the request context. The tenant
 // flag `messaging.notification_policy` off is the uniform 404. Responses are never cached.
-import { requirePermission } from "@wardenx/auth";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Actor, SnoozeReminderService } from "../snooze-reminders/snooze-reminder-service";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";

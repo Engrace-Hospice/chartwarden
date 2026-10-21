@@ -21,8 +21,8 @@
 //
 // Reads are §2.5 read-audited (Part 2 facts — flag set, origin, consent state — are themselves sensitive);
 // the resync is write-audited by the M4 trigger on `patient_privacy_flag_snapshot` (as the acting user).
-import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SnapshotRebuildSummary } from "../jobs/snapshot-rebuild";
 import type { PrivacyOfficerService } from "../privacy/officer-db";

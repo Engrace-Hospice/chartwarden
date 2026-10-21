@@ -10,8 +10,8 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.5 hallucination triage queue
 // (`/admin/ai-platform/hallucinations`, `ai.hallucination.triage`). D9's queue, keyed on
 // `ai_hallucination_triage_status`: a count per triage column, then one list in column order, and a right

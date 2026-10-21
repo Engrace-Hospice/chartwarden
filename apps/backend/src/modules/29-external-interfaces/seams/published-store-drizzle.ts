@@ -5,8 +5,8 @@
 // never trusts the org id it was handed as a cross-tenant selector); the platform-shared NPPES reads carry
 // no org context (read-all under `wardenx_app`). Aggregate/metadata reads only — no credential ciphertext,
 // no raw HL7 payload crosses a seam.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import type {

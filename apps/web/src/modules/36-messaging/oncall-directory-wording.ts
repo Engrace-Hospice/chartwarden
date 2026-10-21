@@ -1,6 +1,6 @@
 // M36 WP 4.12 (ADR-0080) - every word the on-call directory shows, in one place. PROVISIONAL pending clinical-lead review. The screen
 // only answers "who is covering now"; it pages and sends nothing, and a gap or an unconnected roster is said in words, never an empty list.
-import type { OnCallDirectoryRole, OnCallRank } from "@wardenx/types";
+import type { OnCallDirectoryRole, OnCallRank } from "@chartwarden/types";
 
 export const ONCALL_TITLE = "On call now";
 export const ONCALL_BREADCRUMB = "General / Messaging";

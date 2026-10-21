@@ -1,6 +1,6 @@
 // WP 2.6 - the scheduled-send tick fans out over active orgs, never lets one org's failure stop the others, and FAILS
 // (so the failure is visible in the failed set / DLQ alert) when any org failed.
-import { MESSAGING_QUEUES } from "@wardenx/messaging";
+import { MESSAGING_QUEUES } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import { scheduledSendTick } from "../src/modules/36-messaging/scheduled/scheduled-send-worker";
 

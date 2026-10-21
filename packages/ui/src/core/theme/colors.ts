@@ -1,4 +1,4 @@
-// @wardenx/ui — shared color tokens (spec §5.1 theme/colors.ts). Plain data so the leaf
+// @chartwarden/ui — shared color tokens (spec §5.1 theme/colors.ts). Plain data so the leaf
 // pulls no styling runtime; consumers (Tailwind, inline styles) read these tokens.
 
 /** Semantic status colors used by the degraded-mode banner + status surfaces. */

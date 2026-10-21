@@ -8,7 +8,7 @@
 // - F2F due reminders use face_to_face_encounter.scheduled_date
 // - election_period is joined to recover the owning admission
 
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, isNotNull, lt, ne, notInArray } from "drizzle-orm";
 import { addCalendarDays } from "../certification/window-math";
 

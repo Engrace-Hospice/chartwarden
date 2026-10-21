@@ -1,8 +1,8 @@
-// @wardenx/billing · repositories — `dde_work_item` + `dde_work_event` (ADR-0052; migration 1060). ORG-SCOPED +
+// @chartwarden/billing · repositories — `dde_work_item` + `dde_work_event` (ADR-0052; migration 1060). ORG-SCOPED +
 // VERSIONED, shape-identical to the notice repos: keyset pagination, §2.5 optimistic concurrency, no state
 // codec (the DDE alphabet is stored as the lowercase domain text). The event table is APPEND-ONLY: this repo
 // exposes `append` and a read, never an update. No PHI beyond ids and dates; NO MBI (the service screens notes).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { type SQL, and, asc, desc, eq, gte, inArray, lt, lte, or, sql } from "drizzle-orm";
 import {
   type BillingDb,

@@ -1,6 +1,6 @@
-// @wardenx/db -- `patient_wristband` (M5; GAP-020, migration 0850). One row per wristband GENERATION.
+// @chartwarden/db -- `patient_wristband` (M5; GAP-020, migration 0850). One row per wristband GENERATION.
 //
-// A wristband encodes an opaque random token (`@wardenx/types` wristband codec) -- never an MRN or a name. Only
+// A wristband encodes an opaque random token (`@chartwarden/types` wristband codec) -- never an MRN or a name. Only
 // `payload_digest = sha256("wx.wristband.v1|" || organization_id || "|" || token)` is stored: the raw token is
 // shown once at print time and is not recoverable, so a database leak is not a set of scannable bands.
 // Printing again supersedes the previous generation in the same transaction (a lost or reprinted band is dead the

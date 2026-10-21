@@ -1,6 +1,6 @@
 // #107 item 3 — the primary-provider-entity resolver: prefers the org's active provider entity, falls back
 // to the earliest-created, and fails closed (PROVIDER_ENTITY_UNRESOLVED 503) only when the org has none.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { buildPrimaryProviderEntityResolver } from "../src/bootstrap/provider-entity-resolver";
 

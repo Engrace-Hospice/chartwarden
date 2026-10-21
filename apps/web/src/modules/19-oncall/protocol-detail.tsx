@@ -16,7 +16,7 @@
 // §5.1's "version history" is not a panel here: `triage_protocol` keeps one row per version with effective
 // dates, and the catalog list — filtered to include retired rows — IS the history. A second, prettier
 // rendering of the same rows on this page would be a second answer to "which version was in force".
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

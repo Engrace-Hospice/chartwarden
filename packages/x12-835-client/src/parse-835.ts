@@ -1,4 +1,4 @@
-// @wardenx/x12-835-client — the wire→typed mapper for the sidecar's /parse835 JSON response. PURE: no IO.
+// @chartwarden/x12-835-client — the wire→typed mapper for the sidecar's /parse835 JSON response. PURE: no IO.
 // The Python `x12-worker` does the pyx12 segment parsing; this maps its JSON into ParsedRemittanceAdvice
 // and fails closed (degraded, never throws) on a malformed envelope. Imports ONLY ./types (no ./index —
 // the no-circular rule).

@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — M30 §2.6 / D9 / §4.12 / §7.13 mortality-review auto-creation (P2a). PURE.
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — M30 §2.6 / D9 / §4.12 / §7.13 mortality-review auto-creation (P2a). PURE.
 //
 // Every patient death auto-creates a `mortality_review` row: M30 subscribes to `m6.discharge.death` and
 // this PURE function maps the event to the row to insert + the derived completion-clock / retention /
@@ -20,7 +20,7 @@ import type { schema } from "@wardenx/db";
 //   - W-M30-28 SUD-decedent Part 2 promotion — the actual `retention_class` set happens in a BEFORE INSERT
 //     DB trigger (a migration-owned column, not a Drizzle column). We surface the PROMOTION DECISION as a
 //     `retention` descriptor so the later trigger/worker phase has the pure determination to mirror.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** Default completion target — 30 days from death (D9). Tenant policy may TIGHTEN (≤ 30), never loosen. */
 export const MORTALITY_DEFAULT_COMPLETION_DAYS = 30;

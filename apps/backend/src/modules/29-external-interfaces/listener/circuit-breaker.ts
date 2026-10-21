@@ -13,7 +13,7 @@
 // `external_feed.config.listenerDownThresholdMs` but may not loosen above 5min (§4.11.5). The threshold is
 // passed IN already-resolved (the write-time / boot-time floor check lives at the config edge, not here) —
 // this module is the pure transition, `nowMs` INJECTED (never a clock).
-import { XI_LISTENER_DOWN_ALERT_MINUTES } from "@wardenx/types";
+import { XI_LISTENER_DOWN_ALERT_MINUTES } from "@chartwarden/types";
 
 /** The §4.11.5 circuit-breaker states. */
 export type ListenerCircuitState = "closed" | "open" | "half_open";

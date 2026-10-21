@@ -41,7 +41,7 @@ const SCHEMA_DIR = "packages/db/src/schema";
 /**
  * TASK-014/ARCH-017 — sql table names a cross-module DIRECT `schema.<table>` read is sanctioned for,
  * reviewed individually below. Recognizing the `schema.<table>` member-access import style (the
- * `import { schema } from "@wardenx/db"` convention ~280 files use) made every one of these visible
+ * `import { schema } from "@chartwarden/db"` convention ~280 files use) made every one of these visible
  * to this gate for the first time; none is a NEW decision made here — each was already the
  * deliberate, load-bearing pattern in its own file. Content-keyed, like check-tenancy.ts's
  * `NON_ORG_SCOPED` — a table joins this set only with a reviewed justification, not to silence a
@@ -156,10 +156,10 @@ function scan(): Violation[] {
       if (file.startsWith(SCHEMA_DIR) && mod.id !== 1) continue;
       const src = readFileSync(join(REPO_ROOT, file), "utf8");
 
-      // The `import { schema } from "@wardenx/db"` (or `import * as schema from "..."`) namespace
+      // The `import { schema } from "@chartwarden/db"` (or `import * as schema from "..."`) namespace
       // binding — keyed to the LOCAL identifier `schema`, not the import specifier's spelling. The
       // old `used` check below required the specifier string itself to contain "schema"
-      // (`from '.../schema/...'`), which a bare `from "@wardenx/db"` never does — so every
+      // (`from '.../schema/...'`), which a bare `from "@chartwarden/db"` never does — so every
       // `schema.<table>` member-access read (the dominant style repo-wide: M18's `schema.visit`,
       // M30's `schema.roles`/`schema.membershipRoles`, ~30+ ABAC-resolver files reading M1's
       // `schema.memberships`/`schema.organizations`/`schema.users`) was invisible to this gate.

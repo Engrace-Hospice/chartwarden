@@ -23,7 +23,7 @@ import {
   isClosedPlanStatus,
   requiresCloseCosign,
   shouldCloseAsDeclined,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavedContactStatus,
   BereavementAnniversaryMark,
@@ -33,7 +33,7 @@ import type {
   BereavementPlanStatus,
   IsoInstant,
   MembershipId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type BereavementTransitionResult, result } from "./effects";
 import { BereavementStateError, require_ } from "./errors";
 

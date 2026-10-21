@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §2.2 invoice mirror service (pure over ports, M35-T03).
+// @chartwarden/subscription-billing — §2.2 invoice mirror service (pure over ports, M35-T03).
 //
 // M35 NEVER authors invoices — Stripe does. This service mirrors the Stripe invoice lifecycle a webhook
 // delivers (`invoice.created → draft`, `invoice.finalized → open`, `invoice.paid → paid`, `payment_failed`,
@@ -13,7 +13,7 @@
 // returned {@link OutboxIntent}s. NOTHING here verifies the Stripe signature (that is the T06 webhook
 // route) or calls the Stripe API (that is the T04 dispatcher).
 
-import type { InvoiceStatus, IsoInstant, MembershipId, OrgId } from "@wardenx/types";
+import type { InvoiceStatus, IsoInstant, MembershipId, OrgId } from "@chartwarden/types";
 import { canTransitionInvoice } from "../domain/invoice-lifecycle";
 import { invoiceLineSumsConsistent, invoiceTotalsConsistent } from "../domain/validation";
 import {

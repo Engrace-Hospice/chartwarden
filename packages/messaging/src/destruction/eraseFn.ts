@@ -1,4 +1,4 @@
-// @wardenx/messaging — the D9 tenant-offboarding eraseFn (M36-T10, spec §7.8 / §11 D9, §3.1 layout).
+// @chartwarden/messaging — the D9 tenant-offboarding eraseFn (M36-T10, spec §7.8 / §11 D9, §3.1 layout).
 //
 // Registered with the M4 destruction registry (over the app boundary's DataEraser) to satisfy a
 // right-to-erasure / tenant-offboarding request for the `messages` data class. M36's PHI payload is

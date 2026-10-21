@@ -8,7 +8,7 @@ import {
   WorkQueueLayout,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VOLUNTEER COMPLIANCE GATES MANAGER (§5.1 #11).
 // Spec: docs/design/screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md — "Use Work Queue."
 //

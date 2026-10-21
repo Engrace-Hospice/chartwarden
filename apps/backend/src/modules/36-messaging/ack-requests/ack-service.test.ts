@@ -1,6 +1,6 @@
 // WP 4.2 - the acknowledgment-request service over the in-memory store: who may do what, idempotent repeats, the window on a
 // reassign, and the rule that nothing but an explicit transition by the assignee writes an acknowledgment.
-import { ACK_DEADLINE_POLICY } from "@wardenx/types";
+import { ACK_DEADLINE_POLICY } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   type AckService,

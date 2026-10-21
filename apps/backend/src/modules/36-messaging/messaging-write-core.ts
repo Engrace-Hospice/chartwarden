@@ -7,7 +7,7 @@
 // transaction. Message bodies are envelope-encrypted under the tenant DEK at write time — the seam
 // boundary is plaintext by contract (§3.4) and the ciphertext never leaves this layer except as the
 // `message.body_cipher` bytea.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   bodyEnvelopeScheme,
   deriveOrgDek,
@@ -18,16 +18,16 @@ import {
   ringEnvelopeVersion,
   sealMessageBody,
   sealMessageBodyRing,
-} from "@wardenx/messaging";
-import type { RingBodyDek } from "@wardenx/messaging";
-import type { MessageBodyKind } from "@wardenx/messaging";
+} from "@chartwarden/messaging";
+import type { RingBodyDek } from "@chartwarden/messaging";
+import type { MessageBodyKind } from "@chartwarden/messaging";
 import {
   IdempotencyConflictError,
   NotFoundError,
   type RichBody,
   ValidationError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { recordAnnouncementReads } from "./announcement-receipts";
 import {

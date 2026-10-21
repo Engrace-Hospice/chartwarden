@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the `m30.measure_recompute` PURE processor (§4.8 / §7.1 / V-8).
+// @chartwarden/quality · workers — the `m30.measure_recompute` PURE processor (§4.8 / §7.1 / V-8).
 //
 // The body the `m30.measure_recompute` worker runs per dequeued job: recompute ONE
 // `(measure, provider_entity, period)` HQRP value. It opens with the §4.8 `processing_log` idempotency
@@ -12,7 +12,7 @@
 // PURE port-injected orchestration: every fact/effect is an injected port (no clock/RNG/Drizzle/BullMQ/
 // `getSeam`/cross-module import). The decision cores ({@link decideThresholdBreach}) are unit-asserted
 // independently of the I/O.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { MeasureRegistration } from "../measures/registry";
 import type { QualityMeasureValueResult } from "../measures/result";
 import type { QualityHopeConsumer } from "../seams/consumed/m10-hope";

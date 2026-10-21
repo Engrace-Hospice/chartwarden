@@ -22,7 +22,7 @@
 // Each publish opens its OWN transaction. The orchestrator is a long walk over thousands of NPIs; holding
 // one transaction across the whole run would pin a connection for its duration and lose every event on a
 // single late failure. The `nppes_sync_run` row is the run's atomic unit of recovery, not the outbox batch.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { NppesOutboxEvent, NppesOutboxSink } from "./sync-events";
 
 /**

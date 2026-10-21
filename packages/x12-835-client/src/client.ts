@@ -1,5 +1,5 @@
 import { mapParsed277ca } from "./parse-277ca";
-// @wardenx/x12-835-client — the X12_835WorkerClient SHAPE + a fail-closed factory.
+// @chartwarden/x12-835-client — the X12_835WorkerClient SHAPE + a fail-closed factory.
 //
 // Implements the parse-835 / parse-277ca contract over an injected raw HTTP transport
 // ({@link X12835HttpPort}) to the Python `x12-worker` sidecar. It performs NO direct network I/O and

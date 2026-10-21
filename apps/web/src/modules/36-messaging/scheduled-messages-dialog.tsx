@@ -1,7 +1,7 @@
 // M36 WP 2.6 — "Scheduled": the sender's own queue of messages waiting to go out, with the ones that were blocked at
 // dispatch shown with their reason. States: loading, error (Retry), empty, list. Org and user are server-side; this only
 // ever receives the caller's own rows.
-import { Button, LoadingSpinner, Modal, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { apiErrorMessage } from "./messaging-utils";

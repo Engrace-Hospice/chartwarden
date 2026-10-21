@@ -2,7 +2,7 @@
 // subscriptions, refunds): a stale ?param is cleared with a notice, Enter opens a row's drawer, Escape closes it and
 // hands focus back to the row; plus the create-plan form (Enter submits, a non-numeric price cannot be submitted).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

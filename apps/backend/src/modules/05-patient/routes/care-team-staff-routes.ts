@@ -9,8 +9,8 @@
 // membership id, display name, role labels); `/orgs/:id/members` keeps its `member.manage` gate and its
 // email / username / login fields. Not a PHI read (staff directory, no patient id), so no read-audit
 // config; the bound org is asserted before any query.
-import { resolveActorPermissions } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { resolveActorPermissions } from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { CareTeamStaffPort } from "../care-team-staff";
 import {

@@ -10,7 +10,7 @@
 //
 // M16 owns the truth of WHETHER an account is in the bereavement window; M31 reads it via
 // `BereavedPortalScopeProvider`, resolved OPAQUELY from the M1 registry (M16/M22 seam-consumption idiom) so
-// M31 stays off a `@wardenx/bereavement` import edge even though M16 is in `dependsOn`. The planner is pure
+// M31 stays off a `@chartwarden/bereavement` import edge even though M16 is in `dependsOn`. The planner is pure
 // (grants + resolved scope in, a revoke/insert plan out); the impure resolver + the DB write land in
 // M31-T06's consumer. `patient_deceased`/`bereavement_window_expired` are the exact
 // `PortalGrantRevokeCascadeSource` members the T01 leaf + the §3.3 CHECK name.
@@ -20,7 +20,7 @@ import type {
   PortalAccessGrantKind,
   PortalGrantRevokeCascadeSource,
   PortalScopeSet,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { requirePortal } from "./errors";
 import { platformFloorScopeSet } from "./scope-set";

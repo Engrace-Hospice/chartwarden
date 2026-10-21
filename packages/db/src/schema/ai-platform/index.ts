@@ -1,4 +1,4 @@
-// @wardenx/db — Module 32 (AI Platform) schema barrel: the thirteen `ownedTables`
+// @chartwarden/db — Module 32 (AI Platform) schema barrel: the thirteen `ownedTables`
 // `architecture/module-manifest.ts` gives M32, in three tenancy layers (§3.3).
 //
 // PLATFORM-SHARED (six) — no organization_id, read-all within any tenant, writes via `wardenx_admin`.

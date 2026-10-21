@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T03 unit tests for the §2.12 D13 bed-cleaning machine + turnover/reservation clocks.
+// @chartwarden/inpatient — M37-T03 unit tests for the §2.12 D13 bed-cleaning machine + turnover/reservation clocks.
 import { describe, expect, it } from "vitest";
 import { IpuStateError } from "../src/errors";
 import {

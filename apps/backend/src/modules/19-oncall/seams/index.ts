@@ -30,7 +30,7 @@ import type {
   TriageCallMetricsProvider,
   TriageCallProvider,
   TriageCallReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   type OncallSeamClock,

@@ -14,8 +14,8 @@ import type {
   AggregatorCredentials,
   BuildSubmissionPayloadArgs,
   EvvAggregatorAdapter,
-} from "@wardenx/evv-aggregators";
-import type { EvvAggregatorSubmissionStatus } from "@wardenx/types";
+} from "@chartwarden/evv-aggregators";
+import type { EvvAggregatorSubmissionStatus } from "@chartwarden/types";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
 import type { EvvSideEffect } from "./domain/effects";
 

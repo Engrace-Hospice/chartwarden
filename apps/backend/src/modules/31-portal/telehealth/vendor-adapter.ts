@@ -1,5 +1,5 @@
 // apps/backend/src/modules/31-portal/telehealth/vendor-adapter.ts - binds the Daily.co `TelehealthProvider`
-// (`@wardenx/telehealth-client`) to the route-facing `TelehealthAdapterPort` (GAP-051).
+// (`@chartwarden/telehealth-client`) to the route-facing `TelehealthAdapterPort` (GAP-051).
 //
 // CONFIG-DRIVEN. The adapter is bound only when ALL FOUR settings are present; with any missing the factory returns
 // `undefined` and the routes keep their fail-closed NOOP (join/start-recording 503, webhooks 401) rather than
@@ -11,7 +11,7 @@
 // These are PLATFORM-level settings: one Daily.co account fronts every tenant, and the vendor only ever sees the
 // opaque room name, so a per-tenant key vault would add isolation the vendor boundary does not need. Rotating
 // TELEHEALTH_ROOM_NAME_SECRET re-mints rooms.
-import { DailyCoTelehealthProvider } from "@wardenx/telehealth-client";
+import { DailyCoTelehealthProvider } from "@chartwarden/telehealth-client";
 import type { TelehealthAdapterPort } from "../routes/index";
 
 /** Participant-token lifetime handed to the vendor (the adapter clamps to its [30 min, 2 h] platform bounds). */

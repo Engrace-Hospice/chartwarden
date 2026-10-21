@@ -1,4 +1,4 @@
-// @wardenx/quality — §4.8 ASYNC/WORKER layer UNIT TESTS (M30 §7.1 / §7.2 / §7.8 / §7.9 / §4.9).
+// @chartwarden/quality — §4.8 ASYNC/WORKER layer UNIT TESTS (M30 §7.1 / §7.2 / §7.8 / §7.9 / §4.9).
 //
 // PURE port-injected processors driven by in-memory recording fakes (the M33 `refresh.test.ts` / M34
 // `shred-worker.test.ts` template): each test builds the port bundle over in-memory state + a recorded
@@ -9,7 +9,7 @@
 //   • the outbreak worker dedupes a cluster against the live `uq_outbreak_window`;
 //   • the cahps export worker flips rows to `export_failed` + emits only on the §4.8 terminal attempt;
 //   • the pure cron decision cores (`decideSraReminder`, `priorCalendarMonthPeriod`) are total + correct.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   type CahpsExportPorts,
   type MeasureRecomputePorts,
@@ -23,8 +23,8 @@ import {
   ratioResult,
   registerMeasure,
   runNightlyRecompute,
-} from "@wardenx/quality";
-import type { MeasureRegistration } from "@wardenx/quality";
+} from "@chartwarden/quality";
+import type { MeasureRegistration } from "@chartwarden/quality";
 import { describe, expect, it } from "vitest";
 
 const snapshot = { note: "test" } as unknown as schema.MeasureComputationSnapshot;

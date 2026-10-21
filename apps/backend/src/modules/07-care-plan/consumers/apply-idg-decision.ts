@@ -30,7 +30,7 @@ import type {
   InterventionDiscipline,
   InterventionId,
   ProblemId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── The facts the worker reads before deciding (resolved by the live consumer from M7 services) ───────
 

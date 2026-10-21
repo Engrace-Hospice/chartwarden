@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `order_verbal_policy` (M11 §3.3 / §2.3 D3). The per-org (one row, `per_org_uq`) verbal-
+// @chartwarden/db — `order_verbal_policy` (M11 §3.3 / §2.3 D3). The per-org (one row, `per_org_uq`) verbal-
 // order policy: the authentication window (default 48h, business-hours toggle), the per-kind LPN/NP
 // cosign-required matrices, and the platform-enforced floor (the service enforces tighten-only — an org
 // may shorten the window below the platform default but never extend past the platform floor). Carries

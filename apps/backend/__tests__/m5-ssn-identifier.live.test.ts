@@ -21,9 +21,9 @@
 import { Buffer } from "node:buffer";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { SSN_DEFAULT_GRANTS } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
-import { __resetModule34SeamsForTest } from "@wardenx/saas-tenant-platform";
+import { SSN_DEFAULT_GRANTS } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import { __resetModule34SeamsForTest } from "@chartwarden/saas-tenant-platform";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

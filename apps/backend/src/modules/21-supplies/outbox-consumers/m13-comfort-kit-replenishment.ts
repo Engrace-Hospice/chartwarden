@@ -12,7 +12,7 @@
 //
 // THE DECIDER'S OWN DRAFT IS NOT THE WIRE SHAPE. `decideReplenishmentIntake`'s `ReplenishmentRequestDraft`
 // is a DECISION-LEVEL record (which dispatch, which medication, how much, how urgent) — it is not, and was
-// never meant to be, `ComfortKitReplenishRequestDataSchema` (`@wardenx/supplies`), which additionally
+// never meant to be, `ComfortKitReplenishRequestDataSchema` (`@chartwarden/supplies`), which additionally
 // requires a full per-line pharmacy identity (`rxNorm`/`strength`/`dosageForm`/`routeOfAdministration`/
 // `comfortKitTemplateMedicationId`/`expectedUnit`/`replenishmentThresholdPct`) and a `deliveryAddress`
 // snapshot — neither of which M13's `m13.comfort_kit.replenishment_needed` payload carries. Both are
@@ -39,9 +39,9 @@
 // — `created_from_external`'s own payload requires a real `createdByMembershipId`, which a system cascade
 // cannot honestly supply (the same reasoning `write-service.ts`'s `createDirect` doc-comment already
 // states for the M11 cascade case).
-import { type DbClient, schema } from "@wardenx/db";
-import { SUPPLY_REQUEST_TERMINAL_STATUSES } from "@wardenx/supplies";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { SUPPLY_REQUEST_TERMINAL_STATUSES } from "@chartwarden/supplies";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

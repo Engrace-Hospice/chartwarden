@@ -1,8 +1,8 @@
 // M12's live M14 medication-recommendation consumer. Recommendations remain unsigned drafts and
 // deliberately never infer controlled-substance status or execute a discontinue/change automatically.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { MedicationRecommendationInput } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { MedicationRecommendationInput } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const ORDER = schema.medicationOrders;

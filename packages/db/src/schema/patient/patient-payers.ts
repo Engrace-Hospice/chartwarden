@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_payer` (M5 §3.4). A patient's insurance coverages, ranked (1=primary).
+// @chartwarden/db — `patient_payer` (M5 §3.4). A patient's insurance coverages, ranked (1=primary).
 // `payer_id` resolves an M40 canonical Payer — validated at runtime via the MdmEntityProvider seam,
 // NOT a cross-module FK constraint (modules own their tables; cross-module refs are app-validated).
 // PHI-bearing → three-column tenancy rule. One active coverage per (patient, rank).

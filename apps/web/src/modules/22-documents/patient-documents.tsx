@@ -1,4 +1,4 @@
-import { Glyph, Panel, PatientWorkspaceLayout, t } from "@wardenx/ui";
+import { Glyph, Panel, PatientWorkspaceLayout, t } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the patient chart's Documents tab (M22, Track B / ADR-0030;
 // 2026-09-25 redesign, mockup "Documents"). The chart banner and module rail around the patient document
 // library, with a right rail that summarizes the patient and checks which of the hospice's key documents

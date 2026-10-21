@@ -1,4 +1,4 @@
-// @wardenx/assessments — server-authoritative scoring (§4.3, §7.1, §7.2, D6) — M9-T03.
+// @chartwarden/assessments — server-authoritative scoring (§4.3, §7.1, §7.2, D6) — M9-T03.
 import { describe, expect, it } from "vitest";
 import type { EsasrData, FastData, PainadData, PpsData } from "../src/scale-types";
 import { esasrScorer } from "../src/scales/esas-r";

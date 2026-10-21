@@ -1,4 +1,4 @@
-// @wardenx/db — `referral` (M6 Admission/Election/Certification §3.3). The intake record: a
+// @chartwarden/db — `referral` (M6 Admission/Election/Certification §3.3). The intake record: a
 // prospective patient handed to the agency before (or driving) an admission. PHI-bearing (carries a
 // patient reference + name/DOB at receipt) → the three-column tenancy rule (ARCH-011 / ADR-0010 D1):
 // organization_id NOT NULL + nullable provider_entity_id / location_id (org-level until an admission

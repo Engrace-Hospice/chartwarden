@@ -42,8 +42,8 @@ import type {
   TriageCallId,
   TriageCallInboundChannel,
   TriageCallSource,
-} from "@wardenx/types";
-import { ONCALL_COVERAGE_LOOKAHEAD_HOURS } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ONCALL_COVERAGE_LOOKAHEAD_HOURS } from "@chartwarden/types";
 import { require_ } from "../lifecycle/errors";
 import { type OnCallShiftFacts, shiftCoversInstant } from "../roster/shift-machine";
 

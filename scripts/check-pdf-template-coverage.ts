@@ -19,7 +19,7 @@
  * Add a bespoke layout: register it in render-pdf/registry.ts and delete its allow-list line. Never add a key to
  * an allow-list without a real reason; the lists exist to shrink.
  */
-import { FORM_TEMPLATE_REGISTRY } from "@wardenx/forms";
+import { FORM_TEMPLATE_REGISTRY } from "@chartwarden/forms";
 import { staticRequestTemplateKeys } from "../apps/backend/src/modules/22-documents/outbox-consumers/render-consumer";
 import { DEFAULT_PDF_RENDERERS } from "../apps/backend/src/modules/22-documents/render-pdf";
 import { PLATFORM_TEMPLATE_TABLE } from "../apps/backend/src/modules/22-documents/seams/renderer";

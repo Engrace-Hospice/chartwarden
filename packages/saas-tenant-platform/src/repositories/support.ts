@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — support-session data port: `support_consent_grant`
+// @chartwarden/saas-tenant-platform · repositories — support-session data port: `support_consent_grant`
 // + `support_session` + `support_session_event` (M34 §3.6).
 //
 // The tenant-consented break-glass *variant* (M34-F01): a tenant compliance_officer files a consent
@@ -7,7 +7,7 @@
 // session writes a `support_session_event` at audit severity=critical (§7.4). This repo is the thin
 // reader/writer; the grant-narrows-never-replaces-dual-control invariant and the distinct-actor check
 // live in services/support-session-service.ts.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { type SQL, and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 
 const G = schema.supportConsentGrant;

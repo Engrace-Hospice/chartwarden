@@ -1,5 +1,5 @@
-import { LoadingSpinner, Modal, t } from "@wardenx/ui";
-import type { StatusTone } from "@wardenx/ui";
+import { LoadingSpinner, Modal, t } from "@chartwarden/ui";
+import type { StatusTone } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 

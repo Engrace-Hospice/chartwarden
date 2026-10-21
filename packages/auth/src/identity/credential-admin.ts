@@ -1,4 +1,4 @@
-// @wardenx/auth · trusted credential lifecycle operations.
+// @chartwarden/auth · trusted credential lifecycle operations.
 //
 // These endpoints are Better Auth plugin endpoints marked SERVER_ONLY. They are callable only through
 // the configured auth instance and never mounted at /api/auth. This keeps password hashing, adapter

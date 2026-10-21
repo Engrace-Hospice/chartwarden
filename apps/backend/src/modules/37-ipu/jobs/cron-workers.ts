@@ -2,15 +2,15 @@
 // repeatable Queue construction for M37's `ipu.rn-coverage-watchdog` (the M9/M10/M14/M25
 // `jobs/cron-workers.ts` template). One cron fans out over the active orgs, opens ONE per-org
 // `withOrgContext` tx per tick, reads via `./cron-store`, runs the PURE `buildCoverageWindows`
-// (@wardenx/inpatient) and `planCoverageAlerts` (`./index`), upserts the grid, and publishes every alert
+// (@chartwarden/inpatient) and `planCoverageAlerts` (`./index`), upserts the grid, and publishes every alert
 // to the TRANSACTIONAL OUTBOX inside that SAME tx.
 //
 // The grid and the alerts committing together is the point: an outbox validation error rolls back the
 // rebuild too, so the platform never ends up with a coverage table saying a unit is covered while the
 // alert that said otherwise was lost.
-import type { DbClient } from "@wardenx/db";
-import { buildCoverageWindows } from "@wardenx/inpatient";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { buildCoverageWindows } from "@chartwarden/inpatient";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 import { activeUnitsForOrg, assignmentFactsForUnit, upsertCoverageWindows } from "./cron-store";

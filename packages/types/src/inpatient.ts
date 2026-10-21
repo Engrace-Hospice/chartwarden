@@ -1,16 +1,16 @@
-// @wardenx/types — Module 37 (Inpatient Unit / IPU Management) leaf contracts (M37-T01).
+// @chartwarden/types — Module 37 (Inpatient Unit / IPU Management) leaf contracts (M37-T01).
 //
 // Per ADR-0005 D1/D3 the cross-module CONTRACTS live in this leaf package: the M37 spec's references to
 // `packages/inpatient/src/seams.ts` resolve their TYPE surface HERE, so downstream consumers (M23
 // per-diem, M26 inpatient cap, M27 cost report, M30 quality) import them with NO `dependsOn` edge. The
-// `@wardenx/inpatient` package IMPLEMENTS the domain kernels over these types; it takes a `@wardenx/types`
+// `@chartwarden/inpatient` package IMPLEMENTS the domain kernels over these types; it takes a `@chartwarden/types`
 // edge for them and never re-declares the wire shapes.
 //
 // SCOPE (authority: architecture/module-manifest.ts wins over the spec ERD). The manifest owns 26 tables;
 // this leaf ships the §3.2 pgEnum value mirrors (as union types the package's value tuples `satisfies`),
 // the owned-table id aliases, and the §4.4 outbox event-name taxonomy foundation. The pure §2 domain
 // kernels (XState machines, GIP validators, RN-coverage evaluator, census builder) live in the
-// `@wardenx/inpatient` package; the §4.5/§4.11 seam interfaces are declared here in M37-T10.
+// `@chartwarden/inpatient` package; the §4.5/§4.11 seam interfaces are declared here in M37-T10.
 //
 // PHI boundary (D11/§3.6): every wire shape here is PHI-free by construction — ids are uuids, never a
 // patient name / MRN / free-text justification. M37 is fully outbox-decoupled (D17).
@@ -130,7 +130,7 @@ export type IpuBodyReleaseState = "pending" | "funeral_home_identified" | "relea
 export type IpuRemoteArrangementBillingBasis = "bundled" | "per_diem_passthrough";
 
 // ── M37-owned id aliases (mirror the §3.3 uuid PKs of the 26 owned tables; packages/types cannot import
-// @wardenx/db). Opaque uuid strings. ────────────────────────────────────────────────────────────────────
+// @chartwarden/db). Opaque uuid strings. ────────────────────────────────────────────────────────────────────
 export type InpatientUnitId = string;
 // `IpuRoomId` is already a leaf-shared alias defined by `./supplies` (M21 kit-inventory references IPU
 // rooms) and re-exported wholesale from `./index`; redeclaring it here would be a TS2308 collision, so
@@ -276,7 +276,7 @@ export interface IpuCensusSnapshotPayload {
 
 // ── §4.11 published seam contracts into M1 (the eight typed reader seams) ────────────────────────────────
 // Declared here in the LEAF (edge-free) so downstream consumers import the TYPE with no dependsOn edge (the
-// M28-T06 / M35-T05 pattern). The @wardenx/inpatient package + the M37 backend module IMPLEMENT these; the
+// M28-T06 / M35-T05 pattern). The @chartwarden/inpatient package + the M37 backend module IMPLEMENT these; the
 // composition root registers them in M1's SeamRegistry (validateSeams) at M37-T11. Every shape is PHI-lean
 // (ids + counts), never raw names/MRN.
 

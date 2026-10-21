@@ -1,11 +1,11 @@
-import * as billing from "@wardenx/billing";
-import { BillingRuleRegistry, fail, pass } from "@wardenx/billing";
-import type { Rule, ValidationContext } from "@wardenx/billing";
+import * as billing from "@chartwarden/billing";
+import { BillingRuleRegistry, fail, pass } from "@chartwarden/billing";
+import type { Rule, ValidationContext } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/validation-service.test.ts — the §10 task-28 / §4.5
 // pre-submission VALIDATION service tests (D1 / §2.6). The service walks an injected ValidationContextPort
 // once, runs the FROZEN rule registry, persists ONE validation_run + its validation_result rows, and drives
 // the claim lifecycle in the same unit of work via the injected ClaimStateService. As with the assembly
-// suite, `@wardenx/billing` is PARTIAL-mocked so the repos are the in-memory store while `summarizeRuleRun`
+// suite, `@chartwarden/billing` is PARTIAL-mocked so the repos are the in-memory store while `summarizeRuleRun`
 // + the registry stay real; the claim-state-service is a recording STUB (the lifecycle reducer has its own
 // pure tests). Asserted: the registry runs + run/results are written; the §2.6 run_input_hash makes a re-run
 // on an unchanged claim an idempotent replay (no duplicate run, no second transition); a blocking failure
@@ -20,8 +20,8 @@ import type {
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/billing")>();
+vi.mock("@chartwarden/billing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/billing")>();
   const { buildFakeRepositories } = await import("./_billing-repo-fakes");
   const { repos, store } = buildFakeRepositories();
   return {

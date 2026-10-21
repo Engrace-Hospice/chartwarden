@@ -3,7 +3,7 @@
 // service, IDG request). It states what was ordered, the priority and indication, the ordering physician, the
 // kind-specific lines the producer validated, and the signer's 21 CFR 11.50 manifestation. A kind whose field
 // contract M11 has not published prints the envelope and says so, never an invented detail list.
-import { assertOrderRecordRenderPayload } from "@wardenx/types";
+import { assertOrderRecordRenderPayload } from "@chartwarden/types";
 import type { Block } from "../doc-model";
 import { humanize } from "../shared";
 import { defineForm } from "./compile";

@@ -1,4 +1,4 @@
-// @wardenx/db — `significant_change_event` (M9 §3.3, §2.4 D2). One row per detected threshold-crossing
+// @chartwarden/db — `significant_change_event` (M9 §3.3, §2.4 D2). One row per detected threshold-crossing
 // (PPS drop, ESAS-r increase, PAINAD ≥ 4, etc.): the rule, the delta vs threshold, and the
 // ack/escalation lifecycle. PHI-adjacent → the three-column tenancy rule (PE/location denormalized from
 // the triggering assessment). The clinical_assessment links are plain uuid (the parent is partitioned).

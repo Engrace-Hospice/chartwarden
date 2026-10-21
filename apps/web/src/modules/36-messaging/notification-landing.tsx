@@ -10,7 +10,7 @@
 // "Couldn't open this notification" page with a Retry button (still no id-derived content). The headline takes focus when a page
 // replaces the resolving line, so a screen reader announces the change. On success it replaces itself with the thread (`/messaging?channelId=&messageId=`),
 // which scrolls to the message and, for an acknowledgment request, focuses its card. Nothing here acknowledges anything.
-import { CenteredStatusLayout, Glyph, useApiClient } from "@wardenx/ui";
+import { CenteredStatusLayout, Glyph, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";

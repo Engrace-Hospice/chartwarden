@@ -4,7 +4,7 @@
 // A sender who may add members is asked once; everyone else only learns the person is not in the conversation.
 // Nothing here sends thread content anywhere: adding is the existing member-management route, which is also the
 // authority, so a stale `canAdd` can at worst produce a refused request (reported below), never access.
-import { Button } from "@wardenx/ui";
+import { Button } from "@chartwarden/ui";
 import { useEffect, useRef } from "react";
 import type { JSX } from "react";
 import type { NonMemberOption } from "./messaging-types";

@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §2.2 / D9 mortality-review three-dimension form structure (P2a). PURE types.
+// @chartwarden/quality — M30 §2.2 / D9 mortality-review three-dimension form structure (P2a). PURE types.
 //
 // The structured post-death review form (§2.2 / D9 / S-14) has three dimensions — clinical, satisfaction,
 // compliance — each persisted to the matching `mortality_review` jsonb column. The frozen schema types
@@ -7,7 +7,7 @@
 // those open payloads conform to, plus the completeness predicates the lifecycle `complete` guard reads
 // (all three dimensions must be populated before a review may be completed — §2.2). The free-text members
 // (`freeTextNotes` / `caregiverQualitativeSummary` / `notes`) are §3.6 audit-denylisted. No Fastify, no IO.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /** A four-point clinical-adequacy rating used across the clinical dimension (D9). */
 export type AdequacyRating = "inadequate" | "partial" | "adequate" | "exemplary";

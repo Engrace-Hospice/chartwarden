@@ -1,11 +1,11 @@
-// @wardenx/dosespot — M12 refill-inbox failure-code catalog (§2.7 D9, M12-T04).
+// @chartwarden/dosespot — M12 refill-inbox failure-code catalog (§2.7 D9, M12-T04).
 //
 // Every guard / validation failure in the pure refill-inbox domain raises a `RefillStateError` carrying the
-// machine-readable code below. It extends the M1 `ChartWardenError` envelope base (`@wardenx/types` — NOT the
+// machine-readable code below. It extends the M1 `ChartWardenError` envelope base (`@chartwarden/types` — NOT the
 // banned `packages/foundation`) so the M1 Fastify error handler renders it with the precise code + HTTP
 // status with no cross-module import edge (the M11/M12 medication-order-lifecycle convention). Nothing
 // transitions on a string match; the route layer (M12-T08) reuses these codes verbatim.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M12 refill-inbox failure-code catalog → canonical HTTP status. */
 export const M12_REFILL_ERROR_STATUS = {

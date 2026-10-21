@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type Ctx = { organizationId: string; userId?: string; systemActor?: boolean };
 const contexts: Ctx[] = [];
 
-vi.mock("@wardenx/tenancy", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/tenancy")>();
+vi.mock("@chartwarden/tenancy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/tenancy")>();
   return {
     ...actual,
     withOrgContext: async (_db: unknown, ctx: Ctx, fn: (tx: unknown) => unknown) => {

@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — the append-only per-claim transition log.
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — the append-only per-claim transition log.
 // PARTITION BY LIST(organization_id); composite PK (id, organization_id) including the partition key,
 // declared in SQL (0095). medicaid_claim_id is a LOGICAL uuid (medicaid_claim is partitioned with a
 // composite PK — not a single-column FK target). organization_id → organizations is the only real FK.

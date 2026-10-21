@@ -18,8 +18,8 @@ import {
   type ReconciliationTriggerEnvelope,
   type ReconciliationWorksheetPlan,
   buildReconciliationWorksheet,
-} from "@wardenx/emar";
-import type { ReconciliationTriggerKind } from "@wardenx/types";
+} from "@chartwarden/emar";
+import type { ReconciliationTriggerKind } from "@chartwarden/types";
 
 /** §4.5 — the four M6 events that open a reconciliation worksheet, mapped to their D17 trigger kind. */
 export const M6_RECONCILIATION_TRIGGER_KIND: Readonly<Record<string, ReconciliationTriggerKind>> = {
@@ -31,7 +31,7 @@ export const M6_RECONCILIATION_TRIGGER_KIND: Readonly<Record<string, Reconciliat
 
 /**
  * §2.8 D17 — decide the reconciliation worksheet to open for one of the four M6 trigger events. PURE: maps the
- * source event name to the trigger kind and delegates to the @wardenx/emar `buildReconciliationWorksheet`
+ * source event name to the trigger kind and delegates to the @chartwarden/emar `buildReconciliationWorksheet`
  * (which computes the per-kind `due_at`). Returns `null` for an event name M13 does not subscribe (defensive;
  * the dispatcher only routes the four subscribed names here). The handler upserts on the `(admission,
  * triggerKind, triggerOutboxEventId)` unique, so re-delivery is an idempotent no-op.
@@ -46,7 +46,7 @@ export function decideReconciliationTrigger(
 }
 
 /** The §4.5 event → M13-consumer bindings. The live dispatcher wires each `eventName` to `consumerName`'s
- * handler at boot; the pure decider each handler runs ships in @wardenx/emar (reconciliation / schedule /
+ * handler at boot; the pure decider each handler runs ships in @chartwarden/emar (reconciliation / schedule /
  * cascade / comfort-kit). Names mirror the §4.5 handler layout. Consumer dedup is keyed on `(eventId,
  * consumerName)` per the M1 outbox-consumer pattern; re-delivery is safe. */
 export const M13_OUTBOX_SUBSCRIPTIONS = [

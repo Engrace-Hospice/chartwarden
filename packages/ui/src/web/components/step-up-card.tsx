@@ -1,4 +1,4 @@
-// @wardenx/ui — StepUpCard: the step-up re-authentication ceremony, shared by the tenant web app
+// @chartwarden/ui — StepUpCard: the step-up re-authentication ceremony, shared by the tenant web app
 // (apps/web /step-up, M2 Auth polish) and the platform-ops console (apps/admin /step-up). Moved here from
 // apps/web/src/modules/02-identity/step-up.tsx so both apps run ONE implementation; each app's route is a
 // thin wrapper that supplies its own brand lockup and footer.

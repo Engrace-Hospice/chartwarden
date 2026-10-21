@@ -1,13 +1,13 @@
 // apps/backend/src/modules/24-billing-medicaid/permission-keys.ts — M24 (§4.7).
 //
 // The twenty-six permission keys Module 24 (Billing — Medicaid) registers into Module 3's catalog. The
-// canonical map is `M24_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// canonical map is `M24_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // allPermissionMirrorRows); this module-local surface re-exports it + the ordered key list so the §4.1
 // routes gate on `requirePermission(key)` without re-declaring the map (the M26 posture — references the
 // auth package directly, no drift).
-import { type M24ContributedPermissionKey, M24_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M24ContributedPermissionKey, M24_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
-export { M24_CONTRIBUTED_PERMISSIONS, type M24ContributedPermissionKey } from "@wardenx/auth";
+export { M24_CONTRIBUTED_PERMISSIONS, type M24ContributedPermissionKey } from "@chartwarden/auth";
 
 /** Union of every §4.7 permission key M24 owns. */
 export type M24PermissionKey = M24ContributedPermissionKey;

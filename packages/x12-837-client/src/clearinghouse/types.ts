@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the ClearinghouseTransport PORT (ADR-0053). Contract only: no IO, no SDK, no vendor.
+// @chartwarden/x12-837-client — the ClearinghouseTransport PORT (ADR-0053). Contract only: no IO, no SDK, no vendor.
 //
 // One transport covers the whole claim cycle with a clearinghouse — eligibility, pre-submission validation,
 // NOE/NOTR, claims (incl. replacement/void), the two-stage acknowledgments (clearinghouse, then payer), 835
@@ -107,7 +107,7 @@ export interface ClaimAdjustment {
 
 export interface ClearinghouseSubmission {
   readonly kind: SubmissionKind;
-  /** Our deterministic control number (minted by @wardenx/billing). Doubles as the business key. */
+  /** Our deterministic control number (minted by @chartwarden/billing). Doubles as the business key. */
   readonly controlNumber: string;
   /**
    * Idempotency key. The same key + identical payload returns the original receipt with `replayed: true`; the
@@ -179,7 +179,7 @@ export interface Page<T> {
 
 // ─── Remittance ─────────────────────────────────────────────────────────────────────────────────
 
-/** An 835 as delivered. Parsing stays in @wardenx/x12-835-client (M25); the transport hands over the raw file. */
+/** An 835 as delivered. Parsing stays in @chartwarden/x12-835-client (M25); the transport hands over the raw file. */
 export interface RemittanceFile {
   readonly remittanceId: string;
   readonly receivedAt: string;

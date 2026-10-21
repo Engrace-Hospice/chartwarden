@@ -11,7 +11,7 @@ import {
   hasAttemptsLeft,
   mapVendorStatus,
   queueParametersFor,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // M36 GAP-101 — out-of-band dispatch decision, retry/backoff policy and vendor-status reconcile (§4.4/§4.7/§4.9).
 import { describe, expect, it } from "vitest";
 

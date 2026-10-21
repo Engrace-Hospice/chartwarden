@@ -1,4 +1,4 @@
-// @wardenx/db — `message_attachment` (M36 Secure Messaging §3.4, WP 1.5). A file hung off a message.
+// @chartwarden/db — `message_attachment` (M36 Secure Messaging §3.4, WP 1.5). A file hung off a message.
 //
 // Lifecycle: authorize (row created, `completed_at` NULL, `message_id` NULL) -> complete (object verified in the
 // tenant's M22 object store) -> scan (`scan_state` pending -> clean | quarantined, final) -> bound to a message on

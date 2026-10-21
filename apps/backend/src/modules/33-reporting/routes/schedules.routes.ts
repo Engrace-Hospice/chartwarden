@@ -3,7 +3,7 @@
 // The scheduled-delivery pipeline surface (D7): list/create/read/edit a `report_schedule`, pause / resume
 // / cancel it, bulk-delete its run history, and read the run ledger. Create + edit enforce the §2.3 domain
 // rules in the service (CRON_TOO_FREQUENT ≥ 5-min cadence, RECIPIENT_NOT_IN_ORG, PDF_ROW_LIMIT_EXCEEDED).
-// Every route is gated by the REAL Authorization Contract (`requirePermission` from @wardenx/auth, M3) on
+// Every route is gated by the REAL Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on
 // the §4.6 `report.schedule.*` keys, and (GAP-097) COMPOSED with the M33-owned ABAC predicates via
 // `requireAbac` — `PermissionDef.abac` is only a declaration, `requirePermission` never reads it:
 //   - create        → `dashboard_visibility` on the body's `reportViewId` (the predicate loads the STORED view
@@ -20,7 +20,7 @@
 // ONE `withOrgContext` tx on the PRIMARY (RLS scopes to `app.org_id`); each carries `requireIdempotencyKey`.
 // READS disclose the actor's own org schedules / runs; the M4 write-audit trigger on the `withOrgContext`
 // path is the §164.312(b) anchor. Org/actor binding is ALWAYS server-side (request.context, never the body).
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

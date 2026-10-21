@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 permission-key catalog (§4.6).
+// @chartwarden/cost-report — M27 permission-key catalog (§4.6).
 //
 // The authoritative list of every permission key Module 27 owns. In a later phase the backend re-exports
 // this and registers it into Module 3's catalog (the M30 `M30_PERMISSIONS` / M33 `M33_PERMISSIONS`

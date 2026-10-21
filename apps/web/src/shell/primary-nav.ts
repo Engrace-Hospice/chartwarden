@@ -1,4 +1,4 @@
-import type { GlyphName } from "@wardenx/ui";
+import type { GlyphName } from "@chartwarden/ui";
 // apps/web/src/shell — the curated primary navigation (2026-09-25 redesign). The sidebar shows a fixed,
 // clinician-shaped list (Home · Patients · Admissions … · Clinical Tools · System) instead of one
 // group per module. Every registered top-level screen still has exactly one home: it is either an

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/attachments/attachment-policy.ts — WP 1.5: what a chat attachment may be, and
 // the opaque storage key it lives under. Pure; no I/O.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** 25 MB: the M22 verified-upload ceiling is 25 MiB; messaging stays under it (and under the 1075 CHECK). */
 export const MAX_ATTACHMENT_BYTES = 25_000_000;

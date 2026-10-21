@@ -4,9 +4,9 @@
 // queries. They used to fetch the newest 200 rows and filter + paginate in memory, which made every older
 // record unreachable. Here the filters, the patient scope and the `(anchor DESC, id DESC)` keyset cursor
 // are all in the WHERE clause, and a page is fetched as `size + 1` rows so `hasMore` is exact.
-import { schema } from "@wardenx/db";
-import type { QualityDb } from "@wardenx/quality";
-import { ChartWardenError } from "@wardenx/types";
+import { schema } from "@chartwarden/db";
+import type { QualityDb } from "@chartwarden/quality";
+import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, gte, inArray, lt, lte, ne, or } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";

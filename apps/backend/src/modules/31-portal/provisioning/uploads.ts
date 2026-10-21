@@ -8,9 +8,9 @@
 //
 // The caller's account + patient come from the SESSION; a row that is not this account's is a 404.
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull } from "drizzle-orm";
 import type { PortalPhiCipher } from "../portal-crypto";
 import { planDocumentUpload } from "../write-paths/document-upload";

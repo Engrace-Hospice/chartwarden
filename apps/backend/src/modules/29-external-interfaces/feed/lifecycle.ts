@@ -25,7 +25,7 @@ import type {
   ExternalFeedServePosture,
   ExternalFeedStatus,
   Hl7StatusTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The status a freshly-created feed lands in (§2.2 `[entry] --> proposed`, "Operator requests"). */
 export const EXTERNAL_FEED_INITIAL_STATUS: ExternalFeedStatus = "proposed";

@@ -12,8 +12,8 @@
 // through M22's outbound-fax port (../fax/outbound-fax.ts; ./records-request-fax.ts records every attempt).
 // Sending is `intake.upload` (it is part of making the request); no step-up: it discloses exactly what the
 // printed sheet does, to the recipient the request already names or the number staff type.
-import { requirePermission } from "@wardenx/auth";
-import { DegradedError, NotFoundError, UnauthorizedError, ValidationError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { DegradedError, NotFoundError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { normaliseFaxNumber } from "../fax/fax-number";
 import type { OutboundFaxTransport } from "../fax/outbound-fax";

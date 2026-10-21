@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/quality",
+  "name": "@chartwarden/quality",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@wardenx/db": "workspace:*",
-    "@wardenx/types": "workspace:*"
+    "@chartwarden/db": "workspace:*",
+    "@chartwarden/types": "workspace:*"
   }
 }

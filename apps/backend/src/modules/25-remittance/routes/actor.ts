@@ -6,11 +6,11 @@
 // (a manual-match, a denial assignment/transition, an appeal transition, an overlay edit) is stamped with
 // the server-assembled membership id. The internal seam routes (§4.1 #29-31) additionally require the
 // `m25.system_principal` attribute (architecture §17 service-to-service token).
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { BROAD_DENIAL_SCOPE_ROLES } from "../abac-predicates";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles, all server-assembled from `request.context`. */

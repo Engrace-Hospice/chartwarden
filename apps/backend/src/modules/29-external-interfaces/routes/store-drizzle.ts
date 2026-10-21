@@ -13,8 +13,8 @@ import { createHash, randomUUID } from "node:crypto";
 // decrypt route (§4.1.3) therefore fails closed with a typed 501 until the platform cipher lands.
 import { type QuietWindow, parseQuietWindows } from "../listener/quiet-window";
 
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   DegradedError,
@@ -22,7 +22,7 @@ import {
   type Hl7InboundProposalKind,
   NotFoundError,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, exists, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import {

@@ -251,7 +251,7 @@ module.exports = {
       name: "m23-billing-no-ai-platform",
       comment:
         "M23 (Billing — Medicare) §D13 AI-BLOCK: the Medicare-FFS billing record is a billing-fraud " +
-        "surface under OIG / UPIC / RAC scrutiny, so the AI block is absolute. Neither the @wardenx/billing " +
+        "surface under OIG / UPIC / RAC scrutiny, so the AI block is absolute. Neither the @chartwarden/billing " +
         "domain nor the M23 backend module may import the AI platform package or the Anthropic SDK directly — " +
         "Module 32 cannot create, modify, witness, or resolve any billing row. The only AI surface M23 admits " +
         "is the read-only validation_ai_advisory projection (a typed seam, never a direct ai-platform import). " +
@@ -267,7 +267,7 @@ module.exports = {
     {
       name: "m23-billing-no-anthropic-sdk",
       comment:
-        "M23 (Billing — Medicare) §D13 AI-BLOCK: @wardenx/billing and the M23 backend module may not import " +
+        "M23 (Billing — Medicare) §D13 AI-BLOCK: @chartwarden/billing and the M23 backend module may not import " +
         "the @anthropic-ai/sdk vendor package — no module under the AI block may call an LLM SDK directly. " +
         "(M23 spec D13 / §8.6.)",
       severity: "error",

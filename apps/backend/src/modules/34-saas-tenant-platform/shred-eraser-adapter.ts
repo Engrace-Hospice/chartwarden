@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { EraserReceipt, ShredEraserCallbackPort } from "@wardenx/saas-tenant-platform";
-import type { DataClass, DataEraser } from "@wardenx/types";
+import type { EraserReceipt, ShredEraserCallbackPort } from "@chartwarden/saas-tenant-platform";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { getEraser } from "../../bootstrap/erasers/registry";
 
 /**

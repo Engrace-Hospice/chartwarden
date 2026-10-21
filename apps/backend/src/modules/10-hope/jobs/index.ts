@@ -18,14 +18,14 @@ import {
   buildTimepointWindowAlert,
   classifyCapture,
   decideSfvWatchdogStatus,
-} from "@wardenx/hope";
+} from "@chartwarden/hope";
 import type {
   HopeRfaKind,
   HopeScheduleStatus,
   HopeSfvAlert,
   HopeSfvStatus,
   HopeTimepointWindowAlert,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── §4.8 queue catalog ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_kill_switch_state` (M32 §3.2.12). W3: the switch that stops a capability, for one
+// @chartwarden/db — `ai_kill_switch_state` (M32 §3.2.12). W3: the switch that stops a capability, for one
 // tenant or for everyone.
 //
 // THE ONLY MIXED-SCOPE TABLE IN M32, and the asymmetry IS the control. `organization_id` is NULLABLE and

@@ -1,4 +1,4 @@
-// @wardenx/types — Module 6 (Admission, Election & Certification) leaf contracts (M6-T01).
+// @chartwarden/types — Module 6 (Admission, Election & Certification) leaf contracts (M6-T01).
 //
 // Per ADR-0005 D1 the cross-module CONTRACTS live in this leaf package (the M6 spec's references to
 // `packages/domain/admission/src/readers` resolve here — there is no domain/foundation package on
@@ -16,7 +16,7 @@
 // plan's extra names so M6-T05 has every named seam available; T05 makes the final
 // register/validate decisions (which seams go into REQUIRED_SEAMS, which fold together).
 
-// ── Leaf-safe id + value aliases (mirror the §3.2 pgEnums; packages/types cannot import @wardenx/db) ─
+// ── Leaf-safe id + value aliases (mirror the §3.2 pgEnums; packages/types cannot import @chartwarden/db) ─
 
 /** A patient id (M5 owns the row; M6 reads it). */
 export type PatientId = string;

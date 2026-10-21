@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.2 D6 administration-record lifecycle state machine — M13-T03.
+// @chartwarden/emar — §2.2 D6 administration-record lifecycle state machine — M13-T03.
 import { describe, expect, it } from "vitest";
 import {
   ADMINISTRATION_GRAPH,

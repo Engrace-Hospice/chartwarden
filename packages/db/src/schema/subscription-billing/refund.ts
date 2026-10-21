@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `refund` (M35 §3.3, D16). TENANT-SCOPED, RLS on app.org_id (0143). The §D16 four-stage
+// @chartwarden/db — `refund` (M35 §3.3, D16). TENANT-SCOPED, RLS on app.org_id (0143). The §D16 four-stage
 // refund workflow (request → approve/deny → execute) with a step-up-audit link on approval. `organization_id`
 // and every `*_by_membership_id` are logical uuids (M35-F04); `invoice_id` is a REAL FK. CHECKs enforce a
 // positive amount and a ≥40-char reason detail.

@@ -1,4 +1,4 @@
-// @wardenx/db — `problem` (M7 §3.3). A care-plan problem (terminal/related/unrelated drives M23 claim
+// @chartwarden/db — `problem` (M7 §3.3). A care-plan problem (terminal/related/unrelated drives M23 claim
 // ICD-10 sequencing). PHI-bearing → three-column tenancy rule. ICD-10/SNOMED are M38 terminology codes
 // stored as plain text (resolved/validated app-side via the M38 seam). `description` + `resolution_note`
 // are free-text → denylisted in the M4 write-audit trigger (§3.5). `sudRelated` marks Part-2-protected

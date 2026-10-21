@@ -32,14 +32,14 @@ import {
   aiTokenBudgetFor,
   createAnthropicModelBackend,
   createModelBackendRegistry,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import {
   M32_AUDIT_DENYLIST,
   M32_AUDIT_RETENTION_CLASS,
   M32_CIPHER_COLUMNS,
   M32_IMMUTABLE_COLUMNS,
   M32_TABLE_NAMES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import {
   AiPromptArtifactError,

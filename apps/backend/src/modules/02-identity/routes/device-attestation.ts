@@ -22,9 +22,9 @@
 // complement to on-device detection ("unusual access patterns from clinical mobile may flag"), and a
 // device that repeatedly fails the posture check is precisely that signal. The row is written before
 // the 401 is sent.
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { requirePermission, requireSession } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { requirePermission, requireSession } from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   auditDeviceAttestationFailed,

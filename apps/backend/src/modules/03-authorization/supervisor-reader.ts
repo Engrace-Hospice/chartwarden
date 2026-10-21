@@ -15,10 +15,10 @@
 // The grant's `scope` jsonb is NOT consulted (its shape is not standardised), so a grant narrowed below the
 // membership's locations is treated as covering all of them. This is a documented over-approximation.
 // Every method fails closed: unknown / cross-tenant / non-active memberships resolve to `[]` / `false`.
-import { roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { SupervisorReader } from "@wardenx/types";
+import { roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { SupervisorReader } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 const MB = schema.memberships;

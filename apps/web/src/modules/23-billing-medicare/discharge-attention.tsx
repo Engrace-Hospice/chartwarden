@@ -1,4 +1,4 @@
-import { InlineAlert, Panel, StatusPill } from "@wardenx/ui";
+import { InlineAlert, Panel, StatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — the guided "how the stay ended" panels billers see on a claim:
 //   * MissingDischargeDetailsPanel — the final claim is held because the death has no place of death / the transfer
 //     no receiving care setting (the bereavement_discharge_legitimacy rule's PLACE_OF_DEATH_MISSING /

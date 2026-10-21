@@ -25,7 +25,7 @@ import type {
   ProviderEntityId,
   TriageCallId,
   TriageMetricsWindow,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   REQUIRED_SEAMS,

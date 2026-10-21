@@ -2,7 +2,7 @@ import type {
   AiActiveRoutingOverride,
   AiBackendRoutingRow,
   AiTokenBudget,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 // apps/backend/src/modules/32-ai-platform/invocation/store.ts — the data PORTS the M32-T04 invocation
 // pipeline composes over, plus an in-memory implementation for the slice tests.
 //
@@ -24,7 +24,7 @@ import type {
 //     rather than a table read, because M32 owns no column that holds it.
 //
 // THE PORTS ARE NARROW: no `db` handle reaches the pipeline service, so every rule in
-// `@wardenx/ai-platform/invocation` is exercised against the in-memory store and the Drizzle
+// `@chartwarden/ai-platform/invocation` is exercised against the in-memory store and the Drizzle
 // implementation carries no branch a test cannot reach.
 import type {
   AiBackendHealthStatus,
@@ -36,7 +36,7 @@ import type {
   AiRoutingOverrideReason,
   AiRoutingReason,
   AiZdrStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── projections ────────────────────────────────────────────────────────────────────────────────────
 

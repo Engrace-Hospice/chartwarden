@@ -59,8 +59,8 @@
 // `confirmContact` only from `proposed`, and this handler pre-filters on `status = 'proposed'` before ever
 // calling the machine — a redelivery after the first delivery already confirmed the contact finds it
 // `active` and is a silent no-op, never a second confirm or a second score row.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   AdmissionId,
   BereavedContactId,
@@ -68,7 +68,7 @@ import type {
   ConsentId,
   IsoInstant,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import { transitionBereavedContact } from "../lifecycle/index";
 import { scoreBereavementRisk } from "../risk/index";
@@ -83,7 +83,7 @@ const SCORE = schema.bereavementRiskScore;
 const CONSUMER_USER_ID = "";
 
 /** M39's own literal for the bereavement-outreach consent type (`consent-store-db.ts:1318`) — no shared
- *  constant exists anywhere in `@wardenx/types` to import instead. */
+ *  constant exists anywhere in `@chartwarden/types` to import instead. */
 const BEREAVEMENT_OUTREACH_CONSENT_TYPE_KEY = "bereavement_outreach_consent";
 
 export const M16_CONSENT_SIGNED_CONSUMER = {

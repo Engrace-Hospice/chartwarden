@@ -1,5 +1,5 @@
-import { type DbClient, schema } from "@wardenx/db";
-import { ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ResourceNotFoundError } from "./routes/service";
 

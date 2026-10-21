@@ -10,13 +10,13 @@
 //
 //   1. §2.6 says "the `EncounterCreator` seam call is idempotent on `triage_call_id` — multiple calls
 //      return the same encounter row (M8 §4 contract)". It is not, and cannot be: `CreateEncounterInput`
-//      (@wardenx/types) carries no triage-call id, so M8 has nothing to dedupe on and
+//      (@chartwarden/types) carries no triage-call id, so M8 has nothing to dedupe on and
 //      `createDraftEncounter` inserts a fresh draft every time. The §4.8 `m19.encounter-creator.consumer`
 //      retries FIVE times with exponential backoff, so "call the seam twice" is the expected path on any
 //      slow-but-successful M8 write. M19 owns the guard: `linkEncounter` is a CONDITIONAL write
 //      (`WHERE linked_encounter_id IS NULL`) and `already_linked` is a first-class outcome.
 //   2. D8 names `EncounterCreator.createTriageTelephonicContact({...})`. M8 published one method,
-//      `createDraftEncounter`. M19 calls the real one (the M19-T01 note in @wardenx/types records this).
+//      `createDraftEncounter`. M19 calls the real one (the M19-T01 note in @chartwarden/types records this).
 //   3. D1/D8 name `encounter_type='triage_telephonic_contact'`. `EncounterType` has no such member; the
 //      value is `telephonic` (`M19_ENCOUNTER_TYPE`). M19's own `triage_call` row is what makes the
 //      telephonic contact a triage one — a new M8 enum member would have been a cross-module schema change
@@ -39,8 +39,8 @@ import type {
   OrgId,
   PatientId,
   TriageCallId,
-} from "@wardenx/types";
-import { M19_ENCOUNTER_TYPE } from "@wardenx/types";
+} from "@chartwarden/types";
+import { M19_ENCOUNTER_TYPE } from "@chartwarden/types";
 import type { TriageSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
 import type { TriageActorDiscipline } from "../lifecycle/protocol";

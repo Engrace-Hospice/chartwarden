@@ -1,4 +1,4 @@
-import { LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import { LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Per-member role editor (TASK-030).
 // Embedded inline (expandable row) in Staff Management. Grant/revoke a role on ONE membership over the
 // M3 role-assignment routes (GET/POST /memberships/:id/roles, DELETE /memberships/:id/roles/:rid, GET

@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_report_validation_rule` (M27 §3.3, D16/D21; non-partitioned; retention
+// @chartwarden/db — `cost_report_validation_rule` (M27 §3.3, D16/D21; non-partitioned; retention
 // `operational`). The configurable rule library: platform defaults (organization_id NULL) layered with
 // per-tenant rules. `regulatory_required` rules cannot be tenant-disabled; MAC-jurisdiction-scoped rules
 // ship additively (NGS-J6 Phase 1). `predicate_spec` is consumed by the rule-engine (P2). NOTE: this is

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `election_statement` (M6 §3.3). The signed hospice-benefit election for a period.
+// @chartwarden/db — `election_statement` (M6 §3.3). The signed hospice-benefit election for a period.
 // PHI-bearing (carries a patient reference) → the three-column tenancy rule (org NOT NULL + nullable
 // provider_entity_id / location_id). Cross-module refs (M5 patient, M39 representative consent, M40
 // attending physician, M22 document) are plain uuid app-validated; the election_period FK is

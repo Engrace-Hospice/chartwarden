@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 Print Image (PI) renderer (D11, §1.1). The PI file is the human-readable
+// @chartwarden/cost-report — M27 Print Image (PI) renderer (D11, §1.1). The PI file is the human-readable
 // rendition of the cost report the agency's Compliance Officer reviews BEFORE the machine ECR file is
 // uploaded to MCReF — same underlying snapshot values, presented as labeled, aligned text tables instead
 // of fixed-field records. It is review evidence, not a machine artifact, so its contract is legibility +
@@ -7,7 +7,7 @@
 // review.
 //
 // PURE DOMAIN: reuses the writer's deterministic leaf walk + the records kernel's money formatting; no
-// Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No PHI — aggregate financial /
+// Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. No PHI — aggregate financial /
 // statistical values only (D18).
 import { WORKSHEET_CODES, type WorksheetCode } from "../contracts";
 import { centsToEcrDollars } from "./records";

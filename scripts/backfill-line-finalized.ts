@@ -16,7 +16,7 @@
  * Run:   bun run scripts/backfill-line-finalized.ts [--org <uuid>] [--page-size <n>] [--operator <label>]
  * Env:   DATABASE_URL (the RLS-enforced app role); DATABASE_ADMIN_URL (optional, used only to list organizations)
  */
-import { createDbClient, schema } from "@wardenx/db";
+import { createDbClient, schema } from "@chartwarden/db";
 import {
   buildBootOutboxCatalog,
   buildTxOutboxPublisher,

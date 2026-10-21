@@ -10,13 +10,13 @@ import {
   WorkQueueLayout,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — verbal-expiring queue (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (verbal-order workflow). The RN's
 // queue of verbal_pending orders inside the 48h signature window (42 CFR 418.104(b)), sorted by deadline.
 // Each row shows a live countdown with pre-expiry colour tiers at 12h (amber) and 2h (red); past-deadline
 // rows are flagged red (the server flips them to expired_unsigned — this is a UX cue only, ADR-0030, no
-// frontend authz). Reads GET /api/v1/orders/verbal-expiring via the typed client. Leaves only (@wardenx/ui).
+// frontend authz). Reads GET /api/v1/orders/verbal-expiring via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";

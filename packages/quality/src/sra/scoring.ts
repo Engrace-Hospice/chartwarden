@@ -1,11 +1,11 @@
-// @wardenx/quality — SRA 5×5 risk-matrix scoring arithmetic (M30-P2a). Pure, IO-free.
+// @chartwarden/quality — SRA 5×5 risk-matrix scoring arithmetic (M30-P2a). Pure, IO-free.
 //
 // `sra_finding` carries an `inherent_5x5_score` and a `residual_5x5_score` (V-13): each is a
 // likelihood × impact product on a 5×5 matrix (likelihood ∈ 1..5, impact ∈ 1..5 → score ∈ 1..25). This
 // module is the pure arithmetic: validate the factors / score, compute the product, map a score to its
 // risk band, and compute the residual reduction. The risk band feeds the §4.3 `SecurityRiskAssessmentReader`
 // seam's `getOpenFindingsBands` breakdown (critical / high / medium / low). No IO.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The inclusive bounds of a single 5×5 factor (likelihood or impact). */
 export const RISK_FACTOR_MIN = 1;

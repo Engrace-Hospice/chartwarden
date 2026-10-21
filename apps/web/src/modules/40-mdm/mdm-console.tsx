@@ -9,11 +9,11 @@ import {
   type StatusTone,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/40-mdm — Master Data Management console (M40, Track A).
 // Spec: docs/design/screens/admin/WARDENX_UI_MASTER_DATA_MDM.md — "Use Work Queue."
 // Search a kind's canonical set, view a result's detail. Backed by GET /api/v1/mdm/:kind/search via
-// the generated typed client. Imports only leaves (@wardenx/ui).
+// the generated typed client. Imports only leaves (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 

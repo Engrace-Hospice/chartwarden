@@ -2,7 +2,7 @@
 // (M12-T08, spec §4.4). The full `m12.*` taxonomy keyed on M12's own tables, under the `m12.` namespace
 // (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for naming
 // (`mN.<resource>.<verb>`), ownership (moduleOwner='m12'), and valid declared consumers (real module ids).
-// The canonical wire `eventName` mirrors `M12_EVENT_NAMES` in @wardenx/types (the closed §4.4 set the
+// The canonical wire `eventName` mirrors `M12_EVENT_NAMES` in @chartwarden/types (the closed §4.4 set the
 // lifecycle machine / refill machine / transmission worker / webhook handler / patient-sync worker / roster
 // service / SLA + IAL2 crons may emit). Each entry adds the TypeBox `payloadSchema` + declared consumers the
 // dispatcher validates each publish against, so "DB updated but the event never went out" is closed in the
@@ -14,8 +14,8 @@
 // it only emits the typed outbox event.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import { HospiceCoverageSchema } from "@wardenx/types";
-import type { ModuleEventContribution, ModuleToken } from "@wardenx/types";
+import { HospiceCoverageSchema } from "@chartwarden/types";
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
@@ -25,7 +25,7 @@ const medClass = Type.Union([
   Type.Literal("compounded"),
 ]);
 
-// The §4.4 wire names mirror `M12_EVENT_NAMES` (@wardenx/types) EXACTLY — several merge resource+verb into a
+// The §4.4 wire names mirror `M12_EVENT_NAMES` (@chartwarden/types) EXACTLY — several merge resource+verb into a
 // single token (`m12.refill_request_received`, `m12.medication_history_pulled`, …) rather than the stricter
 // two-dot `OutboxEventName` template. They satisfy check-fitness-gaps' `mN.<...>` scan; `eventName` is relaxed
 // to `string` here (every other field stays fully type-checked) and cast once to `ModuleEventContribution`.
@@ -60,7 +60,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     moduleOwner: "m12",
     // F-235 (#248) — decision A1 (F-231): medications are EXCLUDED from DocLens writeback. M12 D12 and AI
     // Governance §2.1.1 hard-block AI-introduced medication changes, so no M22 commit ever targets M12
-    // (`DOCLENS_M5_WRITEBACK_FIELDS` in @wardenx/types is the only allowlist, M5-only) and nothing in
+    // (`DOCLENS_M5_WRITEBACK_FIELDS` in @chartwarden/types is the only allowlist, M5-only) and nothing in
     // production emits this; `m22` is dropped at the source, not deferred. Only the in-memory reference
     // service's `fromExtraction` arm still names it.
     description:

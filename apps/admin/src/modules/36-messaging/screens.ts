@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/36-messaging — M36 platform-ops admin screens, registered into the M34-owned admin shell
 // at composition (apps/admin/src/main.tsx), the same pattern as 35-subscription-billing. Each `requiredPermission`
 // is the key the matching backend route gates on; the server stays authoritative, this only gates nav visibility.

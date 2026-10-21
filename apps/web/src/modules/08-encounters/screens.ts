@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/08-encounters — M8 screen registration (Track B, ADR-0030).
 // The §5 Encounters screens that have a backing M8 read route on the generated client: the
 // patient-scoped Encounter Read (§5.2 — now also hosting the Sign/Acknowledge/Cosign-sign/Supervisor-
@@ -12,7 +12,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // the authoring surfaces would "fill in as their write paths harden" — `PATCH .../selections` had been
 // mounted since M8-T09 and persisting since #114. What was missing is the MENU: the route carries
 // `sectionId`/`code` as free strings and rejects an unknown one, and the template registry + vocabulary
-// corpus (`@wardenx/hearthnote`, `@wardenx/narrative-vocab`, both since M8-T05) were on nobody's wire.
+// corpus (`@chartwarden/hearthnote`, `@chartwarden/narrative-vocab`, both since M8-T05) were on nobody's wire.
 // `GET .../template` is that menu, served rather than shipped so the client cannot hold a second,
 // divergent copy of the rules `assembleSelections` enforces.
 //

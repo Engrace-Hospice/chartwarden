@@ -1078,7 +1078,7 @@ export const EscalateRequest = Type.Object({
 
 ```typescript
 // packages/oncall/src/seams.ts
-import type { OrgId, PatientId, MembershipId, IsoDateTime, IsoDate, ProviderEntityId } from '@wardenx/domain/ids'
+import type { OrgId, PatientId, MembershipId, IsoDateTime, IsoDate, ProviderEntityId } from '@chartwarden/domain/ids'
 
 export interface OnCallProvider {
   // M36-consumed: who's on call NOW for this provider entity?
@@ -1129,22 +1129,22 @@ export function setTriageCallMetricsProvider(p: TriageCallMetricsProvider): void
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { PatientReader, CaregiverReader } from '@wardenx/patient/seams'        // M5
-import type { CaseloadProvider } from '@wardenx/auth/seams'                          // M5/M17
-import type { AdmissionReader } from '@wardenx/admission/seams'                      // M6
-import type { CarePlanReader } from '@wardenx/care-plan/seams'                       // M7
-import type { LatestAssessmentProvider } from '@wardenx/assessments/seams'           // M9
-import type { EncounterCreator, BillableEncounterReader } from '@wardenx/encounters/seams'  // M8
-import type { OrderSignatureProvider } from '@wardenx/orders/seams'                  // M11
-import type { RefillInboxProvider, MedicationOrderProvider } from '@wardenx/dosespot/seams' // M12
-import type { VisitAssignmentReader } from '@wardenx/scheduling/seams'               // M17
-import type { ProtocolSuggestionProvider, HospitalizationRiskProvider } from '@wardenx/ai-platform/seams' // M32
-import type { MessagingProvider, AlertEmitter } from '@wardenx/messaging/seams'      // M36
-import type { TerminologyProvider } from '@wardenx/terminology/seams'                // M38
-import type { ConsentEvaluator } from '@wardenx/consent/seams'                       // M39
-import type { ExternalPhysicianReader, VendorReader } from '@wardenx/mdm/seams'      // M40
-import type { CredentialReader, MembershipReader } from '@wardenx/identity/seams'    // M2
-import type { BereavementPlanProvider } from '@wardenx/bereavement/seams'            // M16
+import type { PatientReader, CaregiverReader } from '@chartwarden/patient/seams'        // M5
+import type { CaseloadProvider } from '@chartwarden/auth/seams'                          // M5/M17
+import type { AdmissionReader } from '@chartwarden/admission/seams'                      // M6
+import type { CarePlanReader } from '@chartwarden/care-plan/seams'                       // M7
+import type { LatestAssessmentProvider } from '@chartwarden/assessments/seams'           // M9
+import type { EncounterCreator, BillableEncounterReader } from '@chartwarden/encounters/seams'  // M8
+import type { OrderSignatureProvider } from '@chartwarden/orders/seams'                  // M11
+import type { RefillInboxProvider, MedicationOrderProvider } from '@chartwarden/dosespot/seams' // M12
+import type { VisitAssignmentReader } from '@chartwarden/scheduling/seams'               // M17
+import type { ProtocolSuggestionProvider, HospitalizationRiskProvider } from '@chartwarden/ai-platform/seams' // M32
+import type { MessagingProvider, AlertEmitter } from '@chartwarden/messaging/seams'      // M36
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'                // M38
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'                       // M39
+import type { ExternalPhysicianReader, VendorReader } from '@chartwarden/mdm/seams'      // M40
+import type { CredentialReader, MembershipReader } from '@chartwarden/identity/seams'    // M2
+import type { BereavementPlanProvider } from '@chartwarden/bereavement/seams'            // M16
 ```
 
 At M19 init:
@@ -1653,7 +1653,7 @@ Rate limits are expressed as M1 platform-limiter `RateLimitPolicy` declarations 
 
 ```typescript
 // apps/backend/src/modules/19-oncall/rate-limits.ts
-import { definePlatformRateLimits } from '@wardenx/platform/rate-limiter'
+import { definePlatformRateLimits } from '@chartwarden/platform/rate-limiter'
 
 export const M19_RATE_LIMITS = definePlatformRateLimits([
   {

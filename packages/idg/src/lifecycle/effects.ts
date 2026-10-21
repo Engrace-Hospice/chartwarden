@@ -1,4 +1,4 @@
-// @wardenx/idg — IDG-lifecycle side-effect descriptors (§2.7 / §2.8, M14-T03).
+// @chartwarden/idg — IDG-lifecycle side-effect descriptors (§2.7 / §2.8, M14-T03).
 //
 // The M8/M11/M13 §2.8 pattern: every transition carries an explicit, in-transaction side-effect list
 // (audit + outbox + cross-row ops), and the COMMIT binds the aggregate row, the audit row, the child
@@ -10,7 +10,7 @@
 // `fire-and-forget` distinction (§7.10): `alert` / `notify_compliance` are M36 dispatches the service
 // runs OUTSIDE the rollback boundary — M36 unavailability must NOT block a clinician from adjourning a
 // meeting. `outbox` events are the durable cross-module contract and run INSIDE the transaction.
-import type { M14AlertPayload, M14EventName } from "@wardenx/types";
+import type { M14AlertPayload, M14EventName } from "@chartwarden/types";
 
 /** The §4.10 typed-alert discriminator the `alert` effect names (the payload is assembled in M14-T06). */
 export type M14AlertKind = M14AlertPayload["kind"];

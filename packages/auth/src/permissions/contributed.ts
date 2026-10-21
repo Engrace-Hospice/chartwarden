@@ -1,4 +1,4 @@
-// @wardenx/auth · permissions — the M1/M2 permission-key back-fill (M3 — Authorization,
+// @chartwarden/auth · permissions — the M1/M2 permission-key back-fill (M3 — Authorization,
 // M3-T10; spec §3.3 / M03-F07; M2 spec §4.7 binding handshake).
 //
 // The §3.3 ownership model: the catalog is code, and EACH module contributes its own
@@ -3051,7 +3051,7 @@ export type M33ContributedPermissionKey = keyof typeof M33_CONTRIBUTED_PERMISSIO
  * Module 23 (Billing — Medicare) contributed permission keys (M23 §4.6) — the TWENTY-EIGHT keys
  * M23 owns + registers into M3's catalog. All group under the single `billing` category (§4.6).
  * Mirror of the M23-owned source of truth (apps/backend/src/modules/23-billing-medicare/permission-keys.ts),
- * which the Integrate phase asserts equal to `@wardenx/billing`'s eventual `M23_PERMISSIONS` tuple.
+ * which the Integrate phase asserts equal to `@chartwarden/billing`'s eventual `M23_PERMISSIONS` tuple.
  * Defaults: the `abac` per key is the dominant §4.7 predicate (the route composes it after the M3-base
  * `inOrg` / `caseload_or_scope`): claim reads/writes gate `claim_in_billing_manager_caseload`; assemble +
  * NOE/NOTR + sequestration + MAC-credential gate `provider_entity_billing_scope`; validation override gates

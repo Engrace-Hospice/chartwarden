@@ -15,7 +15,7 @@ import {
   type PortalAccessGrantKind,
   type PortalAccountStatus,
   SESSION_POLICY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { requirePortal } from "./errors";
 
 /** §6.4 / D3 — TOTP step-up is valid for 15 minutes after it is satisfied (M31-local; not a timeout). */

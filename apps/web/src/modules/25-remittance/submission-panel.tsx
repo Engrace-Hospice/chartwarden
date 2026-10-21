@@ -5,7 +5,7 @@ import {
   StatusPill,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the SUBMISSION section of an ADR, appeal or reopening panel (hospice ADR/TPE/QIC
 // PRD, milestone 6a). WardenX does not send anything to a MAC, QIC or esMD gateway yet: the filing is made outside
 // WardenX through the channel the MAC or QIC instructs, and this section tracks the attempt and keeps the proof. It

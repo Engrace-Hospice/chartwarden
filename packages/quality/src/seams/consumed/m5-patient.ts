@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M5 (Patient). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M5 (Patient). PRESENT producer (§4.4).
 //
 // M30 reads `PatientHeaderReader.minimalForQualityContext` ONLY — the decedent display name + date of
 // death used to label mortality reviews and CAHPS decedent samples. It does NOT read addresses, payer

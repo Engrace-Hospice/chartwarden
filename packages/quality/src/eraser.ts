@@ -1,4 +1,4 @@
-// @wardenx/quality — the M30 tenant-offboarding eraseFn (M4 destruction registry, §3.7 / D6 / §8.4).
+// @chartwarden/quality — the M30 tenant-offboarding eraseFn (M4 destruction registry, §3.7 / D6 / §8.4).
 //
 // On tenant offboarding M30's eraseFn deletes the org's OPERATIONAL quality rows (the transient
 // `measure_recompute_queue`, the reproducible `quality_measure_value` aggregate ledger, and the CAHPS

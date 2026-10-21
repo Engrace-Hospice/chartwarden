@@ -3,7 +3,7 @@
 //
 // Exercises M36's routes through the FULL M1 middleware chain via Fastify `inject` with no live
 // infra: buildServer() mounts the foundation host, registerMessagingRoutes() mounts the §4.1
-// inventory over the in-memory MessagingRouteService (@wardenx/messaging) seeded with a care-team
+// inventory over the in-memory MessagingRouteService (@chartwarden/messaging) seeded with a care-team
 // channel + an alert. The REAL Authorization Contract gates every route on the §4.5 keys, and the
 // `channel_visibility` predicate (registered into a fresh registry per test) decides channel reads;
 // a header-auth shim populates request.context.
@@ -17,8 +17,8 @@ import {
   resetRbacEngine,
   setBreakGlassAuditHook,
   setBreakGlassChecker,
-} from "@wardenx/auth";
-import { type MessagingRouteService, createInMemoryMessagingService } from "@wardenx/messaging";
+} from "@chartwarden/auth";
+import { type MessagingRouteService, createInMemoryMessagingService } from "@chartwarden/messaging";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

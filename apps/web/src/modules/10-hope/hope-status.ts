@@ -1,8 +1,8 @@
 // apps/web/src/modules/10-hope — shared HOPE presentation helpers (R1, Lantern).
 // The HOPE schedule / assessment / SFV / submission / finding enums each map to the §6.6 badge
-// taxonomy tone (grounded in the @wardenx/types unions) so every M10 surface renders the same
+// taxonomy tone (grounded in the @chartwarden/types unions) so every M10 surface renders the same
 // StatusPill for a state.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // HopeScheduleStatus = open | completed | expired | skipped.
 export const SCHEDULE_TONE: Record<string, StatusTone> = {

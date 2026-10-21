@@ -1,4 +1,4 @@
-// @wardenx/billing — the tenant wage-index entry (`tenant_wage_index`, F-211) for a provider, derived from the CMS
+// @chartwarden/billing — the tenant wage-index entry (`tenant_wage_index`, F-211) for a provider, derived from the CMS
 // hospice geography instead of keyed by hand: the provider's ZIP is placed in its CBSA / rural area for the fiscal
 // year (the same resolver the claim's value code 61 uses) and the published index for that area is taken from
 // `hospice_cbsa_wage_index`. PURE. The CCN and ZIP are INPUTS — nothing here is a production default.

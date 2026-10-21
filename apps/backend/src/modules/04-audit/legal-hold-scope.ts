@@ -7,9 +7,9 @@
 // narrower selector this reader can honour), and an org-wide hold blocks EVERY retention purge in the org. Only
 // a hold that names patients scopes down to them. `dateRange`/`resourceKinds` are deliberately ignored — a
 // retention job that mis-scoped a hold would destroy held records, so over-blocking is the safe error.
-import { isMessagingOnlyCriteria } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { isMessagingOnlyCriteria } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 export interface ActiveLegalHoldScope {

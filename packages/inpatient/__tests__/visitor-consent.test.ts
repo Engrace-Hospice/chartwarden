@@ -1,4 +1,4 @@
-import type { IpuVisitorRelationship } from "@wardenx/types";
+import type { IpuVisitorRelationship } from "@chartwarden/types";
 // GAP-062 — §2.7 the relationship → M39-consent-type mapping the IPU visitor check-in gate keys off.
 // The restriction evaluator's own behavior is covered by the M37-T08 suite; this covers the consent half.
 import { describe, expect, it } from "vitest";
@@ -66,7 +66,7 @@ describe("visitorConsentTypesFor (§2.7)", () => {
   });
 
   it("names only M39 consent-type keys that exist in its v1 catalog", () => {
-    // Mirrors @wardenx/consent's CONSENT_TYPE_KEYS — M37 must not invent a type M39 cannot evaluate
+    // Mirrors @chartwarden/consent's CONSENT_TYPE_KEYS — M37 must not invent a type M39 cannot evaluate
     // (an unknown key would return `no_active_consent_on_file` forever and read as a policy denial).
     const M39_V1_KEYS = new Set([
       "portal_access",

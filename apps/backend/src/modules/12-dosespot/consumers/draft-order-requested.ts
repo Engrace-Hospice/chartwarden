@@ -4,7 +4,7 @@
 // `m13.reconciliation.draft_order_requested` used to carry a hardcoded `medicationOrderDraftPayload: {}` —
 // no consumer could ever have safely minted a real `medication_order` from it, since `drug_name`/`strength`/
 // `dose_form`/`route` are all NOT NULL. M13's emit side (`emar-route-service-db.ts`'s `recordDecision`,
-// `routes/service.ts`'s in-memory mirror) now sources real content from the pure `@wardenx/emar`
+// `routes/service.ts`'s in-memory mirror) now sources real content from the pure `@chartwarden/emar`
 // `planReconciliationDecision` core — for a `carry_forward` of a caregiver-reported line, or any
 // `new_order`, both of which require the caller (the reconciling clinician) to supply structured drug
 // content explicitly; NEVER fabricated. `carry_forward` of an `m12_active` line stays a no-op (no event —
@@ -23,7 +23,7 @@
 // it can transmit. This mirrors the already-live `m12.idg-decision-intake` consumer
 // (`outbox-consumers/m14-idg-decision-recorded.ts`), which attributes its own system-minted drafts to
 // `recordedByMembershipId` for the identical reason.
-import type { DeaSchedule, MedClass } from "@wardenx/types";
+import type { DeaSchedule, MedClass } from "@chartwarden/types";
 
 /** The `m13.reconciliation.draft_order_requested` payload M12 reads (M13 owns the wire shape). */
 export interface DraftOrderRequestedPayload {

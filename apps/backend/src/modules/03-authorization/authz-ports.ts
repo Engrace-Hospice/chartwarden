@@ -25,16 +25,16 @@
 // a patient record), so the three-column / eraser PHI mandates do not attach to these routes;
 // the org-scoped RLS backstop + the audit() trail + the meta-permission guards (§6) are the
 // controls.
-import type { AuditExecutor } from "@wardenx/audit";
+import type { AuditExecutor } from "@chartwarden/audit";
 import {
   ROLE_TEMPLATES,
   type RoleTemplate,
   type ScopeLevel,
   floorViolations,
   isSystemLocked,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 
-/** The role scope-level union (re-exported from @wardenx/auth for the route body cast). */
+/** The role scope-level union (re-exported from @chartwarden/auth for the route body cast). */
 export type ScopeLevelInput = ScopeLevel;
 
 // --- Roles & permissions -----------------------------------------------------------------
@@ -136,7 +136,7 @@ export interface MembershipRoleStore {
    */
   reachOf?(
     membershipId: string,
-  ): Promise<import("@wardenx/auth").MembershipReach> | import("@wardenx/auth").MembershipReach;
+  ): Promise<import("@chartwarden/auth").MembershipReach> | import("@chartwarden/auth").MembershipReach;
 }
 
 // --- Break-glass -------------------------------------------------------------------------
@@ -408,7 +408,7 @@ function templateView(t: RoleTemplate): RoleView {
 
 /**
  * In-memory role store seeded with the ≈60 platform templates (the floor-bearing subset
- * ships in @wardenx/auth). A tenant's customized/cloned roles are layered on top, keyed by id.
+ * ships in @chartwarden/auth). A tenant's customized/cloned roles are layered on top, keyed by id.
  */
 export function createInMemoryRoleStore(): {
   store: RoleStore;

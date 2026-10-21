@@ -1,9 +1,9 @@
-// @wardenx/bereavement — §2.5 / D15 per-kind outreach requirements (M16-T01 domain layout).
+// @chartwarden/bereavement — §2.5 / D15 per-kind outreach requirements (M16-T01 domain layout).
 //
 // Which touchpoint modalities are M8 encounters, which are direct M16 writes, which produce an M22
-// artifact, and how the D4 tenant-tighten rule ranks them. PURE DATA — no IO, `@wardenx/types`-only.
+// artifact, and how the D4 tenant-tighten rule ranks them. PURE DATA — no IO, `@chartwarden/types`-only.
 
-import type { BereavementOutreachKind } from "@wardenx/types";
+import type { BereavementOutreachKind } from "@chartwarden/types";
 
 /**
  * D15 — the ONLY kind whose completion is backed by an M8 encounter. In-person bereavement visits carry

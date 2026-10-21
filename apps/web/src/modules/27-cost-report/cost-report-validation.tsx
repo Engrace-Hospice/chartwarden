@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/27-cost-report — the VALIDATION worklist (R2, §5 / §11.B). Pick a report → its
 // validation runs with the per-run pass/fail/warn/skip roll-up (the cost-report version of the M23 claim
 // worklist). Read-only; the server is the only authz point (ADR-0030).

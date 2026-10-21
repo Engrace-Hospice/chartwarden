@@ -1,6 +1,6 @@
 // F-188 (#248) — M29's outbound operator alerts must be able to reach a person. Pure guards; the live proof on the
 // real M36 emitter is `m29-alert-routing.live.test.ts`.
-import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_STORM_THRESHOLD,

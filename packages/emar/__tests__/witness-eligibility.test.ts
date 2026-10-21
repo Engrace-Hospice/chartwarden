@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.6 D7 controlled-substance witness eligibility — M13-T04.
+// @chartwarden/emar — §2.6 D7 controlled-substance witness eligibility — M13-T04.
 import { describe, expect, it } from "vitest";
 import {
   type WitnessEligibilityInput,

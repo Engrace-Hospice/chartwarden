@@ -1,4 +1,4 @@
-// @wardenx/fhir — the `FhirMapper` contract (§4.5 D6, M28-T04).
+// @chartwarden/fhir — the `FhirMapper` contract (§4.5 D6, M28-T04).
 //
 // A `FhirMapper` translates ONE already-loaded domain entity into ONE FHIR resource. Mappers are PURE:
 // same domain input + same `MapperContext.asOfDate` ⇒ byte-identical FHIR output. No AI rewrites, no

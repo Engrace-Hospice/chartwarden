@@ -1,4 +1,4 @@
-// @wardenx/db — `emergency_contact` (M5 §3.4). Prioritized emergency contacts (1 = first to call).
+// @chartwarden/db — `emergency_contact` (M5 §3.4). Prioritized emergency contacts (1 = first to call).
 // PHI-bearing → three-column tenancy rule.
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";

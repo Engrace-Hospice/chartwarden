@@ -8,8 +8,8 @@ import {
   ratio,
   sumCents,
   toDecimal,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 money/rate KERNEL (D6 / D7 / D11 / §2.6) pure-domain tests.
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 money/rate KERNEL (D6 / D7 / D11 / §2.6) pure-domain tests.
 //
 // Billing math is REGULATORY math — a cent off in a claim line is a real Medicare-payment consequence — so
 // all amounts cross boundaries as INTEGER CENTS and the only fractional arithmetic is internal (decimal.js)

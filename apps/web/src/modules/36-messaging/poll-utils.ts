@@ -1,5 +1,5 @@
 // WP 2.10: small pure helpers for the poll card and the create dialog.
-import { POLL_BLOCKED_CHANNEL_KINDS, type PollView } from "@wardenx/types";
+import { POLL_BLOCKED_CHANNEL_KINDS, type PollView } from "@chartwarden/types";
 import type { ChannelKind } from "./messaging-types";
 
 /** Channel kinds that carry a patient link: polls are non-clinical, so the composer action is unavailable there. */

@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 permission-key catalog (§4.6).
+// @chartwarden/billing — M23 permission-key catalog (§4.6).
 //
 // The authoritative list of every permission key Module 23 owns. The backend re-exports this and
 // registers it into Module 3's catalog (the M27 `M27_PERMISSIONS` / M30 `M30_PERMISSIONS` precedent);

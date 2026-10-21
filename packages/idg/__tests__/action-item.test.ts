@@ -1,4 +1,4 @@
-// @wardenx/idg — §1.1 / D8 action-item lifecycle + carry-forward + auto-close — M14-T03.
+// @chartwarden/idg — §1.1 / D8 action-item lifecycle + carry-forward + auto-close — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
   ACTION_ITEM_GRAPH,

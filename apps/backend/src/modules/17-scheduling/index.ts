@@ -12,7 +12,7 @@
 // terminal completion, `consumers/index.ts`) + the typed accessors for the upstream reads M17 consumes — M8's
 // `MileagePayrollReader`/`BillableEncounterReader` (Wave E, live) and M15's `VolunteerComplianceProvider`/
 // `SupervisoryCadenceReader` (Phase 2, fail-closed deny-stubs per M17-F06/ADR-0009) — in `seams/consumed.ts`.
-// M17-T07 lands the §4.10 D1 OSRM `RoutingProvider` adapter (`@wardenx/routing-client`), the §4.1 route
+// M17-T07 lands the §4.10 D1 OSRM `RoutingProvider` adapter (`@chartwarden/routing-client`), the §4.1 route
 // inventory behind the M3 Authorization Contract over the §4.6 keys (`M17_CONTRIBUTED_PERMISSIONS`), and the
 // four §4.7 pre-schedule ABAC predicates (`clinician_credentials_active` / `discipline_matches_visit` /
 // `not_on_pto` / `within_caseload_or_unassigned_pool`). Route optimisation stays behind
@@ -25,7 +25,7 @@
 // (`alerts-by-m17.ts`; registered onto M36's
 // Foundation registry at boot, composition + recipient resolution is M36's per ADR-0024) and the Track B §5.1
 // web screens (apps/web/src/modules/17-scheduling, ADR-0030).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerSchedulingAbacPredicates as _registerM17Abac } from "./abac-predicates";
 import { registerSchedulingRoutes as _registerM17Routes } from "./routes/scheduling-routes";

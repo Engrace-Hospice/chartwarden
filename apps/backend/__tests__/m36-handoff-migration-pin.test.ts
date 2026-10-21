@@ -13,7 +13,7 @@ import {
   HANDOFF_ITEM_KINDS,
   HANDOFF_ITEM_STATES,
   HANDOFF_STATES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

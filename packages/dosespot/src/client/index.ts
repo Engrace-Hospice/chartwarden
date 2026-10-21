@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the DoseSpot adapter boundary (M12-T06, spec §2.5 / §4.10 / D5). The ONLY package
+// @chartwarden/dosespot — the DoseSpot adapter boundary (M12-T06, spec §2.5 / §4.10 / D5). The ONLY package
 // allowed to talk to DoseSpot: it owns the typed `DoseSpotClient` contract, the per-tenant circuit breaker,
 // the typed `DegradedError` / `RetryableError`, the per-call backoff schedule, and the Phase-1 deny-stub.
 // The live HTTP transport (`http.ts`) binds at boot with the per-tenant clinic credentials; until then the

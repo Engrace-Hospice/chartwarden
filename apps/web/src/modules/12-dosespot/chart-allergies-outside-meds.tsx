@@ -13,7 +13,7 @@
 //                          order in the Prescribe flow; nothing is pre-filled from the fax line.
 //
 // Both read and write over HTTP only (no M5 import); the server enforces scope and permissions.
-import { Panel, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { Panel, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 

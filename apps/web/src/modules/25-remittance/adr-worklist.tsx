@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — M25, the ADR WORKLIST (hospice ADR/TPE/QIC PRD, milestone 2a). Every
 // additional documentation request from a MAC with its response due date as a countdown: a missed ADR window
 // is a denial, so the soonest-due row leads. A window that comes from an unconfirmed rule is flagged, never

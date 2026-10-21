@@ -1,9 +1,9 @@
-// @wardenx/cost-report · repositories — the S-3 statistical inputs: `statistic_data` (one row per cost
+// @chartwarden/cost-report · repositories — the S-3 statistical inputs: `statistic_data` (one row per cost
 // report — UNIQUE cost_report_id — aggregating M6 level-of-care periods, M8 encounter stats, and M23
 // billed days (deny-stub today) into monthly-by-LOC-by-program breakdowns + visit counts + FTE +
 // bereavement census) (M27 §3.3). ORG-SCOPED; the statistics service wraps these in `withOrgContext` and
 // owns the seam-fan-in refresh. AGGREGATE-ONLY (D18) — counts by month/LOC/program, never a patient id.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

@@ -7,9 +7,9 @@
 // TWO BULLMQ WORKERS, ONE POSTGRES TABLE — see `./index.ts`'s header for why the catch-up seeder does not
 // reconcile directly. `runOnCallRosterSyncDrainTick` is the ONLY code path that ever calls
 // `reconcileOrgOnCallRoster` in production.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant } from "@chartwarden/types";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import {

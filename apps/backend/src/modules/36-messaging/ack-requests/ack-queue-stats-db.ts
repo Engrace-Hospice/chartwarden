@@ -2,8 +2,8 @@
 // the threshold notice, for ONE organisation. Counts and durations only (no id, no patient, no text), read as the system actor under
 // the organisation's RLS context. Never writes. The caller sums or maximises across organisations; a per-request or per-user figure
 // never leaves this function.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { unroutedBackoffElapsed } from "./ack-store-db";
 import { WAITING } from "./unacknowledged-reader-db";

@@ -5,7 +5,7 @@
 // forwarded the case on `appeal.decide`. Every change is If-Match (409 when stale) and requires an Idempotency-Key.
 // Org, actor and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside WardenX.
 import { Type } from "@sinclair/typebox";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { QIC_ESCALATION_CHANNELS, QIC_LATE_EVIDENCE_EXTENSION_MAX_DAYS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";

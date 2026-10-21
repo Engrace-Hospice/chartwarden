@@ -2,7 +2,7 @@
 //
 // `packages/types/src/fhir.ts` says its enum mirrors are "kept in lock-step with
 // `packages/db/src/enums.ts`". A comment does not keep anything in lock-step. These tests are where the
-// claim is enforced: `@wardenx/types` is a LEAF and cannot import `@wardenx/db`, so the two sides can
+// claim is enforced: `@chartwarden/types` is a LEAF and cannot import `@chartwarden/db`, so the two sides can
 // only be compared somewhere that already depends on both — the backend, which is exactly the consumer
 // that would ship the drift. The owned-table descriptors are likewise pinned to the manifest, the single
 // source of truth for what M28 owns.
@@ -20,8 +20,8 @@ import {
   fhirInboundOwnerModule,
   fhirInboundStatus,
   fhirVersionEnum,
-} from "@wardenx/db/schema";
-import { SUPPORTED_SCOPES } from "@wardenx/fhir";
+} from "@chartwarden/db/schema";
+import { SUPPORTED_SCOPES } from "@chartwarden/fhir";
 import {
   FHIR_BULK_EXPORT_ACTIVE_STATUSES,
   FHIR_BULK_EXPORT_REQUEST_KINDS,
@@ -57,7 +57,7 @@ import {
   M28_PARTITIONED_TABLES,
   M28_TABLE_NAMES,
   M28_TABLE_TENANCY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { MODULES } from "../../../architecture/module-manifest";
 
 /** Each triple is (SQL type name, the pgEnum's runtime values, the leaf mirror's members). The third
@@ -112,7 +112,7 @@ const MIRRORS = [
   ["fhir_version_enum", fhirVersionEnum.enumValues, FHIR_VERSIONS satisfies readonly FhirVersion[]],
 ] as const satisfies readonly (readonly [string, readonly string[], readonly string[]])[];
 
-describe("§3.2 pgEnum ↔ @wardenx/types mirror", () => {
+describe("§3.2 pgEnum ↔ @chartwarden/types mirror", () => {
   it.each(MIRRORS)("%s carries the same members on both sides", (_name, pgValues, unionValues) => {
     expect([...pgValues].sort()).toEqual([...unionValues].sort());
   });

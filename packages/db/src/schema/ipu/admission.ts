@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 IPU admission unit-of-work (§2.2, §3.3): ipu_admission (the aggregate root) plus its
+// @chartwarden/db — M37 IPU admission unit-of-work (§2.2, §3.3): ipu_admission (the aggregate root) plus its
 // state-history, bed-assignment, and transition ledgers. TENANT-SCOPED, RLS on app.org_id (0148/0149).
 // `ipu_admission_state_history` is MONTHLY-PARTITIONED by `at` (composite PK `(id, at)` in SQL 0149) with
 // a GENERATED audit fn. Cross-module ids (patient_id, admission_id/M6, level_of_care_period_id/M6,

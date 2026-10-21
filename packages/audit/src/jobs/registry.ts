@@ -1,4 +1,4 @@
-// @wardenx/audit — Audit job descriptor registry (M4-T11, §4.4).
+// @chartwarden/audit — Audit job descriptor registry (M4-T11, §4.4).
 //
 // Maps each queue name to the processor invocation it runs, given the bound infra adapters. This is
 // the BullMQ-free seam between the pure processors and the worker wiring: the app composition root

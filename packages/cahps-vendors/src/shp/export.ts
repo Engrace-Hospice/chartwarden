@@ -1,11 +1,11 @@
-// @wardenx/cahps-vendors — SHP decedent-export CSV renderer (M30 §4.5 SHP layout). Pure, IO-free.
+// @chartwarden/cahps-vendors — SHP decedent-export CSV renderer (M30 §4.5 SHP layout). Pure, IO-free.
 //
 // SHP expects a fixed CSV column layout for the monthly decedent sample:
 //   decedent_id, deceased_date, primary_caregiver_name, primary_caregiver_phone,
 //   primary_caregiver_email, exclusion_reason, language_preference
 // (the §4.13 platform-only `death_source` marker is deliberately absent — SHP never receives it). This
 // module renders a `CahpsDecedentSampleRow[]` into that CSV as UTF-8 bytes.
-import type { CahpsDecedentSampleRow } from "@wardenx/quality";
+import type { CahpsDecedentSampleRow } from "@chartwarden/quality";
 
 /** The SHP decedent CSV header, in column order (§4.5 SHP layout). */
 export const SHP_DECEDENT_COLUMNS = [

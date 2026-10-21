@@ -1,4 +1,4 @@
-// @wardenx/quality — HVLDL (Hospice Visits in Last Days of Life) ratio calculator (§1.1, §4.11 D20).
+// @chartwarden/quality — HVLDL (Hospice Visits in Last Days of Life) ratio calculator (§1.1, §4.11 D20).
 // Pure, IO-free.
 //
 // HVLDL = % of decedents who received ≥ 2 visits by a qualifying discipline in the last three days of

@@ -6,7 +6,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/09-assessments — the §2 scale-capture form (#91).
 //
 // A clinician could look at a PPS timeline and could not record a PPS. The scales are the hospice
@@ -17,7 +17,7 @@ import {
 // EVERY FIELD BELOW IS RENDERED FROM THE SERVER'S OWN ITEM DEFINITIONS (F-067). Nothing about PPS's five
 // ordinal axes, ESAS-r's nine 0..10 items or FAST's sixteen stages is written in this file. The route
 // publishes `data` as a bare object and the instrument shapes lived only as TypeScript interfaces in
-// `@wardenx/assessments`, which a client cannot read — so a hand-built form would have been a duplicate
+// `@chartwarden/assessments`, which a client cannot read — so a hand-built form would have been a duplicate
 // of those shapes, free to drift from what `scoring.ts` computes over. `GET /api/v1/scales` is the
 // definition, and this component is a renderer for it: a new scale's items appear here when its module
 // lands, without a change to this file.

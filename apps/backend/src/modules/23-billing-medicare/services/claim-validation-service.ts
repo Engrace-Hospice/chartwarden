@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/services/claim-validation-service.ts — the M23 §11.A
 // pre-submission validation SERVICE (spec §10 task 28 / §4.5, D1 / D5).
 //
-// Runs the FROZEN `@wardenx/billing` rule registry against an assembled claim and records the outcome. The
+// Runs the FROZEN `@chartwarden/billing` rule registry against an assembled claim and records the outcome. The
 // rule `check()`s are PURE synchronous predicates over an injected, already-resolved, plain-data
 // {@link ValidationContext} — so this service walks the reader seams ONCE (through the injected
 // {@link ValidationContextPort}), materializes that snapshot, runs `registry.runRules(ctx, overlays)`, rolls
@@ -33,10 +33,10 @@ import {
   claimPhysicianNpis,
   repositories,
   summarizeRuleRun,
-} from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { claimDischargeCodeColumns, rederivedTypeOfBill } from "./claim-discharge";
 import {
   type BillingDb,

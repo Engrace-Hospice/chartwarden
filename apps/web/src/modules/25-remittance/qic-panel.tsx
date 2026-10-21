@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, SelectField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the QIC RECONSIDERATION section of the appeal panel (hospice ADR/TPE/QIC PRD,
 // milestone 4): the cited-evidence list (draft only), the QIC's own decision clock derived from the receipt date the
 // person records, and the escalation to OMHA once the QIC is late. The server owns every rule (completeness, the

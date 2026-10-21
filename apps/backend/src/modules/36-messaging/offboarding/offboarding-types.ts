@@ -1,7 +1,7 @@
 // M36 WP 5.9 (ADR-0084) - the ports of the workforce-offboarding orchestration. A "step" is one kind of thing a departed person leaves behind in
 // M36. The service owns the decisions (preview vs execute, what blocks completion, fail-closed); a step only counts and acts, through the
 // EXISTING services (tasks, handoffs, supervisor reassign, session revoke), so no rule is duplicated here.
-import type { OffboardingItemKey, OffboardingItemState } from "@wardenx/types";
+import type { OffboardingItemKey, OffboardingItemState } from "@chartwarden/types";
 
 /** `unknown` covers an absent and a foreign user alike (one 404); `active` is a person who has not left. */
 export type Standing = "unknown" | "active" | "offboarded";

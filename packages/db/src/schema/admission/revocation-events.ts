@@ -1,4 +1,4 @@
-// @wardenx/db — `revocation_event` (M6 §3.3). A beneficiary's revocation of the hospice election for
+// @chartwarden/db — `revocation_event` (M6 §3.3). A beneficiary's revocation of the hospice election for
 // a period (drives `m6.revocation.created`). Org-scoped (no direct patient identifier; tenancy via
 // the admission FK). Cross-module refs (M39 representative consent, M22 document) are plain uuid
 // app-validated; admission + election_period FKs are intra-M6. One revocation per period (unique).

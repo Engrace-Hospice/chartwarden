@@ -1,4 +1,4 @@
-// @wardenx/mdm — platform-owned payer seed (M40-T08, spec §3.8).
+// @chartwarden/mdm — platform-owned payer seed (M40-T08, spec §3.8).
 //
 // The §3.8 reference data the platform owns: Medicare (one canonical payer) + a per-state Medicaid
 // placeholder for every US state + DC. Pure data — no DB import. The production seed loader writes

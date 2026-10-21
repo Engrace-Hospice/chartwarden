@@ -16,7 +16,7 @@ import {
   type RichBody,
   ChartWardenError,
   richBodyClinicalLinks,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export { CLINICAL_LINK_KINDS };
 export type { ClinicalLinkKind };

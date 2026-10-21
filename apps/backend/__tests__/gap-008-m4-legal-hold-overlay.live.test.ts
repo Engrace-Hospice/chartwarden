@@ -22,8 +22,8 @@ import {
   materialiseHold,
   materialiseHoldWindow,
   reconcileOrgHolds,
-} from "@wardenx/audit";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/audit";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleAuditEraserPorts } from "../src/modules/04-audit/erasers/audit-eraser";

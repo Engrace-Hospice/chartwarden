@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Death & Pronouncement (WARDENX_UI_DEATH_PRONOUNCEMENT, M6 §4.2.7
 // route 39 with `reason: "death"`). One write: POST /api/v1/admissions/:id/discharge. The server derives
 // the `discharge.death` permission from the reason, demands step-up, enforces R-DC-01 (an identified

@@ -1,4 +1,4 @@
-// @wardenx/routing-client — the Mapbox `RoutingProvider` swap-path (M17-T07, spec §4.10). DISABLED by
+// @chartwarden/routing-client — the Mapbox `RoutingProvider` swap-path (M17-T07, spec §4.10). DISABLED by
 // default; it ships so the engine can be swapped without touching any M17 consumer. Mapbox requires a
 // platform API key + a tenant-level BAA-or-equivalent assessment (Integrations), so it is constructed only
 // when both are present. The cache-key strategy is identical (coord-hash, not address) so the swap is opaque

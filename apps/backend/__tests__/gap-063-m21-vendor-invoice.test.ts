@@ -1,7 +1,7 @@
 // GAP-063 — M21 -> M27 vendor-invoice accrual (D16): the pure accrual / reconciliation decisions, the new
 // error codes and the route + permission wiring. The Drizzle writes and the emitted outbox rows are exercised
 // by the real-publisher live suite (gap-063-m21-vendor-invoice.live.test.ts), not here.
-import { M21_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { M21_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   M21_ERROR_STATUS,

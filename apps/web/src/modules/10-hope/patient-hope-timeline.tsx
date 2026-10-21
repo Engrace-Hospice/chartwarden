@@ -7,14 +7,14 @@ import {
   StatusPill,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — Patient HOPE timeline (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Patient Workspace + Documentation Workspace."
 // Per-patient chronology: Admission → HUV1 → HUV2 → SFV(s) → Discharge, newest first — each row carries the
 // RFA kind, target date, author discipline, the server-authoritative J2051 max-severity + trigger chip, a
 // late chip, and the signed/draft/superseded status. A row drills into the assessment detail. Reads
 // GET /api/v1/patients/:patientId/hope/assessments via the typed client; the server enforces every scope
-// (ADR-0030 — no authz on the frontend). Leaves only (@wardenx/ui).
+// (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
 //
 // #91 — the chart's HOPE tab now offers the two writes that belong to a PATIENT rather than to a window:
 // Record timepoint (an unscheduled capture — a Discharge RFA in particular has no pre-computed window)

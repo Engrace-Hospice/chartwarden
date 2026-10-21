@@ -30,7 +30,7 @@
 // admission (draft, or a location port unbound at activation) is a real, honest gap `decideSupplyFulfillment
 // Intake` already dead-letters on (`M21_SERVING_LOCATION_UNRESOLVED`) — narrower now (a genuinely unsited
 // admission) than before (every admission, unconditionally), not fabricated.
-import type { AdmissionSummary, IsoInstant, OrderRecordId } from "@wardenx/types";
+import type { AdmissionSummary, IsoInstant, OrderRecordId } from "@chartwarden/types";
 import {
   getAdmissionStatusReader,
   getDeathDischargeReader,

@@ -2,8 +2,8 @@ import {
   type ClaimAdjustmentKind,
   type TobDerivationInput,
   deriveTypeOfBill,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 Type-of-Bill derivation (spec §1.1, D4 / D14) pure-domain tests.
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 Type-of-Bill derivation (spec §1.1, D4 / D14) pure-domain tests.
 //
 // Assembly is server-authoritative: the server derives the UB-04 hospice TOB from three cadence facts —
 // (a) whether a prior non-voided claim exists for the admission, (b) whether the patient is discharged

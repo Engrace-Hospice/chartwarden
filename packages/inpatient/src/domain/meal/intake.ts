@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T08, §2.8 D9. The dietary tray-service intake helpers. Lightweight per-meal
+// @chartwarden/inpatient — M37-T08, §2.8 D9. The dietary tray-service intake helpers. Lightweight per-meal
 // documentation; the DB CHECK `intake_fraction BETWEEN 0 AND 1` is the schema backstop. Pure & IO-free.
 
 /** §2.8 — intake fraction must be within [0, 1] (the schema CHECK mirror; null is allowed = not recorded). */

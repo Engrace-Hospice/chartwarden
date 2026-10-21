@@ -1,4 +1,4 @@
-// @wardenx/routing-client — the routing-engine circuit breaker (M17-T07, spec §4.10 / §7.9 / M1 §25.14).
+// @chartwarden/routing-client — the routing-engine circuit breaker (M17-T07, spec §4.10 / §7.9 / M1 §25.14).
 // One breaker guards the shared OSRM endpoint so a routing-engine outage fails fast into the §7.9 degraded
 // path (visits in scheduled order) instead of blocking the optimize-day worker. The breaker logic here is
 // PURE and deterministic — `nowInstant` and the rolling-failure window are injected, never read from a clock

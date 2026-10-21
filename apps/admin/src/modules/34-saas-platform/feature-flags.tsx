@@ -12,8 +12,8 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { GlyphName, paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { GlyphName, paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
 // Spec: docs/design/screens — M34 §5.1 screen inventory. Matched to the P4 Pencil frame
 // (wardenx-P4-admin-platform.pen `bxUqf`): a KPI strip (total / enabled / kill-switches / per-tenant)

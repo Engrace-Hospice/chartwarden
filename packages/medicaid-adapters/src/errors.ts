@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — structured adapter errors. The backend maps these to a 502/503 with ops
+// @chartwarden/medicaid-adapters — structured adapter errors. The backend maps these to a 502/503 with ops
 // guidance; they never leak PHI.
 export type MedicaidAdapterErrorCode =
   | "ADAPTER_DENY_STUB" // a Phase-1 deny-stub state was invoked

@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_decision` (M14 §3.3.1 / §2.6 D4). One row per recorded IDG decision: the canonical
+// @chartwarden/db — `idg_decision` (M14 §3.3.1 / §2.6 D4). One row per recorded IDG decision: the canonical
 // discriminated `payload` (decision_kind discriminator), the quorum evidence captured at record-time
 // (was_quorate + quorum_snapshot), and the §2.7/§2.8 supersede lineage. `status` runs open → emitted (in
 // the adjournment outbox burst, M14-T06) → superseded. PHI-bearing when patient-scoped (`patient_id`) → the

@@ -3,7 +3,7 @@
 // any other caller of the service (a worker, another module, a future route) must not bypass the gate. These
 // tests call the Drizzle write service DIRECTLY over a fake transactional db (no live infra) with an
 // off-caseload actor and expect the same non-leaking NotFound a missing plan gives.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { DisciplinePlanStateError } from "../src/modules/15-discipline-care-plans/lifecycle/index";
 import {

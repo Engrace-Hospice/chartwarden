@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_decision_application_ack` (M14, migration 0305; F-234 / #248). The durable record that a
+// @chartwarden/db — `idg_decision_application_ack` (M14, migration 0305; F-234 / #248). The durable record that a
 // downstream module APPLIED an emitted IDG decision: one row per (decision, acknowledging module). First
 // writer is M14's `m14.m15-idg-decision-applied` consumer (`m15.idg_decision.applied`). Metadata only (ids, a
 // count, instants); the three-column tenancy is nullable like the other M14 children. `plan_id` / `version_id`

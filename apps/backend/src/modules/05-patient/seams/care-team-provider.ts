@@ -8,7 +8,7 @@
 // Pure orchestration over an injected CareTeamStore port — the in-memory store backs the slice +
 // tests; production injects the Drizzle-backed store (reads under `withOrgContext` so RLS scopes
 // by app.org_id).
-import type { CareTeamProvider } from "@wardenx/types";
+import type { CareTeamProvider } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 
 /** The data port CareTeamProvider composes over (Drizzle over patient_assignment in prod). */

@@ -1,4 +1,4 @@
-// @wardenx/messaging — platform-default alert rules for the billing / remittance / cap / cost-report cron
+// @chartwarden/messaging — platform-default alert rules for the billing / remittance / cap / cost-report cron
 // alerts (GAP-035). Each code below is raised by a worker through `AlertEmitter.emit` (the `alertCode` of
 // its `WorkerAlertPort.dispatch`); with no `alert_rule` row the emitter persists the alert with zero
 // recipients (`alert-emitter-impl.ts` — "no rule -> a no-op alert"), so a missed NOE/NOTR window or an

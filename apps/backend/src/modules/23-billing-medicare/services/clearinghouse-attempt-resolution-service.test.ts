@@ -1,5 +1,5 @@
-import { ConflictError, NotFoundError } from "@wardenx/types";
-import { InMemoryAttemptStore, attemptReservationFixture, scopeKey } from "@wardenx/x12-837-client";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
+import { InMemoryAttemptStore, attemptReservationFixture, scopeKey } from "@chartwarden/x12-837-client";
 import { describe, expect, it } from "vitest";
 import { buildClearinghouseAttemptResolutionService } from "./clearinghouse-attempt-resolution-service";
 

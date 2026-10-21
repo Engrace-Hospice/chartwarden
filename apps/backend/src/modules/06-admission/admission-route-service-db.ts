@@ -12,9 +12,9 @@
 // emits `m6.*` on the transactional outbox. T05 (compliance-window close/override) completes the surface:
 // the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
 
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   type PatientAdmissionClearance,
@@ -26,8 +26,8 @@ import {
   isValidMedicareNumber,
   normalizeMedicaidNumber,
   normalizeMedicareNumber,
-} from "@wardenx/types";
-import type { LevelOfCare, LocalDate } from "@wardenx/types";
+} from "@chartwarden/types";
+import type { LevelOfCare, LocalDate } from "@chartwarden/types";
 import {
   type AnyColumn,
   type SQL,

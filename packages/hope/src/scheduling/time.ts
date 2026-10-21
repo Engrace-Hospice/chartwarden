@@ -1,12 +1,12 @@
-// @wardenx/hope — org-timezone calendar-day math (M10-T03). PURE, IO-free, `Date.now()`-free: every
+// @chartwarden/hope — org-timezone calendar-day math (M10-T03). PURE, IO-free, `Date.now()`-free: every
 // HOPE timepoint window (D2) and SFV due-date (D3) is calendar-day based, computed in the ORG's
 // timezone, then persisted as a UTC instant at the boundary moment. This mirrors the M6 certification
 // `window-math` precedent (`apps/backend/.../06-admission/certification/window-math.ts`) but lives here
 // because `packages/hope` is a leaf feature lib (the backend depends on it, never the reverse) and may
-// only import `@wardenx/types`. Every fact (the anchor date, the timezone, the "as of" instant) is
+// only import `@chartwarden/types`. Every fact (the anchor date, the timezone, the "as of" instant) is
 // passed in, so the math is deterministic across timezones and DST boundaries. `Intl` (ICU ships with
 // the runtime) resolves the zone offset, so DST is handled exactly.
-import type { IsoInstant, LocalDate } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@chartwarden/types";
 
 /** Org timezone default when M2 `organization.timezone` is unset (matches the M6 D8 default). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";

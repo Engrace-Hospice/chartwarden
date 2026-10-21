@@ -9,9 +9,9 @@
 // (`config.noIdempotencyCapture`: the shared web client sends a key on every mutation, and capturing the response
 // would copy the token into `idempotency_key.response_body`) and sets `Cache-Control: no-store`. Its double-submit
 // protection is the `expectedCurrentGeneration` precondition inside one locked transaction.
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   getPatientWristbandStatus,

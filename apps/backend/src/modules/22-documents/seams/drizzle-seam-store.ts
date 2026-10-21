@@ -25,9 +25,9 @@
 // `ERASED_PATIENT_SENTINEL`). `document_version.uploaded_by_membership_id` stays genuinely NULL
 // (`uploaded_by_kind = 'system_render'`, satisfying the table's own CHECK constraint) — the honest value,
 // not a sentinel, since that column IS nullable for exactly this case.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { DocumentSeamStore, RenderUpsert, RenderedDocumentRow } from "./store";
 

@@ -13,9 +13,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createInMemoryMessagingService } from "@wardenx/messaging";
-import { XSS_CORPUS } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { createInMemoryMessagingService } from "@chartwarden/messaging";
+import { XSS_CORPUS } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

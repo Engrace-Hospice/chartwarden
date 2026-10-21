@@ -1,4 +1,4 @@
-// @wardenx/db — `visit_state_history` (M17 §3.3 / D3). Append-only ledger: one row per `visit` lifecycle
+// @chartwarden/db — `visit_state_history` (M17 §3.3 / D3). Append-only ledger: one row per `visit` lifecycle
 // transition, written in the SAME transaction as the transition (XState side-effect). Captures from/to
 // state, the actor (NULL for system-driven cron/EVV-consumer transitions), the system source tag, the
 // optional outbox event that drove it, and the free-text reason (DENYLISTED §3.6). Org-scoped; the three

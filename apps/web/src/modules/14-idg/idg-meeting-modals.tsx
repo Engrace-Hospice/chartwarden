@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — the §2.2/§2.7/D8/§7.8 write ceremonies that are not the decision
 // recorder (#91): attendance check-in, agenda add, action-item assignment, the meeting lifecycle
 // transitions, and the §7.8 minutes amendment request.

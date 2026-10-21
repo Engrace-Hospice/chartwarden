@@ -20,7 +20,7 @@
 // denies. Callers pass an explicit org, so this works from a request or a worker alike.
 //
 // FAIL-CLOSED: an evaluator error propagates; M16's caller turns any failure into "no consent".
-import type { ConsentEvaluator } from "@wardenx/consent";
+import type { ConsentEvaluator } from "@chartwarden/consent";
 
 /** The two M39 facts M16's D6 confirm gate reads. */
 export interface BereavementOutreachConsentFacts {

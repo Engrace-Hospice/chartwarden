@@ -1,4 +1,4 @@
-// @wardenx/xero-client — shared constants (split out so submodules reference the fail-closed sentinel
+// @chartwarden/xero-client — shared constants (split out so submodules reference the fail-closed sentinel
 // without a cycle through ./index). Re-exported from ./index so the public name is unchanged.
 
 /** Thrown (as an Error message) when a tenant has not connected Xero (no stored OAuth tokens). */

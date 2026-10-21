@@ -1,4 +1,4 @@
-import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
+import { resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
 // apps/backend/__tests__/audit-routes-mount.test.ts — GAP-002 composition-root mount glue.
 //
 // Proves `mountAuditRoutes(app, db)` wires BOTH the M4 audit-log query surface and the §164.528/
@@ -9,7 +9,7 @@ import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
 // permanently unreachable in prod/dev despite every other gate reading green. Route REGISTRATION
 // never touches the DB (the Drizzle query/executor only close over the handle; queries happen at
 // request time), so a stub DbClient exercises the wiring without live Postgres.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountAuditRoutes } from "../src/modules/04-audit/index";

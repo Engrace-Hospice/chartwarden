@@ -1,4 +1,4 @@
-import { type AuditContext, audit } from "@wardenx/audit";
+import { type AuditContext, audit } from "@chartwarden/audit";
 // apps/backend/src/modules/06-admission/outbox-consumers/live-binding.ts — the REAL
 // `m6.admission-event-applier` outbox consumer (§4.8.3, W-M6-31..35). Composes the pure decision core
 // ({@link decideAdmissionEvent}) with a Drizzle execution gateway: facts are resolved from M6's OWN
@@ -30,14 +30,14 @@ import { type AuditContext, audit } from "@wardenx/audit";
 // strict catalog publisher (Value.Check) would reject — and `m6.discharge.death` needs the
 // dischargeEventId that only exists AFTER the service returns. A crash between the two txs loses the
 // emissions but never the discharge; the replay lands on the marker and skips.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   ActiveElectionPeriod,
   AdmissionSummary,
   LevelOfCare,
   LocalDate,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, isNotNull, like, ne, sql } from "drizzle-orm";
 import {
   type AdmissionWriteOutboxPort,

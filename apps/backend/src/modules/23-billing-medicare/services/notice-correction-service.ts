@@ -28,9 +28,9 @@ import {
   planNoticeCorrection,
   repositories,
   validateCorrectionReason,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingWriteActor,

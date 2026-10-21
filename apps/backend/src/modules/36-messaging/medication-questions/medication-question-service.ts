@@ -11,7 +11,7 @@ import {
   buildMedicationQuestionBody,
   derivePatient,
   resolveMedicationQuestionAssignee,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   MEDICATION_QUESTION_COLLEAGUE_CAP,
   type MedicationQuestionOptions,
@@ -20,7 +20,7 @@ import {
   NotFoundError,
   type RichBody,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { linkNotAvailable } from "../clinical-link/clinical-link-service";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";

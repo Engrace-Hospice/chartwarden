@@ -11,8 +11,8 @@
 // one real caller (the merge ROUTE, here, rather than an outbox consumer) with `db` + the outbox port
 // closed over at the composition root, so `PatientRouteService`'s in-memory slice implementation is
 // untouched.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { M5OutboxPort } from "./deceased-db";
 import { type FieldResolutions, type PatientMergeSubject, planMerge } from "./merges";

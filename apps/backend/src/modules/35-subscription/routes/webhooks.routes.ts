@@ -11,7 +11,7 @@
 //
 // Until a Stripe webhook secret + payload key + platform credential are bound, `ingest` is unset and the
 // route fails closed (503). GAP-058: the composition root now binds it (billing-runtime/webhook-ingest.ts).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 /** The §4.3 verified-webhook result kind the route maps onto an HTTP reply code. */

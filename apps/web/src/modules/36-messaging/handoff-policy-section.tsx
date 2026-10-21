@@ -1,7 +1,7 @@
 // M36 WP 3.5 - handoff expiry for a template manager. A tenant can only shorten the platform maximum; the server refuses
 // anything outside the range. Hidden when the viewer cannot read the policy or handoffs are off (the server decides).
-import { HANDOFF_EXPIRY_MIN_MINUTES } from "@wardenx/types";
-import { Button, InlineAlert, Panel, useApiClient } from "@wardenx/ui";
+import { HANDOFF_EXPIRY_MIN_MINUTES } from "@chartwarden/types";
+import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { apiErrorCode } from "./attachment-utils";

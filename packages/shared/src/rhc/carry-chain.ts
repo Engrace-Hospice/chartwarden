@@ -1,8 +1,8 @@
-// @wardenx/shared/rhc — the two-tier RHC day-count CARRY-OVER chain core (Claims Processing Manual, Pub. 100-04,
+// @chartwarden/shared/rhc — the two-tier RHC day-count CARRY-OVER chain core (Claims Processing Manual, Pub. 100-04,
 // ch. 11 §30.2; CR 9201 / Transmittal R3326CP). PURE: no clock, no I/O, integer epoch days only.
 //
 // One implementation of the counting rule for its two callers, which sit in modules that may not import each
-// other: @wardenx/billing's `computeRhcCarryOver` (M23 — merges our stays with the HETS cross-hospice history,
+// other: @chartwarden/billing's `computeRhcCarryOver` (M23 — merges our stays with the HETS cross-hospice history,
 // attributes days, warns) and M6's `rhcCarryOver` (intake/benefit-period.ts — the readmission screen and the
 // claim-range seam's fallback count, over our own records incl. a transfer-in's sending-hospice span). The CMS
 // citations and the conservative choices are documented on `computeRhcCarryOver`; the rule itself:

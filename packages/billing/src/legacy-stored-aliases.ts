@@ -1,4 +1,4 @@
-// @wardenx/billing — READ-SIDE aliases for values persisted before migration 1069 (the `hipps_*` -> `per_diem_*` rename).
+// @chartwarden/billing — READ-SIDE aliases for values persisted before migration 1069 (the `hipps_*` -> `per_diem_*` rename).
 //
 // `validation_result` and `per_diem_rate_calculation.segments` are append-only compliance history: the migration does NOT
 // rewrite them, so rows written before it still carry the legacy spellings. Every reader that projects, resolves or

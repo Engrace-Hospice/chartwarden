@@ -1,13 +1,13 @@
-// @wardenx/emar — M13 administration-lifecycle failure-code catalog (§2.2 D6 / §5.11, M13-T03).
+// @chartwarden/emar — M13 administration-lifecycle failure-code catalog (§2.2 D6 / §5.11, M13-T03).
 //
 // Every guard / validation failure in the pure administration-lifecycle domain raises an
 // `AdministrationStateError` carrying the machine-readable code below. The error extends the M1
-// `ChartWardenError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify
+// `ChartWardenError` envelope base (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1 Fastify
 // error handler renders it with the precise code + HTTP status with no cross-module import edge (the
 // M11/M12 lifecycle convention). Nothing transitions on a string match — each code is an enumerated
 // constant; the §3 DB triggers (M13-T02) repeat the strongest of these at the schema layer as defense in
 // depth. The route layer (M13-T08) reuses these codes verbatim.
-import { type ErrorDetailType, ChartWardenError } from "@wardenx/types";
+import { type ErrorDetailType, ChartWardenError } from "@chartwarden/types";
 
 /** The M13 administration-lifecycle failure-code catalog → canonical HTTP status. */
 export const M13_ERROR_STATUS = {
@@ -63,7 +63,7 @@ export const M13_ERROR_STATUS = {
   RECONCILIATION_MEDICATION_DETAILS_REQUIRED: 422,
   // §2.8 D17 (F-16x, #248) — a `carry_forward`/`new_order` decision targeted an `m12_medhx` line, but no
   // M12 medication-history record projection exists anywhere in this codebase yet (genuinely missing
-  // infrastructure, not a wiring gap — see `ReconciliationMedicationDetails`'s doc in `@wardenx/emar`).
+  // infrastructure, not a wiring gap — see `ReconciliationMedicationDetails`'s doc in `@chartwarden/emar`).
   RECONCILIATION_MEDHX_UNAVAILABLE: 501,
   // §2.8 D17 — finalization was attempted while one or more worksheet lines are still undecided.
   RECONCILIATION_NOT_FINALIZABLE: 422,

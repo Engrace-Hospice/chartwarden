@@ -1,5 +1,5 @@
 import type { IncidentKind } from "../contracts";
-// @wardenx/quality · consumers — the §4.10 UPSTREAM outbox-subscription map (the M30 inbound catalog).
+// @chartwarden/quality · consumers — the §4.10 UPSTREAM outbox-subscription map (the M30 inbound catalog).
 //
 // M30 is not only an event PRODUCER (events-by-m30.ts) — it also SUBSCRIBES to a small set of upstream
 // topics and projects each into an M30-local effect (a row-draft to insert, or a debounced measure-

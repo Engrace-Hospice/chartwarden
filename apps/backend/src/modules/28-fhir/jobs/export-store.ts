@@ -5,8 +5,8 @@
 // Workers are not requests: every function opens its own `withOrgContext` for the org it was handed (RLS is
 // the wall) and keeps the explicit `organization_id` predicate as the second one. `userId: ""` is the system
 // actor (the audit trigger maps it to NULL).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 
 const JOB = schema.fhirBulkExportJob;

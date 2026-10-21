@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — `terminology.refresh_embeddings` (M38 §3.1, §4.3, D5).
+// @chartwarden/terminology-loader — `terminology.refresh_embeddings` (M38 §3.1, §4.3, D5).
 //
 // Embeds the concepts of a system's ACTIVE version that have no vector yet and writes them through the loader door.
 // The embedder is a PORT. The intended implementation is the local BGE-small-en-v1.5 sidecar behind the M32

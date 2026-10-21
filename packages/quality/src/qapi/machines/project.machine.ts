@@ -1,4 +1,4 @@
-// @wardenx/quality — §2.2 QAPI project lifecycle state machine (M30-P2a). Pure, IO-free.
+// @chartwarden/quality — §2.2 QAPI project lifecycle state machine (M30-P2a). Pure, IO-free.
 //
 // The `qapi_project` aggregate lifecycle (§2.2):
 //
@@ -16,7 +16,7 @@
 // `ChartWardenError` with the precise code). No IO; every fact a guard needs is resolved upstream and
 // passed in on the event. The backend route (a later phase) executes the persistence + audit + outbox
 // around this pure core.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { QapiProjectPhase } from "../../contracts";
 
 /** §2.2 — `abandoned` requires a reason of at least this many characters. */

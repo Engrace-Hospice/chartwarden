@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/ack-requests/open-request-lookup.ts - WP 4.8: the id of the OPEN request on a message, for the
 // deep-link resolver (it names the card to land on). A read through the aggregate's own store; never writes.
-import { ACK_OPEN_STATUSES } from "@wardenx/types";
+import { ACK_OPEN_STATUSES } from "@chartwarden/types";
 import type { AckStore } from "./ack-types";
 
 export type OpenRequestLookup = (orgId: string, messageId: string) => Promise<string | null>;

@@ -1,8 +1,8 @@
-// @wardenx/medicaid-adapters — M24 canonical shared DOMAIN VALUE TYPES (id aliases, pgEnum-mirroring
-// unions, the aggregate snapshot DTOs the validation rules read). Mirrors the @wardenx/billing M23
+// @chartwarden/medicaid-adapters — M24 canonical shared DOMAIN VALUE TYPES (id aliases, pgEnum-mirroring
+// unions, the aggregate snapshot DTOs the validation rules read). Mirrors the @chartwarden/billing M23
 // `contracts.ts` precedent. PURE DOMAIN: types/constants only — no Fastify, Drizzle, BullMQ, clock, PHI.
 //
-// Scalar id/date aliases are re-exported from @wardenx/billing so M23 and M24 share ONE definition; the
+// Scalar id/date aliases are re-exported from @chartwarden/billing so M23 and M24 share ONE definition; the
 // MBI-equivalent state Medicaid Recipient ID is NEVER a field here (D12/§3.6 — only masked/format-flag facts).
 import type {
   Cents,
@@ -11,7 +11,7 @@ import type {
   OrgId,
   PatientId,
   ProviderEntityId,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 
 export type { Cents, IsoDate, IsoDateTime, OrgId, PatientId, ProviderEntityId };
 

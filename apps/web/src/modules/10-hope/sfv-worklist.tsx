@@ -11,13 +11,13 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — SFV worklist (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Work Queue."
 // Open / overdue / missed Symptom Follow-Up Visits across the org, sorted by due-at; each row shows the
 // triggering assessment, the 2-calendar-day deadline countdown (ADR-0018 D1), and the server status. A
 // state filter narrows the queue server-side. Reads GET /api/v1/hope/sfv via the typed client; the server
-// enforces every scope (ADR-0030 — no authz on the frontend). Leaves only (@wardenx/ui).
+// enforces every scope (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
 //
 // #91 — this is the queue whose reason to exist is COMPLETING the follow-up, and it offered no way to.
 // Each OPEN or OVERDUE row now carries Record, which commits through `POST /admissions/:id/hope/sfv` —

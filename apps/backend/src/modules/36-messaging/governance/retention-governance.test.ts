@@ -1,4 +1,4 @@
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { nextScanAfter } from "./retention-governance-service";
 import { isLegalHoldViolation, rejectIfUnderLegalHold } from "./under-hold";

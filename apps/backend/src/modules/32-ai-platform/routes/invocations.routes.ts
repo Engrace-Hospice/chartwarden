@@ -24,7 +24,7 @@
 // SEARCH is a collection over the caller's own org and discloses nothing by existing, so it answers 403.
 import type { FastifyInstance } from "fastify";
 
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 
 import { actorOf } from "./actor";
 import { ABAC_INVOCATION_ROW, ABAC_INVOCATION_SEARCH, P } from "./guards";

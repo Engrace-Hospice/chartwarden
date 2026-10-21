@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/routes/admission-routes.ts — M6-T06 the §4.1 route inventory
 // (46 routes; the §4.5 permission handshake; §4.6 ABAC; §6.3 reason-derived discharge permission).
 //
-// Every route is gated by the REAL Authorization Contract (`requirePermission` from @wardenx/auth,
+// Every route is gated by the REAL Authorization Contract (`requirePermission` from @chartwarden/auth,
 // M3) on the §4.5 keys M6 registers into M3's catalog (M6_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected
 // `AdmissionRouteService` (in-memory slice; Drizzle in prod under withOrgContext so RLS backstops).
@@ -19,8 +19,8 @@ import {
   requireAnyAbac,
   requirePermission,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
@@ -105,7 +105,7 @@ import {
   ResourceNotFoundError,
 } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface AdmissionRouteDeps {

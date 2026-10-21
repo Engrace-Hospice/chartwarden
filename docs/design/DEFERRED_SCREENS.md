@@ -16,7 +16,7 @@ and against the generated client (`packages/ui/src/core/api` — moved by the AD
 stays authoritative.
 
 **Status legend:** `deferred` (not started) · `in-progress` · `done`. **Layout** notes whether the
-F0-T04 `@wardenx/ui` layout component already exists (✓) or ships with the screen (—).
+F0-T04 `@chartwarden/ui` layout component already exists (✓) or ships with the screen (—).
 
 ---
 
@@ -174,7 +174,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > ¹ **M2 Auth — mostly built + live-verified.** Better Auth is mounted, and email+password sign-in **and
 > 2FA-at-rest encryption are verified against real Postgres** (AUTH wave + ADR-0033/0034). Built screens
 > in `apps/web/src/modules/02-identity` (registered in the shell): **Sign in** (`/login`), **MFA
-> challenge** (`/login/2fa`, TOTP + backup code via `@wardenx/auth/client`'s `twoFactor` plugin),
+> challenge** (`/login/2fa`, TOTP + backup code via `@chartwarden/auth/client`'s `twoFactor` plugin),
 > **Passkeys** (`/security/passkeys`, register/manage WebAuthn + "Sign in with a passkey" on `/login`,
 > via the `passkey` client plugin — the ceremony is browser-only, so build-/e2e-verified, not CI),
 > **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`),
@@ -192,7 +192,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > same user by password, session stays alive per M2 §2.2.4 active→screen_locked→active; gated to the
 > `SESSION_POLICY.screenLockClasses` floor = staff/auditor, an unknown class failing safe). **No M2 auth
 > screens remain deferred.** Magic-link / password-reset **email delivery is now wired to M36's
-> transactional email transport** (`@wardenx/messaging` `selectTransactionalEmailTransport`, bound to the
+> transactional email transport** (`@chartwarden/messaging` `selectTransactionalEmailTransport`, bound to the
 > auth `EmailTransport` seam at the composition root; DR/INT #14, Postmark = M36; FB-T14) — the real
 > Postmark/SES provider plugs into M36's `provider` slot when M1 infra wires credentials. The actor
 > role/membership enrichment (the M2↔M3 seam) now ships too: `GET /api/v1/auth/context` exposes the
@@ -737,7 +737,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > hidden), the document library (M22 outbound download + the init→PUT→complete upload path), M36 secure
 > messaging (renderer + composer only — M36 owns the store), the §164.526 amendment request, notification
 > preferences, and the bereavement hub. Screens register through a portal-local registry
-> (`portalScreens`, the `@wardenx/types` ScreenRegistry contract) mounted by the portal's own composition
+> (`portalScreens`, the `@chartwarden/types` ScreenRegistry contract) mounted by the portal's own composition
 > root (`apps/portal/src/main.tsx`), mirroring the M1 web-shell discipline (the shell reads the registry,
 > imports no screen). Nav gating uses the real §4.6 keys (`portal.*` + `telehealth.join_patient_or_caregiver`);
 > the SERVER stays the only enforcement point — an off-grant navigation 404s (§G), it does not 403. Built
@@ -754,7 +754,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > SDK in the running app (the join URL + token are held, never shown as a bypassable link); and offline-write
 > is excluded by design (§5.2 — a caregiver must be online for the M13 outbox emit). The portal's Lantern
 > token layer is a documented LOCAL copy in `apps/portal/src/index.css` (consumed only via `t.*`, so it
-> lives in `:root`, not `@theme`), pending the shared `@wardenx/ui` stylesheet lift apps/web's header plans.
+> lives in `:root`, not `@theme`), pending the shared `@chartwarden/ui` stylesheet lift apps/web's header plans.
 >
 > ³⁰ **M35 Subscription Billing (tenant) now LIVE (Wave P2-3, M35-T07).** The eight §5.1 tenant screens
 > under `apps/web/src/modules/35-subscription`, registered into the M1 shell via `subscriptionScreens`

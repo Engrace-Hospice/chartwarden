@@ -21,7 +21,7 @@
 // from the minutes view); the 422/503 codes are still handled inline when that state is stale.
 //
 // PART 2 (42 CFR): a note the server withheld (`bodyWithheld`) renders a pill, never text or reason.
-import { Button, CountBadge, EmptyState, Panel, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, CountBadge, EmptyState, Panel, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useMemo, useState } from "react";
 import type { JSX } from "react";
 import {

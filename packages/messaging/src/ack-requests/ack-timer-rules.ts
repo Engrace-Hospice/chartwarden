@@ -1,6 +1,6 @@
-// @wardenx/messaging - the pure rules of the WP 4.4 escalation timers (ADR-0070): which window a tier gets, which job id a timer
+// @chartwarden/messaging - the pure rules of the WP 4.4 escalation timers (ADR-0070): which window a tier gets, which job id a timer
 // carries, and when a request is due. Nothing here reads a clock, a database or a queue.
-import { ACK_DEADLINE_POLICY, type AckClass, type AckStatus } from "@wardenx/types";
+import { ACK_DEADLINE_POLICY, type AckClass, type AckStatus } from "@chartwarden/types";
 
 /**
  * Minutes each router tier (1-based) gets before the next one is asked, per class (plan D4: "each tier gets half the previous

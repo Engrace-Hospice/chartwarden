@@ -4,12 +4,12 @@
 // shape of the first (`{clinical_urgent:30, clinical_routine:120, operational:240}` minutes). Each reader
 // therefore accepts what a tenant plausibly wrote and falls back to a platform default for anything else —
 // a malformed policy must tighten toward the default, never disable a page.
-import type { TriageEscalationTier } from "@wardenx/types";
+import type { TriageEscalationTier } from "@chartwarden/types";
 import {
   TRIAGE_AWAITING_CALLBACK_GRACE_MINUTES,
   TRIAGE_CALLBACK_SLA_DEFAULT_MINUTES,
   TRIAGE_ESCALATION_SLA_DEFAULT_MINUTES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** A mandatory (D7) escalation is held to the tightest tier default whatever the tenant ladder says — the
  *  tenant may not slow the page for a suicidal-ideation or code-blue handoff. */

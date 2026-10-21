@@ -1,6 +1,6 @@
 // WP 2.10: the composer's "Poll" action. In a patient-linked conversation it stays in the tab order (aria-disabled, not
 // disabled) so a keyboard or screen reader user reaches the explanation instead of skipping a dead control.
-import { Button } from "@wardenx/ui";
+import { Button } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import type { ChannelKind } from "./messaging-types";

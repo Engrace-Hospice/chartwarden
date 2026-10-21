@@ -1,11 +1,11 @@
-// @wardenx/cost-report — Worksheet A-8 (Adjustments for Related-Party / Owner Compensation) TypeBox schema
+// @chartwarden/cost-report — Worksheet A-8 (Adjustments for Related-Party / Owner Compensation) TypeBox schema
 // (CMS-1984-14, §1.1). A-8 discloses transactions with related organizations (per the S-2 listing) and
 // owner/officer compensation, then adjusts the cost base to the LOWER of cost or market for related-party
 // dealings per the CMS related-party principle. The medical-director compensation line cross-references the
 // M40 `external_physician` reader. Related parties are BUSINESS entities — no PHI (D18). Money is INTEGER
 // CENTS (signed; a negative adjustment reduces allowable cost).
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** One related-party transaction disclosure + its cost adjustment. */

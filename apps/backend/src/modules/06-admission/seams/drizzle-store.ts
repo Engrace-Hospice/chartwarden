@@ -24,15 +24,15 @@
 // `LevelOfCareReader.getCurrentLevelOfCare` applies). Sound for the one consumer of the field
 // (`toActiveElectionPeriod`, which M23 only reads for the period containing "now"); an admission with
 // NO LOC row cannot answer it and throws the gap error rather than defaulting to routine home care.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   AdmissionSummary,
   CertificationSummary,
   FaceToFaceSummary,
   LevelOfCare,
   LevelOfCarePeriodSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
@@ -748,7 +748,7 @@ export function activeAdmissionSitingForPatientForOrg(
 }
 
 /** M6-owned, RLS-backed referral visibility probe for referral-bound document artifacts. */
-export function createReferralReader(db: DbClient): import("@wardenx/types").ReferralReader {
+export function createReferralReader(db: DbClient): import("@chartwarden/types").ReferralReader {
   return {
     async canAccessReferral({ organizationId, userId, referralId }) {
       return withOrgContext(db, { organizationId, userId }, async (tx) => {

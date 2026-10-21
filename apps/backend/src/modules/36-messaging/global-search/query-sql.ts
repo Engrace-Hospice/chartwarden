@@ -10,8 +10,8 @@
 //   reselectSurvivors  transaction 2: the authorised survivors again, by id, with the SAME membership join. A member removed
 //                      between the two transactions drops out here (it closes the removal race), and the CURRENT row is what is
 //                      opened, so an edit or delete in between is honoured.
-import { schema } from "@wardenx/db";
-import { CANDIDATE_CAP, MAX_QUERY_CHANNELS } from "@wardenx/messaging";
+import { schema } from "@chartwarden/db";
+import { CANDIDATE_CAP, MAX_QUERY_CHANNELS } from "@chartwarden/messaging";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { MESSAGE_ROW_COLUMNS, type MessageRow } from "../messaging-message-hydration";
 import type { Tx } from "../messaging-write-core";

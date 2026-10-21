@@ -18,7 +18,7 @@
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import type { AckQueueItemDto, AckQueueResponse } from "@wardenx/types";
+import type { AckQueueItemDto, AckQueueResponse } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -27,7 +27,7 @@ import {
   isSessionScopeValid,
   sessionExternalActorId,
   toSessionContextRecord,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 const ORG = "11111111-1111-4111-8111-111111111111";

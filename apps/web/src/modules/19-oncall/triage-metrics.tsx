@@ -28,7 +28,7 @@
 // WHAT IS BUILT IS WHAT THE LIST DTO HONESTLY SUPPORTS: volume, disposition mix, escalation and red-flag
 // incidence, mean time to first response and mean time to close, and the coverage-gap verdict per
 // ProviderEntity read live.
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";

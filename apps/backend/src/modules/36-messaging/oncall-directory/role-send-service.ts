@@ -24,7 +24,7 @@ import {
   type RoleSendResolutionDto,
   type RoleSendResponse,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { UrgentActorRef, UrgentService, ValidateLinks } from "../urgent/urgent-service";
 import { rankedIds, unavailableStatus, validShiftEnd } from "./oncall-coverage-service";
 

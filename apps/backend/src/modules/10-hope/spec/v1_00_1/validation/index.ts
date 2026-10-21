@@ -1,4 +1,4 @@
-import { ssnCmsProblem } from "@wardenx/types";
+import { ssnCmsProblem } from "@chartwarden/types";
 import {
   type HopeRuleFinding,
   type HopeValidationContext,

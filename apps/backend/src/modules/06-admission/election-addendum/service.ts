@@ -6,9 +6,9 @@
 //
 // Source reads (non-covered determinations, diagnoses, patient identity) happen BEFORE the write transaction:
 // they cross module boundaries through injected readers that open their own org-scoped reads.
-import { audit } from "@wardenx/audit";
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { audit } from "@chartwarden/audit";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AddendumDiagnosesReader,
   type ElectionAddendumAcknowledgementSource,
@@ -18,7 +18,7 @@ import {
   type ElectionAddendumSignerKind,
   type NonCoveredItemsReader,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
 import { ResourceNotFoundError } from "../routes/service";

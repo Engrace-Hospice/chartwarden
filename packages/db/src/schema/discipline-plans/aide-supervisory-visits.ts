@@ -1,4 +1,4 @@
-// @wardenx/db — `aide_supervisory_visit` (M15 §3.3). The 42 CFR §418.76(h) RN supervisory attestation for
+// @chartwarden/db — `aide_supervisory_visit` (M15 §3.3). The 42 CFR §418.76(h) RN supervisory attestation for
 // an aide_poc plan: who supervised, in which mode, whether performance was satisfactory, and when the next
 // one is due. On insert the parent plan's `next_supervisory_due_at` is recomputed (§7.1).
 //

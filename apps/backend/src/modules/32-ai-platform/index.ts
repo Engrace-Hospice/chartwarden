@@ -2,7 +2,7 @@
 //
 // M32-T02 shipped the §3.7 destruction contract (the two AI-provenance erasers); M32-T03 adds the
 // governance layer — the §2.2 capability lifecycle, §3.2.3 calibration publication, §5.3/W4 tenant
-// opt-in and §5.4 clinician opt-out — over `@wardenx/ai-platform`'s pure rules. M32-T04 adds the §4.1
+// opt-in and §5.4 clinician opt-out — over `@chartwarden/ai-platform`'s pure rules. M32-T04 adds the §4.1
 // invocation pipeline: the §6 gate order, W8 routing over `ai_model_backend`/`ai_routing_override`, the
 // W2 hard token cap over `ai_token_ledger`, and the `ai_invocation` disclosure ledger. M32-T05 adds the
 // safety layer — W3's mixed-scope kill switch (which fills the `AiKillSwitchGate` T04 left required and

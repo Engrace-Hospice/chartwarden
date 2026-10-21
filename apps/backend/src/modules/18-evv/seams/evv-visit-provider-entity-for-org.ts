@@ -22,8 +22,8 @@
 // A `visitId` this org does not recognise (cross-tenant, or a stale redelivery) is a NO-OP, not a
 // dead-letter — the same null-on-miss contract `restraintAdmissionSitingForOrg`/`bereavementPlanSitingForOrg`
 // already establish.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const VISIT_REGISTRATION = schema.evvVisitRegistrations;

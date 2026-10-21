@@ -1,6 +1,6 @@
 // GAP-159 - the 22 spec 4.10 events are catalogued, and the emitters publish through the (validating) publisher.
 import { Value } from "@sinclair/typebox/value";
-import { M31_EVENT_NAMES } from "@wardenx/types";
+import { M31_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   type M31OutboxPublisher,

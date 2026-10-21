@@ -2,8 +2,8 @@
 // POST /recurring-visits body onto the `recurring_visit` policy columns. The route used to forward only the
 // RRULE and the service defaulted the window to 09:00-10:00 UTC; the client's window, timezone, dates, count,
 // byday and address are now authoritative (and validated here, once, for any caller of the service).
-import { type ParsedRrule, parseRrule } from "@wardenx/scheduling";
-import { ValidationError } from "@wardenx/types";
+import { type ParsedRrule, parseRrule } from "@chartwarden/scheduling";
+import { ValidationError } from "@chartwarden/types";
 
 export interface RecurringPolicyFields {
   readonly rrule: string;

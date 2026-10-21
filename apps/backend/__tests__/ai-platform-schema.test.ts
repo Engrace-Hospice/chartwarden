@@ -2,15 +2,15 @@
 //
 // WHY IT LIVES HERE. The facts this compares sit in packages that cannot see each other:
 // `M32_AUDIT_DENYLIST` / `M32_AUDIT_RETENTION_CLASS` / `M32_IMMUTABLE_COLUMNS` / `M32_TABLE_TENANCY` are
-// in `@wardenx/types` (M32-T01) and the scrubs, policies and immutability triggers that must obey them
-// are PL/pgSQL inside `packages/db/migrations/0113`–`0116`. `@wardenx/db` does not depend on
-// `@wardenx/types`, so a test inside either package could only assert half of it. apps/backend imports
+// in `@chartwarden/types` (M32-T01) and the scrubs, policies and immutability triggers that must obey them
+// are PL/pgSQL inside `packages/db/migrations/0113`–`0116`. `@chartwarden/db` does not depend on
+// `@chartwarden/types`, so a test inside either package could only assert half of it. apps/backend imports
 // both — the same reason M32-T01's pgEnum↔union lock-step test landed in `ai-platform-contracts.test.ts`.
 //
 // The failures this exists to catch are silent and one-directional: someone adds a PHI column to
 // `ai_invocation` and to `M32_AUDIT_DENYLIST` (which is where a code reviewer looks) while the trigger
 // keeps capturing the cleartext into an immutable audit row forever; or someone widens the frozen-column
-// set in @wardenx/types without touching the trigger, so the constant claims a guarantee the database
+// set in @chartwarden/types without touching the trigger, so the constant claims a guarantee the database
 // does not make. Nothing else in the build compares the two.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +24,7 @@ import {
   M32_PARTITIONED_TABLES,
   M32_TABLE_NAMES,
   M32_TABLE_TENANCY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = join(__dirname, "..", "..", "..", "packages", "db", "migrations");

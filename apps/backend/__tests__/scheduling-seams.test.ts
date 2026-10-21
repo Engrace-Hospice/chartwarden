@@ -1,4 +1,4 @@
-import type { OnCallRosterEntry, PortalVisitSummary, VisitDto } from "@wardenx/types";
+import type { OnCallRosterEntry, PortalVisitSummary, VisitDto } from "@chartwarden/types";
 // apps/backend/__tests__/scheduling-seams.test.ts — M17-T05 (§4.3 the four published reader seams). All four are
 // pure READ-only orchestration over an injected SchedulingSeamStore; these cover the visit reads (encounter
 // context / EVV geofence-on-date / IDG completed-since), the §4.5 D11 caseload-contribution assignment projection

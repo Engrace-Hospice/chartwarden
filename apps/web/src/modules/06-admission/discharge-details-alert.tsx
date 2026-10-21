@@ -1,4 +1,4 @@
-import { InlineAlert, useApiClient } from "@wardenx/ui";
+import { InlineAlert, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — the admission detail's alert for a discharged / transferred admission whose
 // stay-ending record lacks the detail the final Medicare claim needs (place of death / receiving care setting).
 // Reads GET /api/v1/admissions/:id/discharge-details only for ended admissions; renders nothing otherwise, or

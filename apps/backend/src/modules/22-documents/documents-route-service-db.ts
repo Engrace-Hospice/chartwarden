@@ -29,8 +29,8 @@
 // presigner (or a typed `DegradedError` when MINIO_* is unset). This module supplies only the read
 // resolvers (`abacResolver` over document owner-facts, `objectResolver` over version object-keys).
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DegradedError,
   type IntakeSudWithdrawnPayload,
@@ -38,7 +38,7 @@ import {
   NotFoundError,
   type OrgId,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, exists, gte, inArray, isNull, lte } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { otherBatchHoldsSudFlag } from "./extraction/batch-identity";

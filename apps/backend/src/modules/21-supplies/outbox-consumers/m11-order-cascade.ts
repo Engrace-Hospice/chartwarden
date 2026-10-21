@@ -27,14 +27,14 @@
 // decider treats a second delivery for the same order as an idempotent skip rather than a second row — but
 // nothing in the schema enforces that, so this reads the MOST RECENTLY CREATED row rather than assuming
 // uniqueness.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   DmeRentalCadence,
   IsoInstant,
   SupplyRequestKind,
   SupplyRequestStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

@@ -33,9 +33,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { AlertEmitter } from "@wardenx/messaging";
-import { SBAR_MAX_SECTION_CHARS } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { SBAR_MAX_SECTION_CHARS } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

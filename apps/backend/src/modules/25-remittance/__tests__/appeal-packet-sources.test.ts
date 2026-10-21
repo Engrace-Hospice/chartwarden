@@ -1,6 +1,6 @@
 // GAP-036 - the appeal packet's enclosure rules, pure. The same rules run live (RLS, real seams) in
 // `apps/backend/__tests__/m25-appeal-packet.live.test.ts`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AppealDocumentPort,

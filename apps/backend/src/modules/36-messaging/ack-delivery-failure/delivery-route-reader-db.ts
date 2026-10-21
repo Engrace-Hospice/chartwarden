@@ -4,8 +4,8 @@
 // request alert is not "unreachable".) The alert type and the message the alert is about come from the PERSISTED alert row, never from
 // the event payload. Read-only, inside the tenant's system scope (notification_delivery is isolated through its parent alert's
 // organization, so another tenant's delivery id reads as absent). Ids, enums and instants only.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { ACK_ASSIGNEE_ALERT_EVENT_TYPES, WINDOW_ALERT_TOLERANCE_MS } from "./route-rules";
 

@@ -13,8 +13,8 @@
 //   • SessionStepUpWriter    → UPDATE `session` inside withOrgContext + withOutbox
 //   • StepUpChallengeStore   → Valkey (challenge TTL + lockout failure z-set)
 //   • AuditExecutor          → the Drizzle tx (atomic audit, §7.3)
-import type { AuditExecutor, NewAuditEvent } from "@wardenx/audit";
-import type { StepUpFactor } from "@wardenx/types";
+import type { AuditExecutor, NewAuditEvent } from "@chartwarden/audit";
+import type { StepUpFactor } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import type { IdentityOutboxPort } from "./identity-ports";
 import type { SessionStepUpState } from "./policy/step-up-resolver";

@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 39 (Consent & Authorization Management) action catalog (M39-T10; §8.1).
+// @chartwarden/audit — Module 39 (Consent & Authorization Management) action catalog (M39-T10; §8.1).
 //
 // M39's APP-LEVEL logical audit events — the ones that do NOT correspond to a single owned-table
 // mutation (those already flow through the M4 write-audit triggers from M39-T03 as

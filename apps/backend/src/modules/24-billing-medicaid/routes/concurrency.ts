@@ -1,7 +1,7 @@
 // apps/backend/src/modules/24-billing-medicaid/routes/concurrency.ts — keyset-pagination cursor helpers, the
 // Idempotency-Key presence guard, and the If-Match (optimistic-concurrency) version parser (the M23/M26
 // precedent). A cursor is the base64url of `{ts,id}`; pages order by `(anchor DESC, id DESC)`.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** §F08 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */

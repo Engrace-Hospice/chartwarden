@@ -38,7 +38,7 @@
 // re-page loop and a rejected cancel each build their effect list with `withAudit` instead of
 // `withSosHistory` (../lifecycle/effects.ts). A runner that "helpfully" wrote a row for them would die on
 // a constraint at exactly the moment nobody is answering.
-import type { M20EventName } from "@wardenx/types";
+import type { M20EventName } from "@chartwarden/types";
 import type { SafetySideEffect } from "../lifecycle/effects";
 import type { AlertPort, OutboxEmission, WriteOutboxPort } from "./write-service";
 

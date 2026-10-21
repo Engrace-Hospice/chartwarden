@@ -20,7 +20,7 @@
 //
 // NEVER emits without a verified, persisted, parsed vendor payload. The body is never logged in the clear.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   isAckStatus,
   isDispenseStatus,
@@ -30,8 +30,8 @@ import {
   parseScriptStatusUpdate,
   parseWebhookEnvelope,
   verifyWebhookEnvelope,
-} from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import type { WebhookBodyCipher } from "./body-crypto";

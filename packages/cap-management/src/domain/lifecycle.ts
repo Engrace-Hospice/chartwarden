@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the cap_period state machine (§2.2). Deterministic, owned entirely by M26;
+// @chartwarden/cap-management — the cap_period state machine (§2.2). Deterministic, owned entirely by M26;
 // downstream consumers observe transitions via outbox events and never mutate state directly. Any rejected
 // transition surfaces as a 409 with a structured transition_rejected error (the route layer maps it).
 //

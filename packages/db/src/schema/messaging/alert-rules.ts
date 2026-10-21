@@ -1,4 +1,4 @@
-// @wardenx/db — `alert_rule` (M36 Secure Messaging §3.6). The per-tenant routing layer beneath
+// @chartwarden/db — `alert_rule` (M36 Secure Messaging §3.6). The per-tenant routing layer beneath
 // the catalog-validated dispatch path (M36-F06a): for a given event type it sets the severity
 // floor, the named recipient resolver (+ args), and an optional channel override. A NULL
 // organization_id is a platform-default rule (seeded in M36-T05, §3.10); `system_locked` rules

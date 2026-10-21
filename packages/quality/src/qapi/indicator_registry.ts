@@ -1,4 +1,4 @@
-// @wardenx/quality — QAPI indicator data-path registry + threshold-band evaluation (M30-P2a). Pure,
+// @chartwarden/quality — QAPI indicator data-path registry + threshold-band evaluation (M30-P2a). Pure,
 // IO-free.
 //
 // A `qapi_indicator.data_path` (V-9) binds a tracked indicator to its data source: either a platform
@@ -8,7 +8,7 @@
 // green threshold band, and (4) enforces the tenant-tighten-only rule — a tenant may make a threshold
 // STRICTER than the platform floor but never LOOSER. No IO; the registry is a const catalog the route
 // projects from.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { MeasureId } from "../contracts";
 
 /** The traffic-light band an indicator's current value falls into (yellow→red is the breach edge, WF-07). */

@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the typed adapter-failure contract (M12-T06, spec §2.5 / §4.10 / D5, D11). Per
+// @chartwarden/dosespot — the typed adapter-failure contract (M12-T06, spec §2.5 / §4.10 / D5, D11). Per
 // WARDENX_INTEGRATIONS §3.2 (INT-009) a raw `fetch` rejection must NEVER propagate to an M12 caller:
 // every DoseSpot transport failure is normalised to the INT-009 five-field `DegradedError` so the
 // `transmit-newrx` worker decides retry-vs-DLQ from `retryable` alone, the `dosespot_degraded` per-tenant

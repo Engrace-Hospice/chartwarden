@@ -21,8 +21,8 @@
 // step-up, or a seam that throws all resolve to `false`. A route that needs the request REFUSED
 // (rather than a boolean to hand a domain machine) mounts `requireStepUp(opKey)` as a preHandler,
 // which fails closed the same way but as a 403.
-import { isStepUpRecent } from "@wardenx/auth";
-import { STEP_UP_POLICY, type SessionContextResolver } from "@wardenx/types";
+import { isStepUpRecent } from "@chartwarden/auth";
+import { STEP_UP_POLICY, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { getSeam } from "./seams/registry";
 

@@ -1,4 +1,4 @@
-// @wardenx/db — `destruction_certificate` (M4 Audit §3.5, §2.4.2). The accountable record of a
+// @chartwarden/db — `destruction_certificate` (M4 Audit §3.5, §2.4.2). The accountable record of a
 // retention-driven destruction run: what data class, how many rows, over which range, by which
 // method, and its state-machine status (`partial_refused` covers the §6 eraser refusing Part 2
 // rows during the patient lifetime — W-M4-09). Org-scoped on organization_id (standard app.org_id

@@ -10,7 +10,7 @@
  *   - happy path: a valid publish reaches the injected persister exactly once.
  */
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   M1_OUTBOX_EVENTS,

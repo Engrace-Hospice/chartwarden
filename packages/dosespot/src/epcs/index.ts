@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the pure EPCS architecture domain (§2.4 D18, §1311.115/116/120/300, M12-T05).
+// @chartwarden/dosespot — the pure EPCS architecture domain (§2.4 D18, §1311.115/116/120/300, M12-T05).
 //
 // The IO-free EPCS pieces the M12 service/route layer (M12-T08) composes: the `dosespot.epcs` platform flag
 // + the per-tenant certification gate (D18 / §1311.300), the IAL2 identity-proofing status tracker + expiry
@@ -8,7 +8,7 @@
 // application trail. The whole surface is a DENY-STUB in Phase 1: the `dosespot.epcs` flag is OFF, so
 // `planEpcsSigningSession` always throws `EPCS_FEATURE_DISABLED` before a nonce is minted — built and tested,
 // but no Phase-1 route transmits a controlled-substance Rx through it. No DB, no DoseSpot client, no crypto;
-// `@wardenx/types` only.
+// `@chartwarden/types` only.
 export * from "./errors";
 export * from "./effects";
 export * from "./cert-gate";

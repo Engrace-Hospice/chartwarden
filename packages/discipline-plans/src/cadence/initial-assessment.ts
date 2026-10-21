@@ -1,9 +1,9 @@
-// @wardenx/discipline-plans — §1.1 / D10 initial-assessment clock policy (M15-T01 domain layout).
+// @chartwarden/discipline-plans — §1.1 / D10 initial-assessment clock policy (M15-T01 domain layout).
 //
 // The per-plan-kind clocks the bootstrap worker starts and the daily MSW / chaplain overdue crons read.
-// PURE DATA — no IO, `@wardenx/types`-only.
+// PURE DATA — no IO, `@chartwarden/types`-only.
 
-import type { DisciplinePlanKind } from "@wardenx/types";
+import type { DisciplinePlanKind } from "@chartwarden/types";
 
 /** What starts a kind's initial clock (§1.1 / D10). */
 export type InitialClockAnchor =

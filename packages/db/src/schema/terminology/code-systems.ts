@@ -1,4 +1,4 @@
-// @wardenx/db — `code_system` (M38 Terminology §3.3). The platform-shared catalog of
+// @chartwarden/db — `code_system` (M38 Terminology §3.3). The platform-shared catalog of
 // every code system M38 owns (one row per system: ICD-10-CM, SNOMED, LOINC, RxNorm, …).
 // Platform-shared reference: NON_ORG_SCOPED, read-all via the §3.7 `USING (true)` policy;
 // writes only via the `terminology_loader` role (SECURITY DEFINER load fns). 'cpt' never

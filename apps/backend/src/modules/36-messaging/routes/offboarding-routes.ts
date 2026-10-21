@@ -8,12 +8,12 @@
 //
 // Org, officer and session are the server-side request context. An unknown or another tenant's user is the same 404; a user who has not left
 // is a 409. Nothing returned is a name, a message or a patient.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import {
   OFFBOARDING_EXECUTE_STEP_UP_KEY,
   OFFBOARDING_MANAGE_PERMISSION,
   UnauthorizedError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { OffboardingService } from "../offboarding/offboarding-service";
 import type { OffboardingActor } from "../offboarding/offboarding-types";

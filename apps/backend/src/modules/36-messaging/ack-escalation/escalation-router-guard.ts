@@ -8,7 +8,7 @@ import {
   ESCALATION_RANKS,
   type EscalationRouteRequest,
   type EscalationRouter,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

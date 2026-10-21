@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/cahps-vendors",
+  "name": "@chartwarden/cahps-vendors",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@wardenx/quality": "workspace:*",
-    "@wardenx/types": "workspace:*"
+    "@chartwarden/quality": "workspace:*",
+    "@chartwarden/types": "workspace:*"
   }
 }

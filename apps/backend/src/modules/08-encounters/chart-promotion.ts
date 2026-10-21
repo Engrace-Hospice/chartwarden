@@ -8,7 +8,7 @@ import {
   type ChartPromotionReview,
   ConflictError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 export const CHART_PROMOTION_DECIDED_EVENT = "m8.chart_promotion.decided";

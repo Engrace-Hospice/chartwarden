@@ -1,4 +1,4 @@
-// @wardenx/db — `portal_invitation` (M31 §3.3; migration 0424, GAP-092). The magic-link invitation that creates a
+// @chartwarden/db — `portal_invitation` (M31 §3.3; migration 0424, GAP-092). The magic-link invitation that creates a
 // portal account + its per-patient grant. The token is stored ONLY as a SHA-256 digest (`token_hash`, audit-denylisted).
 // Patient-bearing, so it carries the ARCH-011 provider_entity_id NOT NULL + location_id (nullable), resolved from the
 // patient's admission. `caregiver_id` (M5) and `bereaved_contact_id` (M16) are logical FKs (app-validated).

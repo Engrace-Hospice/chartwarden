@@ -1,4 +1,4 @@
-// @wardenx/billing — eligibility schemas: route #22 `POST /eligibility:check` (force a 270/271 round-trip)
+// @chartwarden/billing — eligibility schemas: route #22 `POST /eligibility:check` (force a 270/271 round-trip)
 // and route #23 `GET /eligibility` (per-patient eligibility-check history) — §4.1 / §4.2.
 //
 // The MBI is unlocked from M5 only in-memory at HETS-270 build time and NEVER persisted or projected

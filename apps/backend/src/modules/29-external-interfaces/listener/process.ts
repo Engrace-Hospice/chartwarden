@@ -19,7 +19,7 @@
 // (the entrypoint in `index.ts` owns process lifecycle).
 import { randomUUID } from "node:crypto";
 
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { ExternalInterfaceBaaGate } from "../feed/baa-gate";
 import type { InboundCipher } from "../inbound/inbound-crypto";
 import { MLLP_READ_TIMEOUT_MS, type MllpConnectionDeps, type MllpIngestSink } from "./connection";

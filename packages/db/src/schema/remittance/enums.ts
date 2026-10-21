@@ -1,9 +1,9 @@
-// @wardenx/db — M25 Remittance & Denials: shared pgEnum declarations (spec §3.3). The enums live in
+// @chartwarden/db — M25 Remittance & Denials: shared pgEnum declarations (spec §3.3). The enums live in
 // this single home so the fan-out table files import them without ever redeclaring a pgEnum (check-
 // ddl-legality rule 3). Filename intentionally avoids the substring "schema" (table-ownership/tenancy
 // heuristic gotcha).
 //
-// CONVENTIONS (mirror @wardenx/db billing M23 / cost-report M27 / quality M30 — the proven precedent):
+// CONVENTIONS (mirror @chartwarden/db billing M23 / cost-report M27 / quality M30 — the proven precedent):
 //   * Every DB ENUM type name is `m25_`-prefixed so it can never collide with another module's enum;
 //     the exported Drizzle const is camelCase `m25X`.
 //   * Spec §3.3 wrote bare enum names (payer_kind, parse_status, …); the `m25_` prefix is the repo-wide

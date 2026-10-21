@@ -14,7 +14,7 @@ export type EnvLike = Record<string, string | undefined>;
 
 /**
  * ADR-0053 D3 - the platform's clearinghouse binding. Mirrors `parseClearinghouseVendor` in
- * `@wardenx/x12-837-client` (this bootstrap file may not import it); `m23-clearinghouse-binding.test.ts` asserts the
+ * `@chartwarden/x12-837-client` (this bootstrap file may not import it); `m23-clearinghouse-binding.test.ts` asserts the
  * two agree. The registry still throws at boot for a vendor with no adapter.
  */
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";

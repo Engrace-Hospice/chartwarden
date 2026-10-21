@@ -12,10 +12,10 @@
 // alongside the other module seam registrations, and reset between tests. The checker reads
 // the active-grant lookup off M3's own `BreakGlassStore`; the audit hook routes the per-access
 // row through the mandated audit() helper (the field denylist runs there).
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { setBreakGlassAuditHook, setBreakGlassChecker } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { setBreakGlassAuditHook, setBreakGlassChecker } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { auditBreakGlassAccess } from "./audit/authz-audit";
 import type { BreakGlassStore } from "./authz-ports";
 

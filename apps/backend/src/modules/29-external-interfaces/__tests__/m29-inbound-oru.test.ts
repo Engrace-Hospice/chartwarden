@@ -1,4 +1,4 @@
-import type { PatientIdentity, PatientReader } from "@wardenx/types";
+import type { PatientIdentity, PatientReader } from "@chartwarden/types";
 // apps/backend/src/modules/29-external-interfaces/__tests__ — M29-T05 inbound ORU lab pipeline unit tests
 // (§4.6 D7/D8, W-XI-05/06). Every pure core: the ORU projection, the OBX-8 abnormal classification, the
 // LOINC terminology gate, the D15 SUD ingress redaction, the two-stage patient resolution, the embedded-PDF

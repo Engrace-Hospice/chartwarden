@@ -4,14 +4,14 @@
 // Split out of `abac-predicates.ts` so the predicate-logic file (which names the actor's role-membership
 // list — a field whose name collides with an M3 table const) carries NO central-schema import: the
 // table-ownership scanner only flags a file that BOTH imports a `*schema*` path AND names another module's
-// table const, so the Drizzle reads (which import `@wardenx/db/schema`) live here, where the only table
+// table const, so the Drizzle reads (which import `@chartwarden/db/schema`) live here, where the only table
 // consts named are M23-OWNED (claim / noe_record / notr_record / validation_result). Each load opens ONE
-// `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @wardenx/tenancy helper) so Postgres RLS
+// `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @chartwarden/tenancy helper) so Postgres RLS
 // scopes every statement to `app.org_id` (the M27 resolver precedent). A `null` return is an absent /
 // cross-tenant row → the predicate fails closed. NO MBI / free-text PHI in the facts read (D13 / §8.7).
-import { type BillingDb, type ClaimState, canonicalRuleKey } from "@wardenx/billing";
-import * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type BillingDb, type ClaimState, canonicalRuleKey } from "@chartwarden/billing";
+import * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 /** The org + acting user the resolver scopes each load to (the `withOrgContext` GUCs). */

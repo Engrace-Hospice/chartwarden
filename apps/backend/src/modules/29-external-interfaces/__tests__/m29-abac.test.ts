@@ -1,6 +1,6 @@
 // apps/backend/src/modules/29-external-interfaces/__tests__/m29-abac.test.ts — M29-T08 §4.8 predicate tests.
-import type { AbacContext, AbacTarget } from "@wardenx/auth";
-import { PLATFORM_OPS_ROLE_KEYS, createPredicateRegistry } from "@wardenx/auth";
+import type { AbacContext, AbacTarget } from "@chartwarden/auth";
+import { PLATFORM_OPS_ROLE_KEYS, createPredicateRegistry } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/message-annotations.ts - WP 2.4: what a reader sees ON a message besides its
 // text: the non-clinical reaction counts and the pin flag. One grouped read per page (no N+1), used by every message
 // read through `hydrateMessages`. Counts only: who reacted is never listed. Reactions never feed receipt state.
-import { schema } from "@wardenx/db";
-import { MESSAGE_REACTION_KEYS, type MessageReactionSummary } from "@wardenx/types";
+import { schema } from "@chartwarden/db";
+import { MESSAGE_REACTION_KEYS, type MessageReactionSummary } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Tx } from "./messaging-write-core";
 

@@ -1,6 +1,6 @@
 // GAP-144 — the M23 platform-admin commands. The database is a Proxy that throws on any use, which proves the
 // validation / refusal paths reject BEFORE touching the platform table.
-import type { repositories } from "@wardenx/billing";
+import type { repositories } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import type { M23WriteActor } from "./actor";
 import { buildDrizzlePlatformAdminService } from "./platform-admin-service";

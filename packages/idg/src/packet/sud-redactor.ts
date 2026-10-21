@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.7 / W-SUD-01 SUD redaction at packet READ (M14-T04). Pure.
+// @chartwarden/idg — §2.7 / W-SUD-01 SUD redaction at packet READ (M14-T04). Pure.
 //
 // 42 CFR Part 2: SUD-flagged packet content is elided at the READ path (not the build path) unless the
 // caller's session carries an active Part 2 release context (M39 `consent.evaluate`, the M7 D7 pattern). The
@@ -9,8 +9,8 @@
 // changes, HOPE triggers, order/medication changes, flagged events), the carry-forward action items, the derived HOPE open-SFV count, and every `disciplineViews[*].highlightedEntries`, and stamps `meta.appliedSudRedaction` so the response carries the
 // "Some content filtered per 42 CFR Part 2" banner.
 //
-// PURE — `@wardenx/types` only; the `consent.evaluate` call + the M4 sampled-audit row are the service's job.
-import type { DisciplineKey } from "@wardenx/types";
+// PURE — `@chartwarden/types` only; the `consent.evaluate` call + the M4 sampled-audit row are the service's job.
+import type { DisciplineKey } from "@chartwarden/types";
 import type { BuiltPacket } from "./builder";
 
 /** The read-path SUD gate: whether the caller holds a Part 2 release + which source ids are SUD-flagged. */

@@ -1,4 +1,4 @@
-// @wardenx/db — `dsar_export_job_event` (M34 SaaS Tenant Platform §3.7). The append-only
+// @chartwarden/db — `dsar_export_job_event` (M34 SaaS Tenant Platform §3.7). The append-only
 // disclosure-accounting ledger for a DSAR export job: one row per status transition / shard receipt.
 //
 // M34-F02 / M34-F10 / ADR-0010: NEW table — carries its own `organization_id` NOT NULL

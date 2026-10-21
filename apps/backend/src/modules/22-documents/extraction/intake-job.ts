@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type ClassifiedPage,
   type CodeOnPage,
@@ -20,14 +20,14 @@ import {
   resolveCodeTokens,
   runCodingChecks,
   splitPacket,
-} from "@wardenx/intake-extraction";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/intake-extraction";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ClassifiedPageDocType,
   DegradedError,
   type IntakeSudDetectedPayload,
   M22_INTAKE_SUD_DETECTED_EVENT,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {

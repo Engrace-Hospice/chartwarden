@@ -3,8 +3,8 @@ import {
   type StepDownAllocateInput,
   calculatePerDiem,
   stepDownAllocate,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 allocation-chain (A → B/B-1 step-down → C per-diem) pure-domain unit tests.
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 allocation-chain (A → B/B-1 step-down → C per-diem) pure-domain unit tests.
 //
 // Hospice cost-report math is REGULATORY (Form CMS-1984-14): a cent off in a per-diem is a real
 // rate/cap consequence. The cross-cutting invariants asserted here:

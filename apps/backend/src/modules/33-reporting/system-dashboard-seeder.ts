@@ -36,13 +36,13 @@
 // on `(organization_id, base_key) WHERE authorship = 'system'`. `.onConflictDoNothing()` against it
 // mirrors the `elevated-approvals.ts` `grant()` precedent — a concurrent second writer gets zero rows
 // back rather than a duplicate dashboard.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   ReportCatalogRepository,
   ReportDefinitionRepository,
   ReportViewRepository,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 
 /** What the seeder reports (assertable in tests; also useful for a one-off backfill's own log line). */

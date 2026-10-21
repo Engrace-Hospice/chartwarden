@@ -1,16 +1,16 @@
-// @wardenx/auth · identity — the published `AuditorSessionMinter` seam (M2-T07; M2 spec §4.7 D4).
+// @chartwarden/auth · identity — the published `AuditorSessionMinter` seam (M2-T07; M2 spec §4.7 D4).
 //
 // Resolved-as-D4 split: Module 3 owns the `auditor_engagement` entity + the `/auditors/invite`
 // endpoint (it owns the scope + window); Module 2 owns session mechanics and exposes this
 // boot-validated minter that M3 calls. Registering it at boot means an engagement that cannot
 // mint a session fails at startup, not at the auditor's first click. The contract type lives in
-// @wardenx/types (leaf); the IMPLEMENTATION here is injected at boot and validated by validateSeams().
+// @chartwarden/types (leaf); the IMPLEMENTATION here is injected at boot and validated by validateSeams().
 //
 // SLICE NOTE: the actual magic-link mint (Valkey one-time token + TTL, the `auditor`
 // session-class row) is an injected `AuditorMagicLinkIssuer` port — the slice has no live
 // Valkey. Production injects the issuer that mints the one-time token bound to the engagement
 // window and starts the `auditor`-class session on consumption.
-import type { AuditorSessionMinter } from "@wardenx/types";
+import type { AuditorSessionMinter } from "@chartwarden/types";
 
 /** The engagement-scoped input M3 hands the minter (mirror of the §4.7 contract). */
 export interface AuditorSessionMintInput {

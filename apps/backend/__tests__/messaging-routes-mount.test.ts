@@ -1,4 +1,4 @@
-import { resetAbacRegistry, resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
+import { resetAbacRegistry, resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
 // apps/backend/__tests__/messaging-routes-mount.test.ts — FB-T04 composition-root mount glue.
 //
 // Proves `mountMessagingRoutes(app, db)` wires the M36 messaging surface onto the host behind the
@@ -7,7 +7,7 @@ import { resetAbacRegistry, resetAuthorizationContract, resetRbacEngine } from "
 // route-service only closes over the handle; queries happen at request time), so a stub DbClient
 // exercises the wiring without live Postgres. The deep route behavior is covered by the route
 // inventory tests over the in-memory service (messaging-routes.test.ts) and the live RLS suite.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";

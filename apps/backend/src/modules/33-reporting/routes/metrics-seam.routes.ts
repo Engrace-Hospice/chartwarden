@@ -7,7 +7,7 @@
 // service holds the key); the read runs through the injected service → `withReportSession` /
 // MetricsProvider. Returns a `null` value + `isForwardSeamDenyStub:true` when the metric is not yet
 // materialized (a forward-seam MV). Org/actor binding is ALWAYS server-side (request.context).
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";

@@ -1,4 +1,4 @@
-// @wardenx/db — `clearinghouse_submission_attempt` (M23 Billing-Medicare; ADR-0053 D4; non-partitioned). The durable
+// @chartwarden/db — `clearinghouse_submission_attempt` (M23 Billing-Medicare; ADR-0053 D4; non-partitioned). The durable
 // record of what the platform sent a clearinghouse: reserved before the send, completed once the vendor has taken it,
 // released on a definitive refusal. Vendors expire idempotency keys and share one credential across tenants, so the
 // replay / conflict / tenant-isolation guarantee lives here.

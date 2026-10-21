@@ -1,10 +1,10 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/36-messaging/jobs/retention-hold-sql.ts — ADR-0086 (proposed) D5 in SQL: the LIVE hold predicate the
 // retention scan filters with (so enforcement never waits on the overlay) and the overlay materialiser. The predicate mirrors the pure
-// `messageHeldBy` in @wardenx/messaging; the live suite proves the two agree. Aliases: m = message, c = its channel.
+// `messageHeldBy` in @chartwarden/messaging; the live suite proves the two agree. Aliases: m = message, c = its channel.
 // Every subquery is filtered by organization_id. Ids reach SQL only as bound uuid params.
-import type { MessageHoldCriteria } from "@wardenx/messaging";
-import { messagingHoldLockName } from "@wardenx/types";
+import type { MessageHoldCriteria } from "@chartwarden/messaging";
+import { messagingHoldLockName } from "@chartwarden/types";
 import { type SQL, and, eq, sql } from "drizzle-orm";
 
 /** The M4 seam the scan needs, injected at the composition root (M36 imports nothing from M4). */

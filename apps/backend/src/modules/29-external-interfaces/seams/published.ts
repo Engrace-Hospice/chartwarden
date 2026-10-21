@@ -14,7 +14,7 @@
 // Following the M28/M19/M20 precedent, the five impls register ONLY when a store is supplied (a db-backed
 // boot). Without one, `validateSeams()` leaves the M1 fail-closed deny-stubs standing, so a consumer that
 // reaches an unbound seam denies LOUDLY rather than reading an empty projection minted from nothing.
-import type { ExternalInterfaceMetricsProvider } from "@wardenx/types";
+import type { ExternalInterfaceMetricsProvider } from "@chartwarden/types";
 
 import { registerSeam } from "../../../bootstrap/index";
 

@@ -7,7 +7,7 @@
 // `withOrgContext(db, {organizationId, userId}, …)` transaction on the PRIMARY so Postgres RLS scopes each
 // statement to `app.org_id` (the M27 routes/write-service-drizzle precedent). Org/actor/owner binding is
 // ALWAYS the server-assembled {@link M23WriteActor} (never the body). The lifecycle methods do NOT
-// re-implement state logic — they drive the pure @wardenx/billing machines (`claim` reducer + `noeMachine` /
+// re-implement state logic — they drive the pure @chartwarden/billing machines (`claim` reducer + `noeMachine` /
 // `notrMachine`) and persist the result with the §2.5 version check (`transitionToState` →
 // VERSION_CONFLICT → 412). The §4.10 `m23.*` events are emitted through the injected {@link WriteOutboxPort}
 // in the SAME unit of work as the mutation (transactional outbox, D2); the §4.8 worker jobs through the
@@ -21,10 +21,10 @@
 // `replaceClaim` / `voidClaim` assemble the NEW TOB-817/818 claim; the ORIGINAL transitions to
 // REPLACED/VOIDED only when the 277CA acceptance arrives (the ack consumer/worker), never at this surface.
 //
-// IMPORT BOUNDARY (M23 dependsOn = [6,8,22,38,40], NOT M1): the `@wardenx/db` ROOT barrel is forbidden; the
-// universal `@wardenx/db/schema` leaf supplies the `claim_line` / `claim` table objects the internal-write
-// re-assembly delete needs, and `withOrgContext` comes from the always-importable `@wardenx/tenancy`
-// foundation. AI-BLOCK (D13): no `@wardenx/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
+// IMPORT BOUNDARY (M23 dependsOn = [6,8,22,38,40], NOT M1): the `@chartwarden/db` ROOT barrel is forbidden; the
+// universal `@chartwarden/db/schema` leaf supplies the `claim_line` / `claim` table objects the internal-write
+// re-assembly delete needs, and `withOrgContext` comes from the always-importable `@chartwarden/tenancy`
+// foundation. AI-BLOCK (D13): no `@chartwarden/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
 // is composed at the route (see ./actor `rejectAiActor`).
 import { randomUUID } from "node:crypto";
 import {
@@ -36,10 +36,10 @@ import {
   noeMachine,
   notrMachine,
   repositories,
-} from "@wardenx/billing";
-import * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, DegradedError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
@@ -909,7 +909,7 @@ export function buildDrizzleM23WriteService(
         // surveyor can join them (and the request's logs). Prefer the request's id; fall back to a fresh one.
         const correlationId = actor.request?.correlationId ?? randomUUID();
         await tx.execute(sql`SELECT set_config('app.correlation_id', ${correlationId}, true)`);
-        // Record the §4.5 prominent M4 audit event in the same tx (the @wardenx/audit helper is the only
+        // Record the §4.5 prominent M4 audit event in the same tx (the @chartwarden/audit helper is the only
         // sanctioned writer of `audit_event`); its id is stamped onto the NOT-NULL override back-ref.
         const { auditEventId } = await auditPort.recordOverrideAudit(tx, {
           organizationId: actor.organizationId,

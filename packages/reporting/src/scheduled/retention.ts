@@ -1,4 +1,4 @@
-// @wardenx/reporting · scheduled — the scheduled-report RETENTION sweeper (M33 §2.2 / §3.3 retention class
+// @chartwarden/reporting · scheduled — the scheduled-report RETENTION sweeper (M33 §2.2 / §3.3 retention class
 // `operational`).
 //
 // `report_schedule_run` is PARTITIONED BY RANGE(scheduled_for) monthly, retention class `operational`: the
@@ -11,7 +11,7 @@
 //
 // PURE port-injected orchestration: {@link isPastRetentionHorizon} + {@link selectArchivableRuns} are total
 // decision cores; {@link runScheduledRetention} is the thin injected-port orchestrator. No clock/Drizzle import.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /** §3.3: the `operational` retention horizon for `report_schedule_run` (90 days). The boot may override per
  *  the tenant's operational retention policy. */

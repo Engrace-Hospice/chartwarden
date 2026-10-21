@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_plan_closure` (M16 §3.3.7). Exactly one row per closed plan: WHY the program
+// @chartwarden/db — `bereavement_plan_closure` (M16 §3.3.7). Exactly one row per closed plan: WHY the program
 // ended, plus the counts a surveyor reconstructs the program from (§7.15) and the M22 closeout artifact.
 //
 // D7 — the five EARLY reasons (`tenant_offboarding`, `all_bereaved_deceased`, `geographic_relocation`,
@@ -38,7 +38,7 @@ export const bereavementPlanClosure = pgTable(
     reasonNarrativeRedacted: text("reason_narrative_redacted"), // D11 audit-denylisted
     closedAt: timestamp("closed_at", { withTimezone: true }).notNull().defaultNow(),
     closedByUserId: uuid("closed_by_user_id"), // NULL for the 13-month auto-close cron (M2 membership otherwise)
-    // Mirrors `BereavementCloseKind` in @wardenx/types: 'auto' | 'manual' | 'cascade'.
+    // Mirrors `BereavementCloseKind` in @chartwarden/types: 'auto' | 'manual' | 'cascade'.
     closeKind: text("close_kind").notNull(),
 
     // D7 cosign metadata — required for the five early-close reasons.

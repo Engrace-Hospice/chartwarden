@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the shape EVERY §4.2 published seam shares (M32-T06).
+// @chartwarden/ai-platform — the shape EVERY §4.2 published seam shares (M32-T06).
 //
 // ── ABSENCE IS A VALUE, NOT AN EXCEPTION ─────────────────────────────────────────────────────────
 //
@@ -13,7 +13,7 @@
 //
 // §4.2's interface sketches spell the refusal inline as
 // `{ available: false; reason: 'unavailable' | 'kill_switch' | ... ; detail?: string }`. M32-T01 already
-// resolved that into `AiCapabilityUnavailable` in `@wardenx/types` — "the §2.2/W9 envelope EVERY M32
+// resolved that into `AiCapabilityUnavailable` in `@chartwarden/types` — "the §2.2/W9 envelope EVERY M32
 // published seam returns instead of throwing when a gate refuses" — with a strictly finer reason union
 // (`lifecycle_state_below_approved` and `lifecycle_state_retired` split §4.2's flat `'unavailable'`,
 // `not_enrolled_as_pilot_tenant` splits its `'tenant_opt_out'`). The finer union is what the M32-T04
@@ -24,7 +24,7 @@
 // `detail` is kept, verbatim from §4.2, and its contract is kept too: operator-facing, safe to log,
 // NEVER PHI. It is the only field that distinguishes "M32 is not wired" from "M32 is wired and Phase-1
 // off" once both have collapsed to the same refusal reason at the consumer.
-import type { AiCapabilityUnavailable, AiCapabilityUnavailableReason } from "@wardenx/types";
+import type { AiCapabilityUnavailable, AiCapabilityUnavailableReason } from "@chartwarden/types";
 
 /**
  * §4.2.1's advisory warning band. Rides an AVAILABLE answer — a warning is a caveat on a result, never

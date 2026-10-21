@@ -1,5 +1,5 @@
 import { paramStringMap } from "./_util";
-// @wardenx/billing — §4.5 rule `place_of_service_consistency` (pos, error, regulatory). Each line's
+// @chartwarden/billing — §4.5 rule `place_of_service_consistency` (pos, error, regulatory). Each line's
 // Q-code must match the patient's documented place of service (home / ALF / SNF / IPU) per the M5/M40
 // facility lookup; place-of-service changes must be documented with effective dates (M6). Reads the
 // resolved `mdm.placeOfService` + line Q-codes; SKIPs when the M40 resolver is unbound. PURE: reads ctx.

@@ -1,4 +1,4 @@
-import type { AdministrationDto, ReconciliationWorksheetDto } from "@wardenx/types";
+import type { AdministrationDto, ReconciliationWorksheetDto } from "@chartwarden/types";
 // apps/backend/__tests__/emar-seams.test.ts — M13-T07 (§2.12 D16 MedicationAdministrationProvider +
 // ReconciliationProvider). Both seams are pure READ-only orchestration over an injected EmarSeamStore; these
 // cover the administration read narrowing (by-id / by-patient / by-order / since / window), the M30 measure

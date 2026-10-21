@@ -12,13 +12,13 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — Signup Intents queue (M34 Phase-3, §4.1 platform-ops; F02/ADR-0010).
 // Spec: docs/modules/... §5.1 screen inventory. The pre-provision intake funnel a platform-ops actor
 // triages: /signups lists the queue (GET /api/v1/platform/signup-intents); the right drawer (`?intent=<id>`) offers
 // Qualify (`new → qualified` → enqueues `tenant.provision`, POST .../{id}/qualify) and Reject
 // (`new → rejected` with a recorded rationale, POST .../{id}/reject). Live-wired over the typed
-// client; imports only @wardenx/ui leaves + the Foundation tone map.
+// client; imports only @chartwarden/ui leaves + the Foundation tone map.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";

@@ -29,7 +29,7 @@ import {
   registerTenantExportShard,
   runDsarExportJob,
   runTenantProvision,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 import { beforeEach, describe, expect, it } from "vitest";
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-// @wardenx/ui web — modal scaffold for the Guardrail ceremonies/blockers (R0.3, DESIGN.md §7.3/§7.4).
+// @chartwarden/ui web — modal scaffold for the Guardrail ceremonies/blockers (R0.3, DESIGN.md §7.3/§7.4).
 // Glass scrim + centered floating card, focus-trapped, Escape-to-close. Blocking/ceremony dialogs and
 // ConfirmDialog compose this; it is also exported directly (UI-005) so callers needing a bespoke
 // dialog build on the accessible shell instead of copying a scrim+panel by hand.

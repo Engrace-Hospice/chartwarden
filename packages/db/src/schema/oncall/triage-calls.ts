@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_call` (M19 §3.3 / §2.2.1). THE after-hours clinical record: one row per call,
+// @chartwarden/db — `triage_call` (M19 §3.3 / §2.2.1). THE after-hours clinical record: one row per call,
 // D6's nine-state lifecycle, D10's inbound-trigger provenance, and the M19-F08 BCP paper-origin path.
 //
 // TENANCY (ARCH-011 / ADR-0010): organization_id + provider_entity_id NOT NULL; location_id NULLABLE. The
@@ -120,7 +120,7 @@ export const triageCall = pgTable(
 
     state: triageCallState("state").notNull().default("open"),
     disposition: triageDisposition("disposition"),
-    /** D6 — the per-disposition discriminated payload (`TriageDispositionData` in @wardenx/types). */
+    /** D6 — the per-disposition discriminated payload (`TriageDispositionData` in @chartwarden/types). */
     dispositionData: jsonb("disposition_data"),
     linkedEncounterId: uuid("linked_encounter_id"), // logical FK → M8
     linkedVerbalOrderIds: jsonb("linked_verbal_order_ids").notNull().default(sql`'[]'::jsonb`),

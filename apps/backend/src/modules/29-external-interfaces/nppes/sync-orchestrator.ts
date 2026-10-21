@@ -8,7 +8,7 @@
 // D11 / W-XI-12 — NPPES is PLATFORM-SHARED public data. The whole run executes in platform context (the
 // stores use `withPlatformContext` in the real wiring) and a TENANT-scoped trigger is REFUSED: a manual sync
 // may only be initiated by a platform actor (`platform_admin`), never from within an org context.
-import type { Npi, NppesSyncKind, NppesSyncRunId, NppesSyncTrigger } from "@wardenx/types";
+import type { Npi, NppesSyncKind, NppesSyncRunId, NppesSyncTrigger } from "@chartwarden/types";
 import type { NppesFetchPort } from "./nppes-client";
 import { type ProviderCachePort, toSnapshot } from "./provider-cache";
 import type { NppesFetchResult } from "./response-projection";

@@ -15,13 +15,13 @@ import {
   BEREAVEMENT_WINDOW_DAYS,
   OPT_OUT_SELF_SERVICE_RESCIND_WINDOW_DAYS,
   weightedScoreToRuleScore,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavedContactView,
   BereavementAugmentationResult,
   BereavementOutreachView,
   BereavementRiskFactorInputs,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/index";
 import {

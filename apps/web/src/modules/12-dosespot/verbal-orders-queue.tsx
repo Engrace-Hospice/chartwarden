@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — verbal medication-orders queue (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (verbal-orders). The named
 // prescriber's queue of verbal_pending medication orders awaiting their signature within the 48h window
@@ -16,7 +16,7 @@ import {
 // deadline lives on the M11 verbal record). Controlled substances may NOT be ordered verbally in Phase 1
 // (D18, `dosespot.epcs` OFF) — they never appear here. The sign step-up fills in as its write surface
 // hardens; the SERVER owns the §2.2 D2 status (ADR-0030 — no frontend authz). Reads
-// GET /api/v1/medication-orders?status=verbal_pending via the typed client. Leaves only (@wardenx/ui).
+// GET /api/v1/medication-orders?status=verbal_pending via the typed client. Leaves only (@chartwarden/ui).
 // #91 — a row opens the ORDER, where the §2.3 verbal ceremonies (sign, cosign) live. See the note in
 // `sign-inbox.tsx` on why the ceremony is not inlined into the row.
 import { useCallback, useEffect, useMemo, useState } from "react";

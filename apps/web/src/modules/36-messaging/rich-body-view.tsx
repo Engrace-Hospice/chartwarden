@@ -11,7 +11,7 @@ import {
   linkTargetLabel,
   safeLinkHref,
   sanitizeRichBody,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { useMemo } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";

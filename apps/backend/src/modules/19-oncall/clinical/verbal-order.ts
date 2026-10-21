@@ -1,4 +1,4 @@
-import { isStepUpRecent } from "@wardenx/auth";
+import { isStepUpRecent } from "@chartwarden/auth";
 // apps/backend/src/modules/19-oncall/clinical/verbal-order.ts — M19-T05 (D9, §7.7, §2.4, §6).
 //
 // THE M11 BINDING. §7.7's scene: 2 a.m., the patient vomited her morning morphine, the RN takes a verbal
@@ -10,7 +10,7 @@ import { isStepUpRecent } from "@wardenx/auth";
 // WHAT M11 ACTUALLY PUBLISHED, and why the shape here follows it rather than D9's sketch:
 //
 //   • D9 writes `OrderSignatureProvider.recordVerbalOrder(...)` "with the triage context attached
-//     (`triage_context: {triageCallId}`)". `RecordVerbalOrderInput` (@wardenx/types) has no such field, and
+//     (`triage_context: {triageCallId}`)". `RecordVerbalOrderInput` (@chartwarden/types) has no such field, and
 //     M11's `order_record` has no triage column. The link therefore lives ONLY on M19's side, on
 //     `triage_call.linked_verbal_order_ids` — which is exactly what §7.7 says and what M19's own published
 //     `TriageCallProvider.triageContextForVerbalOrder(orgId, orderRecordId)` seam (§4.3) exists to serve:
@@ -44,8 +44,8 @@ import type {
   SessionStepUpFields,
   StepUpPolicy,
   VerbalOrderId,
-} from "@wardenx/types";
-import { STEP_UP_POLICY } from "@wardenx/types";
+} from "@chartwarden/types";
+import { STEP_UP_POLICY } from "@chartwarden/types";
 import { permittedDispositions } from "../lifecycle/disposition";
 import type { TriageSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";

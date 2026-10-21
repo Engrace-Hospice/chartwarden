@@ -12,7 +12,7 @@
 //     duplicate CCN refuses the file, then the whole file loads in ONE transaction — a bad row loads nothing.
 //   • `billing.rule_config.platform_admin` + a FRESH step-up (403 STEP_UP_REQUIRED) + no AI actor + `Idempotency-Key`.
 // The preview below repeats the per-row patterns so the operator fixes the file BEFORE sending it; it decides nothing.
-import type { operations } from "@wardenx/ui";
+import type { operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 type Op = operations["postApiV1AdminBillingWageindexesLoad"];

@@ -2,8 +2,8 @@
 // supplies what the binding leaves to the caller (the Part 2 gate, the active-user check and the display-name resolver
 // default to the platform's own) and returns the binding: `isEnabled` + `service` are the route deps; `queueForPatient` is
 // the lifecycle consumer's port. One factory, so every caller shares one service and one store.
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { isActiveMessagingUser } from "../messaging-route-service-db";
 import { createSeamPart2ChannelGate } from "../part2-channel-gate";

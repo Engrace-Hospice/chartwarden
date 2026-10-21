@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — platform-tenant BAA register: `platform_tenant_baa_record`
+// @chartwarden/saas-tenant-platform · repositories — platform-tenant BAA register: `platform_tenant_baa_record`
 // (M34 §3.8).
 //
 // The platform → tenant Business Associate Agreement register (D11) — DISTINCT from M40's tenant →
@@ -6,7 +6,7 @@
 // dates, breach-notification contacts, subcontractor disclosure set, compliance-officer attestation,
 // and the M22 document id of the executed PDF. This repo inserts/updates the record and serves the
 // expiry sweep that drives the BAA-expiry alert rules (§4.8).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { asc, desc, eq, isNotNull } from "drizzle-orm";
 
 const B = schema.platformTenantBaaRecord;

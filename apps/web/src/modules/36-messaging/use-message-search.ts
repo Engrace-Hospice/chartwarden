@@ -1,7 +1,7 @@
 // WP 2.7a: the in-conversation search read. Debounced, generation-guarded (a slow reply for an older query never
 // replaces a newer one), cleared on a channel change. The query text only ever goes to the server as the request;
 // it is not kept anywhere beyond this component's state.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Message } from "./messaging-types";
 import { apiErrorMessage } from "./messaging-utils";

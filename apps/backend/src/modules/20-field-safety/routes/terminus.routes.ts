@@ -10,15 +10,15 @@
 // supplementary and carries who verified it and when. The platform never dials a PSAP. The number appears
 // ONLY in this authenticated response: never in an outbox event, an alert payload or an audit row (spec 8.8.2),
 // which carry the `psapJurisdictionId` alone.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   type EmergencyServiceJurisdictionReader,
   NotFoundError,
   type OrgId,
   type PsapJurisdictionSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { TerminusDeps } from "../terminus/deps";

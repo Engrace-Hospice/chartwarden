@@ -1,16 +1,16 @@
-// @wardenx/dosespot — §2.1 Medication-Class catalog (M12-T01 domain layout).
+// @chartwarden/dosespot — §2.1 Medication-Class catalog (M12-T01 domain layout).
 //
 // The single source of per-class metadata the lifecycle (§2.2 D2), the validators (§3.4), the EPCS gate
 // (§2.4), and the terminology bindings (M38) read instead of re-deriving rules inline: which schedules
 // trigger the EPCS layer for the class, the M38 terminology value-sets the class binds, and whether the
 // class can carry a controlled component (compounded only, driven at runtime by `data.contains_controlled`).
 //
-// PURE DATA — no IO, `@wardenx/types`-only. The per-class TypeBox `data` schemas + cross-field validators
+// PURE DATA — no IO, `@chartwarden/types`-only. The per-class TypeBox `data` schemas + cross-field validators
 // + transmission mappers + concrete `epcs-rules` land per-folder in `classes/<class>/` in later tasks
 // (the spec §2.1 lazy-import shape); this catalog pins the metadata they hang off so adding a class is one
 // PR (drop a folder + add an entry; no `ALTER TABLE`, no migration — §2.1).
 
-import type { DeaSchedule, MedClass } from "@wardenx/types";
+import type { DeaSchedule, MedClass } from "@chartwarden/types";
 
 /** The M38 terminology value-sets a class binds at validation time (§2.1 "terminologyBindings"). */
 export type TerminologyBinding =

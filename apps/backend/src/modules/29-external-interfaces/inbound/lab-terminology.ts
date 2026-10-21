@@ -1,6 +1,6 @@
 // apps/backend/src/modules/29-external-interfaces/inbound — LOINC terminology gate (M29-T05, §1 D-terminology).
 // Injected over a narrow `LabTerminologyPort` — the M38 `TerminologyProvider` is OPAQUE (`unknown`) in the
-// leaf `@wardenx/types` and M29 carries no `38` dependsOn edge (ADR-0005: seam consumers are edge-free), so
+// leaf `@chartwarden/types` and M29 carries no `38` dependsOn edge (ADR-0005: seam consumers are edge-free), so
 // this file defines the minimal port it needs and the T08 boot wiring adapts the real M38 seam to it. Same
 // shape as the T04 cascade's injected `PatientReader`: no DB, no clock, a fail-fast contract.
 //
@@ -9,7 +9,7 @@
 // the test name even when LOINC mapping lags — it lands with `terminology_validation='unknown_code'` and the
 // caller routes an M36 alert to the tenant terminology administrator. Downstream FHIR (M28) + HQRP (M30)
 // filter on `='valid'`. M38 unavailable ⇒ fail CLOSED to `unknown_code` (never a false `valid`).
-import type { LabTerminologyValidation } from "@wardenx/types";
+import type { LabTerminologyValidation } from "@chartwarden/types";
 
 /** The narrow slice of M38's `TerminologyProvider` the lab gate needs (adapted from the real seam at T08). */
 export interface LabTerminologyPort {

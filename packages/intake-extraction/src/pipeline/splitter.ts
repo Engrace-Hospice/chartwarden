@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — the fax-packet SPLITTER (F-238): one inbound fax → the documents inside it.
+// @chartwarden/intake-extraction — the fax-packet SPLITTER (F-238): one inbound fax → the documents inside it.
 //
 // A hospice referral fax is a stack of separate documents (discharge summary, H&P, consults, labs, a
 // transfer form, a POLST…). DocLens used to treat every run of consecutive same-type pages as ONE

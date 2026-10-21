@@ -1,4 +1,4 @@
-// @wardenx/reporting — translator step 3: compile `filters[]` into a PARAMETERIZED WHERE fragment
+// @chartwarden/reporting — translator step 3: compile `filters[]` into a PARAMETERIZED WHERE fragment
 // (M33 §4.2, D4).
 //
 // Every filter becomes a predicate against a WHITELISTED column (`t."<dimensionKey>"`, asserted present
@@ -7,7 +7,7 @@
 // filter is the (catalog-validated, regex-guarded) column identifier; the values travel in the params
 // array. The semantic legality of each comparator/value was already proven by `spec-validator.ts`; this
 // step re-asserts column membership as defense-in-depth and lays down the bound placeholders.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import { ReportTranslatorError, quoteIdent } from "./spec-validator";
 
 /** SQL operator text per scalar comparator. `le`/`ge`/`ne` map to their SQL spellings. */

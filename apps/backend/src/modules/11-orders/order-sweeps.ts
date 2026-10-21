@@ -10,9 +10,9 @@
 // write can never lose its alert. Every sweep is idempotent: a tier marker (migration 0405), a status-guarded UPDATE.
 //
 // NO PHI in events or alerts: ids, tiers, hour counts and enum tokens only.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { OrderKind } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { OrderKind } from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "./orders-route-service-db";
 

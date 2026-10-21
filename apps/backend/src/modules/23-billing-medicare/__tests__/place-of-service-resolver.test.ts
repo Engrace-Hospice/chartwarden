@@ -1,6 +1,6 @@
 // F-213 (#252) — pure/unit proof of the M23 place-of-service resolver (mapping, RHC/CHC-only rule, coverage,
 // move handling). The live suite (m23-claim-assembly-seams) proves the same against real rows under RLS.
-import { POS_BY_QCODE } from "@wardenx/billing";
+import { POS_BY_QCODE } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 import {

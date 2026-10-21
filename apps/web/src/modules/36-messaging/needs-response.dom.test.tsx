@@ -3,8 +3,8 @@
 // asks that colleague; off by default and never remembered; it is not a dialog, so nothing can submit the composer's form.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ACK_REQUESTS_FLAG_KEY } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@wardenx/ui";
+import { ACK_REQUESTS_FLAG_KEY } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { useRef, useState } from "react";
 import type { JSX } from "react";

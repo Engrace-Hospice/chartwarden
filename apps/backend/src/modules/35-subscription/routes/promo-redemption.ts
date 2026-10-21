@@ -13,8 +13,8 @@
 // Order is lock → validate → insert application → increment. The application insert goes before the
 // increment so the duplicate-application unique index (`promo_code_application_sub_active_uq`) fails the
 // transaction before the count is touched; the throw rolls the whole transaction back regardless.
-import { type DbClient, schema } from "@wardenx/db";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { eq, sql } from "drizzle-orm";
 
 const PROMO = schema.promoCode;

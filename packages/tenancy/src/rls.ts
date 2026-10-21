@@ -1,4 +1,4 @@
-// @wardenx/tenancy — RLS policy generator (M1-T05; spec §3.13).
+// @chartwarden/tenancy — RLS policy generator (M1-T05; spec §3.13).
 //
 // Emits the canonical per-table tenant-isolation DDL used inside migrations when a
 // new module's PHI-bearing table lands. Every generated policy keys ONLY on the

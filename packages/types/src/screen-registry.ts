@@ -1,4 +1,4 @@
-// @wardenx/types — screen registry contract (F0-T03, ADR-0030).
+// @chartwarden/types — screen registry contract (F0-T03, ADR-0030).
 // The M1 web shell builds its routes from this registry; each module's web-slice
 // (apps/web/src/modules/NN-*) registers its screens into it at app composition, so the
 // shell NEVER imports a feature module directly (the frontend analogue of M1's seam registry).

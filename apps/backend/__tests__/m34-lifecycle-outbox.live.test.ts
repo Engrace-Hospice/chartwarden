@@ -21,13 +21,13 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
+import { createDbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import {
   ACTIVATION_REFUSAL_ALERT_THRESHOLD,
   shouldAlertActivationRefusal,
-} from "@wardenx/saas-tenant-platform";
-import { registerPlatformJob } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

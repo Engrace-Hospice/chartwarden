@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.4 D1 / §2.5 D7 packet-snapshot builder (M14-T04, BASIC). Pure.
+// @chartwarden/idg — §2.4 D1 / §2.5 D7 packet-snapshot builder (M14-T04, BASIC). Pure.
 //
 // The "since last IDG" view is a packet-build-time JOIN across the upstream seam reads (§1.1) — M14 never
 // duplicates clinical data. This module is the IO-free assembler the M14-T05 build worker composes AFTER it
@@ -9,7 +9,7 @@
 // cover-level discussion flags deterministically (Layer 1 — the Layer 2 narrative polish is the M14-T05
 // `ai-platform` call, gated per D6; BASIC build leaves `layer2Polished: null`).
 //
-// PURE DATA — no IO, `@wardenx/types` + the local `@wardenx/idg` policy only. The seam reads, the SUD
+// PURE DATA — no IO, `@chartwarden/types` + the local `@chartwarden/idg` policy only. The seam reads, the SUD
 // `consent.evaluate` gate (W-SUD-01, see `sud-redactor.ts`), and the idempotent upsert are the service's job.
 import type {
   AdmissionId,
@@ -30,7 +30,7 @@ import type {
   PacketOrderChangeDigest,
   PacketSnapshot,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { DISCIPLINE_VIEW_POLICY } from "../policy";
 import { resolveSinceCursor } from "./freeze";
 

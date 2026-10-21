@@ -25,9 +25,9 @@ import {
   auditPhiRead,
   declareReadAudit,
   routeReadAuditMode,
-} from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 declare module "fastify" {

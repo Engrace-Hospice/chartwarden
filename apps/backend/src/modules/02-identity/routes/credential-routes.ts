@@ -4,9 +4,9 @@ import {
   requireAbac,
   requirePermission,
   requireStepUp,
-} from "@wardenx/auth";
-import type { AuditExecutor } from "@wardenx/audit";
-import { ValidationError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { AuditExecutor } from "@chartwarden/audit";
+import { ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   CredentialLifecycleStore,

@@ -2,10 +2,10 @@
 //
 // Before rendering or serving a SUD-class (42 CFR Part 2) document, M22 consults M39's REAL `ConsentEvaluator`
 // seam (the same one M7's `sud_disclosure_allowed` predicate consumes). M22 `dependsOn` is `[1, 5]` — it does
-// NOT depend on M39, so it MUST NOT import `@wardenx/consent` (that would create a dependency-cruiser edge).
+// NOT depend on M39, so it MUST NOT import `@chartwarden/consent` (that would create a dependency-cruiser edge).
 // Instead it resolves the already-registered real seam OPAQUELY via `getSeam("ConsentEvaluator")` and casts
 // it to the locally-declared structural minimum {@link ConsentEvaluatorPort} (only the `evaluate` arm M22
-// needs). M39 owns the canonical rich interface in @wardenx/consent; this port is the M22-side projection.
+// needs). M39 owns the canonical rich interface in @chartwarden/consent; this port is the M22-side projection.
 //
 // Fail-CLOSED: any seam error, an unregistered seam, or `allowed !== true` returns `false` (consent absent →
 // the decider refuses the SUD render per §7.16). The actual refuse/redact decision is the pure
@@ -14,7 +14,7 @@
 import { getSeam } from "../../../bootstrap/index";
 
 /** The M22-side structural projection of M39's `ConsentEvaluator.evaluate` (the only arm M22 consumes). The
- * real (richer) contract lives in @wardenx/consent; M22 reads it opaquely from the M1 registry. */
+ * real (richer) contract lives in @chartwarden/consent; M22 reads it opaquely from the M1 registry. */
 export interface ConsentEvaluatorPort {
   evaluate(args: {
     organizationId: string;

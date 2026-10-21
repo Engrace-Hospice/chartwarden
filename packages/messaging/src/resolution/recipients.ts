@@ -1,4 +1,4 @@
-// @wardenx/messaging — recipient resolution registry (M36-T04, spec §2.1 principle 3, §4.6, §2.5).
+// @chartwarden/messaging — recipient resolution registry (M36-T04, spec §2.1 principle 3, §4.6, §2.5).
 //
 // Recipient resolution is DYNAMIC at emit time, not frozen on the rule (§2.1.3): `alert_rule`
 // names a `RecipientResolver` (care_team / on_call / discipline / role_set / tenant_admins /

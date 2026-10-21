@@ -15,7 +15,7 @@
 // THE READ IS DELIBERATE, NOT AUTOMATIC. Loading the screen does not decrypt: the button below does. A
 // screen that decrypted on mount would write an access row every time somebody mis-clicked a link, and an
 // audit trail of accidents is one nobody can read for intent.
-import { EmptyState, PageHeader, useApiClient } from "@wardenx/ui";
+import { EmptyState, PageHeader, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

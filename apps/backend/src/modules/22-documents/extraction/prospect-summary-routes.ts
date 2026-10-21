@@ -11,8 +11,8 @@ import { type Static, Type } from "@sinclair/typebox";
 // The batch read is gated and audited exactly like the review workspace read it summarises (`intake.review` + an `auditRead`
 // declaration, so the host's read-audit hook records who looked at which batch). 409 REVIEW_NOT_COMPLETE
 // until the review is complete. Built deterministically (`prospect-summary.ts`) — no model is involved.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import type { ProspectSummaryService } from "./prospect-summary-db";

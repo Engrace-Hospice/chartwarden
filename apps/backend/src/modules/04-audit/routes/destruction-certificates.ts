@@ -5,13 +5,13 @@ import {
   encodeCursor,
   isMessagingOnlyCriteria,
   resolveLimit,
-} from "@wardenx/audit";
+} from "@chartwarden/audit";
 // apps/backend/src/modules/04-audit/routes/destruction-certificates.ts — GAP-003 the §6
 // destruction-certificate surface (M4 spec §4.2-4.3, §6, §10.5).
 //
 // `destruction_certificate` is M4-OWNED (architecture/module-manifest.ts) so this file talks to the
 // table directly over Drizzle + `withOrgContext`. What this file does NOT do: actually execute a
-// destruction. `runExecuteDestruction` (@wardenx/audit `jobs/processors.ts`) needs a Drizzle-backed
+// destruction. `runExecuteDestruction` (@chartwarden/audit `jobs/processors.ts`) needs a Drizzle-backed
 // `ExecuteDestructionPorts` adapter (eraser + certificate-status writer) that — like the rest of
 // M4's BullMQ worker wiring (`registerAuditWorkers`/`scheduleAuditJobs`, see
 // apps/backend/src/index.ts's "M4-T11 BullMQ worker-construction precedent" comment) — has never
@@ -24,10 +24,10 @@ import {
 // and remains, `createDrizzleAuditEraserPorts.legalHoldFor` (erasers/audit-eraser.ts) at actual
 // per-row execution time — which is exactly why a held row can never be destroyed even though this
 // route's own pre-check is approximate.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { LegalHoldCriteria } from "./audit-typebox";
@@ -39,7 +39,7 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the destruction-certificates routes. */

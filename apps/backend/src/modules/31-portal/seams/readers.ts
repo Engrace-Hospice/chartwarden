@@ -1,6 +1,6 @@
 // apps/backend/src/modules/31-portal/seams/readers.ts — M31-T06 the SEVEN published reader seams (§4.3).
 //
-// Each factory returns the T01 leaf interface (`@wardenx/types`) over an injected port (Drizzle at boot; slice
+// Each factory returns the T01 leaf interface (`@chartwarden/types`) over an injected port (Drizzle at boot; slice
 // in tests). The consumers — M28 SMART user-launch, M30 patient-engagement + §4004 + §164.528, M33 dashboards,
 // M34 SaaS console, M8 encounter-attach, M17 room back-ref, M35 Phase-2 billing — import ONLY the interface
 // type, never an M31 schema. Registration into the M1 SeamRegistry is port-injected at the composition root
@@ -16,7 +16,7 @@ import type {
   PortalSessionMinter,
   TelehealthMetricsProvider,
   TelehealthVisitReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { PortalStateError } from "../lifecycle/errors";
 import type {
   PortalAccountStore,

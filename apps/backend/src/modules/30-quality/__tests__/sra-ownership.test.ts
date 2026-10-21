@@ -1,5 +1,5 @@
 // GAP-156 — SRA finding/remediation mutations enforce ownsSraCycle (owner OR sra.admin-bearing role) in the service.
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import type { M30WriteActor } from "../routes/actor";
 import { assertSraCycleAccess } from "../routes/sra-ownership";

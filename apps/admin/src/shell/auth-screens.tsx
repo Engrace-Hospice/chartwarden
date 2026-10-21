@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/shell — the console's own login flow (M1 shell, ADR-0030), registered the same way
 // as apps/web/src/shell/system-pages.tsx (moduleId: 1 — Foundation owns each app's shell), not as a
 // numbered feature-module slice — there is no backend "Module 0" this corresponds to. Chromeless

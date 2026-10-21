@@ -4,7 +4,7 @@
 // at the DB layer by the §2.2 GIST EXCLUDE constraint AND here in the service before commit, so the
 // error envelope is the precise `ELECTION_PERIOD_OVERLAP` not a raw PG exception. Pure transition
 // function over already-resolved facts (CTI signed, admission activated, the §2.4 election validators).
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import { type ElectionEndCause, type TransitionResult, result } from "./effects";
 import { AdmissionStateError, require_ } from "./errors";
 import {

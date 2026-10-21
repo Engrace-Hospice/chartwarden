@@ -1,5 +1,5 @@
-import { Glyph, StatusPill, useApiClient } from "@wardenx/ui";
-// @wardenx/portal — patient-facing visit chronology. Upcoming and history remain backend-defined
+import { Glyph, StatusPill, useApiClient } from "@chartwarden/ui";
+// @chartwarden/portal — patient-facing visit chronology. Upcoming and history remain backend-defined
 // categories and load independently; route ids never authorize reads, and obsolete patient responses are discarded.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";

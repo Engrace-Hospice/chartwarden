@@ -1,4 +1,4 @@
-// @wardenx/cap-management — M26 ABAC predicate-NAME catalog (§4.7). The five named predicates M26 registers
+// @chartwarden/cap-management — M26 ABAC predicate-NAME catalog (§4.7). The five named predicates M26 registers
 // into M3's named-predicate registry (the backend abac-predicates.ts provides the Drizzle-backed resolvers
 // in P3). `inOrg` / `caseload_or_scope` are REUSED base predicates M3/M5 own and are NOT re-registered here.
 export const M26_ABAC_PREDICATES = [

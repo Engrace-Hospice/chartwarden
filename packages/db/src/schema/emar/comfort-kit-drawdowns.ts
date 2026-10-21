@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_drawdown` (M13 §3.3 / §2.7 D5). Per-medication line of a comfort_kit_deployment:
+// @chartwarden/db — `comfort_kit_drawdown` (M13 §3.3 / §2.7 D5). Per-medication line of a comfort_kit_deployment:
 // expected vs remaining quantity, the replenishment threshold (drives the m13.comfort_kit.* replenishment event
 // consumed by M21), and the lot/expiration. Org-scoped (no patient row — the parent deployment carries it);
 // standard app.org_id RLS. Non-partitioned. `comfort_kit_deployment_id` is M13-owned but kept loose (no SQL FK);

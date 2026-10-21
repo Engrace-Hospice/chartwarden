@@ -1,4 +1,4 @@
-// @wardenx/audit — sampled verification of the audit hash chain (M4 §4.4 `audit.integrity_sample`,
+// @chartwarden/audit — sampled verification of the audit hash chain (M4 §4.4 `audit.integrity_sample`,
 // §10.4, §12.3). Pure logic — `node:crypto` only, no DB; the Drizzle reader lives in ./db-chain-reader.
 //
 // WHAT IS THE REFERENCE. The spec's quarterly sample compares live rows with a pgBackRest backup. This

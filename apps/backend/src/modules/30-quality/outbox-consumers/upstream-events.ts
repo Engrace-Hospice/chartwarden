@@ -11,8 +11,8 @@
 // `evv-route-service-db.ts`'s real check-in/check-out write path calls `recordEvent` from NOWHERE and
 // emits `check_in_recorded`/`check_out_recorded`/`at_patient_address`/`geofence_breach_recorded` inline
 // instead — a producer-side gap in M18, reported (not fixed) in `scripts/outbox-deferred-consumers.ts`.
-import type { DbClient } from "@wardenx/db";
-import { handleClaimAdjudicated, handleHopeSubmissionAccepted } from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import { handleClaimAdjudicated, handleHopeSubmissionAccepted } from "@chartwarden/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

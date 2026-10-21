@@ -3,9 +3,9 @@
 // scopes each statement to the acting org; keyset pagination is `(ts DESC, id DESC)` over the resource's
 // anchor timestamp. The taxonomy merge layers the per-tenant overlay on the injected M38 terminology
 // lookup (the composition root binds the real TerminologyProvider; absent ⇒ category 'unmapped' floor).
-import { type DbClient, schema } from "@wardenx/db";
-import { RegulatoryDecimal } from "@wardenx/shared/money";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { RegulatoryDecimal } from "@chartwarden/shared/money";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { type AgingBucketLabel, type AppealTier, agingBucketLabel, deriveTierDeadline } from "../domain";
 import type { M25ReadActor } from "./actor";

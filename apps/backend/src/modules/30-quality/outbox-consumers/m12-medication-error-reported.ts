@@ -33,8 +33,8 @@
 // posture `m30-m18-evv-visit-verified.ts`/`m30-m37-restraint-applied.ts` already establish for this class of
 // gap; a medication-error report against an order this org cannot site is advisory-adjacent, not
 // integrity-critical.
-import type { DbClient } from "@wardenx/db";
-import { type IncidentTriggerEvent, handleMedicationErrorReported } from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import { type IncidentTriggerEvent, handleMedicationErrorReported } from "@chartwarden/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

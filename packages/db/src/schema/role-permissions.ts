@@ -1,4 +1,4 @@
-// @wardenx/db — `role_permission` (M3 Authorization §3.4). The join from a role to the
+// @chartwarden/db — `role_permission` (M3 Authorization §3.4). The join from a role to the
 // permission keys it grants. M03-F05: a **denormalized** organization_id (= the parent
 // role's org; NULL only for platform templates) so RLS is well-defined — without it the
 // generic generator would emit a predicate against a missing column. This table gets a

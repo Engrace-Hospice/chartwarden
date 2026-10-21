@@ -7,8 +7,8 @@
 //
 // FAIL-CLOSED: a document another module requested, or one whose aggregate type is not M12's, is a
 // deliberate no-op. Event name is a STRING literal; no M22 import, no new `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const MED_ORDER = schema.medicationOrders;

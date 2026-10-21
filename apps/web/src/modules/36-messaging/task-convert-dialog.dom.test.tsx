@@ -2,7 +2,7 @@
 // the field they describe, and the dialog follows the shared modal contract (labelled, Escape closes, Ctrl/Cmd+Enter submits).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { TaskConvertDialog } from "./task-convert-dialog";
 import { TASK_NOTICE } from "./task-wording";

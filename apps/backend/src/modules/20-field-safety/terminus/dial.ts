@@ -9,11 +9,11 @@
 //   5. place the call via M36          -> succeeded | skipped voice_unbound | retry | failed
 // The platform NEVER dials 911 or a PSAP (spec 2.2.2 (b) is "surface the number to a human"). The decrypted
 // number is passed to the transport and nowhere else: not logged, not in an error, not in the ledger.
-import { auditPhiRead } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import type { IsoInstant, MembershipId, OrgId } from "@wardenx/types";
+import { auditPhiRead } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import type { IsoInstant, MembershipId, OrgId } from "@chartwarden/types";
 import { logM20Cron } from "../jobs/worker-support";
 import { readEmergencyContact } from "../seams/emergency-contact";
 import { openEmergencyContact, resolveDialNumber } from "./contact";

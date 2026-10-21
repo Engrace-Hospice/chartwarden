@@ -7,7 +7,7 @@
 // (M8-T09+) executes them inside the aggregate's optimistic-locked transaction (the §2.8 BEGIN..COMMIT
 // envelope: load FOR UPDATE on version → run guards/gate → update row → write child rows → audit() →
 // outbox.publish()). Keeping them as data makes the machines deterministic and unit-testable with no DB.
-import type { LocalDate, M8EventName, SignatureKind } from "@wardenx/types";
+import type { LocalDate, M8EventName, SignatureKind } from "@chartwarden/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.8). The service layer is the only place

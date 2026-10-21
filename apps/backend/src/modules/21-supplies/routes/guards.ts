@@ -24,7 +24,7 @@
 //      the right Location actually needs to see, because "not found" would send them hunting for a kit
 //      that is sitting on the shelf they can see. The one exception is the per-patient request list, which
 //      is addressed by patient id and does 404.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { PreHandler } from "./actor";
 
 type TargetRequest = {

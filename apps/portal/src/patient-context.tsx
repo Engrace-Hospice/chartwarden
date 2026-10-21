@@ -1,4 +1,4 @@
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { readError } from "./screens/portal-format";

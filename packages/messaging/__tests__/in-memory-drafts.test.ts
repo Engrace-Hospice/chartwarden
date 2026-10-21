@@ -1,4 +1,4 @@
-import { SBAR_MAX_SECTION_CHARS } from "@wardenx/types";
+import { SBAR_MAX_SECTION_CHARS } from "@chartwarden/types";
 /**
  * WP 2.5 on the in-memory draft service (the dev/slice twin of the DB service): one private draft per
  * user + channel (+ thread root), revision-checked saves, last-writer per device, merge prompt across devices.

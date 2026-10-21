@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 // adapter is what `mountTenantPlatformRoutes` injects when a DB client is present.
 //
 // EXECUTION MODEL (the two rules this file enforces structurally):
-//   - Every read/command runs inside ONE `withPlatformContext` transaction (M1 @wardenx/tenancy — the
+//   - Every read/command runs inside ONE `withPlatformContext` transaction (M1 @chartwarden/tenancy — the
 //     separately-pooled, RLS-bypass, AUDITED cross-tenant platform path, F03/F09). `withPlatformContext`
 //     refuses any caller not on the platform-job allowlist and emits the mandatory `platform.bypass_invoked`
 //     audit event before `fn` runs — so every platform-ops cross-tenant read is audited by construction.
@@ -23,8 +23,8 @@ import { randomUUID } from "node:crypto";
 // repo/seam separately). SAFETY: the shred command requires `status='destruction_pending'` and enqueues
 // `tenant.shred` (whose worker calls the `m34_destroy_tenant_key_ring` SECURITY DEFINER fn + M4 destruction-
 // cert registry — never this request thread); this adapter never nulls DEK ciphertext directly.
-import { type DbClient, schema } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import {
   ACTIVATION_REFUSAL_METADATA_KEY,
   BaaRegisterRepository,
@@ -41,7 +41,7 @@ import {
   readActivationRefusal,
   withActivationRefusal,
   withoutActivationRefusal,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 import {
   type LifecycleActorKind,
   type LifecycleEvent,
@@ -54,9 +54,9 @@ import {
   elevateSupportSession,
   startSupportSession,
   transitionTenant,
-} from "@wardenx/saas-tenant-platform";
-import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/saas-tenant-platform";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type InvitationDeliveryPort,

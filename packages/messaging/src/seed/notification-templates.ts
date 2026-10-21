@@ -1,4 +1,4 @@
-// @wardenx/messaging — platform-floor notification templates (M36-T09; spec §3.13.1 Phase C,
+// @chartwarden/messaging — platform-floor notification templates (M36-T09; spec §3.13.1 Phase C,
 // ADR-0024). The six cross-module notification-copy rows M36 owns after ADR-0024 moved them from
 // M14: the four referral events (M6), the lab-order transmission failure (M11), and the critical
 // results render (M22). Each is a platform-floor row (`organizationId: null`) keyed by
@@ -6,7 +6,7 @@
 //
 // Source-of-truth-is-code → DB-mirror: the boot slice UPSERTs `toNewNotificationTemplateRows()`
 // into `notification_template` (on the `(organization_id, template_key, version)` unique key);
-// the table is regenerated from this seed, never hand-edited. Structural row type (no `@wardenx/db`
+// the table is regenerated from this seed, never hand-edited. Structural row type (no `@chartwarden/db`
 // import) so the package stays a leaf — exactly the §3.10 `PLATFORM_DEFAULT_ALERT_RULES` pattern.
 
 import type { NotificationTemplateRow } from "../compose/template-render";
@@ -115,7 +115,7 @@ export const PLATFORM_NOTIFICATION_TEMPLATES: readonly NotificationTemplateRow[]
 ];
 
 /** Row shape the boot slice UPSERTs into `notification_template` (mirrors the Drizzle columns,
- *  §3.13.2). Structural (no `@wardenx/db` import); `organizationId` is null for every floor row. */
+ *  §3.13.2). Structural (no `@chartwarden/db` import); `organizationId` is null for every floor row. */
 export interface PlatformNotificationTemplateRow {
   readonly organizationId: null;
   readonly templateKey: string;

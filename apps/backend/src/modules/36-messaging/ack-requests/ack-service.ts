@@ -20,7 +20,7 @@ import {
   ackStateInvalid,
   defaultDeadline,
   derivePatient,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   ACK_CHANNEL_LIST_CAP,
   type AckChannelListResponse,
@@ -32,7 +32,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { toAckEventDto, toAckRequestDto } from "./ack-dto";
 import { escalationNotes } from "./ack-escalation-note";

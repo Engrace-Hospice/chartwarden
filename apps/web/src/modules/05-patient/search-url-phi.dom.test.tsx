@@ -13,8 +13,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // asserts on `window.location` after each interaction, because that is the artifact that leaks:
 // asserting that some function was called with the right argument would still pass if a navigation
 // somewhere put the term back in the URL.
-import { createApiClient } from "@wardenx/ui";
-import { __resetSearchTermForTest } from "@wardenx/ui";
+import { createApiClient } from "@chartwarden/ui";
+import { __resetSearchTermForTest } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "../../shell/app";
 import { createScreenRegistry } from "../../shell/screen-registry";

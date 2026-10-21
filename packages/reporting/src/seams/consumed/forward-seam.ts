@@ -1,4 +1,4 @@
-// @wardenx/reporting — the forward-seam-unavailable marker (M33 §4.4).
+// @chartwarden/reporting — the forward-seam-unavailable marker (M33 §4.4).
 //
 // M33 CONSUMES every clinical/billing module's read seam through the M1 SeamRegistry (`getSeam`) — no
 // import edge. The producers that are not yet implemented (M15/M16/M19/M20/M21/M23/M24/M25/M26/M27/M28

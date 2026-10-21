@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the inpatient (20%) cap (D13, 42 CFR §418.302(f)): GIP (rev 0656) + IRC
+// @chartwarden/cap-management — the inpatient (20%) cap (D13, 42 CFR §418.302(f)): GIP (rev 0656) + IRC
 // (rev 0655) days must not exceed 20% of total Medicare hospice days in the cap year. Day source is M23
 // claim lines; the denominator is all-LOC patient days. Overage days (above the 20% allowance) are recouped
 // at the routine-home-care differential at settlement.

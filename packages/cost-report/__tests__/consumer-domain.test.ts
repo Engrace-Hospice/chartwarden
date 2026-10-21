@@ -1,11 +1,11 @@
-import type { CostReportState, ValidationContext } from "@wardenx/cost-report";
+import type { CostReportState, ValidationContext } from "@chartwarden/cost-report";
 import {
   applyTransition,
   canTransition,
   runValidation,
   suggestRuleFromRejection,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — pure-domain contracts the M27 §4.10 outbox CONSUMERS compose on (the inbound half
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — pure-domain contracts the M27 §4.10 outbox CONSUMERS compose on (the inbound half
 // of the module: apps/backend/src/modules/27-cost-report/consumers). These assert the EXACT pure-domain
 // invariants the three consumer handlers depend on, so the handlers' fail-closed branches are grounded in
 // tested domain behavior:

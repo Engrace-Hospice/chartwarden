@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — NDC parser (FDA National Drug Code Directory; tier 1 public).
+// @chartwarden/terminology-loader — NDC parser (FDA National Drug Code Directory; tier 1 public).
 //
 // Input: the FDA `ndctext.zip` (or its two files): `product.txt` + `package.txt`, tab-delimited with a header.
 // One concept per PACKAGE ndc, keyed by the 11-digit HIPAA form (5-4-2, zero-padded, no dashes) because that is

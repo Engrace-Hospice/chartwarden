@@ -1,12 +1,12 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — §2.2 QAPI governance-minutes signing + amendment logic (M30-P2a). Pure, IO-free.
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — §2.2 QAPI governance-minutes signing + amendment logic (M30-P2a). Pure, IO-free.
 //
 // `qapi_governance_minutes` has a two-state lifecycle: `draft → signed`. Signed minutes are append-only;
 // corrections are recorded through an M5 §164.526-pattern amendment workflow (M30's adaptation of the
 // M14 D10 minutes-immutability rule) — the original `minutes_text` is never mutated, an entry is
 // appended to the `amendment_log` jsonb array instead. This module is the pure core for both the sign
 // transition and the append-only amendment; the route persists + audits around it.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.2 minutes lifecycle state. */
 export type MinutesState = "draft" | "signed";

@@ -1,8 +1,8 @@
-// @wardenx/db — M26 Cap Management: shared pgEnum declarations (spec §3.2/§3.3). The enums live in this
+// @chartwarden/db — M26 Cap Management: shared pgEnum declarations (spec §3.2/§3.3). The enums live in this
 // single home so the fan-out table files import them without ever redeclaring a pgEnum (check-ddl-legality
 // rule 3). Filename intentionally avoids the substring "schema" (table-ownership/tenancy heuristic gotcha).
 //
-// CONVENTIONS (mirror @wardenx/db billing M23 / remittance M25 / cost-report M27 / quality M30 — the proven
+// CONVENTIONS (mirror @chartwarden/db billing M23 / remittance M25 / cost-report M27 / quality M30 — the proven
 // precedent): every DB ENUM type name is `m26_`-prefixed so it can never collide with another module's enum;
 // the exported Drizzle const is camelCase `m26X`. Spec §3.2 wrote bare names (cap_period_status, …); the
 // `m26_` prefix is the repo-wide anti-collision posture and supersedes the spec's bare names (convention wins).

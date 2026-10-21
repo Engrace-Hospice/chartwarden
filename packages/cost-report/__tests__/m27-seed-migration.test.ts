@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 seed-migration ↔ code-catalog PARITY test.
+// @chartwarden/cost-report — M27 seed-migration ↔ code-catalog PARITY test.
 //
 // Guards `packages/db/migrations/0073_cost_report_m27_seed.sql` against the code-side RuleDef catalog so
 // the two never drift: every platform-default rule (DEFAULT_VALIDATION_RULES) + every NGS-J6 additive
@@ -11,7 +11,7 @@
 // PURE: a static filesystem read of the .sql text + a parse — no DB, no Fastify, no network.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_VALIDATION_RULES, NGS_J6_RULES, type RuleDef } from "@wardenx/cost-report";
+import { DEFAULT_VALIDATION_RULES, NGS_J6_RULES, type RuleDef } from "@chartwarden/cost-report";
 import { describe, expect, it } from "vitest";
 
 const SEED_PATH = join(__dirname, "..", "..", "db", "migrations", "0073_cost_report_m27_seed.sql");

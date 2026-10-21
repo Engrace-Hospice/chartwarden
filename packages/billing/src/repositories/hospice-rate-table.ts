@@ -1,9 +1,9 @@
-// @wardenx/billing · repositories — `hospice_rate_table` (F-210; the TENANT-ENTERED, effective-dated hospice per-diem
+// @chartwarden/billing · repositories — `hospice_rate_table` (F-210; the TENANT-ENTERED, effective-dated hospice per-diem
 // rate set). ORG-SCOPED, no PHI. APPEND-ONLY: rows are inserted and SUPERSEDED (`superseded_at`/`superseded_by_id`, the
 // only app-updatable columns — column GRANT + `hospice_rate_table_guard` trigger); a rate is never edited in place and
 // there is no delete surface. "Live" = `superseded_at IS NULL`; the DB EXCLUDE constraint guarantees at most one live
 // version covers any date per provider entity, so `findEffectiveOn` has at most one answer.
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

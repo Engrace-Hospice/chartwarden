@@ -13,7 +13,7 @@ import type {
   EvvMissingResolutionKind,
   EvvMissingResolutionStatus,
   M18EventName,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { GeofenceEvaluation } from "./geofence";
 
 /** The §4.9 typed-alert discriminator the `alert` effect names (the payload is assembled in M18-T07). */

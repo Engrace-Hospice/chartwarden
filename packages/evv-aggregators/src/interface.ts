@@ -1,4 +1,4 @@
-// @wardenx/evv-aggregators — the §4.5 D1 `EvvAggregatorAdapter` interface (M18-T01).
+// @chartwarden/evv-aggregators — the §4.5 D1 `EvvAggregatorAdapter` interface (M18-T01).
 //
 // Per architecture §25.14 (the adapter mandate) this package is the ONLY place a state-EVV-aggregator
 // vendor's endpoint, credentials, and payload shape live; dependency-cruiser (architecture-fitness §25.15
@@ -14,7 +14,7 @@
 // PHI boundary: the submission body is built here from typed inputs and encrypted by the caller before
 // persist (`payload_cipher`); the adapter never persists or logs PHI itself.
 
-import type { OrgId, VisitId } from "@wardenx/types";
+import type { OrgId, VisitId } from "@chartwarden/types";
 
 /** Per-(provider, state) credentials resolved by the M18 credential-store layer and handed to `submit`/
  * `poll`. The `secrets` map is opaque to the M18 backend — only the adapter interprets its keys. */

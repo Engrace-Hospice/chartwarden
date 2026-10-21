@@ -7,7 +7,7 @@ let currentOrg = "";
 const claims: Record<string, Array<Array<{ id: string; patientId: string; slaDueAt: Date }>>> = {};
 const sets: Array<Record<string, unknown>> = [];
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   registerPlatformJob: () => {},
   systemOrgContext: (organizationId: string) => ({ organizationId, userId: "" }),
   withOrgContext: async (

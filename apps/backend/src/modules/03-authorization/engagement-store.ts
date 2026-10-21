@@ -12,10 +12,10 @@
 //
 // The enrolled-auditor COUNT lives in a server-owned `scope` key (no enrolment table exists); it is stripped
 // from anything a client supplies and from the view the routes return.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { ValidationError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import { ValidationError } from "@chartwarden/types";
 import { eq, sql } from "drizzle-orm";
 import type {
   EngagementStatus,

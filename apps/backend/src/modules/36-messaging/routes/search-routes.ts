@@ -5,8 +5,8 @@
 // decrypted-body read, so every page is read-audited as one aggregate list event attributed to the care_team
 // channel's patient. The audit row records the channel and the FILTER SHAPE only: `filterOmit: ["q"]` keeps the
 // search text out of it (a term is message content).
-import type { MessagingRouteService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import type { MessagingRouteService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import type { ChannelGuards } from "./reaction-pin-routes";

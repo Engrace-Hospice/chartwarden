@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `admission_codes_present` (admission, error, regulatory). The UB-04 requires the Type
+// @chartwarden/billing — §4.5 rule `admission_codes_present` (admission, error, regulatory). The UB-04 requires the Type
 // of Admission (FL 14) and Point of Origin (FL 15) on every institutional claim, and Stedi's 837I schema requires the
 // point of origin. The codes are recorded on the M6 admission and never invented, so a claim without them is
 // blocked until they are recorded. PURE: reads ctx only; codes and ids, no PHI.

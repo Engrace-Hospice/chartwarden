@@ -1,4 +1,4 @@
-// @wardenx/reporting — tenant-offboarding ERASER UNIT TESTS (M33 §3.7 / D6 / D9 / §8.6 / W-R-11).
+// @chartwarden/reporting — tenant-offboarding ERASER UNIT TESTS (M33 §3.7 / D6 / D9 / §8.6 / W-R-11).
 //
 // The M4 destruction-registry eraseFn (`eraseTenantReporting`) is PURE port-injected orchestration over an
 // injected store; these suites drive it with in-memory recording fakes (the M34 `shred-worker.test.ts`
@@ -14,7 +14,7 @@ import {
   type ReportingEraseStore,
   createInMemoryReportingEraseStore,
   eraseTenantReporting,
-} from "@wardenx/reporting";
+} from "@chartwarden/reporting";
 import { describe, expect, it } from "vitest";
 
 const ORG = "00000000-0000-0000-0000-0000000000aa";

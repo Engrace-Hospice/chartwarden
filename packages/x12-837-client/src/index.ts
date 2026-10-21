@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — M23-owned TypeScript client to the Python `x12-worker` sidecar (pyx12).
+// @chartwarden/x12-837-client — M23-owned TypeScript client to the Python `x12-worker` sidecar (pyx12).
 //
 // PACKAGE NAMING: the M23 spec calls this `packages/x12-worker-client`; the locked manifest + scaffold
 // use `packages/x12-837-client` (architecture wins). ALL of M23's X12 sidecar client code lives here;

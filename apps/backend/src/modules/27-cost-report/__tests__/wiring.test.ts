@@ -2,7 +2,7 @@
 // configured). The real BullMQ producer path (dedupe, organizationId enrichment) is proved against a real
 // Redis in the live suite (m27-cost-report-workflow-slice.live.test.ts) — that path needs an actual
 // `Queue.add` round trip, which this pure unit file intentionally does not stand up.
-import { DegradedError } from "@wardenx/types";
+import { DegradedError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M27InfraPortUnbound, buildM27RecomputeEnqueue } from "../wiring";
 

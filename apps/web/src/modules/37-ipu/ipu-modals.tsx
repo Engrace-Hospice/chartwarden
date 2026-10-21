@@ -7,7 +7,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/37-ipu — the M37 write ceremonies (#91).
 //
 // An inpatient unit is staffed around the clock by people who change every shift, and every ceremony

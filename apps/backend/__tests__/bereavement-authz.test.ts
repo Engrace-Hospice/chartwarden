@@ -22,10 +22,10 @@
 //   • the §7.13 gate REDACTS on an M39 outage and never discloses, and a bereavement volunteer never sees
 //     clinical risk content (D10);
 //   • the §8.5 eraser shreds BEFORE it deletes, and a second erase reports zero.
-import { M16_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@wardenx/auth";
-import type { AbacContext } from "@wardenx/auth";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
-import type { IsoInstant } from "@wardenx/types";
+import { M16_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@chartwarden/auth";
+import type { AbacContext } from "@chartwarden/auth";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import {

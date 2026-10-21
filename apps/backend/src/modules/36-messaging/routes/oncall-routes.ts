@@ -11,8 +11,8 @@
 // Read-only: nothing is paged, sent or written. The org and the caller come from the request context, never the query. The tenant flag
 // `messaging.oncall_directory` off is the uniform 404 (decided in the service, before any router call). Responses are never cached
 // (who is covering changes at a shift boundary).
-import { composeGuards, requireAbac, requirePermission } from "@wardenx/auth";
-import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@wardenx/types";
+import { composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
+import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { OnCallCoverageService } from "../oncall-directory/oncall-coverage-service";
 import type { RoleSendPorts } from "../oncall-directory/role-send-service";

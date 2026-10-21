@@ -7,14 +7,14 @@ import {
   DESIGNATED_EVENT_TYPES,
   PLATFORM_DEFAULT_ALERT_RULES,
   SNOOZABLE_EVENT_TYPES,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   NOTIFICATION_POLICY_FLAG_KEY,
   REMINDER_ALERT_EVENT,
   REMINDER_MAX_HORIZON_DAYS,
   SNOOZE_MAX_MINUTES,
   SNOOZE_REMINDER_FLAG_KEY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "../../..");

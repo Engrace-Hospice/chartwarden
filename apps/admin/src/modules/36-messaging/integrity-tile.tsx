@@ -1,4 +1,4 @@
-import { Button, StatusPill, type StatusTone, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, type StatusTone, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Integrity jobs (`/admin/messaging/integrity`): a status tile for the M36
 // hash-verify / decrypt-integrity jobs, derived from `m36.*` audit rows (see integrity-status.ts).
 import { useMemo } from "react";

@@ -1,8 +1,8 @@
 // M36 WP 3.5 - one handoff. The receiver chooses the specific items to accept (nothing is pre-selected) and can decline
 // some or all; the sender can withdraw the offer; a closed handoff is read-only. Buttons come ONLY from the server's
 // allowed_actions. A restricted, gone or unavailable item shows fixed wording and cannot be selected for acceptance.
-import type { HandoffDto, HandoffItemDto } from "@wardenx/types";
-import { Button, LoadingSpinner, Modal, StatusPill } from "@wardenx/ui";
+import type { HandoffDto, HandoffItemDto } from "@chartwarden/types";
+import { Button, LoadingSpinner, Modal, StatusPill } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {

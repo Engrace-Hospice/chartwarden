@@ -1,7 +1,7 @@
 // The conversation header and the patient-context pane of ConversationThread (moved out of it unchanged in WP 2.2 to
 // keep that file under the line ceiling).
-import { formatMrn } from "@wardenx/types";
-import { Glyph } from "@wardenx/ui";
+import { formatMrn } from "@chartwarden/types";
+import { Glyph } from "@chartwarden/ui";
 import { type JSX, type RefObject, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { IdgDiscussionsSection } from "./idg-discussions-section";

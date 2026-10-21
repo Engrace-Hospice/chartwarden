@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `intake_batch_relink` (M22, F-238 / 0312). Append-only history of moving an intake batch to
+// @chartwarden/db — `intake_batch_relink` (M22, F-238 / 0312). Append-only history of moving an intake batch to
 // another patient or referral before its review completes: who, when, from → to, and why. PHI (patient ids,
 // a reason that may name people) → the three tenancy columns, FORCEd RLS, audit trigger with `reason`
 // denylisted. `patient_id` is the patient the batch was moved TO (null when moved to an unresolved referral).

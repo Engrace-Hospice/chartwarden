@@ -1,4 +1,4 @@
-// @wardenx/billing — DDE work-item free-text note rules (ADR-0052 D7). PURE.
+// @chartwarden/billing — DDE work-item free-text note rules (ADR-0052 D7). PURE.
 //
 // Notes are capped, never copied into events or logs, and rejected when they look like a Medicare Beneficiary
 // Identifier: the queue never holds an MBI. The MBI format (CMS) is 11 characters: position 1 is 1-9, positions

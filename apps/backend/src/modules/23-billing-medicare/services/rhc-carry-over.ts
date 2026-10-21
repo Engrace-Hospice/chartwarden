@@ -2,7 +2,7 @@
 //
 // The two-tier RHC day-count carry-over as M23 prices it: M6's earlier stays with us (the claim-range seam's
 // `rhcPriorStays`) merged with the beneficiary's cross-hospice history from the latest RESOLVED HETS 271 check
-// (M23's own `eligibility_check.parsed_payload`), counted by the pure `computeRhcCarryOver` (@wardenx/billing,
+// (M23's own `eligibility_check.parsed_payload`), counted by the pure `computeRhcCarryOver` (@chartwarden/billing,
 // which carries the CMS citations). Used by the claim assembly + re-validation (HIPPS split, persisted on
 // `per_diem_rate_calculation.rhc_carry_over`) and by the readmission screen's hospice-periods read.
 //
@@ -16,7 +16,7 @@ import {
   type RhcHetsHistory,
   computeRhcCarryOver,
   repositories,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { type EligibilityCheckRowLike, projectHospicePeriods } from "../routes/hospice-periods";
 import type { PriorStayFact, RhcCarryOverView, RhcHetsCheckRef } from "./rhc-carry-over-view";
 

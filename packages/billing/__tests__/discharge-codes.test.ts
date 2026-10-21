@@ -1,10 +1,10 @@
-// @wardenx/billing — discharge claim codes (CMS Pub. 100-04 Ch. 11 §30.3, Transmittal 2410 / CR 7677).
+// @chartwarden/billing — discharge claim codes (CMS Pub. 100-04 Ch. 11 §30.3, Transmittal 2410 / CR 7677).
 import {
   type ClaimDischargeFact,
   type DischargeClaimCodes,
   deriveDischargeClaimCodes,
   dischargeCodeConflicts,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const SERVICE_TO = "2026-03-31";

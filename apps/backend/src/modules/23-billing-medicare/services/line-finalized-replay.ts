@@ -18,8 +18,8 @@
 // the same ingest transaction as the 835 posting (`m25-remittance.ts`), not the 835's own `postedAt` (M23 cannot
 // read M25's tables). They differ only by ingest latency, which matters solely for a payment ingested across a
 // cap-year boundary.
-import { type ClaimState, repositories } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type ClaimState, repositories } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   buildClaimLineFinalizedEmissions,
   isHospiceLocRevenueCode,

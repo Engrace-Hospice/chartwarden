@@ -8,7 +8,7 @@ import {
   type PortalAccessGrantKind,
   type PortalAccountRelationship,
   SESSION_POLICY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type FlipCandidateGrant,

@@ -42,9 +42,9 @@
 // `vp_idempotency_uidx` unique index via `.onConflictDoNothing()` (the `generateCarePlanVisitProposals`
 // precedent), so a redelivery (retry or at-least-once re-delivery) inserts nothing a second time and emits
 // no second `m17.visit.proposed`.
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { withOrgContext } from "@chartwarden/tenancy";
 
 const VP = schema.visitProposal;
 

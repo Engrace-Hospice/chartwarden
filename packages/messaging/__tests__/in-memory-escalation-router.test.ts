@@ -1,4 +1,4 @@
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryEscalationRouter } from "../src/escalation/in-memory-escalation-router";
 

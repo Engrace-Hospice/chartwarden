@@ -1,8 +1,8 @@
-import { createApiClient, initTheme } from "@wardenx/ui";
+import { createApiClient, initTheme } from "@chartwarden/ui";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/inter";
 import "./index.css"; // Tailwind v4 Preflight + the portal's Lantern token layer (global styles)
-// @wardenx/portal — the portal composition ROOT (the consumer-facing analogue of apps/web/src/main.tsx). The
+// @chartwarden/portal — the portal composition ROOT (the consumer-facing analogue of apps/web/src/main.tsx). The
 // one place that instantiates the typed API client and mounts the portal shell. Screens are registered inside
 // PortalApp via the portal registry, so this root stays free of per-screen imports (ADR-0030).
 import { StrictMode } from "react";

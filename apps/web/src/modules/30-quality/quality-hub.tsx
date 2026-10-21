@@ -10,8 +10,8 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/30-quality — M30 QUALITY HUB (§5.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HQRP_QUALITY.md — Quality Hub (KPI strip + CoP strip).
 //

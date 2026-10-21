@@ -35,10 +35,10 @@
 // originates (`admission_discharged`, `level_of_care_change`, `standing_order_discontinued`), and none of
 // them honestly describes "the downstream fulfillment was cancelled out from under this order by someone
 // at M21."
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionOrder } from "@wardenx/orders";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { OrderStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionOrder } from "@chartwarden/orders";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { OrderStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 

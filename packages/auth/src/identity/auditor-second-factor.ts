@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the second-factor primitives an external auditor's enrolment is built from
+// @chartwarden/auth · identity — the second-factor primitives an external auditor's enrolment is built from
 // (M2 §7.7). Lives in packages/auth because it composes the vendor's PUBLISHED primitives (`better-auth/crypto`,
 // `@better-auth/utils/otp`) — the `better-auth` import boundary (manifest VENDOR_ADAPTERS).
 //

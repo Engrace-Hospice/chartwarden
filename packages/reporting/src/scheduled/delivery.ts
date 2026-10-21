@@ -1,4 +1,4 @@
-// @wardenx/reporting · scheduled — the scheduled-report DELIVERY consumer + recipient-revocation cascade
+// @chartwarden/reporting · scheduled — the scheduled-report DELIVERY consumer + recipient-revocation cascade
 // (M33 §2.2 / §2.4 / §4.3 / D7 / D14).
 //
 // THE DOWNSTREAM HALF OF THE §1.1 RENDER HANDSHAKE. The runner emitted `m33.scheduled_report.render_requested`
@@ -17,7 +17,7 @@
 // The thin appliers run the single resolved effect under the tenant's `withOrgContext` (F09). The consumed
 // event name is a string literal + a locally-declared structural-minimum payload (M22 owns the wire superset);
 // M33 reads M22 SOLELY through the outbox event STRING, so this adds NO new manifest `dependsOn` edge.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /** The M22 reply event this consumer subscribes to (the downstream half of the §1.1 handshake). */
 export const M22_DOCUMENT_RENDERED = "m22.document.rendered" as const;

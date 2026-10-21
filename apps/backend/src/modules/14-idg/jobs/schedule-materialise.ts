@@ -12,9 +12,9 @@
 // platform-floor constant, never a per-tenant override table); every materialized meeting snapshots the
 // platform-floor `IDG_REQUIRED_QUORUM` verbatim, which is correct for every tenant that has not built a
 // (currently nonexistent) tightening surface.
-import { type DbClient, schema } from "@wardenx/db";
-import { IDG_REQUIRED_QUORUM } from "@wardenx/idg";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { IDG_REQUIRED_QUORUM } from "@chartwarden/idg";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq } from "drizzle-orm";
 import type { ActiveOrgListPort } from "./index";
 
@@ -39,7 +39,7 @@ const WEEKDAY_INDEX: Readonly<Record<string, number>> = {
   saturday: 6,
 };
 
-/** The whole-minute UTC offset (ms) of `timeZone` at `utcMs` — the `@wardenx/scheduling` `atOrgLocalTime`
+/** The whole-minute UTC offset (ms) of `timeZone` at `utcMs` — the `@chartwarden/scheduling` `atOrgLocalTime`
  *  technique, copied inline per this arc's "duplicated per-module rather than shared" convention
  *  (`cron-workers.ts`'s own backoff-parser header) rather than adding a new `apps/backend` package
  *  dependency for one function. */

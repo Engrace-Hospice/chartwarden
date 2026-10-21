@@ -5,8 +5,8 @@
 // the class floor of ADR-0073). NO vendor transport exists in any environment, so this cannot promise a phone rang: when the emit planned
 // no out-of-band route the ops sink is told ("unpaged"), and `ack-delivery-failure` tells it when a planned page failed. Never silent.
 // Fixed generic text, ids and codes only: no name, patient or message text, here or on the ops notice.
-import type { AlertEmitter } from "@wardenx/messaging";
-import type { AckClass } from "@wardenx/types";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import type { AckClass } from "@chartwarden/types";
 
 export const ACK_SUPERVISOR_ATTENTION_EVENT = "m36.ack.supervisor_attention" as const;
 export const SUPERVISOR_UNPAGED_OPS_KIND = "m36.ack.supervisor_unpaged" as const;

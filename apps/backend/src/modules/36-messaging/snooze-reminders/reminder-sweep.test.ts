@@ -1,6 +1,6 @@
 // WP 4.10 (ADR-0077) - the reminder sweep: what it raises, what it drops, what it leaves for the next tick, and that the alert carries
 // no message text. Pure over fakes; the live suite proves the same against the database.
-import { REMINDER_ALERT_EVENT } from "@wardenx/types";
+import { REMINDER_ALERT_EVENT } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { REMINDER_ALERT_TEXT, reminderDeepLink, sweepRemindersForOrg } from "./reminder-sweep";
 import type { DueReminder, ReminderSweepStore } from "./snooze-reminder-store-db";

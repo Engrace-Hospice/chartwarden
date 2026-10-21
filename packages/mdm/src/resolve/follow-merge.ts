@@ -1,4 +1,4 @@
-// @wardenx/mdm — the transparent merge-redirect chase (M40-T04, spec §2.1, §7.2).
+// @chartwarden/mdm — the transparent merge-redirect chase (M40-T04, spec §2.1, §7.2).
 //
 // The heart of "the merge redirect is invisible to consumers" (§2.1 principle 2, §7.2). A
 // foreign key from `patient.attending_physician_id` to a now-merged ExternalPhysician must

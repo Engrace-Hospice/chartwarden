@@ -17,7 +17,7 @@ import type {
   ElectionAddendumFurnishMethod,
   ElectionAddendumSignerKind,
   ElectionAddendumStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { AdmissionStateError, require_ } from "./errors";
 
 /** The minimum characters a refusal reason or an exemption note must carry to be meaningful. */

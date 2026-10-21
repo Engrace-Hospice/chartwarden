@@ -1,9 +1,9 @@
 // apps/backend/src/modules/36-messaging/urgent/deps.ts - WP 4.1: the composition-root factory the boot calls once. It supplies
 // what the binding leaves to the caller (channel facts, display names, the active-user check and the Part 2 gate), reusing
 // the WP 3.10 database lookups.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { createDbChannelFactsLookup } from "../medication-questions/deps";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";

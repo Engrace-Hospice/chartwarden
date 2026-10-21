@@ -1,4 +1,4 @@
-// @wardenx/db — `administration_offline_queue` (M13 §3.3 / §2.10 D18). Server-side persistence of incoming
+// @chartwarden/db — `administration_offline_queue` (M13 §3.3 / §2.10 D18). Server-side persistence of incoming
 // offline-sync requests for idempotency + audit (the on-device IndexedDB queue is NOT represented here). One row
 // per (device_id, local_id): the canonical-payload digest for replay detection, the sync status, and the linked
 // administration_record once synced. Org-scoped; standard app.org_id RLS. Non-partitioned (purged 30 days

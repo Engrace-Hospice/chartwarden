@@ -1,4 +1,4 @@
-// @wardenx/db — `dosespot_prescriber` (M12 §3.3). The per-tenant prescriber roster that backs the §4.7 ABAC
+// @chartwarden/db — `dosespot_prescriber` (M12 §3.3). The per-tenant prescriber roster that backs the §4.7 ABAC
 // predicates: each row links an M1 `membership` to its DoseSpot prescriber id, NPI/DEA, the DEA-authorized
 // schedule array, and the §1311.115 IAL2 identity-proofing status + EPCS enablement (D18). Org-scoped (no
 // patient column). `external_physician_mdm_id` (M40) is a plain uuid app-validated, NOT a cross-module FK;

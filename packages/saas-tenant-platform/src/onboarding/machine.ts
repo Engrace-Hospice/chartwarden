@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · onboarding — the §2.3 onboarding ROOT machine (M34, D3). Pure, IO-free.
+// @chartwarden/saas-tenant-platform · onboarding — the §2.3 onboarding ROOT machine (M34, D3). Pure, IO-free.
 //
 // The §2.3 onboarding workflow as a STRICTLY OBSERVABLE state machine: it does NOT mutate `onboarding_task`
 // rows — it consumes the current per-tenant task statuses + a {@link OnboardingContext} and EMITS the events
@@ -7,7 +7,7 @@
 //
 // XState v5 ── ARCHITECTURE-OVER-SPEC NOTE. Spec §2.3 names this an "XState v5 machine". XState is NOT a
 // repo dependency, and the locked M34 manifest gives `packages/saas-tenant-platform` a single dependency
-// edge (`@wardenx/db`); pulling in `xstate` would add an npm edge AND diverge from the established
+// edge (`@chartwarden/db`); pulling in `xstate` would add an npm edge AND diverge from the established
 // repo convention (the M8/M11/M12 lifecycle machines — packages/orders, packages/dosespot — are all pure
 // hand-rolled transition functions, NOT XState). Per the repo authority rule (architecture wins over
 // module spec) this ships the SAME shape XState v5 expresses — a declarative {@link OnboardingMachineConfig}
@@ -43,7 +43,7 @@ export interface OnboardingStepState {
 // ── the events the machine EMITS for the persistence layer to consume (§2.3 "strictly observable") ───
 
 /** The §2.3 / §4.9 outbox event family the persistence layer fires from an emitted machine event. The
- *  machine names the wire event; the worker publishes it (no `@wardenx/types` edge from this pure file).
+ *  machine names the wire event; the worker publishes it (no `@chartwarden/types` edge from this pure file).
  *  These map 1:1 onto the authoritative `m34.tenant.onboarding_*` catalog in
  *  apps/backend/src/modules/34-saas-tenant-platform/events-by-m34.ts. */
 export type OnboardingOutboxEvent =

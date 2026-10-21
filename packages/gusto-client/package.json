@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/gusto-client",
+  "name": "@chartwarden/gusto-client",
   "version": "0.0.0",
   "private": true,
   "type": "module",

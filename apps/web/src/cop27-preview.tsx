@@ -13,8 +13,8 @@
 //       supply-request detail and the M21 supply dashboard.
 //   ?admit=intake|active|discharged — admission detail: 418.25(a) recommendation section (+ capture drawer
 //       via "Record recommendation") and the 418.26(b) discharge order section.
-import { ApiClientProvider, ToastProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";

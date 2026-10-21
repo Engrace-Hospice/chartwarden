@@ -4,8 +4,8 @@
 // Urgent clinical options route (shared: it supplies the patient and says the urgent mode is on) allows it. The server stays the
 // authority on every one of them. The draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome
 // stays on screen in a focusable status that clears after a while or when the composer text changes.
-import { ROLE_SEND_FLAG_KEY, ROLE_SEND_PERMISSION, URGENT_SEND_PERMISSION } from "@wardenx/types";
-import { Button, useFeatureFlag } from "@wardenx/ui";
+import { ROLE_SEND_FLAG_KEY, ROLE_SEND_PERMISSION, URGENT_SEND_PERMISSION } from "@chartwarden/types";
+import { Button, useFeatureFlag } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";

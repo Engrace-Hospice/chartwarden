@@ -8,7 +8,7 @@
 //
 // Descriptors are RETURNED, never published here — the T08 worker/route owns the actual outbox write, so
 // this file stays a pure, unit-testable mapping (mirrors the M6 `decideAdmissionEvent` effect-descriptor style).
-import type { Hl7InboundMatchLevel, Hl7InboundMatchOutcome } from "@wardenx/types";
+import type { Hl7InboundMatchLevel, Hl7InboundMatchOutcome } from "@chartwarden/types";
 import type { MatchOutcome } from "./match-cascade";
 
 /** The context a cascade result carries forward to the resolved event (message identity + wire metadata). */

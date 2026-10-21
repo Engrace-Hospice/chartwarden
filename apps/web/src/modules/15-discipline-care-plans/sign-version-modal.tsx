@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the PLAN VERSION SIGN CEREMONY (§5.1 #4, Track B).
 //
 // One slot of the D11 quorum that was SEALED when the version was finalized. Two server contracts the

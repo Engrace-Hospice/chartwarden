@@ -1,4 +1,4 @@
-// @wardenx/types — Module 29 (External Interfaces) leaf contracts (M29-T01).
+// @chartwarden/types — Module 29 (External Interfaces) leaf contracts (M29-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package, so every downstream consumer
 // (M1's boot validators, M5's ADT patient-mutator, M6's admission applier, M11's ORM producer, M22's lab
@@ -30,7 +30,7 @@
 // the only shared surface T01 adds.
 //
 // NAMING. M29's domain words are already unambiguous namespaces (`ExternalFeed*`, `Hl7*`, `Lab*`, `Nppes*`);
-// the cross-cutting constants/descriptors carry an `XI_` / `M29_` prefix. `@wardenx/types` is re-exported
+// the cross-cutting constants/descriptors carry an `XI_` / `M29_` prefix. `@chartwarden/types` is re-exported
 // wholesale from `./index.ts`, so a bare `Status`/`Kind` would collide the day another module wants the
 // same word — every export here is prefixed to survive the `export *` barrel (`DocumentId` already belongs
 // to `documents.ts`, so the M22 back-ref alias below is `AttachedDocumentId`, never `DocumentId`).
@@ -46,7 +46,7 @@ import type { OrgId, PatientId } from "./admission";
 import type { IsoInstant, MembershipId } from "./care-plan";
 import type { OrderRecordId } from "./orders";
 
-// ── M29-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ────────────
+// ── M29-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ────────────
 
 export type ExternalFeedId = string;
 export type ExternalFeedCredentialId = string;

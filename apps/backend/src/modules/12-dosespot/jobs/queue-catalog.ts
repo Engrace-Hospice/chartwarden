@@ -3,7 +3,7 @@
 //
 // HISTORY. The first GAP-037 pass could only record the seven vendor-gated queues as DEFERRED (no DoseSpot
 // credentials, docs or samples existed). The close-out round BUILT them against the `DoseSpotClient` port: the
-// live HTTP adapter (`@wardenx/dosespot` `createHttpDoseSpotClient`, written from the public v2 swagger and proven
+// live HTTP adapter (`@chartwarden/dosespot` `createHttpDoseSpotClient`, written from the public v2 swagger and proven
 // against a recorded fake transport), the per-tenant configuration source, the seven crons, the sign-time enqueue
 // and the webhook handlers. All ten §4.8 queues are therefore BUILT.
 //

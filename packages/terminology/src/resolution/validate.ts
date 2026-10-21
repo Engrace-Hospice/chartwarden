@@ -1,4 +1,4 @@
-// @wardenx/terminology — version-aware `validate` over a resolved concept (M38-T04, §7.1).
+// @chartwarden/terminology — version-aware `validate` over a resolved concept (M38-T04, §7.1).
 //
 // Turns the as-of-resolved row (from as-of.ts) into the `ValidateResult` the seam returns.
 // Pure: the row was already selected for the caller's `asOf`, so "valid" here means "may this

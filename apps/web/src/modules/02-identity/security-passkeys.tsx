@@ -1,4 +1,4 @@
-import type { PasskeyInfo } from "@wardenx/auth/client";
+import type { PasskeyInfo } from "@chartwarden/auth/client";
 import {
   Button,
   EmptyState,
@@ -9,7 +9,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   safeReturnTo,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Passkey enrollment & management (M2 Auth, ADR-0034 follow-up).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "passkey enrollment". An authenticated user registers a
 // WebAuthn passkey (authClient.passkey.addPasskey) and lists/removes them. The WebAuthn ceremony is

@@ -6,7 +6,7 @@
 // `app.org_id` (§3.6). Mirrors the M9/M10/M11/M12/M13 read-seam store precedents.
 //
 // All three M14 seams are READ-only (no mutate path — M14 owns the meeting/decision/packet lifecycle internally
-// and never writes through a seam). Reads project the read-only DTO shapes from @wardenx/types (never Drizzle
+// and never writes through a seam). Reads project the read-only DTO shapes from @chartwarden/types (never Drizzle
 // rows); the SUD-redacted packet layer is applied by M14 at packet read (W-SUD-01) before the snapshot crosses
 // the seam — the raw free-text PHI NEVER crosses.
 import type {
@@ -23,7 +23,7 @@ import type {
   LocationId,
   PacketSnapshot,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** A built packet the store resolves — the snapshot + per-discipline views + the two-layer cover + freeze
  * stamp. `IdgPacketProvider.getPacketSnapshot` projects this directly; `renderPayloadFor` wraps it with the

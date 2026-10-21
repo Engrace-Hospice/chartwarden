@@ -1,4 +1,4 @@
-import type { VocabCategory } from "@wardenx/narrative-vocab";
+import type { VocabCategory } from "@chartwarden/narrative-vocab";
 // packages/hearthnote/src/templates/types.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 //
 // The template-engine shape. A HearthNote template is one (encounter_type × discipline) document
@@ -7,7 +7,7 @@ import type { VocabCategory } from "@wardenx/narrative-vocab";
 // (M8-T04/T09) reads `required` to block signing, and the assembly engine reads the section order to
 // produce byte-identical output. Templates are the regulatory floor — a tenant may add sections but
 // never remove a `required` one (architecture §10.5.2); Phase 1 ships the platform defaults only.
-import type { EncounterDiscipline, EncounterType } from "@wardenx/types";
+import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 
 /** One ordered section of a template. */
 export interface TemplateSection {

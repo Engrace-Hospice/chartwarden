@@ -1,4 +1,4 @@
-// @wardenx/db — M23 Billing-Medicare schema barrel (§3.3, 17 spec-owned tables + `unmapped_taxonomy_
+// @chartwarden/db — M23 Billing-Medicare schema barrel (§3.3, 17 spec-owned tables + `unmapped_taxonomy_
 // occurrence`, the #248 D13 addition — see that file's own header). Re-exports the shared
 // enums/types plus all owned table modules; the central ../index.ts re-exports this barrel.
 //

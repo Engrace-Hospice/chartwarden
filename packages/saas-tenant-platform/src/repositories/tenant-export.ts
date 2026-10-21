@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — tenant export data port: `tenant_export_job` +
+// @chartwarden/saas-tenant-platform · repositories — tenant export data port: `tenant_export_job` +
 // `tenant_export_job_event` (M34 §3.7).
 //
 // The org-scoped side of the DSAR/tenant-export split (D9): an NDJSON-per-table + PDFs + manifest.json
@@ -7,7 +7,7 @@
 // handles (MinIO key, sha256, size, module inventory, presigned-URL expiry, download stamp), and appends
 // the per-module shard-receipt event ledger. The bundle assembly + SEC-052 download controls live in the
 // worker / route.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { type SQL, and, asc, desc, eq, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 
 const J = schema.tenantExportJob;

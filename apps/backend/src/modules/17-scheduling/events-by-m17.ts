@@ -5,7 +5,7 @@
 // only requires the `mN.` prefix, so the single-segment route/reassignment alert names below are legal),
 // ownership (moduleOwner='m17'), and valid declared consumers (real module ids).
 //
-// The canonical wire `eventName`s mirror `M17_EVENT_NAMES` in @wardenx/types (the closed §4.11 set the
+// The canonical wire `eventName`s mirror `M17_EVENT_NAMES` in @chartwarden/types (the closed §4.11 set the
 // proposal worker / visit lifecycle / recurring + time-off machines / the optimisation + stale-visit +
 // late-check + caregiver-reminder sweeps may emit). Each entry adds the TypeBox `payloadSchema` + declared
 // consumers the dispatcher validates each publish against, so "DB updated but the event never went out" is
@@ -24,14 +24,14 @@
 // `(eventId, consumerName)` per the M1 outbox-consumer pattern.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import type { ModuleEventContribution, ModuleToken } from "@wardenx/types";
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
 const isoDate = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 
-// The §4.11 wire names mirror `M17_EVENT_NAMES` (@wardenx/types) EXACTLY. The single-segment alert names
+// The §4.11 wire names mirror `M17_EVENT_NAMES` (@chartwarden/types) EXACTLY. The single-segment alert names
 // (`m17.route_optimized`, `m17.reassignment_needed`, …) are legal to the gate (it requires only the `mN.`
 // prefix) but do NOT match the stricter `OutboxEventName` template (`m${number}.${string}.${string}`), so
 // `eventName` is relaxed to `string` here (every other field stays fully type-checked) and the array is cast

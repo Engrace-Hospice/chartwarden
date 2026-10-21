@@ -3,7 +3,7 @@
 // `m21-fulfillment-status` consumer is the primary path); this answers, for a batch of ACTIVE order ids, which already
 // have a delivered / confirmed / completed supply request (`source_order_id`, logical uuid), so an order whose delivery
 // event was missed still completes. Runs inside the caller's org tx.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray } from "drizzle-orm";
 
 const REQUEST = schema.supplyRequest;

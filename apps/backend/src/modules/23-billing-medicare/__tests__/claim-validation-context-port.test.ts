@@ -1,10 +1,10 @@
-import { noeTimeliness5d, type repositories } from "@wardenx/billing";
+import { noeTimeliness5d, type repositories } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/claim-validation-context-port.test.ts — the production
 // ValidationContextPort reads the admission's EFFECTIVE NOE. Before the fix it used
 // `NoeRepository.findActiveByAdmission`, which excludes `ack_accepted` (that read means "still in flight"), so a
 // claim whose NOE Medicare had ACCEPTED validated as "No Notice of Election".
 //
-// PARTIAL-mocks `@wardenx/billing`'s data ports (the claim lines, the patient's claims, the NOE rows) with an
+// PARTIAL-mocks `@chartwarden/billing`'s data ports (the claim lines, the patient's claims, the NOE rows) with an
 // in-memory NOE table that mirrors both repository reads' documented state filters; every pure derivation
 // (facts, HIPPS, the rule) stays real. The SQL itself is proven live (`test:m23:noe-draft:live`).
 import { describe, expect, it, vi } from "vitest";
@@ -25,8 +25,8 @@ interface FakeNoe {
 }
 const NOES: FakeNoe[] = [];
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/billing")>();
+vi.mock("@chartwarden/billing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/billing")>();
   const latest = (rows: FakeNoe[]) =>
     [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   class NoeRepository {

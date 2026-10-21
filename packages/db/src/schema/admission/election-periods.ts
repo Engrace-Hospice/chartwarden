@@ -1,4 +1,4 @@
-// @wardenx/db — `election_period` (M6 §3.3). The benefit-period ledger hanging off an admission
+// @chartwarden/db — `election_period` (M6 §3.3). The benefit-period ledger hanging off an admission
 // (90/90/60/60…). Org-scoped (no direct patient identifier; tenancy via the admission FK).
 // `election_statement_id` / `cti_id` are deferred FKs installed in the migration once both child
 // tables exist (avoids a TS import cycle); `completed_by_event_id` is a logical FK whose target

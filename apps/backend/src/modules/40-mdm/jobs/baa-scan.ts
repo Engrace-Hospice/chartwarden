@@ -1,6 +1,6 @@
 // apps/backend/src/modules/40-mdm/jobs/baa-scan.ts — M40 §4.3 `mdm.baa_expiration_scan` cron body (GAP-173).
 //
-// The pure planner (`planBaaExpiryAlerts`, @wardenx/mdm) decides which 90/30/0-day alerts are due; this file is
+// The pure planner (`planBaaExpiryAlerts`, @chartwarden/mdm) decides which 90/30/0-day alerts are due; this file is
 // the I/O shell. Until it existed nothing ever read `mdm_baa_record.expires_on`, so a facility/payer BAA could
 // lapse (and the §7.7 gate start denying disclosure to it) with nobody having been warned.
 //
@@ -8,9 +8,9 @@
 // over orgs is the caller's audited active-org enumerator. Idempotent by construction — every plan carries a
 // `(record, window)` correlation id and the M36 AlertEmitter dedups on `(org, correlationId)`, so the daily
 // scan re-raises nothing until a record crosses into a more urgent window.
-import { type DbClient, schema } from "@wardenx/db";
-import { BAA_SCAN_LOOKAHEAD_DAYS, type BaaScanRecord, planBaaExpiryAlerts } from "@wardenx/mdm";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { BAA_SCAN_LOOKAHEAD_DAYS, type BaaScanRecord, planBaaExpiryAlerts } from "@chartwarden/mdm";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import type { M40ActiveOrgPort, M40AlertPort } from "../outbox-consumers/nppes-consumer-ports";
 

@@ -10,8 +10,8 @@
 // "Assigner must already have access" (spec): the chart scope guard runs on `:id` for all three, 404 on
 // deny so a refusal never confirms the chart exists. Org-wide oversight roles (DON etc.) pass it through
 // the predicate's org-wide arm, which is how the first clinician ever lands on a caseload.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AssignmentAlreadyEndedError,

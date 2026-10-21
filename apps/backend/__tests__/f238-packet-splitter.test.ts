@@ -8,7 +8,7 @@ import {
   type SplitterPage,
   headerDate,
   splitPacket,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import { describe, expect, it } from "vitest";
 
 const DIR = join(__dirname, "fixtures", "doclens-complex-packet");

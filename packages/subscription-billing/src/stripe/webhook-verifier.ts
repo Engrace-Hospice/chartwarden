@@ -1,6 +1,6 @@
-// @wardenx/subscription-billing — §4.14 Stripe webhook HMAC verifier (pure core, M35-T04).
+// @chartwarden/subscription-billing — §4.14 Stripe webhook HMAC verifier (pure core, M35-T04).
 //
-// Reimplements Stripe's `Stripe-Signature` verification WITHOUT the vendor SDK (the `@wardenx/xero-client`
+// Reimplements Stripe's `Stripe-Signature` verification WITHOUT the vendor SDK (the `@chartwarden/xero-client`
 // no-SDK idiom), so the adapter has no runtime dependency and the logic is unit-testable with an injected
 // clock. The scheme (Stripe docs "Verifying signatures manually"):
 //   header  = "t=<unix-seconds>,v1=<hex-hmac>[,v1=<hex-hmac>...][,v0=...]"

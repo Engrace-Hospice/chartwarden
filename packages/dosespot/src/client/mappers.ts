@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the wire <-> domain mappers for the DoseSpot v2 REST API (GAP-037 close-out).
+// @chartwarden/dosespot — the wire <-> domain mappers for the DoseSpot v2 REST API (GAP-037 close-out).
 //
 // EVERYTHING FIELD-LEVEL LIVES HERE so the part that can only be settled against a vendor sandbox is in one
 // reviewable place. What the public swagger confirmed (see ./endpoints.ts): the `Result` envelope

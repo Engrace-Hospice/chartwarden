@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — §2.3 onboarding: precondition-DSL evaluator + the (XState-shaped)
+// @chartwarden/saas-tenant-platform — §2.3 onboarding: precondition-DSL evaluator + the (XState-shaped)
 // machine config + the strictly-observable advance interpreter + the eleven canonical steps (M34 / D3).
 //
 // Pure, IO-free assertions over the real implementation:

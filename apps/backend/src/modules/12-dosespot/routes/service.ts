@@ -1,6 +1,6 @@
 // apps/backend/src/modules/12-dosespot/routes/service.ts — M12-T08 the §4.1 route service over an in-memory
 // backend (the M8-T09 / M9-T05 / M10-T06 / M11-T06 in-mem-slice precedent; Drizzle in prod under
-// `withOrgContext` so RLS backstops every read). The service composes the PURE M12 domain (`@wardenx/dosespot`):
+// `withOrgContext` so RLS backstops every read). The service composes the PURE M12 domain (`@chartwarden/dosespot`):
 // the §2.2 D2 medication-order lifecycle machine (`transitionMedicationOrder`), the §2.7 D9 refill-inbox
 // machine (`transitionRefillRequest` / `buildRefillMintFacts`), and the §2.1 `MED_CLASS_CATALOG` / `isEpcsRequired`
 // EPCS routing. Every state change records the §4.4 outbox event the relay publishes (drainable for tests).
@@ -17,7 +17,7 @@ import {
   transitionMedicationOrder,
   transitionRefillRequest,
   validateMedicationOrderData,
-} from "@wardenx/dosespot";
+} from "@chartwarden/dosespot";
 import type {
   DeaSchedule,
   HospiceCoverage,
@@ -26,8 +26,8 @@ import type {
   MedicationOrderStatus,
   RefillRequestStatus,
   RefillResponseChannel,
-} from "@wardenx/types";
-import { NotFoundError, ValidationError, assertCoverageDetermination } from "@wardenx/types";
+} from "@chartwarden/types";
+import { NotFoundError, ValidationError, assertCoverageDetermination } from "@chartwarden/types";
 import {
   assertCosignSatisfied,
   assertCosignStanding,

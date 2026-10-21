@@ -16,7 +16,7 @@
 // surface" concern.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-/** The M34 key-ring slice this file needs — the real `TenantKeyProvider` (`@wardenx/saas-tenant-platform`)
+/** The M34 key-ring slice this file needs — the real `TenantKeyProvider` (`@chartwarden/saas-tenant-platform`)
  *  satisfies this structurally; declared locally so this module never imports the seam package directly
  *  (the M29/M22 `getSeam`-opaque-resolution precedent, applied to an injected port instead since the
  *  composition root already holds a concrete `TenantKeyProvider` instance for M27/M31/M39's identical use). */

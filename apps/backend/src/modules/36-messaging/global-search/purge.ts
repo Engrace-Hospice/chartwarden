@@ -4,8 +4,8 @@
 // running again). On completion, in one transaction: the tenant's build-state rows are deleted (turning back ON needs a full
 // rebuild) and `purge_completed_at` is set; the write-audit trigger on `tenant_messaging_search_setting` records that update
 // (who/when/before/after), which is the completion audit. The query path refuses regardless of lingering rows (C3).
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { readTenantSearchSettingInTx } from "./tenant-setting-store";
 

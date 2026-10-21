@@ -3,7 +3,7 @@
 // hidden); a transient failure shows a disabled button and a status while it retries. The server stays the authority. The
 // draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome stays on screen in a
 // focusable status that clears after a while or when the composer text changes.
-import { Button } from "@wardenx/ui";
+import { Button } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { ChannelKind } from "./messaging-types";

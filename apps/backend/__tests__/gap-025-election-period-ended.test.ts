@@ -4,7 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 //   2. the hourly auto-end cron completes periods past their end date under the org's local date, with the
 //      `next_period` cause, and publishes one event each.
 // No database: a recording fake tx stands in for Drizzle (the live proof is the real-publisher live suite).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   completeActiveElectionPeriod,
@@ -162,11 +162,11 @@ describe("runElectionPeriodAutoEndCron", () => {
         scheduledEndAt: "2026-10-03",
       },
     ]);
-    vi.doMock("@wardenx/tenancy", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@wardenx/tenancy")>()),
+    vi.doMock("@chartwarden/tenancy", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@chartwarden/tenancy")>()),
       withOrgContext,
     }));
-    vi.doMock("@wardenx/db", async (importOriginal) => ({
+    vi.doMock("@chartwarden/db", async (importOriginal) => ({
       ...(await importOriginal<Record<string, unknown>>()),
       organizationTimezone: async () => "UTC",
     }));

@@ -2,7 +2,7 @@
  * M13L — the Drizzle eMAR write lifecycle, proven against real Postgres.
  *
  * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Like M12, M13 has NO state-transition triggers, so
- * the service does every transition itself (composing the pure `@wardenx/emar` deciders): recordAdministration
+ * the service does every transition itself (composing the pure `@chartwarden/emar` deciders): recordAdministration
  * (single-dose, controlled-substance-with-witness, ad-hoc + scheduled-dose siting) · caregiver-attested capture
  * → acknowledge / dispute · correct (supersede) · void · refuse · intentional-hold · missed-dose acknowledge ·
  * reconciliation decision/update/caregiver-line/finalize/void · comfort-kit return · policy put. Like the
@@ -15,7 +15,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -636,7 +636,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   it("F-031/#134: an IV session is minted, its graph enforced, and its rate bounded", async () => {
     // Nothing in the codebase wrote `iv_session_id` before this: the production path never set it, the
     // in-memory slice hard-coded it null, and `assertIvSegmentLegal`/`checkIvRateBounds` — real and
-    // unit-tested in @wardenx/emar — were called by no one.
+    // unit-tested in @chartwarden/emar — were called by no one.
     const start = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
       ...recordArgs({ mode: "iv_continuous_start" }),
       data: { infusionRate: 4, rateUnit: "mg/hr", infusionDilution: "morphine 1mg/mL in NS" },

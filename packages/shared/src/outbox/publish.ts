@@ -1,4 +1,4 @@
-// @wardenx/shared — Outbox publisher with catalog validation (M1 Foundation §3.17.3).
+// @chartwarden/shared — Outbox publisher with catalog validation (M1 Foundation §3.17.3).
 //
 // `publishOutboxEvent` is the ONLY sanctioned way to emit a cross-module event. Before
 // the row is persisted it validates, in order:
@@ -10,10 +10,10 @@
 // (spec §3.17, W-M1-09/§7.8, W-M1-11/§7.10).
 //
 // The persist itself is dependency-injected (OutboxPersister): packages/shared is a
-// leaf and never imports @wardenx/db, so the real Drizzle insert into `outbox_event`
+// leaf and never imports @chartwarden/db, so the real Drizzle insert into `outbox_event`
 // is supplied by the M1 backend bootstrap (M1-T10) and threaded through the caller's tx.
 import { Value } from "@sinclair/typebox/value";
-import type { OutboxEventEntry } from "@wardenx/types";
+import type { OutboxEventEntry } from "@chartwarden/types";
 import { OUTBOX_EVENT_CATALOG_MAP } from "../outbox-events/registry";
 
 export type OutboxEventViolation =
@@ -50,7 +50,7 @@ export interface OutboxRecord {
 /**
  * Persists a validated outbox record inside the caller's transaction. Injected at boot
  * (the real impl inserts the `outbox_event` row via Drizzle — packages/shared, a leaf,
- * never imports @wardenx/db). Throwing here rolls the caller's transaction back.
+ * never imports @chartwarden/db). Throwing here rolls the caller's transaction back.
  */
 export type OutboxPersister = (record: OutboxRecord) => Promise<void>;
 

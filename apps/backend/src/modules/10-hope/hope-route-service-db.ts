@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
+import { audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
 //
 // The screen-driving READS (timepoint-schedule worklist, HOPE assessment chart + detail, SFV worklist,
@@ -31,10 +31,10 @@ import {
   captureInstantOf,
   planSfvCompletion,
   require_,
-} from "@wardenx/hope";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { HopeRfaKind, LatestAssessment, ScaleType } from "@wardenx/types";
-import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
+} from "@chartwarden/hope";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
+import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";

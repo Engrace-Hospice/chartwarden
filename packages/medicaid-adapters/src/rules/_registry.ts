@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — M24 §4.6 / §11.A the MEDICAID VALIDATION RULE REGISTRY (D10). Mirrors the
+// @chartwarden/medicaid-adapters — M24 §4.6 / §11.A the MEDICAID VALIDATION RULE REGISTRY (D10). Mirrors the
 // M23 BillingRuleRegistry: a mutable-until-frozen container keyed by rule.key + a pure deterministic runner.
 // FREEZE-AT-BOOT: the Phase-3 composition root registers the 13 platform-default rules (+ tenant overlays)
 // then freeze()s; register after freeze THROWS; duplicate keys THROW. PURE DOMAIN — no I/O, no clock, no PHI.

@@ -4,13 +4,13 @@
 // bucket per tenant, opaque keys); D11 fixes that the key + URL filename are PHI-free by construction.
 // This file derives the bucket name, the object key and the presign descriptor as DATA — no MinIO SDK
 // import, no network IO. The real client (presign + version-aware delete) is the injected
-// `DocumentStorageProvider` port (@wardenx/types); these helpers compute the arguments it is handed.
+// `DocumentStorageProvider` port (@chartwarden/types); these helpers compute the arguments it is handed.
 import type {
   DocumentAccessKind,
   DocumentAggregateType,
   OrgId,
   SignedUrlDescriptor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** §11 D1 — one bucket per tenant: `tenant-{tenantId}`. The only place this string is shaped. */
 export function deriveTenantBucket(organizationId: OrgId): string {

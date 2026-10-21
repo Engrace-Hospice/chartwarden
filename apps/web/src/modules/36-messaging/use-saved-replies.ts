@@ -1,7 +1,7 @@
 // M36 WP 2.8 - the caller's saved-reply picker data. Loaded when a consumer first needs it (the composer's picker
 // opens, or the management screen mounts) and re-read on demand, so an edit made on the management screen shows up the
 // next time the picker opens. A stale answer from an older request never overwrites a newer one.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SavedReply } from "./saved-replies-types";
 

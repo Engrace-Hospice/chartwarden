@@ -10,7 +10,7 @@
 // the end-of-day boundary, exactly mirroring M6's certification window-math (D8) so the two compliance
 // clocks in Wave D agree across timezones and DST boundaries. This file OWNS the column values; the cron
 // scans in `../jobs` and the gate decision in `./overdue-gate` only READ them.
-import type { IsoInstant, LocalDate } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@chartwarden/types";
 
 /** Org timezone default when M2 `organization.timezone` is unset (mirrors M6 D8). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";

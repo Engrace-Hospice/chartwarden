@@ -1,4 +1,4 @@
-// @wardenx/scheduling — scheduling-lifecycle side-effect descriptors (§2.4 / §2.2.6, M17-T03).
+// @chartwarden/scheduling — scheduling-lifecycle side-effect descriptors (§2.4 / §2.2.6, M17-T03).
 //
 // The M8/M11/M14 §2.8 pattern: every transition carries an explicit, in-transaction side-effect list
 // (audit + outbox + the `visit_state_history` append + aggregate-column writes), and the COMMIT binds the
@@ -13,7 +13,7 @@ import type {
   M17EventName,
   SchedulingAlertPayload,
   VisitStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The §4.9 typed-alert discriminator the `alert` effect names (the payload is assembled in M17-T08). */
 export type SchedulingAlertKind = SchedulingAlertPayload["kind"];

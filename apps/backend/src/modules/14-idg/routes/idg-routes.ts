@@ -1,5 +1,5 @@
 // apps/backend/src/modules/14-idg/routes/idg-routes.ts — M14-T05 the §4.1 route inventory behind the REAL
-// Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the §4.6 keys M14
+// Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the §4.6 keys M14
 // registers into M3's catalog (M14_CONTRIBUTED_PERMISSIONS). Org binding is server-side (`request.context`,
 // never the body). Handlers compose over the injected IdgRouteService (in-memory slice; Drizzle in prod under
 // `withOrgContext` so RLS backstops).
@@ -17,16 +17,16 @@ import {
   requireAbac,
   requirePermission,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { IDG_ATTENDANCE_DISCIPLINES, attendableDisciplinesForRoleKeys } from "@wardenx/idg";
-import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { IDG_ATTENDANCE_DISCIPLINES, attendableDisciplinesForRoleKeys } from "@chartwarden/idg";
+import type { IdgActionItemStatus, IdgAttendanceStatus } from "@chartwarden/types";
 import {
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
@@ -90,7 +90,7 @@ import {
 } from "./packet-disclosure";
 import type { IdgRouteService, IdgScopedChildKind } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface IdgRouteDeps {

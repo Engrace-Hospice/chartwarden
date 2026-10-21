@@ -14,10 +14,10 @@
 //
 // A PROVIDER FAILURE IS A FAILED TICK, NEVER "NO GAPS". The seam throws when it cannot read; swallowing that
 // into `[]` would report a healthy org precisely when the roster could not be read.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OrgId } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OrgId } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { createSafetySupervisorProvider } from "../seams/providers";
 import { buildDrizzleSafetySeamStore } from "../seams/store-drizzle";

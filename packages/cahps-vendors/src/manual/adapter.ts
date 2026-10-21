@@ -3,13 +3,13 @@ import type {
   CahpsDecedentSampleRow,
   CahpsResultSummaryInput,
   CahpsVendorAdapter,
-} from "@wardenx/quality";
-// @wardenx/cahps-vendors — manual adapter (M30 §4.5; tenants without a vendor contract).
+} from "@chartwarden/quality";
+// @chartwarden/cahps-vendors — manual adapter (M30 §4.5; tenants without a vendor contract).
 //
 // The manual adapter needs no credentials: it renders a decedent CSV the QAPI Coordinator emails to a
 // vendor of their choice, NEVER pushes (returns `no_push`), and ingests an aggregate the coordinator
 // uploads back as CSV (R-16). Column schemas + CSV helpers live in ./csv_format.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { MANUAL_DECEDENT_COLUMNS, MANUAL_RESULT_COLUMNS, parseCsv, renderCsv } from "./csv_format";
 
 function jsonNumberMap(raw: string, field: string): Record<string, number> {

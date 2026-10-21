@@ -1,4 +1,4 @@
-// @wardenx/ui — socket-provider (spec §5.1 socket-provider.tsx, §2519 realtime banner feed).
+// @chartwarden/ui — socket-provider (spec §5.1 socket-provider.tsx, §2519 realtime banner feed).
 // Dependency-injected: the app passes a socket instance (e.g. socket.io-client) that
 // satisfies `SocketLike`. The leaf declares only the minimal surface it needs, so it adds
 // no socket.io dependency and stays usable before the realtime server (M1 §13.4) is wired.

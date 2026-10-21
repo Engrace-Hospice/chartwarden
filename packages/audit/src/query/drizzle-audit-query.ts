@@ -1,4 +1,4 @@
-// @wardenx/audit — the PRODUCTION AuditQuery (M4 §4.1–4.3) over the M1-owned, append-only
+// @chartwarden/audit — the PRODUCTION AuditQuery (M4 §4.1–4.3) over the M1-owned, append-only
 // `audit_event` log. `audit_event` is HELPER-ONLY (manifest HELPER_ONLY_TABLES) — packages/audit is its
 // only sanctioned reader, so this Drizzle adapter lives here (not the M4 backend dir).
 //
@@ -6,8 +6,8 @@
 // wardenx_app SELECT on its own org's rows only). All list reads are cursor-paginated newest-first; the
 // opaque cursor encodes the last row's (createdAt, id) for stability across the partitioned table. The
 // filter/access/scope predicates are pushed to SQL so pagination is exact (LIMIT n+1).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, getTableColumns, gte, lte, or, sql } from "drizzle-orm";
 import { rowHeldByActiveLegalHold } from "../lifecycle/hold-overlay";
 import {

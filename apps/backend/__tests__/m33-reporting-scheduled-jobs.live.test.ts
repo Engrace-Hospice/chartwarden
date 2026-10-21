@@ -75,15 +75,15 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { auditPlatformEvent } from "@wardenx/audit";
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { auditPlatformEvent } from "@chartwarden/audit";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 import {
   ReportDefinitionRepository,
   ReportRunRepository,
   ReportScheduleRepository,
   ReportViewRepository,
-} from "@wardenx/reporting";
-import { registerPlatformJob, resetPlatformJobRegistry } from "@wardenx/tenancy";
+} from "@chartwarden/reporting";
+import { registerPlatformJob, resetPlatformJobRegistry } from "@chartwarden/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents, type Worker } from "bullmq";
 import { and, eq, like, sql } from "drizzle-orm";

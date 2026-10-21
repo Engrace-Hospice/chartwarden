@@ -13,10 +13,10 @@
 //
 // `isInCaseload` reaches M5's `CaseloadProvider` through an injected port (bound at boot from the consumed
 // seam). UNBOUND ⇒ it answers `null` (denies), the fail-closed shape before M5 registers the real provider.
-import { resolveEffectivePermissions } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { Hl7ProposalOwnerModule } from "@wardenx/types";
+import { resolveEffectivePermissions } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { Hl7ProposalOwnerModule } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 import type {

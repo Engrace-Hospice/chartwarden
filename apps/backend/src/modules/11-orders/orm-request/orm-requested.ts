@@ -43,8 +43,8 @@
 // cannot be collected without them). It deliberately does NOT carry `clinicalJustification` or `notes`: both
 // are free text, routinely holding diagnoses, and neither is needed to run the test.
 import { Value } from "@sinclair/typebox/value";
-import type { DbClient } from "@wardenx/db";
-import type { OrmRequestedPayload } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { OrmRequestedPayload } from "@chartwarden/types";
 import { ormRequestedPayloadSchema } from "../events-by-m11";
 import type { OrmOutboundEvidence } from "./orm-resend";
 

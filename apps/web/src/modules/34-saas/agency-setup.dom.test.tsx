@@ -4,8 +4,8 @@
 // `locations_seeded`) read exactly these rows, so a tenant could not finish onboarding on its own. This screen
 // creates both through the existing M2 org-admin routes.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { AgencySetup } from "./agency-setup";
 

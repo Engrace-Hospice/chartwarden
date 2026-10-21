@@ -17,7 +17,7 @@
 //   3. another internal `stay` has the same `ref` and starts later — an admission contributes at most its own
 //      stay plus its transfer-in's sending span, which ends on the transfer day the stay starts on.
 // Never mutates the stored value; a value that is not a carry-over object reads as null ("not recorded").
-import type { RhcCountedSpan } from "@wardenx/billing";
+import type { RhcCountedSpan } from "@chartwarden/billing";
 import type { RhcCarryOverView } from "./rhc-carry-over-view";
 
 type SpanKind = RhcCountedSpan["kind"];

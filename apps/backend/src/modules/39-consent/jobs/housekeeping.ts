@@ -17,8 +17,8 @@
 // DRAFT AUTO-EXPIRE. Housekeeping TTL only (M39-F13): unsigned drafts older than 30 days are deleted through the
 // migration-0472 SECURITY DEFINER function — `wardenx_app` has no DELETE on consent tables, and the function can
 // only ever remove `status='draft' AND signed_at IS NULL` rows. Not a retention commitment (§2.2.1).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { M39_CRON_BOUNDS } from "./index";

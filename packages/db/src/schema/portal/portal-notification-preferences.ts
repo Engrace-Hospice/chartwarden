@@ -1,4 +1,4 @@
-// @wardenx/db — `portal_notification_preference` (M31 §3.3; migration 0422, GAP-092). One row per (portal account,
+// @chartwarden/db — `portal_notification_preference` (M31 §3.3; migration 0422, GAP-092). One row per (portal account,
 // channel): the caregiver's per-channel opt-in plus quiet hours. A channel with no row reads as its default.
 // ORG-SCOPED (organization_id NOT NULL, RLS on app.org_id); no PHI (a channel flag and two clock hours).
 import {

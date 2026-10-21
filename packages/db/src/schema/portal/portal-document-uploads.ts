@@ -1,4 +1,4 @@
-// @wardenx/db — `portal_document_upload` (M31 §3.3; migration 0423, GAP-092). The ENCRYPTED STAGING row behind a
+// @chartwarden/db — `portal_document_upload` (M31 §3.3; migration 0423, GAP-092). The ENCRYPTED STAGING row behind a
 // portal document upload: the bytes the caregiver PUT, sealed under the tenant DEK in `content_cipher`
 // (audit-denylisted, §3.6), until `upload-complete` hands them to M22's intake and clears them. Patient-bearing, so
 // it carries the ARCH-011 provider_entity_id NOT NULL + location_id (nullable), copied from the account's active grant.

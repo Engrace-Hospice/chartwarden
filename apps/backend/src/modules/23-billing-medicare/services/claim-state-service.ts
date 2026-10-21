@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/services/claim-state-service.ts — the M23 claim
 // state-transition SERVICE (spec §10 task 25 / §2.2 lifecycle, D2 / D4).
 //
-// This is the single home that drives the PURE `claim` lifecycle reducer from `@wardenx/billing`
+// This is the single home that drives the PURE `claim` lifecycle reducer from `@chartwarden/billing`
 // (`machines/claim` → `reduce(state, event, ctx)`), persists the transition with the §2.5 If-Match version
 // check (`ClaimRepository.transitionToState` → VERSION_CONFLICT → 412), APPENDS the `claim_state_history`
 // row in the SAME transaction (append-only — the repo offers no mutating surface), and emits the canonical
@@ -28,17 +28,17 @@ import {
   type ClaimTransitionEvent,
   reduce as reduceClaim,
   repositories,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 
 // ── shared DB / actor / port primitives (re-used by the whole M23 service slice) ──────────────────────
 
 /**
  * The Drizzle handle the M23 services write through — the package-kernel `BillingDb`
- * (`NodePgDatabase<typeof @wardenx/db/schema>`). Re-used from `@wardenx/billing` (rather than importing the
- * `@wardenx/db/schema` leaf here) so the apps/backend M23 module — whose `dependsOn` excludes M1 — never
- * imports the M1-owned `@wardenx/db` root client. Structurally identical to the M1 `DbClient`, so the
+ * (`NodePgDatabase<typeof @chartwarden/db/schema>`). Re-used from `@chartwarden/billing` (rather than importing the
+ * `@chartwarden/db/schema` leaf here) so the apps/backend M23 module — whose `dependsOn` excludes M1 — never
+ * imports the M1-owned `@chartwarden/db` root client. Structurally identical to the M1 `DbClient`, so the
  * composition root passes its `DbClient` (and `withOrgContext`'s tx handle satisfies it) without a cast.
  */
 export type BillingDb = repositories.BillingDb;

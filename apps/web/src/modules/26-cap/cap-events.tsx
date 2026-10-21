@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — M26, the THRESHOLD EVENT QUEUE (R2, §5.1.4). The reviewer-oriented queue of
 // band transitions (90/95/100 aggregate · 18/20 inpatient) for billing managers + compliance officers.
 // GAP-079 wires Acknowledge here (optional notes); the server stays authoritative for cap.event.acknowledge. Lantern: WorkQueueLayout + No-Line table + §6.6 StatusPill; CSS-var tokens only.

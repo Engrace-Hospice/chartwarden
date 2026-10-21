@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 
 /** M4-owned destruction-certificate/legal-hold adapter injected into M34 at the composition root. */

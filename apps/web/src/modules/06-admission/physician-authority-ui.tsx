@@ -15,7 +15,7 @@ import {
   StatusPill,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 

@@ -2,7 +2,7 @@
 // outreach records WHAT HAPPENED on the scheduled touchpoint; two facts must be verified server-side rather
 // than trusted from the body: the kind is the kind the row was scheduled as, and an in-person visit's
 // `sourceEncounterId` is a real, signed `bereavement_contact` encounter of THIS patient (M8, via seam).
-import type { BereavementEncounterReader, BereavementOutreachKind } from "@wardenx/types";
+import type { BereavementEncounterReader, BereavementOutreachKind } from "@chartwarden/types";
 import { BereavementStateError, require_ } from "./errors";
 
 /** The completion's kind must equal the stored outreach kind (a visit cannot be logged as a phone call). */

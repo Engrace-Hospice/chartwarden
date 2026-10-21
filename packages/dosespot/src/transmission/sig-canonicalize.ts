@@ -1,4 +1,4 @@
-// @wardenx/dosespot — sig canonicalization for the D8 idempotency key (M12-T06, spec §3.3 / D8 / §9 test
+// @chartwarden/dosespot — sig canonicalization for the D8 idempotency key (M12-T06, spec §3.3 / D8 / §9 test
 // `rx-business-key.test.ts`). DoseSpot's NewRx is non-idempotent (Integrations §6.1); the D8 key dedups "same
 // prescriber, same patient, same drug+strength+sig". Cosmetic sig differences (whitespace, case, trailing
 // punctuation) must NOT break that dedup — so the free-text sig is canonicalized to a stable form BEFORE it

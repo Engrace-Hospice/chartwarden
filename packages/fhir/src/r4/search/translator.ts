@@ -1,4 +1,4 @@
-// @wardenx/fhir — the `FhirSearchTranslator` implementation (§4.5 D6, W-FHIR-14, M28-T04).
+// @chartwarden/fhir — the `FhirSearchTranslator` implementation (§4.5 D6, W-FHIR-14, M28-T04).
 //
 // Translates FHIR search syntax into typed reader-seam calls — NO SQL inside M28. `validate` is PURE
 // (grammar + parameter-catalog check); `resolve` binds the request to the injected reader deps and

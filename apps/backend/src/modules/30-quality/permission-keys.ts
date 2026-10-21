@@ -2,7 +2,7 @@
 //
 // The THIRTY-THREE permission keys Module 30 (HQRP & Quality) registers into Module 3's catalog —
 // the §4.6 binding cross-module handshake (M30 spec §4.6, mirrored verbatim from the pure
-// `M30_PERMISSIONS` tuple in `@wardenx/quality`). M3 must include these before M30's measure / CAHPS /
+// `M30_PERMISSIONS` tuple in `@chartwarden/quality`). M3 must include these before M30's measure / CAHPS /
 // QAPI / SRA / incident / mortality / CoP / infection / risk routes (§4.1) can be authorized; those
 // routes gate on `requirePermission(key)`. The catalog `abac` field is the DEFAULT predicate per key;
 // the route layer additionally composes the explicit §4.7 chain M30 owns (./abac-predicates) — every
@@ -15,16 +15,16 @@
 //
 // Same `resource.action` shape and DB-mirror contract as M3's own `PERMISSIONS`; kept in a dedicated
 // const so each module's contribution stays attributable (§3.3 ownership). The KEYS here are kept in
-// lock-step with `@wardenx/quality`'s `M30_PERMISSIONS` tuple (the pure source of truth) and the §4.1
+// lock-step with `@chartwarden/quality`'s `M30_PERMISSIONS` tuple (the pure source of truth) and the §4.1
 // route inventory — `M30_PERMISSION_KEYS` below is asserted equal to `M30_PERMISSIONS` in test.
 //
-// REGISTRATION: this map is consumed by `@wardenx/auth`'s contributed-permission registry exactly as
+// REGISTRATION: this map is consumed by `@chartwarden/auth`'s contributed-permission registry exactly as
 // the M33 `M33_CONTRIBUTED_PERMISSIONS` map is (packages/auth/src/permissions/contributed.ts —
 // `m33ContributedPermissionMirrorRows` / `allPermissionMirrorRows`). The companion mirror-row projector
 // + wiring lives in that M3-owned file; this typed list is the M30-owned source of truth those rows
 // project from. (Adding the `m30ContributedPermissionMirrorRows` projector is the Integrate phase's job.)
-import type { PermissionDef } from "@wardenx/auth";
-import { M30_PERMISSIONS } from "@wardenx/quality";
+import type { PermissionDef } from "@chartwarden/auth";
+import { M30_PERMISSIONS } from "@chartwarden/quality";
 
 /**
  * The §4.6 permission keys M30 owns (registered into M3). Single-owner across the platform registry.
@@ -251,7 +251,7 @@ export const M30_PERMISSION_KEYS = Object.keys(
 ) as readonly M30ContributedPermissionKey[];
 
 /**
- * Compile-time guarantee that the contributed-catalog keys are exactly the pure `@wardenx/quality`
+ * Compile-time guarantee that the contributed-catalog keys are exactly the pure `@chartwarden/quality`
  * `M30_PERMISSIONS` tuple (the §4.6 source of truth). If a key is added/removed/renamed in one place
  * but not the other, the bidirectional `satisfies` below fails to type-check at build.
  */

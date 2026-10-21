@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `validation_result` (M23 Billing-Medicare §3.3 / §3.4, D5; append-only; retention
+// @chartwarden/db — `validation_result` (M23 Billing-Medicare §3.3 / §3.4, D5; append-only; retention
 // class `operational`). One row per (validation_run, rule): the per-rule outcome + structured
-// remediation hint produced by the `@wardenx/billing` rule engine. ORG-SCOPED: organization_id NOT
+// remediation hint produced by the `@chartwarden/billing` rule engine. ORG-SCOPED: organization_id NOT
 // NULL (canonical app.org_id RLS).
 //
 // PARTITIONING (declared in the SQL migration 0074+, NOT in Drizzle — Drizzle only carries the
@@ -35,7 +35,7 @@ export const validationResult = pgTable(
     severity: m23ValidationSeverity("severity").notNull(),
     outcome: m23ValidationResultOutcome("outcome").notNull(),
 
-    // Structured remediation hint (typed per rule kind at the service layer in `@wardenx/billing`;
+    // Structured remediation hint (typed per rule kind at the service layer in `@chartwarden/billing`;
     // opaque at the DB layer — default '{}'::jsonb).
     remediation: jsonb("remediation").notNull().default(sql`'{}'::jsonb`),
 

@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 `noe_record` (Notice of Election) fast-path lifecycle reducer (§2.2 lines
+// @chartwarden/billing — M23 `noe_record` (Notice of Election) fast-path lifecycle reducer (§2.2 lines
 // 224–243, D3). The spec proposes XState; the WardenX repo convention is a PURE hand-rolled transition
 // reducer (the `machines/claim.ts` exemplar + the M27 `cost-report/src/domain/lifecycle.ts` / M39 consent
 // precedents) and ARCHITECTURE WINS over the module spec on this conflict. This file is shape-identical to
@@ -18,7 +18,7 @@
 // lines 246–248). Modelling the pre-submission election-reversal cancel here is the fail-closed correct
 // behaviour and keeps NOE/NOTR symmetric; it is reachable only with the guard fact set.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock, no PHI/MBI
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock, no PHI/MBI
 // (D13). The state union is the package-canonical lowercase `NoticeState` from `./contracts` (the seam
 // DTOs speak it too); the machine operates over that alphabet rather than redeclaring it. The frozen DB
 // `m23_noe_state` pgEnum is UPPERCASE — the Phase-3 repository maps case at the DB boundary, exactly as it

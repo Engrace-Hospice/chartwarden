@@ -6,7 +6,7 @@
 // every read by `app.org_id` (§3.6). Mirrors the M9/M10/M11/M12/M13/M14 read-seam store precedents.
 //
 // All four M17 seams are READ-only (no mutate path — M17 owns the visit lifecycle internally and never writes
-// through a seam). Reads project the read-only DTO shapes from @wardenx/types (never Drizzle rows). Visit
+// through a seam). Reads project the read-only DTO shapes from @chartwarden/types (never Drizzle rows). Visit
 // metadata carries NO clinical free-text (the encounter is M8's, the scheduler-internal notes never cross the
 // PortalVisitReader projection) — only visit times, ids, and the lay-language portal summary cross.
 import type {
@@ -20,7 +20,7 @@ import type {
   VisitAssignmentDto,
   VisitDto,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The window counts `VisitMetricsProvider` derives its rates from (§4.3): the visit population in a window plus
  * the on-time / no-show / published / rescheduled tallies. The provider does the division so the rate semantics

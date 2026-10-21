@@ -14,9 +14,9 @@
 //
 // Default-deny throughout: a missing/cross-tenant row or an un-suppliable target id resolves to deny. No PHI
 // is read (status + methodology enums + a settlement status only).
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 
 /** The §4.7 predicate names M26 OWNS and registers into M3 (five). Single-owner registry. */
@@ -31,7 +31,7 @@ export const M26_REGISTERED_ABAC_PREDICATES = [
 export type M26RegisteredAbacPredicate = (typeof M26_REGISTERED_ABAC_PREDICATES)[number];
 
 /** Roles that satisfy the platform-admin axis (the /v1/platform/cap/* surface). Every key must be a
- *  reserved platform key (GAP-003, `@wardenx/auth` platform-reserved): a non-reserved key is
+ *  reserved platform key (GAP-003, `@chartwarden/auth` platform-reserved): a non-reserved key is
  *  tenant-mintable through POST /api/v1/roles. `super_admin` was listed here, but no platform role
  *  carries it, so it was tenant-mintable authority over the platform cap constants. */
 export const M26_PLATFORM_ADMIN_ROLE_KEYS: readonly string[] = ["platform_admin"];

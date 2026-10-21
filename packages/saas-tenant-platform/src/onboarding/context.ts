@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · onboarding — the structured `OnboardingContext` (M34 §2.3).
+// @chartwarden/saas-tenant-platform · onboarding — the structured `OnboardingContext` (M34 §2.3).
 //
 // The §2.3 onboarding machine is "strictly observable": it never mutates `onboarding_task` rows; it
 // evaluates each step's `precondition_dsl` (onboarding_task_template, §3.4) against a structured,
@@ -12,7 +12,7 @@
 // and the machine be unit-tested with a hand-built context and no DB.
 
 /** One provider entity (M2-owned) as the onboarding context sees it — only the fields the §3.12
- *  precondition expressions read (`providerEntities[*].ccn`). M34 takes no `@wardenx/db` edge to M2;
+ *  precondition expressions read (`providerEntities[*].ccn`). M34 takes no `@chartwarden/db` edge to M2;
  *  the worker projects this minimal shape from the M2 read it performs. */
 export interface OnboardingProviderEntityView {
   readonly providerEntityId: string;

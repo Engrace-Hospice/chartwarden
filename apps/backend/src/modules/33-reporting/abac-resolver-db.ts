@@ -16,9 +16,9 @@
 // unbound every actor without org-wide authority resolves to `self` — the narrowest scope, which is the
 // correct answer to "I cannot establish that you supervise anyone". Once the definition is tightened,
 // `supervised` becomes a `getSeam` call here and nothing else moves.
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type {
   ReportScheduleFacts,

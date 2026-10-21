@@ -11,14 +11,14 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ATTEMPT_STORE_CONTRACT,
   type AttemptStoreContractIds,
   CONTRACT_OPERATOR_ID,
   attemptReservationFixture,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

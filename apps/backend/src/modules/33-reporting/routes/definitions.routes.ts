@@ -4,7 +4,7 @@
 // (bound to an `active` base, §2.3 BASE_NOT_ACTIVE) with its initial draft spec, list/read definitions,
 // list a definition's versions, append a NEW version (editing is never in-place — D9), publish a version
 // (promote to `latest`, supersede the prior), and archive a definition. Every route is gated by the REAL
-// Authorization Contract (`requirePermission` from @wardenx/auth, M3) on the §4.6 `report.definition.*`
+// Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.6 `report.definition.*`
 // keys — those keys carry `abac:"none"` in M33_CONTRIBUTED_PERMISSIONS, so `requirePermission` is the
 // authoritative gate (the route-table's `org_member` intent is carried by the M3 `reporting` role
 // assignment; M33 owns only `reportable_scope` + `dashboard_visibility` as named predicates — naming an
@@ -16,7 +16,7 @@
 // the tenant's own definitions/versions; the §164.312(b) read-audit anchor is the M4 write-audit trigger
 // on the `withOrgContext` path (no per-handler audit call — the M33 read-route convention). Org/actor/owner
 // binding is ALWAYS server-side (request.context, never the body). Mirrors M22 routes/documents-routes.ts.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

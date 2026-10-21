@@ -8,9 +8,9 @@
 // the row is a boolean `product`/`rollout` flag, and no kill switch is active: a `kill_switch` / `migration`
 // flag, a global-only flag, or an emergency-disabled flag is read-only to the tenant. The write goes through
 // the same M1 `FeatureFlagAdmin` port the platform route uses (M34 never imports the flag schema).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { FeatureFlagView, UpsertFeatureFlagArgs } from "../platform/service";
 

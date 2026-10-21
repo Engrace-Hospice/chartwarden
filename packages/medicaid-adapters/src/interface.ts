@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — the `MedicaidAdapter` seam (D1, §4.5) — the architectural commitment from
+// @chartwarden/medicaid-adapters — the `MedicaidAdapter` seam (D1, §4.5) — the architectural commitment from
 // ARCH §11.E / §13: a new state's MMIS joins as a new adapter implementation, never an M24 core change.
 // The dependency-cruiser mandate (Architecture §25.14) forbids any module outside this package from
 // speaking a state's wire format or hitting a state URL; M24 backend consumes only this interface + seams.

@@ -1,4 +1,4 @@
-// @wardenx/db — `membership_elevated_approval` (M2 Identity §3.7, GAP-043). The per-tenant, per-membership
+// @chartwarden/db — `membership_elevated_approval` (M2 Identity §3.7, GAP-043). The per-tenant, per-membership
 // NAMED APPROVAL AUTHORITY registry: "this tenant has designated this membership as authorized to certify a
 // cost-report filing."
 //

@@ -1,4 +1,4 @@
-// @wardenx/assessments — entity lifecycle machines (§2.2, D9) — M9-T03.
+// @chartwarden/assessments — entity lifecycle machines (§2.2, D9) — M9-T03.
 import { describe, expect, it } from "vitest";
 import {
   type CorrectionTarget,

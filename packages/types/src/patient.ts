@@ -1,4 +1,4 @@
-// @wardenx/types — Module 5 (Patient & Demographics) leaf contracts (M5-T01; spec §2.2, §4.6, §4.8).
+// @chartwarden/types — Module 5 (Patient & Demographics) leaf contracts (M5-T01; spec §2.2, §4.6, §4.8).
 //
 // Per ADR-0005 D1 the cross-module CONTRACTS live in this leaf package (the spec's references to a
 // `packages/foundation/seams` resolve here — architecture wins; there is no foundation package).

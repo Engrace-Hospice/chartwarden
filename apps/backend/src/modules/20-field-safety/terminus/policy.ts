@@ -1,7 +1,7 @@
 // apps/backend/src/modules/20-field-safety/terminus/policy.ts - GAP-032: the named constants and the pure
 // pacing rules of the SOS emergency-terminus ledger. No IO. Not tenant-tunable-down (spec 8.3's posture for
 // the chain): a tenant can add escalation, it cannot shorten the safety floor.
-import type { SafetyTerminusActionKind, SafetyTerminusActionStatus } from "@wardenx/types";
+import type { SafetyTerminusActionKind, SafetyTerminusActionStatus } from "@chartwarden/types";
 
 /** At most this many contact calls per alert. */
 export const DIAL_MAX_ATTEMPTS = 3;

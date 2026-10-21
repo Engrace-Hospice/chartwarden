@@ -2,7 +2,7 @@
 // clinical-lead review (change the text here, never the codes). Sending the message and asking are two calls: the message is
 // stored first, then POST /escalations names the colleague (the server derives class `important`, 60 min). Asking is NOT a page
 // and NOT the emergency path, and opening a message never counts as taking responsibility.
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { REQUEST_TIMEOUT_MS } from "./messaging-utils";
 
 export const NEEDS_RESPONSE_LABEL = "Needs a response";

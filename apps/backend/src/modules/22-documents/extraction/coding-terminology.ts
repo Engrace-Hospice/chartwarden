@@ -3,7 +3,7 @@
 // M38's tables). ICD-10-CM must be loaded (`bun run db:load:icd10cm`); with an EMPTY code set every lookup
 // misses, so the checks would call every code "unknown" — `isLoaded()` lets the job skip them instead and
 // say so, rather than flood a reviewer with false flags.
-import type { CodingTerminology, IcdCodeFacts, IcdDeprecation } from "@wardenx/intake-extraction";
+import type { CodingTerminology, IcdCodeFacts, IcdDeprecation } from "@chartwarden/intake-extraction";
 import { getSeam } from "../../../bootstrap/index";
 
 /** The slice of M38's provider this adapter reads (structural, like every other seam consumer). */

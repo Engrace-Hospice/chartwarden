@@ -1,7 +1,7 @@
 // The chart-promotion index read must respect the server's `limit` cap (100): a larger value is a 422 and the
 // index (and every per-message status chip) never loads.
 import { renderHook, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { usePromotionsEnabled } from "./use-promotions-enabled";

@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.4 EPCS architecture (M12-T05). Pure-domain unit tests.
+// @chartwarden/dosespot — §2.4 EPCS architecture (M12-T05). Pure-domain unit tests.
 //
 // Covers the deny-stub (`dosespot.epcs` OFF in Phase 1), the per-tenant cert gate (D18 / §1311.300), the
 // IAL2 status tracker + expiry alerts (§1311.115), the DEA schedule-authorization check (§1311.120), and the

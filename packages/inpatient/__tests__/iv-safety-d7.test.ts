@@ -1,4 +1,4 @@
-// @wardenx/inpatient — GAP-107 unit tests for the D7 IV-overlay additions: the continuous-IV order classifier, the
+// @chartwarden/inpatient — GAP-107 unit tests for the D7 IV-overlay additions: the continuous-IV order classifier, the
 // rate-unit canonicalizer, the unseeded-drug fallback to the prescriber's bounds, the fail-closed rate/unit
 // refusals, and the bedside-check reminder planner.
 import { describe, expect, it } from "vitest";

@@ -2,9 +2,9 @@
 //
 // The platform-ops tenant-lifecycle route surface (§4.1 platform-ops table; §4.2 per-route specs; §6/D10
 // step-up table). Every route is gated by the REAL Authorization Contract (`requirePermission` /
-// `requireAbac` / `requireStepUp` from @wardenx/auth, M3) on the §4.5 keys M34 registers into M3's catalog
+// `requireAbac` / `requireStepUp` from @chartwarden/auth, M3) on the §4.5 keys M34 registers into M3's catalog
 // (M34_CONTRIBUTED_PERMISSIONS) + the `tenant_lifecycle_platform_ops` ABAC predicate M34 owns
-// (./abac-predicates). Cross-tenant reads run under `withPlatformContext` (M1 @wardenx/tenancy — the
+// (./abac-predicates). Cross-tenant reads run under `withPlatformContext` (M1 @chartwarden/tenancy — the
 // separately-pooled, RLS-bypass, AUDITED platform-ops read path, F03/F09) in prod; org/actor binding is
 // ALWAYS server-side (`request.context`, never the body). Mirrors the M22 routes/documents-routes.ts shape.
 //
@@ -14,8 +14,8 @@
 // The lifecycle-COMMAND routes (provision / status / offboard / shred / dek-rotate) ENQUEUE the matching
 // §4.3 worker job through the service's injected enqueue port + emit the outbox descriptor; the live
 // BullMQ worker construction is Phase 2D (see service.ts TODO).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   DekRotateRequest,
@@ -29,7 +29,7 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface TenantPlatformRouteDeps {

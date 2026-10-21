@@ -1,4 +1,4 @@
-// @wardenx/db — `extraction_job` (M22 §3.3 / §2.2.6). The per-classified-page DocLens extraction
+// @chartwarden/db — `extraction_job` (M22 §3.3 / §2.2.6). The per-classified-page DocLens extraction
 // job (queued→extracting→verifying→discrepancy_check→ready_for_review→…). Org-scoped; built-not-
 // active until M32 lands (the DocLens seams ship as deny-stubs, §4.4). `classified_page_id` carries
 // a SQL FK to `classified_page`.

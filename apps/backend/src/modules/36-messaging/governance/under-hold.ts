@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/governance/under-hold.ts - ADR-0086 (PROPOSED): migration 1138's backstop trigger refuses to rewrite the
 // body of a message an ACTIVE legal hold covers (SQLSTATE 23001). Turn that into a clear, typed 409 instead of a generic 500.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 const RESTRICT_VIOLATION = "23001";
 export const MESSAGE_UNDER_LEGAL_HOLD_CODE = "MESSAGE_UNDER_LEGAL_HOLD";

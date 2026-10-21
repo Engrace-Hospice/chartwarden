@@ -1,5 +1,5 @@
 // Shared by the WP 3.8 review-queue tests: one review item in the shape the API returns.
-import type { ReviewItemDto } from "@wardenx/types";
+import type { ReviewItemDto } from "@chartwarden/types";
 
 export const REVIEW_FIXTURE: ReviewItemDto = {
   id: "r1",

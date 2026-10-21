@@ -6,28 +6,28 @@ import {
   claimStateCodec,
   repositories,
   storedRuleKeySpellings,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/read-service-drizzle.ts — the Drizzle-backed
 // M23ReadRouteService (§4.1 GET surface: claim list/detail/lines/state-history/submissions/acks,
 // validation runs, NOE/NOTR list/detail, eligibility, rule-config, sequestration policy, MAC credentials,
 // AR/metrics).
 //
 // Implements the {@link M23ReadRouteService} the route plugins compose over, but every read opens ONE
-// `withOrgContext(db, {organizationId, userId}, tx => …)` transaction (the M1 @wardenx/tenancy helper) so
+// `withOrgContext(db, {organizationId, userId}, tx => …)` transaction (the M1 @chartwarden/tenancy helper) so
 // Postgres RLS scopes every statement to `app.org_id` — keeping tenant scoping in one home. Inside the tx
-// it reads through the @wardenx/billing data-port REPOSITORIES (each takes the `tx` handle) and projects
+// it reads through the @chartwarden/billing data-port REPOSITORIES (each takes the `tx` handle) and projects
 // rows to the deliberately-narrowed read DTOs. Mirrors the M27 routes/read-service-drizzle.ts precedent (one
 // `read(actor, fn)` helper, one builder returning the service, DTO mappers above it). M23 carries NO PHI and
 // NEVER the MBI digit (D13 / §3.6 / §8.7); money is INTEGER CENTS (D8).
 //
-// IMPORT BOUNDARY (M23 dependsOn = [6,8,22,38,40], NOT M1): the `@wardenx/db` ROOT barrel is forbidden;
-// the universal `@wardenx/db/schema` leaf (a FOUNDATION_HELPER) supplies the table objects the AR/metrics
-// aggregations need, and `withOrgContext` comes from the always-importable `@wardenx/tenancy` foundation.
+// IMPORT BOUNDARY (M23 dependsOn = [6,8,22,38,40], NOT M1): the `@chartwarden/db` ROOT barrel is forbidden;
+// the universal `@chartwarden/db/schema` leaf (a FOUNDATION_HELPER) supplies the table objects the AR/metrics
+// aggregations need, and `withOrgContext` comes from the always-importable `@chartwarden/tenancy` foundation.
 // `BillingDb` (the repo handle) is `NodePgDatabase<typeof schema>`, reconstructed in the package — a tx
 // handle is assignable to it, so the repos + the local aggregation queries share the same `tx`.
-import * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
   type ClaimAttentionView,
@@ -313,7 +313,7 @@ const AR_OPEN_DB_STATES = ["SUBMITTED", "ACK_PENDING", "ACK_ACCEPTED", "ACK_PART
 
 /**
  * Build the Drizzle-backed {@link M23ReadRouteService}. Every method opens one `withOrgContext` transaction
- * (RLS-scoped to the actor's org) and reads through the @wardenx/billing repositories on the tx handle. The
+ * (RLS-scoped to the actor's org) and reads through the @chartwarden/billing repositories on the tx handle. The
  * route plugins gate each method on the §4.6 permission + §4.7 ABAC predicate BEFORE the call reaches here.
  */
 export function buildDrizzleM23ReadService(

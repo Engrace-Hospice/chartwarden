@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `evv_device` (M18 §3.3 / §2.2.3 D8). The per-clinician mobile-device registration lifecycle
+// @chartwarden/db — `evv_device` (M18 §3.3 / §2.2.3 D8). The per-clinician mobile-device registration lifecycle
 // (pending_approval → approved | rejected → suspended → retired), gating EVV capture on an M2-attested
 // device. Membership-scoped, NOT patient-scoped (erases on workforce-member departure per M2 D8, not on a
 // patient destruction cert). `device_key_fingerprint` (auth secret), `denial_reason`, and `suspend_reason`

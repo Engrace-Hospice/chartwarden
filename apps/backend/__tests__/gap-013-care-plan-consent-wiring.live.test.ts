@@ -23,9 +23,9 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type StoredConsent, createInMemoryConsentStore } from "@wardenx/consent";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { type StoredConsent, createInMemoryConsentStore } from "@chartwarden/consent";
+import { createDbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";

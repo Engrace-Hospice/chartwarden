@@ -7,7 +7,7 @@
 // admission detail read; names from the patient read. Admission type, assigned nurse and payer
 // eligibility are not on these reads, so they are not drawn. The server enforces every scope
 // (ADR-0030 — no authz on the frontend).
-import { formatMrn } from "@wardenx/types";
+import { formatMrn } from "@chartwarden/types";
 import {
   EmptyState,
   Glyph,
@@ -19,7 +19,7 @@ import {
   t,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";

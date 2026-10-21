@@ -11,14 +11,14 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/08-encounters — Cosignature Queue (M8 §5.5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
 // The RN / Clinical Supervisor cosignature work queue: one row per encounter awaiting cosignature.
 // Reconciled to Lantern (R1): the §5.5 SLA is a §7.5 CountdownChip counting down to the 48h hard cap
 // (warning → alert → overdue), status is a §6.6 StatusPill, ids are mono, the table is No-Line. Reads
 // GET /api/v1/encounters/cosignature-queue via the typed client; the server enforces every scope
-// (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+// (ADR-0030 — no authz on the frontend). Imports only leaves (@chartwarden/ui).
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";

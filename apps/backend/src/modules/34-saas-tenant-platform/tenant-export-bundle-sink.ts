@@ -17,8 +17,8 @@ import type {
   ExportBundleSink,
   NdjsonSink,
   TenantExportManifest,
-} from "@wardenx/saas-tenant-platform";
-import { moduleNdjsonPath, tenantExportObjectKey } from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
+import { moduleNdjsonPath, tenantExportObjectKey } from "@chartwarden/saas-tenant-platform";
 import { type TarEntry, buildUstarTarball } from "./tenant-export-tar";
 
 export type TenantExportBundlePutObject = (args: {

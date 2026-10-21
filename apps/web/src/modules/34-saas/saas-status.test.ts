@@ -1,6 +1,6 @@
 // apps/web/src/modules/34-saas/saas-status.test.ts — the M34 status→tone presentation helper (R1).
 //
-// The pure tone-map helper lives here (it imports only the `StatusTone` *type* from @wardenx/ui, erased
+// The pure tone-map helper lives here (it imports only the `StatusTone` *type* from @chartwarden/ui, erased
 // at runtime), so the test is colocated in apps/web — a `packages/` test importing it would create a
 // forbidden package→app dependency-cruiser edge. Proves the §6.6 badge taxonomy is applied once:
 // every M34 lifecycle/sub-status resolves to the documented Lantern tone, controlled/irreversible acts

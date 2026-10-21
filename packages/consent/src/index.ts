@@ -1,4 +1,4 @@
-// @wardenx/consent — public barrel.
+// @chartwarden/consent — public barrel.
 //
 // Module 39 (Consent & Authorization Management). The package holds the pure consent domain:
 // type-level kinds (M39-T01), the consent state machine + validation (M39-T04), the

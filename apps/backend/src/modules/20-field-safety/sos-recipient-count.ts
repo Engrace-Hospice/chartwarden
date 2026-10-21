@@ -6,7 +6,7 @@
 // is never answered — a floor of zero is "we could not confirm anyone", which the mobile client renders as the
 // D15 `tel:` direct-dial fallback via `null`, not as a genuine coverage gap the tenant caused. An unreadable
 // registry THROWS and the write service maps that to `null` the same way.
-import type { MembershipId, OrgId } from "@wardenx/types";
+import type { MembershipId, OrgId } from "@chartwarden/types";
 import { deliveryMembershipsFor } from "./alert-rules";
 
 interface SupervisorRow {

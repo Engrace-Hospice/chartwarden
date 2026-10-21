@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the DoseSpot v2 REST endpoint table (M12 GAP-037 close-out).
+// @chartwarden/dosespot — the DoseSpot v2 REST endpoint table (M12 GAP-037 close-out).
 //
 // SOURCE OF TRUTH FOR "WHAT WAS CHECKED". DoseSpot's public documentation (docs.dosespot.com) is a portal that
 // needs a login for the field-level reference; what is publicly retrievable is the staging swagger

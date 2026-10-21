@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the M5 → DoseSpot patient-sync planner (M12-T06, spec §2.6 D4). WardenX is the system
+// @chartwarden/dosespot — the M5 → DoseSpot patient-sync planner (M12-T06, spec §2.6 D4). WardenX is the system
 // of record for demographics; DoseSpot needs a synchronized copy for the prescribing workflow. M12 subscribes
 // to the four `m5.patient.*` outbox events (created / updated / address_changed / payer_changed — wired in
 // M12-T08) and runs the `dosespot.patient_sync` worker; THIS module is the PURE core: it builds the
@@ -6,7 +6,7 @@
 // coalesces same-state re-syncs, §2.6), and folds an upsert outcome into the retry/escalation decision. No
 // reverse sync: a demographic mismatch raises an M36 alert, never a silent overwrite (§2.6). IO-free; the
 // upstream upsert is keyed on `wardenxPatientId` so repeated calls are no-ops at DoseSpot's side.
-import type { M12AlertPayload, M12EventName } from "@wardenx/types";
+import type { M12AlertPayload, M12EventName } from "@chartwarden/types";
 import type { DoseSpotPatientPayload } from "../client/contract";
 
 /** §2.6 — the retry budget for a patient upsert before M12 escalates a sync failure to M36 / the org admin. */

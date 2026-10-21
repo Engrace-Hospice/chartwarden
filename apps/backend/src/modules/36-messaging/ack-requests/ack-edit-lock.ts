@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-edit-lock.ts - WP 4.2 (ADR-0056 D8): a message that has a response request
 // cannot be edited - the request binds to what was sent. A correction is a NEW message. A cancelled request (its message was
 // deleted) no longer blocks anything. The database trigger on `message` (migration 1107) is the backstop for this friendly check.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { Tx } from "../messaging-write-core";
 import { ackTxOver } from "./ack-store-db";
 

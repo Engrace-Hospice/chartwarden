@@ -1,8 +1,8 @@
 // Finding 9 — a referral's assignee is shown by NAME (server-resolved `assignedToDisplayName`), never by an
 // 8-character prefix of the staff user id. A missing name falls back to the neutral "Staff member".
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";

@@ -198,7 +198,7 @@ export function scanContextAttributes(root: string = REPO_ROOT): ScanResult {
 
   // Constants are resolved ACROSS files, not per file: `attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]`
   // is read in a route and declared in the module's predicate file, and `BREAK_GLASS_ATTRIBUTE` is
-  // declared in @wardenx/auth and read there. Keying the registry on identifiers instead of the
+  // declared in @chartwarden/auth and read there. Keying the registry on identifiers instead of the
   // header-style literals they resolve to would make it a registry of variable names.
   const consts = new Map<string, string>();
   const sources = new Map<string, string>();

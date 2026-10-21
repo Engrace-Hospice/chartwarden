@@ -16,8 +16,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { SUD_TEST_LOINC_ENTRIES, SUD_TEST_LOINC_VALUE_SET_ID } from "@wardenx/terminology";
+import { createDbClient } from "@chartwarden/db";
+import { SUD_TEST_LOINC_ENTRIES, SUD_TEST_LOINC_VALUE_SET_ID } from "@chartwarden/terminology";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, getSeam } from "../src/bootstrap/seams/registry";

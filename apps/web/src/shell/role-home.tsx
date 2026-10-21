@@ -7,8 +7,8 @@
 // history snapshots for "vs last week" trends or a daily census/revenue series, and no "recently
 // viewed" patient list, so the cards show current detail instead and the patient panel lists the
 // patients the open work refers to.
-import { EmptyState, Glyph, type GlyphName, Panel, t, useApiClient } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, type GlyphName, Panel, t, useApiClient } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";

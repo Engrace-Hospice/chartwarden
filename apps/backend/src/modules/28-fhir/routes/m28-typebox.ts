@@ -4,8 +4,8 @@
 // `m28-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one (the M21-T01 gotcha).
 //
-// THE STRING-LITERAL UNIONS MIRROR the frozen `@wardenx/types` unions (`packages/types/src/fhir.ts`,
-// M28-T01), which mirror the `@wardenx/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict.
+// THE STRING-LITERAL UNIONS MIRROR the frozen `@chartwarden/types` unions (`packages/types/src/fhir.ts`,
+// M28-T01), which mirror the `@chartwarden/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict.
 //
 // FOUR THINGS NOTHING HERE ACCEPTS: (1) no organization id and no acting membership — both are server-side
 // (./actor.ts); (2) no client SECRET on the wire — a rotated credential's plaintext is minted server-side
@@ -21,7 +21,7 @@ import {
   FHIR_INBOUND_OWNER_MODULES,
   FHIR_INBOUND_STATUSES,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -60,7 +60,7 @@ const InstantOpt = Type.Optional(Type.String({ format: "date-time" }));
 const Lit = <T extends string>(members: readonly T[]) =>
   Type.Union(members.map((m) => Type.Literal(m)));
 
-// ── vocabulary mirrors (`@wardenx/types` is the source of truth) ──────────────────────────────────────
+// ── vocabulary mirrors (`@chartwarden/types` is the source of truth) ──────────────────────────────────────
 
 export const FhirClientTypeSchema = Lit(FHIR_CLIENT_TYPES);
 export const FhirClientTierSchema = Lit(FHIR_CLIENT_TIERS);

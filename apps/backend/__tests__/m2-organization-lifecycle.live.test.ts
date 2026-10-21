@@ -25,8 +25,8 @@ import {
   registerDbEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
@@ -539,7 +539,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
     });
 
     it("a pre-org audit write (acceptor has no org bound) lands under the row's own org, and a foreign-org row still fails closed", async () => {
-      const { runWithRequestContext } = await import("@wardenx/tenancy");
+      const { runWithRequestContext } = await import("@chartwarden/tenancy");
       const executor = createOrgScopedAuditExecutor(handle.db);
       const ctx = (organizationId: string | null) => ({
         organizationId,

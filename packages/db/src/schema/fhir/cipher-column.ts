@@ -1,4 +1,4 @@
-// @wardenx/db — the `bytea` column type M28's §3.6 cipher columns use.
+// @chartwarden/db — the `bytea` column type M28's §3.6 cipher columns use.
 //
 // §3.6 registers three DEK-wrapped columns with M1's envelope-encryption helper:
 // `tenant_fhir_config.cursor_signing_key_cipher`, `fhir_client_credential.secret_cipher`, and the HMAC

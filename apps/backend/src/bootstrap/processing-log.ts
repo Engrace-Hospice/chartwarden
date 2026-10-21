@@ -8,15 +8,15 @@
 // `withOrgContext` tx, same as the other M30 repos) — this adapter takes a `DbClient` and never opens its
 // own transaction, so it composes correctly with that per-job envelope.
 //
-// M1 (this file's module) may not import a feature-module package (`@wardenx/quality` is M30-owned, per
+// M1 (this file's module) may not import a feature-module package (`@chartwarden/quality` is M30-owned, per
 // `architecture/module-manifest.ts` dependsOn) — so the return type is a LOCAL structural mirror of
-// `@wardenx/quality`'s `ProcessingLogPort`, not an import of it. M30's own `M30WorkerDeps.processingLogFactory`
+// `@chartwarden/quality`'s `ProcessingLogPort`, not an import of it. M30's own `M30WorkerDeps.processingLogFactory`
 // field carries the real `ProcessingLogPort` type; this function's return type is structurally assignable to
 // it (verified at that call site, not here).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 
-/** Structural mirror of `@wardenx/quality`'s `ProcessingLogPort` — see the module boundary note above. */
+/** Structural mirror of `@chartwarden/quality`'s `ProcessingLogPort` — see the module boundary note above. */
 interface ProcessingLogPortShape {
   isProcessed(jobId: string): Promise<boolean>;
   markProcessed(jobId: string, summary: Record<string, unknown>): Promise<void>;

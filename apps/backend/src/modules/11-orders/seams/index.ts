@@ -8,7 +8,7 @@
 // deny-stubs (before validateSeams()), driven from the composition root's wireModuleSeams(). Both share ONE
 // injected OrderSeamStore (in-memory slice here; Drizzle in prod, reads/writes under the consumer's RLS) —
 // mirrors the M8/M9/M10 seams/index.ts precedents.
-import type { OrderProvider, OrderSignatureProvider } from "@wardenx/types";
+import type { OrderProvider, OrderSignatureProvider } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import type { OrderMdmValidator, OrderTerminologyValidator } from "../routes/service";
 import { createOrderProvider, createOrderSignatureProvider } from "./providers";
@@ -62,7 +62,7 @@ export function getOrderProvider(): OrderProvider {
 // The order route service "binds" the M40 master-data surface (the ordering physician / DME vendor) and the
 // M38 terminology surface (the LOINC / HCPCS / CPT code on the order payload). Both are resolved from the M1
 // registry here and injected into the service (seed.mdm / seed.terminology); the seam contracts are OPAQUE
-// (`unknown`) in @wardenx/types, so these getters narrow to the minimal validator subsets the service uses
+// (`unknown`) in @chartwarden/types, so these getters narrow to the minimal validator subsets the service uses
 // (the same USING-the-name pattern as M10's `getLatestAssessmentProviderForHope`). M40 / M38 are already in
 // M11's `dependsOn`, so no new manifest edge is introduced.
 

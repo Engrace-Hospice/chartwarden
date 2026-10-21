@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/40-mdm/outbox-consumers/m29-nppes-consumers.ts — M40-T09's M29 NPPES-sync
 // outbox consumers (M40 spec §4.7, §7.11–7.12). LIVE as of GAP-099.
 //
@@ -16,7 +16,7 @@ import type { DbClient } from "@wardenx/db";
 //      grants but never a function owning them, so `external_physician` had been read-only since it
 //      landed (migration 0202);
 //   3. `m40.canonical.updated` was not in any event catalog (events-by-m40.ts).
-// Only the fourth piece — the decision logic in `@wardenx/mdm` — was genuinely ready to bind.
+// Only the fourth piece — the decision logic in `@chartwarden/mdm` — was genuinely ready to bind.
 //
 // This flips the system from W-M40-13 (the T08 nightly delta job as the authoritative sync) to W-M40-12
 // (M29 updates the canonical within minutes of the registry change).
@@ -26,8 +26,8 @@ import type {
   NppesConsumerPorts,
   ProviderDeactivatedOutcome,
   ProviderSyncedDecision,
-} from "@wardenx/mdm";
-import { handleProviderDeactivated, handleProviderSynced } from "@wardenx/mdm";
+} from "@chartwarden/mdm";
+import { handleProviderDeactivated, handleProviderSynced } from "@chartwarden/mdm";
 import type {
   PlatformDispatchableOutboxEvent,
   PlatformOutboxConsumerBinding,
@@ -65,7 +65,7 @@ export const M29_NPPES_CONSUMERS: readonly M29ConsumerDescriptor[] = [
 export const M29_CONSUMERS_DEFERRED = false;
 
 /**
- * The handler factory: binds the pure @wardenx/mdm handlers over injected ports. Retained from the
+ * The handler factory: binds the pure @chartwarden/mdm handlers over injected ports. Retained from the
  * deny-stub era for the slice/unit tests, which inject fakes.
  */
 export function createM29NppesConsumerHandlers(ports: NppesConsumerPorts): {

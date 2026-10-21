@@ -1,4 +1,4 @@
-// @wardenx/quality — the skilled-nursing-minute reduction behind HCI indicators 8 and 9 (§1.1). Pure. No IO.
+// @chartwarden/quality — the skilled-nursing-minute reduction behind HCI indicators 8 and 9 (§1.1). Pure. No IO.
 //
 // The M30 worker reads M6's level-of-care day spans (`LevelOfCarePeriodReader.levelOfCareDaySpans`) and M8's
 // per-(admission, service date) skilled-nursing totals (`SignedEncountersReader.skilledNursingDayTotalsForOrg`)

@@ -15,10 +15,10 @@
 //
 // Both are pure header guards (no IO, no cross-module import). Mirrors the M6 routes precedent of
 // gating state-change routes server-side; the version never comes from the body for a PATCH.
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** Request carrying the parsed `If-Match` version the PATCH handler reads (set by {@link requireIfMatch}). */

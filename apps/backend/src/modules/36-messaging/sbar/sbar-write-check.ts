@@ -1,9 +1,9 @@
 // apps/backend/src/modules/36-messaging/sbar/sbar-write-check.ts - WP 3.3: the authoritative write-time SBAR checks,
 // run INSIDE the send/edit transaction after the channel is loaded, so a refusal rolls the whole write back.
 // A body without an sbar block is untouched (no policy read). The rules themselves are the pure `assertSbarWrite`
-// (@wardenx/messaging), shared with the in-memory twin; the flag check is the route's (it needs no database).
-import { assertSbarWrite, effectiveSbarPolicy, isSbarBody } from "@wardenx/messaging";
-import { type RichBody, ChartWardenError } from "@wardenx/types";
+// (@chartwarden/messaging), shared with the in-memory twin; the flag check is the route's (it needs no database).
+import { assertSbarWrite, effectiveSbarPolicy, isSbarBody } from "@chartwarden/messaging";
+import { type RichBody, ChartWardenError } from "@chartwarden/types";
 import type { Tx } from "../messaging-write-core";
 import { readSbarPolicyInTx } from "./sbar-policy-store-db";
 

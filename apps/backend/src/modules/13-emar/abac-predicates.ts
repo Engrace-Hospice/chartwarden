@@ -12,7 +12,7 @@
 //   controlled_substance_witness_eligible  — §2.6 D7 / §4.7: the witness (the caller minting the attestation
 //        token) is a DIFFERENT active clinical-discipline membership from the administering clinician (lifted
 //        from the body), in {rn, lpn, md, np, pa}, on the same tenant, and not a caregiver. Reuses the PURE
-//        `controlledSubstanceWitnessEligible` decision from @wardenx/emar; the witness facts load through the
+//        `controlledSubstanceWitnessEligible` decision from @chartwarden/emar; the witness facts load through the
 //        injected {@link EmarAbacResolver}.
 //   caregiver_attested_review_required  — §4.7: the caller is the patient's RN case manager (resolved through
 //        M5 `CaseloadProvider`) for an administration row whose `requires_rn_review = true`. The administration
@@ -41,9 +41,9 @@ import {
   type AbacTarget,
   hasOrgWideScope,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import { controlledSubstanceWitnessEligible } from "@wardenx/emar";
-import type { ReconciliationTriggerKind } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { controlledSubstanceWitnessEligible } from "@chartwarden/emar";
+import type { ReconciliationTriggerKind } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The §4.7 predicate names M13 owns (registered into M3). Single-owner across the platform registry. */

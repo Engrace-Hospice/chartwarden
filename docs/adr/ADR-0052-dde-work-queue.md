@@ -61,7 +61,7 @@ exactly one subject (claim, noe_record or notr_record) by logical FK and carries
 
 ### D4 — Lifecycle
 
-Pure reducer in `@wardenx/billing`, shape-identical to `machines/noe.ts` (flat transition table, non-throwing
+Pure reducer in `@chartwarden/billing`, shape-identical to `machines/noe.ts` (flat transition table, non-throwing
 `reduce`, no clock, no PHI):
 
 `queued → assigned → in_progress → submitted → accepted | returned`, then `closed`; `cancelled` from any

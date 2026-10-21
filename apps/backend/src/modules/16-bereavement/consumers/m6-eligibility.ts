@@ -3,7 +3,7 @@
 // M16's subscriber to Module 6's `m6.bereavement.eligible` — the handshake that CLOSES M6's bereavement
 // outbox. M6 owns the RULE that a death discharge makes a patient bereavement-eligible (W-DC-01 / M6 D6);
 // M16 owns the 13-month program. Neither imports the other: the whole contract is one outbox event name,
-// read here as a STRING literal (`M16_SUBSCRIBED_EVENT_NAMES` in `@wardenx/types` is the shared source of
+// read here as a STRING literal (`M16_SUBSCRIBED_EVENT_NAMES` in `@chartwarden/types` is the shared source of
 // truth so an upstream rename breaks the build instead of orphaning this handler).
 //
 // PHASE-1 PURE DECISION CORE — the M7 `apply-idg-decision` precedent. What ships now is
@@ -21,13 +21,13 @@
 // `skipPerPatientOptOut` while the plan is `eligible`/`initiating`, → cosign-exempt `closeEarly` once it is
 // live). Refusing to open a plan because a fact was unreadable would deny a grieving family a regulatory
 // service to defend against a race the cascade already handles. An EXPLICIT `true` still skips.
-import { applyCosignReceipt } from "@wardenx/bereavement";
+import { applyCosignReceipt } from "@chartwarden/bereavement";
 import type {
   AdmissionId,
   BereavementExternalSourceMetadata,
   IsoInstant,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { BereavementStateError, checkDeathDateMatchesAdmission } from "../lifecycle/index";
 import { type ResolvedDeathFact, externalSourceMetadataFor } from "./death-discharge";
 
@@ -146,7 +146,7 @@ export type CosignReceiptAction =
 
 /**
  * §4.3.1 / D18 — decide what a `m6.discharge.cosigned` delivery does to a matching external-source plan.
- * The applier in `@wardenx/bereavement` IS the idempotency check: it returns null for a wrong proposal id
+ * The applier in `@chartwarden/bereavement` IS the idempotency check: it returns null for a wrong proposal id
  * or an already-cosigned blob, so a redelivered receipt is a no-op rather than a second update stamping a
  * newer `cosignedAt` over the original attestation.
  */

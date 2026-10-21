@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — a small RFC-4180 CSV reader (quoted fields, doubled quotes, embedded
+// @chartwarden/terminology-loader — a small RFC-4180 CSV reader (quoted fields, doubled quotes, embedded
 // newlines) and a header-keyed record view. No dependency: the LOINC release file is the one that needs it.
 import { LoaderDataError } from "./errors";
 

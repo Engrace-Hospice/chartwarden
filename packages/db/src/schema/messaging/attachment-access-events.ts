@@ -1,4 +1,4 @@
-// @wardenx/db — `attachment_access_event` (M36 WP 1.5). Append-only: one row per attempt to open a message
+// @chartwarden/db — `attachment_access_event` (M36 WP 1.5). Append-only: one row per attempt to open a message
 // attachment, `open` (a signed URL was issued) or `denied` (an entitled reader was refused, with a reason code).
 // The app role has SELECT + INSERT only (1075). Ids and a reason code only: no filename, no URL, no PHI.
 import { foreignKey, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

@@ -7,7 +7,7 @@
 // transactional outbox exists to give. Platform-scoped events (capability lifecycle, platform kill switch,
 // evaluations) publish with `organizationId = null`; their payloads carry `orgId: null` so "this stopped every
 // tenant" and "we did not record which tenant" stay different values (events-by-m32.ts decision 5).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 import type { M32EventName } from "./event-names";
 

@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_minutes_amendment` (M14 §3.3.1 / W-MIN-01). The append-only amendment ledger for
+// @chartwarden/db — `idg_minutes_amendment` (M14 §3.3.1 / W-MIN-01). The append-only amendment ledger for
 // finalized minutes: each row is a reason + a structured diff, with a request → approve handshake (no
 // in-place mutation of `final` minutes, D10). Org-scoped child of idg_minutes. FK to the minutes (cascade)
 // + the tenancy spine; actor refs (requested_by / approved_by → M1 membership) are plain uuid

@@ -4,13 +4,13 @@
 // Every function takes the caller's tenant tx (`withOrgContext`); none opens its own and none touches the
 // network. Immutable in spirit: a row is only ever inserted once (ON CONFLICT DO NOTHING is the idempotency
 // primitive) and settled once; the claim/settle updates are guarded on the status they expect.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import type {
   SafetyTerminusActionKind,
   SafetyTerminusActionStatus,
   SafetyTerminusOutcomeCode,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { type PriorDialRow, TERMINUS_LEASE_MS, terminusIdempotencyKey } from "./policy";
 

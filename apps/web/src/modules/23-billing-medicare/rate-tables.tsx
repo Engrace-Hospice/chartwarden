@@ -13,7 +13,7 @@ import {
   t,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — HOSPICE RATES (M23 F-210 + FY2027 workstream E; 2026-09-25 redesign,
 // mockup "Billing / Claims" frame 10 for the page + the Admissions right drawer 03_20_25 for the selected version).
 //

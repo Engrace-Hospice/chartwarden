@@ -1,4 +1,4 @@
-// @wardenx/messaging — the out-of-band dispatch decision for ONE claimed delivery (M36 GAP-101, §4.4 / §4.7).
+// @chartwarden/messaging — the out-of-band dispatch decision for ONE claimed delivery (M36 GAP-101, §4.4 / §4.7).
 //
 // Pure over ports: the sweep (apps/backend, Drizzle) claims a `notification_delivery` row and hands it here;
 // this decides what happened and the sweep persists it. No clock, no I/O beyond the injected ports.

@@ -1,11 +1,11 @@
-// @wardenx/types — the typed render payload M25 hands M22 to render a tier-specific appeal packet (M25 spec
+// @chartwarden/types — the typed render payload M25 hands M22 to render a tier-specific appeal packet (M25 spec
 // section 1.1 "The appeal packet"; GAP-036). M25 builds it at submit from the appeal case + its denial (server
 // side — nothing here is trusted from the client except the clinician's own narrative and the document ids it
 // chose to attach); M22 validates it at the render boundary before it draws a letter that goes to a MAC / QIC /
 // ALJ, so a malformed packet fails the render (retry -> DLQ) instead of producing a blank filing.
 //
 // Pure: no db / app import (leaf contract surface, like the rest of this package). Lives in the leaf types package
-// (not @wardenx/forms) because M25 produces it and M22 consumes it - neither may import the other (ADR-0005).
+// (not @chartwarden/forms) because M25 produces it and M22 consumes it - neither may import the other (ADR-0005).
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { DocumentDigest } from "./documents";

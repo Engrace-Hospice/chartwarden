@@ -2,7 +2,7 @@
 // the QIC view, the cited-evidence list, the QIC clock, and the OMHA escalation request and confirmation. Every
 // refusal is returned verbatim as a WriteResult (the server owns each rule); `stepUp` marks the 403 the escalation
 // request answers with when the session needs re-verifying.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 import { type WriteResult, failure, guarded, ifMatch, ok } from "./remittance-api";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;

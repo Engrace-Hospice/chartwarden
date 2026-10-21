@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_alert_routing_override` (M36 Secure Messaging §3.11). A tenant's
+// @chartwarden/db — `tenant_alert_routing_override` (M36 Secure Messaging §3.11). A tenant's
 // add-only override on a catalog payload type: extra channels/recipients and an OPTIONAL
 // severity escalation (tighten-only, D11 — the floor in `alert_payload_catalog` can be raised
 // but never lowered, enforced at the dispatch step). Org-scoped (organization_id); RLS + the

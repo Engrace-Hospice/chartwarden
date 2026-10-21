@@ -14,7 +14,7 @@
 // direction of a fact is a domain decision and belongs next to the rule that depends on it. The ONE
 // exception is the roster read, where the distinction "unreadable" vs "empty" cannot survive as a null: see
 // `readOnCallRoster`.
-import type { IsoInstant, OnCallRosterEntry, OrgId, PatientId, TriageCallId } from "@wardenx/types";
+import type { IsoInstant, OnCallRosterEntry, OrgId, PatientId, TriageCallId } from "@chartwarden/types";
 import type { OnCallRosterRead } from "../roster/shift-sync";
 import { getVisitAssignmentReader, getVisitReader } from "../seams/consumed";
 import type {

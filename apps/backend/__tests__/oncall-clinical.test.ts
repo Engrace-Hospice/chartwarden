@@ -13,8 +13,8 @@ import type {
   RefillInboxProvider,
   RefillRequestDto,
   SessionStepUpFields,
-} from "@wardenx/types";
-import { M19_ENCOUNTER_TYPE, M19_SUBSCRIBED_EVENT_NAMES, STEP_UP_POLICY } from "@wardenx/types";
+} from "@chartwarden/types";
+import { M19_ENCOUNTER_TYPE, M19_SUBSCRIBED_EVENT_NAMES, STEP_UP_POLICY } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

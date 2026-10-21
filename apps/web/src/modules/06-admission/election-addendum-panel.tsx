@@ -15,7 +15,7 @@ import {
   LoadingSpinner,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";

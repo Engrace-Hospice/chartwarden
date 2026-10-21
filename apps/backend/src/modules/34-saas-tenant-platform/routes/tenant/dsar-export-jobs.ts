@@ -9,8 +9,8 @@
 // OR caseload on the target patient — M34 reaches the M5 CaseloadProvider seam OPAQUELY, no edge). FULFILL
 // and DENY carry `passkey_recent_5min` step-up (§6/D10). The §164.524 read surfaces are auditRead-declared
 // in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import type { GuardRequest } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { GuardRequest } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";

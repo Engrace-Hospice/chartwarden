@@ -24,8 +24,8 @@ import {
   type AbacTarget,
   PLATFORM_OPS_ROLE_KEYS,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import type { Hl7ProposalOwnerModule } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { Hl7ProposalOwnerModule } from "@chartwarden/types";
 
 /** The §4.8 predicate names M29 OWNS (registered into M3). Single-owner across the platform registry. */
 export const M29_ABAC_PREDICATES = [
@@ -152,7 +152,7 @@ function membershipIdOf(context: AbacContext): string | null {
 
 /**
  * Whether the caller carries a platform-ops role (W-XI-12). RE-DERIVED from the platform-owned role
- * catalog (`@wardenx/auth` `PLATFORM_OPS_ROLE_KEYS`), the same single source M35's
+ * catalog (`@chartwarden/auth` `PLATFORM_OPS_ROLE_KEYS`), the same single source M35's
  * `platform_billing_scope` admits its cross-tenant `/api/admin` surface from — so the two platform-only
  * gates in the codebase cannot drift apart on who counts as an operator.
  *

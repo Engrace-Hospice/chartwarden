@@ -7,8 +7,8 @@
 // `changed_at = now()` on EVERY enabled flip (OFF->ON and ON->OFF). Reconcile treats a `ready` index as trustworthy only
 // while `reconciled_at >= changed_at`; a flip that leaves `changed_at` alone is never re-verified before the 24 h recheck.
 // (No migration: the column exists. `m36-global-search-writer.live.test.ts` pins both behaviours.)
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

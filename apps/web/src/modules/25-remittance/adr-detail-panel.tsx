@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the ADR WORK PANEL (hospice ADR/TPE/QIC PRD, milestone 2a). Reads the
 // case fresh (so the If-Match version is the one the server holds NOW), shows HOW the response due date was
 // reached (request date + the MAC window, any business-day roll-back, and whether that window is verified),

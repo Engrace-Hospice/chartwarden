@@ -11,7 +11,7 @@
 // is a compile-time LITERAL in its own `requireAbac` call so `arch:abac-predicates` still resolves it (the
 // gate scans that second argument — a helper that took `names: string[]` would hide them, the exact hole
 // that let M30 ship 15 guards on an unregistered predicate).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import type { PreHandler } from "./actor";
 

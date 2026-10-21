@@ -21,7 +21,7 @@ import {
   INTAKE_ROLE_KEYS,
   hasAdmittingClinicianRole,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
 import { F2F_PERFORMER_ROLE_KEYS } from "./certification/f2f-performer";
 import {

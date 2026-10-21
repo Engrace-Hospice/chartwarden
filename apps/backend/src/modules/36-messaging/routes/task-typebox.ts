@@ -9,7 +9,7 @@ import {
   TASK_EVENT_TYPES,
   TASK_SOURCE_KINDS,
   TASK_STATUSES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

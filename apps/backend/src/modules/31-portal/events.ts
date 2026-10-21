@@ -9,9 +9,9 @@
 //     mutation lives in another module's transaction (M5 amendment intake, M36 message send, M2 session
 //     binding, the M22 upload handoff). A failure here is LOGGED (never silently swallowed) and does not
 //     undo the already-committed action it reports.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { M31EventName } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { M31EventName } from "@chartwarden/types";
 
 /** The catalog-validating tx publisher slice (`bindCallerModule(txOutboxPublisher, "m31")`). */
 export interface M31OutboxPublisher {

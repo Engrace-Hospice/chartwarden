@@ -5,10 +5,10 @@
 // during an incident takes everything down). The terminus is still entered, the page row settles
 // `skipped / pager_unbound`, and this function says so LOUDLY at boot. The same for a malformed URL.
 // Nothing here logs a secret: only variable NAMES and on/off facts.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { MembershipId, SosContactCaller } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { MembershipId, SosContactCaller } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { createWebhookOpsPager } from "../jobs/terminus-port";

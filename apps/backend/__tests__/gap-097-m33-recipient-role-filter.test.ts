@@ -1,7 +1,7 @@
 // M33 worker recipient port: the role read feeding the §4.7.2 role-share ladder applies the SAME filter as every
 // other role read (enabled role, grant in THIS org, unexpired, `roleConfersKey`). Unit test over a scripted db —
 // the SQL predicates are asserted by the rows the fake hands back being re-filtered in code (defence in depth).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { buildM33WorkerPorts } from "../src/modules/33-reporting/jobs/m33-jobs";
 

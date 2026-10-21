@@ -1,4 +1,4 @@
-// @wardenx/consent — the D13 post-death consent-termination decision (§7.7).
+// @chartwarden/consent — the D13 post-death consent-termination decision (§7.7).
 //
 // M39-T09 (moved from the backend consumer so the package owns the pure domain). On
 // m5.patient.deceased, M39 transitions each active consent that does NOT survive death to `expired`.

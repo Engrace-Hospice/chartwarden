@@ -7,9 +7,9 @@
 // 2a deliberately has no `submitted` transition: filing needs the reviewed packet, sign-off and proof of
 // submission that milestone 2b adds. There are no outbox events yet (nothing consumes them); the adr_case
 // write-audit trigger and the adr_case_event history are the trail.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import {
   type AdrReviewType,

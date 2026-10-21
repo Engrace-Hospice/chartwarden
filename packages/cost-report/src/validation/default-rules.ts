@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 the TWENTY-EIGHT platform-default validation rules (§1.1, architecture
+// @chartwarden/cost-report — M27 the TWENTY-EIGHT platform-default validation rules (§1.1, architecture
 // §11.B, M27-F01/F02). Every cost report runs through this default set before submission. The rules span
 // ALL SIXTEEN §2.1 `rule_category` values; the CFR-mandated ones (42 CFR §413.24 adequate-cost-data,
 // §418.308 aggregate cap, §418.309 inpatient cap, PRM I Ch 3&4 bad-debt) are tagged `regulatoryRequired`
@@ -18,7 +18,7 @@
 // internally-tied-out checks now and are marked with a `// TODO(CMS-fixture):` naming the reference data
 // needed — no CMS constant is fabricated as if verified.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. Types, pure
 // functions, constants only.
 import type { RuleDef } from "./types";
 import { failResult, passResult, skipResult, warnResult } from "./types";

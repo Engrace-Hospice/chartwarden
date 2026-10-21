@@ -4,7 +4,7 @@
 // MdmEntityProvider), passes validateSeams(), and is fail-closed when unregistered. Drives the two
 // named acceptance scenarios over the in-memory store: W-M40-10 (§7.9 inbound by sending-facility)
 // and W-M40-11 (§7.10 outbound by entity with asOf time-travel).
-import { type BaaStatusProvider, createInMemoryBaaStore } from "@wardenx/mdm";
+import { type BaaStatusProvider, createInMemoryBaaStore } from "@chartwarden/mdm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";

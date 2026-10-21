@@ -4,7 +4,7 @@
  * operator runs, against its own database, without spawning a process.
  */
 import { randomUUID } from "node:crypto";
-import type { PlatformGrantableRoleKey } from "@wardenx/auth";
+import type { PlatformGrantableRoleKey } from "@chartwarden/auth";
 import type { Client } from "pg";
 import {
   assertPlatformGrantableKey,

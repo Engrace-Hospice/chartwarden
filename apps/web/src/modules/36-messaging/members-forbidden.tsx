@@ -1,7 +1,7 @@
 // A 403 on the member route means "you cannot manage members here", not "you lost the conversation" (that wording is
 // for a failed thread read). Static copy, never the title. Importers: channel-members-dialog.tsx.
 // The body replaces a focused control, so Close takes focus on mount (keeps the Modal's Tab trap and Escape alive).
-import { Button, EmptyState } from "@wardenx/ui";
+import { Button, EmptyState } from "@chartwarden/ui";
 import { useEffect, useId, useRef } from "react";
 import type { JSX } from "react";
 

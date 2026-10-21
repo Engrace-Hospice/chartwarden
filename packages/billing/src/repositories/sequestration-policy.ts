@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `sequestration_policy` (per-provider-entity effective-dated
+// @chartwarden/billing · repositories — `sequestration_policy` (per-provider-entity effective-dated
 // sequestration-percentage schedule, §3.3, D11; non-partitioned; retention class `operational`). ORG-SCOPED.
 //
 // APPEND-ONLY (F-212, migration 0281): a policy row's percentage / start / actor / reason are never edited. The app role may
@@ -8,7 +8,7 @@
 // provider entity, so `findEffectiveOn` has at most one answer. There is NO delete surface (destruction role only).
 //
 // No enum case translation (this table has no enums). No PHI (D18).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

@@ -1,4 +1,4 @@
-import type { ProvisionJob } from "@wardenx/saas-tenant-platform";
+import type { ProvisionJob } from "@chartwarden/saas-tenant-platform";
 import { type ConnectionOptions, Queue } from "bullmq";
 import type {
   DispatchableOutboxEvent,

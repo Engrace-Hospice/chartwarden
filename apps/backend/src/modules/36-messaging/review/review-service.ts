@@ -7,9 +7,9 @@
 // so a racing close cannot deadlock with a decision), decide the review row FIRST, then move the task through the shared
 // task store with `reviewOverride`. A task already closed elsewhere is the uniform 409 (its trigger resolved the row).
 // A restricted (Part 2) or missing row is the same byte-identical 404, for reads and for actions alike.
-import type { DbClient } from "@wardenx/db";
-import { REVIEW_LIST_DEFAULT, closeActionForReason } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { REVIEW_LIST_DEFAULT, closeActionForReason } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   NotFoundError,
   type ReviewItemDto,
@@ -17,7 +17,7 @@ import {
   TASK_CLOSE_REASONS,
   type TaskCloseReason,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";

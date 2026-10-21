@@ -1,4 +1,4 @@
-// @wardenx/fhir — the 42 CFR Part 2 SUD egress consent gate (§8.2, D3, W-FHIR-03, M28-T05).
+// @chartwarden/fhir — the 42 CFR Part 2 SUD egress consent gate (§8.2, D3, W-FHIR-03, M28-T05).
 //
 // D3 makes 42 CFR Part 2 SUD redaction DEFAULT-ON at every FHIR egress path. On EVERY resource
 // projection step the gate consults M39's `ConsentEvaluator.evaluateForDisclosure` for the (patient,
@@ -10,7 +10,7 @@
 //   • `{ allowed: true, redactSudContent: false }`→ the resource projects unchanged.
 //
 // The gate is a PURE enforcement layer with the M39 evaluator INJECTED as a LOCAL port (the T03/T04
-// idiom — no `@wardenx/consent` import, no `dependsOn` edge ahead of the T06 seam bind). The redaction
+// idiom — no `@chartwarden/consent` import, no `dependsOn` edge ahead of the T06 seam bind). The redaction
 // is a DETERMINISTIC filter/collapse, never an AI summarization (that is D14, `../ai-block`). A wholly-SUD
 // resource (a buprenorphine `MedicationRequest`) has no non-SUD field to keep, so its strategy is
 // `"filter"`; a `DiagnosticReport` collapses WHOLE-REPORT via the T04 D20 applier so a single hidden
@@ -28,7 +28,7 @@ export interface FhirDisclosureDecision {
 }
 
 /** The M39 `ConsentEvaluator` disclosure port the gate consults per resource. The real evaluator from
- *  `@wardenx/consent` satisfies this (its `evaluateForDisclosure` returns a superset); T06 supplies the
+ *  `@chartwarden/consent` satisfies this (its `evaluateForDisclosure` returns a superset); T06 supplies the
  *  adapter that binds it. */
 export interface FhirDisclosureConsentEvaluator {
   evaluateForDisclosure(args: {

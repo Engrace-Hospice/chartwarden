@@ -1,4 +1,4 @@
-// @wardenx/reporting · drilldown — the drilldown-audit writer (M33 §3.3 / §3.6 / §4.10 / W-R-05 / D16).
+// @chartwarden/reporting · drilldown — the drilldown-audit writer (M33 §3.3 / §3.6 / §4.10 / W-R-05 / D16).
 //
 // Step 3 of the drilldown emit: record the navigation in `report_drilldown_audit` (insert-only, retention class
 // `compliance`) and emit the `m33.drilldown.*` outbox event. The audit row's `query_filters_cipher` carries the
@@ -16,7 +16,7 @@
 // is a total pure function; the writer resolves the DEK encrypt port (fail-closed on error), appends via an
 // injected write port, and emits via an injected outbox port. No clock/RNG/Drizzle/`getSeam` import — the
 // trace-id, clock, encryption, append, and emit all arrive as ports (bound at P2C).
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /** The drilldown navigation outcome (§4.10 `m33.drilldown.{emitted,denied,target_unavailable}`). An audit row
  *  is written for ALL outcomes (W-R-05 records `denied` / `target_unavailable` too). */

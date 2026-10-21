@@ -18,7 +18,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import IORedis from "ioredis";
 import { Client } from "pg";

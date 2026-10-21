@@ -6,8 +6,8 @@
 //
 // No org-wide precedent existed for any of these three reads before this file: `../seams/drizzle-store.ts`
 // and `../assessments-route-service-db.ts` are all request-context-bound (single patient / single scale).
-import { type DbClient, schema } from "@wardenx/db";
-import type { ScaleLicenseStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { ScaleLicenseStatus } from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type {
   ReassessmentSnapshot,

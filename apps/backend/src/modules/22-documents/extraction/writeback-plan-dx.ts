@@ -27,7 +27,7 @@
 // value is grounded verbatim in the source text) or the reviewer's typed edit. `extraction_candidate.value_code`
 // — a model-assigned code — is never an input here. The document's `role` is carried as a label; it never
 // becomes `problem.kind`.
-import { detectSudIndicators } from "@wardenx/intake-extraction";
+import { detectSudIndicators } from "@chartwarden/intake-extraction";
 import {
   type DocLensDiagnosisItem,
   type DocLensIcd10Source,
@@ -35,7 +35,7 @@ import {
   normalizeDiagnosisRole,
   normalizeIcd10CmShape,
   parseDiagnosisFieldPath,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export type DiagnosisWritebackExclusionReason =
   | "description_not_approved"

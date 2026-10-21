@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Accept Invitation (M2 Auth, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Accept invitation" (/invite/:token).
 // TASK-030: the original cut deferred "set password" because there was no way to know the invitee's

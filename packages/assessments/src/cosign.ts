@@ -1,4 +1,4 @@
-// @wardenx/assessments — LPN cosignature workflow (§7.4, §2.3, §6). Pure, IO-free.
+// @chartwarden/assessments — LPN cosignature workflow (§7.4, §2.3, §6). Pure, IO-free.
 //
 // §2.3 sets `cosign_required=true` when the capturing discipline is LPN and the scale ∈ {PPS, KPS, FAST}.
 // §7.4: a row recorded by an LPN under that rule inserts with `cosign_required=true`; consumer surfaces
@@ -7,7 +7,7 @@
 // `assessment_cosignature` row inserts; `cosign_required` STAYS `true` on the row for historical accuracy,
 // and consumers key off the cosignature row's PRESENCE, not the column. This module owns those pure
 // decisions; the service (M9-T05) applies them and the `assessment.cosigned` event (M9-T06).
-import type { ScaleType } from "@wardenx/types";
+import type { ScaleType } from "@chartwarden/types";
 import { AssessmentStateError, require_ } from "./errors";
 
 /** §2.3 — the scales an LPN-captured row must have cosigned before a consumer surface may use it. */

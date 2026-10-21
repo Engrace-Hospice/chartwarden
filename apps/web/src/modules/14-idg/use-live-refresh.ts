@@ -1,6 +1,6 @@
 // apps/web/src/modules/14-idg — visibility-aware polling for the Live Meeting surface.
 //
-// WHY POLLING: there is no realtime channel to subscribe to. `@wardenx/ui` ships a `SocketProvider` leaf
+// WHY POLLING: there is no realtime channel to subscribe to. `@chartwarden/ui` ships a `SocketProvider` leaf
 // but nothing in apps/web mounts it, apps/backend has no socket/SSE gateway and neither package depends on
 // socket.io (M1 §13.4 realtime server is not built). Rather than invent a server, the live surface
 // re-reads its ledgers on a timer while the meeting is `live` and the tab is visible.

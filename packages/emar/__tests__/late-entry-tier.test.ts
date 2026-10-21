@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.5 D8 late-entry tier ladder — M13-T03.
+// @chartwarden/emar — §2.5 D8 late-entry tier ladder — M13-T03.
 import { describe, expect, it } from "vitest";
 import { resolveLateEntryTier, tierRequiresElevatedPermission } from "../src/lifecycle";
 

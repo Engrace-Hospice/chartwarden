@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — CVX parser (CDC vaccine administered codes; tier 1 public).
+// @chartwarden/terminology-loader — CVX parser (CDC vaccine administered codes; tier 1 public).
 //
 // Input: the CDC `cvx.txt` — pipe-delimited, one vaccine per line:
 //   CVX code | short description | full vaccine name | notes | status | … trailing fields (ignored)

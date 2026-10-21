@@ -1,6 +1,6 @@
 // apps/backend/src/modules/19-oncall/seams/providers.ts — M19-T06, the §4.3 seam implementations: pure
 // orchestration over an injected {@link OncallSeamStore}. Each returns the leaf-typed seam interface
-// (`@wardenx/types`) the M1 registry validates and M14 / M20 / M30 / M31 / M32 / M33 / M36 resolve. The
+// (`@chartwarden/types`) the M1 registry validates and M14 / M20 / M30 / M31 / M32 / M33 / M36 resolve. The
 // providers add NO tenant logic — RLS scopes every store read by the caller's ambient `app.org_id` (§3.5).
 //
 // ── THE `orgId` ARGUMENT IS AN ASSERTION, NOT A SELECTOR ───────────────────────────────────────────────
@@ -36,7 +36,7 @@
 // coverage; dropping it makes the shift show up as uncovered, which is the truth M36 and the watchdog can
 // act on. The `external_vendor` arm is structurally incapable of carrying a user id (§4.3 / M19-T01), so
 // it is never affected.
-import { getRequestContext } from "@wardenx/tenancy";
+import { getRequestContext } from "@chartwarden/tenancy";
 import {
   type ChiefComplaintBucket,
   type EscalationTierCount,
@@ -57,7 +57,7 @@ import {
   type TriageEscalationTier,
   type TriageMetricsWindow,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { OncallSeamStore, PortalTriageCallRow, RnCoverageRead } from "./store";
 
 /** The CALLER's org, resolved from the ambient request context (injected so the providers unit-test with

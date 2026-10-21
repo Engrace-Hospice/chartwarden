@@ -21,9 +21,9 @@
 //
 // NOT A REQUEST. The relay tick has no ambient request context: every read/write runs in an org-explicit
 // `withOrgContext`, and the publisher is the bound M16 catalog-validating one.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { decideCosignReceipt } from "../consumers/index";
 import { transitionBereavementPlan } from "../lifecycle/index";

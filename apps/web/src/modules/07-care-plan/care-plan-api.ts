@@ -26,7 +26,7 @@
 // row in `GET /patients/:patientId/care-plan` carries its own `version`. Nothing here invents one, and
 // nothing re-reads to "refresh" it before writing — that would defeat the check, since the point of
 // optimistic concurrency is to fail when the row moved under the caller.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── READ side (the Care Plan workspace screens: plan + readiness + review status + proposed changes) ──
 

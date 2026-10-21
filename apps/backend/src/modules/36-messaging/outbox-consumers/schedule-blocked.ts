@@ -12,7 +12,7 @@ import {
   SCHEDULE_BLOCK_REASONS,
   type ScheduleBlockReason,
   scheduleBlockedMessage,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

@@ -5,9 +5,9 @@
 // against it (or its claim), so a MAC-specific rule applies only once an ADR names the MAC. `resolveDenialRoute`
 // is exported for the appeal guard, which runs inside the appeal's own transaction. Every command runs under
 // `withOrgContext` (RLS) and inside the actor's provider-entity scope.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ChartWardenError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   PLATFORM_ROUTE_RULES,

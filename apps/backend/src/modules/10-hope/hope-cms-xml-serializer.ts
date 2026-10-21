@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { OPTIONAL_ASSESSMENT_ITEMS } from "./hope-readiness-service";
 import type { HopeIsc } from "./hope-spec-registry";

@@ -20,7 +20,7 @@
 // active one when `?location=` is absent, so the nav item lands on a real schedule instead of an
 // EmptyState. Whether the shell should carry a location context of its own remains a design decision;
 // this picker is local to the schedule and does not persist across screens.
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/14-idg — M14 IDG screen registration (Track B, ADR-0030, M14-T07).
 // The §5 IDG read screens that have a backing M14 read route on the generated client: the IDG Schedule
 // (per-location), the pre-meeting Meeting Detail, the Live Meeting Surface, the per-patient Packet (chart

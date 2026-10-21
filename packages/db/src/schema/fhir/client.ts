@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_client` (M28 §3.3). One row per external FHIR consumer (a SMART Backend Services
+// @chartwarden/db — `fhir_client` (M28 §3.3). One row per external FHIR consumer (a SMART Backend Services
 // app or an API-key integration). The §2.2 onboarding FSM lives in `status`; `pending_approval → active`
 // needs TWO distinct approver memberships (D12 dual-approval), enforced by the service, not by DDL.
 //

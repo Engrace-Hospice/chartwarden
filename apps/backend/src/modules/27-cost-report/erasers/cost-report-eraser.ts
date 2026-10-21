@@ -9,7 +9,7 @@
 // here is the ORG being offboarded (no patient subject), so the `DataEraser.erase(scope, subjectId)` bridge
 // passes `subjectId` (the org) straight to the package's pure `CostReportEraseStore` ports.
 //
-// The pure store contract + the §3.7 elevated-approval gate live in `@wardenx/cost-report` (eraser.ts);
+// The pure store contract + the §3.7 elevated-approval gate live in `@chartwarden/cost-report` (eraser.ts);
 // this backend wrapper only adapts them to the M1 `DataEraser` contract and registers the REAL eraser over
 // the Phase-0 deny-stub via the composition-root hook (after wireErasers(), before validateErasers() — the
 // same M22/M30/M33/M34/M36/M40 registration shape).
@@ -17,10 +17,10 @@ import {
   CostReportEraseRefused,
   type CostReportEraseStore,
   type CostReportEraseTableCounts,
-} from "@wardenx/cost-report";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataClass, DataEraser } from "@wardenx/types";
+} from "@chartwarden/cost-report";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { and, eq, exists, notExists, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { registerEraser } from "../../../bootstrap/index";
@@ -28,7 +28,7 @@ import { registerEraser } from "../../../bootstrap/index";
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 /**
- * The M27 destruction data class. NOT yet a member of the `@wardenx/types` `DataClass` union (M4-owned);
+ * The M27 destruction data class. NOT yet a member of the `@chartwarden/types` `DataClass` union (M4-owned);
  * the Integrate phase adds `"cost_report_class"` to that union + to `REQUIRED_ERASERS`
  * (apps/backend/src/bootstrap/erasers/registry.ts) so boot fails closed if M27's real eraser is never
  * registered. Kept here as the single string literal so that wiring lands in one place (the M30
@@ -201,7 +201,7 @@ function createInMemoryCostReportEraseStore(): CostReportEraseStore {
  * Prod injects `createDrizzleCostReportEraseStore(db)` via `deps.store` (each operational DELETE + each
  * compliance-class COUNT under the offboarding org's tenancy context; `deleteComplianceEvidence` refuses).
  *
- * TODO(M27 boot-wiring, Integrate phase): (1) add `"cost_report_class"` to the `@wardenx/types` `DataClass`
+ * TODO(M27 boot-wiring, Integrate phase): (1) add `"cost_report_class"` to the `@chartwarden/types` `DataClass`
  * union + `REQUIRED_ERASERS` so the deny-stub exists to register over; (2) wire the §3.7 `decisionCert`
  * elevated co-sign gate (`mayDestroyCostReport`) once the M4 cert-driven destruction binding lands.
  */

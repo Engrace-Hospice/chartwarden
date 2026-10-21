@@ -1,4 +1,4 @@
-// @wardenx/db — `onboarding_task_template` (M34 SaaS Tenant Platform §3.4 / §3.12 seed).
+// @chartwarden/db — `onboarding_task_template` (M34 SaaS Tenant Platform §3.4 / §3.12 seed).
 // The platform-SEEDED canonical floor of onboarding steps (`account_created`,
 // `ccn_registered`, etc.). M34-F02 / ADR-0010 / SD-036 pattern-2 (platform-shared,
 // read-only reference): this catalog is deliberately LEFT WITHOUT organization_id —

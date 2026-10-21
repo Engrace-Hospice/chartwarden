@@ -1184,9 +1184,9 @@ Internal service functions (not exposed as routes). Listed here so consumers can
 ```ts
 // apps/backend/src/modules/16-bereavement/consumers/m6-eligibility.worker.ts
 
-import type { Outbox } from '@wardenx/foundation/outbox'
-import { db } from '@wardenx/db'
-import { bereavementPlan } from '@wardenx/db/schema/bereavement'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import { db } from '@chartwarden/db'
+import { bereavementPlan } from '@chartwarden/db/schema/bereavement'
 
 interface M6BereavementEligiblePayload {
   readonly admissionId: string

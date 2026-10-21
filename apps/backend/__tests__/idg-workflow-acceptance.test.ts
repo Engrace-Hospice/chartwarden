@@ -4,7 +4,7 @@ import {
   resetAuthorizationContract,
   resetEffectivePermissionResolver,
   setEffectivePermissionResolver,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   CARRY_FORWARD_COMPLIANCE_THRESHOLD,
   type PacketBuildInput,
@@ -14,7 +14,7 @@ import {
   evaluateQuorum,
   planCarryForward,
   transitionActionItem,
-} from "@wardenx/idg";
+} from "@chartwarden/idg";
 // apps/backend/__tests__/idg-workflow-acceptance.test.ts — M14-T08 the §9 workflow-acceptance suite (the
 // FINAL M14 task). One scenario per the §7 plan-named IDG workflows — W-SCH-01 (schedule materialisation),
 // W-PKT-01 (pre-meeting packet build), W-DEC-01 (quorate decision recording), W-DEC-02 (non-quorate decision
@@ -23,7 +23,7 @@ import {
 // refused), W-ACT-01 (carry-forward escalation), W-ACT-02 (auto-close of a care-plan-linked action item),
 // W-MIN-01 (minutes amendment after final), W-SUD-01 (SUD redaction at packet read), W-RVW-01 (per-patient
 // review-floor guard on reschedule) — exercised end-to-end over the in-memory `createInMemoryIdgBackend` (the
-// same backend the §4.1 routes compose over, M14-T05) plus the pure `@wardenx/idg` deciders the carry-forward
+// same backend the §4.1 routes compose over, M14-T05) plus the pure `@chartwarden/idg` deciders the carry-forward
 // / auto-close / packet-freeze / SUD-redaction paths drive, and the §4.7 ABAC predicates the decision /
 // cancel-reschedule / meeting-scope routes bind. Deterministic: no infra, injected clock.
 //
@@ -34,7 +34,7 @@ import {
 // service + ABAC layer own (per-decision quorum, inclusion-criteria URL-tamper defense, cross-location EoP,
 // step-up repudiation, non-leaking cross-tenant 404). The RLS layer-independence (§9.3/§9.4) lives in
 // rls-isolation.live (the M14 block).
-import type { IdgDecisionRecordedPayload } from "@wardenx/types";
+import type { IdgDecisionRecordedPayload } from "@chartwarden/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

@@ -1,4 +1,4 @@
-// @wardenx/messaging — jobs layer (M36-T08, spec §4.4 / §4.4.1).
+// @chartwarden/messaging — jobs layer (M36-T08, spec §4.4 / §4.4.1).
 //
 // The §4.4 queue catalog + full §4.4.1 parameters (./queues), the pure security-load-bearing
 // processors (./processors: hash_verify, retention legal-hold filter, DLQ OPS-035 record), and the

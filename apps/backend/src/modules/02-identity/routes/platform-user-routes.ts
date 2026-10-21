@@ -25,9 +25,9 @@
 // minted since is still cut), no second audit row or event. No per-org `m2.membership.revoked` events: each
 // would need that org's outbox RLS context (the port fails closed on a foreign org) and nothing consumes
 // them; the revoked ids ride on the audit row instead.
-import type { AuditContext } from "@wardenx/audit";
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+import type { AuditContext } from "@chartwarden/audit";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditUserDeactivated } from "../audit/identity-audit";
 import type { IdentityRouteDeps } from "../identity-ports";

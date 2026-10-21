@@ -5,10 +5,10 @@
 // handler reads an org id, an acting user id, or a step-up flag off the wire; every authored cap row (a
 // period open/close, a methodology lock, a settlement, a PS&R import, a threshold ack) is stamped with the
 // server-assembled user id. Platform-constant routes additionally require the platform_admin role.
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles, all server-assembled from `request.context`. */

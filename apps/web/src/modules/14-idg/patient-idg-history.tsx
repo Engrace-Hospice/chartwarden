@@ -9,7 +9,7 @@ import {
   type StatusTone,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — the patient chart's IDG tab (2026-09-25 redesign, mockup "IDG").
 // Spec: docs/modules/WARDENX_MODULE_14_IDG — the per-patient slice of the interdisciplinary group.
 // KPI cards, the patient's IDG team (M5 care-team assignments), the upcoming meeting, the meetings this

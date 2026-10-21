@@ -2,7 +2,7 @@
 // (§4.1's GET rows). The Drizzle implementation is ./read-service-drizzle.ts; tests bind an in-memory one.
 //
 // DTO RULE (the M30-T?? "wire enum published as Type.String() is a silent lie" lesson): every enum-shaped
-// field below is typed to the FROZEN `@wardenx/types` union, not to `string`. A DTO that widens an enum
+// field below is typed to the FROZEN `@chartwarden/types` union, not to `string`. A DTO that widens an enum
 // compiles, ships, and then lets a screen render a value the column can never hold — or, worse, lets a
 // client send one back. The unions here are the same ones `packages/db/src/enums.ts` declares.
 //
@@ -45,7 +45,7 @@ import type {
   SupplySkuClass,
   VendorRoutingRuleId,
   VendorRoutingScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { M21ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 

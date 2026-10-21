@@ -1,4 +1,4 @@
-// @wardenx/billing — the validation rules and derived codes of the Medicare hospice Change of Provider /
+// @chartwarden/billing — the validation rules and derived codes of the Medicare hospice Change of Provider /
 // Transfer Notice (TOB 8xC), its date correction and its 8xD void. PURE: no DB, no clock, no PHI.
 //
 // Every rule cites its source. CMS Pub. 100-04 (Medicare Claims Processing Manual) ch. 11, Rev. 12847

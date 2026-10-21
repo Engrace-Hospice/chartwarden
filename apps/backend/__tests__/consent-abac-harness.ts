@@ -4,7 +4,7 @@
 // predicate registry. Suites that exercise route BEHAVIOUR (not access scope) install permissive stand-ins
 // for the two ports the access rules consult, so those suites keep testing what they test. The access
 // rules themselves are pinned against the REAL caseload resolver in `consent-routes-abac.test.ts`.
-import { abacRegistry, registerAbacRegistry, registerPredicateIdempotent } from "@wardenx/auth";
+import { abacRegistry, registerAbacRegistry, registerPredicateIdempotent } from "@chartwarden/auth";
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type ConsentAccessDeps,

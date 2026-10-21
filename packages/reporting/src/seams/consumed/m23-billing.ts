@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M23 (Billing — Medicare). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M23 (Billing — Medicare). ABSENT producer (§4.4).
 //
 // M23 is not yet implemented → forward-seam DENY-STUB. M23 registers the real `ClaimReader` /
 // `ClaimMetricsProvider.windowAggregate` over this stub when it lands (P2C).

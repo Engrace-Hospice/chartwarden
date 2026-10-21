@@ -2,8 +2,8 @@
 // an explicit coverage gap, "roster not connected" (unknown, never an empty list), not configured, denied/flag-off/error states,
 // no write controls, no ids, the role switch re-reads, axe clean.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { OnCallCoverageDto } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import type { OnCallCoverageDto } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

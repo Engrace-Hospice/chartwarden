@@ -6,8 +6,8 @@ import {
   type ValidationContext,
   runValidation,
   suggestRuleFromRejection,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 pre-submission validation framework pure-domain unit tests
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 pre-submission validation framework pure-domain unit tests
 // (§1.1, architecture §11.B, D9/D16/D20/D21).
 //
 // Covers: the 28 platform-default rules span all 16 §2.1 categories; `runValidation` over a fully-passing

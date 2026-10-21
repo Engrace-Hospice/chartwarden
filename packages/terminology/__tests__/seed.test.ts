@@ -1,4 +1,4 @@
-// @wardenx/terminology — M38-T08 seed integration test (spec §3.9, §7.8).
+// @chartwarden/terminology — M38-T08 seed integration test (spec §3.9, §7.8).
 //
 // Asserts the platform seed corpus is internally consistent and that the TerminologyProvider seam,
 // driven by the in-memory store built from the seed, answers expansion/membership/FHIR against the

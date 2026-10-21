@@ -1,4 +1,4 @@
-// @wardenx/billing — the 837I (ASC X12N 005010X223A2) Loop 2300 segments that carry the discharge claim
+// @chartwarden/billing — the 837I (ASC X12N 005010X223A2) Loop 2300 segments that carry the discharge claim
 // codes, and the claim document M23 sends to the X12 gateway's `POST /generate-837i`. PURE string building.
 //
 // This is the CONTRACT the external gateway must honour: given a `ClaimDocument837i.dischargeCodes`, the

@@ -2,7 +2,7 @@
 //
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` / `requireIdempotencyKey` preHandler
 // factories every M35 route plugin composes (the M27 routes/guards.ts precedent). Each is cast to the
-// local {@link PreHandler} (a @wardenx/auth `GuardHandler` is structurally a Fastify preHandler). M35
+// local {@link PreHandler} (a @chartwarden/auth `GuardHandler` is structurally a Fastify preHandler). M35
 // carries NO PHI (§8.5); the gates here are RBAC + the §4.8 scope/step-up ABAC chain + the §D14 step-up
 // assertion on the financial / platform mutations.
 //
@@ -15,7 +15,7 @@
 // `promo_applicable_to_subscription` — need DB-resident resource facts (a subscription's current period,
 // a promo's redemption count) the guard layer cannot supply; they are REGISTERED (./abac-predicates) and
 // named in the §4.7 permission catalog, and the write service enforces the same invariants server-side.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { PreHandler } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 

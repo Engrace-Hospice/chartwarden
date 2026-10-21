@@ -1,6 +1,6 @@
 // GAP-174 — `GET /admin/mdm/nppes/sync-log` must read through the migration-0470 SECURITY DEFINER
 // function, never `nppes_sync_log` directly (the app role has no grant on it → `permission denied`).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createDbMdmRouteService } from "../src/modules/40-mdm/index";
 

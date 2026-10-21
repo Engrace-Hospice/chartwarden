@@ -18,7 +18,7 @@
 //     enqueue the §4.3 queue job through the injected {@link EnqueuePort}, and return the projected view —
 //     all in the one org-context tx. The pure 2B export/DSAR workers are NOT rewritten here; the adapter
 //     only enqueues the named queue (the live BullMQ worker binds its ports separately).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   BaaRegisterRepository,
   type DsarExportJobInput,
@@ -27,9 +27,9 @@ import {
   SupportRepository,
   TenantAccountRepository,
   TenantExportRepository,
-} from "@wardenx/saas-tenant-platform";
-import { getRequestContext, withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, type OrgId, ChartWardenError } from "@wardenx/types";
+} from "@chartwarden/saas-tenant-platform";
+import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, type OrgId, ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { paginate } from "./concurrency";
 import { tenantMayCompleteStep } from "./onboarding-completion-guard";

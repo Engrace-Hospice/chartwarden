@@ -19,7 +19,7 @@
 // BOUNDARY: this module composes over PORTS the boot wiring binds (the org/platform tenancy runners +
 // the KEK-unwrap port) — it adds no direct M1/M2/M4 import and no manifest edge. The repos run plain
 // Drizzle reads; the runner owns the RLS-scoping transaction (single home for the tenant-scoping rule).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   OnboardingRepository,
   type RetentionExpiry,
@@ -38,7 +38,7 @@ import {
   createInMemoryM34ExportShardStore,
   createTenantExportShardForM34,
   denyStubTenantOrgCreationProvider,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 
 // ── injected ports the composition root binds at boot ──────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ import {
  * Run `fn` under the active tenant's `withOrgContext` (RLS scopes by `app.org_id`), handing it the
  * repository-ready transaction handle. The composition root binds this to M1's `withOrgContext` over the
  * org-pooled client + the platform-ops actor's user id (so the org-context audit attribution is correct).
- * Keeping it a port means this module never imports `@wardenx/tenancy` directly nor opens a transaction.
+ * Keeping it a port means this module never imports `@chartwarden/tenancy` directly nor opens a transaction.
  */
 export type RunInOrgContext = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>) => Promise<T>;
 

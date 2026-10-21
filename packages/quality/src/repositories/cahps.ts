@@ -1,11 +1,11 @@
-// @wardenx/quality · repositories — the CAHPS subdomain: `cahps_vendor_binding` (the per-org binding to
+// @chartwarden/quality · repositories — the CAHPS subdomain: `cahps_vendor_binding` (the per-org binding to
 // an approved survey vendor, ≤1 active per org), `cahps_decedent_sample` (the PARTITIONED-monthly
 // decedent sampling roster — composite PK id + sampling_cycle_month), and `cahps_result_summary` (the
 // ingested per-period aggregate scores, idempotent on the vendor-payload hash) (M30 §3.3). ORG-SCOPED;
 // the sampling / ingest pipelines wrap these in `withOrgContext`. `configuration_cipher` /
 // `primary_caregiver_contact_cipher` are envelope-encrypted + audit-denylisted (§3.6) — this port
 // returns whole `$inferSelect` rows; decryption + projection is the service's job.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

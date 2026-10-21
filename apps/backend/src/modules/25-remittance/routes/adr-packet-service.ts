@@ -10,14 +10,14 @@
 //     manifest (document ids + checklist, no titles) in the same transaction that moves the case to `submitted`
 //     and emits `m25.adr_packet.render_requested`, so M22 files the cover-and-index PDF as the retained copy.
 //     Database triggers keep the manifest, the filing facts and the enclosure list immutable afterwards.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   MAX_ADR_ENCLOSURES,
   NotFoundError,
   ChartWardenError,
   buildAdrPacketRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   ADR_CHECKLIST_KEYS,

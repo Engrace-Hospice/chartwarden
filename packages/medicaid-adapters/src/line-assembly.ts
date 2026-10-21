@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — the per-line hospice claim-line segment builder (WX-PR-011 follow-up). PURE
+// @chartwarden/medicaid-adapters — the per-line hospice claim-line segment builder (WX-PR-011 follow-up). PURE
 // DOMAIN: no Fastify, Drizzle, BullMQ, clock, PHI — every date is an already-resolved ISO string, every rate
 // comes from an injected resolver function, so this is deterministic and unit-testable without a database.
 //

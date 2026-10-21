@@ -1,14 +1,14 @@
-// @wardenx/bereavement — §2 / D4 / D7 / D9 pure-data policy constants (M16-T01 domain layout).
+// @chartwarden/bereavement — §2 / D4 / D7 / D9 pure-data policy constants (M16-T01 domain layout).
 //
 // The regulatory clocks and the closure / opt-out windows the CoP 418.64(d) program runs on, declared once
 // here rather than re-derived in each service, worker, and CHECK constraint.
-// PURE DATA — no IO, `@wardenx/types`-only.
+// PURE DATA — no IO, `@chartwarden/types`-only.
 
 import type {
   BereavedContactStatus,
   BereavementPlanClosureReason,
   BereavementPlanStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * D4 — the CoP 418.64(d) obligation runs "until at least 1 year following death"; the platform floor is the

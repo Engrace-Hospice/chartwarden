@@ -1,8 +1,8 @@
-// @wardenx/types — Module 11 (Orders) leaf contracts (M11-T01).
+// @chartwarden/types — Module 11 (Orders) leaf contracts (M11-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M11 spec's references to
 // `packages/foundation/...` (the §4.4 HL7-ORM payload, the §4.9 lab alert types) resolve HERE — the
-// `packages/foundation` package is BANNED (CLAUDE.md / architecture wins); the leaf `@wardenx/types`
+// `packages/foundation` package is BANNED (CLAUDE.md / architecture wins); the leaf `@chartwarden/types`
 // is the no-edge home for every cross-module type. M11-T01 ships the type-level surface every later M11
 // task + every cross-module consumer builds on: the §3.2 pgEnum value mirrors, the §4.4 `m11.*` outbox
 // event names, the §7.6 audit denylists (the M4 trigger arguments for M11-T02), the §4.9 typed alert
@@ -10,7 +10,7 @@
 // `OrderProvider`) M12/M13/M14/M30 consume (impls + M1-registry wiring land in M11-T05).
 //
 // The per-kind TypeBox `data` schemas + the `KIND_CATALOG` metadata + the pure lifecycle machines live in
-// the `@wardenx/orders` FEATURE package and the `@wardenx/domain` leaf (land in M11-T03+); this file is
+// the `@chartwarden/orders` FEATURE package and the `@chartwarden/domain` leaf (land in M11-T03+); this file is
 // type-only and importable by everyone with no dependsOn edge.
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so
@@ -19,7 +19,7 @@ import type { AdmissionId, PatientId, ProviderEntityId } from "./admission";
 import type { IsoInstant, LocationId } from "./care-plan";
 import type { ClinicalLinkSummary } from "./clinical-link";
 
-// ── M11-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── M11-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 export type OrderRecordId = string;
 export type OrderSignatureId = string;
 export type VerbalOrderId = string;
@@ -190,7 +190,7 @@ export const M11_EVENT_NAMES = [
 export type M11EventName = (typeof M11_EVENT_NAMES)[number];
 
 // ── §4.9 M36 typed alert payloads (the deterministic messages M11 emits; M36 doesn't re-template) ─────
-// M11 emits typed alerts through M36's dispatch seam. The builders land in `@wardenx/orders` (M11-T07);
+// M11 emits typed alerts through M36's dispatch seam. The builders land in `@chartwarden/orders` (M11-T07);
 // these contracts are the shapes M36 type-checks against.
 
 /** §4.9 — verbal order approaching its signature deadline (12h / 2h cadence). */
@@ -415,7 +415,7 @@ export interface SignOrderTargetInput {
   readonly signerMembershipId: string;
   /**
    * The signer's clinical discipline — the same §2.1 signer-matrix vocabulary M11's own route path
-   * records (`OrderSignerDiscipline` in `@wardenx/orders`; this leaf cannot import the feature catalog,
+   * records (`OrderSignerDiscipline` in `@chartwarden/orders`; this leaf cannot import the feature catalog,
    * so the wire representation is the same non-empty string every route body carries and
    * `order_signature.signer_discipline` persists). REQUIRED: the ledger column is NOT NULL and every
    * caller has the discipline in scope (M12's sign routes thread their `signerDiscipline` body field),

@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.12 / W3 kill switch, the pure half (M32-T05).
+// @chartwarden/ai-platform — §3.2.12 / W3 kill switch, the pure half (M32-T05).
 //
 // The switch that stops a capability for one tenant or for everyone, and the D16 demotion a SEV-1 kill
 // drags behind it. Pure: no IO, no clock (the instant is an argument), no store. The Drizzle store, the
@@ -35,8 +35,8 @@ import type {
   AiKillSwitchReason,
   AiKillSwitchScope,
   AiKillSwitchSeverity,
-} from "@wardenx/types";
-import { AI_KILL_SWITCH_AUTOMATED_ACTOR_KINDS } from "@wardenx/types";
+} from "@chartwarden/types";
+import { AI_KILL_SWITCH_AUTOMATED_ACTOR_KINDS } from "@chartwarden/types";
 
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 import { aiSev1DemotionTarget } from "../lifecycle/state-machine";

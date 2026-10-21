@@ -1,12 +1,12 @@
-// @wardenx/cost-report · repositories — the shared Drizzle surface every M27 repository takes.
+// @chartwarden/cost-report · repositories — the shared Drizzle surface every M27 repository takes.
 //
-// CONVENTION (mirrors @wardenx/quality + @wardenx/reporting + @wardenx/saas-tenant-platform): each repo
+// CONVENTION (mirrors @chartwarden/quality + @chartwarden/reporting + @chartwarden/saas-tenant-platform): each repo
 // takes the Drizzle client (`CostReportDb`) in its constructor and issues plain Drizzle queries; the
-// read/write SERVICE layer wraps each call in `withOrgContext` (M1 @wardenx/tenancy) so Postgres RLS
+// read/write SERVICE layer wraps each call in `withOrgContext` (M1 @chartwarden/tenancy) so Postgres RLS
 // scopes every statement to `app.org_id`. The repo therefore accepts either the pooled `DbClient` or a
 // transaction handle opened by `withOrgContext` — both satisfy `CostReportDb` structurally. The repo
 // never opens its own transaction and never sets RLS GUCs: scoping is the service's job (single home).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 
 /**
  * The minimal Drizzle surface every M27 repository needs: the pooled client or a transaction handle

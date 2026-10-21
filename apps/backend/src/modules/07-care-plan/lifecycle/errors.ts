@@ -7,7 +7,7 @@
 // code + HTTP status the UI keys its message off, with no cross-module import edge. The code→status
 // mapping is the single source mirrored from §2.3; nothing transitions on a string match — each code is
 // an enumerated constant (mirrors the M6 `AdmissionStateError` precedent).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The full §2.3 validation-rule + §2.2 lifecycle machine-readable failure-code catalog → HTTP status. */
 export const M7_ERROR_STATUS = {

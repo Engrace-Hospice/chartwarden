@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_report` (M27 §3.3, D1; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `cost_report` (M27 §3.3, D1; non-partitioned; retention class `compliance`).
 // The regulatory-financial-record root: one row per (provider_entity, fiscal-year-end). Composite
 // uniqueness `(organization_id, provider_entity_id, fiscal_year_end_date)` enforces one CMS-1984-14
 // report per CCN per FY (D1). The XState lifecycle (D4) lives in `state`. ORG-SCOPED: organization_id

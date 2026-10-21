@@ -18,7 +18,7 @@ import {
   type HopeOrgRollupProvider,
   type J2051Severity,
   J2051_SEVERITY_ORDER,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HopeOrgRollupStore } from "./org-rollup-store";
 
 /** The §2.3 / D4 qualifying threshold rank — `moderate` (and above) is a qualifying symptom-impact trigger. */

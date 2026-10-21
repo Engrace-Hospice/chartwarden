@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — the M34 destruction-cert eraseFn for the `saas_tenant_platform_class`
+// @chartwarden/saas-tenant-platform — the M34 destruction-cert eraseFn for the `saas_tenant_platform_class`
 // data class (spec §3.5 / §7.5 / §8.3 / §8.4, D6).
 //
 // Registered with the M4 destruction registry (over the app boundary's `DataEraser`) so a tenant

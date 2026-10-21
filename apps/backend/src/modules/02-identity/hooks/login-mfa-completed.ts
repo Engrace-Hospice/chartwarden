@@ -10,8 +10,8 @@
 // This is a plain function the Better Auth login flow calls post-MFA (the adapter wiring is
 // M2-T07); it shares the SessionStepUpWriter + audit() surface with the explicit step-up route
 // so login-MFA and route-driven step-up write the session field through one path.
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import type { StepUpFactor } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import type { StepUpFactor } from "@chartwarden/types";
 import { auditStepUpCompleted } from "../audit/step-up-audit";
 import type { SessionStepUpWriter, StepUpQualifyingFactor } from "../step-up-ports";
 

@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 validation RULE ENGINE (§2.2 `cost_report_validation` lifecycle, D9, D16,
+// @chartwarden/cost-report — M27 validation RULE ENGINE (§2.2 `cost_report_validation` lifecycle, D9, D16,
 // D21). `runValidation` applies a rule list against a `ValidationContext` and rolls up the per-rule
 // outcomes into the counts the §3.3 `cost_report_validation` row persists (passed/failed/warning/
 // overridden/skipped) plus the count of BLOCKING regulatory failures. A `regulatoryRequired` rule that
@@ -11,7 +11,7 @@
 // is PURE and DETERMINISTIC (D8) — given the same rules + context + overridden set, it returns the same
 // summary every time; no clock, no I/O. No PHI (D18).
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. Types, pure
 // functions, constants only.
 import type { RuleDef, RuleResult, ValidationContext } from "./types";
 

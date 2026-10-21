@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 post-mortem body-release + daily census (§2.11/§2.13, §3.3): ipu_body_release
+// @chartwarden/db — M37 post-mortem body-release + daily census (§2.11/§2.13, §3.3): ipu_body_release
 // (D12 coordination with M40 FuneralHome + M22 body-release authorization render) and
 // ipu_census_snapshot (D14 per-(org × unit/remote × date) materialization published via outbox to M23
 // per-diem, M26 inpatient cap, M27 cost report). TENANT-SCOPED, RLS on app.org_id.

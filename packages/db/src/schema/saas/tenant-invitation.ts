@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_invitation` (M34 SaaS Tenant Platform §3.4, D18). The platform → first-admin
+// @chartwarden/db — `tenant_invitation` (M34 SaaS Tenant Platform §3.4, D18). The platform → first-admin
 // invitation that precedes the organization being a usable entity: issued once at provisioning, its
 // first acceptance triggers M2 user-creation + the initial org_admin membership grant (after which M2's
 // `organization_invitation` is the canonical staff path — strictly different table, D18). Single-use:

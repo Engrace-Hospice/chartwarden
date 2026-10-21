@@ -1,4 +1,4 @@
-// @wardenx/audit — Integrity & tamper-evidence layer (M4-T11, M4 spec §3.5, §10.4, §12.3).
+// @chartwarden/audit — Integrity & tamper-evidence layer (M4-T11, M4 spec §3.5, §10.4, §12.3).
 //
 // Three controls that prove the append-only `audit_event` log was not altered after the fact:
 //

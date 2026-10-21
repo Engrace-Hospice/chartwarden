@@ -5,7 +5,7 @@
 // This binds the package sweep (`runBundleExpirySweep`) over the two export repositories and the object-store
 // destroy, ORG-SCOPED: each active org is swept in its own `withOrgContext` (RLS), the same posture as the
 // DSAR / tenant-export workers. A failing org is logged and counted — it never starves the rest.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type BundleExpirySweepPorts,
   type BundleExpirySweepResult,
@@ -13,8 +13,8 @@ import {
   DsarExportRepository,
   TenantExportRepository,
   runBundleExpirySweep,
-} from "@wardenx/saas-tenant-platform";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 

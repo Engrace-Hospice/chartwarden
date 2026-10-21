@@ -1,4 +1,4 @@
-// @wardenx/quality — opioid drug-name classification for `opioid_on_admission_rate`. Pure. No IO.
+// @chartwarden/quality — opioid drug-name classification for `opioid_on_admission_rate`. Pure. No IO.
 //
 // M38's proper RxNorm-code-based classification path (`value_set` / `value_set_member`, keyed on a real
 // RxCUI) is NOT usable here: `concept_rxnorm` is fed only by a live monthly RxNorm/UMLS loader, and no

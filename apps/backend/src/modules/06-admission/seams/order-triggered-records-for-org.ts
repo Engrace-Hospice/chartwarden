@@ -3,7 +3,7 @@
 // `election_period`, F-155 on `level_of_care_period`; logical uuids, M6's `dependsOn` excludes M11). The watcher asks,
 // for a batch of ACTIVE `recertification` / `level_of_care_change` orders, which of them M6 already honoured — i.e. the
 // order's "clinical intent has been fully discharged" (M11 §2.2 `completed`). Runs inside the caller's org tx.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray } from "drizzle-orm";
 
 const EP = schema.electionPeriods;

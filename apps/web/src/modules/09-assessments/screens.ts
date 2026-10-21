@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/09-assessments — M9 screen registration (Track B, ADR-0030).
 // The §5 Clinical Assessments screens that have a backing M9 read route on the generated client: the
 // patient-scoped Assessment Timeline (§5.2), the Per-scale Trend (§5.2), the per-patient Significant-change
@@ -11,7 +11,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 //   • The INSTRUMENT DEFINITION was on nobody's wire. `POST .../assessments` publishes `data` as a bare
 //     object, and which items a scale needs — how many, what kind, what range, which option values —
-//     existed only as TypeScript interfaces in `@wardenx/assessments`, which a client cannot read.
+//     existed only as TypeScript interfaces in `@chartwarden/assessments`, which a client cannot read.
 //     `SCALE_CATALOG`'s own header calls itself "the single source the record-modal scale picker (T07)
 //     ... read"; there was no record modal. `GET /api/v1/scales` is that definition, and
 //     `record-assessment-modal.tsx` is a RENDERER for it — nothing about PPS's five axes or ESAS-r's

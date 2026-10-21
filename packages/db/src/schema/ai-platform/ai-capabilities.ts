@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_capability` (M32 §3.2.1). The governance registry: one row per AI capability the
+// @chartwarden/db — `ai_capability` (M32 §3.2.1). The governance registry: one row per AI capability the
 // platform can offer, carrying D2's lifecycle state, its risk tier, its routing chain and the FDA SaMD
 // posture it was registered under.
 //

@@ -1,10 +1,10 @@
 // apps/backend/src/modules/36-messaging/ack-escalation/dlq-audit.ts - WP 4.4: the `m36.dlq_job` audit row (OPS-035, no silent DLQ
 // drain) for a dead escalation timer job. The payload arrives already hashed (`buildDlqAuditRecord`); the row names the request, so
 // an operator can find it, and is written under the job's own tenant context. Ids, a hash and an error CLASS only.
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import type { DlqAuditRecord } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import type { DlqAuditRecord } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 
 export function createDlqAuditRecorder(db: DbClient) {
   return (

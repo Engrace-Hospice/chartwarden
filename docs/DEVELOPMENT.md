@@ -187,7 +187,7 @@ passes. To run it end to end against a local model:
    each `ownedTable`. Add `organization_id` (+ `provider_entity_id`/`location_id` on PHI tables),
    RLS keyed only on `app.org_id`, and an M4 audit trigger. `arch:tenancy`/`arch:ddl`/`arch:gaps`
    begin enforcing immediately.
-4. **Cross-module reads** go through a **seam** (interface in `@wardenx/types`, registered in
+4. **Cross-module reads** go through a **seam** (interface in `@chartwarden/types`, registered in
    `apps/backend/src/bootstrap/seams/`, validated by `validateSeams()`) or an **outbox event**
    (`mN.<resource>.<verb>`) — **never** a direct schema import. Neither adds a `dependsOn` edge
    (ADR-0005 D1).

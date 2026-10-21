@@ -2,11 +2,11 @@
 //
 // The Layer-1 deterministic core. `assembleLayer1` takes a resolved template + the clinician's selection
 // state + the patient/visit context and returns a byte-identical narrative: sections rendered in TEMPLATE
-// order, each entry's phrase resolved from `@wardenx/narrative-vocab` and interpolated against the merged
+// order, each entry's phrase resolved from `@chartwarden/narrative-vocab` and interpolated against the merged
 // context/params map, free-text appended verbatim. Pure and total — same inputs always yield the same
 // bytes (architecture §10.5.2 "Properties"). The convenience `assemble` resolves the template and enforces
 // the D11 vocab-version pin + the legal-pair guard, raising typed errors the M8 service maps to HTTP.
-import { VOCAB_VERSION, getVocabEntry } from "@wardenx/narrative-vocab";
+import { VOCAB_VERSION, getVocabEntry } from "@chartwarden/narrative-vocab";
 import { resolveTemplate } from "../templates/registry";
 import type { HearthnoteTemplate } from "../templates/types";
 import { templateKey } from "../templates/types";

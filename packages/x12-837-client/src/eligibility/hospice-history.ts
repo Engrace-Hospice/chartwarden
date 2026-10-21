@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — derive the beneficiary's hospice election / benefit-period history from the
+// @chartwarden/x12-837-client — derive the beneficiary's hospice election / benefit-period history from the
 // parsed 271 hospice records. Pure.
 //
 // What HETS gives and does NOT give (CMS HETS 270/271 Companion Guide §7.16 + HETS2024-1 release §3.2):

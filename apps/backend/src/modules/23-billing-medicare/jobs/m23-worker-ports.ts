@@ -4,9 +4,9 @@
 // left as fail-closed `unboundWorkerPort` thunks, so every NOE/NOTR window-watch tick, every validation run and
 // every revalidation threw. Each port here is a thin adapter over an owner of the behaviour (the notice
 // repositories, the claim-validation service, BullMQ) — no business rules live in this file.
-import { createDefaultBillingRegistry, repositories } from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { ChartWardenError } from "@wardenx/types";
+import { createDefaultBillingRegistry, repositories } from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { ChartWardenError } from "@chartwarden/types";
 import { type ConnectionOptions, Queue } from "bullmq";
 import type { ClaimAssemblySeams } from "../services/claim-assembly";
 import {

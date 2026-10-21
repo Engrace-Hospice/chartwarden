@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — seam barrel (M34 §4.6).
+// @chartwarden/saas-tenant-platform — seam barrel (M34 §4.6).
 //
 // The seam INTERFACES M34 publishes (lifecycle / key / onboarding / support-session / export-shard)
 // plus the one forward seam it CONSUMES from M35 (subscription entitlements, deny-stub today, D15).

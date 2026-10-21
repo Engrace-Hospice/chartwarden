@@ -1,4 +1,4 @@
-import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
+import { resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
 // apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts — GAP-003 composition-root mount
 // glue, mirroring the GAP-002 `audit-routes-mount.test.ts` pattern (itself mirroring
 // `mdm-routes-mount.test.ts`): proves `mountAuditRoutes(app, db)` wires the FULL M4 compliance
@@ -6,7 +6,7 @@ import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
 // the pre-existing audit-log routes. A stub DbClient exercises the wiring without live Postgres;
 // route BEHAVIOR (real matched-counts, the rate limit, the live GRANT read) is covered by
 // gap-003-compliance-routes.live.test.ts.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountAuditRoutes } from "../src/modules/04-audit/index";

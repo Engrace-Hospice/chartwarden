@@ -11,7 +11,7 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import {
   deriveChannelKey,
   digestExclusion,
@@ -19,8 +19,8 @@ import {
   nameTokenDigest,
   paddedSize,
   tokenizeForSearch,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";

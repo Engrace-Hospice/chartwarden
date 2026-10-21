@@ -32,8 +32,8 @@ import { createHash } from "node:crypto";
 //      `receipt_document_id` stay null until M22 answers with `m22.document.rendered`.
 //   5. EVERY QUANTITY IS A DECIMAL STRING END TO END. The columns are `numeric`, the D8 math is Decimal,
 //      and the wire types are strings. Nothing in this file parses a quantity into a JS number except the
-//      one place `@wardenx/supplies` already does it for a positivity check.
-import { type DbClient, schema } from "@wardenx/db";
+//      one place `@chartwarden/supplies` already does it for a positivity check.
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   COMFORT_KIT_PLATFORM_FLOOR,
   RETURN_WINDOW_HOURS_DEFAULT,
@@ -41,16 +41,16 @@ import {
   type RoutingRuleCandidate,
   resolveVendorRouting,
   validateSupplyRequestData,
-} from "@wardenx/supplies";
-import { getRequestContext, withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@wardenx/types";
+} from "@chartwarden/supplies";
+import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import type {
   ComfortKitDispatchedContentPayload,
   CreateDirectSupplyRequestInput,
   IsoInstant,
   M21EventName,
   RoutingRuleResolved,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   SupplyStateError,
@@ -302,7 +302,7 @@ export async function insertSupplyRequest(
   },
 ): Promise<{ id: string; routingRuleResolved: RoutingRuleResolved; updatedAt: Date }> {
   const REQUEST = schema.supplyRequest;
-  // D1 — the per-kind payload is validated against `@wardenx/supplies`'s TypeBox + the §2.10 cross-field
+  // D1 — the per-kind payload is validated against `@chartwarden/supplies`'s TypeBox + the §2.10 cross-field
   // rules TypeBox cannot state. ONE validator: the route boundary asserts only the discriminator.
   const validation = validateSupplyRequestData(
     input.kind as Parameters<typeof validateSupplyRequestData>[0],

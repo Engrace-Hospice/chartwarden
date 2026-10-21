@@ -14,8 +14,8 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:message-legal-hold:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
-import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, messagingHoldLockName } from "@wardenx/types";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError, messagingHoldLockName } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyLegalHoldInTx } from "../src/modules/04-audit/messaging-hold-workflow";

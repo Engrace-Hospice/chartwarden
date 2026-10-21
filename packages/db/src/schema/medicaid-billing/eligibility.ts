@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — the per-patient-per-asOfServiceDate eligibility cache
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — the per-patient-per-asOfServiceDate eligibility cache
 // (NON-partitioned). 30-day freshness mirrors M23. The state Recipient ID digits are NEVER stored — only
 // recipient_id_masked_at_check (last-4) and the KMS-wrapped raw_response_cipher (both audit-denylisted §3.6;
 // the recipient_id* column-name family is globally denylisted from audit value-capture).

@@ -1,4 +1,4 @@
-// @wardenx/messaging - the platform-floor message templates (M36 WP 2.8). Non-clinical only: scheduling, admin,
+// @chartwarden/messaging - the platform-floor message templates (M36 WP 2.8). Non-clinical only: scheduling, admin,
 // logistics, confirmation, general. No clinical handoff content (SBAR is Phase 3).
 //
 // MIRROR: migration 1086_m36_message_template.sql seeds these same rows (ids, keys, text). The rows are plain data with

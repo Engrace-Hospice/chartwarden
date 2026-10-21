@@ -5,7 +5,7 @@ import {
   AuditorSessionIssueError,
   createAuditorSessionIssuer,
   signSessionCookieValue,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";

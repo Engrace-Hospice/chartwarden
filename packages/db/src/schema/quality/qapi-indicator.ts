@@ -1,4 +1,4 @@
-// @wardenx/db — `qapi_indicator` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `qapi_indicator` (M30 §3.3; non-partitioned; retention class `compliance`).
 // A tracked QAPI indicator under a program (data_path binds it to a measure or a custom source), with
 // a tenant target + baseline and soft-delete. Real intra-M30 FK to qapi_program. ORG-SCOPED:
 // organization_id NOT NULL (canonical app.org_id RLS). No PHI; no audit denylist.

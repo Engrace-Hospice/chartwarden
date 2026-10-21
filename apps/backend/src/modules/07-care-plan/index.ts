@@ -1,6 +1,6 @@
 // apps/backend/src/modules/07-care-plan — M7 Care Plan (IPOC) module entrypoint. Re-exports the pure
 // lifecycle core (M7-T03) and the published §7.8 CarePlanReader seam + its registration hook (M7-T04).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import {
   defaultConsentActiveChecker,

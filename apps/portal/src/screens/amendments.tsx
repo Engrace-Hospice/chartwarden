@@ -5,7 +5,7 @@ import {
   StatusPill,
   TextAreaField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // M31 portal amendment requests: M5 owns the workflow. This screen can submit and track a
 // request; it must never suggest that submitting changes the medical record directly.
 import { useCallback, useEffect, useRef, useState } from "react";

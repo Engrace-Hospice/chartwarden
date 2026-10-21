@@ -5,7 +5,7 @@
  * signed-in demo user, so RLS/ABAC/state-machine rules are exercised honestly instead of
  * bypassed. This module centralizes the sign-in → select-org → typed-client wiring that
  * `seed-patients.ts` first established with raw `fetch` — reimplemented here on top of the
- * generated `@wardenx/ui` `createApiClient` (the same typed client the frontend uses, built from
+ * generated `@chartwarden/ui` `createApiClient` (the same typed client the frontend uses, built from
  * `docs/api/openapi.json`) so every scenario script gets compile-time-checked request bodies
  * instead of hand-typed JSON.
  *
@@ -16,7 +16,7 @@
  * header itself in this environment, so there's nothing to conflict with).
  */
 import { readFileSync } from "node:fs";
-import { type ApiClient, createApiClient } from "@wardenx/ui";
+import { type ApiClient, createApiClient } from "@chartwarden/ui";
 import { group } from "../../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./credentials";

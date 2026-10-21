@@ -1,4 +1,4 @@
-// @wardenx/db — `concept_staging` (M38 §2.4.2 `loading → staged`, GAP-108, migration 0364). Parsed-but-not-active
+// @chartwarden/db — `concept_staging` (M38 §2.4.2 `loading → staged`, GAP-108, migration 0364). Parsed-but-not-active
 // rows of a version, kept OUT of the concept tables so clinical lookups can never see a half-loaded version. Holds
 // `kind = 'concept'` rows and `kind = 'deprecation'` rows (successor detail for codes the version retires).
 // Loader-only (wardenx_app has no grant); emptied on activation or failure. Platform-shared (NON_ORG_SCOPED). Not PHI.

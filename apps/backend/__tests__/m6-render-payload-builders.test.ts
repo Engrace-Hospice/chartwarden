@@ -2,7 +2,7 @@
 // recording Drizzle fake) and fake M5 / M40 sources, then round-tripped through M22's form compiler: what the
 // producer builds must be what the form draws. The same builders run against real Postgres in
 // m6-render-payloads.live.test.ts.
-import { RenderPayloadError, isPart2Diagnosis, partitionPart2Diagnoses } from "@wardenx/types";
+import { RenderPayloadError, isPart2Diagnosis, partitionPart2Diagnoses } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type RenderBuildCtx,

@@ -9,8 +9,8 @@
 // ready, no purge pending), workforce role gate. Nothing in a refusal repeats the query.
 // Read audit: one aggregate `message.list_viewed` from the hook (`q` and `cursor` omitted; no resourceIdParam, so the list
 // branch) plus one attributed `message.viewed` per patient on the page, written by the service in its transaction.
-import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { GlobalSearchService } from "../global-search/query-service";
 import type { RoleGate } from "../global-search/role-gate";

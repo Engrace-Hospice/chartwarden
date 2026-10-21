@@ -2,7 +2,7 @@
 // CLOSED list of the directory; `recipient_user_id` is the person the sender confirmed from the resolution (it is named `recipient_user_id`
 // so the urgent route's per-pair limiter reads it unchanged). `additionalProperties:false`: no urgency, deadline or tier field to set.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { ONCALL_DIRECTORY_ROLES, ONCALL_DIRECTORY_STATUSES, ONCALL_RANKS } from "@wardenx/types";
+import { ONCALL_DIRECTORY_ROLES, ONCALL_DIRECTORY_STATUSES, ONCALL_RANKS } from "@chartwarden/types";
 import { RichBodySchema, UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

@@ -10,12 +10,12 @@
 //     {@link ProposalRejectRationaleRequiredError} (route → 400 `decision_note_required`).
 //   • accept applies via the OWNER MODULE (M5 `PatientMutator` / M6 `AdmissionEventApplier`) — the core only
 //     emits `m29.hl7_inbound_proposal.accepted`; those consumers already exist and their deny-stubs close on it.
-import { XI_PROPOSAL_REJECT_RATIONALE_MIN_CHARS } from "@wardenx/types";
+import { XI_PROPOSAL_REJECT_RATIONALE_MIN_CHARS } from "@chartwarden/types";
 import type {
   Hl7InboundProposalKind,
   Hl7InboundProposalStatus,
   Hl7ProposalOwnerModule,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The reviewable fields the decision core reads (a projection of the current `hl7_inbound_proposal` row). */
 export interface ProposalSnapshot {

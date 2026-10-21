@@ -13,8 +13,8 @@
 //
 // The rule table is a mapped type over `ConsentRouteService`, so adding a service method without
 // deciding its access rule is a compile error rather than a silently open endpoint.
-import { ConsentRouteError } from "@wardenx/consent";
-import type { ConsentRecordView, ConsentRouteService } from "@wardenx/consent";
+import { ConsentRouteError } from "@chartwarden/consent";
+import type { ConsentRecordView, ConsentRouteService } from "@chartwarden/consent";
 import {
   type ConsentAccessActor,
   type ConsentAccessDeps,

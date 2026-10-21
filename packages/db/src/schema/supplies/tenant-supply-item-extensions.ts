@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_supply_item_extension` (M21 §3.1.3). D11's TENANT half of the canonical-plus-overlay
+// @chartwarden/db — `tenant_supply_item_extension` (M21 §3.1.3). D11's TENANT half of the canonical-plus-overlay
 // pair: the non-billable, agency-local items that will never carry a HCPCS code (the hub's own wound-care
 // kits, a locally-branded brief, a custom oxygen-tubing bundle). Platform SKUs live in `supply_item`.
 //

@@ -3,7 +3,7 @@
 // changed with nothing to notice. The real BullMQ producer path is proved against a real Redis in
 // m33-scheduled-jobs.live.test.ts — that needs an actual `Queue.add` round trip, which this pure unit
 // file intentionally does not stand up.
-import { DegradedError } from "@wardenx/types";
+import { DegradedError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M33InfraPortUnbound, buildM33ReadEnqueue } from "../wiring";
 

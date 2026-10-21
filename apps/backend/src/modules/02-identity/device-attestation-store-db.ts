@@ -10,7 +10,7 @@
 // other half: a session pointing at a row that was superseded between the insert and the update is
 // exactly the stale-pointer state the resolver's re-read exists to survive, and there is no reason to
 // create it deliberately.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DeviceAttestationRecord, DeviceAttestationStore } from "./device-attestation-ports";
 

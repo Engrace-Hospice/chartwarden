@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the §5.3.1 brute-force / credential-stuffing guard (AC-05).
+// @chartwarden/auth · identity — the §5.3.1 brute-force / credential-stuffing guard (AC-05).
 //
 // WHAT WAS MISSING. SECURITY_HARDENING §5.3.1 specifies a per-USERNAME failed-attempt limit and a
 // per-IP failed-attempt limit on login. Neither existed. The only `lockout` in the codebase was
@@ -22,7 +22,7 @@
 // successful sign-in. NIST 800-63B §5.2.2 prefers throttling to hard lockout for this reason; the
 // shape here is throttling with a floor, which satisfies §5.3.1's intent without an unlock backlog.
 import { createHash } from "node:crypto";
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * Failed-attempt counters. `recordFailure` arms the key's expiry on the FIRST failure of a window

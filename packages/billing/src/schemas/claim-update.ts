@@ -1,4 +1,4 @@
-// @wardenx/billing — schemas for route #4 `PATCH /api/v1/billing/claims/:id` (DRAFT-only edits) and
+// @chartwarden/billing — schemas for route #4 `PATCH /api/v1/billing/claims/:id` (DRAFT-only edits) and
 // route #5 `DELETE /api/v1/billing/claims/:id` (DRAFT-only delete) — §4.1.
 //
 // DRAFT-only: the TOB choice and a rationale-bearing override of an assembly-time auto-derived value. All

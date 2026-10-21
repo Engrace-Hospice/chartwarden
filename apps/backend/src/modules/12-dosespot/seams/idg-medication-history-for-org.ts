@@ -8,8 +8,8 @@
 // LATEST pull per patient decides the state. A patient with no ledger row is `not_pulled` — NEVER "no
 // external history" (that claim requires a pull that actually returned zero entries). Counts + instants only;
 // no drug name, no sig, no pharmacy crosses this seam. RLS scopes by `app.org_id` (`withOrgContext`).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 const PULL = schema.medicationHistoryPulls;
@@ -17,7 +17,7 @@ const PULL = schema.medicationHistoryPulls;
 /** An IDG caseload is dozens; a list this long is a caller bug. */
 export const IDG_MEDICATION_HISTORY_MAX_PATIENTS = 500;
 
-/** Structural twin of M14's `PacketMedicationHistory` (`@wardenx/types`). */
+/** Structural twin of M14's `PacketMedicationHistory` (`@chartwarden/types`). */
 export interface IdgMedicationHistoryState {
   readonly state: "not_pulled" | "none_available" | "available";
   readonly recordCount: number;

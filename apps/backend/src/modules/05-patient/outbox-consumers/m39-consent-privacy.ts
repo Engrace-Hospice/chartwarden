@@ -62,8 +62,8 @@
 // track is a silent no-op, matching every other M5 consumer's convention
 // (`m6-admission-activated.ts`, `m17-visit-assignment.ts`) — a later, correctly-scoped delivery still
 // resolves fine.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { M5OutboxPort } from "../deceased-db";

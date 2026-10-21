@@ -8,7 +8,7 @@ import {
   type GateItem,
   GateStepper,
   GuardChip,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { type JSX, useState } from "react";
 
 const meta: Meta = { title: "Lantern/Guardrail" };

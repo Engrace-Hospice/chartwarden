@@ -5,14 +5,14 @@
 // The per-kind `data` payload is carried opaquely as `Type.Unknown()` at this boundary (the server
 // discriminates on `kind` and validates against the per-kind TypeBox + the M38 terminology binding); the
 // lifecycle-bearing envelope fields (kind / priority / signer / verbal-attestation / cosign-role /
-// discontinuation reason) are pinned here so the route → pure `@wardenx/orders` machine flow is wired
-// end-to-end. Unions mirror the canonical `@wardenx/types` order vocabularies (single source).
+// discontinuation reason) are pinned here so the route → pure `@chartwarden/orders` machine flow is wired
+// end-to-end. Unions mirror the canonical `@chartwarden/types` order vocabularies (single source).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ORDER_KINDS } from "@wardenx/types";
-import type { OrderKind } from "@wardenx/types";
-import { ValidationError } from "@wardenx/types";
+import { ORDER_KINDS } from "@chartwarden/types";
+import type { OrderKind } from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,
@@ -39,7 +39,7 @@ if (!FormatRegistry.Has("date")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-/** The canonical §2.1 order-kind union, mirrored from @wardenx/types `ORDER_KINDS` (single source). */
+/** The canonical §2.1 order-kind union, mirrored from @chartwarden/types `ORDER_KINDS` (single source). */
 const ORDER_KIND = lit(ORDER_KINDS);
 /** The §2.1 dispatch priority. */
 const PRIORITY = Type.Union([Type.Literal("routine"), Type.Literal("stat"), Type.Literal("asap")]);

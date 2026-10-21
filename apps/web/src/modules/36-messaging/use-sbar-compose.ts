@@ -1,7 +1,7 @@
 // M36 WP 3.3 - the SBAR form's state, owned by the thread (which is keyed by channel) so Cancel keeps what was typed until
 // the message is sent or the user discards it. The text is mirrored to the server-side draft slot by useServerDraft
 // (WP 2.5, sealed with the ordinary text draft), so it also survives a channel switch, a reload and another device.
-import { SBAR_SECTION_KEYS, type SbarSections } from "@wardenx/types";
+import { SBAR_SECTION_KEYS, type SbarSections } from "@chartwarden/types";
 import { useCallback, useMemo, useState } from "react";
 import type { ChannelKind } from "./messaging-types";
 import {

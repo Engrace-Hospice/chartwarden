@@ -1,10 +1,10 @@
-// @wardenx/subscription-billing — §2.3 domain-level validation rules (pure kernel, M35-T01).
+// @chartwarden/subscription-billing — §2.3 domain-level validation rules (pure kernel, M35-T01).
 //
 // These are the DOMAIN invariants (not the wire-shape TypeBox schemas, which land with the routes in
 // T06). They are pure, penny-exact, DB-free predicates the lifecycle services + the reconciler assert.
 // Money is always integer cents (no float arithmetic — §2.3 / D8).
 
-import type { InvoiceLineKind } from "@wardenx/types";
+import type { InvoiceLineKind } from "@chartwarden/types";
 
 /** The 32-lowercase-hex HMAC-SHA256 digest shape the pseudonym tables enforce (§2.3 CHECK). A raw UUID
  *  (36 chars, dashes) can never satisfy this, so a raw `patient_id` cannot accidentally land in the

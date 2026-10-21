@@ -2,7 +2,7 @@
 // TypeBox shapes (F-211). Named `*-typebox` (not `*schema*`) for the same table-ownership-heuristic reason as
 // `billing-typebox.ts`. The factor is a decimal STRING (never a float). Org / actor / membership binding is server-side.
 import { type Static, Type } from "@sinclair/typebox";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });

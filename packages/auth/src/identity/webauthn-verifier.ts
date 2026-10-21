@@ -3,7 +3,7 @@ import type {
   AuthenticationResponseJSON,
   AuthenticatorTransportFuture,
 } from "@simplewebauthn/server";
-// @wardenx/auth · identity — WebAuthn step-up assertion verifier (M2 §4.4, D9).
+// @chartwarden/auth · identity — WebAuthn step-up assertion verifier (M2 §4.4, D9).
 //
 // Step-up qualifies on WebAuthn or TOTP only (SMS never). This is the REAL WebAuthn half: it verifies a
 // browser assertion (navigator.credentials.get → @simplewebauthn/browser) against the user's enrolled
@@ -16,8 +16,8 @@ import type {
 // (no credential, malformed/forged assertion) ARE unit-tested here. Credential I/O goes through an
 // injected PasskeyCredentialStore port so the crypto stays testable without a DB; the Drizzle store over
 // the M1-owned `passkey` table is below.
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 
 /** A stored passkey credential, as the verifier needs it (base64url public key + signature counter). */

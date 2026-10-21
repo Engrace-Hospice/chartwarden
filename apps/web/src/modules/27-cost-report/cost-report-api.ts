@@ -10,7 +10,7 @@
 //     submit body carries NO membership id and no timestamp — `submit` is sent `{}`.
 //   • The lifecycle state machine: a 409 means the report is not in the state the action needs.
 // `Idempotency-Key` is attached to every mutation by the shared api client.
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 
 export type WriteResult<T> =
   | { readonly ok: true; readonly value: T }

@@ -7,19 +7,19 @@
 // offboarded (the platform control plane has no patient subject), so the `DataEraser.erase(scope, subjectId)`
 // bridge below passes `subjectId` (the org) straight to the package's `eraseTenantSaasPlatform(orgId, store)`.
 //
-// The pure eraseFn + its narrow store port + the in-memory store live in `@wardenx/saas-tenant-platform`
+// The pure eraseFn + its narrow store port + the in-memory store live in `@chartwarden/saas-tenant-platform`
 // (eraser.ts); this backend wrapper only adapts them to the M1 `DataEraser` contract and registers the REAL
 // eraser over the Phase-0 `saas_tenant_platform_class` deny-stub via the composition-root hook (the
 // `saas_tenant_platform_class` data class is in REQUIRED_ERASERS, so wireErasers() deny-stubs it first and
 // this real eraser stands over the stub before validateErasers() — the same M22/M36/M40 registration shape).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type SaasTenantPlatformEraseStore,
   createInMemorySaasTenantPlatformEraseStore,
   eraseTenantSaasPlatform,
-} from "@wardenx/saas-tenant-platform";
-import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+} from "@chartwarden/saas-tenant-platform";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { eq, inArray } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 import type { PlatformTx } from "../routes/platform/service-drizzle";

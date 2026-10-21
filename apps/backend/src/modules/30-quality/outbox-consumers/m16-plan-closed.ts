@@ -26,8 +26,8 @@
 // never had) is a NO-OP, not a dead-letter: the recompute this consumer would enqueue is advisory (a
 // measure-freshness nudge), not a write with its own integrity to protect, and a plan the org's own RLS
 // cannot see is indistinguishable from one that never existed.
-import type { DbClient } from "@wardenx/db";
-import { handleBereavementPlanClosed } from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import { handleBereavementPlanClosed } from "@chartwarden/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

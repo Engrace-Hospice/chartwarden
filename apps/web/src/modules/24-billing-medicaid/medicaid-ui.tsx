@@ -130,7 +130,7 @@ export const iconButtonStyle = {
 };
 
 // ── modal chrome (the §5.1 modals: override, submit, replace/void, R&B day) ────────────────────────────
-// The scrim/panel chrome itself now delegates to `@wardenx/ui`'s focus-trapped `Modal` (UI-005) at
+// The scrim/panel chrome itself now delegates to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) at
 // each call site; only the title style remains a shared atom.
 export const modalTitleStyle = {
   margin: 0,

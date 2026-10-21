@@ -1,7 +1,7 @@
 // Every patient-scoped "message" entry point must open THIS patient's care-team conversation
 // (POST care-team-channel, then router state), never plain /messaging (first conversation in the list).
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { type ReactElement, useEffect, useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

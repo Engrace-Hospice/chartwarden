@@ -1,4 +1,4 @@
-// @wardenx/audit — the single audit() / auditRead() helper every module calls (M1 spec §8.2).
+// @chartwarden/audit — the single audit() / auditRead() helper every module calls (M1 spec §8.2).
 //
 // audit_event is HELPER-ONLY (manifest HELPER_ONLY_TABLES): this package is its only
 // sanctioned writer — feature modules never insert into it directly. The helper does three
@@ -10,10 +10,10 @@
 //   3. RETENTION — the event's retention class is resolved (operational/compliance/
 //      legal_hold) so its partition ages out on the right schedule (ADR-0004).
 //
-// packages/audit is a FOUNDATION_HELPER_PACKAGE and may import the @wardenx/db schema TYPES
+// packages/audit is a FOUNDATION_HELPER_PACKAGE and may import the @chartwarden/db schema TYPES
 // (ADR-0005 D4); table ownership for audit_event is satisfied by the helper-package rule.
 import { randomUUID } from "node:crypto";
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { type SQL, sql } from "drizzle-orm";
 import { redactSnapshot } from "./denylist";
 import { type RetentionClass, resolveRetention } from "./retention";

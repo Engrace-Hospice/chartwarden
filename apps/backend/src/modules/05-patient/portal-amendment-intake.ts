@@ -23,8 +23,8 @@
 // the winner's committed row. Once that row is decided or withdrawn it leaves the index predicate and the
 // same change may be requested again.
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 const SIXTY_DAYS_MS = 60 * 24 * 3600 * 1000;

@@ -22,8 +22,8 @@
 // BOUNDS. Batches of {@link OFFLINE_QUEUE_PURGE_BATCH_SIZE} per `withOrgContext` tx (the audit trigger writes
 // one `audit_event` per deleted row, so the batch also bounds the tx), at most
 // {@link OFFLINE_QUEUE_PURGE_MAX_BATCHES} per org per tick; a larger backlog drains over the next nightly ticks.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, lt } from "drizzle-orm";
 
 const Q = schema.administrationOfflineQueue;

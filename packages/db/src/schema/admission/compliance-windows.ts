@@ -1,4 +1,4 @@
-// @wardenx/db — `compliance_window` (M6 §3.3). The open-obligation ledger over an admission (CTI due,
+// @chartwarden/db — `compliance_window` (M6 §3.3). The open-obligation ledger over an admission (CTI due,
 // F2F due, NOR due, external-signal windows opened by the AdmissionEventApplier). Org-scoped (no
 // direct patient identifier; tenancy via the admission FK). `severity` / `auto_acknowledge` /
 // `payload` back the external-signal windows (D15); pre-v0.3 kinds default to `warning`. `closed_by`

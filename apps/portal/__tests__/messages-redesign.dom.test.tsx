@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient } from "@chartwarden/ui";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
 

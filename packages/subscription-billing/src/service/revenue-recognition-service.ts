@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §D18 MRR/ARR monthly snapshot service (pure over ports, M35-T03).
+// @chartwarden/subscription-billing — §D18 MRR/ARR monthly snapshot service (pure over ports, M35-T03).
 //
 // The monthly `revenue_recognition_snapshot` computation. MRR is the sum of each subscription's monthly-
 // normalized base price while it is in a REVENUE-RECOGNIZED status (`active` / `past_due` / `at_risk` —
@@ -20,7 +20,7 @@ import type {
   BillingYearMonth,
   IsoInstant,
   SubscriptionStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type OutboxIntent,
   type RevenueContribution,

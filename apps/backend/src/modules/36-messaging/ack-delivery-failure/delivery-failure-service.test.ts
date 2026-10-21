@@ -1,5 +1,5 @@
 // WP 4.5 - the delivery-failure service over the in-memory store: early escalation, failed_unreachable, idempotency, races.
-import type { EscalationRouteAnswer } from "@wardenx/types";
+import type { EscalationRouteAnswer } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createTierDecider } from "../ack-escalation/escalation-service";
 import { createMemoryAckStore } from "../ack-requests/ack-store-memory";

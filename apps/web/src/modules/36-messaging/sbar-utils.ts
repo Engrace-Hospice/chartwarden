@@ -11,7 +11,7 @@ import {
   type SbarSections,
   type SbarUrgencyHint,
   richBodySbar,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { ChannelKind } from "./messaging-types";
 
 export const SBAR_FLAG_KEY = "messaging.sbar";

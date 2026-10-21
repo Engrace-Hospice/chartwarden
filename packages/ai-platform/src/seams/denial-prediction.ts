@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.5 `DenialOutcomePredictionProvider` (M32-T06).
+// @chartwarden/ai-platform — §4.2.5 `DenialOutcomePredictionProvider` (M32-T06).
 //
 // Consumed by M25 (deny-stub Phase 1). ADVISORY ONLY: §4.2.5 is explicit that it "never gates
 // submission", so an unavailable answer must never stop a claim going out the door — which is exactly

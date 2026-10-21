@@ -1,4 +1,4 @@
-import { Button, EmptyState, LoadingSpinner, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { Button, EmptyState, LoadingSpinner, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";

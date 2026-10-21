@@ -17,7 +17,7 @@
 // discharged-read-only patient, or a missing attestation produces a refusal, never a default-through. The
 // portal is the most consumer-exposed surface (§8); a write that reaches an upstream clinical module must
 // have cleared every M31-side precondition first (the upstream module re-validates — defense in depth).
-import { ChartWardenError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7.7–§7.9 write-path failure-code catalog → HTTP status. */
 export const M31_WRITE_ERROR_STATUS = {

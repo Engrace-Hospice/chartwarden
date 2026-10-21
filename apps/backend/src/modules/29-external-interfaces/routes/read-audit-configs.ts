@@ -1,7 +1,7 @@
 // M29 read-audit declarations (M4 §2.5 / 45 CFR 164.528). GAP-044/GAP-045: the lab and inbound-proposal
 // GET routes surface PHI (patient id, LOINC result values, ADT demographics linkage) but were outside the
 // enforced prefix list and declared nothing, so no read event was ever written. Names only, never values.
-import type { RouteReadAudit } from "@wardenx/audit";
+import type { RouteReadAudit } from "@chartwarden/audit";
 
 const LAB_FIELDS = ["patient_id", "loinc_code", "value_rows", "abnormal_flag"] as const;
 

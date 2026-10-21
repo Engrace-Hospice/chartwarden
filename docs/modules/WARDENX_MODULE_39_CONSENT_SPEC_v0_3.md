@@ -983,11 +983,11 @@ Per M4 destruction-cert workflow + D20:
 
 ```typescript
 // apps/backend/src/modules/39-consent/services/eraser.ts
-import { registerEraser } from '@wardenx/audit/eraser-registry'
-import { db } from '@wardenx/foundation/db'
+import { registerEraser } from '@chartwarden/audit/eraser-registry'
+import { db } from '@chartwarden/foundation/db'
 import { consent_record, consent_record_recipient, consent_record_dpoa_agent,
          consent_revocation, consent_expiration_reminder, delegated_access,
-         consent_document_link, consent_eval_audit, consent_renewal_cycle } from '@wardenx/domain/consent/schema'
+         consent_document_link, consent_eval_audit, consent_renewal_cycle } from '@chartwarden/domain/consent/schema'
 
 export async function eraseConsentSubtree(args: {
   patientId: string,
@@ -1535,15 +1535,15 @@ export interface ConsentStateAdvisoryProvider {
 
 ```typescript
 // apps/backend/src/modules/39-consent/boot.ts (consumed seams)
-import type { MembershipReader, CredentialReader } from '@wardenx/identity/seams'   // M2
-import type { PatientReader, CaseloadProvider } from '@wardenx/patient/seams'        // M5
-import type { DocumentRenderer } from '@wardenx/documents/seams'                     // M22
-import type { MessagingProvider, AlertEmitter } from '@wardenx/messaging/seams'      // M36
-import type { TerminologyProvider } from '@wardenx/terminology/seams'                // M38
+import type { MembershipReader, CredentialReader } from '@chartwarden/identity/seams'   // M2
+import type { PatientReader, CaseloadProvider } from '@chartwarden/patient/seams'        // M5
+import type { DocumentRenderer } from '@chartwarden/documents/seams'                     // M22
+import type { MessagingProvider, AlertEmitter } from '@chartwarden/messaging/seams'      // M36
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'                // M38
 import type { ExternalPhysicianReader, FacilityReader, PharmacyReader }
-                                       from '@wardenx/mdm/seams'                     // M40
-import type { PortalSessionTerminator } from '@wardenx/portal/seams'                 // M31 (forward)
-import type { FhirClientCacheInvalidator } from '@wardenx/fhir-gateway/seams'        // M28 (forward)
+                                       from '@chartwarden/mdm/seams'                     // M40
+import type { PortalSessionTerminator } from '@chartwarden/portal/seams'                 // M31 (forward)
+import type { FhirClientCacheInvalidator } from '@chartwarden/fhir-gateway/seams'        // M28 (forward)
 ```
 
 At M39 init (full surface):

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M25 Remittance & Denials §3.3 — the Medicare appeal cluster:
+// @chartwarden/db — M25 Remittance & Denials §3.3 — the Medicare appeal cluster:
 //   appeal_case (five-tier hierarchy: redetermination → reconsideration → alj → council →
 //     federal_court) ─ appeal_case_event (lifecycle history)
 //

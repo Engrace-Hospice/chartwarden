@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `validation_result` (one row per (validation_run, rule), §3.3/§3.4,
+// @chartwarden/billing · repositories — `validation_result` (one row per (validation_run, rule), §3.3/§3.4,
 // D5; APPEND-ONLY, retention class `operational`; the DB carries an append-only write-audit trigger from
 // P1). This port mirrors the `ValidationRunRepository` exemplar: it offers INSERT + READ ONLY — there is
 // deliberately NO update/delete method. A run's per-rule outcomes are recorded once as the rule engine
@@ -9,7 +9,7 @@
 // ENUM BOUNDARY: `severity` (error/warn/info) and `outcome` (pass/fail/warn/info) are DB-native lowercase
 // enums identical to the domain alphabet (`ValidationSeverity` / `ValidationOutcome`), so rows pass through
 // un-mapped (contrast `claim.state`). No PHI / MBI is ever stored here (D13, §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, asc, eq } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

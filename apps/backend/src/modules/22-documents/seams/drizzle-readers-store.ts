@@ -15,10 +15,10 @@
 // TENANCY: reads open the CONSUMER's ambient request context via `withOrgContextFromRequest` (the
 // M21 precedent); the `organizationId` the port carries is ASSERTED via the explicit predicate as
 // the second wall, never used to switch tenants.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { DegradedError } from "@wardenx/types";
-import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import { DegradedError } from "@chartwarden/types";
+import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";

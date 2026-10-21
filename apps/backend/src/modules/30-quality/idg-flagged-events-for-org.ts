@@ -13,8 +13,8 @@
 // exposure events have a NULL patient and are never returned. Free text (`kind_data` narrative / witness names /
 // quotes; `exposure_source`; pathogen / body site) NEVER crosses: M14's digest is an id, an enum, an instant and
 // a severity. SEAM PULL at packet build; RLS scopes by `app.org_id` (both tables are org-scoped).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray } from "drizzle-orm";
 
 const INC = schema.incidentReport;

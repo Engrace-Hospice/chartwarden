@@ -1,4 +1,4 @@
-// @wardenx/emar — §7.4 witness-attestation token security (M13-T04). PURE crypto core, IO-free.
+// @chartwarden/emar — §7.4 witness-attestation token security (M13-T04). PURE crypto core, IO-free.
 //
 // The witness-attestation token is the linchpin of the §2.6 D7 double-witness rule. The witness clinician
 // mints it on a SEPARATE device via `POST /administrations/witness-attest`; the administering clinician

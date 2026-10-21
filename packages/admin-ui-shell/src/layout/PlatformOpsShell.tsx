@@ -1,4 +1,4 @@
-// @wardenx/admin-ui-shell — the platform-ops console shell (M34 §3.1 / §5.1).
+// @chartwarden/admin-ui-shell — the platform-ops console shell (M34 §3.1 / §5.1).
 //
 // The top-level chrome for the WardenX-staff control plane (`withPlatformContext` routes): a left
 // nav rail over the eight platform-ops surfaces (Tenants / Support / Exports / Onboarding / Feature
@@ -10,8 +10,8 @@
 // Lantern (DESIGN.md): tokens only — theme-reactive incl. twilight dark, zero hex; No-Line (§10) —
 // the rail and top bar separate by a tonal `surface-lowest` shift plus a ghost edge, never a 1px
 // rule; type voices (§3) — Fraunces for the product wordmark, Inter for nav labels. The shell owns
-// only chrome; screens compose the @wardenx/ui domain patterns (StatusBoard / WorkQueue / etc.).
-import { ghostBorder, t } from "@wardenx/ui";
+// only chrome; screens compose the @chartwarden/ui domain patterns (StatusBoard / WorkQueue / etc.).
+import { ghostBorder, t } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
 /** A single platform-ops nav destination. `key` is stable; `to` is the host router's path. */

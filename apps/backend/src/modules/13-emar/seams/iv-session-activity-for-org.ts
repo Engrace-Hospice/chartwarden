@@ -13,9 +13,9 @@
 // recorded segment is the only bedside contact the platform can see.
 //
 // NO PHI: ids, a state and two instants. Org scoping is the explicit `organizationId` + RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { type IvSegment, type IvSegmentMode, deriveIvSessionState } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type IvSegment, type IvSegmentMode, deriveIvSessionState } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, ne } from "drizzle-orm";
 
 const ADM = schema.administrationRecords;

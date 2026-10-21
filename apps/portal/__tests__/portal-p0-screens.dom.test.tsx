@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-// @wardenx/portal — P0 convergence coverage for sign-in, patient selection, and the patient home.
+// @chartwarden/portal — P0 convergence coverage for sign-in, patient selection, and the patient home.
 // Fixtures are synthetic and contain only the fields returned by the portal-minimised DTOs.
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient } from "@chartwarden/ui";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
 

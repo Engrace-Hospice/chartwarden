@@ -16,7 +16,7 @@
 // privacy-flag snapshot lists `sud`, INCLUDING a snapshot marked invalidated — an invalidated snapshot is stale,
 // and "stale" is not evidence the restriction lapsed. The caller REFUSES to disclose a `sudRestricted` patient
 // to an outside lab; it must never assert `false` on the strength of an absent/stale row alone.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, isNull } from "drizzle-orm";
 
 /** What `hl7OrmDemographicsInTx` hands back. `null` from the function = no such patient in this org. */

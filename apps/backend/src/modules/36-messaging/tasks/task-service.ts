@@ -5,7 +5,7 @@
 // it (assignee eligibility, and visibility re-checked on every read and act); the patient is derived from the channel,
 // never taken from the client; a clinical task cannot close without a reason code. It is flag-independent - the routes
 // gate the `messaging.tasks` flag. It never touches M14: IDG action items are not messages (see m36-task-no-idg test).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   TASK_CLOSE_REASONS,
   allowedActions,
@@ -15,8 +15,8 @@ import {
   requiresCloseReason,
   taskActorRole,
   validateDue,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ForbiddenError,
   NotFoundError,
@@ -28,7 +28,7 @@ import {
   type TaskSourceKind,
   type TaskStatus,
   ChartWardenError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { publishTaskEvent } from "./task-events";
 import {

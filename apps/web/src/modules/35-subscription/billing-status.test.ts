@@ -1,7 +1,7 @@
 // apps/web/src/modules/35-subscription/billing-status.test.ts — the M35 tenant status→tone + money helpers.
 //
 // The pure presentation helpers live in billing-status.ts (they import only the `StatusTone` *type* from
-// @wardenx/ui, erased at runtime), so this test is colocated in apps/web — a `packages/` test importing it
+// @chartwarden/ui, erased at runtime), so this test is colocated in apps/web — a `packages/` test importing it
 // would create a forbidden package→app dependency-cruiser edge (the M34 precedent). Proves the §6.6 badge
 // taxonomy is applied once: every M35 wire enum resolves to the documented Lantern tone, the two §5.5
 // assertive-alert dunning stages read `critical`, unknown values default to neutral, and money stays

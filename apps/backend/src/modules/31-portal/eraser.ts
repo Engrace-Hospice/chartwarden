@@ -16,9 +16,9 @@
 // The document-upload provenance step (§3.7 step 3) is a NO-OP in the reduced 3-table scope — M31 owns no
 // `portal_document_upload` table (M22 shreds the intake batch under its own `documents` eraser). PURE: no I/O
 // of its own; every effect is a port call.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser, PatientId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser, PatientId } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { registerEraser } from "../../bootstrap/index";
 import { type M31EventEmitter, boundM31EventEmitter, emitGrantsRevoked } from "./events";

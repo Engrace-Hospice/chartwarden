@@ -7,14 +7,14 @@
 // and `m12.medication_order.queued_for_transmission` is published, all in the caller's transaction. Returns `false`
 // (touching nothing) when the order is not transmittable, so the F-058 local activation runs unchanged.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   computeNewRxIdempotencyKey,
   computeRxBusinessKey,
   planTransmissionEnqueue,
   sigDirections,
   transitionMedicationOrder,
-} from "@wardenx/dosespot";
+} from "@chartwarden/dosespot";
 import { and, eq } from "drizzle-orm";
 
 /** Structural twin of `DoseSpotWriteOutboxPort` (declared here so this file does not import the service that imports it). */

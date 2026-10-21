@@ -4,7 +4,7 @@
 // (`body_sha256`, re-checked by messaging.hash_verify) and sealed under the tenant DEK, exactly like a plain body.
 // Everything that leaves the encrypted store goes through `decodeStoredBody`, so no reader ever sees the JSON: the
 // wire `body` is the plain-text projection and `bodyDoc` is a freshly re-sanitised copy.
-import type { MessageBodyKind, MessageReferenceInput } from "@wardenx/messaging";
+import type { MessageBodyKind, MessageReferenceInput } from "@chartwarden/messaging";
 import {
   type RichBody,
   ChartWardenError,
@@ -14,7 +14,7 @@ import {
   richBodyMentions,
   richBodyToPlainText,
   sanitizeRichBody,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export const INVALID_RICH_BODY = "INVALID_RICH_BODY";
 

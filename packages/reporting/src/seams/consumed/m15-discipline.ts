@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M15 (Discipline Care Plans / Volunteers). ABSENT (§4.4).
+// @chartwarden/reporting — consumed-seam view of M15 (Discipline Care Plans / Volunteers). ABSENT (§4.4).
 //
 // M15 is not yet implemented, so M33 ships a forward-seam DENY-STUB: every read resolves to the typed
 // `FORWARD_SEAM_UNAVAILABLE` marker (never throws, never fails open). When M15 lands it registers the

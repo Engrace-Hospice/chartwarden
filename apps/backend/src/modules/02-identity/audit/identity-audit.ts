@@ -2,7 +2,7 @@
 // lifecycle audit events (M2 spec §8.1; §7.1, §7.5, §7.6 "all … audited").
 //
 // Every membership/invitation/collaborator/user state change the §7.1–7.7 workflows demand
-// be "audited" goes through the mandated @wardenx/audit `audit()` surface — never a direct
+// be "audited" goes through the mandated @chartwarden/audit `audit()` surface — never a direct
 // `audit_event` insert — so each snapshot is run through the PHI field denylist (the
 // invitee's `email` is redacted in the trail) and filed under a retention class. Per M02-F12
 // the spec's `security` retention class is remapped to `compliance` (HIPAA floor). The `tx`
@@ -12,7 +12,7 @@
 //
 // Full M2 audit-event catalog + the M3 permission-key registration land in M2-T08; these are
 // the lifecycle rows the route-inventory workflows directly emit.
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
 /** The M2 identity lifecycle audit event types (dotted `m2.<resource>.<verb>`). */
 export const IDENTITY_AUDIT_EVENTS = {

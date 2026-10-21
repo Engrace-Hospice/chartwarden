@@ -6,7 +6,7 @@
 // proves the shipped migration IS that output, the migration is sound by transitivity.
 //
 // Reads packages/db/migrations/*.sql by relative filesystem path (not a package import — packages/db
-// depends on @wardenx/audit, so the reverse import would be circular; a plain file read has no such
+// depends on @chartwarden/audit, so the reverse import would be circular; a plain file read has no such
 // boundary).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

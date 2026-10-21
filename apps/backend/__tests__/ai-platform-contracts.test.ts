@@ -2,7 +2,7 @@
 //
 // `packages/types/src/ai-platform.ts` says its enum mirrors are "kept in lock-step with
 // `packages/db/src/enums.ts`". A comment does not keep anything in lock-step. These tests are where the
-// claim is enforced: `@wardenx/types` is a LEAF and cannot import `@wardenx/db`, so the two sides can
+// claim is enforced: `@chartwarden/types` is a LEAF and cannot import `@chartwarden/db`, so the two sides can
 // only be compared somewhere that already depends on both — the backend, which is exactly the consumer
 // that would ship the drift.
 //
@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AI_PHASE_1_BACKENDS, AI_PHASE_1_CAPABILITIES } from "@wardenx/ai-platform";
+import { AI_PHASE_1_BACKENDS, AI_PHASE_1_CAPABILITIES } from "@chartwarden/ai-platform";
 import {
   aiBackendHealthStatus,
   aiCapabilityLifecycleState,
@@ -36,7 +36,7 @@ import {
   aiRoutingDecision,
   aiRoutingReason,
   aiTenantOptInStatus,
-} from "@wardenx/db/schema";
+} from "@chartwarden/db/schema";
 import {
   AI_BACKEND_SEED_BLOCKING_FIELDS,
   AI_CAPABILITY_LIFECYCLE_STATES,
@@ -75,7 +75,7 @@ import {
   M32_PARTITIONED_TABLES,
   M32_TABLE_NAMES,
   M32_TABLE_TENANCY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { MODULES } from "../../../architecture/module-manifest";
 
 /** Each triple is (SQL type name, the pgEnum's runtime values, the leaf union's members). The third
@@ -283,7 +283,7 @@ const MIRRORS = [
   ],
 ] as const satisfies readonly (readonly [string, readonly string[], readonly string[]])[];
 
-describe("§3.1 pgEnum ↔ @wardenx/types mirror", () => {
+describe("§3.1 pgEnum ↔ @chartwarden/types mirror", () => {
   it.each(MIRRORS)("%s carries the same members on both sides", (_name, pgValues, unionValues) => {
     expect([...pgValues].sort()).toEqual([...unionValues].sort());
   });

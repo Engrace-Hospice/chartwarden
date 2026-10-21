@@ -1,4 +1,4 @@
-// @wardenx/db — M25 milestone 3 (migration 1112): where a denial goes (denial_route_rule), and the MAC reopening
+// @chartwarden/db — M25 milestone 3 (migration 1112): where a denial goes (denial_route_rule), and the MAC reopening
 // aggregate (reopening_case ─ reopening_case_event). NON-partitioned; organization_id NOT NULL on all three (canonical
 // app.org_id RLS). States, channels, outcomes and route kinds are text + CHECK (closed sets mirrored in
 // domain/denial-route.ts and domain/reopening-machine.ts), so there is no new pgEnum. claim_id (M23) and

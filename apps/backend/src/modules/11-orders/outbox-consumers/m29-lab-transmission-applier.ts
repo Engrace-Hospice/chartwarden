@@ -31,8 +31,8 @@
 // the same order) is a benign no-op, never a re-publish. `transmitted` and `failed` are treated as already
 // SETTLED — a redelivered M29 event against an already-`transmitted`/`failed` row silently skips (the D16 state
 // machine has no transition out of either driven by this consumer).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 import { DISPATCH_REFUSED_PREFIX, RECOVERY_BLOCKED_PREFIX } from "../orm-request/orm-resend";

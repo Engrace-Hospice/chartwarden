@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 3: Percent of the last two RHC days of life with visits (CMS-1851-F Table 9). Pure. No IO.
+// @chartwarden/quality — SSVI metric 3: Percent of the last two RHC days of life with visits (CMS-1851-F Table 9). Pure. No IO.
 //
 // CMS: "Percent of Beneficiaries who Died in Hospice and Last Two Days were RHC with at Least One Skilled Visit
 // During Last Two Days". Point at ≤ 85.7% (25th pct). Denominator = decedents whose day of death and the day

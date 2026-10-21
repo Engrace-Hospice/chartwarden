@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_report_validation` (M27 §3.3, D9; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `cost_report_validation` (M27 §3.3, D9; non-partitioned; retention class `compliance`).
 // One row per validation run with rolled-up counts + rule-set-version pinning (a 2027 rule-set update
 // does not retroactively alter a 2026 validation history). `failed_to_run` captures infra failures
 // (seam unbound, stale pull) distinct from rule failures. ORG-SCOPED. No PHI (D18).

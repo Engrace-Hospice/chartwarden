@@ -1,4 +1,4 @@
-// @wardenx/db — `channel` (M36 Secure Messaging §3.3). The org-scoped container every
+// @chartwarden/db — `channel` (M36 Secure Messaging §3.3). The org-scoped container every
 // message and membership row hangs off. `channel_kind` is the SINGLE discriminator (§2.3,
 // M36-T01 / interfaces/kinds.ts) that fixes a channel's lifecycle, whether it carries a
 // subject, and its retention class — enforced here by the `channel_kind_subject_shape`

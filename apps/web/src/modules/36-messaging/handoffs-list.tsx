@@ -1,7 +1,7 @@
 // M36 WP 3.5 - the Handoffs tab of Notifications & Tasks (the shift inbox). Rows carry counts only, never a patient;
 // opening one shows its items. Whether a row can be acted on comes from the server (the review drawer's allowed_actions).
-import type { HandoffDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, StatusPill } from "@wardenx/ui";
+import type { HandoffDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { HandoffComposeDialog } from "./handoff-compose-dialog";

@@ -16,7 +16,7 @@
 //  4. LAYER 2 IS GATED. The narrative is only produced when Part-A `ai.full` is on. The request checkbox
 //     is offered; a server that has the flag off simply returns a deterministic-only row, which this
 //     screen reports rather than pretending a narrative was suppressed for another reason.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

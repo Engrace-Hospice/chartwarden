@@ -1,4 +1,4 @@
-// @wardenx/messaging — the PHI sanitization wrapper (M36-T06, spec §4.7 / §7.2).
+// @chartwarden/messaging — the PHI sanitization wrapper (M36-T06, spec §4.7 / §7.2).
 //
 // THE SINGLE CHOKEPOINT between in-perimeter PHI-bearing structures (`Alert` / `Message`) and
 // outbound vendors (SMS / email / push / voice). Every out-of-band dispatcher MUST take its

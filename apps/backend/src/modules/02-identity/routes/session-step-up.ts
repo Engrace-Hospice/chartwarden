@@ -6,7 +6,7 @@
 //                                             lastStepUpAt/lastStepUpFactor (paired-write, D8)
 //
 // Both routes sit BEHIND the Authorization Contract's `requireSession` guard (real as of
-// M3-T10 — @wardenx/auth, fails closed) and then resolve the concrete authenticated session
+// M3-T10 — @chartwarden/auth, fails closed) and then resolve the concrete authenticated session
 // via M2's injected SessionResolver. SMS is refused at the route boundary (W-M2-11 / D9): `STEP_UP_POLICY`
 // declares only WebAuthn + TOTP qualify. Three consecutive failures inside the lockout window
 // terminate the session (423). Every state change is audited at `compliance` retention through
@@ -14,9 +14,9 @@
 //
 // Step-up acts on SESSION metadata, not PHI, so the three-column / RLS / eraser PHI mandates
 // do not apply here; the org-scoped audit + the context guard are the controls.
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { requireSession, resolvePasskeyRpId } from "@wardenx/auth";
-import { STEP_UP_POLICY, UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { requireSession, resolvePasskeyRpId } from "@chartwarden/auth";
+import { STEP_UP_POLICY, UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditStepUpCompleted,

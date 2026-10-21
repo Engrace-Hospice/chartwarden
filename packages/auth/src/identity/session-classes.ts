@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — Session classes + lifecycle (M2-T03; M2 spec §2.2.4, §3.6).
+// @chartwarden/auth · identity — Session classes + lifecycle (M2-T03; M2 spec §2.2.4, §3.6).
 //
 // The `session` table (M1-owned) is the SAME row shape for every class; the class
 // drives timeout policy, scope, and allowed operations. This module is the canonical
@@ -10,7 +10,7 @@
 // that land in `SESSION_POLICY` (packages/types, M2-T04). This module owns the class
 // *definition* — scope kind, concurrency, screen-lock applicability, lifecycle states,
 // and the scope-shape predicate that mirrors the DB `session_scope_chk` CHECK.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 
 /** Every session class (single source: the M1-owned `session_class` pgEnum). */
 export const SESSION_CLASSES = schema.sessionClass.enumValues;
