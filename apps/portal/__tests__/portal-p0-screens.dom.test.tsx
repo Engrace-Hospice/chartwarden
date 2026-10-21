@@ -61,7 +61,7 @@ function fixtureClient(requests: string[] = []) {
 
 describe("portal P0 screens", () => {
   it("presents the focused, chromeless sign-in experience", () => {
-    window.history.pushState({}, "", "/");
+    window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={fixtureClient()} />);
 
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
@@ -71,19 +71,19 @@ describe("portal P0 screens", () => {
 
   it("renders an accessible patient choice from the minimised grant DTO", async () => {
     const requests: string[] = [];
-    window.history.pushState({}, "", "/patient-picker");
+    window.history.pushState({}, "", "/portal/patient-picker");
     render(<PortalApp client={fixtureClient(requests)} />);
 
     const option = await screen.findByRole("button", { name: /Sample patient/ });
     expect(option.getAttribute("aria-describedby")).toBeTruthy();
     expect(screen.getByText("Access as Family Caregiver")).toBeTruthy();
     fireEvent.click(option);
-    await waitFor(() => expect(window.location.pathname).toBe(`/p/${PATIENT_ID}`));
+    await waitFor(() => expect(window.location.pathname).toBe(`/portal/p/${PATIENT_ID}`));
     expect(requests).toContain("POST /api/v1/portal/sessions/select-patient");
   });
 
   it("renders the patient dashboard hierarchy and authorised summary counts", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}`);
     render(<PortalApp client={fixtureClient()} />);
 
     expect(await screen.findByRole("heading", { name: "Welcome back", level: 1 })).toBeTruthy();

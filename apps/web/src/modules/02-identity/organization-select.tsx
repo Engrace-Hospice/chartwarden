@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { takePendingNotificationLink } from "../../shell/pending-deep-link";
 import { BrandLockup } from "./brand-lockup";
+import { fetchTenantInfo } from "./tenant-info";
 
 // Wire shape mirrored from the M2 route (apps/backend/.../identity-routes.ts toView), re-declared
 // here rather than imported — the UI consumes the HTTP response, not the backend package.
@@ -85,6 +86,12 @@ export function OrganizationSelect(): JSX.Element {
       const memberships = ((data?.memberships ?? []) as MembershipView[]).filter(
         (m) => m.status === "active",
       );
+      // A tenant host already pins the organization, so a single match is not a choice: bind it without a click.
+      if (memberships.length === 1 && memberships[0] && (await fetchTenantInfo(client))) {
+        if (active) await select(memberships[0].organizationId); // the spinner stays up until the page reloads
+        return;
+      }
+      if (!active) return;
       setState({ kind: "ready", memberships });
     })();
     return () => {

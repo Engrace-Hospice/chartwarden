@@ -6,12 +6,13 @@ import { CenteredCardLayout, t, useApiClient } from "@chartwarden/ui";
 // "Forgot password? · Use a passkey" links row. Email + password go through Better Auth's own client
 // (@chartwarden/auth/client — NOT the generated REST client); on success the session cookie is set and we
 // hand off to organization-select. Imports its own M2 package (codePath) + leaves only.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "./auth-client";
 import { authenticationContinuation, continuationPath } from "./auth-continuation";
 import { BrandLockup } from "./brand-lockup";
+import { fetchTenantInfo } from "./tenant-info";
 
 export function SignIn(): JSX.Element {
   const client = useApiClient();
@@ -21,6 +22,18 @@ export function SignIn(): JSX.Element {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tenantName, setTenantName] = useState<string | null>(null);
+
+  // On a tenant host the page names the organization; anywhere else (404) it stays generic.
+  useEffect(() => {
+    let active = true;
+    void fetchTenantInfo(client).then((info) => {
+      if (active && info?.displayName) setTenantName(info.displayName);
+    });
+    return () => {
+      active = false;
+    };
+  }, [client]);
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -76,7 +89,9 @@ export function SignIn(): JSX.Element {
         <div style={{ textAlign: "center" }}>
           {/* The page heading stays for screen readers; sighted users already see the lockup and the button. */}
           <h1 className="wx-sr-only">Sign in</h1>
-          <p style={subStyle}>Welcome back. Sign in to continue.</p>
+          <p style={subStyle}>
+            {tenantName ? `Sign in to ${tenantName}` : "Welcome back. Sign in to continue."}
+          </p>
         </div>
 
         {searchParams.get("passwordChanged") === "1" ? (

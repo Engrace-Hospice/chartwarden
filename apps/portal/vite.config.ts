@@ -5,8 +5,12 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { PORTAL_BASE_PATH } from "./src/base-path";
 
+// ADR-0049 Phase 4: served under /portal/ of the tenant host; dev serves it at http://localhost:5174/portal/.
+// The proxy keys below are NOT under the base - /api and /webhooks stay same-origin absolute paths.
 export default defineConfig({
+  base: `${PORTAL_BASE_PATH}/`,
   plugins: [tailwindcss(), react()],
   server: {
     port: 5174,

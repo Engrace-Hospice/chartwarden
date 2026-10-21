@@ -8,7 +8,12 @@
 // again" branch, which no longer had a way to render.
 import { describe, expect, it } from "vitest";
 import { loadDraft, saveDraft } from "./ceremony-drafts";
-import { setGlobalResponseSignal, signalForStatus } from "./global-response-signal";
+import {
+  mayCarryTenantRefusal,
+  setGlobalResponseSignal,
+  signalForStatus,
+  tenantSignalFromResponse,
+} from "./global-response-signal";
 
 const ORIGIN = "http://localhost:5173";
 
@@ -57,5 +62,52 @@ describe("ceremony drafts and a dead session", () => {
     setGlobalResponseSignal({ kind: "service-unavailable" });
     expect(loadDraft("dde:item-2")).toBeTruthy();
     setGlobalResponseSignal(null);
+  });
+});
+
+describe("tenant refusals (ADR-0049)", () => {
+  const json = (status: number, code: string): Response =>
+    new Response(JSON.stringify({ error: { code, message: "x" } }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("maps TENANT_CLOSED / TENANT_SUSPENDED / TENANT_HOST_UNKNOWN to the three reasons", async () => {
+    expect(await tenantSignalFromResponse(json(410, "TENANT_CLOSED"))).toEqual({
+      kind: "tenant-unavailable",
+      reason: "closed",
+    });
+    expect(await tenantSignalFromResponse(json(403, "TENANT_SUSPENDED"))).toEqual({
+      kind: "tenant-unavailable",
+      reason: "suspended",
+    });
+    expect(await tenantSignalFromResponse(json(404, "TENANT_HOST_UNKNOWN"))).toEqual({
+      kind: "tenant-unavailable",
+      reason: "unknown",
+    });
+  });
+
+  it("leaves an ordinary 403 / 404 alone, and reads a clone so the caller still gets the body", async () => {
+    const forbidden = json(403, "FORBIDDEN");
+    expect(await tenantSignalFromResponse(forbidden)).toBeNull();
+    expect(await tenantSignalFromResponse(json(404, "NOT_FOUND"))).toBeNull();
+    const closed = json(410, "TENANT_CLOSED");
+    await tenantSignalFromResponse(closed);
+    expect(closed.bodyUsed).toBe(false);
+  });
+
+  it("ignores non-JSON and malformed bodies", async () => {
+    expect(await tenantSignalFromResponse(new Response("<html>", { status: 404 }))).toBeNull();
+    const bad = new Response("{", { status: 404, headers: { "content-type": "application/json" } });
+    expect(await tenantSignalFromResponse(bad)).toBeNull();
+  });
+
+  it("only inspects 403/404/410 on /api/ outside the public routes", () => {
+    expect(mayCarryTenantRefusal(410, `${ORIGIN}/api/auth/get-session`)).toBe(true);
+    expect(mayCarryTenantRefusal(404, `${ORIGIN}/api/v1/auth/context`)).toBe(true);
+    expect(mayCarryTenantRefusal(404, `${ORIGIN}/api/v1/public/tenant`)).toBe(false);
+    expect(mayCarryTenantRefusal(500, `${ORIGIN}/api/v1/patients`)).toBe(false);
+    expect(mayCarryTenantRefusal(404, `${ORIGIN}/assets/app.js`)).toBe(false);
+    expect(mayCarryTenantRefusal(404)).toBe(false);
   });
 });

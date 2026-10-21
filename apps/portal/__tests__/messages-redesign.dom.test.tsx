@@ -29,7 +29,7 @@ function json(data: unknown, status = 200): Response {
 }
 
 function renderMessages(fetcher: (request: Request) => Response | Promise<Response>) {
-  window.history.pushState({}, "", `/p/${PATIENT_A}/messages`);
+  window.history.pushState({}, "", `/portal/p/${PATIENT_A}/messages`);
   const client = createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input) => {
@@ -142,7 +142,7 @@ describe("patient messaging redesign", () => {
       return json({}, 404);
     });
     await waitFor(() => expect(historyCalls).toBe(1));
-    window.history.pushState({}, "", `/p/${PATIENT_B}/messages`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_B}/messages`);
     window.dispatchEvent(new PopStateEvent("popstate"));
     const timeline = await screen.findByRole("list", {
       name: "Conversation with your care team",

@@ -40,7 +40,7 @@ type Handler = (path: string) => Response | Promise<Response>;
 function renderCarePlan(handler: Handler = (path) => path === "/api/v1/portal/care-plan/summary"
   ? json(careSummary)
   : json({}, 404)) {
-  window.history.pushState({}, "", `/p/${PATIENT}/care-plan`);
+  window.history.pushState({}, "", `/portal/p/${PATIENT}/care-plan`);
   const requests: string[] = [];
   const client = createApiClient({
     baseUrl: "http://localhost",
@@ -165,7 +165,7 @@ describe("patient care-plan redesign", () => {
       return json({ problems: [{ problemId: "new", label: "New patient goal area", goals: ["New goal"], focus: [] }], redacted: false });
     });
     await waitFor(() => expect(count).toBe(1));
-    window.history.pushState({}, "", `/p/${OTHER_PATIENT}/care-plan`);
+    window.history.pushState({}, "", `/portal/p/${OTHER_PATIENT}/care-plan`);
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByRole("heading", { name: "New patient goal area" })).toBeTruthy();
     await act(async () => {

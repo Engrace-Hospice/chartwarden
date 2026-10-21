@@ -99,7 +99,7 @@ user's explicit go-ahead.
   attributes in `csrf.ts` and the Better Auth config before changing them); portal gets its own cookie name
   and session class.
 
-### Phase 4 — web (PR B)
+### Phase 4 — web (PR B) — built (backend + web)
 
 PR A merged as #538; its migrations landed as 1144 and 1145 (renumbered on merge). Decisions taken for Phase 4
 (the recommended answers, recorded before building):
@@ -143,6 +143,40 @@ the per-sha256(email) budget (3 / 15 min) silently suppresses the send, and the 
 answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1/portal/*` plus session plumbing
 (`/api/auth/`, `/api/v1/auth/`, `/api/v1/public/`, `/health`, `/ready`) and for a staff-class session on
 `/api/v1/portal/*` other than `/api/v1/portal/sign-in/*`. It is off in single-host mode, so the demo is unchanged.
+
+**Phase 4 web build notes** (same branch; SPA half).
+- *Sign-in*: `02-identity/tenant-info.ts` `fetchTenantInfo(client)` calls `GET /api/v1/public/tenant` once; a 200 with
+  `displayName` replaces the subtitle with "Sign in to <name>". A 404, a network error or a throw all return `null`
+  and the page is exactly as before; sign-in is never gated on the call.
+- *Picker skipped on a tenant host*: `OrganizationSelect` binds the sole active membership through
+  `select-organization` without a click only when `fetchTenantInfo` answers (a tenant host) AND there is exactly one
+  active membership; the spinner stays up until the full-page reload. The demo host, and a tenant host with several
+  memberships, keep the picker.
+- *Closed / suspended / unknown*: `api client onResponseStatus` now receives the `Response` as a third argument;
+  `main.tsx` clones and reads the body only for 403/404/410 on `/api/*` outside `/api/v1/public/*`
+  (`mayCarryTenantRefusal`), and `error.code` `TENANT_CLOSED` / `TENANT_SUSPENDED` / `TENANT_HOST_UNKNOWN` raises a
+  `tenant-unavailable` signal. `GlobalResponseWatcher` navigates (replace) to the static chromeless
+  `/tenant-unavailable?reason=closed|suspended|unknown` (`system.tenant-unavailable`). Any other 403/404 is untouched.
+  `/api/v1/public/*` is excluded because it answers 404 `TENANT_HOST_UNKNOWN` on the demo host and on `app.<base>`.
+  Consequence: an unknown tenant host's sign-in page itself stays generic (its public lookup is excluded); the first
+  auth/context call after sign-in lands on the "no organization" page.
+- *`app.<base>` landing*: `isAppLandingHost(hostname)` (first label exactly `app`, at least 3 labels; `app` is a
+  reserved slug so no tenant collides) gates `main.tsx` registering `appLandingScreens` (`/`, chromeless). The shell
+  drops the Role Home index route when a chromeless screen owns `/`, otherwise the chromed layout outranks it. The
+  screen POSTs `find-my-organization` and always shows "If that address belongs to an organization, we've emailed
+  sign-in links", including when the request fails.
+- *Portal under `/portal/`*: `apps/portal/src/base-path.ts` (`PORTAL_BASE_PATH = "/portal"`) feeds Vite `base`, the
+  router `basename`, the magic-link `callbackURL` (`${origin}/portal/signed-in`) and `errorCallbackURL`, the two brand
+  `<img>` URLs and the post-sign-out `location.assign`. `index.html` public assets are rewritten by Vite. API calls
+  stay same-origin absolute `/api/...`; the dev proxy keys are unchanged, and dev serves the portal at
+  `http://localhost:5174/portal/`. No service worker or manifest exists. Portal tests push `/portal/...` URLs.
+- *Session-class allowlist audit*: every non-`/api/v1/portal/*` call in `apps/portal/src` is `/api/auth/*` (allowed),
+  `POST /api/v1/collaborators/consume` (anonymous) and `GET /api/v1/funeral/case` (a `funeral_home` session, which the
+  guard treats as neither portal nor staff). `StepUpCard`'s `/api/v1/sessions/step-up` is not used by the portal (it
+  uses `/api/v1/portal/sessions/step-up`). No allowlist change was needed; `apps/portal/__tests__/tenant-base-path.test.ts`
+  fails if the SPA gains a call outside that set.
+- *Not verified here*: a live browser pass against the Docker API on a real `*.<base>` host (needs wildcard DNS or
+  hosts entries and `TENANT_BASE_DOMAIN`); covered by jsdom tests and a production build of both SPAs only.
 
 ### Phase 5 — edge and environment (PR B)
 - Confirm quillwardhealth.com controls `chartwarden.com` DNS; add the wildcard record and DNS-01 credentials.

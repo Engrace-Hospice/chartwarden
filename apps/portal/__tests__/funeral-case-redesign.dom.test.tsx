@@ -5,7 +5,7 @@ import { PortalApp } from "../src/app";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 function renderFuneral(status = 200) {
-  window.history.pushState({}, "", "/funeral/case");
+  window.history.pushState({}, "", "/portal/funeral/case");
   return render(<PortalApp client={createApiClient({ baseUrl: "http://localhost", fetch: async (input) => {
     const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
     if (path === "/api/v1/funeral/case") return status === 200

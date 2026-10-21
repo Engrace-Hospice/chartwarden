@@ -24,7 +24,7 @@ function clientFor(handler: (url: URL, method: string) => Response | Promise<Res
 
 describe("portal documents redesign", () => {
   beforeEach(() => {
-    window.history.pushState({}, "", `/p/${PATIENT}/documents`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT}/documents`);
     vi.restoreAllMocks();
   });
 

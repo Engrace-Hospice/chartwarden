@@ -6,6 +6,8 @@
 // No account enumeration: a magic-link request answers `sent` for any well-formed address (the server does the same),
 // and a failed password sign-in is one calm outcome whatever the reason.
 
+import { PORTAL_BASE_PATH } from "./base-path";
+
 export type SignInOutcome = "ok" | "two_factor" | "failed" | "rate_limited";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -21,7 +23,7 @@ async function post(fetchImpl: FetchLike, path: string, body: unknown): Promise<
   });
 }
 
-/** Ask the server to email a single-use sign-in link. The link returns to `/signed-in`. */
+/** Ask the server to email a single-use sign-in link. The link returns to `/portal/signed-in`. */
 export async function requestMagicLink(
   email: string,
   origin: string,
@@ -29,8 +31,8 @@ export async function requestMagicLink(
 ): Promise<"sent" | "rate_limited" | "failed"> {
   const res = await post(fetchImpl, "/api/auth/sign-in/magic-link", {
     email,
-    callbackURL: `${origin}/signed-in`,
-    errorCallbackURL: `${origin}/?link=invalid`,
+    callbackURL: `${origin}${PORTAL_BASE_PATH}/signed-in`,
+    errorCallbackURL: `${origin}${PORTAL_BASE_PATH}/?link=invalid`,
   });
   if (res.status === 429) return "rate_limited";
   return res.ok ? "sent" : "failed";

@@ -6,7 +6,13 @@
 
 import { clearAllDrafts } from "./ceremony-drafts";
 
-export type GlobalResponseSignal = { kind: "session-expired" | "service-unavailable" } | null;
+/** Why a tenant address cannot be used (ADR-0049): the organization left, is suspended, or never existed. */
+export type TenantUnavailableReason = "closed" | "suspended" | "unknown";
+
+export type GlobalResponseSignal =
+  | { kind: "session-expired" | "service-unavailable" }
+  | { kind: "tenant-unavailable"; reason: TenantUnavailableReason }
+  | null;
 
 type Listener = () => void;
 
@@ -36,6 +42,35 @@ export function signalForStatus(status: number, url?: string): GlobalResponseSig
   }
   if (status === 503) return { kind: "service-unavailable" };
   return null;
+}
+
+const TENANT_ERROR_CODES: Readonly<Record<string, TenantUnavailableReason>> = {
+  TENANT_CLOSED: "closed",
+  TENANT_SUSPENDED: "suspended",
+  TENANT_HOST_UNKNOWN: "unknown",
+};
+const TENANT_REFUSAL_STATUSES: ReadonlySet<number> = new Set([403, 404, 410]);
+/** `/api/v1/public/*` answers 404 TENANT_HOST_UNKNOWN on the demo host and on `app.<base>`; that is not a dead tenant. */
+const PUBLIC_API_PREFIX = "/api/v1/public/";
+
+/** Only these responses are worth reading the body of; an ordinary 403/404 elsewhere is never cloned. */
+export function mayCarryTenantRefusal(status: number, url?: string): boolean {
+  if (!TENANT_REFUSAL_STATUSES.has(status)) return false;
+  const path = pathOf(url);
+  return path !== undefined && path.startsWith("/api/") && !path.startsWith(PUBLIC_API_PREFIX);
+}
+
+/** The tenant-unavailable signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
+export async function tenantSignalFromResponse(response: Response): Promise<GlobalResponseSignal> {
+  try {
+    if (!response.headers.get("content-type")?.includes("json")) return null;
+    const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
+    const code = body?.error?.code;
+    const reason = typeof code === "string" ? TENANT_ERROR_CODES[code] : undefined;
+    return reason ? { kind: "tenant-unavailable", reason } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The pathname of an observed response URL, or undefined when there is nothing parseable. */

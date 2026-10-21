@@ -39,7 +39,7 @@ function renderVisits(
     historyResponse?: () => Response | Promise<Response>;
   } = {},
 ) {
-  window.history.pushState({}, "", `/p/${PATIENT}/visits`);
+  window.history.pushState({}, "", `/portal/p/${PATIENT}/visits`);
   const client = createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input) => {
@@ -143,7 +143,7 @@ describe("visits redesign", () => {
     const { unmount } = renderVisits({ upcoming: [legacyTelehealth] });
     const join = await screen.findByRole("link", { name: "Join video visit" });
     expect(join.getAttribute("href")).toBe(
-      `/p/${PATIENT}/visits/${legacyTelehealth.visitId}/telehealth`,
+      `/portal/p/${PATIENT}/visits/${legacyTelehealth.visitId}/telehealth`,
     );
     unmount();
     renderVisits({ upcoming: [{ ...legacyTelehealth, joinable: false }] });
@@ -205,7 +205,7 @@ describe("visits redesign", () => {
       },
     });
     await waitFor(() => expect(calls).toBe(1));
-    window.history.pushState({}, "", "/p/22222222-2222-4222-8222-222222222222/visits");
+    window.history.pushState({}, "", "/portal/p/22222222-2222-4222-8222-222222222222/visits");
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByRole("heading", { name: "New patient visit" })).toBeTruthy();
     await act(async () => {

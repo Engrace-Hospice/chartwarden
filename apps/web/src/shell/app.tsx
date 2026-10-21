@@ -123,6 +123,8 @@ function GlobalResponseWatcher(): null {
         alreadyExpiredRef.current = true;
         navigate("/expired");
       }
+    } else if (signal.kind === "tenant-unavailable") {
+      navigate(`/tenant-unavailable?reason=${signal.reason}`, { replace: true });
     } else {
       navigate("/maintenance");
     }
@@ -157,6 +159,9 @@ export function AppShell({
     // chromed screens render inside the AppLayout shell and appear in its nav.
     const chromeless = screens.filter((s) => s.chrome === false);
     const chromed = screens.filter((s) => s.chrome !== false);
+    // A chromeless screen may own "/" (ADR-0049: the app.<base> landing); the chromed layout's index child (Role Home)
+    // would otherwise outrank it, so it is left out in that case.
+    const chromelessOwnsRoot = chromeless.some((s) => s.path === "/");
     const routes: RouteObject[] = [
       {
         element: <RootWatcher />,
@@ -179,7 +184,7 @@ export function AppShell({
               </RequireChrome>
             ),
             children: [
-              { index: true, element: <RoleHome screens={chromed} /> },
+              ...(chromelessOwnsRoot ? [] : [{ index: true, element: <RoleHome screens={chromed} /> }]),
               ...chromed.map((s) => ({
                 path: s.path.replace(/^\//, ""),
                 element: withSuspense(createElement(s.screen)),

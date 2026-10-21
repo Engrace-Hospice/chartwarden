@@ -10,7 +10,7 @@ const reply = (status: number, body: unknown = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("portal auth-http", () => {
-  it("requests a magic link that returns to /signed-in and answers 'sent' on any 2xx (no enumeration)", async () => {
+  it("requests a magic link that returns to /portal/signed-in and answers 'sent' on any 2xx (no enumeration)", async () => {
     const calls: { url: string; body: Record<string, unknown> }[] = [];
     const outcome = await requestMagicLink("a@b.test", "https://portal.test", async (url, init) => {
       calls.push({ url, body: JSON.parse(String(init?.body)) });
@@ -18,7 +18,8 @@ describe("portal auth-http", () => {
     });
     expect(outcome).toBe("sent");
     expect(calls[0]?.url).toBe("/api/auth/sign-in/magic-link");
-    expect(calls[0]?.body.callbackURL).toBe("https://portal.test/signed-in");
+    expect(calls[0]?.body.callbackURL).toBe("https://portal.test/portal/signed-in");
+    expect(calls[0]?.body.errorCallbackURL).toBe("https://portal.test/portal/?link=invalid");
   });
 
   it("maps 429 to rate_limited and any other failure to failed", async () => {

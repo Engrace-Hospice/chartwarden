@@ -34,7 +34,7 @@ function stubClient(label = "Alex Morgan") {
 
 describe("portal authenticated shell", () => {
   it("keeps the sign-in route chromeless", () => {
-    window.history.pushState({}, "", "/");
+    window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={stubClient()} />);
 
     expect(screen.queryByRole("navigation", { name: "Portal navigation" })).toBeNull();
@@ -43,19 +43,19 @@ describe("portal authenticated shell", () => {
   });
 
   it("provides patient navigation, context, and persistent urgent help", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/messages`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/messages`);
     render(<PortalApp client={stubClient()} />);
 
     const nav = screen.getByRole("navigation", { name: "Portal navigation" });
     expect(nav).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Home" }).getAttribute("href")).toBe(
-      `/p/${PATIENT_ID}`,
+      `/portal/p/${PATIENT_ID}`,
     );
     expect(within(nav).getByRole("link", { name: "Messages" }).getAttribute("aria-current")).toBe(
       "page",
     );
     expect(screen.getByRole("link", { name: "Switch patient" }).getAttribute("href")).toBe(
-      "/patient-picker",
+      "/portal/patient-picker",
     );
     expect(within(nav).getByRole("link", { name: "Care plan" })).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Medications" })).toBeTruthy();
@@ -73,7 +73,7 @@ describe("portal authenticated shell", () => {
   });
 
   it("uses compact account navigation and on-demand help without a selected patient", async () => {
-    window.history.pushState({}, "", "/patient-picker");
+    window.history.pushState({}, "", "/portal/patient-picker");
     render(<PortalApp client={stubClient()} />);
 
     const nav = screen.getByRole("navigation", { name: "Portal account navigation" });
@@ -137,7 +137,7 @@ describe("portal authenticated shell", () => {
 
 describe("PR5 mobile navigation regression", () => {
   it("labels icon-only links and dismisses More after navigation", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/care-plan`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/care-plan`);
     render(<PortalApp client={stubClient()} />);
     const sidebar = screen.getByRole("navigation", {
       name: "Portal navigation",
@@ -152,7 +152,7 @@ describe("PR5 mobile navigation regression", () => {
       name: "More portal destinations",
     });
     fireEvent.click(within(sheet).getByRole("link", { name: "Documents" }));
-    await waitFor(() => expect(window.location.pathname).toBe(`/p/${PATIENT_ID}/documents`));
+    await waitFor(() => expect(window.location.pathname).toBe(`/portal/p/${PATIENT_ID}/documents`));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "More portal destinations" })).toBeNull(),
     );
