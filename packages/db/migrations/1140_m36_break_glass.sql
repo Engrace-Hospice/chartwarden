@@ -1,6 +1,5 @@
 -- M36 WP 5.8 (ADR-0087, PROPOSED), slice S1 - messaging break-glass: a self-requested, time-limited, read-only grant on ONE channel, always
--- followed by a compliance review. Schema, guards and permissions only: NOTHING writes or reads these tables until S2/S3, and the tenant
--- flag messaging.break_glass (absent = off) gates the wiring.
+-- followed by a compliance review. The tenant flag messaging.break_glass (absent = off) gates opening a grant and honouring one.
 --   * message_break_glass_grant: who may read which channel until when, why (closed reason code + 20..280 char justification, reviewer-only
 --     text), and when it was ended early. Expiry is the DATABASE clock: granted_at is forced to now() on insert, revoked_at to now() on
 --     revoke, and every check compares to now() in SQL. expires_at > granted_at and expires_at <= granted_at + 24 hours are CHECKs (D2;

@@ -65866,6 +65866,7 @@ export interface operations {
                         note: string | null;
                         dueAt: string;
                         overdue: boolean;
+                        readsTruncated: boolean;
                         reads: {
                             readKind: "channel" | "messages" | "thread" | "attachment" | "search" | "ack" | "handoff" | "context";
                             resourceId: string | null;
@@ -65925,6 +65926,7 @@ export interface operations {
                         note: string | null;
                         dueAt: string;
                         overdue: boolean;
+                        readsTruncated: boolean;
                         reads: {
                             readKind: "channel" | "messages" | "thread" | "attachment" | "search" | "ack" | "handoff" | "context";
                             resourceId: string | null;

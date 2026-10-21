@@ -283,6 +283,8 @@ export function mountMessagingRoutes(
      */
     breakGlass?: {
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+      /** Whether the user still holds messaging.break_glass.invoke; checked at every read under a grant. */
+      holdsInvoke?: ((orgId: string, userId: string) => Promise<boolean>) | undefined;
     };
   } = {},
 ): void {
@@ -402,6 +404,7 @@ export function mountMessagingRoutes(
         db,
         part2Gate: _createSeamPart2ChannelGate(db),
         flags: opts.breakGlass?.flags,
+        holdsInvoke: opts.breakGlass?.holdsInvoke,
         isActiveUser: (tx, orgId, userId) => _isActiveMessagingUser(tx, orgId, userId),
       }),
       canViewChannel: service.canViewChannel,

@@ -76,6 +76,8 @@ describe("the read predicate stays on the read routes", () => {
   const routes = readFileSync(join(__dirname, "../routes/messaging-routes.ts"), "utf8");
 
   it("VIEW_CHANNEL_READ guards exactly the three read GETs and no write", () => {
+    // Every mention of the identifier: one definition and exactly three uses, so no other route (pins, search...) can be widened unnoticed.
+    expect(routes.match(/\bVIEW_CHANNEL_READ\b/g)).toHaveLength(4);
     const uses = [...routes.matchAll(/preHandler: \[([^\]]*VIEW_CHANNEL_READ[^\]]*)\]/g)];
     expect(uses).toHaveLength(3);
     // Each use sits in an app.get( block: walk back from the match to the nearest route registration call.

@@ -14,7 +14,11 @@
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { createPredicateRegistry, registerAbacRegistry } from "@chartwarden/auth";
+import {
+  createPredicateRegistry,
+  registerAbacRegistry,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 import { BREAK_GLASS_FLAG_KEY } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -36,6 +40,7 @@ import {
 } from "../src/modules/36-messaging/routes/messaging-routes";
 import {
   type LiveKit,
+  STAFF_KEYS,
   as,
   bootLiveKit,
   catalogOutbox,
@@ -47,6 +52,9 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a870001";
 const ORG_B = "22222222-2222-4222-8222-22220a870002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a87a1";
+/** The live permission check the composition root binds: a grant is honoured only while its holder still has the invoke key. */
+const holdsInvoke = async (organizationId: string, userId: string) =>
+  (await resolveActorPermissions({ organizationId, userId })).has("messaging.break_glass.invoke");
 const WHY = "Covering the on-call RN for a deteriorating patient";
 
 type Row = Record<string, unknown>;
@@ -118,7 +126,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
 
   beforeAll(async () => {
     kit = await bootLiveKit(DB_URL as string, ORG_A, ORG_B, "adr87");
-    grantee = await kit.seedUser("grantee", ORG_A);
+    grantee = await kit.seedUser("grantee", ORG_A, [...STAFF_KEYS, "messaging.break_glass.invoke"]);
     reviewer = await kit.seedUser("reviewer", ORG_A);
     other = await kit.seedUser("other", ORG_A);
     outsider = await kit.seedUser("outsider", ORG_B);
@@ -390,7 +398,12 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
         },
         ...(flag === "absent"
           ? {}
-          : { breakGlass: { flags: { forOrg: async () => ({ [BREAK_GLASS_FLAG_KEY]: flag }) } } }),
+          : {
+              breakGlass: {
+                flags: { forOrg: async () => ({ [BREAK_GLASS_FLAG_KEY]: flag }) },
+                holdsInvoke,
+              },
+            }),
       });
     const trail = (grantId: string) =>
       kit.one<{ read_kind: string; resource_id: string | null; item_count: number | null }>(
@@ -444,6 +457,15 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
       await kit.one("SELECT pg_sleep(1.3)");
       expect(await mkService(true).canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
       await drop(short);
+    });
+
+    it("a grant is not a standing right: it stops the moment its holder loses the invoke permission", async () => {
+      const lost = await kit.seedUser("lost-key", ORG_A, STAFF_KEYS);
+      const svc = mkService(true);
+      expect(await holdsInvoke(ORG_A, lost)).toBe(false);
+      const id = await seed(lost, "4 hours", "other", WHY, discipline);
+      expect(await svc.canReadChannel(ORG_A, lost, discipline)).toBe(false);
+      await drop(id);
     });
 
     it("never skips the Part 2 gate: a denied or unreachable consent check refuses a care-team channel, not another kind", async () => {
@@ -681,7 +703,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
         kek: KEK,
         outbox: catalogOutbox() as never,
         part2Gate,
-        breakGlass: { flags },
+        breakGlass: { flags, holdsInvoke },
       });
       return {
         route,
@@ -693,6 +715,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
             db: kit.handle.db,
             part2Gate,
             flags,
+            holdsInvoke,
             isActiveUser: (tx, org, user) => isActiveMessagingUser(tx, org, user),
           }),
           canViewChannel: route.canViewChannel,
@@ -915,6 +938,22 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
       expect(again.statusCode).toBe(409);
       expect(again.body).toContain("BREAK_GLASS_ALREADY_ACTIVE");
       await cleanup(first.id);
+    });
+
+    it("LIMITS: a fourth live grant is refused 429 BREAK_GLASS_LIMIT, and the flag-off 404 has the same body as any refusal", async () => {
+      stepUpFresh = true;
+      const extra = await Promise.all(
+        [1, 2, 3, 4].map(() => mkChannel(kit, "discipline", randomUUID(), [other])),
+      );
+      for (const ch of extra.slice(0, 3)) expect((await open(invoker, ch)).statusCode).toBe(201);
+      const fourth = await open(invoker, extra[3] as string);
+      expect(fourth.statusCode).toBe(429);
+      expect(fourth.body).toContain("BREAK_GLASS_LIMIT");
+      const unknown = randomUUID();
+      const refused = await open(invoker, unknown);
+      const flagOff = await open(invoker, unknown, {}, off);
+      expect(flagOff.statusCode).toBe(refused.statusCode);
+      expect(flagOff.json().error?.message).toBe(refused.json().error?.message);
     });
 
     it("MINE and END: the holder lists and ends their own grant once; someone else's is the random-id 404; a reviewer may end any", async () => {

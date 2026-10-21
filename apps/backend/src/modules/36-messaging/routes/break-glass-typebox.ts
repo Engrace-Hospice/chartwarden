@@ -98,6 +98,7 @@ export const ReviewListResponseSchema = Type.Object({ reviews: Type.Array(Review
 
 export const ReviewDetailResponseSchema = Type.Object({
   ...ReviewShape,
+  readsTruncated: Type.Boolean(),
   reads: Type.Array(
     Type.Object({
       readKind: Type.Union(BREAK_GLASS_READ_KINDS.map((k) => Type.Literal(k))),

@@ -1,5 +1,5 @@
 // M36 WP 5.8 (ADR-0087, PROPOSED), slice S1 - messaging break-glass: a self-requested, time-limited, read-only grant on one channel, always
-// reviewed afterwards (migration 1140). Constants only; nothing reads them until S2. The numeric bounds are pinned against the SQL CHECKs.
+// reviewed afterwards (migration 1140). Constants and DTOs shared by the backend and the web. The numeric bounds are pinned against the SQL CHECKs.
 
 /** Tenant flag (absent = off): off is the uniform 404 and the grant is never consulted. */
 export const BREAK_GLASS_FLAG_KEY = "messaging.break_glass";
@@ -125,6 +125,8 @@ export interface BreakGlassReadDto {
 
 export interface BreakGlassReviewDetailDto extends BreakGlassReviewDto {
   reads: BreakGlassReadDto[];
+  /** True when the grant left more reads than are listed (the first 500 are shown); `readCount` is the full count. */
+  readsTruncated: boolean;
 }
 
 /** POST /api/v1/messaging/break-glass/reviews/:id/complete. A concern needs a note. */
@@ -135,3 +137,8 @@ export interface CompleteBreakGlassReviewRequest {
 
 /** The alert raised once a review is still open this many days after its grant ended (rule `m36.break_glass.review_overdue`, system_locked). */
 export const BREAK_GLASS_REVIEW_OVERDUE_ALERT = "m36.break_glass.review_overdue";
+
+/** Abuse bounds on opening grants (one fresh step-up must not buy unlimited grants and alerts): live at once, and opened in a rolling day. */
+export const BREAK_GLASS_MAX_LIVE_PER_USER = 3;
+export const BREAK_GLASS_MAX_PER_DAY = 10;
+export const BREAK_GLASS_LIMIT_CODE = "BREAK_GLASS_LIMIT";

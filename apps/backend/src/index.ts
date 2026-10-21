@@ -4951,7 +4951,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
-            breakGlass: { flags: featureFlagReader },
+            breakGlass: {
+              flags: featureFlagReader,
+              holdsInvoke: async (organizationId, userId) =>
+                (await resolveActorPermissions({ organizationId, userId })).has(
+                  "messaging.break_glass.invoke",
+                ),
+            },
             // WP 5.5 (ADR-0083) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
             // emitter; with realtime off there are no sockets to close. Always on: a security control has no tenant flag.
             sessionDevices: {

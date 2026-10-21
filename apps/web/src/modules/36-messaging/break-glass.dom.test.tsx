@@ -64,6 +64,7 @@ const review = (over: Partial<BreakGlassReviewDto> = {}): BreakGlassReviewDto =>
 });
 const detail = (over: Partial<BreakGlassReviewDetailDto> = {}): BreakGlassReviewDetailDto => ({
   ...review(),
+  readsTruncated: false,
   reads: [
     { readKind: "channel", resourceId: null, itemCount: null, readAt: "2026-10-18T10:05:00.000Z" },
     { readKind: "messages", resourceId: null, itemCount: 12, readAt: "2026-10-18T10:06:00.000Z" },

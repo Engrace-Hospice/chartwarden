@@ -61,7 +61,9 @@ export function registerBreakGlassRoutes(app: FastifyInstance, deps: BreakGlassR
   const FLAG_ON: PreHandler = async (request) => {
     const { organizationId } = actorOf(request);
     if (!(await service.isEnabled(organizationId))) {
-      throw new NotFoundError("break-glass", "feature");
+      // The same body every other refusal to open a grant gets, so the flag is not readable from the answer.
+      const channelId = (request.body as { channelId?: unknown } | null)?.channelId;
+      throw new NotFoundError("channel", typeof channelId === "string" ? channelId : "");
     }
   };
   /** Ending: the holder (invoke) or a reviewer (review); either key suffices, and the service scopes the grant. */

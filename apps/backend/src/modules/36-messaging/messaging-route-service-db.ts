@@ -65,11 +65,11 @@ import {
 } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  ChartWardenError,
   formatMrn,
   richBodySbar,
 } from "@chartwarden/types";
@@ -460,7 +460,11 @@ const RECIPIENT_RESOLVERS: readonly AlertRecipientResolver[] = [
 function validateRoutingMap(map: RoutingMap): void {
   for (const [category, bySeverity] of Object.entries(map)) {
     if (!ALERT_CATEGORIES.includes(category as AlertCategory)) {
-      throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
+      throw new ChartWardenError(
+        "INVALID_ROUTING_MAP",
+        `unknown alert category '${category}'`,
+        422,
+      );
     }
     for (const [severity, channelsList] of Object.entries(bySeverity ?? {})) {
       if (!ALERT_SEVERITIES.includes(severity as AlertSeverity)) {
@@ -647,7 +651,11 @@ export function createDbMessagingRouteService(
      */
     throwOnSeamUnavailable?: boolean;
     /** ADR-0087 (PROPOSED): the M1 flag reader for `messaging.break_glass`. Omitted => a break-glass grant is never honoured. */
-    breakGlass?: { flags?: BreakGlassFlagReader | undefined };
+    breakGlass?: {
+      flags?: BreakGlassFlagReader | undefined;
+      /** Whether the user still holds messaging.break_glass.invoke (checked at every read under a grant). Absent => grants are not honoured. */
+      holdsInvoke?: ((orgId: string, userId: string) => Promise<boolean>) | undefined;
+    };
     /** Operational warning sink (ids only); default: silent. */
     warn?: (message: string, context: Record<string, string>) => void;
     outbox?: MessagingOutboxPort;
@@ -665,6 +673,7 @@ export function createDbMessagingRouteService(
     db,
     part2Gate,
     flags: opts.breakGlass?.flags,
+    holdsInvoke: opts.breakGlass?.holdsInvoke,
     isActiveUser: (tx, orgId, userId) => isActiveMessagingUser(tx, orgId, userId),
     warn: opts.warn,
   });
@@ -1467,7 +1476,8 @@ export function createDbMessagingRouteService(
         { organizationId: orgId, userId: input.authorUserId },
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
-          if (ch.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          if (ch.isArchived)
+            throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
           // WP 3.3: channel kind, tenant policy and section lengths; a refusal rolls the whole send back.
           await assertSbarWritable(tx, orgId, input.richBody, ch.kind);
           const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {

@@ -162484,6 +162484,7 @@
                     "note",
                     "dueAt",
                     "overdue",
+                    "readsTruncated",
                     "reads"
                   ],
                   "properties": {
@@ -162639,6 +162640,9 @@
                       "type": "string"
                     },
                     "overdue": {
+                      "type": "boolean"
+                    },
+                    "readsTruncated": {
                       "type": "boolean"
                     },
                     "reads": {
@@ -162776,6 +162780,7 @@
                     "note",
                     "dueAt",
                     "overdue",
+                    "readsTruncated",
                     "reads"
                   ],
                   "properties": {
@@ -162931,6 +162936,9 @@
                       "type": "string"
                     },
                     "overdue": {
+                      "type": "boolean"
+                    },
+                    "readsTruncated": {
                       "type": "boolean"
                     },
                     "reads": {

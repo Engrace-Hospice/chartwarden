@@ -95,6 +95,11 @@ export interface BreakGlassReadAccessDeps {
   readonly flags?: BreakGlassFlagReader | undefined;
   /** The route service's own active-user rule (a membership and a user both active). Injected to avoid an import cycle. */
   readonly isActiveUser: (tx: Tx, orgId: string, userId: string) => Promise<boolean>;
+  /**
+   * Whether the user STILL holds messaging.break_glass.invoke. A grant is not a standing right: removing the permission (or demoting the
+   * person) ends the access at the next read, not at the grant's expiry. Absent => nobody holds it (fail closed).
+   */
+  readonly holdsInvoke?: ((orgId: string, userId: string) => Promise<boolean>) | undefined;
   readonly warn?: ((message: string, context: Record<string, string>) => void) | undefined;
 }
 
@@ -146,6 +151,8 @@ export function createBreakGlassReadAccess(deps: BreakGlassReadAccessDeps): Brea
   ): Promise<boolean> {
     try {
       if (!(await flagOn(orgId))) return false;
+      // A grant is not a standing right: the holder must STILL hold the invoke permission (absent resolver => nobody does).
+      if (!deps.holdsInvoke || !(await deps.holdsInvoke(orgId, userId))) return false;
       const base = await withOrgContext(deps.db, { organizationId: orgId, userId }, async (tx) => {
         // Cheapest first: almost every denied read has no grant at all.
         const grant = requireLiveGrant

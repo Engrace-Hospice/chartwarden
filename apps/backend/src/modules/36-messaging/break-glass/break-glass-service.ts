@@ -16,7 +16,10 @@ import {
   BREAK_GLASS_FLAG_KEY,
   BREAK_GLASS_JUSTIFICATION_MAX,
   BREAK_GLASS_JUSTIFICATION_MIN,
+  BREAK_GLASS_LIMIT_CODE,
+  BREAK_GLASS_MAX_LIVE_PER_USER,
   BREAK_GLASS_MAX_MINUTES,
+  BREAK_GLASS_MAX_PER_DAY,
   BREAK_GLASS_MIN_MINUTES,
   BREAK_GLASS_NOTE_MAX,
   BREAK_GLASS_NOT_NEEDED_CODE,
@@ -205,7 +208,8 @@ interface ReviewRow {
 
 function toReviewDto(row: ReviewRow): BreakGlassReviewDto {
   const endedAt = grantEndedAt(row.expiresAt, row.revokedAt);
-  const careTeam = row.channelKind === "care_team";
+  // A care-team or bereavement channel is about ONE patient: its title can name them, so show no title and identify the subject by id.
+  const careTeam = row.channelKind === "care_team" || row.channelKind === "bereavement";
   return {
     reviewId: row.reviewId,
     grantId: row.grantId,
@@ -261,7 +265,11 @@ const reviewQuery = (tx: Tx) =>
     .innerJoin(CH, and(eq(CH.organizationId, G.organizationId), eq(CH.id, G.channelId)))
     .leftJoin(USER, eq(USER.id, G.granteeUserId));
 
-async function readsOf(tx: Tx, orgId: string, grantId: string): Promise<BreakGlassReadDto[]> {
+async function readsOf(
+  tx: Tx,
+  orgId: string,
+  grantId: string,
+): Promise<{ reads: BreakGlassReadDto[]; truncated: boolean }> {
   const rows = await tx
     .select({
       readKind: READ.readKind,
@@ -272,13 +280,14 @@ async function readsOf(tx: Tx, orgId: string, grantId: string): Promise<BreakGla
     .from(READ)
     .where(and(eq(READ.organizationId, orgId), eq(READ.grantId, grantId)))
     .orderBy(asc(READ.readAt), asc(READ.id))
-    .limit(REVIEW_READS_LIMIT);
-  return rows.map((r) => ({
+    .limit(REVIEW_READS_LIMIT + 1);
+  const reads = rows.slice(0, REVIEW_READS_LIMIT).map((r) => ({
     readKind: r.readKind as BreakGlassReadKind,
     resourceId: r.resourceId,
     itemCount: r.itemCount,
     readAt: iso(r.readAt),
   }));
+  return { reads, truncated: rows.length > REVIEW_READS_LIMIT };
 }
 
 async function detailOf(
@@ -290,7 +299,8 @@ async function detailOf(
     .where(and(eq(R.organizationId, orgId), eq(R.id, reviewId)))
     .limit(1);
   if (!row) throw new NotFoundError("break-glass review", reviewId);
-  return { ...toReviewDto(row), reads: await readsOf(tx, orgId, row.grantId) };
+  const { reads, truncated } = await readsOf(tx, orgId, row.grantId);
+  return { ...toReviewDto(row), reads, readsTruncated: truncated };
 }
 
 const grantSelect = (tx: Tx, orgId: string, grantId: string) =>
@@ -323,6 +333,8 @@ export function createBreakGlassService(deps: BreakGlassServiceDeps): BreakGlass
     async create(actor, body) {
       const input = validateCreate(body);
       const { organizationId: orgId, userId } = actor;
+      // The compliance alert rides on the outbox event: with no outbox a grant would exist unannounced. Fail closed.
+      if (!deps.outbox) throw new Error("break-glass requires the transactional outbox");
       // A member already reads the channel: nothing to request (they know they are a member, so this discloses nothing).
       if (await deps.canViewChannel(orgId, userId, input.channelId)) {
         throw new ChartWardenError(
@@ -342,6 +354,24 @@ export function createBreakGlassService(deps: BreakGlassServiceDeps): BreakGlass
           .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
           .limit(1);
         if (!channel) throw new NotFoundError("channel", input.channelId);
+        // One fresh step-up must not buy unlimited grants (and alerts): bound the live ones and a rolling day's worth.
+        const [counts] = await tx
+          .select({
+            live: sql<number>`count(*) FILTER (WHERE ${G.revokedAt} IS NULL AND ${G.expiresAt} > now())::int`,
+            day: sql<number>`count(*) FILTER (WHERE ${G.grantedAt} > now() - interval '1 day')::int`,
+          })
+          .from(G)
+          .where(and(eq(G.organizationId, orgId), eq(G.granteeUserId, userId)));
+        if (
+          Number(counts?.live ?? 0) >= BREAK_GLASS_MAX_LIVE_PER_USER ||
+          Number(counts?.day ?? 0) >= BREAK_GLASS_MAX_PER_DAY
+        ) {
+          throw new ChartWardenError(
+            BREAK_GLASS_LIMIT_CODE,
+            "too many break-glass requests; ask a colleague or a reviewer",
+            429,
+          );
+        }
         // An expired but never-revoked grant still occupies the one-open slot; end it first (renewal is a NEW justified request).
         await tx
           .update(G)
