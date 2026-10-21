@@ -41,6 +41,7 @@ describe("assertLockedRulePatchAllowed", () => {
       "noe.late_risk",
       "system.backup_failure",
       "m3.breakglass.invoked",
+      "m36.break_glass.granted",
     ]) {
       expect(
         codeOf(() => assertLockedRulePatchAllowed(ev, { recipientResolver: "broadcast" })),
@@ -250,6 +251,7 @@ describe("isSystemLockedEventType (promotes a legacy unlocked clone on update â€
       "noe.late_risk",
       "system.backup_failure",
       "m3.breakglass.invoked",
+      "m36.break_glass.granted",
     ])
       expect(isSystemLockedEventType(ev)).toBe(true);
   });

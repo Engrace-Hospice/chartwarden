@@ -67,9 +67,9 @@ import {
 } from "@chartwarden/tenancy";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
+  ChartWardenError,
   DegradedError,
   type Npi,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type {
   AdmissionStatusReader,
@@ -1541,6 +1541,7 @@ import { buildM36AckTimerArmingConsumer } from "./modules/36-messaging/outbox-co
 import { buildM36AckUnreachableNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-unreachable-notifications";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
+import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/break-glass-notifications";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
@@ -10390,6 +10391,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
           }),
           buildM36ClinicalAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // WP 5.8 (ADR-0087, PROPOSED) - one fixed-text in-app alert for the compliance reviewers when a break-glass grant is opened.
+          buildM36BreakGlassNotificationsConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+          }),
           buildM36MessageMentionConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             messaging: createDbMessagingRouteService(dbHandle.db),

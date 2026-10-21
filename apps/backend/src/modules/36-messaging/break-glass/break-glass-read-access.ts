@@ -101,6 +101,12 @@ export interface BreakGlassReadAccessDeps {
 export interface BreakGlassReadAccess {
   /** Whether a live grant lets `userId` READ `channelId`. Fail closed: any error is a denial. */
   canRead(orgId: string, userId: string, channelId: string): Promise<boolean>;
+  /**
+   * Whether `userId` could HOLD a grant on `channelId` (every rule of `canRead` except that a grant already exists): flag on, active user,
+   * not an excluded role category, not an announcement, and the Part 2 gate satisfied. Used to refuse a request, with the same answer for
+   * every reason, so a refusal never says why (it would disclose a patient's Part 2 status).
+   */
+  canHold(orgId: string, userId: string, channelId: string): Promise<boolean>;
 }
 
 export function createBreakGlassReadAccess(deps: BreakGlassReadAccessDeps): BreakGlassReadAccess {
@@ -131,55 +137,62 @@ export function createBreakGlassReadAccess(deps: BreakGlassReadAccessDeps): Brea
     }
   }
 
+  /** `requireLiveGrant` false asks "could this user hold a grant here?" (the request path); true asks "does a live grant let them read?". */
+  async function evaluate(
+    orgId: string,
+    userId: string,
+    channelId: string,
+    requireLiveGrant: boolean,
+  ): Promise<boolean> {
+    try {
+      if (!(await flagOn(orgId))) return false;
+      const base = await withOrgContext(deps.db, { organizationId: orgId, userId }, async (tx) => {
+        // Cheapest first: almost every denied read has no grant at all.
+        const grant = requireLiveGrant
+          ? await findLiveBreakGlassGrant(tx, { orgId, userId, channelId })
+          : true;
+        if (!grant) return null;
+        const activeUser = await deps.isActiveUser(tx, orgId, userId);
+        const [channel] = await tx
+          .select({ kind: CH.channelKind, subjectId: CH.subjectId })
+          .from(CH)
+          .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
+          .limit(1);
+        const excludedCategory = activeUser
+          ? (await excludedMemberUserIds(tx, orgId, [userId])).size > 0
+          : false;
+        return { activeUser, channel: channel ?? null, excludedCategory };
+      });
+      if (!base) return false;
+      const facts = {
+        flagOn: true,
+        activeUser: base.activeUser,
+        channelKind: base.channel ? String(base.channel.kind) : null,
+        liveGrant: true,
+        excludedCategory: base.excludedCategory,
+      } as const;
+      const isCareTeam = base.channel?.kind === "care_team";
+      const pre = decideBreakGlassRead({
+        ...facts,
+        part2: isCareTeam ? "allowed" : "not_applicable",
+      });
+      if (!pre.allowed || !isCareTeam) return pre.allowed;
+      // The consent seam runs outside the transaction (like every M36 visibility decision) and only for a grantee who already qualifies.
+      const subject = base.channel?.subjectId ?? null;
+      const part2 = subject ? await part2Of(orgId, userId, subject) : "denied";
+      return decideBreakGlassRead({ ...facts, part2 }).allowed;
+    } catch (error) {
+      deps.warn?.("break-glass read check failed; denying access", {
+        organizationId: orgId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+      return false;
+    }
+  }
+
   return {
-    async canRead(orgId, userId, channelId) {
-      try {
-        if (!(await flagOn(orgId))) return false;
-        const base = await withOrgContext(
-          deps.db,
-          { organizationId: orgId, userId },
-          async (tx) => {
-            // Cheapest first: almost every denied read has no grant at all.
-            const grant = await findLiveBreakGlassGrant(tx, { orgId, userId, channelId });
-            if (!grant) return null;
-            const activeUser = await deps.isActiveUser(tx, orgId, userId);
-            const [channel] = await tx
-              .select({ kind: CH.channelKind, subjectId: CH.subjectId })
-              .from(CH)
-              .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
-              .limit(1);
-            const excludedCategory = activeUser
-              ? (await excludedMemberUserIds(tx, orgId, [userId])).size > 0
-              : false;
-            return { activeUser, channel: channel ?? null, excludedCategory };
-          },
-        );
-        if (!base) return false;
-        const facts = {
-          flagOn: true,
-          activeUser: base.activeUser,
-          channelKind: base.channel ? String(base.channel.kind) : null,
-          liveGrant: true,
-          excludedCategory: base.excludedCategory,
-        } as const;
-        const isCareTeam = base.channel?.kind === "care_team";
-        const pre = decideBreakGlassRead({
-          ...facts,
-          part2: isCareTeam ? "allowed" : "not_applicable",
-        });
-        if (!pre.allowed || !isCareTeam) return pre.allowed;
-        // The consent seam runs outside the transaction (like every M36 visibility decision) and only for a grantee who already qualifies.
-        const subject = base.channel?.subjectId ?? null;
-        const part2 = subject ? await part2Of(orgId, userId, subject) : "denied";
-        return decideBreakGlassRead({ ...facts, part2 }).allowed;
-      } catch (error) {
-        deps.warn?.("break-glass read check failed; denying access", {
-          organizationId: orgId,
-          error: error instanceof Error ? error.name : "unknown",
-        });
-        return false;
-      }
-    },
+    canRead: (orgId, userId, channelId) => evaluate(orgId, userId, channelId, true),
+    canHold: (orgId, userId, channelId) => evaluate(orgId, userId, channelId, false),
   };
 }
 

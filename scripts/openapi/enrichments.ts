@@ -1,3 +1,17 @@
+// M23 Billing — the package-contract request/response schemas the route handlers `parse(...)` / return
+// (claim assemble/replace/void bodies, the empty manual-validate body, and the internal service-to-service
+// seam queries + responses). Re-exported from @chartwarden/billing via route-contracts → schemas.
+import {
+  AcceptedSubmissionsQuery,
+  AcceptedSubmissionsResponse,
+  ClaimAssembleRequest,
+  ClaimAssembleResponse,
+  ClaimDayProjectionQuery,
+  ClaimDayProjectionResponse,
+  ClaimReplaceRequest,
+  ClaimVoidRequest,
+  ManualValidateRequest,
+} from "@chartwarden/billing";
 /**
  * WardenX — OpenAPI enrichment registry (F0-T01, ADR-0032)
  * --------------------------------------------------------
@@ -15,20 +29,6 @@
  * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
  */
 import { type TSchema, Type } from "@sinclair/typebox";
-// M23 Billing — the package-contract request/response schemas the route handlers `parse(...)` / return
-// (claim assemble/replace/void bodies, the empty manual-validate body, and the internal service-to-service
-// seam queries + responses). Re-exported from @chartwarden/billing via route-contracts → schemas.
-import {
-  AcceptedSubmissionsQuery,
-  AcceptedSubmissionsResponse,
-  ClaimAssembleRequest,
-  ClaimAssembleResponse,
-  ClaimDayProjectionQuery,
-  ClaimDayProjectionResponse,
-  ClaimReplaceRequest,
-  ClaimVoidRequest,
-  ManualValidateRequest,
-} from "@chartwarden/billing";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
   ReadyResponseSchema as M1ReadyResponseSchema,
@@ -1336,6 +1336,16 @@ import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
+// M36 WP 5.8 break-glass (ADR-0087, PROPOSED).
+import {
+  CompleteReviewBodySchema as M36BreakGlassCompleteBodySchema,
+  CreateBreakGlassBodySchema as M36BreakGlassCreateBodySchema,
+  GrantListResponseSchema as M36BreakGlassGrantListResponseSchema,
+  GrantResponseSchema as M36BreakGlassGrantResponseSchema,
+  ReviewDetailResponseSchema as M36BreakGlassReviewDetailResponseSchema,
+  ReviewListResponseSchema as M36BreakGlassReviewListResponseSchema,
+  ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
@@ -1423,15 +1433,6 @@ import {
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
 // M36 WP 5.9 workforce offboarding (ADR-0084, PROPOSED).
 import { OffboardingResponseSchema as M36OffboardingResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/offboarding-typebox";
-// M36 WP 5.6 retention and legal-hold governance (ADR-0086, PROPOSED).
-import {
-  ApplyHoldBodySchema as M36ApplyHoldBodySchema,
-  HoldListResponseSchema as M36HoldListResponseSchema,
-  HoldResponseSchema as M36HoldResponseSchema,
-  ReleaseHoldBodySchema as M36ReleaseHoldBodySchema,
-  ReleasePreviewResponseSchema as M36ReleasePreviewResponseSchema,
-  RetentionOverviewResponseSchema as M36RetentionOverviewResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/retention-governance-typebox";
 // M36 WP 4.12 on-call directory.
 import {
   OnCallCoverageQuerySchema as M36OnCallCoverageQuerySchema,
@@ -1459,6 +1460,15 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+// M36 WP 5.6 retention and legal-hold governance (ADR-0086, PROPOSED).
+import {
+  ApplyHoldBodySchema as M36ApplyHoldBodySchema,
+  HoldListResponseSchema as M36HoldListResponseSchema,
+  HoldResponseSchema as M36HoldResponseSchema,
+  ReleaseHoldBodySchema as M36ReleaseHoldBodySchema,
+  ReleasePreviewResponseSchema as M36ReleasePreviewResponseSchema,
+  RetentionOverviewResponseSchema as M36RetentionOverviewResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/retention-governance-typebox";
 // M36 WP 3.8 lifecycle review queue.
 import {
   CloseReviewBodySchema as M36CloseReviewBodySchema,
@@ -10192,6 +10202,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Compliance officer: release a legal hold (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.release`, else 403 STEP_UP_REQUIRED). A reason of at least 10 characters (422) and the eligible count the officer saw in the preview; the server recomputes and a different number is 409 RELEASE_PREVIEW_STALE with nothing changed. 404 unknown or another tenant's hold, 409 ALREADY_RELEASED. Audited as data.legal_hold_released with the reason. No clock extension: messages are eligible again on their original clock",
     body: M36ReleaseHoldBodySchema,
     response: M36HoldResponseSchema,
+  },
+
+  // break-glass (WP 5.8, ADR-0087 PROPOSED)
+  "POST /api/v1/messaging/break-glass": {
+    summary:
+      "Open a self-approved, time-limited, READ-ONLY break-glass grant on one channel the caller cannot otherwise read (messaging.break_glass.invoke + a fresh step-up for `messaging.break_glass.invoke`, else 403 STEP_UP_REQUIRED; 404 while the tenant flag messaging.break_glass is off). A closed reason code, a justification of 20 to 280 characters (reviewer-only) and a duration of 15 to 1440 minutes (default 240, the database caps it at 24 hours; the clock is the database's). Written with its mandatory review row in one transaction, with the m36.break_glass.granted outbox event (ids and instants only) and a warn alert to the review-permission holders. The grant opens only the channel detail, the message list and the thread of that one channel, over REST; it never writes, never passes the Part 2 gate and ends at expiry or when revoked. Every refusal (unknown or another tenant's channel, an excluded role category, a Part 2 patient's channel, an inactive user) is the same 404; 409 BREAK_GLASS_NOT_NEEDED when the caller can already read it, 409 BREAK_GLASS_ALREADY_ACTIVE when a live grant exists",
+    body: M36BreakGlassCreateBodySchema,
+    response: M36BreakGlassGrantResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/break-glass/mine": {
+    summary:
+      "The caller's own break-glass grants, newest first (messaging.break_glass.invoke): id, channel id and kind, reason code, instants and a status (active, expired, revoked) judged on the database clock. No justification and no message. Not cached",
+    response: M36BreakGlassGrantListResponseSchema,
+  },
+  "POST /api/v1/messaging/break-glass/:id/end": {
+    summary:
+      "End a break-glass grant now (the holder with messaging.break_glass.invoke, or a reviewer with messaging.break_glass.review; no step-up). Idempotent: an already ended grant is returned unchanged. Someone else's grant (unless the caller is a reviewer) and an unknown id are the same 404. Publishes m36.break_glass.revoked once",
+    response: M36BreakGlassGrantResponseSchema,
+  },
+  "GET /api/v1/messaging/break-glass/reviews": {
+    summary:
+      "Compliance review queue (messaging.break_glass.review): status pending (default, oldest first), reviewed or all. Each row: holder, channel kind (title and patient id only where it is safe), reason code, the justification (reviewer-only text), when the grant ended, how many reads it left, the due time (one business day after it ends, a default pending compliance confirmation) and whether it is overdue. Read-audited. Not cached",
+    query: M36BreakGlassReviewsQuerySchema,
+    response: M36BreakGlassReviewListResponseSchema,
+  },
+  "GET /api/v1/messaging/break-glass/reviews/:id": {
+    summary:
+      "One break-glass review with the audited reads the grant left (messaging.break_glass.review): read kind, optional resource id, item count and instant. Ids and times only, never a message body. Read-audited. Another tenant's and an unknown review are the same 404. Not cached",
+    response: M36BreakGlassReviewDetailResponseSchema,
+  },
+  "POST /api/v1/messaging/break-glass/reviews/:id/complete": {
+    summary:
+      "Complete a break-glass review (messaging.break_glass.review) with the outcome reviewed or concern (a concern needs a note, 422). Never the grantee's own grant (403), only after the grant has ended (409 BREAK_GLASS_STILL_ACTIVE), once (409 BREAK_GLASS_REVIEW_DONE). Publishes m36.break_glass.reviewed (ids and the outcome only, never the note)",
+    body: M36BreakGlassCompleteBodySchema,
+    response: M36BreakGlassReviewDetailResponseSchema,
   },
 
   // alerts (§4.2)

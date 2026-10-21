@@ -1,3 +1,13 @@
+import {
+  BREAK_GLASS_REASON_CODES,
+  BREAK_GLASS_REVIEW_OUTCOMES,
+  CHART_PROMOTION_TARGET_KINDS,
+  CHART_PROMOTION_TARGET_MODULES,
+  HANDOFF_UNACCEPTED_CAUSES,
+  MEDICATION_QUESTION_UNROUTED_REASONS,
+  type ModuleEventContribution,
+  TASK_STATUSES,
+} from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/events-by-m36.ts — M36's transactional-outbox event catalog
 // contribution (§8.1.2, #205 hard-half follow-up).
 //
@@ -29,14 +39,6 @@
 // row carries the user id, not the membership); `providerEntityId` / `sourceAggregateId` are read from
 // `alert.payload` when the emitting module put them there, else null.
 import { type TSchema, Type } from "@sinclair/typebox";
-import {
-  CHART_PROMOTION_TARGET_KINDS,
-  CHART_PROMOTION_TARGET_MODULES,
-  HANDOFF_UNACCEPTED_CAUSES,
-  MEDICATION_QUESTION_UNROUTED_REASONS,
-  type ModuleEventContribution,
-  TASK_STATUSES,
-} from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const uuidString = Type.String({
@@ -55,6 +57,8 @@ const promotionTargetKind = Type.Union(
   CHART_PROMOTION_TARGET_KINDS.map((kind) => Type.Literal(kind)),
 );
 const count = Type.Integer({ minimum: 0 });
+const breakGlassReason = Type.Union(BREAK_GLASS_REASON_CODES.map((code) => Type.Literal(code)));
+const breakGlassOutcome = Type.Union(BREAK_GLASS_REVIEW_OUTCOMES.map((o) => Type.Literal(o)));
 const taskStatus = Type.Union(TASK_STATUSES.map((status) => Type.Literal(status)));
 const recipientKind = Type.Union([
   Type.Literal("on_call"),
@@ -545,6 +549,67 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     // WP 4.5 (ADR-0071) — m36 ADDED: a failed route to an acknowledgment request's assignee is handled by
     // `outbox-consumers/ack-delivery-failure.ts` (only for the alert types that carry a request).
     declaredConsumers: ["m19", "m20", "m26", "m36"],
+    isOutboxOnly: true,
+  },
+
+  // WP 5.8 (ADR-0087, PROPOSED): break-glass. PHI-free by construction: ids, the closed reason code, the review outcome and instants. Never the
+  // justification, a review note, a name or a message. Each is published in the same transaction as the write.
+  {
+    eventName: "m36.break_glass.granted",
+    moduleOwner: "m36",
+    description:
+      "A user opened a self-approved, time-limited, read-only break-glass grant on one channel (WP 5.8, ADR-0087). Ids, the closed reason code and two instants; never the justification. Published in the same transaction as the grant and its mandatory review row. M36 tells the compliance reviewers with one generic in-app alert (rule m36.break_glass.granted, the holders of messaging.break_glass.review, the tenant administrators when nobody holds it).",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        grantId: id,
+        channelId: id,
+        granteeUserId: id,
+        reasonCode: breakGlassReason,
+        grantedAt: isoInstant,
+        expiresAt: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.break_glass.revoked",
+    moduleOwner: "m36",
+    description:
+      "A break-glass grant was ended early, by its holder or by a reviewer (WP 5.8, ADR-0087). Ids and one instant. Published in the same transaction as the revoke; a repeat publishes nothing. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        grantId: id,
+        channelId: id,
+        granteeUserId: id,
+        revokedByUserId: id,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.break_glass.reviewed",
+    moduleOwner: "m36",
+    description:
+      "A compliance reviewer completed the post-review of a break-glass grant (WP 5.8, ADR-0087). Ids, the outcome (reviewed or concern) and one instant; never the note. Published in the same transaction as the review. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        grantId: id,
+        reviewId: id,
+        reviewerUserId: id,
+        outcome: breakGlassOutcome,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
 ];

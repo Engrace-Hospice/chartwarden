@@ -151,6 +151,8 @@ import { createUnacknowledgedService as _createUnacknowledgedService } from "./a
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
+import { createBreakGlassReadAccess as _createBreakGlassReadAccess } from "./break-glass/break-glass-read-access";
+import { createBreakGlassService as _createBreakGlassService } from "./break-glass/break-glass-service";
 import type { buildClinicalLinkDeps as _buildClinicalLinkDeps } from "./clinical-link/binding";
 import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from "./delivery-target/delivery-target-reader-db";
 import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
@@ -162,15 +164,23 @@ import {
 } from "./global-search/mount";
 import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
 import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
+import {
+  type RetentionGovernanceDeps as _RetentionGovernanceDeps,
+  createRetentionGovernanceService as _createRetentionGovernanceService,
+} from "./governance/retention-governance-service";
 import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/binding";
 import { createMentionActorNameResolver as _createMentionActorNameResolver } from "./mention-non-member-service-db";
-import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
+import {
+  createDbMessagingRouteService as _createDbMessagingRouteService,
+  isActiveMessagingUser as _isActiveMessagingUser,
+} from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import {
   type OffboardingBindingInput as _OffboardingBindingInput,
   buildOffboardingService as _buildOffboardingService,
 } from "./offboarding/binding";
 import type { buildOnCallDirectoryDeps as _buildOnCallDirectoryDeps } from "./oncall-directory/binding";
+import { createSeamPart2ChannelGate as _createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
 import type { AckRouteDeps as _AckRouteDeps } from "./routes/ack-routes";
 import {
@@ -179,6 +189,7 @@ import {
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
+import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
@@ -187,15 +198,11 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
-import {
-  type RetentionGovernanceDeps as _RetentionGovernanceDeps,
-  createRetentionGovernanceService as _createRetentionGovernanceService,
-} from "./governance/retention-governance-service";
 import { registerOffboardingRoutes as _registerOffboardingRoutes } from "./routes/offboarding-routes";
-import { registerRetentionGovernanceRoutes as _registerRetentionGovernanceRoutes } from "./routes/retention-governance-routes";
 import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
 import type { PresenceRouteDeps } from "./routes/presence-routes";
 import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
+import { registerRetentionGovernanceRoutes as _registerRetentionGovernanceRoutes } from "./routes/retention-governance-routes";
 import type { ReviewRouteDeps as _ReviewRouteDeps } from "./routes/review-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import { registerSessionDeviceRoutes as _registerSessionDeviceRoutes } from "./routes/session-device-routes";
@@ -274,7 +281,9 @@ export function mountMessagingRoutes(
      * WP 5.8 (ADR-0087, PROPOSED): the M1 flag reader for `messaging.break_glass`. Omitted => a break-glass grant is never honoured
      * (the read routes keep membership-only visibility).
      */
-    breakGlass?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
+    breakGlass?: {
+      flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+    };
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -382,6 +391,22 @@ export function mountMessagingRoutes(
       service: _createRetentionGovernanceService({ db, ...opts.retentionGovernance }),
     });
   }
+  // WP 5.8 (ADR-0087, PROPOSED) - break-glass: open, list, end and review a self-approved, time-limited, read-only grant on one channel.
+  // Opening is behind the tenant flag `messaging.break_glass`; ending and reviewing never are (a grant that exists stays accountable).
+  _registerBreakGlassRoutes(app, {
+    service: _createBreakGlassService({
+      db,
+      outbox: opts.outbox,
+      flags: opts.breakGlass?.flags,
+      access: _createBreakGlassReadAccess({
+        db,
+        part2Gate: _createSeamPart2ChannelGate(db),
+        flags: opts.breakGlass?.flags,
+        isActiveUser: (tx, orgId, userId) => _isActiveMessagingUser(tx, orgId, userId),
+      }),
+      canViewChannel: service.canViewChannel,
+    }),
+  });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -429,6 +454,11 @@ export {
   M36_BREAKGLASS_ALERT_CONSUMER,
   buildM36BreakGlassAlertConsumer,
 } from "./outbox-consumers/breakglass-alert";
+// WP 5.8 (ADR-0087): M36's own break-glass grant -> a generic in-app alert for the reviewers.
+export {
+  M36_BREAK_GLASS_NOTIFICATION_CONSUMER,
+  buildM36BreakGlassNotificationsConsumer,
+} from "./outbox-consumers/break-glass-notifications";
 
 // GAP-101 — out-of-band delivery workers (the §4.4 send_push/sms/voice/email sweeps) + the §4.9 vendor webhooks
 // mounted over a real `delivery_reconcile` service (see ./delivery/*).

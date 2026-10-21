@@ -13830,6 +13830,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/break-glass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open a self-approved, time-limited, READ-ONLY break-glass grant on one channel the caller cannot otherwise read (messaging.break_glass.invoke + a fresh step-up for `messaging.break_glass.invoke`, else 403 STEP_UP_REQUIRED; 404 while the tenant flag messaging.break_glass is off). A closed reason code, a justification of 20 to 280 characters (reviewer-only) and a duration of 15 to 1440 minutes (default 240, the database caps it at 24 hours; the clock is the database's). Written with its mandatory review row in one transaction, with the m36.break_glass.granted outbox event (ids and instants only) and a warn alert to the review-permission holders. The grant opens only the channel detail, the message list and the thread of that one channel, over REST; it never writes, never passes the Part 2 gate and ends at expiry or when revoked. Every refusal (unknown or another tenant's channel, an excluded role category, a Part 2 patient's channel, an inactive user) is the same 404; 409 BREAK_GLASS_NOT_NEEDED when the caller can already read it, 409 BREAK_GLASS_ALREADY_ACTIVE when a live grant exists */
+        post: operations["postApiV1MessagingBreakglass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/break-glass/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End a break-glass grant now (the holder with messaging.break_glass.invoke, or a reviewer with messaging.break_glass.review; no step-up). Idempotent: an already ended grant is returned unchanged. Someone else's grant (unless the caller is a reviewer) and an unknown id are the same 404. Publishes m36.break_glass.revoked once */
+        post: operations["postApiV1MessagingBreakglassByIdEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/break-glass/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own break-glass grants, newest first (messaging.break_glass.invoke): id, channel id and kind, reason code, instants and a status (active, expired, revoked) judged on the database clock. No justification and no message. Not cached */
+        get: operations["getApiV1MessagingBreakglassMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/break-glass/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance review queue (messaging.break_glass.review): status pending (default, oldest first), reviewed or all. Each row: holder, channel kind (title and patient id only where it is safe), reason code, the justification (reviewer-only text), when the grant ended, how many reads it left, the due time (one business day after it ends, a default pending compliance confirmation) and whether it is overdue. Read-audited. Not cached */
+        get: operations["getApiV1MessagingBreakglassReviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/break-glass/reviews/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One break-glass review with the audited reads the grant left (messaging.break_glass.review): read kind, optional resource id, item count and instant. Ids and times only, never a message body. Read-audited. Another tenant's and an unknown review are the same 404. Not cached */
+        get: operations["getApiV1MessagingBreakglassReviewsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/break-glass/reviews/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete a break-glass review (messaging.break_glass.review) with the outcome reviewed or concern (a concern needs a note, 422). Never the grantee's own grant (403), only after the grant has ended (409 BREAK_GLASS_STILL_ACTIVE), once (409 BREAK_GLASS_REVIEW_DONE). Publishes m36.break_glass.reviewed (ids and the outcome only, never the note) */
+        post: operations["postApiV1MessagingBreakglassReviewsByIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels": {
         parameters: {
             query?: never;
@@ -65563,6 +65665,272 @@ export interface operations {
                             availability: "uploading" | "scanning" | "available" | "blocked";
                             attached: boolean;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingBreakglass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channelId: string;
+                    reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                    justification: string;
+                    durationMinutes?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        channelKind: string;
+                        reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                        grantedAt: string;
+                        expiresAt: string;
+                        revokedAt: string | null;
+                        status: "active" | "expired" | "revoked";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingBreakglassByIdEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        channelKind: string;
+                        reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                        grantedAt: string;
+                        expiresAt: string;
+                        revokedAt: string | null;
+                        status: "active" | "expired" | "revoked";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingBreakglassMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        grants: {
+                            id: string;
+                            channelId: string;
+                            channelKind: string;
+                            reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                            grantedAt: string;
+                            expiresAt: string;
+                            revokedAt: string | null;
+                            status: "active" | "expired" | "revoked";
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingBreakglassReviews: {
+        parameters: {
+            query?: {
+                status?: "pending" | "reviewed" | "all";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reviews: {
+                            reviewId: string;
+                            grantId: string;
+                            granteeUserId: string;
+                            granteeName: string | null;
+                            channelId: string;
+                            channelKind: string;
+                            channelTitle: string | null;
+                            patientId: string | null;
+                            reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                            justification: string;
+                            grantedAt: string;
+                            endedAt: string;
+                            stillActive: boolean;
+                            readCount: number;
+                            status: "pending" | "reviewed";
+                            outcome: ("reviewed" | "concern") | null;
+                            reviewedAt: string | null;
+                            reviewerUserId: string | null;
+                            note: string | null;
+                            dueAt: string;
+                            overdue: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingBreakglassReviewsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reviewId: string;
+                        grantId: string;
+                        granteeUserId: string;
+                        granteeName: string | null;
+                        channelId: string;
+                        channelKind: string;
+                        channelTitle: string | null;
+                        patientId: string | null;
+                        reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                        justification: string;
+                        grantedAt: string;
+                        endedAt: string;
+                        stillActive: boolean;
+                        readCount: number;
+                        status: "pending" | "reviewed";
+                        outcome: ("reviewed" | "concern") | null;
+                        reviewedAt: string | null;
+                        reviewerUserId: string | null;
+                        note: string | null;
+                        dueAt: string;
+                        overdue: boolean;
+                        reads: {
+                            readKind: "channel" | "messages" | "thread" | "attachment" | "search" | "ack" | "handoff" | "context";
+                            resourceId: string | null;
+                            itemCount: number | null;
+                            readAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingBreakglassReviewsByIdComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "reviewed" | "concern";
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reviewId: string;
+                        grantId: string;
+                        granteeUserId: string;
+                        granteeName: string | null;
+                        channelId: string;
+                        channelKind: string;
+                        channelTitle: string | null;
+                        patientId: string | null;
+                        reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
+                        justification: string;
+                        grantedAt: string;
+                        endedAt: string;
+                        stillActive: boolean;
+                        readCount: number;
+                        status: "pending" | "reviewed";
+                        outcome: ("reviewed" | "concern") | null;
+                        reviewedAt: string | null;
+                        reviewerUserId: string | null;
+                        note: string | null;
+                        dueAt: string;
+                        overdue: boolean;
+                        reads: {
+                            readKind: "channel" | "messages" | "thread" | "attachment" | "search" | "ack" | "handoff" | "context";
+                            resourceId: string | null;
+                            itemCount: number | null;
+                            readAt: string;
+                        }[];
                     };
                 };
             };

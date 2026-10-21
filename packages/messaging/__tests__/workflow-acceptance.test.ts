@@ -217,6 +217,7 @@ describe("§7.4 tenant cannot disable system_locked rules", () => {
         "m19.oncall.coverage_gap_detected",
         "m20.safety.coverage_gap_detected",
         "m3.breakglass.invoked",
+        "m36.break_glass.granted",
         "m37.shift.rn_uncovered",
         "noe.late_risk",
         "system.backup_failure",

@@ -161807,6 +161807,1253 @@
         }
       }
     },
+    "/api/v1/messaging/break-glass": {
+      "post": {
+        "operationId": "postApiV1MessagingBreakglass",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Open a self-approved, time-limited, READ-ONLY break-glass grant on one channel the caller cannot otherwise read (messaging.break_glass.invoke + a fresh step-up for `messaging.break_glass.invoke`, else 403 STEP_UP_REQUIRED; 404 while the tenant flag messaging.break_glass is off). A closed reason code, a justification of 20 to 280 characters (reviewer-only) and a duration of 15 to 1440 minutes (default 240, the database caps it at 24 hours; the clock is the database's). Written with its mandatory review row in one transaction, with the m36.break_glass.granted outbox event (ids and instants only) and a warn alert to the review-permission holders. The grant opens only the channel detail, the message list and the thread of that one channel, over REST; it never writes, never passes the Part 2 gate and ends at expiry or when revoked. Every refusal (unknown or another tenant's channel, an excluded role category, a Part 2 patient's channel, an inactive user) is the same 404; 409 BREAK_GLASS_NOT_NEEDED when the caller can already read it, 409 BREAK_GLASS_ALREADY_ACTIVE when a live grant exists",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "channelId",
+                    "channelKind",
+                    "reasonCode",
+                    "grantedAt",
+                    "expiresAt",
+                    "revokedAt",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelKind": {
+                      "type": "string"
+                    },
+                    "reasonCode": {
+                      "anyOf": [
+                        {
+                          "const": "patient_safety",
+                          "type": "string"
+                        },
+                        {
+                          "const": "covering_colleague",
+                          "type": "string"
+                        },
+                        {
+                          "const": "record_correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "grantedAt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "channelId",
+                  "reasonCode",
+                  "justification"
+                ],
+                "properties": {
+                  "channelId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "patient_safety",
+                        "type": "string"
+                      },
+                      {
+                        "const": "covering_colleague",
+                        "type": "string"
+                      },
+                      {
+                        "const": "record_correction",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "justification": {
+                    "minLength": 20,
+                    "maxLength": 480,
+                    "type": "string"
+                  },
+                  "durationMinutes": {
+                    "minimum": 15,
+                    "maximum": 1440,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/break-glass/{id}/end": {
+      "post": {
+        "operationId": "postApiV1MessagingBreakglassByIdEnd",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "End a break-glass grant now (the holder with messaging.break_glass.invoke, or a reviewer with messaging.break_glass.review; no step-up). Idempotent: an already ended grant is returned unchanged. Someone else's grant (unless the caller is a reviewer) and an unknown id are the same 404. Publishes m36.break_glass.revoked once",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "channelId",
+                    "channelKind",
+                    "reasonCode",
+                    "grantedAt",
+                    "expiresAt",
+                    "revokedAt",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelKind": {
+                      "type": "string"
+                    },
+                    "reasonCode": {
+                      "anyOf": [
+                        {
+                          "const": "patient_safety",
+                          "type": "string"
+                        },
+                        {
+                          "const": "covering_colleague",
+                          "type": "string"
+                        },
+                        {
+                          "const": "record_correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "grantedAt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/break-glass/mine": {
+      "get": {
+        "operationId": "getApiV1MessagingBreakglassMine",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own break-glass grants, newest first (messaging.break_glass.invoke): id, channel id and kind, reason code, instants and a status (active, expired, revoked) judged on the database clock. No justification and no message. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "grants"
+                  ],
+                  "properties": {
+                    "grants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "channelId",
+                          "channelKind",
+                          "reasonCode",
+                          "grantedAt",
+                          "expiresAt",
+                          "revokedAt",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "channelKind": {
+                            "type": "string"
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "const": "patient_safety",
+                                "type": "string"
+                              },
+                              {
+                                "const": "covering_colleague",
+                                "type": "string"
+                              },
+                              {
+                                "const": "record_correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "grantedAt": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/break-glass/reviews": {
+      "get": {
+        "operationId": "getApiV1MessagingBreakglassReviews",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance review queue (messaging.break_glass.review): status pending (default, oldest first), reviewed or all. Each row: holder, channel kind (title and patient id only where it is safe), reason code, the justification (reviewer-only text), when the grant ended, how many reads it left, the due time (one business day after it ends, a default pending compliance confirmation) and whether it is overdue. Read-audited. Not cached",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewed",
+                  "type": "string"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reviews"
+                  ],
+                  "properties": {
+                    "reviews": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "reviewId",
+                          "grantId",
+                          "granteeUserId",
+                          "granteeName",
+                          "channelId",
+                          "channelKind",
+                          "channelTitle",
+                          "patientId",
+                          "reasonCode",
+                          "justification",
+                          "grantedAt",
+                          "endedAt",
+                          "stillActive",
+                          "readCount",
+                          "status",
+                          "outcome",
+                          "reviewedAt",
+                          "reviewerUserId",
+                          "note",
+                          "dueAt",
+                          "overdue"
+                        ],
+                        "properties": {
+                          "reviewId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "grantId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "granteeUserId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "granteeName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channelId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "channelKind": {
+                            "type": "string"
+                          },
+                          "channelTitle": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "const": "patient_safety",
+                                "type": "string"
+                              },
+                              {
+                                "const": "covering_colleague",
+                                "type": "string"
+                              },
+                              {
+                                "const": "record_correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "justification": {
+                            "type": "string"
+                          },
+                          "grantedAt": {
+                            "type": "string"
+                          },
+                          "endedAt": {
+                            "type": "string"
+                          },
+                          "stillActive": {
+                            "type": "boolean"
+                          },
+                          "readCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reviewed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "reviewed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "concern",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reviewedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reviewerUserId": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "note": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "overdue": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/break-glass/reviews/{id}": {
+      "get": {
+        "operationId": "getApiV1MessagingBreakglassReviewsById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One break-glass review with the audited reads the grant left (messaging.break_glass.review): read kind, optional resource id, item count and instant. Ids and times only, never a message body. Read-audited. Another tenant's and an unknown review are the same 404. Not cached",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reviewId",
+                    "grantId",
+                    "granteeUserId",
+                    "granteeName",
+                    "channelId",
+                    "channelKind",
+                    "channelTitle",
+                    "patientId",
+                    "reasonCode",
+                    "justification",
+                    "grantedAt",
+                    "endedAt",
+                    "stillActive",
+                    "readCount",
+                    "status",
+                    "outcome",
+                    "reviewedAt",
+                    "reviewerUserId",
+                    "note",
+                    "dueAt",
+                    "overdue",
+                    "reads"
+                  ],
+                  "properties": {
+                    "reviewId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "grantId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "granteeUserId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "granteeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "channelId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelKind": {
+                      "type": "string"
+                    },
+                    "channelTitle": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reasonCode": {
+                      "anyOf": [
+                        {
+                          "const": "patient_safety",
+                          "type": "string"
+                        },
+                        {
+                          "const": "covering_colleague",
+                          "type": "string"
+                        },
+                        {
+                          "const": "record_correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "grantedAt": {
+                      "type": "string"
+                    },
+                    "endedAt": {
+                      "type": "string"
+                    },
+                    "stillActive": {
+                      "type": "boolean"
+                    },
+                    "readCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "reviewed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "concern",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewerUserId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "overdue": {
+                      "type": "boolean"
+                    },
+                    "reads": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "readKind",
+                          "resourceId",
+                          "itemCount",
+                          "readAt"
+                        ],
+                        "properties": {
+                          "readKind": {
+                            "anyOf": [
+                              {
+                                "const": "channel",
+                                "type": "string"
+                              },
+                              {
+                                "const": "messages",
+                                "type": "string"
+                              },
+                              {
+                                "const": "thread",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attachment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "search",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoff",
+                                "type": "string"
+                              },
+                              {
+                                "const": "context",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resourceId": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemCount": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "readAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/break-glass/reviews/{id}/complete": {
+      "post": {
+        "operationId": "postApiV1MessagingBreakglassReviewsByIdComplete",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Complete a break-glass review (messaging.break_glass.review) with the outcome reviewed or concern (a concern needs a note, 422). Never the grantee's own grant (403), only after the grant has ended (409 BREAK_GLASS_STILL_ACTIVE), once (409 BREAK_GLASS_REVIEW_DONE). Publishes m36.break_glass.reviewed (ids and the outcome only, never the note)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reviewId",
+                    "grantId",
+                    "granteeUserId",
+                    "granteeName",
+                    "channelId",
+                    "channelKind",
+                    "channelTitle",
+                    "patientId",
+                    "reasonCode",
+                    "justification",
+                    "grantedAt",
+                    "endedAt",
+                    "stillActive",
+                    "readCount",
+                    "status",
+                    "outcome",
+                    "reviewedAt",
+                    "reviewerUserId",
+                    "note",
+                    "dueAt",
+                    "overdue",
+                    "reads"
+                  ],
+                  "properties": {
+                    "reviewId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "grantId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "granteeUserId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "granteeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "channelId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelKind": {
+                      "type": "string"
+                    },
+                    "channelTitle": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reasonCode": {
+                      "anyOf": [
+                        {
+                          "const": "patient_safety",
+                          "type": "string"
+                        },
+                        {
+                          "const": "covering_colleague",
+                          "type": "string"
+                        },
+                        {
+                          "const": "record_correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "grantedAt": {
+                      "type": "string"
+                    },
+                    "endedAt": {
+                      "type": "string"
+                    },
+                    "stillActive": {
+                      "type": "boolean"
+                    },
+                    "readCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "reviewed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "concern",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewerUserId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "overdue": {
+                      "type": "boolean"
+                    },
+                    "reads": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "readKind",
+                          "resourceId",
+                          "itemCount",
+                          "readAt"
+                        ],
+                        "properties": {
+                          "readKind": {
+                            "anyOf": [
+                              {
+                                "const": "channel",
+                                "type": "string"
+                              },
+                              {
+                                "const": "messages",
+                                "type": "string"
+                              },
+                              {
+                                "const": "thread",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attachment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "search",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoff",
+                                "type": "string"
+                              },
+                              {
+                                "const": "context",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resourceId": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemCount": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "readAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "outcome"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "reviewed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "concern",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "note": {
+                    "maxLength": 1200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels": {
       "get": {
         "operationId": "getApiV1MessagingChannels",

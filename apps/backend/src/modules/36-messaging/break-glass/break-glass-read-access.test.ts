@@ -56,7 +56,9 @@ describe("decideBreakGlassRead", () => {
     expect(verdict({ flagOn: false, activeUser: false, channelKind: null, liveGrant: false })).toBe(
       "flag_off",
     );
-    expect(verdict({ activeUser: false, channelKind: null, liveGrant: false })).toBe("inactive_user");
+    expect(verdict({ activeUser: false, channelKind: null, liveGrant: false })).toBe(
+      "inactive_user",
+    );
     expect(verdict({ channelKind: null, liveGrant: false })).toBe("no_channel");
   });
 
