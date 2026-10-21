@@ -11,6 +11,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   bodyEnvelopeScheme,
   deriveOrgDek,
+  deriveOrgReadDeks,
   loadMessagingKek,
   messageBodySha256,
   openMessageBody,
@@ -116,6 +117,16 @@ export function createMessageBodyCipher(
     }
     return dek;
   };
+  // Every DEK a v1 body may have been sealed under (current + legacy HKDF label), for OPEN only.
+  const legacyReadDeks = new Map<string, readonly Buffer[]>();
+  const legacyReadDeksFor = (orgId: string): readonly Buffer[] => {
+    let deks = legacyReadDeks.get(orgId);
+    if (!deks) {
+      deks = deriveOrgReadDeks(getKek(), orgId);
+      legacyReadDeks.set(orgId, deks);
+    }
+    return deks;
+  };
   const ownCache = opts.keys ? createRingDekCache(opts.keys) : undefined;
   const ring = (): RingDekCache => {
     const cache = opts.ringCache ?? ownCache ?? sharedRingDekCache();
@@ -152,13 +163,13 @@ export function createMessageBodyCipher(
       const scheme = bodyEnvelopeScheme(cipher);
       // Key lookup failures are infrastructure (BodyKeyUnavailableError); only the GCM open below is a statement about the bytes.
       if (scheme === "legacy") {
-        let dek: Buffer;
+        let deks: readonly Buffer[];
         try {
-          dek = legacyDek(orgId);
+          deks = legacyReadDeksFor(orgId);
         } catch (err) {
           throw new BodyKeyUnavailableError(err);
         }
-        return openMessageBody(cipher, dek);
+        return openMessageBody(cipher, deks);
       }
       if (scheme === "ring") {
         let dek: RingBodyDek;

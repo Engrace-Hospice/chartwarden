@@ -19,6 +19,7 @@
  *     bun run test:m5:ssn-identifier:live
  */
 import { Buffer } from "node:buffer";
+import { createHmac, hkdfSync } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { SSN_DEFAULT_GRANTS } from "@chartwarden/auth";
@@ -199,7 +200,9 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
     await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'c1_platform'");
-    platformHandle = createDbClient({ connectionString: urlAs("chartwarden_admin", "c1_platform") });
+    platformHandle = createDbClient({
+      connectionString: urlAs("chartwarden_admin", "c1_platform"),
+    });
     await admin.query("ALTER ROLE chartwarden_destruction LOGIN PASSWORD 'c1_destroy'");
     destructionHandle = createDbClient({
       connectionString: urlAs("chartwarden_destruction", "c1_destroy"),
@@ -588,6 +591,58 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
       [ORG_A],
     );
     expect(versions.rows.map((r) => r.v)).toEqual(["v1", "v2"]);
+  });
+
+  // ── 7b. ChartWarden label rename, release 1: the matcher finds a blind index stored under EITHER label ──────────
+  // LEGACY(wardenx->chartwarden): the writer still emits the legacy "wardenx:" label (every row above proves that); this
+  // rewrites one row's index under the NEW "chartwarden:" label, exactly what the future writer flip would leave behind,
+  // and proves the REAL probe (key ring -> HKDF -> `IN (...)` on Postgres) still blocks the duplicate instead of missing it.
+  it("a blind index stored under the NEW chartwarden label is still found (no duplicate chart), and a different SSN is not a hit", async () => {
+    const dob = "1961-01-01";
+    const pid = admitted(
+      await service.admit(
+        ORG_A,
+        {
+          lastName: "Label",
+          firstName: "Flip",
+          dob,
+          administrativeSex: "female",
+          ssn: "444-55-6666",
+        },
+        STAFF,
+      ),
+    );
+    const [row] = await identifierRow(pid);
+    const dek = await getTenantKeyProvider().dekForOrgVersion(ORG_A, row.value_dek_version);
+    const indexKey = Buffer.from(
+      hkdfSync(
+        "sha256",
+        dek.key,
+        Buffer.alloc(0),
+        Buffer.from(`chartwarden:m5:ssn-blind-index:v1:${ORG_A}`),
+        32,
+      ),
+    );
+    const newLabelToken = createHmac("sha256", indexKey).update("ssn:444556666", "utf8").digest();
+    expect(newLabelToken.equals(row.value_blind_index)).toBe(false);
+    await admin.query("UPDATE patient_identifier SET value_blind_index=$1 WHERE id=$2", [
+      newLabelToken,
+      row.id,
+    ]);
+    const before = await patientCount(ORG_A);
+    const blocked = await service.admit(
+      ORG_A,
+      { lastName: "Dup", firstName: "Flip", dob, administrativeSex: "female", ssn: "444556666" },
+      STAFF,
+    );
+    expect(blocked).toMatchObject({ outcome: "hard_block", existingPatientId: pid });
+    expect(await patientCount(ORG_A)).toBe(before);
+    const other = await service.admit(
+      ORG_A,
+      { lastName: "Other", firstName: "Flip", dob, administrativeSex: "female", ssn: "444556667" },
+      STAFF,
+    );
+    expect(other.outcome).not.toBe("hard_block");
   });
 
   // ── 8. the eraser and the new CHECK ────────────────────────────────────────────────────────────────

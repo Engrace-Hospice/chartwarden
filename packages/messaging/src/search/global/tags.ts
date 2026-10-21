@@ -1,5 +1,5 @@
 // ADR-0058 decisions 2 and 3 - the per-tenant search key and the truncated HMAC tags.
-//   K_search = HKDF-SHA256(ikm = DEK, salt = "", info = "wardenx-message-search:" || orgId || ":" || ringVersionLabel)
+//   K_search = HKDF-SHA256(ikm = DEK, salt = "", info = SEARCH_LABELS_WRITE.searchInfoPrefix ("wardenx-message-search:" until the flip) || orgId || ":" || ringVersionLabel)
 // The version part is the key ring's TEXT label (for example "v1"), appended verbatim: the ADR's `":v" || v` would produce
 // "vv1" for a label that is already "v1". The info label is distinct from the body-encryption label, so the keys are
 // domain-separated. Tag = first 32 bits of HMAC-SHA256(K_search, input), kept to the top T bits.
@@ -14,26 +14,51 @@ import {
   wholeWordInput,
 } from "./tokenizer";
 
-const SEARCH_INFO_PREFIX = "wardenx-message-search:";
-const CHANNEL_INFO_PREFIX = "wardenx-message-search-channel:";
+// ChartWarden rename of the HKDF info labels (release 1 = READ-SIDE). A label SET is the search-key label plus the
+// channel-key label that were used together; the index writer uses SEARCH_LABELS_WRITE, a query probes SEARCH_LABELS_READ
+// (current first), so rows indexed under either set stay searchable. Name digests are derived from the search key and so
+// follow the writer's set. LEGACY(wardenx->chartwarden): remove the legacy set after the index has been rebuilt (release 3).
+export interface SearchLabels {
+  readonly searchInfoPrefix: string;
+  readonly channelInfoPrefix: string;
+}
+export const SEARCH_LABELS_CURRENT: SearchLabels = {
+  searchInfoPrefix: "chartwarden-message-search:",
+  channelInfoPrefix: "chartwarden-message-search-channel:",
+};
+export const SEARCH_LABELS_LEGACY: SearchLabels = {
+  searchInfoPrefix: "wardenx-message-search:",
+  channelInfoPrefix: "wardenx-message-search-channel:",
+};
+// Release 2 (write-side flip): set to SEARCH_LABELS_CURRENT, then rebuild the whole index (tags are derived data).
+export const SEARCH_LABELS_WRITE: SearchLabels = SEARCH_LABELS_LEGACY;
+export const SEARCH_LABELS_READ: readonly SearchLabels[] = [
+  SEARCH_LABELS_CURRENT,
+  SEARCH_LABELS_LEGACY,
+];
 const NAME_DIGEST_INPUT_PREFIX = "n\u0000";
 const NAME_DIGEST_BYTES = 8;
 const KEY_LENGTH = 32;
 const TAG_SOURCE_BITS = 32;
 
-export function deriveSearchKey(dek: Buffer, orgId: string, versionLabel: string): Buffer {
+export function deriveSearchKey(
+  dek: Buffer,
+  orgId: string,
+  versionLabel: string,
+  labels: SearchLabels = SEARCH_LABELS_WRITE,
+): Buffer {
   const derived = hkdfSync(
     "sha256",
     dek,
     Buffer.alloc(0),
-    `${SEARCH_INFO_PREFIX}${orgId}:${versionLabel}`,
+    `${labels.searchInfoPrefix}${orgId}:${versionLabel}`,
     KEY_LENGTH,
   );
   return Buffer.from(derived);
 }
 
 /**
- * ADR-0058 per-channel keys: K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = "wardenx-message-search-channel:" || version || ":t" ||
+ * ADR-0058 per-channel keys: K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = SEARCH_LABELS_WRITE.channelInfoPrefix ("wardenx-message-search-channel:" until the flip) || version || ":t" ||
  * tagBits || ":" || channelId). The version label and T are bound into the info (security review L3), so a rebuild at another T or
  * under another ring version produces unrelated tags and a tag in one channel says nothing about the same word in another.
  */
@@ -42,6 +67,7 @@ export function deriveChannelKey(
   versionLabel: string,
   tagBits: number,
   channelId: string,
+  labels: SearchLabels = SEARCH_LABELS_WRITE,
 ): Buffer {
   const bits = assertTagBits(tagBits);
   return Buffer.from(
@@ -49,7 +75,7 @@ export function deriveChannelKey(
       "sha256",
       searchKey,
       Buffer.alloc(0),
-      `${CHANNEL_INFO_PREFIX}${versionLabel}:t${bits}:${channelId}`,
+      `${labels.channelInfoPrefix}${versionLabel}:t${bits}:${channelId}`,
       KEY_LENGTH,
     ),
   );

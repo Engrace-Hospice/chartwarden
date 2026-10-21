@@ -13,6 +13,7 @@
 // Nothing here is logged or stored; the terms live for one request.
 import {
   type ExcludedTokens,
+  SEARCH_LABELS_WRITE,
   type SearchKeyProvider,
   deriveChannelKey,
   prefixTagLengthFor,
@@ -21,6 +22,7 @@ import {
   tokenizeForSearch,
 } from "@chartwarden/messaging";
 import { ChartWardenError } from "@chartwarden/types";
+import { SearchKeyUnavailableError } from "./search-key-provider";
 import { headPairKey } from "./stats";
 
 export const MAX_QUERY_TERMS = 8;
@@ -58,6 +60,16 @@ export interface ChannelQuery {
   readonly channelId: string;
   /** Distinct tag values for this channel (two terms can collide at T bits; the body check still decides). */
   readonly tags: readonly number[];
+  /**
+   * The same query's tags under the OTHER accepted label sets (ChartWarden label rename). Each set is an independent
+   * conjunction: a message matches when ALL tags of ANY one set are on it (never a mix of two sets). Absent/empty = one set.
+   */
+  readonly alternateTagSets?: readonly (readonly number[])[];
+}
+
+/** Every independent tag set of a channel query: the primary one first, then the alternates. */
+export function tagSetsOf(channel: ChannelQuery): readonly (readonly number[])[] {
+  return [channel.tags, ...(channel.alternateTagSets ?? [])];
 }
 
 export interface VersionQuery {
@@ -96,19 +108,39 @@ export async function buildVersionQueries(
   let headSkipped = 0;
   const queries = await Promise.all(
     versions.map(async ({ keyVersion, tagBits, headBuckets }) => {
-      const searchKey = await keys.tagKey(organizationId, keyVersion);
+      // Every accepted label set (current + legacy): rows indexed under either stay searchable across the ChartWarden label
+      // flip. An empty answer is a provider fault: fail closed (an empty VALUES list would be a SQL error, and zero sets
+      // would silently search nothing).
+      const searchKeys = await keys.tagKeysForRead(organizationId, keyVersion);
+      if (searchKeys.length === 0) throw new SearchKeyUnavailableError();
+      // The stored set is the one whose labels equal SEARCH_LABELS_WRITE (the release-2 flip changes that constant, not this
+      // logic); a provider that returned no set for the writer's labels cannot search the index as stored: fail closed.
+      const stored = searchKeys.find(({ labels }) => labels === SEARCH_LABELS_WRITE);
+      if (!stored) throw new SearchKeyUnavailableError();
+      const ordered = [stored, ...searchKeys.filter((entry) => entry !== stored)];
       const channels: ChannelQuery[] = [];
       for (const channelId of channelIds) {
-        const termTags = tagsForTerms(
-          deriveChannelKey(searchKey, keyVersion, tagBits, channelId),
-          terms,
-          tagBits,
+        const perLabel = ordered.map(({ labels, key }) =>
+          tagsForTerms(
+            deriveChannelKey(key, keyVersion, tagBits, channelId, labels),
+            terms,
+            tagBits,
+          ),
         );
-        if (isHeadBucketQuery(channelId, termTags, headBuckets)) {
+        // Head-bucket stats describe only the index AS STORED. In release 1 that is the writer's label set (`ordered[0]`, `perLabel[0]`),
+        // so it alone decides the skip; a head verdict on any OTHER set is a chance collision with those stats, and that
+        // set is simply dropped (it never hides the stored set's hits).
+        const [stored = [], ...rest] = perLabel;
+        if (isHeadBucketQuery(channelId, stored, headBuckets)) {
           headSkipped += 1;
           continue;
         }
-        channels.push({ channelId, tags: [...new Set(termTags)] });
+        const kept = [
+          stored,
+          ...rest.filter((tags) => !isHeadBucketQuery(channelId, tags, headBuckets)),
+        ];
+        const [primary = [], ...others] = kept.map((tags) => [...new Set(tags)]);
+        channels.push({ channelId, tags: primary, alternateTagSets: others });
       }
       return { keyVersion, channels };
     }),
