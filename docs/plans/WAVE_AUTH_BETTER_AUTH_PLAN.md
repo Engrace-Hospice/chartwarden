@@ -1,4 +1,4 @@
-# WardenX — Better Auth Mount Wave (production auth + the M2 sign-in front door)
+# ChartWarden — Better Auth Mount Wave (production auth + the M2 sign-in front door)
 
 Stand up real authentication: mount the (already-defined) Better Auth instance, give it a production
 DB client, wire the `authenticate` hook, add the M2 auth plugins/policy/session-classes, and finish the

@@ -622,7 +622,7 @@ ALTER TABLE <table> ENABLE ROW LEVEL SECURITY;
 CREATE POLICY <table>_org_isolation ON <table>
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-GRANT ALL ON <table> TO wardenx_app;
+GRANT ALL ON <table> TO chartwarden_app;
 -- audit table is INSERT-only for app role; UPDATE/DELETE not granted
 ```
 
@@ -706,7 +706,7 @@ Most tables in ChartWarden are tenant-scoped via RLS on `organization_id`. **Mod
 | Scope | Examples | Storage pattern | RLS pattern |
 |---|---|---|---|
 | **Tenant-scoped** | Patient, Encounter, Claim, Order, all PHI | `organization_id` column on every row | RLS policy: `USING (organization_id = current_setting('app.org_id')::uuid)` |
-| **Platform-shared (read-only to tenants)** | TerminologyConcept (Module 38), Form templates, ML models, Default validation rules | No `organization_id`; visible to all tenants | RLS policy: `USING (true)` for SELECT to `wardenx_app`; INSERT/UPDATE/DELETE only to `wardenx_admin` |
+| **Platform-shared (read-only to tenants)** | TerminologyConcept (Module 38), Form templates, ML models, Default validation rules | No `organization_id`; visible to all tenants | RLS policy: `USING (true)` for SELECT to `chartwarden_app`; INSERT/UPDATE/DELETE only to `chartwarden_admin` |
 | **Platform-shared canonical + tenant-scoped overlay** | ExternalPhysician (Module 40), Facility, Pharmacy, Payer, etc. | Two tables per entity: `external_physician` (canonical) and `external_physician_tenant_overlay` (tenant-specific fields) | Canonical: `USING (true)` for SELECT; overlay: tenant-scoped RLS |
 
 **Pattern for Module 40 entities:**
@@ -728,10 +728,10 @@ CREATE TABLE external_physician (
 );
 ALTER TABLE external_physician ENABLE ROW LEVEL SECURITY;
 CREATE POLICY external_physician_read ON external_physician
-  FOR SELECT TO wardenx_app USING (true);
--- No INSERT/UPDATE/DELETE policy for wardenx_app
-GRANT SELECT ON external_physician TO wardenx_app;
-GRANT ALL ON external_physician TO wardenx_admin;
+  FOR SELECT TO chartwarden_app USING (true);
+-- No INSERT/UPDATE/DELETE policy for chartwarden_app
+GRANT SELECT ON external_physician TO chartwarden_app;
+GRANT ALL ON external_physician TO chartwarden_admin;
 
 -- Tenant overlay: per-tenant fields about the canonical physician
 CREATE TABLE external_physician_tenant_overlay (
@@ -750,10 +750,10 @@ CREATE TABLE external_physician_tenant_overlay (
 );
 ALTER TABLE external_physician_tenant_overlay ENABLE ROW LEVEL SECURITY;
 CREATE POLICY overlay_org_isolation ON external_physician_tenant_overlay
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON external_physician_tenant_overlay TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON external_physician_tenant_overlay TO chartwarden_app;
 ```
 
 **Query pattern:**
@@ -783,11 +783,11 @@ const physician = await db
   .where(eq(externalPhysician.id, physicianId))
 ```
 
-The `wardenx_app` connection has RLS active so the overlay join only returns the current tenant's overlay row; canonical fields are visible to all.
+The `chartwarden_app` connection has RLS active so the overlay join only returns the current tenant's overlay row; canonical fields are visible to all.
 
 **NPPES sync (platform job):**
 
-A nightly platform-role job (using `wardenx_admin` connection or `withPlatformContext`) fetches NPPES update files and refreshes canonical `external_physician` rows. Audit event `nppes.sync_completed` logged with deactivated/changed counts. Tenants whose preferred physicians changed get an alert via Module 36 in the next morning brief.
+A nightly platform-role job (using `chartwarden_admin` connection or `withPlatformContext`) fetches NPPES update files and refreshes canonical `external_physician` rows. Audit event `nppes.sync_completed` logged with deactivated/changed counts. Tenants whose preferred physicians changed get an alert via Module 36 in the next morning brief.
 
 **Deduplication workflow:**
 

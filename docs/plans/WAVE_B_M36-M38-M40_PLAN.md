@@ -1,12 +1,12 @@
-# WardenX — Wave B: M36 Messaging + M38 Terminology + M40 MDM (Archon task plan)
+# ChartWarden — Wave B: M36 Messaging + M38 Terminology + M40 MDM (Archon task plan)
 
 Wave B from `PHASE_1_PLAN.md` — the early platform services **every clinical/billing module consumes**.
 All three depend only on Wave A (M1–M4 `done`), depend on **nothing in this wave**, and so may build
 **in parallel**. **Conventions, determinism rules, the validate gate, and the legend are inherited
 from `M01-M02_VERTICAL_SLICE_PLAN.md`** — read its header first.
 
-Specs: `WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md`, `WARDENX_MODULE_38_TERMINOLOGY_SPEC_v0_2.md`,
-`WARDENX_MODULE_40_MDM_SPEC_v0_4.md` (all under `docs/modules/`).
+Specs: `CHARTWARDEN_MODULE_36_MESSAGING_SPEC_v0_4.md`, `CHARTWARDEN_MODULE_38_TERMINOLOGY_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_40_MDM_SPEC_v0_4.md` (all under `docs/modules/`).
 
 > **Wave-B interplay (read first).**
 > 1. **Each consumes M4's write-audit trigger generator** (M36 §3.9, M38 §3.8, M40 §3.7) — Wave A
@@ -263,4 +263,4 @@ mdm_baa_record, mdm_baa_required, mdm_provisional, merge_request, nppes_sync_coo
    M36/M38/M40 directly.
 
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m38-terminology "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md (Module 38 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m38-terminology "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md (Module 38 only)"`

@@ -168,12 +168,12 @@ what you are otherwise not auditing.
   (`docker compose up -d postgres redis minio`), run `bun run db:migrate`, then execute the live
   suites (`test:rls:live:*` — one per module M1–M40 — plus `test:m*:write:live`, `test:m*:read:live`,
   `test:auth:live`, `test:db:migrate:live`, …).
-- **Live-suite integrity.** Live suites must run as the **NOBYPASSRLS** `wardenx_app` role via
+- **Live-suite integrity.** Live suites must run as the **NOBYPASSRLS** `chartwarden_app` role via
   `_live-app-role.ts`. A suite that connects as superuser proves nothing; this bug has recurred twice.
   Verify `current_user` **and** `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user`
   inside the suite's own connection — not from your shell.
   **`docs/START_PROJECT.md` sets `CHARTWARDEN_DEV_BYPASSRLS=1`**, which grants `BYPASSRLS` to
-  `wardenx_app` for the single-org demo. A local database provisioned by that runbook will therefore
+  `chartwarden_app` for the single-org demo. A local database provisioned by that runbook will therefore
   **pass RLS suites vacuously**. Check the attribute before you trust any RLS result.
 - **E2E.** `bun run test:e2e` (Playwright, `e2e/playwright.config.ts`) needs the app running.
 - **Vitest lies about setup failures:** a suite whose `beforeAll` throws is reported as **SKIPPED**.

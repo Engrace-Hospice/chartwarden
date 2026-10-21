@@ -577,7 +577,7 @@ NULL` row could not insert (the column is NOT NULL) and would never match the te
 code-constant geofence floor) that the boot-time policy resolver merges under each tenant's row; no
 DB platform row exists. Platform high-risk-area polygons (when shipped) live in a **separate
 pattern-2 platform-shared table** (`safety_high_risk_area_platform`, `USING (true)` SELECT, mutations
-via `wardenx_admin`), never as NULL-org rows in the tenant `safety_high_risk_area` table.
+via `chartwarden_admin`), never as NULL-org rows in the tenant `safety_high_risk_area` table.
 
 Phase F — **M20-F07: no PostGIS extension dependency in Phase 1.** The false claim that
 `CREATE EXTENSION postgis` "is in the M1 migration" is struck — M1 is frozen (ARCH-232) and the

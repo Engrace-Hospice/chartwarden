@@ -1202,7 +1202,7 @@ CREATE POLICY <m30_table>_delete ON <m30_table>
   FOR DELETE USING (false);  -- M30 rows are never deleted via SQL; deletion is via eraseFn
 ```
 
-The `m30_authz_*` functions are defined in the migration and are SECURITY DEFINER scoped to the `wardenx_app` role with the M3 context-setting checks; the policy evaluation reads the per-session `app.context` jsonb populated by Fastify's per-request hook (architecture §5.4).
+The `m30_authz_*` functions are defined in the migration and are SECURITY DEFINER scoped to the `chartwarden_app` role with the M3 context-setting checks; the policy evaluation reads the per-session `app.context` jsonb populated by Fastify's per-request hook (architecture §5.4).
 
 ### 3.6 Audit Trigger Denylist (M11 D11 / M17 §3.6 Pattern)
 
@@ -3321,7 +3321,7 @@ The materialized view has `CREATE UNIQUE INDEX uq_risk_register_view ON risk_reg
 
 #### 9.5.3 Admin-refresh path cross-tenant test
 
-The `REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view` runs under the `wardenx_admin` role (elevated for the DDL operation). This test verifies that the elevation does not inadvertently expose cross-tenant data to subsequent reads.
+The `REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view` runs under the `chartwarden_admin` role (elevated for the DDL operation). This test verifies that the elevation does not inadvertently expose cross-tenant data to subsequent reads.
 
 | Test ID | Scenario | Expected |
 |---------|----------|----------|

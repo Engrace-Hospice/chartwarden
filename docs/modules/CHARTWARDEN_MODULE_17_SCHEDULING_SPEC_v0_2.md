@@ -27,7 +27,7 @@ invariant is satisfied, and the dangling seams/phantom contracts are resolved.
 | M17-F07 | MAJOR | Retention split (ADR-0004): visit metadata **rows** may stay `operational`, but the **PHI write-audit events** go to the **`compliance`** class (7-yr HIPAA floor) — the invented `phi_visit`/"3 years" class is removed (header §M4 item). |
 | M17-F08 | MAJOR | **`Idempotency-Key` declared on every mutating route** (publish/reschedule/cancel/PTO-approve) with 24 h / 409-on-mismatch semantics (ADR-0021/ARCH-263). |
 | M17-F09 | MAJOR | `events.ts` + the consumed-seam interface types moved to the leaf **`packages/types`** so M5/M18/M19/M20/M22/M28/M31/M33 subscribers import payloads without an M17 edge (ADR-0005 D2, the M8 precedent). |
-| M17-F10 | MINOR | RLS canonicalized to **`app.org_id`** + role **`wardenx_app`** (was `app.current_organization_id`/`app_user`); generator-emitted policy with WITH CHECK (§3.5, task 4). |
+| M17-F10 | MINOR | RLS canonicalized to **`app.org_id`** + role **`chartwarden_app`** (was `app.current_organization_id`/`app_user`); generator-emitted policy with WITH CHECK (§3.5, task 4). |
 | M17-F11 | MINOR | OSRM coord cache key prefixed with `org_id` (or the §8.3 "RLS-equivalent isolation" claim corrected) — no cross-tenant shared coordinate cache. |
 | M17-F12 | MINOR | The module-local "5 PTO/hour" limit expressed as **platform rate-limiter** config (SEC-019, S10). |
 | M17-F13 | MINOR | **Cursor pagination** on PHI list routes (`GET /visits`, time-off lists) — SD-052 (ADR-0021). |
@@ -636,11 +636,11 @@ export const routeSegment = pgTable('route_segment', {
 
 All seven tables follow the standard tenant-scoped pattern emitted by M1's RLS generator (M17-F10 /
 ADR-0010 D2: canonical session variable **`app.org_id`** set by `withOrgContext()`, role
-**`wardenx_app`** — not the prior `app.current_organization_id` / `app_user`):
+**`chartwarden_app`** — not the prior `app.current_organization_id` / `app_user`):
 ```sql
 ALTER TABLE visit ENABLE ROW LEVEL SECURITY;
 CREATE POLICY visit_org_isolated ON visit
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 ```
@@ -1444,7 +1444,7 @@ Sized **S** (≤1 day), **M** (1–3 days), **L** (3–7 days). PR boundaries la
 | 1 | Drizzle schema for 7 tables (`visit`, `visit_state_history`, `recurring_visit`, `visit_proposal`, `clinician_availability`, `time_off`, `route_segment`) in `packages/db/src/schema/scheduling/` | M | M1 schema package | **A** |
 | 2 | Manifest patch (per §13) + `check-table-ownership` green; dependency-cruiser boundary check green for the new `dependsOn` set | S | 1 | A |
 | 3 | Drizzle migration `0017_scheduling.sql` Phase A (tables + enums + indexes + monthly partition declaration on `visit` keyed on `service_date`) | M | 1 | A |
-| 4 | Migration Phase B (RLS via M1's `generateRlsPolicy()` SQL — canonical `app.org_id`/`wardenx_app`, M17-F10; M4 write-audit triggers via the M4 trigger generator with denylists per §3.6, GRANTs to `wardenx_app`) | S | 3 | A |
+| 4 | Migration Phase B (RLS via M1's `generateRlsPolicy()` SQL — canonical `app.org_id`/`chartwarden_app`, M17-F10; M4 write-audit triggers via the M4 trigger generator with denylists per §3.6, GRANTs to `chartwarden_app`) | S | 3 | A |
 | 5 | Migration Phase C (partition rotation registration with M4's partition manager) + Phase D (value-set seed for `visit_status`, `visit_cancellation_reason`, `time_off_kind`) | S | 4 | A |
 | 6 | GiST exclusion constraint backstop on `visit (clinician_id WITH =, tstzrange(scheduled_start, scheduled_end, '[)') WITH &&)` filtered to non-terminal states (D6) | S | 3 | A |
 | 7 | Migration smoke test: forward + rollback against empty + seeded DBs; exclusion constraint asserted by deliberate overlap-insert in test | S | 3, 4, 5, 6 | A |

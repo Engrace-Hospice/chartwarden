@@ -2180,7 +2180,7 @@ Module 12 is "Locked" when every line below is checked. Items marked **(blocker)
 - [ ] **(blocker)** `PUT /api/v1/medication-orders/:id/coverage-determination` with `not_covered_unrelated` / `not_covered_other` and a blank or missing reason → 422 `COVERAGE_REASON_REQUIRED`; the DB CHECK rejects the same write if the app guard is bypassed.
 - [ ] **(blocker)** A valid change persists the value, reason, instant and SESSION membership, leaves `status`/`version` untouched, and emits exactly one `m12.medication_order.coverage_determination_changed` (catalog-validated) in the same transaction; an unchanged re-save emits nothing.
 - [ ] **(blocker)** A correction / refill mint inherits the predecessor's coverage block.
-- [ ] **(blocker)** `NonCoveredMedicationsReader.listForAdmission` returns only that admission's not-covered orders outside `draft`/`completed`/`discontinued`/`expired_unsigned`; run as the NOBYPASSRLS `wardenx_app` role, another tenant's rows are never returned.
+- [ ] **(blocker)** `NonCoveredMedicationsReader.listForAdmission` returns only that admission's not-covered orders outside `draft`/`completed`/`discontinued`/`expired_unsigned`; run as the NOBYPASSRLS `chartwarden_app` role, another tenant's rows are never returned.
 - [ ] **(forward seam)** M6's addendum consumer binds `m12.medication_order.coverage_determination_changed` (COP27 integration) and the pair leaves `scripts/outbox-deferred-consumers.ts`.
 
 ### Manifest patch

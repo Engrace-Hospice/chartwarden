@@ -755,9 +755,9 @@ CREATE POLICY care_plan_org_isolation ON care_plan
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);  -- M07-F08 / SD-029: WITH CHECK on writes
 -- ... five more
 
--- App-role GRANTs (writer = wardenx_app; owner inserts via SECURITY DEFINER trigger only)
+-- App-role GRANTs (writer = chartwarden_app; owner inserts via SECURITY DEFINER trigger only)
 GRANT SELECT, INSERT, UPDATE ON care_plan, care_plan_version, care_plan_signature,
-                                  problem, goal, intervention TO wardenx_app;
+                                  problem, goal, intervention TO chartwarden_app;
 
 -- Audit triggers (§3.5)
 SELECT audit_install_trigger(...);

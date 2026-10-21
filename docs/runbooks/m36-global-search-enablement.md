@@ -71,7 +71,7 @@ Follow Stage 3 of [m36-body-key-ring.md](./m36-body-key-ring.md) exactly. Summar
 
 ```
 export M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true      # this shell only, only after the Stage 3 record exists
-export DATABASE_BODY_BACKFILL_URL=postgres://wardenx_body_backfill_login:...   # operator-held
+export DATABASE_BODY_BACKFILL_URL=postgres://chartwarden_body_backfill_login:...   # operator-held
 bun run m36:body-backfill -- --org <organization-uuid> --dry-run
 bun run m36:body-backfill -- --org <organization-uuid> --max-rows 2000        # repeat until "complete": true
 ```

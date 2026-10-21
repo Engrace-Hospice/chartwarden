@@ -1,4 +1,4 @@
-# WardenX — Wave F: M14 IDG · M17 Scheduling · M18 EVV · M22 Documents (basic cuts)
+# ChartWarden — Wave F: M14 IDG · M17 Scheduling · M18 EVV · M22 Documents (basic cuts)
 
 Wave F from `PHASE_1_PLAN.md` — care coordination, scheduling, EVV, and the document spine. **The
 wave that closes forward-seams** opened in Waves C–E. **Conventions, determinism rules, the validate
@@ -6,9 +6,9 @@ gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.** Each
 Acceptance Sign-Off Checklist — the authoritative sub-steps; this file is the ordering + acceptance
 binding + the cross-module subtleties.
 
-Specs (all `docs/modules/`): `WARDENX_MODULE_14_IDG_SPEC_v0_4.md`,
-`WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md`, `WARDENX_MODULE_18_EVV_SPEC_v0_2.md`,
-`WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md`.
+Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_14_IDG_SPEC_v0_4.md`,
+`CHARTWARDEN_MODULE_17_SCHEDULING_SPEC_v0_2.md`, `CHARTWARDEN_MODULE_18_EVV_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_22_DOCUMENTS_SPEC_v0_5.md`.
 
 > **Build order.** Deps: M14←[7,8,36], M17←[5,8,40], M18←[17], M22←[1,5]. So **M14 ∥ M17 ∥ M22**
 > first → **M18 (needs M17)**.
@@ -112,4 +112,4 @@ ownedTables (17): classified_page, document, document_access_log, document_legal
    cycle, which consumes M18 `EvvComplianceReader`, M8 `BillableEncounterReader`, M6 readers, and M22 renders.
 
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m22-documents "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md (Module 22 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m22-documents "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md (Module 22 only)"`

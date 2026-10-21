@@ -346,7 +346,7 @@ so Envoy never holds a public certificate. cert-manager issues and renews every 
 
 **Stage 1 · Production · Database (source of truth)**
 
-**Update (2026-10-02):** The code is ready for this design. It runs as a `NOBYPASSRLS` role (`wardenx_app`), keeps a separate platform role, generates every RLS policy keyed on `app.org_id` (ADR-0010), and applies its forward-only migrations (`packages/db/migrations/`) with `bun run scripts/db/migrate.ts` plus `provision-runtime-roles.ts`. Run those as a Kubernetes Job before each rollout. The image is `pgvector/pgvector:pg18`, so the CloudNativePG image must include the pgvector extension.
+**Update (2026-10-02):** The code is ready for this design. It runs as a `NOBYPASSRLS` role (`chartwarden_app`), keeps a separate platform role, generates every RLS policy keyed on `app.org_id` (ADR-0010), and applies its forward-only migrations (`packages/db/migrations/`) with `bun run scripts/db/migrate.ts` plus `provision-runtime-roles.ts`. Run those as a Kubernetes Job before each rollout. The image is `pgvector/pgvector:pg18`, so the CloudNativePG image must include the pgvector extension.
 
 ### Role in ChartWarden
 

@@ -1,11 +1,11 @@
-# WardenX — Wave A completion: M3 Authorization + M4 Audit (Archon task plan)
+# ChartWarden — Wave A completion: M3 Authorization + M4 Audit (Archon task plan)
 
 Completes Wave A (M1, M2, M3, M4) from `PHASE_1_PLAN.md`. Build order is **M1 → M2 → M3 → M4**;
 this plan assumes M1+M2 are `done` (see `M01-M02_VERTICAL_SLICE_PLAN.md`). **Conventions, determinism
 rules, the validate gate, and the legend are inherited from that file** — read its header first.
 
-Specs: `docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md` (has its own §10 Implementation
-Tasks + §12 Sign-Off), `docs/modules/WARDENX_MODULE_04_AUDIT_SPEC_v0_4.md` (§13 Implementation Tasks
+Specs: `docs/modules/CHARTWARDEN_MODULE_03_AUTHORIZATION_SPEC_v0_3.md` (has its own §10 Implementation
+Tasks + §12 Sign-Off), `docs/modules/CHARTWARDEN_MODULE_04_AUDIT_SPEC_v0_4.md` (§13 Implementation Tasks
 + §14 Resolved Decisions). The agent should treat those in-spec task lists as the authoritative
 sub-steps and this file as the DoD-aligned ordering + acceptance binding.
 
@@ -125,7 +125,7 @@ helper-only.)
 
 ### M4-T05 — RLS, append-only grants + migration
 - deps: M4-T04 · files: `packages/db/migrations` · spec §3.6, §3.7
-- do: migration; append-only GRANT model (no UPDATE/DELETE on audit), `wardenx_audit_writer` SECURITY
+- do: migration; append-only GRANT model (no UPDATE/DELETE on audit), `chartwarden_audit_writer` SECURITY
   DEFINER usage, `audit_seal` integrity wiring; RLS on org-scoped M4 tables.
 - accept: `arch:tenancy` + `arch:ddl` green; immutability test drafted (§12.3).
 

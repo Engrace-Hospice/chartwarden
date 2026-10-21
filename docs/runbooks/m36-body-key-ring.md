@@ -20,7 +20,7 @@ runbook is the operator side. The design and its guarantees are in ADR-0058 sect
 | Backfill | `bun run m36:body-backfill -- --org <uuid>` (`scripts/m36-body-backfill.ts`) | refused in production without the drill flag |
 | Boot check | boot log line `M36 message bodies: <state>`; production fails closed on legacy rows + unusable key, **and fails if the count cannot be taken** | on |
 | Seal scheme validation | `M36_BODY_SEAL_SCHEME` must be `legacy` or `ring` or the boot fails; `ring` also needs `M34_TENANT_KEK` and `DATABASE_PLATFORM_URL` | on |
-| Revision re-seal credential | `wardenx_body_backfill_login` (member of `wardenx_m36_reseal`), migration 1090; `wardenx_app` has NO execute on `m36_reseal_message_revision` | operator-held |
+| Revision re-seal credential | `chartwarden_body_backfill_login` (member of `chartwarden_m36_reseal`), migration 1090; `chartwarden_app` has NO execute on `m36_reseal_message_revision` | operator-held |
 | Standing signal | `m36.hash_verify.run` audit context carries `legacyBodies` per tenant, nightly | on |
 
 ## Stage 1: ship the reader (this release)
@@ -63,7 +63,7 @@ readable; the reader stays deployed).
    and CLI) before touching a row. A dry run is always allowed. **This flag is a self-attestation keyed on `NODE_ENV`: it is an
    operational control, not a technical proof that the drill happened.** The recorded drill (who, when, key versions) is the evidence.
 5. Provision the re-seal credential once: `CHARTWARDEN_BODY_BACKFILL_PASSWORD=… bun run db:provision-roles`, and give the operator
-   `DATABASE_BODY_BACKFILL_URL=postgres://wardenx_body_backfill_login:…`. Revisions are append-only for every other role; the function
+   `DATABASE_BODY_BACKFILL_URL=postgres://chartwarden_body_backfill_login:…`. Revisions are append-only for every other role; the function
    validates the envelope shape (version, label, exact length) but cannot verify GCM authenticity, so `hash_verify` after each tenant is mandatory.
 
 Run, per tenant:
@@ -80,16 +80,16 @@ audit row) and **left alone**: investigate it, do not force it. Every batch writ
 `m36.body_backfill.run` with the completion count, and the table audit triggers write one row per re-sealed row.
 
 **Accepted residual:** the re-seal function validates envelope shape and does a compare-and-swap, but it cannot verify GCM
-authenticity, so a holder of the `wardenx_m36_reseal` credential who knows a legacy revision's bytes could swap in a well-shaped
+authenticity, so a holder of the `chartwarden_m36_reseal` credential who knows a legacy revision's bytes could swap in a well-shaped
 forged ring envelope. Only `hash_verify` (decrypt + hash) catches that, and the audit trigger records the write. Keep the
 credential operator-held and use it only for the escrow-gated backfill.
 
 Revisions are re-sealed through `m36_reseal_message_revision` (migrations 1089/1090), the only path that may UPDATE a revision, callable
-only by members of `wardenx_m36_reseal`. Poll option labels (`message_poll_option.label_cipher`, sealed like a body) are part of
+only by members of `chartwarden_m36_reseal`. Poll option labels (`message_poll_option.label_cipher`, sealed like a body) are part of
 the same run and the same completion count (`remainingLegacy.message_poll_option`): they are INSERT-only for the app role, so
 they are re-sealed through `m36_reseal_poll_option` (migration 1094), with the same carrier role and the same shape checks. A label
 has no stored plaintext digest, so the pre-seal check is GCM authenticity (the legacy open must succeed) and the post-seal check is
-plaintext equality. **Accepted residual (labels):** a label has no stored digest, so a holder of the `wardenx_m36_reseal` credential
+plaintext equality. **Accepted residual (labels):** a label has no stored digest, so a holder of the `chartwarden_m36_reseal` credential
 who swaps in a well-shaped forged or copied ring envelope of the same length would not be caught by `hash_verify` (the audit trigger
 still records who and when, and a forged blob cannot be made valid without the DEK). The AAD binds the org and key version, not the option id.
 

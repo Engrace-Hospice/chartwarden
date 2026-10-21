@@ -5,7 +5,7 @@
 
 **Module ID:** 40
 **Phase:** 1 (foundation tier — lands immediately after Modules 1–4 and 36, before Module 5 and every clinical/billing/interop consumer)
-**Depends on:** 1 (Foundation — `wardenx_app`/`wardenx_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions), 2 (Identity — actor resolution for admin merge/approval; org/membership scoping for overlays), 3 (Authorization — every MDM mutation is permissioned; merge approval and platform-canonical writes are gated keys; `BaaStatusProvider` seam REQUIRED by M3's boot-gate), 4 (Audit — every canonical write, every merge, every NPPES delta is audited; canonical write-audit triggers use the M4 generator), 29 *(relationship inventory only — NOT a manifest edge; manifest M40.dependsOn=[1,2,3,4], and a 29 edge would close the illegal 29↔40 cycle, M40-F03)* (External Interfaces — `m29.nppes.provider_synced`, `m29.nppes.provider_deactivated`, and `m29.nppes_sync_run.completed` outbox events consumed for platform-deduplicated NPPES sync)
+**Depends on:** 1 (Foundation — `chartwarden_app`/`chartwarden_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions), 2 (Identity — actor resolution for admin merge/approval; org/membership scoping for overlays), 3 (Authorization — every MDM mutation is permissioned; merge approval and platform-canonical writes are gated keys; `BaaStatusProvider` seam REQUIRED by M3's boot-gate), 4 (Audit — every canonical write, every merge, every NPPES delta is audited; canonical write-audit triggers use the M4 generator), 29 *(relationship inventory only — NOT a manifest edge; manifest M40.dependsOn=[1,2,3,4], and a 29 edge would close the illegal 29↔40 cycle, M40-F03)* (External Interfaces — `m29.nppes.provider_synced`, `m29.nppes.provider_deactivated`, and `m29.nppes_sync_run.completed` outbox events consumed for platform-deduplicated NPPES sync)
 **Consumed by:** 5 (Patient — `attending_physician_id` → ExternalPhysician), 6 (Admission — F2F physician eligibility, ordering/certifying physician), 11/12 (Orders/DoseSpot — ordering ExternalPhysician, dispensing Pharmacy), 17 (Scheduling — referral source), 21 (Supplies/DME — DmeVendor), 22 (Documents — recipient routing to MDM entities; BAA gate via `MdmEntityProvider.baaStatus`), 23/24 (Billing Medicare/Medicaid — Payer hierarchy, payer-keyed rates), 27 (Cost Report — Payer rate schedules), 28 (FHIR Gateway — Practitioner/Organization resource mapping; BAA gate), 29 (External Interfaces — HL7 ADT sender facilities; inbound BAA gate via `BaaStatusProvider.baaStatusBySendingFacility`, outbound BAA gate via `BaaStatusProvider.baaStatusByMdmEntity`), 33 (Reporting — read-side cross-tenant analytics over canonical), 37 (IPU — FuneralHome for body release)
 **Owns:** `apps/backend/src/modules/40-mdm` (+ `packages/mdm`), the canonical/overlay tables — as-built: 3 canonical (`external_physician`, `facility`, `payer`) + 1 overlay + 7 supporting = the manifest's 11 `ownedTables`, not the once-planned seven-canonical set — the omnibus `MdmEntityProvider` seam, the focused `BaaStatusProvider` seam, the MDM destruction `eraseFn`.
 **Spec status:** Re-locked v0.5 (Phase-2 remediation; supersedes Locked v0.4)
@@ -45,7 +45,7 @@ Foundation (Module 1) and the three tenant-scoped RLS patterns it ships only kno
 
 ### 1.2 What This Module Does Not Do
 
-- **Define `withPlatformContext` or the role split.** Module 1 owns `wardenx_app`/`wardenx_admin` and the helper. M40 introduces one further DB role — `mdm_canonical_writer` (SECURITY DEFINER, INSERT/UPDATE on canonical only) — by exactly the same pattern Module 4 uses for `wardenx_audit_writer`.
+- **Define `withPlatformContext` or the role split.** Module 1 owns `chartwarden_app`/`chartwarden_admin` and the helper. M40 introduces one further DB role — `mdm_canonical_writer` (SECURITY DEFINER, INSERT/UPDATE on canonical only) — by exactly the same pattern Module 4 uses for `chartwarden_audit_writer`.
 - **Own internal staff identity.** Module 2 owns internal users, memberships, and credentials. An ExternalPhysician is a **non-staff** physician our system references. A hospice-employed physician is a Module 2 `user` with a credential; F2F eligibility logic (Module 6) consults both sources via the M40 provider.
 - **Own consent for disclosing data to a referral source.** Module 39 owns patient consent. MDM provides the *recipient* identity; consent gates whether a disclosure may flow to that recipient.
 - **Own clinical terminology.** Module 38 owns code systems (ICD-10, SNOMED, LOINC, RxNorm) and value sets. The two modules are siblings, not nested: a Pharmacy NCPDP ID is MDM; an RxNorm RxCUI is Terminology.
@@ -95,7 +95,7 @@ flowchart TD
       FOLLOW --> JOIN
     end
     subgraph DB["PostgreSQL"]
-      CAN[(canonical tables\n7 kinds — RLS USING(true) for SELECT;\nNO write grant to wardenx_app)]
+      CAN[(canonical tables\n7 kinds — RLS USING(true) for SELECT;\nNO write grant to chartwarden_app)]
       OVL[(overlay tables\n7 kinds — RLS USING(org_id = current))]
       REL[(entity_relationship)]
       MR[(merge_request)]
@@ -348,7 +348,7 @@ stateDiagram-v2
 
 | Rule | Type | Detail |
 |---|---|---|
-| Canonical write-grant locked | infra (GRANT) | `wardenx_app` has only SELECT on the seven canonical tables; INSERT/UPDATE only via `mdm_canonical_writer` SECURITY DEFINER paths (NPPES sync, admin merge, provisional promotion) |
+| Canonical write-grant locked | infra (GRANT) | `chartwarden_app` has only SELECT on the seven canonical tables; INSERT/UPDATE only via `mdm_canonical_writer` SECURITY DEFINER paths (NPPES sync, admin merge, provisional promotion) |
 | Overlay tenant-scoped | infra (RLS) | every overlay table RLS-isolates on `organization_id` (USING + WITH CHECK) |
 | One overlay per (canonical, org) | sync (UNIQUE) | UNIQUE (`<entity>_id`, `organization_id`) on every overlay table |
 | NPI format valid | sync (CHECK) | `npi ~ '^[0-9]{10}$'` with Luhn check (mod-10 with weights) where NPI is non-null |
@@ -734,14 +734,14 @@ BEGIN
     'payer','dme_vendor','funeral_home'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('CREATE POLICY %I_read ON %I FOR SELECT TO wardenx_app USING (true)', t, t);
-    EXECUTE format('GRANT SELECT ON %I TO wardenx_app', t);
+    EXECUTE format('CREATE POLICY %I_read ON %I FOR SELECT TO chartwarden_app USING (true)', t, t);
+    EXECUTE format('GRANT SELECT ON %I TO chartwarden_app', t);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE ON %I TO mdm_canonical_writer', t);
-    EXECUTE format('GRANT ALL ON %I TO wardenx_admin', t);
+    EXECUTE format('GRANT ALL ON %I TO chartwarden_admin', t);
   END LOOP;
 END $$;
 
--- ------- overlay: tenant-scoped RLS, full CRUD for wardenx_app ----------------
+-- ------- overlay: tenant-scoped RLS, full CRUD for chartwarden_app ----------------
 DO $$
 DECLARE t TEXT;
 BEGIN
@@ -752,55 +752,55 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format($p$CREATE POLICY %I_org_isolation ON %I
-                     FOR ALL TO wardenx_app
+                     FOR ALL TO chartwarden_app
                      USING (organization_id = current_setting('app.org_id', true)::uuid)
                      WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid)$p$, t, t);
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO wardenx_app', t);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO chartwarden_app', t);
   END LOOP;
 END $$;
 
 -- ------- cross-cutting tables ------------------------------------------------
 -- entity_relationship: SELECT public (canonical-shape data); writes via mdm_canonical_writer
 ALTER TABLE entity_relationship ENABLE ROW LEVEL SECURITY;
-CREATE POLICY entity_relationship_read ON entity_relationship FOR SELECT TO wardenx_app USING (true);
-GRANT SELECT ON entity_relationship TO wardenx_app;
+CREATE POLICY entity_relationship_read ON entity_relationship FOR SELECT TO chartwarden_app USING (true);
+GRANT SELECT ON entity_relationship TO chartwarden_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON entity_relationship TO mdm_canonical_writer;
 
--- merge_request: visible to wardenx_admin only (platform-ops surface)
+-- merge_request: visible to chartwarden_admin only (platform-ops surface)
 ALTER TABLE merge_request ENABLE ROW LEVEL SECURITY;
-GRANT ALL ON merge_request TO wardenx_admin;
--- no wardenx_app grant: merge surfaces exposed only to platform_ops via M3 break-glass
+GRANT ALL ON merge_request TO chartwarden_admin;
+-- no chartwarden_app grant: merge surfaces exposed only to platform_ops via M3 break-glass
 
--- nppes_sync_log: visible to wardenx_admin only
+-- nppes_sync_log: visible to chartwarden_admin only
 ALTER TABLE nppes_sync_log ENABLE ROW LEVEL SECURITY;
-GRANT ALL ON nppes_sync_log TO wardenx_admin;
+GRANT ALL ON nppes_sync_log TO chartwarden_admin;
 
 -- mdm_provisional: tenant-scoped (tenant proposed it)
 ALTER TABLE mdm_provisional ENABLE ROW LEVEL SECURITY;
 CREATE POLICY mdm_provisional_org ON mdm_provisional
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-GRANT SELECT, INSERT ON mdm_provisional TO wardenx_app;
-GRANT ALL ON mdm_provisional TO wardenx_admin;
--- promotion path is wardenx_admin; tenant insert is the only app-role mutation
+GRANT SELECT, INSERT ON mdm_provisional TO chartwarden_app;
+GRANT ALL ON mdm_provisional TO chartwarden_admin;
+-- promotion path is chartwarden_admin; tenant insert is the only app-role mutation
 
 -- mdm_baa_record: tenant-scoped (their BAA, their org)
 ALTER TABLE mdm_baa_record ENABLE ROW LEVEL SECURITY;
 CREATE POLICY mdm_baa_org ON mdm_baa_record
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON mdm_baa_record TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mdm_baa_record TO chartwarden_app;
 
 -- mdm_baa_required (BAA-gate config, D8) is created with its RLS in
 -- migration 0038_m40_v03_seams.sql (§3.9 Phase D), alongside the BAA seam it supports.
 
 COMMENT ON ROLE mdm_canonical_writer IS
-  'Owns canonical-table INSERT/UPDATE. Granted to SECURITY DEFINER functions in packages/mdm only. wardenx_app NEVER writes canonical.';
+  'Owns canonical-table INSERT/UPDATE. Granted to SECURITY DEFINER functions in packages/mdm only. chartwarden_app NEVER writes canonical.';
 ```
 
-> **Why a separate `mdm_canonical_writer`:** identical pattern to Module 4's `wardenx_audit_writer`. Canonical writes must always succeed from the NPPES sync job and admin-merge job even though `wardenx_app`'s own grants are read-only on canonical. SECURITY DEFINER functions in `packages/mdm/src/{nppes,merge,provisional}` own the grant; the app role never has the capability to corrupt canonical, even buggy code can't.
+> **Why a separate `mdm_canonical_writer`:** identical pattern to Module 4's `chartwarden_audit_writer`. Canonical writes must always succeed from the NPPES sync job and admin-merge job even though `chartwarden_app`'s own grants are read-only on canonical. SECURITY DEFINER functions in `packages/mdm/src/{nppes,merge,provisional}` own the grant; the app role never has the capability to corrupt canonical, even buggy code can't.
 
 ### 3.7 Write-Audit Triggers (consumes M4 generator)
 
@@ -908,10 +908,10 @@ CREATE TABLE mdm_baa_required (
 
 ALTER TABLE mdm_baa_required ENABLE ROW LEVEL SECURITY;
 CREATE POLICY mdm_baa_required_org ON mdm_baa_required
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON mdm_baa_required TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mdm_baa_required TO chartwarden_app;
 ```
 
 The `nppes_provenance` and `sending_facility_codes` columns and the `nppes_sync_coordination` and `mdm_baa_required` tables are entirely additive. No table renames, no column type changes, no index drops.
@@ -1762,7 +1762,7 @@ MDM has two distinct UI surfaces: per-tenant overlay management (in the tenant a
 | Manage license (manual entry) | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | — |
 | Approve merge | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | step-up re-auth; audited |
 | Promote provisional | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | audited as `audit.elevated_access` |
-| Write canonical directly | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (via SECURITY DEFINER fn) | **wardenx_app has no INSERT/UPDATE grant — physically impossible** |
+| Write canonical directly | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (via SECURITY DEFINER fn) | **chartwarden_app has no INSERT/UPDATE grant — physically impossible** |
 | Trigger NPPES on-demand lookup | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | rate-limited; audited |
 
 > Cross-tenant overlay reads by platform_ops require Module 3 break-glass and emit `audit.elevated_access` (M4 §6).
@@ -1781,7 +1781,7 @@ MDM has two distinct UI surfaces: per-tenant overlay management (in the tenant a
 **Done means:** Tenant A's overlay row for canonical physician X is invisible under Tenant B's `withOrgContext`. Tenant A and Tenant B can both maintain their own `do_not_refer`, `is_preferred`, and `relationship_notes` against the same canonical id without collision. Proven by RLS isolation suite (negative test: Tenant B query returns A's overlay → fails the test).
 
 ### 7.4 Tenants cannot write canonical
-**Done means:** `wardenx_app` attempting any `INSERT`/`UPDATE`/`DELETE` on any of the seven canonical tables fails with a permission error (no grant exists). Even with the app role's privileges fully open at the app layer, the DB refuses. Same Security Hardening pattern as M4's audit table.
+**Done means:** `chartwarden_app` attempting any `INSERT`/`UPDATE`/`DELETE` on any of the seven canonical tables fails with a permission error (no grant exists). Even with the app role's privileges fully open at the app layer, the DB refuses. Same Security Hardening pattern as M4's audit table.
 
 ### 7.5 NPPES drift detection
 **Done means:** the nightly delta sync catches a deactivated NPI within 24 hours of NPPES publishing the deactivation; the canonical row flips to `deactivated`; tenants with this physician as `is_preferred=true` or attached to any active patient receive an alert via Module 36 within the next morning brief; `nppes_sync_log` records the run with `outcome='success'`.
@@ -1954,7 +1954,7 @@ m40_legacy_nightly_skipped_recent_m29_total
 
 ### 9.2 Integration (Testcontainers — PG + Valkey)
 
-- **Canonical write blocked from app role**: `wardenx_app` attempts INSERT on `external_physician` → permission denied (Security Hardening parity test, M4 §9.3 cross-ref).
+- **Canonical write blocked from app role**: `chartwarden_app` attempts INSERT on `external_physician` → permission denied (Security Hardening parity test, M4 §9.3 cross-ref).
 - **Two-tenant overlay isolation**: Tenant A and Tenant B both maintain overlays for the same canonical id; cross-context read returns only the caller's overlay.
 - **`get-or-create` race**: 50 parallel `getOrCreate` calls for the same new NPI → exactly one canonical row created; all 50 callers receive `matched_canonical` with the same id (UNIQUE INDEX guarantee).
 - **Merge approval → execution → redirect**: end-to-end. Approve via API → job runs → duplicate flipped → calls to the duplicate id resolve via redirect → `repoint_<consumer>` job updates a fixture consumer table.
@@ -1969,7 +1969,7 @@ m40_legacy_nightly_skipped_recent_m29_total
 
 - **Dependency-cruiser** rule: a fixture consumer module that imports `packages/db/src/schema/mdm/external-physicians.ts` directly fails CI (the consumer-must-use-interface rule).
 - **Vendor adapter mandate** (architecture §25.15 check 2): a fixture file that does `import 'axios'` or a raw NPPES `fetch()` outside `packages/nppes-client` fails CI.
-- **`mdm_canonical_writer` is the only writer**: after migration, `\dp external_physician` confirms `wardenx_app` has SELECT only; all other privileges absent.
+- **`mdm_canonical_writer` is the only writer**: after migration, `\dp external_physician` confirms `chartwarden_app` has SELECT only; all other privileges absent.
 
 ### 9.4 RLS Isolation
 
@@ -2044,7 +2044,7 @@ All prior open questions are decided. One carries a *legal-confirmation* note (B
 | # | Decision | Rationale | Status |
 |---|---|---|---|
 | D1 | **Two tables per entity kind (canonical + overlay), no JSONB co-mingling.** Seven canonical + seven overlay + cross-cutting. | Co-mingling overlay fields into canonical is the exact bug this module exists to prevent: it lets one tenant's preferences leak across tenants on dedup, and turns merge into a destructive splay. System Design §4.6 already commits to this pattern. | **Decided** |
-| D2 | **Tenants never write canonical directly; only via `get-or-create` (writes provisional) or platform-admin promotion.** `mdm_canonical_writer` SECURITY DEFINER role owns canonical INSERT/UPDATE. `wardenx_app` has SELECT only on canonical. | Mirrors M4's `wardenx_audit_writer` pattern — least privilege at the DB layer makes a class of bugs impossible regardless of app-layer code quality. | **Decided** |
+| D2 | **Tenants never write canonical directly; only via `get-or-create` (writes provisional) or platform-admin promotion.** `mdm_canonical_writer` SECURITY DEFINER role owns canonical INSERT/UPDATE. `chartwarden_app` has SELECT only on canonical. | Mirrors M4's `chartwarden_audit_writer` pattern — least privilege at the DB layer makes a class of bugs impossible regardless of app-layer code quality. | **Decided** |
 | D3 | **No chained merges.** `merge_request.canonical_id` must point at a row with `merged_into_id IS NULL`. Service-layer `followMerge` is 1-deep by construction; CHECK constraint + test enforce. | A merge chain would mean an old merged id resolves through N hops; both the data shape and the cache invalidation get pathological. If a previously-canonical row needs to merge into another, the prior canonical is "un-merged" first (admin tool), then re-merged into the new target. | **Decided** |
 | D4 | **Fuzzy matching: pg_trgm (GIN index) + Levenshtein normalized to [0,1] on (name, address-line1, zip).** Suggestion threshold 0.75; auto-merge proposal threshold 0.92 with identifier corroboration (matching NPI/CCN). Auto-merge never executes without admin approval — the threshold only controls whether a `merge_request` is auto-created. | pg_trgm is in-DB, fast enough, and zero added dependencies. Thresholds tuned against a NPPES sample at spec time; revisitable as we measure precision/recall. | **Decided** (revisit thresholds post-launch with real metrics) |
 | D5 | **NPPES sync cadence: nightly delta over previously-known NPIs, weekly full sweep, on-demand single-NPI lookup.** Full nightly sweep over all of NPPES is unnecessary and rude to a public API. | Slow-changing data; deactivations are the high-value signal and they propagate within 24h. Weekly full sweep catches updates we don't have IDs for yet (newly added physicians). | **Decided** |
@@ -2077,7 +2077,7 @@ Five spec refinements worth recording:
 ## 13. Acceptance Sign-Off Checklist
 
 - [ ] Migration `0040_mdm` applied; `pg_trgm` extension created; `mdm_canonical_writer` role created; all seven canonical + seven overlay + cross-cutting tables live with the two-pattern RLS; audit triggers installed via M4 generator; seed (Medicare payer) loaded
-- [ ] **Canonical write-lock proven:** `wardenx_app` cannot INSERT/UPDATE/DELETE any of the seven canonical tables; only `mdm_canonical_writer` SECURITY DEFINER paths in `packages/mdm/{nppes,merge,provisional}` succeed
+- [ ] **Canonical write-lock proven:** `chartwarden_app` cannot INSERT/UPDATE/DELETE any of the seven canonical tables; only `mdm_canonical_writer` SECURITY DEFINER paths in `packages/mdm/{nppes,merge,provisional}` succeed
 - [ ] `MdmEntityProvider` interface stable in `packages/mdm/src/interfaces`; `realMdmEntityProvider` registered via M1 seam registry; `validateSeams()` boot-aborts if missing
 - [ ] Resolve path follows `merged_into_id` transparently (1-deep, no chains per D3); Valkey cache + invalidation correct; `resolvedFrom` returned to caller for lazy FK update
 - [ ] Search per §4.2 working; identifier short-circuit; trigram threshold 0.75/0.92 per D4

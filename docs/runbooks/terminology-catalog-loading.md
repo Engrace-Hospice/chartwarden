@@ -2,7 +2,7 @@
 
 Audience: a **platform operator** (holds `terminology.admin.load`, passes step-up, satisfies the
 `terminology_admin_platform_ops` ABAC predicate). Everything below goes through the supported door; there is no
-direct database path (`wardenx_app` cannot write a canonical table, and the loader writes only through the
+direct database path (`chartwarden_app` cannot write a canonical table, and the loader writes only through the
 `terminology_loader_*` SECURITY DEFINER functions, migration 0364).
 
 Why this exists: search pickers (`CodeSearchInput`) call `GET /api/v1/terminology/{system}/search`, which can only

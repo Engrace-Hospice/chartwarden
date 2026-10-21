@@ -1,4 +1,4 @@
-# WardenX — Phase 2 Part A: flag-activation upgrades (Archon task plan)
+# ChartWarden — Phase 2 Part A: flag-activation upgrades (Archon task plan)
 
 Phase 2 Part A from `PHASE_2_PLAN.md` §2 — **re-open Phase-1 modules to flip default-off flags on**,
 each re-running the full DoD gate for the *new surface* (schema delta if any + routes + UI + audit +
@@ -60,4 +60,4 @@ tables/code); architecture wins over specs.
    `quality.cahps`/`hvldl_hci`, `cap.full_projection`).
 4. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
 
-> Run via Archon, e.g.: `archon workflow run wardenx-piv --branch feat/ai-full "Use the plan at docs/plans/PHASE_2A_UPGRADES_PLAN.md (A1 only)"`
+> Run via Archon, e.g.: `archon workflow run chartwarden-piv --branch feat/ai-full "Use the plan at docs/plans/PHASE_2A_UPGRADES_PLAN.md (A1 only)"`

@@ -41,8 +41,8 @@ Add these settings to `.env` (the database URLs intentionally use different role
 DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/wardenx
 
 # Runtime connection: created by `bun run db:migrate` below.
-DATABASE_URL=postgres://wardenx_app:wardenx_app@localhost:5432/wardenx
-CHARTWARDEN_APP_PASSWORD=wardenx_app
+DATABASE_URL=postgres://chartwarden_app:chartwarden_app@localhost:5432/wardenx
+CHARTWARDEN_APP_PASSWORD=chartwarden_app
 
 # Lets the single-org demo complete pre-organization reads. Never enable in production.
 CHARTWARDEN_DEV_BYPASSRLS=1
@@ -91,7 +91,7 @@ Run the migrations once for a new local database:
 bun run db:migrate
 ```
 
-This applies all migrations and creates/enables the `wardenx_app` login role using
+This applies all migrations and creates/enables the `chartwarden_app` login role using
 `CHARTWARDEN_APP_PASSWORD`. Re-running it is safe: only pending migrations are applied.
 
 ## 5. Start the backend, worker, and web app
@@ -215,7 +215,7 @@ object-store data. Re-run `bun run db:migrate` after pulling migrations.
 
 | Problem | Resolution |
 |---|---|
-| Backend reports `password authentication failed for user "wardenx_app"` | Ensure `DATABASE_URL` and `CHARTWARDEN_APP_PASSWORD` use the same password, then run `bun run db:migrate` to reset the local runtime-role password. |
+| Backend reports `password authentication failed for user "chartwarden_app"` | Ensure `DATABASE_URL` and `CHARTWARDEN_APP_PASSWORD` use the same password, then run `bun run db:migrate` to reset the local runtime-role password. |
 | Migration cannot connect | Confirm `docker compose ps` shows `postgres` healthy and that `DATABASE_ADMIN_URL` uses port `5432`. |
 | Sign-in has no users or organization choices | Start the API, run `bun run db:seed`, then read `CREDENTIALS.local.md`. Set `CHARTWARDEN_DEV_BYPASSRLS=1` and rerun `bun run db:migrate` for the local single-org demo. |
 | Web app cannot reach the API | Confirm the API is listening on port `3000`; the Vite proxy is configured for that address. |

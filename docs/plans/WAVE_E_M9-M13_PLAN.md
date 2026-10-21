@@ -1,4 +1,4 @@
-# WardenX — Wave E: Clinical depth (M9 Assessments · M10 HOPE · M11 Orders · M12 DoseSpot · M13 eMAR)
+# ChartWarden — Wave E: Clinical depth (M9 Assessments · M10 HOPE · M11 Orders · M12 DoseSpot · M13 eMAR)
 
 Wave E from `PHASE_1_PLAN.md` — assessments through medication administration. The largest wave.
 **Conventions, determinism rules, the validate gate, and the legend are inherited from
@@ -7,9 +7,9 @@ Checklist** (Schema & migration / Routes / Workers & jobs / Seams & boot wiring 
 Permissions handshake) — treat that as the authoritative sub-step list; this file is the DoD-aligned
 ordering + acceptance binding + the cross-module subtleties.
 
-Specs (all `docs/modules/`): `WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md`,
-`WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md`, `WARDENX_MODULE_11_ORDERS_SPEC_v0_4.md`,
-`WARDENX_MODULE_12_DOSESPOT_PRESCRIBING_SPEC_v0_2.md`, `WARDENX_MODULE_13_EMAR_SPEC_v0_2.md`.
+Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md`,
+`CHARTWARDEN_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md`, `CHARTWARDEN_MODULE_11_ORDERS_SPEC_v0_4.md`,
+`CHARTWARDEN_MODULE_12_DOSESPOT_PRESCRIBING_SPEC_v0_2.md`, `CHARTWARDEN_MODULE_13_EMAR_SPEC_v0_2.md`.
 
 > **Build order (internal parallelism).** Deps: M9←[38], M10←[9,36,38], M11←[6,36,38,40],
 > M12←[5,11,38,40], M13←[12,36,38]. So: **M9 ∥ M11** first → **M10 (needs M9) ∥ M12 (needs M11)** →
@@ -128,4 +128,4 @@ ownedTables (12): administration_offline_queue, administration_policy, administr
    closes many of the deny-stubs opened here (M22 PDFs, M17 visit seeding, M18 EVV bracket, M21 comfort-kit).
 
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m10-hope "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md (Module 10 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m10-hope "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md (Module 10 only)"`

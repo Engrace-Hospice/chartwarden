@@ -2183,9 +2183,9 @@ Representative cases:
 ### 9.3 RLS Isolation Tests
 
 3-org × 100-consent × 50-recipient × 20-DPOA × 10K-eval-audit-row fixture:
-- Org A's `wardenx_app` role cannot SELECT/INSERT/UPDATE/DELETE any of Org B or Org C's rows in any of the 11 tables.
+- Org A's `chartwarden_app` role cannot SELECT/INSERT/UPDATE/DELETE any of Org B or Org C's rows in any of the 11 tables.
 - `consent_type_catalog` is readable by all three orgs (platform-shared).
-- `consent_type_catalog` is NOT writable by any of the three orgs' `wardenx_app` role; only `wardenx_platform_admin` can INSERT/UPDATE; verified with explicit denial test.
+- `consent_type_catalog` is NOT writable by any of the three orgs' `chartwarden_app` role; only `wardenx_platform_admin` can INSERT/UPDATE; verified with explicit denial test.
 - `consent_eval_audit` partition table inherits RLS from parent (verified by a SELECT from Org A returning zero Org B rows even when the underlying partition contains both).
 
 ### 9.4 IDOR / Layer-Independence Tests
@@ -2201,7 +2201,7 @@ Representative cases:
 - **Notarization evidence required** — a sign attempt with `capture_method='notarized'` but `capture_evidence_jsonb.notary_certificate_document_id=null` returns `422 notary_evidence_required`.
 - **Witness signature evidence required** — `capture_method='witnessed_verbal_documented'` requires `witness_signature_evidence_document_id` (an M22 doc ref); validation refuses the sign otherwise.
 - **AI-prohibited path attempt** — registering an M32 prompt template with `target_table_writes=['consent_record']` causes the boot validator to refuse to start; the structured error message identifies the offending template key.
-- **Chain-of-authority cycle attempt** — POST to route 6 with `acting_consent_id=self` returns `422 chain_of_authority_self_reference`; the trigger blocks even when the service-layer guard is bypassed (test by direct INSERT via `wardenx_app` role).
+- **Chain-of-authority cycle attempt** — POST to route 6 with `acting_consent_id=self` returns `422 chain_of_authority_self_reference`; the trigger blocks even when the service-layer guard is bypassed (test by direct INSERT via `chartwarden_app` role).
 - **Forged DPOA agent attempt** — POST to route 15 with `agent_kind='primary'` when a primary agent already exists on the consent returns `422 primary_dpoa_already_assigned`; the partial unique index enforces.
 - **Revocation reason floor bypass attempt** — staff revoke with `reason_text="short"` (5 chars) returns `422 reason_text_below_staff_floor`; the DB CHECK enforces.
 - **Survey-record-relevant** — the `consent_eval_audit.id` is UUIDv7 per M1 and not guessable; ID-enumeration attacks blocked at the routing layer.

@@ -1357,9 +1357,9 @@ The manifest's M6 entry now carries the owned tables (this patch was applied). `
 
 Every M6 table is tenant-scoped on `organization_id` and uses the M1 RLS generator. The migration calls `SELECT wardenx_enable_rls(<table>)` for each.
 
-`wardenx_app` (the runtime DB role) has `SELECT, INSERT, UPDATE` on all M6 tables and `DELETE` on none — domain rows are not deleted; supersession is via status enum (`voided`, `superseded`, `closed`). The M4 write-audit trigger writes to `audit_event` as `wardenx_audit_writer` (SECURITY DEFINER), matching M4 §3.6.
+`chartwarden_app` (the runtime DB role) has `SELECT, INSERT, UPDATE` on all M6 tables and `DELETE` on none — domain rows are not deleted; supersession is via status enum (`voided`, `superseded`, `closed`). The M4 write-audit trigger writes to `audit_event` as `chartwarden_audit_writer` (SECURITY DEFINER), matching M4 §3.6.
 
-`wardenx_app` has no privileges on M22's `documents` table or M39's `consents` table even though M6 holds FKs into them — M6 reads through the M22/M39 repositories, never via direct schema import (M3-style boundary; enforced by `check-table-ownership.ts`).
+`chartwarden_app` has no privileges on M22's `documents` table or M39's `consents` table even though M6 holds FKs into them — M6 reads through the M22/M39 repositories, never via direct schema import (M3-style boundary; enforced by `check-table-ownership.ts`).
 
 ### 3.7 Migration
 
@@ -1785,7 +1785,7 @@ REVOKE DELETE ON
   certification_of_terminal_illness, face_to_face_encounter,
   level_of_care_period, revocation_event, transfer_event,
   discharge_event, notice_of_rights_acknowledgment, compliance_window
-FROM wardenx_app;
+FROM chartwarden_app;
 
 -- Write-audit triggers (M4 generator) — emits scrubbed before/after to audit_event.
 -- The denylist matches §2.2 (free-text and PII high-sensitivity columns).
@@ -3490,9 +3490,9 @@ For each CoP/regulation listed in §1.3, the table below points to the workflow(
 | **W-EA-06** | After a furnished addendum, a clinician adds an `unrelated` problem (or signs a care-plan version that changes the unrelated set) | Version n+1 (`poc_change`) copied from version n with the new line pre-filled; `election_addendum_update` window due change date + 3 calendar days; a second change before furnish refreshes the same draft and never extends the due date |
 | **W-EA-07** | The patient dies before the addendum is furnished (or after furnish, before signature) | In the discharge transaction the draft becomes `not_required` (or the version `signature_not_required`) with reason `death` and a note on the addendum; windows close; no overdue alert follows |
 | **W-EA-08** | A window passes its due instant unfurnished | Next `window_alert` tick: window `overdue`/`alert`, `m6.election_addendum.overdue` once; M36 raises one care-team alert and one compliance/clinical-lead alert (idempotent on redelivery) |
-| **W-EA-09** | A user of another organization requests the addendum routes | 404 (RLS + `admission.scope` non-leak); a live suite runs the cross-tenant check as `wardenx_app` |
+| **W-EA-09** | A user of another organization requests the addendum routes | 404 (RLS + `admission.scope` non-leak); a live suite runs the cross-tenant check as `chartwarden_app` |
 | **W-EA-10** | A draft addendum was handed over on paper outside ChartWarden and signed; staff upload the scan | Without `furnishedAt` → 422 `ADDENDUM_FURNISH_DATE_REQUIRED`; a future date or furnish after signature → 422 `ADDENDUM_DATE_INVALID`. With it: `signed`, `furnish_method=paper`, `furnished_at` = the given date, window closed (`furnished`), `.furnished` + `.acknowledged` emitted, `acknowledgement_source=uploaded` + the document ids, `document_id` untouched; rule `election_addendum_signed` sees it signed |
-| **W-EA-11** | The scan attached is another org's document, another patient's / admission's, or a superseded version | 400 `DOCUMENT_VERSION_UNAVAILABLE` / `ADMISSION_EVIDENCE_DOCUMENT_MISMATCH`; the version is unchanged (live, as `wardenx_app`) |
+| **W-EA-11** | The scan attached is another org's document, another patient's / admission's, or a superseded version | 400 `DOCUMENT_VERSION_UNAVAILABLE` / `ADMISSION_EVIDENCE_DOCUMENT_MISMATCH`; the version is unchanged (live, as `chartwarden_app`) |
 | **W-EA-12** | A furnished version's paper copy documents a refusal | Upload with the reason → `refused`, scan linked, `.acknowledged` once; a keyed signature records `acknowledgement_source=structured` and no document |
 | **W-EA-13** | A draft lacking items-or-"none" (or other (c) elements) is signed or refused on paper and uploaded | No `ADDENDUM_INCOMPLETE`: `signed`/`refused`, `content_source=scanned_paper`, structured fields kept; window closed; `election_addendum_signed` passes (refusal documented); checklist item `complete`; the keyed furnish of such a draft still 422s |
 | **W-EA-14** | An acknowledgement uploaded from a scan is rendered | The M22 PDF states "Acknowledged on a signed paper copy, scanned and filed <date> (document <ref>)" (refusal: "documented on the paper copy…"); a content-on-paper version renders a record notice naming the scan, never the empty (c)(4)–(8) sections |

@@ -141,7 +141,7 @@ rare tail fail, the fallback is the bounded multi-channel option A in the ADR.
 | F4 | Medium | Head-bucket REFINE is a membership-independent frequency oracle, absent from the amendment | `query-service.ts:477` |
 | F5 | Medium | Rotation overlap not implemented; `liveVersions` returns the active version only | `search-key-provider.ts:67` |
 | F6 | Medium (blocks enablement per the privacy review) | `addMember` has no role-category check | ADR lines 609-615 |
-| F7 | Low | Migration 1091 grants `wardenx_admin` a cross-tenant `SELECT USING (true)` on the token table for the purge-hook definer function | `1091_m36_message_search_index.sql`, policy `message_search_token_purge_hook_select` |
+| F7 | Low | Migration 1091 grants `chartwarden_admin` a cross-tenant `SELECT USING (true)` on the token table for the purge-hook definer function | `1091_m36_message_search_index.sql`, policy `message_search_token_purge_hook_select` |
 | F8 | Low | Eraser never names the token table; add an explicit live assertion that erase leaves zero token rows | `erasers/messaging-eraser.ts` |
 | F9 | Low | ADR calls the 164.528 join the purpose of the audit; internal use is not an accounting item | ADR "Read audit" item 3 |
 | F10 | Low | ADR status text is inconsistent (line 3 Accepted, line 27 Proposed); `ci.yml` comments say Proposed | ADR lines 3 and 27 |

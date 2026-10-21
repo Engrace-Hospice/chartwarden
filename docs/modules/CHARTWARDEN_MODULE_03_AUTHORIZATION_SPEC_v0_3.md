@@ -662,7 +662,7 @@ SELECT wardenx_enable_rls('membership_role');
 SELECT wardenx_enable_rls('break_glass_event');
 SELECT wardenx_enable_rls('auditor_engagement');
 -- permission: platform-global reference; read-all, write platform_ops only
-REVOKE INSERT, UPDATE, DELETE ON permission FROM wardenx_app;
+REVOKE INSERT, UPDATE, DELETE ON permission FROM chartwarden_app;
 ```
 
 -----

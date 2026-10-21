@@ -5,7 +5,7 @@
 
 **Module ID:** 38
 **Phase:** 1 (foundation tier — lands after Modules 1–4 and 36, alongside Module 40, before Module 5 and every clinical/billing/interop consumer)
-**Depends on:** 1 (Foundation — `wardenx_app`/`wardenx_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions, pgvector extension policy), 2 (Identity — actor resolution for admin loads and tenant value-set extensions), 3 (Authorization — `terminology.*` permission keys; admin-load and deprecation-report gated), 4 (Audit — version loads, deprecation reports, tenant value-set edits all audited; canonical write-audit triggers via M4 generator)
+**Depends on:** 1 (Foundation — `chartwarden_app`/`chartwarden_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions, pgvector extension policy), 2 (Identity — actor resolution for admin loads and tenant value-set extensions), 3 (Authorization — `terminology.*` permission keys; admin-load and deprecation-report gated), 4 (Audit — version loads, deprecation reports, tenant value-set edits all audited; canonical write-audit triggers via M4 generator)
 **Consumed by:** 5 (Patient — problem list ICD-10 + SNOMED), 6 (Admission — hospice election diagnoses, level-of-care codes), 7 (Care Plan — Goal/Intervention SNOMED + LOINC), 8 (Encounters & Visit Notes — encounter coding + LOINC for measurements), 9 (Clinical Assessments — LOINC for scale items; SNOMED for findings), 10 (HOPE Engine — HOPE J-code value sets, HQRP measure codes), 11 (Orders — order categories, route, dose form), 12 (DoseSpot — RxNorm/NDC for medication identity), 13 (eMAR — administration route/site coded), 21 (Supplies/DME — HCPCS-keyed catalog), 23 (Billing Medicare — ICD-10-CM sequencing, Q-codes, revenue codes, CARC/RARC for denials), 24 (Billing Medicaid — state-specific coded fields), 27 (Cost Report — HCPCS/revenue rollups), 28 (FHIR Gateway — re-exports M38 as FHIR R4 `CodeSystem`/`ValueSet`/`$expand`/`$validate-code`), 29 (External Interfaces — LOINC for HL7 ORU mapping), 30 (HQRP & Quality — measure code sets)
 **Spec status:** Re-locked v0.3 (Phase-2 remediation; supersedes Locked v0.2)
 
@@ -19,10 +19,10 @@
 
 ## Changelog
 
-- **2026-10-07 — GAP-086: `sud_test_loinc` is seeded (migration 0500).** M29's inbound lab gate (D15) classifies a result as 42 CFR Part 2 SUD-class only when its LOINC is a member of the platform value set `sud_test_loinc` (platform members plus the calling tenant's own `value_set_tenant_extension` rows). Nothing created that value set, so `isMemberOf` was false for every code and no SUD result was ever redacted. Decisions: (1) **it is platform data, in the database** — `PLATFORM_VALUE_SETS` / `PLATFORM_VALUE_SET_MEMBERS` (`packages/terminology/src/seed/`) are pure data that nothing inserts at migrate time, so the set is also inserted by DML-only migration `0500_terminology_sud_test_loinc_value_set.sql` (idempotent `ON CONFLICT DO NOTHING`; scope `platform`; system `loinc`; `member_effective` 1970-01-01 so an old-dated observation still classifies; `annotations` carry the LOINC long common name and whether LOINC marks the code deprecated). The TS list `sud-test-loinc.ts` is the source of truth and a unit test asserts the migration matches it code-for-code and name-for-name. (2) **Conservative by design (redact on doubt):** every LOINC test whose component is a substance-use analyte, in a patient specimen, at any property/method (screen and confirmation, cutoff and creatinine-ratio variants), plus the drug-screen / drugs-of-abuse panels and "drugs identified/tested for" tests; retired ("Deprecated ...") codes are kept because a lab can still send them. (3) **Left out on purpose:** tobacco (cotinine/nicotine — no spec classes it as SUD), tramadol/meperidine/tapentadol, carisoprodol/meprobamate, ketamine, propoxyphene, methaqualone, LSD, GHB, xylazine, kratom, phenobarbital/mephobarbital (anticonvulsant monitoring), generic volatiles/toxicology panels, questionnaires (AUDIT/DAST/TAPS), and neonatal/post-mortem matrices; a tenant that wants any of them adds them through `value_set_tenant_extension`. (4) **Clinical + compliance review of the list is REQUIRED before it is relied on** — see `docs/history/m29-m38-sud-test-loinc-seed.md`. Proven live (`test:m29:sud-loinc-seed:live`): the real M29 adapter over the real M38 provider flags seeded codes and leaves glucose alone, as `wardenx_app` under RLS, and a tenant extension adds a code for that tenant only.
+- **2026-10-07 — GAP-086: `sud_test_loinc` is seeded (migration 0500).** M29's inbound lab gate (D15) classifies a result as 42 CFR Part 2 SUD-class only when its LOINC is a member of the platform value set `sud_test_loinc` (platform members plus the calling tenant's own `value_set_tenant_extension` rows). Nothing created that value set, so `isMemberOf` was false for every code and no SUD result was ever redacted. Decisions: (1) **it is platform data, in the database** — `PLATFORM_VALUE_SETS` / `PLATFORM_VALUE_SET_MEMBERS` (`packages/terminology/src/seed/`) are pure data that nothing inserts at migrate time, so the set is also inserted by DML-only migration `0500_terminology_sud_test_loinc_value_set.sql` (idempotent `ON CONFLICT DO NOTHING`; scope `platform`; system `loinc`; `member_effective` 1970-01-01 so an old-dated observation still classifies; `annotations` carry the LOINC long common name and whether LOINC marks the code deprecated). The TS list `sud-test-loinc.ts` is the source of truth and a unit test asserts the migration matches it code-for-code and name-for-name. (2) **Conservative by design (redact on doubt):** every LOINC test whose component is a substance-use analyte, in a patient specimen, at any property/method (screen and confirmation, cutoff and creatinine-ratio variants), plus the drug-screen / drugs-of-abuse panels and "drugs identified/tested for" tests; retired ("Deprecated ...") codes are kept because a lab can still send them. (3) **Left out on purpose:** tobacco (cotinine/nicotine — no spec classes it as SUD), tramadol/meperidine/tapentadol, carisoprodol/meprobamate, ketamine, propoxyphene, methaqualone, LSD, GHB, xylazine, kratom, phenobarbital/mephobarbital (anticonvulsant monitoring), generic volatiles/toxicology panels, questionnaires (AUDIT/DAST/TAPS), and neonatal/post-mortem matrices; a tenant that wants any of them adds them through `value_set_tenant_extension`. (4) **Clinical + compliance review of the list is REQUIRED before it is relied on** — see `docs/history/m29-m38-sud-test-loinc-seed.md`. Proven live (`test:m29:sud-loinc-seed:live`): the real M29 adapter over the real M38 provider flags seeded codes and leaves glucose alone, as `chartwarden_app` under RLS, and a tenant extension adds a code for that tenant only.
 - **2026-10-06 — GAP-108: the terminology loader and the nine §4.3 jobs are built (migration 0364).** Decisions the spec left open, in one place:
   - **Pipeline (`packages/terminology-loader`, §3.1).** Pure per-system parsers (`bytes -> rows`, strict: a row it cannot read fails the load), sha256 checksum, stage-and-diff, activate/supersede, failed-load cleanup, resume-from-staged, deprecation mapping, refresh-expansions, refresh-embeddings. The package imports no DB driver/queue/object-store client; the backend binds its ports (`apps/backend/src/modules/38-terminology/jobs/`). The F-238 ICD-10-CM parsers moved into it and `scripts/db/lib/icd10cm-release.ts` re-exports them.
-  - **Staging is a table, not a flag (§2.4.2).** The provider reads concept tables by effective date with no version-status filter, so "staged rows in the concept table" would be visible to clinical lookups. `concept_staging` (loader-only; `wardenx_app` has no grant) holds parsed rows (`kind = 'concept'`) and parser-supplied successor detail (`kind = 'deprecation'`); activation copies it into the concept table in ONE transaction and empties it; failure empties it and marks the version `failed`. A `loading` version restarts staging from scratch; a `staged` version is never re-parsed (resume). Re-registering a `failed` (system, version) resets it to `loading` (so a wrong checksum can be corrected); every other duplicate stays 409.
+  - **Staging is a table, not a flag (§2.4.2).** The provider reads concept tables by effective date with no version-status filter, so "staged rows in the concept table" would be visible to clinical lookups. `concept_staging` (loader-only; `chartwarden_app` has no grant) holds parsed rows (`kind = 'concept'`) and parser-supplied successor detail (`kind = 'deprecation'`); activation copies it into the concept table in ONE transaction and empties it; failure empties it and marks the version `failed`. A `loading` version restarts staging from scratch; a `staged` version is never re-parsed (resume). Re-registering a `failed` (system, version) resets it to `loading` (so a wrong checksum can be corrected); every other duplicate stays 409.
   - **Activation semantics.** A newer version (`effective_from` strictly after the active one; otherwise `TERMINOLOGY_VERSION_NOT_NEWER`) ends the prior version the day before (`effective_to`, and `end_date` on its still-open concept rows), marks prior-active codes the new version dropped `deprecated`, and writes `deprecation_mapping` for them plus the source-detected transitions (ICD-10-CM billable -> header maps `narrower` to the new billable subcodes; a dropped code maps `none`). Rows for codes the prior version already had take the new version's span; genuinely new codes keep the date the source declared. The loader never DELETEs a concept row (§7.2); the only DELETEs are on staging and on a value set's own expansion.
   - **Concept tables for the seven systems the catalog promised (§2.3/§3.1).** `concept_icd10pcs/ndc/hcpcs/cvx/revenue/carc/rarc` (common shape; system detail in `properties`) — they did not exist, so nothing but ICD-10-CM/SNOMED/LOINC/RxNorm could be stored. The DB store and the provider now read them (`hcpcs` surfaces `properties.recordKind` as `kind`).
   - **Bulk loads are not per-row audited.** The concept-table audit triggers are skipped when the writer is `terminology_loader` (NOLOGIN, writes only inside the definer functions); the audited version row, the update ledger (counts/checksum/source/phase) and the deprecation mapping are the audit record — the reasoning the old script documented for `session_replication_role = replica`.
@@ -324,7 +324,7 @@ A tenant extension never overrides a platform value-set member, only adds. Platf
 
 | Rule | Type | Detail |
 |---|---|---|
-| Canonical write-grant locked | infra (GRANT) | `wardenx_app` has only SELECT on all platform terminology tables (per-system concept tables, `code_system`, `code_system_version`, `value_set`, `value_set_member`, `value_set_expansion`, `deprecation_mapping`, `concept_embedding`, `terminology_update_log`); INSERT/UPDATE only via `terminology_loader` SECURITY DEFINER paths |
+| Canonical write-grant locked | infra (GRANT) | `chartwarden_app` has only SELECT on all platform terminology tables (per-system concept tables, `code_system`, `code_system_version`, `value_set`, `value_set_member`, `value_set_expansion`, `deprecation_mapping`, `concept_embedding`, `terminology_update_log`); INSERT/UPDATE only via `terminology_loader` SECURITY DEFINER paths |
 | Tenant extension tenant-scoped | infra (RLS) | `value_set_tenant_extension` RLS-isolates on `organization_id` |
 | Concept uniqueness within version | sync (UNIQUE) | UNIQUE (`code`, `version_id`) per per-system table |
 | As-of consistency | invariant | for any concept row, `effective_date <= end_date` when both set; `effective_date <= as_of <= end_date` is the inclusion check |
@@ -727,26 +727,26 @@ BEGIN
     'deprecation_mapping','concept_embedding','terminology_update_log'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('CREATE POLICY %I_read ON %I FOR SELECT TO wardenx_app USING (true)', t, t);
-    EXECUTE format('GRANT SELECT ON %I TO wardenx_app', t);
+    EXECUTE format('CREATE POLICY %I_read ON %I FOR SELECT TO chartwarden_app USING (true)', t, t);
+    EXECUTE format('GRANT SELECT ON %I TO chartwarden_app', t);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE ON %I TO terminology_loader', t);
-    EXECUTE format('GRANT ALL ON %I TO wardenx_admin', t);
+    EXECUTE format('GRANT ALL ON %I TO chartwarden_admin', t);
   END LOOP;
 END $$;
 
 -- ------- tenant-scoped value-set extension -----------------------------------
 ALTER TABLE value_set_tenant_extension ENABLE ROW LEVEL SECURITY;
 CREATE POLICY value_set_tenant_extension_org ON value_set_tenant_extension
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON value_set_tenant_extension TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON value_set_tenant_extension TO chartwarden_app;
 
 COMMENT ON ROLE terminology_loader IS
-  'Owns terminology canonical INSERT/UPDATE. Granted to SECURITY DEFINER functions in packages/terminology and packages/terminology-loader only. wardenx_app NEVER writes terminology.';
+  'Owns terminology canonical INSERT/UPDATE. Granted to SECURITY DEFINER functions in packages/terminology and packages/terminology-loader only. chartwarden_app NEVER writes terminology.';
 ```
 
-> **Same pattern as M40's `mdm_canonical_writer` and M4's `wardenx_audit_writer`** — least privilege at the DB layer. Even if app code calls a write path incorrectly, the DB role has no INSERT/UPDATE grant on the platform tables and the call fails. The only writers are the SECURITY DEFINER functions in `packages/terminology-loader/{load,stage-and-diff,refresh-expansions}` (version load) and `packages/terminology/extension/{add,remove}` (tenant extensions, which go through the `wardenx_app` role per RLS).
+> **Same pattern as M40's `mdm_canonical_writer` and M4's `chartwarden_audit_writer`** — least privilege at the DB layer. Even if app code calls a write path incorrectly, the DB role has no INSERT/UPDATE grant on the platform tables and the call fails. The only writers are the SECURITY DEFINER functions in `packages/terminology-loader/{load,stage-and-diff,refresh-expansions}` (version load) and `packages/terminology/extension/{add,remove}` (tenant extensions, which go through the `chartwarden_app` role per RLS).
 
 ### 3.8 Write-Audit Triggers (consumes M4 generator)
 
@@ -1180,7 +1180,7 @@ M38 is mostly machinery consumed by other modules' UIs (problem list, order entr
 | Load a new code-system version | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | step-up re-auth; audited; only writer is `terminology_loader` |
 | Refresh embeddings | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | audited |
 | Cross-tenant extension governance view | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | `audit.elevated_access` |
-| Write any platform terminology table | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (via SECURITY DEFINER) | **wardenx_app has no INSERT/UPDATE grant — physically impossible** |
+| Write any platform terminology table | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (via SECURITY DEFINER) | **chartwarden_app has no INSERT/UPDATE grant — physically impossible** |
 
 > Cross-tenant reads of `value_set_tenant_extension` by platform_ops require Module 3 break-glass and emit `audit.elevated_access` (M4 §6).
 
@@ -1198,7 +1198,7 @@ M38 is mostly machinery consumed by other modules' UIs (problem list, order entr
 **Done means:** the day a new ICD-10-CM version activates, every tenant with affected records (problem list, claim line, order) receives a Module-36 alert and the `/admin/terminology/remediation` page shows the per-deprecated-code rollup with sample record ids and successor codes. Verified end-to-end against a fixture with 100 records using a now-deprecated code; remediation report renders in < 1 s.
 
 ### 7.4 Tenants cannot write canonical
-**Done means:** `wardenx_app` attempting any `INSERT`/`UPDATE`/`DELETE` on any of the 19 platform terminology tables fails with a permission error. Even with the app role's privileges fully open at the app layer, the DB refuses. Same Security Hardening pattern as M4's audit table and M40's canonical tables.
+**Done means:** `chartwarden_app` attempting any `INSERT`/`UPDATE`/`DELETE` on any of the 19 platform terminology tables fails with a permission error. Even with the app role's privileges fully open at the app layer, the DB refuses. Same Security Hardening pattern as M4's audit table and M40's canonical tables.
 
 ### 7.5 Value-set expansion is fast and freshness-correct
 **Done means:** `isMemberOf` on a value set with 5k members returns in < 5 ms (warm cache) / < 20 ms (cold) via a single B-tree lookup on `value_set_expansion`. On version load, expansions affected by the loaded system are recomputed within 2 minutes; staleness gauge metric stays below threshold. A test deliberately loads a version that adds a member to `hospice_terminal_diagnosis` and asserts `isMemberOf` returns true for the new code within 2 minutes.
@@ -1287,7 +1287,7 @@ All platform writes also flow through the M4 audit triggers as `term.<table>.cre
 
 ### 9.2 Integration (Testcontainers — PG with pg_trgm + vector + Valkey)
 
-- **Canonical write blocked from app role**: `wardenx_app` INSERT on any of the 19 platform tables → permission denied.
+- **Canonical write blocked from app role**: `chartwarden_app` INSERT on any of the 19 platform tables → permission denied.
 - **Two-version coexistence**: load v1, load v2 deprecating one v1 code → both versions queryable at their respective asOfs; the deprecated code resolves as `active` at the old date and `deprecated` at the new date with `successor` populated.
 - **Value-set expansion refresh on load**: load a version that introduces a new ICD-10 code; assert `value_set_expansion` for `hospice_terminal_diagnosis` includes the new code within the refresh-window threshold.
 - **Tenant extension RLS**: Org A's extension invisible under Org B's context; `isMemberOf` for Org B returns `source: 'platform'` only.
@@ -1299,7 +1299,7 @@ All platform writes also flow through the M4 audit triggers as `term.<table>.cre
 
 - **Dependency-cruiser** rule: a fixture consumer module that imports `packages/db/src/schema/terminology/concept-icd10cm.ts` fails CI.
 - **Vendor adapter mandate** (architecture §25.15 check 2): no raw `fetch` calls to CMS/NLM/Regenstrief endpoints outside `packages/terminology-loader`.
-- **`terminology_loader` is the only writer**: after migration, `\dp concept_icd10cm` (and all 18 others) confirms `wardenx_app` has SELECT only.
+- **`terminology_loader` is the only writer**: after migration, `\dp concept_icd10cm` (and all 18 others) confirms `chartwarden_app` has SELECT only.
 - **CPT compilation guard**: a fixture file with `provider.lookup('cpt', '99213')` fails the TypeScript build (D4 enforced at the type level).
 
 ### 9.4 RLS Isolation
@@ -1382,7 +1382,7 @@ All prior open questions are now decided. One carries a *licensing-confirmation*
 ## 12. Acceptance Sign-Off Checklist
 
 - [ ] Migration `0038_terminology` applied; `pgvector` + `pg_trgm` extensions present; `terminology_loader` role created; all 19 platform + 1 tenant tables live with the platform-shared / tenant-scoped RLS; audit triggers installed via M4 generator; HNSW + pg_trgm indexes built; code-system catalog + value-set definition seed loaded
-- [ ] **Canonical write-lock proven:** `wardenx_app` cannot INSERT/UPDATE/DELETE any of the 19 platform terminology tables; only `terminology_loader` SECURITY DEFINER paths in `packages/terminology-loader/*` and `packages/terminology/extension/*` succeed (the latter only for `value_set_tenant_extension` via the app role per RLS)
+- [ ] **Canonical write-lock proven:** `chartwarden_app` cannot INSERT/UPDATE/DELETE any of the 19 platform terminology tables; only `terminology_loader` SECURITY DEFINER paths in `packages/terminology-loader/*` and `packages/terminology/extension/*` succeed (the latter only for `value_set_tenant_extension` via the app role per RLS)
 - [ ] `TerminologyProvider` interface stable in `packages/terminology/src/interfaces`; `realTerminologyProvider` registered via M1 seam registry; `validateSeams()` boot-aborts if missing
 - [ ] **As-of-date correctness:** golden-fixture test loads two versions, asserts deprecated-then-still-active code resolves correctly at both asOfs (D2)
 - [ ] **Two-version coexistence:** older version rows are never deleted; pre-deprecation queries continue to return them indefinitely

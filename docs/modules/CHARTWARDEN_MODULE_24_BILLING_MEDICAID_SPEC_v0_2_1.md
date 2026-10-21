@@ -13,7 +13,7 @@
 > **Phase-2 remediation (2026-06-11) — Version 0.2.2.** **RLS permissive-OR fixed (ADR-0010 D3, S5):**
 > `medicaid_claim` had two PERMISSIVE `FOR ALL` policies (org-isolation + provider_entity_scope) that
 > Postgres ORs together, so a stale `app.provider_entity_ids` could surface cross-tenant rows. RLS now
-> enforces the **org boundary only** (single policy, `wardenx_app`, `app.org_id`, USING + WITH CHECK);
+> enforces the **org boundary only** (single policy, `chartwarden_app`, `app.org_id`, USING + WITH CHECK);
 > provider-entity narrowing moves to the M3 `provider_entity_scope` **ABAC** predicate per the
 > ARCH-067 decision order (§3.5). EVV-on-Medicaid applicability follows ADR-0008.
 >
@@ -1049,7 +1049,7 @@ Every M24-owned table carries the standard RLS pattern from M1 §6 / M5 §3.5:
 -- the ORG boundary only; provider-entity/location narrowing is ABAC (M3's `provider_entity_scope`
 -- predicate at the handler), NOT a second permissive RLS policy.
 CREATE POLICY medicaid_claim_tenant_isolation ON medicaid_claim
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 -- provider_entity scoping is enforced by the M3 ABAC predicate `provider_entity_scope` on every

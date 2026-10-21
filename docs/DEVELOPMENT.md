@@ -102,9 +102,9 @@ CHARTWARDEN_PLATFORM_PASSWORD=... CHARTWARDEN_DESTRUCTION_PASSWORD=... \
 bun run db:provision-roles
 ```
 
-creates `wardenx_platform_login` (inherits the enumerated `wardenx_platform` carrier + the
+creates `chartwarden_platform_login` (inherits the enumerated `chartwarden_platform` carrier + the
 BYPASSRLS **attribute** — attributes are not inherited, so it sits on the login role) and
-`wardenx_destruction_login` (`IN ROLE wardenx_destruction`, migration 0157, NOBYPASSRLS). Then set
+`chartwarden_destruction_login` (`IN ROLE chartwarden_destruction`, migration 0157, NOBYPASSRLS). Then set
 `DATABASE_PLATFORM_URL` (admin console, platform crons, the outbox relay's org enumeration, the
 M34 offboarding eraser, **and every per-tenant PHI cipher**) and `DATABASE_DESTRUCTION_URL`
 (right-to-erasure over the append-only clinical/billing tables + `audit_event`). Without them the
@@ -119,10 +119,10 @@ The compose api/worker also get `DATABASE_DESTRUCTION_URL` (the eraser and the o
 runs `bun run ops:backfill-tenant-buckets`, which creates the `tenant-<orgId>` bucket for every org that lacks it (re-run it
 any time; it is idempotent). Upload also creates a missing bucket on demand, and answers a typed 503 naming the bucket if it
 cannot. An existing dev volume predating the destruction role needs `docker compose build migrate && docker compose run --rm migrate`
-once (it provisions `wardenx_destruction_login`); do not run host `db:migrate` against that stack.
+once (it provisions `chartwarden_destruction_login`); do not run host `db:migrate` against that stack.
 
 **The PHI-cipher half is easy to miss, so it is spelled out (F-082).** Migration 0052 §5 REVOKES
-`wardenx_app`'s SELECT on `tenant_key_ring` by design — the request path reads only the
+`chartwarden_app`'s SELECT on `tenant_key_ring` by design — the request path reads only the
 ciphertext-free metadata view — so the platform login is the only credential that can resolve a
 wrapped tenant DEK. With `DATABASE_PLATFORM_URL` unset, `dekForOrg` refuses and so does everything
 composed over it: M8's HearthNote narrative (an encounter cannot be FINALIZED, and therefore never

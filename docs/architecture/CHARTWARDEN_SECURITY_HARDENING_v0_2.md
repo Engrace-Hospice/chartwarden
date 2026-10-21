@@ -137,7 +137,7 @@ STRIDE categories:
 - **Layer 1: Database RLS** (Module 1 §3.11) — every PHI table has policies enforcing `organization_id = current_setting('app.org_id')`. Application bugs cannot bypass this.
 - **Layer 2: Application authorization** (Module 3 RBAC + ABAC) — service layer checks organization context before queries
 - **Layer 3: Session binding** (Better Auth) — session tied to specific `active_organization_id`; cannot manipulate via client
-- **Layer 4: PgBouncer + app role** — `wardenx_app` role’s RLS policies prevent leakage even if application is buggy
+- **Layer 4: PgBouncer + app role** — `chartwarden_app` role’s RLS policies prevent leakage even if application is buggy
 - **Layer 5: Audit** — every PHI access logged with org context; RLS denials logged as `security.rls_denied` (volume should be ~zero in production)
 - **Layer 6: Monitoring** — Prometheus metric `rls_denials_total` alerts at any nonzero rate
 
@@ -159,7 +159,7 @@ STRIDE categories:
 
 **Controls:**
 
-- **Layer 1: GRANT restrictions** — `wardenx_app` role has only `INSERT, SELECT` on `audit_event`; UPDATE and DELETE not granted at all. Application code physically cannot modify audit, regardless of bugs.
+- **Layer 1: GRANT restrictions** — `chartwarden_app` role has only `INSERT, SELECT` on `audit_event`; UPDATE and DELETE not granted at all. Application code physically cannot modify audit, regardless of bugs.
 - **Layer 2: Append-only schema** — `audit_event` partitioning is by `created_at`; no application path to modify historical rows
 - **Layer 3: Audit of audit** — admin or platform role access to audit table itself logs a meta-event (`audit.elevated_access`)
 - **Layer 4: Off-system backup** — pgBackRest backups encrypted, retained 7+ years; audit can be cross-referenced against backups even if live DB is modified
@@ -167,7 +167,7 @@ STRIDE categories:
 
 **Validation:**
 
-- Test: `wardenx_app` attempting UPDATE/DELETE on `audit_event` must fail with permission error (Module 1 §9.3)
+- Test: `chartwarden_app` attempting UPDATE/DELETE on `audit_event` must fail with permission error (Module 1 §9.3)
 - Quarterly: random sample of 100 audit events compared to backup to detect tampering
 - Monthly: review of all `audit.elevated_access` events
 
@@ -984,7 +984,7 @@ For any bulk export (>10 records):
 ### 8.7 PHI in Backups
 
 - Backups encrypted (§4.2) with keys not on production systems
-- Backup access requires `wardenx_admin` role + break-glass (Ops Runbook §8.5)
+- Backup access requires `chartwarden_admin` role + break-glass (Ops Runbook §8.5)
 - Restore operations audited with severity=warn
 - Test restores to sandbox verify decryption + data integrity
 
@@ -1496,7 +1496,7 @@ All mobile actions audited identically to web actions, plus:
 
 |Control                    |Implementation                                                     |
 |---------------------------|-------------------------------------------------------------------|
-|Append-only at DB layer    |`wardenx_app` role has only INSERT, SELECT on `audit_event`. **Carve-out (AD-13):** migration `0157:84` also grants `SELECT, DELETE ON audit_event TO wardenx_destruction` — deliberate, documented in-file, and required by the partitioned crypto-erase adapter that a tenant shred runs. It is a NOLOGIN role reachable only through the destruction credential. **The integrity report inspects `wardenx_app` only and cannot detect grant drift on that second role** — check it explicitly during a privilege review. |
+|Append-only at DB layer    |`chartwarden_app` role has only INSERT, SELECT on `audit_event`. **Carve-out (AD-13):** migration `0157:84` also grants `SELECT, DELETE ON audit_event TO chartwarden_destruction` — deliberate, documented in-file, and required by the partitioned crypto-erase adapter that a tenant shred runs. It is a NOLOGIN role reachable only through the destruction credential. **The integrity report inspects `chartwarden_app` only and cannot detect grant drift on that second role** — check it explicitly during a privilege review. |
 |Append-only at architecture|No application code path modifies historical audit                 |
 |Partition immutability     |Partitioned table; partitions detached for archival, never modified|
 |Backup as cross-reference  |pgBackRest archive provides historical state for tamper detection  |
@@ -1755,7 +1755,7 @@ Within 7 days of resolution:
 Use of credentials or access patterns reserved for emergency:
 
 - `postgres` superuser role
-- `wardenx_admin` outside of normal migration runner context
+- `chartwarden_admin` outside of normal migration runner context
 - MinIO root credentials
 - SSH directly to production VM bypassing bastion
 - Off-site age key for SOPS decryption
@@ -1766,7 +1766,7 @@ Use of credentials or access patterns reserved for emergency:
 |Credential                       |Authorization                                        |Required documentation                    |
 |---------------------------------|-----------------------------------------------------|------------------------------------------|
 |`postgres` superuser             |Security Owner + Incident Commander (during incident)|Reason; expected duration; planned actions|
-|`wardenx_admin` for non-migration|Security Owner                                       |Same                                      |
+|`chartwarden_admin` for non-migration|Security Owner                                       |Same                                      |
 |MinIO root                       |Security Owner                                       |Same                                      |
 |SSH bypassing bastion            |Security Owner (during incident only)                |Same                                      |
 |Off-site age key                 |Security Owner + secondary holder                    |Reason; sealed envelope inventory check   |
@@ -1993,7 +1993,7 @@ M34's threat surface differs qualitatively from a clinical module: the actors mo
 |Threat|Surface|Mitigation|
 |------|-------|----------|
 |**Spoofing** — a ChartWarden engineer poses as a tenant compliance officer to self-issue a support grant|`POST /api/v1/tenant/support-consent-grants`|Tenant route refused via `withOrgContext`; platform-ops can only reach a tenant session through the M2 impersonation flow, which is itself `severity=critical`-audited and is **never** permitted to issue grants (impersonation is read-only).|
-|**Tampering** — platform-ops flips `tenant_account.status` to `active` without an executed BAA|DB direct write|RLS + role split: `wardenx_app` cannot UPDATE `tenant_account`; only `tenant_platform_writer` can, and only via the lifecycle service that enforces the BAA precondition. DBA UPDATE is OS-level audited.|
+|**Tampering** — platform-ops flips `tenant_account.status` to `active` without an executed BAA|DB direct write|RLS + role split: `chartwarden_app` cannot UPDATE `tenant_account`; only `tenant_platform_writer` can, and only via the lifecycle service that enforces the BAA precondition. DBA UPDATE is OS-level audited.|
 |**Repudiation** — a support engineer denies a chart access they made|PHI read|Three-table forensic chain: `audit_event` (`actor_kind='platform_ops_via_support_session'`) + `support_session_event` per access + the session→grant linkage (DR_BCP §14A.3).|
 |**Information disclosure** — a support engineer extracts PHI during a session|PHI read in session|Session is time-bounded (≤8 h or `grant.expires_at`), scope-bounded (org or named patients), step-up-bounded (write needs fresh step-up), and `severity=critical`-audited so M36 alerts the grantor in real time.|
 |**Denial of service** — repeated public signup POSTs|`POST /api/v1/public/signup-intents`|Rate limit 5/IP/hour + `m34.self_serve_signup` flag (deny-default in Phase 1) + edge WAF.|
@@ -2014,11 +2014,11 @@ M34 owns the **per-tenant Data Encryption Key (DEK)** that every other module's 
 |**Rotate**|`tenant.dek-rotate` worker|New DEK minted; prior DEK retained in `prior_dek_versions`; re-encryption pass walks every envelope column. KEK rotation (separate) re-wraps without changing the DEK.|
 |**Destroy**|`m34_destroy_tenant_key_ring(...)`|Zeroes `current_dek_kek_wrapped_ciphertext` and clears `prior_dek_versions`; sets `destroyed_at`. **Irreversible** — the cryptographic-shred boundary (DR_BCP §14A.2 Phase 3).|
 
-**The `tenant_platform_writer` SECURITY DEFINER boundary.** The application role `wardenx_app` is deliberately incapable of touching the key material or the lifecycle spine:
+**The `tenant_platform_writer` SECURITY DEFINER boundary.** The application role `chartwarden_app` is deliberately incapable of touching the key material or the lifecycle spine:
 
-- `wardenx_app` **cannot** SELECT `tenant_key_ring.current_dek_kek_wrapped_ciphertext` — `has_column_privilege` is false; only the `tenant_key_ring_metadata_v` view (no ciphertext) is selectable.
-- `wardenx_app` **cannot** UPDATE `tenant_account` — only `tenant_platform_writer` can, via the lifecycle service.
-- `wardenx_app` **cannot** EXECUTE `m34_provision_tenant_key_ring` / `m34_destroy_tenant_key_ring` — these are owned by `tenant_platform_writer` and invoked only through the SECURITY DEFINER functions; `has_function_privilege('wardenx_app', ...)` is false.
+- `chartwarden_app` **cannot** SELECT `tenant_key_ring.current_dek_kek_wrapped_ciphertext` — `has_column_privilege` is false; only the `tenant_key_ring_metadata_v` view (no ciphertext) is selectable.
+- `chartwarden_app` **cannot** UPDATE `tenant_account` — only `tenant_platform_writer` can, via the lifecycle service.
+- `chartwarden_app` **cannot** EXECUTE `m34_provision_tenant_key_ring` / `m34_destroy_tenant_key_ring` — these are owned by `tenant_platform_writer` and invoked only through the SECURITY DEFINER functions; `has_function_privilege('chartwarden_app', ...)` is false.
 - These boundaries are CI-enforced by the M34 RLS suite (module spec §9.3) — cross-tenant denial and the ciphertext/function privilege checks are gate tests, not optional.
 
 **No new PHI columns.** M34 introduces **no** envelope-encrypted PHI columns — patient references are FK-only (no PHI body). Free-form fields (`grant_reason`, `transition_reason`, `denial_reason`, `requestor_identity_verification_evidence`, `blocker_reason`) get best-effort minimum-necessary validation (§8.5.5) and a "do not paste PHI here" UI guard. Two FK surfaces — `dsar_export_job.patient_id` and `support_session_event.patient_id` — are tagged `phiClass='phi_sensitive'` because the *association* of a patient with a DSAR-in-flight or a ChartWarden-staff access is itself a potential 42 CFR Part 2 disclosure (ADR-0014 / SEC-046); they inherit M5/M39 Part 2 redaction-by-default and the Part 2-heightened support controls.

@@ -2067,7 +2067,7 @@ Full Postgres + Valkey + (mocked M12 + mocked M22 + mocked M36) stack:
 Per the M1 RLS-isolation pattern:
 - Spin up two tenants (Engrace + a fixture tenant).
 - Issue equivalent administrations to both via separate clinician sessions.
-- Verify cross-tenant SELECT returns zero rows even with `SET ROLE wardenx_app; SET app.org_id = '<tenant-B>';` from a tenant-A session attempt.
+- Verify cross-tenant SELECT returns zero rows even with `SET ROLE chartwarden_app; SET app.org_id = '<tenant-B>';` from a tenant-A session attempt.
 - Verify INSERT with mismatched `organization_id` fails the WITH CHECK clause.
 
 ### 9.5 E2E (Playwright)

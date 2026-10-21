@@ -1,12 +1,12 @@
-# WardenX — Wave Admin-Console: M34 admin shell (bootstrap) · M35 Subscription-Billing §5.2 platform-ops screens
+# ChartWarden — Wave Admin-Console: M34 admin shell (bootstrap) · M35 Subscription-Billing §5.2 platform-ops screens
 
 Builds the **§5.2 Platform-Ops Admin surface** for Module 35 (14 screens under `/admin/*`). The M35
 backend admin routes already exist and are gated (shipped in M35-T06); this wave adds the **frontend
 console** plus the two backend/auth prerequisites that make it reachable. **Conventions, determinism
 rules, the validate gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.**
 
-Specs (`docs/modules/`): `WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md` (§5.2), and M34's spec
-for the admin-shell ownership. Design: `docs/design/screens/platform/WARDENX_UI_SUBSCRIPTION_BILLING.md`.
+Specs (`docs/modules/`): `CHARTWARDEN_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md` (§5.2), and M34's spec
+for the admin-shell ownership. Design: `docs/design/screens/platform/CHARTWARDEN_UI_SUBSCRIPTION_BILLING.md`.
 
 > **⚠ Ownership decision (resolve before running — this is the one human call).**
 > `apps/admin` is assigned to **M34 (SaaS tenant-operator)** by **ADR-0030**, not M35. The admin console
@@ -82,7 +82,7 @@ for the admin-shell ownership. Design: `docs/design/screens/platform/WARDENX_UI_
 6. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
 
 > **Run sequencing** (this wave spans M34 + M35, so it is NOT a single `(Module 35 only)` run):
-> 1. `archon workflow run wardenx-piv --branch feat/admin-shell "Use the plan at docs/plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md (Phase 0 only — M34 admin shell + platform roles)"`
-> 2. then, on top of that branch/merge: `archon workflow run wardenx-piv --branch feat/m35-admin-console "Use the plan at docs/plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md (Phases 1–2 — Module 35 admin slice)"`
+> 1. `archon workflow run chartwarden-piv --branch feat/admin-shell "Use the plan at docs/plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md (Phase 0 only — M34 admin shell + platform roles)"`
+> 2. then, on top of that branch/merge: `archon workflow run chartwarden-piv --branch feat/m35-admin-console "Use the plan at docs/plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md (Phases 1–2 — Module 35 admin slice)"`
 >
 > Author/commit this plan as a **human edit** — `docs/plans/**` is read-only to the harness (`arch:plan-integrity`); use `ALLOW_PLAN_EDITS=1` only for local gate runs.

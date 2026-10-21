@@ -1,4 +1,4 @@
-# WardenX — Wave D: M6 Admission + M7 Care Plan + M8 Encounters (Archon task plan)
+# ChartWarden — Wave D: M6 Admission + M7 Care Plan + M8 Encounters (Archon task plan)
 
 Wave D from `PHASE_1_PLAN.md` — the **admission + care-plan + documentation spine**: the first modules
 that admit a real patient, build a CoP 418.56 plan of care, and chart on it. Strict build order
@@ -6,8 +6,8 @@ that admit a real patient, build a CoP 418.56 plan of care, and chart on it. Str
 **Conventions, determinism rules, the validate gate, and the legend are inherited from
 `M01-M02_VERTICAL_SLICE_PLAN.md`** — read its header first.
 
-Specs: `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md`,
-`WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md`, `WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md`.
+Specs: `docs/modules/CHARTWARDEN_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md`,
+`CHARTWARDEN_MODULE_07_CARE_PLAN_SPEC_v0_3.md`, `CHARTWARDEN_MODULE_08_ENCOUNTERS_SPEC_v0_2.md`.
 
 > **Wave-D interplay (read first).**
 > 1. **Strict chain.** M6 publishes the reader seams + outbox the rest of the system keys off
@@ -292,4 +292,4 @@ hearthnote_llm_modification.
    unblocked** — clinical depth from assessments through medication administration.
 
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m6-admission "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md (Module 6 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m6-admission "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md (Module 6 only)"`
