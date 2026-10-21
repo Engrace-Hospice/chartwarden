@@ -90,6 +90,8 @@ export interface IdentityAuthOptions {
    * Omitted in single-host mode, which keeps the static allowlist byte for byte.
    */
   readonly tenantOrigins?: TenantOriginMatcher;
+  /** Does this email hold an active membership in the organization served at this host? Gates the reset / magic-link host rewrite. */
+  readonly userMayUseTenantHost?: (email: string, host: string) => Promise<boolean>;
 }
 
 /** The header the invitee's sign-up carries; its value is the one-time invitation token. */
@@ -386,7 +388,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         request?: Request,
       ) => {
         // Phase 4: on a tenant host the link opens on that host (see rewriteLinkToRequestOrigin for the guards).
-        const data = { ...rawData, url: await rewriteLinkToRequestOrigin(rawData.url, request, options.tenantOrigins) };
+        const data = { ...rawData, url: await rewriteLinkToRequestOrigin(rawData.url, request, options.tenantOrigins, rawData.user.email, options.userMayUseTenantHost) };
         if (options.sendResetPassword) {
           await options.sendResetPassword(data);
           return;
@@ -464,7 +466,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           { email, url: rawUrl }: { email: string; url: string },
           ctx?: { request?: Request },
         ) => {
-          const url = await rewriteLinkToRequestOrigin(rawUrl, ctx?.request, options.tenantOrigins);
+          const url = await rewriteLinkToRequestOrigin(rawUrl, ctx?.request, options.tenantOrigins, email, options.userMayUseTenantHost);
           await emailTransport.send({
             to: email,
             subject: "Your ChartWarden sign-in link",

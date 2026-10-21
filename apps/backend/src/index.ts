@@ -124,6 +124,7 @@ import {
   createDbTenantAppOrigin,
   createDbTenantHostResolver,
   createSessionAuthenticate,
+  classifyTenantHost,
   createTenantHostGuard,
   escalationRouterDenyStub,
   getSeam,
@@ -4273,6 +4274,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         auditSink: authAuditSink,
         onAuditError: authAuditErrorLogger,
         ...(tenantOrigins ? { tenantOrigins } : {}),
+        ...(tenantOrigins && tenantBaseDomain
+          ? {
+              userMayUseTenantHost: async (email: string, host: string) => {
+                const label = classifyTenantHost(host, tenantBaseDomain);
+                if (label.kind !== "tenant") return false;
+                const links = await createDbPublicTenantLookups(dbHandle.db).linksForEmail(email.toLowerCase());
+                return links.some((l) => l.slug === label.label);
+              },
+            }
+          : {}),
       })
     : undefined;
   const authenticate = auth
