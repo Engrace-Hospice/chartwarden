@@ -16,9 +16,15 @@ WORKDIR /srv
 COPY pyproject.toml ./
 # CPU torch wheels first, so Docling does not pull the multi-gigabyte CUDA build. Keep the packaging
 # tools present in the runtime image above Trivy's fixed versions.
+# pillow 13 is forced with --no-deps: docling-core / docling-ibm-models / docling-parse still declare pillow<13, but
+# every pillow 12.x carries fixable HIGH/CRITICAL image-parsing CVEs (fixed only in 13.0.0) in a path that parses
+# patient documents. Drop the override once those packages lift the cap. (uv.lock is not used by this build and
+# still records pillow 12.3.0; do not treat it as the shipped version.)
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
  && pip install ".[docling]" easyocr \
- && pip install --upgrade "jaraco.context>=6.1.0" "setuptools>=78.1.1" "wheel>=0.46.2"
+ && pip install --upgrade "jaraco.context>=6.1.0" "setuptools>=78.1.1" "wheel>=0.46.2" \
+    "certifi>=2026.10.19" \
+ && pip install --upgrade --no-deps "pillow>=13.0.0,<14"
 
 # Bake the layout / table / OCR models into the image: a worker must not download models from the
 # internet at request time (and must not need egress at all in production).
