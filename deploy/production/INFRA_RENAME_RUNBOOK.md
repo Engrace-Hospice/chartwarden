@@ -125,14 +125,10 @@ Order of the bucket change (production holds only `tenant-*` buckets today; neit
 2. Code PR (only after step 1 is live): `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET` switch to the new names.
 3. Cleanup (after the rollback window): drop the `wardenx-*` entries and rename the policy/account.
 
-Prerequisite code change (do in a PR BEFORE the data move, not part of this branch): add
-`arn:aws:s3:::chartwarden-*` and `.../chartwarden-*/*` to the `wardenx-app` policy in `compose.yml`
-(keep the `wardenx-*` entries until cleanup), and change `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET`
-to the new names. Deploying that policy first is additive and safe. The `minio-provision` one-shot applies the policy,
-so confirm the deploy re-ran it (check `mc admin policy info local wardenx-app`) BEFORE any cutover. Only then may
-`TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`; setting it first makes every
-terminology read/write fail with AccessDenied because the policy still only allows `wardenx-*`.
-`READINESS_PROBE_BUCKET` is hardcoded (not env-overridable), so that bucket needs the code change.
+Only after step 1 is deployed may `TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`;
+setting it earlier makes every terminology read/write fail with AccessDenied because the policy would still only allow
+`wardenx-*`. `minio-provision` re-applies the policy on every deploy, before api/worker are recreated. `READINESS_PROBE_BUCKET`
+is hardcoded (not env-overridable), so that bucket needs the code change (step 2).
 
 Procedure (on the VPS; `mc` alias `local` points at the MinIO root):
 
