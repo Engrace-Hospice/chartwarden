@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 186,
+  "totalStaticWebScreens": 187,
   "e2eReachedCount": 19,
-  "axeReachedCount": 176,
+  "axeReachedCount": 177,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -755,6 +755,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
+    },
+    {
+      "id": "messaging.break-glass",
+      "module": "36-messaging",
+      "path": "/messaging/governance/break-glass",
+      "permission": "messaging.break_glass.review",
+      "e2eReached": false,
+      "axeReached": true
     },
     {
       "id": "messaging.retention",
@@ -2263,6 +2271,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
+    },
+    {
+      "id": "messaging.break-glass",
+      "module": "36-messaging",
+      "path": "/messaging/governance/break-glass",
+      "permission": "messaging.break_glass.review",
+      "e2eReached": false,
+      "axeReached": true
     },
     {
       "id": "messaging.retention",

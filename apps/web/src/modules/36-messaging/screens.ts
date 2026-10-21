@@ -35,6 +35,9 @@ const OffboardingWorkflow = lazy(() =>
 const RetentionGovernance = lazy(() =>
   import("./retention-governance").then((m) => ({ default: m.RetentionGovernance })),
 );
+const BreakGlassReview = lazy(() =>
+  import("./break-glass-review").then((m) => ({ default: m.BreakGlassReview })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -112,6 +115,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.retention.manage",
       screen: RetentionGovernance,
+    },
+    {
+      // WP 5.8 (ADR-0087, proposed): the compliance review of break-glass access (queue, detail, complete). Reviews never depend on the tenant flag.
+      id: "messaging.break-glass",
+      path: "/messaging/governance/break-glass",
+      title: "Break-glass review",
+      navGroup: "Admin",
+      requiredPermission: "messaging.break_glass.review",
+      screen: BreakGlassReview,
     },
     {
       id: "messaging.saved-replies",

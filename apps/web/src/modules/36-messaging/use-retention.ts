@@ -14,12 +14,12 @@ import { type ApiClient, isStepUpRequired } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 
-interface Reply<T> {
+export interface Reply<T> {
   readonly data?: T;
   readonly error?: unknown;
   readonly response?: { readonly status: number };
 }
-type Fetcher<T> = (client: ApiClient) => Promise<Reply<T>>;
+export type Fetcher<T> = (client: ApiClient) => Promise<Reply<T>>;
 
 const fetchRetention: Fetcher<RetentionOverviewDto> = (c) =>
   c.GET("/api/v1/messaging/governance/retention");
@@ -45,7 +45,7 @@ const failureView = (status: number | undefined): LoadView<never> =>
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
-const errorCode = (error: unknown): string | undefined => {
+export const errorCode = (error: unknown): string | undefined => {
   if (!isRecord(error)) return undefined;
   const code = (isRecord(error.error) ? error.error.code : undefined) ?? error.code;
   return typeof code === "string" ? code : undefined;
@@ -54,7 +54,7 @@ const errorCode = (error: unknown): string | undefined => {
 /** Stale-while-revalidate: only the first load shows "loading"; a reload keeps the previous data on screen until the
  *  newest response lands, and only the newest request may apply (an older one settling late is dropped). A reload that
  *  fails with a plain error keeps the data and raises `refreshFailed` (an inline Retry); a refusal (401/403) replaces it. */
-function useRead<T>(fetcher: Fetcher<T>): {
+export function useRead<T>(fetcher: Fetcher<T>): {
   view: LoadView<T>;
   reload: () => void;
   refreshFailed: boolean;

@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { useLocation } from "react-router-dom";
 import { useSession } from "../../shell";
 import { AccessEndedNotice } from "./access-ended-notice";
+import { BreakGlassPane } from "./break-glass-conversation";
 import { ConversationInbox } from "./conversation-inbox";
 import { ConversationThread } from "./conversation-thread";
 import { DepartmentChannelDialog } from "./department-channel-dialog";
@@ -523,16 +524,16 @@ function OrganizationStaffMessaging({
                     setAccessEnded(false);
                   }}
                 />
+              ) : requestedChannelId &&
+                channels !== null &&
+                !channels.some((c) => c.channelId === requestedChannelId) ? (
+                // WP 5.8 (ADR-0087): a requested conversation that is not in the list is "not available", unless the person holds a live
+                // break-glass grant (a read-only view) or may request one. The channel list stays membership-only.
+                <BreakGlassPane key={requestedChannelId} channelId={requestedChannelId} />
               ) : (
                 <EmptyState
                   title="Select a conversation"
-                  description={
-                    requestedChannelId &&
-                    channels !== null &&
-                    !channels.some((c) => c.channelId === requestedChannelId)
-                      ? "This conversation is not available."
-                      : "Choose a secure conversation from the inbox to view its messages."
-                  }
+                  description="Choose a secure conversation from the inbox to view its messages."
                 />
               )}
             </div>
