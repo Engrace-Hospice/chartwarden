@@ -7,8 +7,8 @@
  * user's existing ACTIVE membership. Writes run in one transaction with the M4 write-audit triggers live,
  * correlated to the `--ticket` reference. Procedure: CHARTWARDEN_OPS_RUNBOOK_v0.1.md §16.5.
  *
- *   bun run db:platform-role grant  --email ops@example.com --org wardenx-platform --role platform_ops --ticket CHG-123
- *   bun run db:platform-role revoke --email ops@example.com --org wardenx-platform --role platform_ops --ticket CHG-124
+ *   bun run db:platform-role grant  --email ops@example.com --org chartwarden-platform --role platform_ops --ticket CHG-123
+ *   bun run db:platform-role revoke --email ops@example.com --org chartwarden-platform --role platform_ops --ticket CHG-124
  *
  * Needs an owner/BYPASSRLS connection (platform-owned rows are not writable by `chartwarden_app`):
  * DATABASE_ADMIN_URL, else DATABASE_URL — the same connection the migration runner uses.

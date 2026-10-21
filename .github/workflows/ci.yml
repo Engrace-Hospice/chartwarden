@@ -172,22 +172,22 @@ jobs:
       # M26 and M30 suites; at 4096 all fifteen pass.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg \
+          docker run -d --name chartwarden-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
+            docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg; exit 1
       - name: ${{ matrix.suite.name }} — cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run ${{ matrix.suite.script }}
 
       - name: Cleanup Postgres container
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg 2>/dev/null || true
+          docker rm -f chartwarden-ci-pg 2>/dev/null || true
 
   lifecycle-live:
     # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
@@ -1242,15 +1242,15 @@ jobs:
       # note): these suites replay the full migration set, partitioned parents included, in one transaction.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg-lifecycle \
+          docker run -d --name chartwarden-ci-pg-lifecycle \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
+            docker exec chartwarden-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-lifecycle; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-lifecycle; exit 1
       # A suite that self-skips is a FAILURE here, not a pass: skipping silently is exactly the state this
       # job exists to end. `--passWithNoTests=false` is vitest's default, but the describe-level
       # `skipIf(!DB_URL)` would still exit 0 with every case skipped, so assert the variable is set first.
@@ -1267,7 +1267,7 @@ jobs:
       - name: Cleanup lifecycle containers
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-lifecycle 2>/dev/null || true
+          docker rm -f chartwarden-ci-pg-lifecycle 2>/dev/null || true
 
   migration-gate:
     # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
@@ -1292,15 +1292,15 @@ jobs:
       # max_locks_per_transaction=64.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg-migrate \
+          docker run -d --name chartwarden-ci-pg-migrate \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_migration_gate \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d wardenx_migration_gate && exit 0
+            docker exec chartwarden-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d wardenx_migration_gate && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-migrate; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-migrate; exit 1
       - name: scripts/db/migrate.ts — live proof (full apply, idempotent re-run, --strict drift gate)
         run: bun run test:db:migrate:live
 
@@ -1319,7 +1319,7 @@ jobs:
 
       - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
         run: |
-          docker exec wardenx-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
+          docker exec chartwarden-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
             "UPDATE _chartwarden_migration SET checksum = 'deliberately-corrupted' WHERE filename = (SELECT filename FROM _chartwarden_migration ORDER BY filename LIMIT 1);"
           if bun run db:migrate:deploy; then
             echo "expected --strict to fail on checksum drift, but it exited 0" >&2
@@ -1330,7 +1330,7 @@ jobs:
       - name: Cleanup migration Postgres
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-migrate 2>/dev/null || true
+          docker rm -f chartwarden-ci-pg-migrate 2>/dev/null || true
 
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
@@ -1353,15 +1353,15 @@ jobs:
       # migration set, which exhausts the default max_locks_per_transaction=64. See the rls-live note.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg \
+          docker run -d --name chartwarden-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
+            docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg; exit 1
       # F-025 (#59): `packages/db/__tests__/client.live.test.ts` (AUTH-T01 / ADR-0033) had no script
       # and no runner. Its own header names this lane — "the dedicated auth/live CI lane that runs
       # this end-to-end lands at AUTH-T06" — so it goes here rather than into a Postgres matrix row.
@@ -1377,7 +1377,7 @@ jobs:
       - name: Cleanup auth Postgres
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg 2>/dev/null || true
+          docker rm -f chartwarden-ci-pg 2>/dev/null || true
 
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
@@ -1411,15 +1411,15 @@ jobs:
       # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg-boot \
+          docker run -d --name chartwarden-ci-pg-boot \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d wardenx_boot && exit 0
+            docker exec chartwarden-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d wardenx_boot && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-boot; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-boot; exit 1
       - name: Migrate
         run: bun run db:migrate
       # The platform login is a REAL provisioned role (carrier + BYPASSRLS), not a superuser alias —
@@ -1432,7 +1432,7 @@ jobs:
       - name: Cleanup outbox Postgres
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-boot 2>/dev/null || true
+          docker rm -f chartwarden-ci-pg-boot 2>/dev/null || true
 
   # #41 — the ONLY live suite gated on CHARTWARDEN_TEST_REDIS_URL rather than CHARTWARDEN_TEST_DATABASE_URL,
   # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
@@ -1567,7 +1567,7 @@ jobs:
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
       MINIO_ENDPOINT: http://localhost:9000
       MINIO_ACCESS_KEY: wardenx
-      MINIO_SECRET_KEY: wardenx-minio-ci-secret
+      MINIO_SECRET_KEY: chartwarden-minio-ci-secret
       MINIO_REGION: us-east-1
     steps:
       - uses: actions/checkout@v7
@@ -1581,29 +1581,29 @@ jobs:
       # job's note): booting replays the full migration set, ~47 partitioned parents included.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg-e2e \
+          docker run -d --name chartwarden-ci-pg-e2e \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d wardenx_e2e && exit 0
+            docker exec chartwarden-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d wardenx_e2e && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-e2e; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-e2e; exit 1
       # `docker run`, not a `services:` container: MinIO needs its `server /data` argument, which a service
       # container cannot take.
       # Chainguard's build of the same MinIO server: MinIO no longer publishes `minio/minio` to Docker Hub
       # (`docker pull` is denied).
       - name: Start MinIO (document storage)
         run: |
-          docker run -d --name wardenx-ci-minio-e2e \
-            -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=wardenx-minio-ci-secret \
+          docker run -d --name chartwarden-ci-minio-e2e \
+            -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
             -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
           for i in $(seq 1 60); do
             curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0
             sleep 1
           done
-          echo "MinIO did not become ready" >&2; docker logs wardenx-ci-minio-e2e; exit 1
+          echo "MinIO did not become ready" >&2; docker logs chartwarden-ci-minio-e2e; exit 1
       - name: Install the Chromium build this Playwright version pins
         run: bunx playwright install --with-deps chromium
       - name: Migrate
@@ -1668,5 +1668,5 @@ jobs:
       - name: Cleanup E2E containers
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-e2e 2>/dev/null || true
-          docker rm -f wardenx-ci-minio-e2e 2>/dev/null || true
+          docker rm -f chartwarden-ci-pg-e2e 2>/dev/null || true
+          docker rm -f chartwarden-ci-minio-e2e 2>/dev/null || true

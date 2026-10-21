@@ -191,15 +191,15 @@ repo2-cipher-pass=<different sealed key>
 # Off-site repository (encrypted S3-compatible target)
 repo3-type=s3
 repo3-s3-endpoint=<off-site MinIO>
-repo3-s3-bucket=wardenx-pg-backup
+repo3-s3-bucket=chartwarden-pg-backup
 repo3-s3-region=us-west
-repo3-path=/wardenx
+repo3-path=/chartwarden
 repo3-cipher-type=aes-256-cbc
 repo3-cipher-pass=<third sealed key>
 repo3-retention-full=90
 repo3-retention-diff=30
 
-[wardenx]
+[chartwarden]
 pg1-path=/var/lib/postgresql/18/main
 pg1-port=5432
 pg1-host-user=postgres
@@ -222,7 +222,7 @@ recovery-option=recovery_target_action=promote
 ```ini
 # postgresql.conf
 archive_mode = on
-archive_command = 'pgbackrest --stanza=wardenx archive-push %p'
+archive_command = 'pgbackrest --stanza=chartwarden archive-push %p'
 archive_timeout = 60s  # Force WAL switch every 60s if low activity (caps RPO at 60s)
 ```
 
@@ -231,7 +231,7 @@ archive_timeout = 60s  # Force WAL switch every 60s if low activity (caps RPO at
 Every backup is verified within 1 hour of completion:
 
 - pgBackRest itself runs verify on each backup (checksum validation)
-- A cron-driven test job runs `pgbackrest --stanza=wardenx info` and parses output; any backup not present or marked invalid → SEV-3 alert
+- A cron-driven test job runs `pgbackrest --stanza=chartwarden info` and parses output; any backup not present or marked invalid → SEV-3 alert
 - Monthly: full restore-to-sandbox drill (§9.1)
 
 ### 4.2 MinIO Backups
@@ -376,7 +376,7 @@ host replication wardenx_replicator 10.10.30.12/32 scram-sha-256
 # wardenx-db-02 (standby)
 primary_conninfo = 'host=wardenx-db-01 port=5432 user=wardenx_replicator password=<sealed> application_name=db-02'
 primary_slot_name = 'standby_db_02'
-restore_command = 'pgbackrest --stanza=wardenx archive-get %f %p'
+restore_command = 'pgbackrest --stanza=chartwarden archive-get %f %p'
 ```
 
 **Asynchronous replication trade-off:** Allows replica to lag slightly (<1 sec typical, <30 sec worst case during heavy write spikes) without slowing the primary. Acceptable for hospice EHR — losing 30 sec of writes in a failover is a known cost.
@@ -483,7 +483,7 @@ sudo systemctl stop postgresql
 sudo rm -rf /var/lib/postgresql/18/main/*
 
 # 3. Restore from new primary using pgBackRest
-sudo -u postgres pgbackrest --stanza=wardenx --type=standby \
+sudo -u postgres pgbackrest --stanza=chartwarden --type=standby \
   --recovery-option=primary_conninfo='host=wardenx-db-02 user=wardenx_replicator' restore
 
 # 4. Start in standby mode
@@ -644,12 +644,12 @@ done
 
 # Step 2: Take final snapshot of current (corrupted) state for forensic preservation
 # Even if you're going to restore over it, you want the corruption preserved
-sudo -u postgres pgbackrest --stanza=wardenx --type=full --tag=pre-recovery-forensic backup
+sudo -u postgres pgbackrest --stanza=chartwarden --type=full --tag=pre-recovery-forensic backup
 
 # Step 3: Restore to fresh data directory targeting specific time
 sudo systemctl stop postgresql
 sudo mv /var/lib/postgresql/18/main /var/lib/postgresql/18/main.corrupted
-sudo -u postgres pgbackrest --stanza=wardenx --type=time \
+sudo -u postgres pgbackrest --stanza=chartwarden --type=time \
   --target='2026-06-08 14:30:00' \
   --target-action=promote \
   --delta restore
@@ -780,7 +780,7 @@ After any recovery, before resuming customer traffic:
 #    (scripts/db/backup-restore-drill.ts) proves the same restore MECHANICS locally/in CI against a
 #    throwaway synthetic cluster, repo1 only — it is not this step (real prod backup, real schema)
 #    and does not substitute for actually running it monthly.
-sudo -u postgres pgbackrest --config=/etc/pgbackrest/pgbackrest.conf --stanza=wardenx --type=default \
+sudo -u postgres pgbackrest --config=/etc/pgbackrest/pgbackrest.conf --stanza=chartwarden --type=default \
   --pg1-path=/var/lib/postgresql-test/data restore
 
 # 3. Start sandbox PostgreSQL

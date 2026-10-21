@@ -5,14 +5,14 @@ import { describe, expect, it } from "vitest";
 import { platformRoleLabel } from "../db/lib/platform-role";
 import { parsePlatformRoleArgs } from "../db/lib/platform-role-cli";
 
-const base = ["--email", "ops@example.test", "--org", "wardenx-platform", "--ticket", "CHG-1"];
+const base = ["--email", "ops@example.test", "--org", "chartwarden-platform", "--ticket", "CHG-1"];
 
 describe("parsePlatformRoleArgs", () => {
   it("parses a grant and a revoke", () => {
     expect(parsePlatformRoleArgs(["grant", ...base, "--role", "platform_ops"])).toEqual({
       action: "grant",
       email: "ops@example.test",
-      org: "wardenx-platform",
+      org: "chartwarden-platform",
       role: "platform_ops",
       ticket: "CHG-1",
     });
