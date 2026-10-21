@@ -15,7 +15,7 @@
 --
 -- 2. M4 write-audit triggers (§3.6). RETENTION CLASS: audit_event.retention_class is M1's
 --    audit_retention_class enum; these stamp 'compliance' (the 7-year HIPAA-floor class). The per-table
---    denylists mirror `M31_AUDIT_DENYLIST` in @chartwarden/types VERBATIM so the DB-side scrub and the code-side
+--    denylists mirror `M31_AUDIT_DENYLIST` in @wardenx/types VERBATIM so the DB-side scrub and the code-side
 --    export view cannot drift:
 --      portal_account       display_name_cipher / email_cipher / phone_cipher   (envelope-encrypted contact PHI)
 --      portal_access_grant  scope_set_jsonb (size) / revoke_reason_cipher       (free-text)

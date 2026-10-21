@@ -5,7 +5,7 @@
 -- had no therapist discipline, so those lines could never be produced. This adds:
 --   encounter_discipline  'pt', 'ot', 'slp'                  (the authoring / signing discipline)
 --   encounter_type        'pt_visit', 'ot_visit', 'slp_visit' (discipline-named types, each pinned to its discipline
---                                                              by the §2.2 legal-pair matrix in @chartwarden/types, like
+--                                                              by the §2.2 legal-pair matrix in @wardenx/types, like
 --                                                              chha_visit => chha)
 -- Code-side mirrors: packages/db/src/enums.ts, packages/types/src/encounter.ts, the encounters TypeBox vocab, the
 -- HearthNote template registry, the M17 visit seed consumer. Therapists need no RN cosignature (COSIGN_REQUIRED stays

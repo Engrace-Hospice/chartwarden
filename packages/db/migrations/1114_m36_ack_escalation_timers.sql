@@ -14,7 +14,7 @@
 ALTER TYPE "message_ack_event_type" ADD VALUE IF NOT EXISTS 'route_unavailable';--> statement-breakpoint
 ALTER TYPE "message_ack_event_type" ADD VALUE IF NOT EXISTS 'ladder_exhausted';--> statement-breakpoint
 
--- UPDATE guard = the state machine of ADR-0069 D3 (the same table is in @chartwarden/messaging, pinned by a test), now with the WP 4.4
+-- UPDATE guard = the state machine of ADR-0069 D3 (the same table is in @wardenx/messaging, pinned by a test), now with the WP 4.4
 -- escalation write (ADR-0070).
 CREATE OR REPLACE FUNCTION message_ack_request_update_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$

@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS "safety_policy" (
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "safety_policy_org_unique" ON "safety_policy" ("organization_id");--> statement-breakpoint
 
--- The tighten-only CHECKs below are the PLATFORM BAND from `SAFETY_POLICY_BOUNDS` (@chartwarden/types), not the
+-- The tighten-only CHECKs below are the PLATFORM BAND from `SAFETY_POLICY_BOUNDS` (@wardenx/types), not the
 -- floor defaults. §2.2.4/D4's rule is a band per knob and not one comparison, because "tighter" runs in
 -- opposite directions: a SHORTER overdue threshold alerts the supervisor sooner, a SHORTER mid-visit cadence
 -- makes the clinician check in more often, and a LONGER cancel window gives more chance to undo an

@@ -23,7 +23,7 @@
 --    lab_observation_value get a generated function DESPITE an empty denylist: M1's baseline trigger stamps
 --    TG_TABLE_NAME, which on a partitioned write is the dated PARTITION, so the audit trail would rename
 --    itself every month (the M32 ai_token_ledger lesson). The v_cols lists mirror `M29_AUDIT_DENYLIST` in
---    @chartwarden/types VERBATIM so the code-side view and the DB-side scrub cannot drift.
+--    @wardenx/types VERBATIM so the code-side view and the DB-side scrub cannot drift.
 --        external_feed_credential   secret_cipher                                  (compliance)
 --        hl7_message_inbound        payload_cipher, parsed_segments_cipher         (compliance, partitioned)
 --        hl7_message_outbound       payload_cipher, ack_payload_cipher             (compliance, partitioned)

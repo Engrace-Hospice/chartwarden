@@ -4,7 +4,7 @@
 --   patient.wristband.void   <- every role that already holds patient.merge  (kill a band: identity error,
 --                                                                             compromise; also needs step-up)
 --
--- The keys live in @chartwarden/auth (M5_CONTRIBUTED_PERMISSIONS). `permission` is the FK target of
+-- The keys live in @wardenx/auth (M5_CONTRIBUTED_PERMISSIONS). `permission` is the FK target of
 -- `role_permission.permission_key` and nothing in the deploy path syncs it, so without these rows no
 -- administrator could grant the keys (the 0348/0382 lesson). Printing a band is a chart-maintenance act, so
 -- whoever may edit the chart may print one; voiding is rarer and compliance-flavoured, so it follows the

@@ -1,7 +1,7 @@
 -- M36 WP 3.3 - SBAR structured messages: the tenant's tighten-only policy. One row per organisation, absent = platform
 -- defaults. A tenant may RAISE any section's minimum length, require a patient (care_team) channel, and re-word the
 -- per-section hint text; it cannot go below the platform floor (the CHECKs below pin the same bounds as
--- SBAR_PLATFORM_FLOOR / the 500 ceiling in @chartwarden/types, with a pin test) and cannot switch SBAR off (the
+-- SBAR_PLATFORM_FLOOR / the 500 ceiling in @wardenx/types, with a pin test) and cannot switch SBAR off (the
 -- `messaging.sbar` ops flag is the off switch). The floor is re-applied on every read, so a row written under an older
 -- floor never loosens a raised one.
 --

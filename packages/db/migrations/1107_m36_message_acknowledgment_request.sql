@@ -67,7 +67,7 @@ CREATE TABLE "message_acknowledgment_request" (
   CONSTRAINT "message_ack_request_window" CHECK (
     "deadline_at" > "window_started_at"
     AND "window_started_at" >= "requested_at"
-    -- The platform maximum per class (ADR-0056 D4). Pinned to ACK_DEADLINE_POLICY in @chartwarden/types by a test.
+    -- The platform maximum per class (ADR-0056 D4). Pinned to ACK_DEADLINE_POLICY in @wardenx/types by a test.
     AND "deadline_at" <= "window_started_at" + (CASE "ack_class"
       WHEN 'important' THEN interval '120 minutes'
       WHEN 'urgent' THEN interval '30 minutes'
@@ -182,7 +182,7 @@ CREATE TRIGGER "trg_message_ack_request_insert_guard"
   BEFORE INSERT ON "message_acknowledgment_request"
   FOR EACH ROW EXECUTE FUNCTION message_ack_request_insert_guard();--> statement-breakpoint
 
--- UPDATE guard = the state machine of ADR-0069 D3 (the same table is in @chartwarden/messaging, pinned by a test).
+-- UPDATE guard = the state machine of ADR-0069 D3 (the same table is in @wardenx/messaging, pinned by a test).
 CREATE OR REPLACE FUNCTION message_ack_request_update_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_reassign boolean; v_legal boolean; v_actor text;

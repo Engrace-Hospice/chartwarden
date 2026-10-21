@@ -23,7 +23,7 @@
 --    (CoP 418.64(d)/418.104 records of care, ADR-0004), registered through M4's retention API at boot and
 --    carried by the eraser's `dataClass`, which lands with the routes task. Two different axes; both apply.
 --
---    Denylists mirror `M16_AUDIT_DENYLIST` in @chartwarden/types VERBATIM, so the code-side eraser/export view
+--    Denylists mirror `M16_AUDIT_DENYLIST` in @wardenx/types VERBATIM, so the code-side eraser/export view
 --    and the DB-side scrub cannot drift:
 --      bereavement_plan            pause_reason_redacted / ipoc_bereavement_intent_summary_redacted
 --      bereaved_contact            ineligible_reason_redacted

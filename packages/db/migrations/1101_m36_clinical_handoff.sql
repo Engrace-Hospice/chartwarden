@@ -116,7 +116,7 @@ CREATE INDEX "clinical_handoff_event_handoff_idx"
   ON "clinical_handoff_event" ("organization_id", "handoff_id", "created_at");--> statement-breakpoint
 
 -- Tenant policy: one row per organisation, absent = the platform default. Tighten-only: the deadline can only be
--- SHORTENED from the 240-minute platform ceiling (the CHECK pins the same bounds as HANDOFF_EXPIRY_* in @chartwarden/types,
+-- SHORTENED from the 240-minute platform ceiling (the CHECK pins the same bounds as HANDOFF_EXPIRY_* in @wardenx/types,
 -- with a pin test). The ceiling is re-applied on every read.
 CREATE TABLE "tenant_handoff_policy" (
   "organization_id" uuid PRIMARY KEY REFERENCES "organization"("id") ON DELETE RESTRICT,

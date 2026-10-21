@@ -63,7 +63,7 @@
 --    The remaining five (ai_capability, ai_capability_calibration, ai_model_backend, ai_evaluation_run,
 --    ai_kill_switch_state) carry empty denylists, file as 'compliance' and are unpartitioned, so they use
 --    M1's baseline trigger unchanged (the M21 supply_item / M22 form_template precedent). The lists
---    mirror `M32_AUDIT_DENYLIST` in @chartwarden/types VERBATIM so the code-side view and the DB-side scrub
+--    mirror `M32_AUDIT_DENYLIST` in @wardenx/types VERBATIM so the code-side view and the DB-side scrub
 --    cannot drift; `apps/backend/__tests__/ai-platform-schema.test.ts` compares them.
 --
 --    THE TWO PLATFORM-SHARED GENERATED FUNCTIONS resolve organization_id from the SESSION rather than
