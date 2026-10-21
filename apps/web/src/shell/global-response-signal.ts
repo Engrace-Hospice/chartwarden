@@ -83,6 +83,21 @@ function pathOf(url: string | undefined): string | undefined {
   }
 }
 
+/**
+ * The client's `onResponseStatus` hook (wired in main.tsx): feeds every observed response to the global signal. A 401/503
+ * notifies directly; a tenant-host refusal (410/403/404) is told apart from an ordinary one by its body `error.code`.
+ */
+export function handleObservedResponse(status: number, url: string | undefined, response: Response): void {
+  const signal = signalForStatus(status, url);
+  if (signal) {
+    setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx
+  } else if (mayCarryTenantRefusal(status, url)) {
+    void tenantSignalFromResponse(response).then((tenantSignal) => {
+      if (tenantSignal) setGlobalResponseSignal(tenantSignal);
+    });
+  }
+}
+
 export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {
   // A dead session must not leave PHI-bearing ceremony drafts in memory for whoever signs in next on this tab (the
   // /expired route is an SPA navigation, not a reload). An idle LOCK is different and keeps them.

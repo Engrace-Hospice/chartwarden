@@ -46,7 +46,7 @@ export function PortalApp({
         })),
       },
     ];
-    return createBrowserRouter(routes, { basename: PORTAL_BASE_PATH });
+    return createBrowserRouter(routes, { basename: PORTAL_BASE_PATH || "/" });
   }, []);
 
   return (

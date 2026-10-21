@@ -39,8 +39,8 @@ describe("sessionClassPathVerdict", () => {
 });
 
 describe("tenantSessionClassGuard", () => {
-  const req = (url: string, attributes?: Record<string, unknown>) =>
-    ({ url, context: { attributes } }) as unknown as FastifyRequest;
+  const req = (url: string, attributes?: Record<string, unknown>, method = "GET") =>
+    ({ url, method, context: { attributes } }) as unknown as FastifyRequest;
 
   it("answers 401 SESSION_CLASS_MISMATCH on a tenant host", async () => {
     await expect(
@@ -57,5 +57,37 @@ describe("tenantSessionClassGuard", () => {
     await expect(
       tenantSessionClassGuard(req("/api/v1/portal/care-summary", { tenantHostOrgId: "o", sessionClass: "patient_portal" })),
     ).resolves.toBeUndefined();
+  });
+
+  it("matches the decoded path: a percent-encoded /portal segment does not bypass the staff-on-portal check", async () => {
+    const staff = { tenantHostOrgId: "o", sessionClass: "staff" };
+    await expect(tenantSessionClassGuard(req("/api/v1/%70ortal/care-summary", staff))).rejects.toMatchObject({
+      code: "SESSION_CLASS_MISMATCH",
+    });
+    await expect(
+      tenantSessionClassGuard(req("/api/v1/patients", { tenantHostOrgId: "o", sessionClass: "patient_portal" })),
+    ).rejects.toMatchObject({ code: "SESSION_CLASS_MISMATCH" });
+    await expect(tenantSessionClassGuard(req("/api/v1/portal%2Fcare", staff))).rejects.toMatchObject({
+      code: "SESSION_CLASS_MISMATCH",
+    });
+  });
+
+  it("answers 400 for a path that does not decode", async () => {
+    await expect(
+      tenantSessionClassGuard(req("/api/v1/%E0%A4%A", { tenantHostOrgId: "o", sessionClass: "staff" })),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("lets the token flows through a stale cookie of the other class (POST only)", async () => {
+    const staff = { tenantHostOrgId: "o", sessionClass: "staff" };
+    const portal = { tenantHostOrgId: "o", sessionClass: "patient_portal" };
+    await expect(tenantSessionClassGuard(req("/api/v1/portal/invitations/accept", staff, "POST"))).resolves.toBeUndefined();
+    await expect(tenantSessionClassGuard(req("/api/v1/collaborators/consume", portal, "POST"))).resolves.toBeUndefined();
+    await expect(tenantSessionClassGuard(req("/api/v1/portal/invitations/accept", staff, "GET"))).rejects.toMatchObject({
+      code: "SESSION_CLASS_MISMATCH",
+    });
+    await expect(tenantSessionClassGuard(req("/api/v1/collaborators/consume", portal, "GET"))).rejects.toMatchObject({
+      code: "SESSION_CLASS_MISMATCH",
+    });
   });
 });

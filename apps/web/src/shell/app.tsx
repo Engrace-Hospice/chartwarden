@@ -108,6 +108,7 @@ function withSuspense(element: ReactNode): JSX.Element {
  */
 function GlobalResponseWatcher(): null {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { status } = useSessionState();
   const signal = useSyncExternalStore(subscribeGlobalResponseSignal, getGlobalResponseSignal);
   const alreadyExpiredRef = useRef(false);
@@ -124,12 +125,15 @@ function GlobalResponseWatcher(): null {
         navigate("/expired");
       }
     } else if (signal.kind === "tenant-unavailable") {
-      navigate(`/tenant-unavailable?reason=${signal.reason}`, { replace: true });
+      // Already there (the page's own requests may be refused too): re-navigating would only churn history/state.
+      if (pathname !== "/tenant-unavailable") {
+        navigate(`/tenant-unavailable?reason=${signal.reason}`, { replace: true });
+      }
     } else {
       navigate("/maintenance");
     }
     setGlobalResponseSignal(null); // consume — don't re-fire the same signal on every re-render
-  }, [signal, navigate, status]);
+  }, [signal, navigate, status, pathname]);
   return null;
 }
 

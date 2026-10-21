@@ -1,17 +1,25 @@
-import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
+import { Button, CenteredCardLayout, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — `app.<base>` landing (ADR-0049 Phase 4). A person who does not know their
 // organization's address enters their email; the backend mails the sign-in link of each organization they belong to.
 // Same no-enumeration rule as forgot-password.tsx: the confirmation is identical whatever the outcome (a miss, a
 // rate limit, a network failure), so nothing here reveals whether an address belongs to an organization.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { BrandLockup } from "./brand-lockup";
+
+const MUTED = { margin: 0, color: "var(--color-on-surface-variant)" } as const;
 
 export function AppLanding(): JSX.Element {
   const client = useApiClient();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const confirmationHeading = useRef<HTMLHeadingElement>(null);
+
+  // The form is replaced by the confirmation: move focus to it so keyboard and screen-reader users land on the answer.
+  useEffect(() => {
+    if (sent) confirmationHeading.current?.focus();
+  }, [sent]);
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -28,59 +36,33 @@ export function AppLanding(): JSX.Element {
   return (
     <CenteredCardLayout brand={<BrandLockup />}>
       {sent ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Check your email</h1>
-          <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.9rem" }}>
+        <div role="status" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <h1 ref={confirmationHeading} tabIndex={-1} style={{ margin: 0, fontSize: "1.1rem" }}>
+            Check your email
+          </h1>
+          <p style={{ ...MUTED, fontSize: "0.9rem" }}>
             If that address belongs to an organization, we’ve emailed sign-in links.
           </p>
         </div>
       ) : (
-        <form
-          onSubmit={submit}
-          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
-        >
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Find your organization</h1>
-          <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
+          <p style={{ ...MUTED, fontSize: "0.85rem" }}>
             Enter your work email and we’ll send you the sign-in address of your organization.
           </p>
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.25rem",
-              fontSize: "0.85rem",
-            }}
-          >
-            Email
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
-              style={field}
-            />
-          </label>
-          <button type="submit" disabled={busy || !email.trim()} style={primaryBtn}>
+          <TextField
+            label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+          />
+          <Button type="submit" loading={busy} disabled={!email.trim()}>
             {busy ? "Sending…" : "Email me my sign-in links"}
-          </button>
+          </Button>
         </form>
       )}
     </CenteredCardLayout>
   );
 }
-
-const field = {
-  padding: "0.5rem 0.625rem",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "0.5rem",
-} as const;
-const primaryBtn = {
-  padding: "0.625rem 1rem",
-  border: "none",
-  borderRadius: "0.5rem",
-  background: "var(--color-primary)",
-  color: "var(--color-surface-lowest)",
-  cursor: "pointer",
-  fontWeight: 600,
-} as const;

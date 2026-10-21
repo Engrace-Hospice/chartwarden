@@ -328,6 +328,7 @@ import {
   registerAuditorRedeemRoutes,
   registerPublicTenantRoutes,
   createDbPublicTenantLookups,
+  createUserMayUseTenantHost,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
@@ -4217,11 +4218,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // unbound, which that route already maps to 503 AUDITOR_LINK_DELIVERY_FAILED.
   const linkEmailTransport = emailBinding.linkEmailTransport;
   const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
+  // Per-tenant origins alone (TENANT_BASE_DOMAIN set, no global PORTAL_APP_URL / WEB_APP_URL) are enough to send.
   const linkDelivery =
-    linkLandingBaseUrl && emailBinding.linkDeliveryAvailable
+    (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) && emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({
           transport: emailTransport,
-          baseUrl: linkLandingBaseUrl,
+          ...(linkLandingBaseUrl ? { baseUrl: linkLandingBaseUrl } : {}),
           ...(portalOriginFor ? { baseUrlFor: portalOriginFor } : {}),
         })
       : undefined;
@@ -4276,12 +4278,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ...(tenantOrigins ? { tenantOrigins } : {}),
         ...(tenantOrigins && tenantBaseDomain
           ? {
-              userMayUseTenantHost: async (email: string, host: string) => {
-                const label = classifyTenantHost(host, tenantBaseDomain);
-                if (label.kind !== "tenant") return false;
-                const links = await createDbPublicTenantLookups(dbHandle.db).linksForEmail(email.toLowerCase());
-                return links.some((l) => l.slug === label.label);
-              },
+              userMayUseTenantHost: createUserMayUseTenantHost(createDbPublicTenantLookups(dbHandle.db), tenantBaseDomain),
             }
           : {}),
       })
@@ -4813,6 +4810,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 limit,
                 windowMs: 15 * 60 * 1000,
                 keyPrefix,
+                failClosed: true, // an unauthenticated email-sending route: an outage must not lift its budget
                 onStoreError: (err) => app.log.warn({ err }, "public tenant rate-limit store error"),
               });
             registerPublicTenantRoutes(app, {

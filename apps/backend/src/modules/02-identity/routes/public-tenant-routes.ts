@@ -22,6 +22,7 @@ import {
   RateLimitedError,
   ValidationError,
   classifyTenantHost,
+  tenantOriginForSlug,
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
@@ -50,7 +51,7 @@ export interface TenantLink {
   readonly displayName: string;
 }
 export interface PublicTenantLimiter {
-  consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }>;
+  consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number; storeError?: true }>;
 }
 export interface PublicTenantEmailTransport {
   send(message: { to: string; subject: string; text: string }): Promise<unknown>;
@@ -84,12 +85,35 @@ function parseBody(raw: unknown): Static<typeof FindMyOrganizationRequestSchema>
   return { email };
 }
 
-/** Plain-text body: one line per organization. Names are flattened to one line so a name cannot inject text. */
+const MAX_DISPLAY_NAME_LENGTH = 80;
+const URL_LIKE = /(?:[a-z][a-z0-9+.-]*:\/\/|www\.)\S*/gi;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+
+/** A tenant name is database text an administrator typed: one short plain line, no URLs, so it cannot carry a phishing link. */
+export function sanitizeDisplayName(name: string): string {
+  return name
+    .replace(CONTROL_CHARS, " ")
+    .replace(URL_LIKE, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_DISPLAY_NAME_LENGTH)
+    .trim();
+}
+
+/**
+ * Plain-text body: one line per organization, with a slug-only URL. A link whose slug is not a valid tenant label is
+ * omitted; null when nothing is left to send.
+ */
 export function buildFindMyOrganizationEmail(
   baseDomain: string,
   links: readonly TenantLink[],
-): { subject: string; text: string } {
-  const lines = links.map((l) => `  ${l.displayName.replace(/\s+/g, " ").trim()}: https://${l.slug}.${baseDomain}/`);
+): { subject: string; text: string } | null {
+  const lines = links.flatMap((l) => {
+    const origin = tenantOriginForSlug(l.slug, baseDomain);
+    return origin ? [`  ${sanitizeDisplayName(l.displayName)}: ${origin}/`] : [];
+  });
+  if (lines.length === 0) return null;
   return {
     subject: "Your ChartWarden sign-in addresses",
     text: `You asked for the ChartWarden address of your organization. Sign in at:\n\n${lines.join("\n")}\n\nIf you didn't ask for this, you can ignore this email.`,
@@ -123,19 +147,22 @@ export function registerPublicTenantRoutes(app: FastifyInstance, deps: PublicTen
     const { email } = parseBody(request.body);
 
     const ip = await deps.ipLimiter.consume(ipOf(request));
-    if (!ip.allowed) {
+    // A limiter store outage (fail-closed limiter) is not the caller's fault: skip the send, answer the same 202.
+    const budgetUnavailable = ip.storeError === true;
+    if (!ip.allowed && !budgetUnavailable) {
       if (ip.retryAfterSeconds !== undefined) reply.header("Retry-After", String(ip.retryAfterSeconds));
       throw new RateLimitedError("too many requests from this address");
     }
     // The per-address budget never changes the answer: over budget the send is skipped, the reply is the same 202.
-    const emailBudget = await deps.emailLimiter.consume(sha256Hex(email.toLowerCase()));
+    const emailBudget = budgetUnavailable ? { allowed: false } : await deps.emailLimiter.consume(sha256Hex(email.toLowerCase()));
 
     if (emailBudget.allowed && deps.emailTransport) {
       const transport = deps.emailTransport;
       defer(async () => {
         const links = await deps.linksForEmail(email);
         if (links.length === 0) return;
-        await transport.send({ to: email, ...buildFindMyOrganizationEmail(baseDomain, links) });
+        const message = buildFindMyOrganizationEmail(baseDomain, links);
+        if (message) await transport.send({ to: email, ...message });
       });
     }
     reply.header("Cache-Control", "no-store");

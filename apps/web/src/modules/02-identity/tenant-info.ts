@@ -20,12 +20,19 @@ export async function fetchTenantInfo(client: ApiClient): Promise<TenantInfo | n
   }
 }
 
+/** Build-time `VITE_TENANT_BASE_DOMAIN` (the same value as the backend's `TENANT_BASE_DOMAIN`); unset on the demo. */
+const BUILD_TENANT_BASE_DOMAIN: string | undefined = import.meta.env?.VITE_TENANT_BASE_DOMAIN;
+
 /**
- * `app.<base>` (a first label of exactly `app` over a base of at least two labels) is the "find my organization"
- * landing, not a tenant. A hostname heuristic rather than build config: the label is reserved by the slug rules, so
- * no tenant can ever collide with it, and the same build then serves every environment.
+ * `app.<base>` is the "find my organization" landing, not a tenant: the label is reserved by the slug rules, so no
+ * tenant can collide with it. It is matched EXACTLY against the configured base domain - never by hostname shape - so a
+ * single-host deployment that happens to live at `app.example.com` is not hijacked. No base domain => never the landing.
  */
-export function isAppLandingHost(hostname: string): boolean {
-  const labels = hostname.toLowerCase().replace(/\.$/, "").split(".");
-  return labels.length >= 3 && labels[0] === "app";
+export function isAppLandingHost(
+  hostname: string,
+  baseDomain: string | undefined = BUILD_TENANT_BASE_DOMAIN,
+): boolean {
+  const base = baseDomain?.trim().toLowerCase().replace(/\.$/, "");
+  if (!base) return false;
+  return hostname.toLowerCase().replace(/\.$/, "") === `app.${base}`;
 }

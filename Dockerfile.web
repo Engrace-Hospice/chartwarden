@@ -7,6 +7,9 @@ WORKDIR /app
 
 COPY --chown=bun:bun . .
 RUN bun install --frozen-lockfile
+# ADR-0049: the `app.<base>` landing is recognised by this build-time value (the backend's TENANT_BASE_DOMAIN); empty on the demo.
+ARG VITE_TENANT_BASE_DOMAIN=""
+ENV VITE_TENANT_BASE_DOMAIN=${VITE_TENANT_BASE_DOMAIN}
 RUN bun run --cwd apps/web build:app
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine

@@ -121,6 +121,27 @@ describe("createApiClient — onResponseStatus hook (TASK-033)", () => {
     expect(statuses).toEqual([503]);
   });
 
+  it("hands the hook the Response itself, whose body a synchronous clone can still read", async () => {
+    let seen: Response | undefined;
+    let body: Promise<unknown> | undefined;
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ error: { code: "TENANT_CLOSED" } }), {
+        status: 410,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    const client = createApiClient({
+      fetch: fetchImpl,
+      baseUrl: "http://localhost",
+      onResponseStatus: (_status, _url, response) => {
+        seen = response;
+        body = response.clone().json(); // taken inside the hook, before the client consumes the body
+      },
+    });
+    await client.GET("/api/v1/billing/claims" as never, {} as never);
+    expect(seen?.status).toBe(410);
+    expect(await body).toEqual({ error: { code: "TENANT_CLOSED" } });
+  });
+
   it("does not observe responses when no hook is given (leaf-safe default)", async () => {
     const { fetch, requests } = fetchCapturingRequest();
     const client = createApiClient({ fetch, baseUrl: "http://localhost" });

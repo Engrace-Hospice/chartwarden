@@ -644,7 +644,7 @@ export { createTaxIdCipher } from "./tax-id-cipher";
 export type { TaxIdCipher, TaxIdKeyProvider } from "./tax-id-cipher";
 export { validateOverrideInput } from "./step-up-override-admin";
 // ADR-0049 Phase 4 — the unauthenticated tenant-discovery routes + their database lookups (migration 1146).
-export { createDbPublicTenantLookups } from "./public-tenant-db";
+export { createDbPublicTenantLookups, createUserMayUseTenantHost } from "./public-tenant-db";
 export {
   FindMyOrganizationRequestSchema,
   FindMyOrganizationResponseSchema,

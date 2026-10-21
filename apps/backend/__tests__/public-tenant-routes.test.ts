@@ -4,6 +4,7 @@ import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import { createBudgetedRateLimiter, createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
 import {
   type PublicTenantRouteDeps,
+  buildFindMyOrganizationEmail,
   registerPublicTenantRoutes,
 } from "../src/modules/02-identity/routes/public-tenant-routes";
 
@@ -137,5 +138,57 @@ describe("POST /api/v1/public/find-my-organization", () => {
     expect((await post(a, "nurse@example.test")).statusCode).toBe(202);
     await flush();
     await vi.waitFor(() => expect(onBackgroundError).toHaveBeenCalled());
+  });
+
+  it("fail-closed limiters: a store outage skips the send, still answers 202", async () => {
+    const broken = { increment: async () => Promise.reject(new Error("valkey down")) };
+    const closed = (keyPrefix: string) => createBudgetedRateLimiter(broken, { limit: 3, windowMs: 1000, keyPrefix, failClosed: true });
+    const { app: a, sent, flush, linksForEmail } = await build({ ipLimiter: closed("ip"), emailLimiter: closed("email") });
+    const res = await post(a, "nurse@example.test");
+    expect(res.statusCode).toBe(202);
+    await flush();
+    expect(sent).toHaveLength(0);
+    expect(linksForEmail).not.toHaveBeenCalled();
+  });
+
+  it("fail-closed email limiter alone (ip store fine) also skips the send", async () => {
+    const broken = { increment: async () => Promise.reject(new Error("valkey down")) };
+    const { app: a, sent, flush } = await build({
+      emailLimiter: createBudgetedRateLimiter(broken, { limit: 1, windowMs: 1000, keyPrefix: "e", failClosed: true }),
+    });
+    expect((await post(a, "nurse@example.test")).statusCode).toBe(202);
+    await flush();
+    expect(sent).toHaveLength(0);
+  });
+
+  it("the default limiter still fails OPEN on a store outage (other routes unchanged)", async () => {
+    const broken = { increment: async () => Promise.reject(new Error("valkey down")) };
+    await expect(createBudgetedRateLimiter(broken, { limit: 1, windowMs: 1000, keyPrefix: "x" }).consume("k")).resolves.toEqual({
+      allowed: true,
+    });
+  });
+
+  it("omits a link whose slug is not a valid tenant label and sends nothing when none is left", async () => {
+    const { app: a, sent, flush } = await build({
+      linksForEmail: async () => [
+        { slug: "Legacy_Org", displayName: "Legacy" },
+        { slug: "evil.example.test/x", displayName: "Evil" },
+      ],
+    });
+    expect((await post(a, "nurse@example.test")).statusCode).toBe(202);
+    await flush();
+    expect(sent).toHaveLength(0);
+    const mixed = buildFindMyOrganizationEmail(BASE, [{ slug: "Legacy_Org", displayName: "Legacy" }, { slug: "acme", displayName: "Acme" }]);
+    expect(mixed?.text).toContain("Acme: https://acme.chartwarden.com/");
+    expect(mixed?.text).not.toContain("Legacy");
+  });
+
+  it("caps the display name, strips URLs and control characters, keeps the slug-only link", () => {
+    const name = `Visit https://evil.test/login now www.evil.test\u0007\n${"x".repeat(200)}`;
+    const text = buildFindMyOrganizationEmail(BASE, [{ slug: "acme", displayName: name }])?.text ?? "";
+    expect(text).not.toContain("evil.test");
+    expect(text).not.toMatch(/[\u0000-\u0009\u000b-\u001f]/);
+    const line = text.split("\n").find((l) => l.includes("acme.chartwarden.com")) ?? "";
+    expect(line).toMatch(/^ {2}.{1,80}: https:\/\/acme\.chartwarden\.com\/$/);
   });
 });

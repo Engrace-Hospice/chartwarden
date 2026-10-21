@@ -242,4 +242,58 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
       expect(rows[0]).toEqual({ pub_app: true, pub_ro: false, links_app: true, links_ro: false });
     });
   });
+
+  // Migration 1147 — email_belongs_to_tenant: membership OR portal account, current slug only, active/created org only.
+  describe("migration 1147 — email_belongs_to_tenant", () => {
+    const ORG_P = "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1"; // active
+    const ORG_Q = "f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2"; // suspended
+    const staff = "f3f3f3f3-f3f3-4f3f-8f3f-f3f3f3f3f3f3";
+    const patient = "f4f4f4f4-f4f4-4f4f-8f4f-f4f4f4f4f4f4";
+    const revoked = "f5f5f5f5-f5f5-4f5f-8f5f-f5f5f5f5f5f5";
+    const stranger = "f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f6";
+    const belongs = (email: string, label: string) =>
+      asApp("", async () => (await db.query("SELECT email_belongs_to_tenant($1,$2) AS ok", [email, label])).rows[0].ok as boolean);
+
+    beforeAll(async () => {
+      await db.query("INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'harbor','L','Harbor','active'),($2,'quiet','L','Quiet','suspended')", [ORG_P, ORG_Q]);
+      await db.query(
+        "INSERT INTO \"user\" (id,email) VALUES ($1,'staff@x.test'),($2,'Patient@X.test'),($3,'revoked@x.test'),($4,'stranger@x.test')",
+        [staff, patient, revoked, stranger],
+      );
+      await db.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')", [staff, ORG_P]);
+      for (const [user, org, status, revokedAt] of [
+        [patient, ORG_P, "active", null],
+        [patient, ORG_Q, "active", null],
+        [revoked, ORG_P, "revoked", new Date()],
+      ] as const) {
+        await db.query(
+          "INSERT INTO portal_account (organization_id,user_id,relationship,status,display_name_cipher,email_cipher,revoked_at) VALUES ($1,$2,'patient_self',$3,'x','x',$4)",
+          [org, user, status, revokedAt],
+        );
+      }
+      await rename(ORG_P, "harbor-care"); // `harbor` becomes a retired alias
+    });
+
+    it("is true for a member and for a portal-only person (no membership) at the CURRENT slug", async () => {
+      expect(await belongs("staff@x.test", "harbor-care")).toBe(true);
+      expect(await belongs("PATIENT@x.test", "harbor-care")).toBe(true);
+    });
+
+    it("is false for a retired alias, a stranger, a revoked portal account, a suspended org and an unknown label", async () => {
+      expect(await belongs("patient@x.test", "harbor")).toBe(false);
+      expect(await belongs("stranger@x.test", "harbor-care")).toBe(false);
+      expect(await belongs("revoked@x.test", "harbor-care")).toBe(false);
+      expect(await belongs("patient@x.test", "quiet")).toBe(false);
+      expect(await belongs("staff@x.test", "nobody")).toBe(false);
+      expect(await belongs("%", "harbor-care")).toBe(false);
+    });
+
+    it("is executable by the app role only", async () => {
+      const { rows } = await db.query(
+        `SELECT has_function_privilege('chartwarden_app','email_belongs_to_tenant(text,text)','EXECUTE') AS app,
+                has_function_privilege('chartwarden_readonly','email_belongs_to_tenant(text,text)','EXECUTE') AS ro`,
+      );
+      expect(rows[0]).toEqual({ app: true, ro: false });
+    });
+  });
 });

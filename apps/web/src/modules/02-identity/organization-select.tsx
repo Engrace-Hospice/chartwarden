@@ -1,4 +1,4 @@
-import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@chartwarden/ui";
+import { Button, CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Organization Select (M2 Auth, Track A).
 // Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "Organization select" (/login/organization).
 // A multi-org user picks the org that binds the session (one-time). Backed by the real M2 routes
@@ -7,8 +7,9 @@ import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@c
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { takePendingNotificationLink } from "../../shell/pending-deep-link";
+import { authClient } from "./auth-client";
 import { BrandLockup } from "./brand-lockup";
-import { fetchTenantInfo } from "./tenant-info";
+import { type TenantInfo, fetchTenantInfo } from "./tenant-info";
 
 // Wire shape mirrored from the M2 route (apps/backend/.../identity-routes.ts toView), re-declared
 // here rather than imported — the UI consumes the HTTP response, not the backend package.
@@ -32,8 +33,17 @@ type LoadState =
  * first org_admin has no passkey yet, and the passkey screen inside the shell sits behind the pre-org guard, so
  * the refusal links to the chromeless `/login/passkey` instead of a dead "contact your administrator".
  */
-function selectionFailure(error: unknown): Extract<LoadState, { kind: "error" }> {
+function selectionFailure(error: unknown, tenant?: TenantInfo | null): Extract<LoadState, { kind: "error" }> {
   const envelope = (error as { error?: { code?: unknown; message?: unknown } } | null)?.error;
+  // ADR-0049: a tenant host binds only its own organization. Name it when the public lookup told us.
+  if (envelope?.code === "TENANT_HOST_MISMATCH") {
+    return {
+      kind: "error",
+      message: tenant?.displayName
+        ? `This address belongs to ${tenant.displayName}, and your account is not a member of it. Sign out and sign in with an account that is.`
+        : "Your account is not a member of the organization at this address. Sign out and sign in with an account that is.",
+    };
+  }
   if (envelope?.code === "MFA_ENROLMENT_REQUIRED" && typeof envelope.message === "string") {
     const mustSignInAgain = /sign in again/i.test(envelope.message);
     return {
@@ -58,6 +68,8 @@ export function OrganizationSelect(): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selecting, setSelecting] = useState<string | null>(null);
 
+  const [tenant, setTenant] = useState<TenantInfo | null>(null);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -74,6 +86,8 @@ export function OrganizationSelect(): JSX.Element {
         });
         return;
       }
+      // The tenant lookup rides alongside the memberships fetch (never a serial round trip); it never rejects.
+      const tenantLookup = fetchTenantInfo(client);
       const { data, error } = await client.GET("/api/v1/auth/memberships");
       if (!active) return;
       if (error) {
@@ -86,28 +100,45 @@ export function OrganizationSelect(): JSX.Element {
       const memberships = ((data?.memberships ?? []) as MembershipView[]).filter(
         (m) => m.status === "active",
       );
-      // A tenant host already pins the organization, so a single match is not a choice: bind it without a click.
-      if (memberships.length === 1 && memberships[0] && (await fetchTenantInfo(client))) {
-        if (active) await select(memberships[0].organizationId); // the spinner stays up until the page reloads
-        return;
+      const hostTenant = await tenantLookup;
+      if (!active) return;
+      setTenant(hostTenant);
+      // A live tenant host already pins the organization, so a single match is not a choice: bind it without a click.
+      const only = memberships.length === 1 ? memberships[0] : undefined;
+      if (only && hostTenant?.status === "active") {
+        const failure = await bind(only.organizationId); // on success the page reloads; the spinner stays up
+        if (!active || failure === null) return;
+        // Could not bind: a wrong-organization refusal gets its own explanation, anything else falls back to the
+        // picker so the person can retry with a click.
+        if ((failure as { error?: { code?: unknown } } | null)?.error?.code === "TENANT_HOST_MISMATCH") {
+          setState(selectionFailure(failure, hostTenant));
+          return;
+        }
       }
       if (!active) return;
       setState({ kind: "ready", memberships });
-    })();
+    })().catch(() => {
+      if (active) setState({ kind: "error", message: "Something went wrong loading your organizations." });
+    });
     return () => {
       active = false;
     };
   }, [client]);
 
-  async function select(organizationId: string): Promise<void> {
+  /** POST the binding; `null` on success (the page is reloading), else the refusal (a thrown request is one too). */
+  async function bind(organizationId: string): Promise<unknown> {
     setSelecting(organizationId);
-    const { error } = await client.POST("/api/v1/auth/select-organization", {
-      body: { organizationId },
-    });
-    if (error) {
+    try {
+      const { error } = await client.POST("/api/v1/auth/select-organization", {
+        body: { organizationId },
+      });
+      if (error) {
+        setSelecting(null);
+        return error;
+      }
+    } catch (thrown) {
       setSelecting(null);
-      setState(selectionFailure(error));
-      return;
+      return thrown ?? new Error("select-organization failed");
     }
     // The session's active org is now bound server-side. Re-bootstrap the app with a full load (not
     // an SPA navigate) so ActorSessionProvider re-fetches /auth/context and the whole shell — nav,
@@ -115,6 +146,21 @@ export function OrganizationSelect(): JSX.Element {
     // pre-org session in memory and the shell guard would bounce straight back here.
     // WP 4.8: finish a notification link opened before sign-in (a rebuilt `/n/<opaque id>`), else the home page.
     window.location.assign(takePendingNotificationLink() ?? "/");
+    return null;
+  }
+
+  async function select(organizationId: string): Promise<void> {
+    const failure = await bind(organizationId);
+    if (failure !== null) setState(selectionFailure(failure, tenant));
+  }
+
+  async function signOutAndRestart(): Promise<void> {
+    try {
+      await authClient.signOut();
+    } catch {
+      // The session may already be unusable; the sign-in page is where this ends either way.
+    }
+    window.location.assign("/login");
   }
 
   return (
@@ -125,6 +171,14 @@ export function OrganizationSelect(): JSX.Element {
         <>
           <EmptyState title="Unavailable" description={state.message} />
           {state.action ? <a href={state.action.href}>{state.action.label}</a> : null}
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+            <Button tone="secondary" onClick={() => window.location.reload()}>
+              Try again
+            </Button>
+            <Button tone="tertiary" onClick={() => void signOutAndRestart()}>
+              Sign out
+            </Button>
+          </div>
         </>
       ) : null}
       {state.kind === "ready" && state.memberships.length === 0 ? (

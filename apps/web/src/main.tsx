@@ -60,11 +60,8 @@ import { mdmScreens } from "./modules/40-mdm";
 import {
   AppShell,
   createScreenRegistry,
-  mayCarryTenantRefusal,
-  setGlobalResponseSignal,
-  signalForStatus,
+  handleObservedResponse,
   systemScreens,
-  tenantSignalFromResponse,
 } from "./shell";
 
 // Apply the resolved Lantern theme (stored choice, else OS preference) before the first paint — no flash.
@@ -74,16 +71,7 @@ const registry = createScreenRegistry();
 // TASK-033: every response the client observes is fed through the global signal so the shell can
 // react (401 → /expired, 503 → /maintenance) regardless of which screen made the call.
 const client = createApiClient({
-  onResponseStatus: (status, url, response) => {
-    const signal = signalForStatus(status, url);
-    if (signal) setGlobalResponseSignal(signal); // only 401/503 notify — don't re-render on every 2xx
-    else if (mayCarryTenantRefusal(status, url)) {
-      // ADR-0049: a tenant-host refusal (410/403/404) is told apart from an ordinary one by its body error.code.
-      void tenantSignalFromResponse(response).then((tenantSignal) => {
-        if (tenantSignal) setGlobalResponseSignal(tenantSignal);
-      });
-    }
-  },
+  onResponseStatus: handleObservedResponse,
 });
 
 // Module web-slices register here as they land (Track A/B).

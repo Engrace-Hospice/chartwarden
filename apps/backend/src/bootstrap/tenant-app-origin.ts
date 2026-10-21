@@ -3,7 +3,8 @@
 // With TENANT_BASE_DOMAIN set a tenant is served at `https://<slug>.<base>` (staff SPA at `/`, portal SPA at `/portal/`),
 // so every link mailed on an organization's behalf must name THAT host. Unset, the origin is today's global one
 // (`WEB_APP_URL ?? BETTER_AUTH_URL`; portal links `PORTAL_APP_URL ?? …`), unchanged. If the slug cannot be read the
-// global origin is used rather than an invented host.
+// global origin is used rather than an invented host - likewise when the slug is not a valid tenant label (a legacy row).
+import { tenantOriginForSlug } from "@chartwarden/types";
 
 export interface TenantAppOriginDeps {
   /** `parseTenantBaseDomain()`; null is single-host mode. */
@@ -31,7 +32,7 @@ export function createTenantAppOrigin(deps: TenantAppOriginDeps): TenantAppOrigi
     if (!deps.baseDomain) return undefined;
     try {
       const slug = await deps.slugForOrg(organizationId);
-      return slug ? `https://${slug}.${deps.baseDomain}` : undefined;
+      return (slug ? tenantOriginForSlug(slug, deps.baseDomain) : null) ?? undefined;
     } catch {
       return undefined;
     }

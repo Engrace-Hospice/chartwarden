@@ -178,6 +178,43 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
 - *Not verified here*: a live browser pass against the Docker API on a real `*.<base>` host (needs wildcard DNS or
   hosts entries and `TENANT_BASE_DOMAIN`); covered by jsdom tests and a production build of both SPAs only.
 
+**Phase 4 pre-PR review fixes** (same branch; findings from the mandatory pre-PR review).
+- *Recipient gate (B1, was a regression)*: `userMayUseTenantHost` read `tenant_links_for_email`, which only knows ACTIVE
+  memberships, so a portal-only person (patient / caregiver / bereaved: a `portal_account`, no membership) kept their
+  magic link on the global origin. Migration **1147** adds `email_belongs_to_tenant(p_email, p_label)` (SECURITY DEFINER,
+  owner `chartwarden_admin`, pinned search_path, EXECUTE for `chartwarden_app` only): boolean, no row cap, true for an
+  active membership OR a live portal account (invited / active / bereaved, not revoked or suspended) in the organization
+  whose CURRENT slug is `p_label` and whose status is `active` / `created` (a retired alias never matches).
+  `createUserMayUseTenantHost` (02-identity) wraps it; proved live in `m1-organization-slug-alias.live.test.ts`.
+- *Portal base path (B2)*: no deploy config serves the portal SPA today (no Dockerfile / nginx / compose entry), so the
+  only contract is `PORTAL_APP_URL` plus the build. The base is now a build-time knob, `VITE_PORTAL_BASE`
+  (`apps/portal/src/base-path.ts` `resolvePortalBase`): unset keeps `/portal` (tenant mode, dev, tests); `""` or `/`
+  builds for an origin-root deployment. In single-host mode (TENANT_BASE_DOMAIN unset) the backend still returns
+  `PORTAL_APP_URL` verbatim, so the operator sets `PORTAL_APP_URL` to wherever that build is served
+  (`https://portal.example` with `VITE_PORTAL_BASE=`, or `https://app.example/portal` with the default). Demo links are
+  unchanged. In tenant mode links are `https://<slug>.<base>/portal/...` as before.
+- *Session-class guard (B3)*: matches the DECODED path (`/api/v1/%70ortal/x` previously bypassed the staff-on-portal
+  check); a path that does not decode answers 400. Two token flows pass a stale cookie of the other class (POST only):
+  `POST /api/v1/portal/invitations/accept` for a staff-class session and `POST /api/v1/collaborators/consume` for a
+  portal-class session.
+- *find-my-organization hardening (B4-B6)*: the two limiters are built with `failClosed` (new opt-in on
+  `createBudgetedRateLimiter`; default stays fail-open for every other route), so a store outage skips the send and
+  still answers 202. `tenantOriginForSlug` (types) refuses a slug the 1144 rules would reject; `tenant-app-origin` falls
+  back to the global origin and the email omits that link (no email at all if none is left). Display names are
+  capped at 80 characters with URLs and control characters stripped; links remain slug-only.
+- *Link delivery gate (B7)*: collaborator / funeral links send when only `TENANT_BASE_DOMAIN` is set
+  (`baseUrl` is optional on `createLinkDelivery`; it throws, rather than mail a dead link, when neither a tenant origin nor
+  a global base resolves).
+- *Web (W1-W6)*: the organization picker's auto-bind is wrapped end to end; a rejected or refused bind falls back to the
+  picker, a `TENANT_HOST_MISMATCH` refusal names the host's organization, and every error state offers "Try again" and
+  "Sign out". The tenant lookup now runs in parallel with the memberships fetch and must report `status === "active"`.
+  `isAppLandingHost` requires the build-time `VITE_TENANT_BASE_DOMAIN` (set it to the backend's `TENANT_BASE_DOMAIN`;
+  `Dockerfile.web` takes it as a build ARG) and matches `app.<base>` exactly - unset means never the landing, so a
+  single-host deployment at `app.<domain>` is not hijacked. The landing uses the shared `TextField` / `Button`, announces
+  the confirmation as `role="status"` and moves focus to its heading. `GlobalResponseWatcher` no longer re-navigates when
+  already on `/tenant-unavailable`. `handleObservedResponse` (shell) is the one `onResponseStatus` handler; tests cover the
+  Response reaching it and a 410 body routing to `/tenant-unavailable` end to end.
+
 ### Phase 5 — edge and environment (PR B)
 - Confirm quillwardhealth.com controls `chartwarden.com` DNS; add the wildcard record and DNS-01 credentials.
 - Pangolin wildcard resource plus exact-host resources for reserved names (they take precedence).
@@ -186,6 +223,10 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
   path rules on Talos. Path routing: `/api/` backend, `/portal/` portal SPA, `/` staff SPA.
 - CSP: `img-src` and `connect-src` to `'self'` plus the explicit `storage.` host.
 - Ops runbook section; `smoke.sh` probes a sample tenant host and a wrong-tenant request.
+- Edge must serve the portal build for EVERY `/portal/*` path (a deep-link reload such as `/portal/p/<id>/care-plan`, and the
+  magic-link return `/portal/signed-in`) with its own `index.html` fallback, and must not shadow it with the staff SPA's
+  fallback. `smoke.sh` probes a deep `/portal/` path and asserts the portal document (not the staff one) comes back.
+- Pass `VITE_TENANT_BASE_DOMAIN` (= `TENANT_BASE_DOMAIN`) as a build arg to `Dockerfile.web` so `app.<base>` shows the landing.
 
 ### Phase 6 — provisioning (PR B)
 - M34 tenant provisioning validates the slug (Phase 1 rules) and audits the action. No per-tenant DNS,

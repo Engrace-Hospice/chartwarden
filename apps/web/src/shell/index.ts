@@ -15,6 +15,7 @@ export type {
 export { canSeeScreen, guardChromedRoute, toSession } from "./actor-session";
 export type { ActorContextResponse, RouteGuardOutcome } from "./actor-session";
 export {
+  handleObservedResponse,
   mayCarryTenantRefusal,
   setGlobalResponseSignal,
   signalForStatus,

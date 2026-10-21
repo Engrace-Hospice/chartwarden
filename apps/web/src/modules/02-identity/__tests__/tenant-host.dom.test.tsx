@@ -24,12 +24,13 @@ const MEMBERSHIP = {
   defaultLocationIds: [],
 };
 
-function clientWith(tenant: "tenant" | "none" | "throws", memberships = [MEMBERSHIP]) {
+function clientWith(tenant: "tenant" | "suspended" | "none" | "throws", memberships = [MEMBERSHIP]) {
   const post = vi.fn(async () => ({ data: undefined, error: undefined }));
   const client = {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/public/tenant") {
         if (tenant === "throws") throw new Error("network");
+        if (tenant === "suspended") return { data: { status: "suspended" } };
         return tenant === "tenant"
           ? { data: { status: "active", displayName: "Cedar Ridge Hospice" } }
           : { data: undefined, error: { error: { code: "TENANT_HOST_UNKNOWN" } } };
@@ -49,7 +50,10 @@ const withClient = (client: ApiClient, ui: React.ReactNode) =>
     </ApiClientProvider>,
   );
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("SignIn on a tenant host", () => {
   it("shows the organization's name", async () => {
@@ -81,7 +85,50 @@ describe("OrganizationSelect on a tenant host", () => {
       }),
     );
     expect(screen.queryByRole("button", { name: /Cedar Ridge/ })).toBeNull();
-    vi.unstubAllGlobals();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+  });
+
+  it("falls back to the picker when the automatic binding request is rejected", async () => {
+    const { client, post } = clientWith("tenant");
+    post.mockRejectedValueOnce(new Error("network"));
+    withClient(client, <OrganizationSelect />);
+    const pick = await screen.findByRole("button", { name: /Cedar Ridge Hospice/ });
+    expect(post).toHaveBeenCalledTimes(1);
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    fireEvent.click(pick); // the person can retry with a click
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it("explains a wrong-organization refusal, names the host's organization and offers sign-out and retry", async () => {
+    const { client, post } = clientWith("tenant");
+    post.mockResolvedValueOnce({ data: undefined, error: { error: { code: "TENANT_HOST_MISMATCH" } } } as never);
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    withClient(client, <OrganizationSelect />);
+    expect(await screen.findByText(/belongs to Cedar Ridge Hospice/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/login"));
+    expect(assign).not.toHaveBeenCalledWith("/");
+  });
+
+  it("shows an error with actions when the load itself throws", async () => {
+    const { client } = clientWith("tenant");
+    (client.GET as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("boom"));
+    withClient(client, <OrganizationSelect />);
+    expect(await screen.findByText(/Something went wrong/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
+  it("does not auto-bind on a tenant host that is not active (suspended), and asks the tenant lookup in parallel", async () => {
+    const { client, post } = clientWith("suspended");
+    withClient(client, <OrganizationSelect />);
+    expect(await screen.findByRole("button", { name: /Cedar Ridge Hospice/ })).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
+    const calls = (client.GET as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(calls.indexOf("/api/v1/public/tenant")).toBeGreaterThan(calls.indexOf("/api/v1/auth/credential-status"));
   });
 
   it("keeps the picker on the demo host", async () => {
@@ -109,7 +156,7 @@ describe("AppLanding", () => {
   const CONFIRMATION = /If that address belongs to an organization, we.ve emailed sign-in links/;
   const submit = async (client: ApiClient) => {
     withClient(client, <AppLanding />);
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "nurse@example.org" } });
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: "nurse@example.org" } });
     fireEvent.click(screen.getByRole("button", { name: /Email me/ }));
   };
 
@@ -120,6 +167,14 @@ describe("AppLanding", () => {
     expect(post).toHaveBeenCalledWith("/api/v1/public/find-my-organization", {
       body: { email: "nurse@example.org" },
     });
+  });
+
+  it("announces the confirmation as a status region and moves focus to its heading", async () => {
+    const { client } = clientWith("none");
+    await submit(client);
+    const heading = await screen.findByRole("heading", { name: "Check your email" });
+    expect(heading.closest("[role=status]")).toBeTruthy();
+    expect(document.activeElement).toBe(heading);
   });
 
   it.each(["rejected", "error"])(
@@ -138,15 +193,17 @@ describe("AppLanding", () => {
 
 describe("isAppLandingHost", () => {
   it.each([
-    ["app.chartwarden.com", true],
-    ["APP.chartwarden.com.", true],
-    ["app.chartwarden.localhost", true],
-    ["app.localhost", false],
-    ["app", false],
-    ["acme.chartwarden.com", false],
-    ["myapp.chartwarden.com", false],
-    ["chartwarden.com", false],
-  ])("%s -> %s", (host, expected) => {
-    expect(isAppLandingHost(host)).toBe(expected);
+    ["app.chartwarden.com", "chartwarden.com", true],
+    ["APP.chartwarden.com.", "Chartwarden.com", true],
+    ["app.chartwarden.localhost", "chartwarden.localhost", true],
+    ["app.chartwarden.com", undefined, false], // no base domain configured: a single-host deployment at app.<domain>
+    ["app.chartwarden.com", "", false],
+    ["app.demo.example.org", "chartwarden.com", false],
+    ["acme.chartwarden.com", "chartwarden.com", false],
+    ["myapp.chartwarden.com", "chartwarden.com", false],
+    ["x.app.chartwarden.com", "chartwarden.com", false],
+    ["chartwarden.com", "chartwarden.com", false],
+  ])("%s with base %s -> %s", (host, base, expected) => {
+    expect(isAppLandingHost(host, base)).toBe(expected);
   });
 });

@@ -4,7 +4,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PORTAL_BASE_PATH } from "../src/base-path";
+import { PORTAL_BASE_PATH, resolvePortalBase } from "../src/base-path";
 import config from "../vite.config";
 
 function sourceFiles(dir: string): string[] {
@@ -34,6 +34,14 @@ describe("portal under /portal/", () => {
     expect(PORTAL_BASE_PATH).toBe("/portal");
     expect(config.base).toBe("/portal/");
     expect(Object.keys(config.server?.proxy ?? {})).toEqual(["/api", "/webhooks"]);
+  });
+
+  it("resolves the build-time VITE_PORTAL_BASE: default /portal, \"\" or / for an origin-root deployment", () => {
+    expect(resolvePortalBase(undefined)).toBe("/portal");
+    expect(resolvePortalBase("")).toBe("");
+    expect(resolvePortalBase("/")).toBe("");
+    expect(resolvePortalBase("/portal/")).toBe("/portal");
+    expect(resolvePortalBase("p")).toBe("/p");
   });
 
   it("calls only API paths a portal-class session may reach, or the known funeral-flow pair", () => {

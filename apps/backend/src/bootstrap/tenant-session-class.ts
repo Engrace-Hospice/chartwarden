@@ -25,8 +25,24 @@ const PORTAL_SESSION_ALLOWED_PREFIXES: readonly string[] = [
 
 export type SessionClassPathVerdict = "allowed" | "portal-session-on-staff-path" | "staff-session-on-portal-path";
 
-export function sessionClassPathVerdict(sessionClass: string | undefined, pathname: string): SessionClassPathVerdict {
+/**
+ * Token-authenticated routes whose caller is, by design, not the session's class: the credential is the token in the
+ * body, and a stale cookie of the wrong class must not block them. Both are POST-only and anonymous-capable.
+ */
+const TOKEN_FLOW_ROUTES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["staff", ["/api/v1/portal/invitations/accept"]],
+  ["patient_portal", ["/api/v1/collaborators/consume"]],
+  ["caregiver_portal", ["/api/v1/collaborators/consume"]],
+  ["bereaved_portal", ["/api/v1/collaborators/consume"]],
+]);
+
+export function sessionClassPathVerdict(
+  sessionClass: string | undefined,
+  pathname: string,
+  method = "GET",
+): SessionClassPathVerdict {
   if (!sessionClass) return "allowed";
+  if (method.toUpperCase() === "POST" && TOKEN_FLOW_ROUTES.get(sessionClass)?.includes(pathname)) return "allowed";
   if (PORTAL_CLASSES.has(sessionClass)) {
     const ok = pathname === "/api/v1/portal" || PORTAL_SESSION_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
     return ok ? "allowed" : "portal-session-on-staff-path";
@@ -42,8 +58,15 @@ export async function tenantSessionClassGuard(request: FastifyRequest): Promise<
   const attrs = request.context.attributes;
   if (!attrs?.tenantHostOrgId) return;
   const sessionClass = typeof attrs.sessionClass === "string" ? attrs.sessionClass : undefined;
-  const pathname = request.url.split("?")[0] ?? "";
-  if (sessionClassPathVerdict(sessionClass, pathname) === "allowed") return;
+  // Match on the DECODED path: `/api/v1/%70ortal/x` reaches the portal route but not a literal prefix test. A path that
+  // does not decode is refused outright rather than guessed at.
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(request.url.split("?")[0] ?? "");
+  } catch {
+    throw new ChartWardenError("BAD_REQUEST", "malformed request path", 400);
+  }
+  if (sessionClassPathVerdict(sessionClass, pathname, request.method) === "allowed") return;
   throw new ChartWardenError(
     "SESSION_CLASS_MISMATCH",
     "this session cannot be used here; sign in again for this part of ChartWarden",

@@ -63,9 +63,10 @@ describe("app.<base> landing route", () => {
     expect(await screen.findByRole("heading", { name: "Find your organization" })).toBeTruthy();
   });
 
-  it("is absent when not registered", async () => {
+  it("is absent when not registered: the chromed Role Home owns / instead", async () => {
     renderAtRoot(false);
-    await screen.findByRole("main").catch(() => undefined);
+    // Wait on something that proves the shell finished routing (the chromed layout's main landmark), then assert absence.
+    expect(await screen.findByRole("main")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Find your organization" })).toBeNull();
   });
 });
