@@ -28,6 +28,7 @@ import { AlertInboxProvider } from "./alert-inbox";
 import { clearAllDrafts } from "./ceremony-drafts";
 import {
   getGlobalResponseSignal,
+  getLastTenantUnavailableReason,
   setGlobalResponseSignal,
   subscribeGlobalResponseSignal,
 } from "./global-response-signal";
@@ -80,7 +81,10 @@ function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
     // WP 4.8: a notification link opened signed out finishes after sign-in (only its opaque id is kept).
     return <RedirectRememberingLink to="/login" pathname={pathname} />;
   }
-  if (outcome === "outage") return <Navigate to="/offline" replace />;
+  if (outcome === "outage") {
+    const tenantReason = getLastTenantUnavailableReason();
+    return <Navigate to={tenantReason ? `/tenant-unavailable?reason=${tenantReason}` : "/offline"} replace />;
+  }
   return <>{children}</>;
 }
 

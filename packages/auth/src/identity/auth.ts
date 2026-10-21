@@ -324,9 +324,13 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // trusted regardless, so production that serves the SPA same-origin needs no entry here.
     trustedOrigins: options.tenantOrigins
       ? async (request?: Request) => {
-          const origin = request?.headers.get("origin");
           const fixed = resolveTrustedOrigins();
-          if (!origin || !request) return fixed;
+          if (!request) return fixed;
+          // A link opened from a mail client is a plain navigation with no Origin header; its own https host stands
+          // in, so the tenant-host callbackURL the Phase 4 rewrite put in the link still validates.
+          const requestHostHeader = request.headers.get("host")?.toLowerCase();
+          const origin = request.headers.get("origin") ?? (requestHostHeader ? `https://${requestHostHeader}` : null);
+          if (!origin) return fixed;
           // A tenant origin is only valid for its own host (tenant hosts are same-site, so a sibling tenant's page
           // must not pass); the lookup runs only once the host matches.
           const requestHost = request.headers.get("host")?.toLowerCase() ?? new URL(request.url).host;

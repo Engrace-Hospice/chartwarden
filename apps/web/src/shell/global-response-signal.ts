@@ -17,6 +17,8 @@ export type GlobalResponseSignal =
 type Listener = () => void;
 
 let current: GlobalResponseSignal = null;
+// The watcher consumes `current`; the session's "outage" status can land after that, so the reason is kept for RequireChrome.
+let lastTenantReason: TenantUnavailableReason | null = null;
 const listeners = new Set<Listener>();
 
 /**
@@ -102,6 +104,7 @@ export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {
   // A dead session must not leave PHI-bearing ceremony drafts in memory for whoever signs in next on this tab (the
   // /expired route is an SPA navigation, not a reload). An idle LOCK is different and keeps them.
   if (signal?.kind === "session-expired") clearAllDrafts();
+  if (signal?.kind === "tenant-unavailable") lastTenantReason = signal.reason;
   current = signal;
   for (const listener of listeners) listener();
 }
@@ -113,4 +116,9 @@ export function getGlobalResponseSignal(): GlobalResponseSignal {
 export function subscribeGlobalResponseSignal(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** The tenant-unavailable reason most recently observed, or null: a dead tenant host makes the context load fail, which is not an outage. */
+export function getLastTenantUnavailableReason(): TenantUnavailableReason | null {
+  return lastTenantReason;
 }
