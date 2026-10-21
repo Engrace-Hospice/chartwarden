@@ -1144,7 +1144,7 @@ sudo -u postgres pgbackrest --stanza=chartwarden-v2 --type=full backup
 sudo -u postgres pgbackrest --stanza=chartwarden-v2 --type=full verify
 
 # 6. Update postgresql.conf to use new stanza for archive-push
-# 7. Cut over backup scheduling to wardenx-v2
+# 7. Cut over backup scheduling to chartwarden-v2
 # 8. Retain old stanza chartwarden for historical backup restoration only
 # 9. After 6 months (per retention class), retire old stanza
 ```
