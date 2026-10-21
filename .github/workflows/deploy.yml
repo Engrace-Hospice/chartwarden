@@ -135,7 +135,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/engrace-hospice/wardenx:sha-${{ env.RELEASE_SHA }}
+          tags: ghcr.io/engrace-hospice/chartwarden:sha-${{ env.RELEASE_SHA }}
           # AD-05 — bake the identity the /version probe reports, so the runbook's post-deploy
           # "is the new build actually live?" check can pass. Without these, /version answers
           # {"version":"dev","gitSha":"unknown"} on every deploy.
@@ -152,7 +152,7 @@ jobs:
           context: .
           file: Dockerfile.web
           push: true
-          tags: ghcr.io/engrace-hospice/wardenx-web:sha-${{ env.RELEASE_SHA }}
+          tags: ghcr.io/engrace-hospice/chartwarden-web:sha-${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       # GAP-138 — the DocLens docling-worker image. Production compose had no such service, so DOCLING_WORKER_URL
@@ -164,7 +164,7 @@ jobs:
         with:
           context: services/docling-worker
           push: true
-          tags: ghcr.io/engrace-hospice/wardenx-docling-worker:sha-${{ env.RELEASE_SHA }}
+          tags: ghcr.io/engrace-hospice/chartwarden-docling-worker:sha-${{ env.RELEASE_SHA }}
           cache-from: type=gha,scope=docling-worker
           cache-to: type=gha,mode=max,scope=docling-worker
       # ── supply chain (F-040/#100) ──────────────────────────────────────────────────────────────────
@@ -185,11 +185,11 @@ jobs:
           test -n "$BACKEND_DIGEST" || { echo "backend build reported no digest" >&2; exit 1; }
           test -n "$WEB_DIGEST" || { echo "web build reported no digest" >&2; exit 1; }
           test -n "$DOCLING_DIGEST" || { echo "docling-worker build reported no digest" >&2; exit 1; }
-          echo "backend_image=ghcr.io/engrace-hospice/wardenx:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "web_image=ghcr.io/engrace-hospice/wardenx-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "backend_image=ghcr.io/engrace-hospice/chartwarden:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "web_image=ghcr.io/engrace-hospice/chartwarden-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "backend_digest=$BACKEND_DIGEST" >> "$GITHUB_OUTPUT"
           echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "docling_image=ghcr.io/engrace-hospice/wardenx-docling-worker:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "docling_image=ghcr.io/engrace-hospice/chartwarden-docling-worker:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "docling_digest=$DOCLING_DIGEST" >> "$GITHUB_OUTPUT"
 
       # Scan BEFORE signing. Signing a known-vulnerable image is worse than not signing it: the
@@ -203,7 +203,7 @@ jobs:
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
 
         with:
-          image-ref: ghcr.io/engrace-hospice/wardenx@${{ steps.build_backend.outputs.digest }}
+          image-ref: ghcr.io/engrace-hospice/chartwarden@${{ steps.build_backend.outputs.digest }}
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
@@ -213,7 +213,7 @@ jobs:
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
 
         with:
-          image-ref: ghcr.io/engrace-hospice/wardenx-web@${{ steps.build_web.outputs.digest }}
+          image-ref: ghcr.io/engrace-hospice/chartwarden-web@${{ steps.build_web.outputs.digest }}
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
@@ -231,7 +231,7 @@ jobs:
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
 
         with:
-          image-ref: ghcr.io/engrace-hospice/wardenx-docling-worker@${{ steps.build_docling.outputs.digest }}
+          image-ref: ghcr.io/engrace-hospice/chartwarden-docling-worker@${{ steps.build_docling.outputs.digest }}
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
@@ -254,11 +254,11 @@ jobs:
           WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
           DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
         run: |
-          syft "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}" \
+          syft "ghcr.io/engrace-hospice/chartwarden@${BACKEND_DIGEST}" \
             -o spdx-json=sbom-backend.spdx.json
-          syft "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}" \
+          syft "ghcr.io/engrace-hospice/chartwarden-web@${WEB_DIGEST}" \
             -o spdx-json=sbom-web.spdx.json
-          syft "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}" \
+          syft "ghcr.io/engrace-hospice/chartwarden-docling-worker@${DOCLING_DIGEST}" \
             -o spdx-json=sbom-docling.spdx.json
           # A syft run that produces a file describing nothing is a silent failure — an empty SBOM
           # answers "are we affected by this CVE?" with a confident and wrong "no".
@@ -284,15 +284,15 @@ jobs:
           DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
           COSIGN_YES: "true"
         run: |
-          cosign sign "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}"
-          cosign sign "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"
-          cosign sign "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}"
+          cosign sign "ghcr.io/engrace-hospice/chartwarden@${BACKEND_DIGEST}"
+          cosign sign "ghcr.io/engrace-hospice/chartwarden-web@${WEB_DIGEST}"
+          cosign sign "ghcr.io/engrace-hospice/chartwarden-docling-worker@${DOCLING_DIGEST}"
           cosign attest --predicate sbom-backend.spdx.json --type spdxjson \
-            "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}"
+            "ghcr.io/engrace-hospice/chartwarden@${BACKEND_DIGEST}"
           cosign attest --predicate sbom-web.spdx.json --type spdxjson \
-            "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"
+            "ghcr.io/engrace-hospice/chartwarden-web@${WEB_DIGEST}"
           cosign attest --predicate sbom-docling.spdx.json --type spdxjson \
-            "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}"
+            "ghcr.io/engrace-hospice/chartwarden-docling-worker@${DOCLING_DIGEST}"
 
       # Verify what was just published, from the workflow, before the deploy job ever runs. Not
       # ceremony: it is the only place a signing misconfiguration surfaces as a red release instead of
@@ -304,9 +304,9 @@ jobs:
           DOCLING_DIGEST: ${{ steps.build_docling.outputs.digest }}
         run: |
           for ref in \
-            "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}" \
-            "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}" \
-            "ghcr.io/engrace-hospice/wardenx-docling-worker@${DOCLING_DIGEST}"; do
+            "ghcr.io/engrace-hospice/chartwarden@${BACKEND_DIGEST}" \
+            "ghcr.io/engrace-hospice/chartwarden-web@${WEB_DIGEST}" \
+            "ghcr.io/engrace-hospice/chartwarden-docling-worker@${DOCLING_DIGEST}"; do
             cosign verify "$ref" \
               --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@${GITHUB_REF}" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null

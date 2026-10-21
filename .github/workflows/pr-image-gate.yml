@@ -59,12 +59,12 @@ jobs:
           context: services/docling-worker
           load: true
           push: false
-          tags: wardenx-docling-worker:pr-${{ github.event.pull_request.number }}
+          tags: chartwarden-docling-worker:pr-${{ github.event.pull_request.number }}
           cache-from: type=gha,scope=docling-worker
       - name: Scan docling-worker image (fixable HIGH/CRITICAL fail the PR)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: wardenx-docling-worker:pr-${{ github.event.pull_request.number }}
+          image-ref: chartwarden-docling-worker:pr-${{ github.event.pull_request.number }}
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
