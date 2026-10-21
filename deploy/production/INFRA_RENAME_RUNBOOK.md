@@ -232,9 +232,45 @@ records and certificate were never removed.
 
 ## Explicitly NOT renamed (by design)
 
-- Postgres database name `wardenx`, `_wardenx_migration` table, applied migration SQL, legacy function names,
+- Postgres database name `wardenx` (parameterized by `CHARTWARDEN_DB_NAME`, default `wardenx`; flipped only in the downtime window below), `_wardenx_migration` table, applied migration SQL, legacy function names,
   the `wardenx_destruction` role alias (renaming a database requires dropping connections and updating every
   `DATABASE_*_URL`; applied-migration checksums forbid editing SQL).
 - Compose project name `wardenx` and the `wardenx_*` volumes/network (data loss, see Phase 4).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
 - The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.
+
+## Database rename downtime window (`wardenx` -> `chartwarden`)
+
+The database name is now read from `CHARTWARDEN_DB_NAME` (default `wardenx`) by `compose.yml`
+(`POSTGRES_DB`, the `pg_isready` healthcheck, every `DATABASE_*_URL` built in compose),
+`reseed-demo.sh` and `deploy.sh`, which both fail fast (exit 64) unless the value matches
+`^[a-z_][a-z0-9_]*$`. Until the flip, behaviour is unchanged. Compose project `wardenx` and the `wardenx_*`
+volumes stay as they are. Estimated downtime: 5-10 minutes. Execute only with the user's go-ahead.
+
+Note: `POSTGRES_DB` only matters on first init of an empty data volume; the existing cluster keeps its
+database, so the rename below is what actually changes it.
+
+1. Safety net: Step 0 above (`pg_dump` + `pg_dumpall --globals-only`, MinIO mirror, env backup).
+2. Disable `deploy.yml` (Actions UI) and make sure no deploy is running; no merges to `main` meanwhile.
+3. Stop the app containers so nothing holds a connection:
+   `docker compose --env-file .env.production -f compose.yml stop api worker web`
+   (also any `seed-api`/`docling-worker` profile containers that are running).
+4. Rename (needs zero connections to the target database; connect to `postgres`, not `wardenx`):
+   ```sh
+   docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wardenx' AND pid <> pg_backend_pid();" -c \
+     "ALTER DATABASE wardenx RENAME TO chartwarden;"
+   ```
+5. In `.env.production`, together: add `CHARTWARDEN_DB_NAME=chartwarden` and change the database path of every
+   whole-URL value (`.../wardenx` -> `.../chartwarden`) such as `DATABASE_URL`, `DATABASE_ADMIN_URL`,
+   `DATABASE_PLATFORM_URL`, `DATABASE_DESTRUCTION_URL`, `PROVISION_DATABASE_URL` if present. Compose-built URLs follow
+   the variable on their own; whole URLs in the file do not. Check with
+   `docker compose --env-file .env.production -f compose.yml config | grep -E '/(wardenx|chartwarden)$'`.
+6. `docker compose --env-file .env.production -f compose.yml up -d`, then `./smoke.sh`. Re-enable `deploy.yml`
+   only after smoke is green.
+7. Update the remaining hardcoded names in a follow-up: `scripts/m36-restore-drill.ts` reads the same variable;
+   `docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` pgbouncer example is illustrative.
+
+Rollback: stop api/worker/web, terminate backends, `ALTER DATABASE chartwarden RENAME TO wardenx;`, restore
+`.env.production` from the backup (or remove `CHARTWARDEN_DB_NAME` and revert the URLs), `up -d`, `./smoke.sh`.
+If the rename itself failed, nothing changed: just restart the containers. Last resort: restore the Step 0 dump.

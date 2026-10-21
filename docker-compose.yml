@@ -30,13 +30,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: wardenx
+      POSTGRES_DB: ${CHARTWARDEN_DB_NAME:-wardenx}
     ports:
       - "5432:5432"
     volumes:
       - wardenx-compose-pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d wardenx"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ${CHARTWARDEN_DB_NAME:-wardenx}"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -111,8 +111,8 @@ services:
         "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts && (bun run scripts/backfill-tenant-buckets.ts || echo 'tenant bucket backfill skipped (will be created on first use)')",
       ]
     environment:
-      DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/wardenx
-      PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/wardenx
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
       CHARTWARDEN_APP_PASSWORD: wardenx-app-dev-password
       CHARTWARDEN_PLATFORM_PASSWORD: wardenx-platform-dev-password
       CHARTWARDEN_DESTRUCTION_PASSWORD: wardenx-destruction-dev-password
@@ -138,9 +138,9 @@ services:
       MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
       PORT: "3000"
       LOG_LEVEL: info
-      DATABASE_URL: postgres://chartwarden_app:wardenx-app-dev-password@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:wardenx-platform-dev-password@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:wardenx-destruction-dev-password@postgres:5432/wardenx
+      DATABASE_URL: postgres://chartwarden_app:wardenx-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:wardenx-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:wardenx-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx
@@ -214,9 +214,9 @@ services:
       MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
       WORKER_PORT: "3001"
       LOG_LEVEL: info
-      DATABASE_URL: postgres://chartwarden_app:wardenx-app-dev-password@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:wardenx-platform-dev-password@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:wardenx-destruction-dev-password@postgres:5432/wardenx
+      DATABASE_URL: postgres://chartwarden_app:wardenx-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:wardenx-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:wardenx-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx

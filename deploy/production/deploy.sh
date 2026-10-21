@@ -46,6 +46,18 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   exit 66
 fi
 
+# The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-wardenx}). It is interpolated into
+# connection URLs and psql/pg_dump arguments, so fail fast unless it is a plain lower-case identifier.
+# An exported variable wins over .env.production, exactly as it does for compose interpolation.
+db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
+db_name=${db_name:-wardenx}
+case "$db_name" in
+  '' | [!a-z_]* | *[!a-z0-9_]*)
+    echo "CHARTWARDEN_DB_NAME must match ^[a-z_][a-z0-9_]*\$ (got: $db_name)" >&2
+    exit 64
+    ;;
+esac
+
 # GAP-138/139 — secrets the release needs but an older `.env.production` predates. Generated ONCE and
 # appended BEFORE the rollback backup is taken, so the backup (and therefore a rollback, which runs the
 # new compose.yml against the restored env file) interpolates cleanly. Existing values are never touched.
