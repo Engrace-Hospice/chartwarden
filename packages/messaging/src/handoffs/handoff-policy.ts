@@ -5,7 +5,7 @@ import {
   HANDOFF_EXPIRY_MIN_MINUTES,
   HANDOFF_EXPIRY_PLATFORM_MINUTES,
   type HandoffPolicyView,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 
 /** The minutes in force: the platform ceiling, tightened by the stored row (when there is one). */
@@ -25,7 +25,7 @@ export function prepareHandoffPolicy(minutes: unknown): number {
     minutes < HANDOFF_EXPIRY_MIN_MINUTES ||
     minutes > HANDOFF_EXPIRY_PLATFORM_MINUTES
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "HANDOFF_POLICY_INVALID",
       "handoff expiry must be a whole number of minutes within the allowed range",
       422,

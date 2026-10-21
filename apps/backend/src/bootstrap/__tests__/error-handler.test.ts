@@ -1,7 +1,7 @@
-import { DegradedError, WardenXError } from "@wardenx/types";
+import { DegradedError, ChartWardenError } from "@wardenx/types";
 import { DrizzleQueryError } from "drizzle-orm/errors";
 // TASK-065 (API-009) — the M1 Fastify error handler. Proves the ONE-envelope contract holds across
-// three error shapes: a thrown WardenXError, a Fastify framework error (malformed JSON — previously
+// three error shapes: a thrown ChartWardenError, a Fastify framework error (malformed JSON — previously
 // collapsed into a blanket 500), and a genuinely unexpected Error (still a 500, no internal leakage).
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
@@ -44,7 +44,7 @@ function buildApp(lines: LogLine[] = []) {
     (request as { context?: { correlationId: string } }).context = { correlationId: "cid-test" };
   });
   app.post("/wardenx-error", async () => {
-    throw new WardenXError("NOT_FOUND", "the thing was not found", 404);
+    throw new ChartWardenError("NOT_FOUND", "the thing was not found", 404);
   });
   app.post("/boom", async () => {
     throw new Error("a real internal secret should never leak");
@@ -75,7 +75,7 @@ const WARN = 40;
 const ERROR = 50;
 
 describe("applyErrorHandler", () => {
-  it("maps a thrown WardenXError to its own code + statusCode (unchanged baseline)", async () => {
+  it("maps a thrown ChartWardenError to its own code + statusCode (unchanged baseline)", async () => {
     const app = buildApp();
     const res = await app.inject({ method: "POST", url: "/wardenx-error", payload: {} });
     expect(res.statusCode).toBe(404);
@@ -171,7 +171,7 @@ describe("applyErrorHandler — diagnosable failures reach the caller (F-022 / #
     expect(lines.find((l) => l.msg === "unhandled error")?.level).toBe(ERROR);
   });
 
-  it("keeps a 4xx WardenXError at info with no error object attached", async () => {
+  it("keeps a 4xx ChartWardenError at info with no error object attached", async () => {
     const lines: LogLine[] = [];
     const app = buildApp(lines);
     await app.inject({ method: "POST", url: "/wardenx-error", payload: {} });
@@ -191,7 +191,7 @@ describe("applyErrorHandler — diagnosable failures reach the caller (F-022 / #
       };
     });
     app.get("/guarded", async () => {
-      throw new WardenXError("UNAUTHORIZED", "Authentication required", 401);
+      throw new ChartWardenError("UNAUTHORIZED", "Authentication required", 401);
     });
     const expired = await app.inject({ url: "/guarded", headers: { "x-expired": "expired_idle" } });
     expect(expired.statusCode).toBe(401);

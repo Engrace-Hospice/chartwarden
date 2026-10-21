@@ -6,7 +6,7 @@
 // are all in the WHERE clause, and a page is fetched as `size + 1` rows so `hasMore` is exact.
 import { schema } from "@wardenx/db";
 import type { QualityDb } from "@wardenx/quality";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type SQL, and, desc, eq, gte, inArray, lt, lte, ne, or } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
@@ -117,7 +117,7 @@ export function toListCursor(cursor: string | undefined): ListCursor | undefined
   const key = decodeCursor(cursor);
   const at = new Date(key.createdAt);
   if (Number.isNaN(at.getTime())) {
-    throw new WardenXError("VALIDATION_FAILED", "the cursor is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
   return { at, id: key.id };
 }

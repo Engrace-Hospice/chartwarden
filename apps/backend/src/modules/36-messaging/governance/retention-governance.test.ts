@@ -1,4 +1,4 @@
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { nextScanAfter } from "./retention-governance-service";
 import { isLegalHoldViolation, rejectIfUnderLegalHold } from "./under-hold";
@@ -32,9 +32,9 @@ describe("legal-hold backstop mapping", () => {
     const err = await rejectIfUnderLegalHold(async () => {
       throw { code: "23001" };
     }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(WardenXError);
-    expect((err as WardenXError).code).toBe("MESSAGE_UNDER_LEGAL_HOLD");
-    expect((err as WardenXError).statusCode).toBe(409);
+    expect(err).toBeInstanceOf(ChartWardenError);
+    expect((err as ChartWardenError).code).toBe("MESSAGE_UNDER_LEGAL_HOLD");
+    expect((err as ChartWardenError).statusCode).toBe(409);
     await expect(
       rejectIfUnderLegalHold(async () => {
         throw new Error("boom");

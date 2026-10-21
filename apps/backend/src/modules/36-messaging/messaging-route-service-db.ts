@@ -69,7 +69,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
   formatMrn,
   richBodySbar,
 } from "@wardenx/types";
@@ -155,7 +155,7 @@ export interface MessagingOutboxPort {
 
 function validateReferenceRanges(body: string, references: readonly MessageReferenceInput[]): void {
   if (references.length > 25) {
-    throw new WardenXError("INVALID_MESSAGE_REFERENCES", "too many message references", 422);
+    throw new ChartWardenError("INVALID_MESSAGE_REFERENCES", "too many message references", 422);
   }
   const ordered = [...references].sort((a, b) => a.start - b.start || a.end - b.end);
   let previousEnd = -1;
@@ -168,7 +168,7 @@ function validateReferenceRanges(body: string, references: readonly MessageRefer
       reference.end > body.length ||
       reference.start < previousEnd
     ) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "INVALID_MESSAGE_REFERENCES",
         "message reference ranges are invalid or overlap",
         422,
@@ -454,15 +454,15 @@ const RECIPIENT_RESOLVERS: readonly AlertRecipientResolver[] = [
 function validateRoutingMap(map: RoutingMap): void {
   for (const [category, bySeverity] of Object.entries(map)) {
     if (!ALERT_CATEGORIES.includes(category as AlertCategory)) {
-      throw new WardenXError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
+      throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
     }
     for (const [severity, channelsList] of Object.entries(bySeverity ?? {})) {
       if (!ALERT_SEVERITIES.includes(severity as AlertSeverity)) {
-        throw new WardenXError("INVALID_ROUTING_MAP", `unknown severity '${severity}'`, 422);
+        throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown severity '${severity}'`, 422);
       }
       for (const channel of channelsList ?? []) {
         if (!NOTIFICATION_CHANNELS.includes(channel)) {
-          throw new WardenXError("INVALID_ROUTING_MAP", `unknown channel '${channel}'`, 422);
+          throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown channel '${channel}'`, 422);
         }
       }
     }
@@ -590,28 +590,28 @@ const seamPatientLocationIds: PatientLocationResolver = (organizationId, patient
   getSeam("PatientSitingReader").getPatientLocationIds({ organizationId, patientId });
 
 /** Map a failed OTP outcome to its HTTP error (the in-memory service uses the same `INVALID_TOKEN`). */
-function verificationFailure(outcome: Exclude<VerificationOutcome, "ok">): WardenXError {
+function verificationFailure(outcome: Exclude<VerificationOutcome, "ok">): ChartWardenError {
   switch (outcome) {
     case "locked":
-      return new WardenXError(
+      return new ChartWardenError(
         "VERIFICATION_LOCKED",
         `too many wrong codes (max ${MAX_VERIFICATION_ATTEMPTS}); re-register the endpoint for a new code`,
         429,
       );
     case "expired":
-      return new WardenXError(
+      return new ChartWardenError(
         "VERIFICATION_EXPIRED",
         "verification code expired; re-register the endpoint for a new code",
         422,
       );
     case "not_issued":
-      return new WardenXError(
+      return new ChartWardenError(
         "VERIFICATION_NOT_ISSUED",
         "no verification code was issued for this endpoint; re-register it",
         422,
       );
     case "mismatch":
-      return new WardenXError("INVALID_TOKEN", "verification token does not match", 422);
+      return new ChartWardenError("INVALID_TOKEN", "verification token does not match", 422);
   }
 }
 
@@ -877,7 +877,7 @@ export function createDbMessagingRouteService(
       throw new NotFoundError("message", messageId);
     }
     if (writable && row.isArchived) {
-      throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+      throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
     }
   }
   return {
@@ -1379,7 +1379,7 @@ export function createDbMessagingRouteService(
           !candidate ||
           !sameMentionToken(input.body.slice(reference.start, reference.end), candidate.displayName)
         ) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_MESSAGE_REFERENCES",
             "a referenced entity or display label is not valid for this conversation",
             422,
@@ -1391,7 +1391,7 @@ export function createDbMessagingRouteService(
         { organizationId: orgId, userId: input.authorUserId },
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
-          if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          if (ch.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
           // WP 3.3: channel kind, tenant policy and section lengths; a refusal rolls the whole send back.
           await assertSbarWritable(tx, orgId, input.richBody, ch.kind);
           const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {
@@ -1533,7 +1533,7 @@ export function createDbMessagingRouteService(
               candidate.displayName,
             )
           ) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVALID_MESSAGE_REFERENCES",
               "a referenced entity or display label is not valid for this conversation",
               422,
@@ -1569,7 +1569,7 @@ export function createDbMessagingRouteService(
         // ADR-0086: a message an active hold covers cannot be rewritten. The migration 1138 trigger only knows materialised
         // overlay rows; this judges the live criteria so a message posted after the hold (not yet scanned) is refused too.
         if (await isMessageHeldNow(tx as unknown as DbClient, orgId, input.messageId)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             MESSAGE_UNDER_LEGAL_HOLD_CODE,
             "This message is under a legal hold and cannot be edited.",
             409,
@@ -1589,7 +1589,7 @@ export function createDbMessagingRouteService(
           if (!kept.get(input.messageId)?.length) throw blankMessageError();
         }
         if (Number(m.ageMs) > EDIT_WINDOW_MS) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "MESSAGE_EDIT_WINDOW_CLOSED",
             "the edit window has closed; send a new message that quotes this one",
             409,
@@ -1728,7 +1728,7 @@ export function createDbMessagingRouteService(
         } catch (err) {
           // A request raised after the cancel above (a race) makes the database refuse the tombstone: a conflict to retry, not a 500.
           if (ackGuardName(err)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "ACK_MESSAGE_HAS_OPEN_REQUEST",
               "This message has an open response request. Try deleting it again.",
               409,
@@ -1859,7 +1859,7 @@ export function createDbMessagingRouteService(
               .limit(1)) as Array<{ id: string }>);
         const channelId = existing[0]?.id;
         if (!channelId)
-          throw new WardenXError("DM_CREATE_FAILED", "could not open conversation", 503);
+          throw new ChartWardenError("DM_CREATE_FAILED", "could not open conversation", 503);
         await ensureDmMember(tx, orgId, channelId, userId, "owner");
         await ensureDmMember(tx, orgId, channelId, peerUserId, "member");
         return { channelId, created };
@@ -2168,7 +2168,7 @@ export function createDbMessagingRouteService(
     async putPreferences(orgId, userId, input) {
       validateRoutingMap(input.routingMap);
       if (input.vacationForwardToUserId && input.vacationForwardToUserId === userId) {
-        throw new WardenXError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
+        throw new ChartWardenError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
       }
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         if (input.vacationForwardToUserId) {
@@ -2181,7 +2181,7 @@ export function createDbMessagingRouteService(
             )
             .limit(1)) as Array<{ fwd: string | null }>;
           if (target[0]?.fwd === userId) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "VACATION_FORWARD_CYCLE",
               "the forward target also forwards to you",
               409,
@@ -2201,7 +2201,7 @@ export function createDbMessagingRouteService(
             : null
           : null;
         if (vacationForwardToUserId && (!vacationUntil || vacationUntil.getTime() <= Date.now())) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VACATION_UNTIL_NOT_FUTURE",
             "vacationUntil must be set and in the future when vacationForwardToUserId is set",
             422,
@@ -2246,7 +2246,7 @@ export function createDbMessagingRouteService(
       // (only a `verified` endpoint is ever a delivery target). Refuse up front with a clear 503 rather than
       // leave an unverifiable row behind; push is browser-verified and needs no sender.
       if (input.channel !== "push" && !opts.sendEndpointVerificationCode) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ENDPOINT_VERIFICATION_UNAVAILABLE",
           `${input.channel} verification is not available: the ${input.channel} delivery provider is not configured`,
           503,
@@ -2575,7 +2575,7 @@ export function createDbMessagingRouteService(
         input.patch.recipientResolver !== undefined &&
         !RECIPIENT_RESOLVERS.includes(input.patch.recipientResolver)
       ) {
-        throw new WardenXError("INVALID_RESOLVER", "unknown recipient resolver", 422);
+        throw new ChartWardenError("INVALID_RESOLVER", "unknown recipient resolver", 422);
       }
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         // The patch targets a rule visible to this tenant: a platform default (org IS NULL) or the

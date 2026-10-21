@@ -70,7 +70,7 @@ import {
 } from "@wardenx/messaging";
 import type { ChannelKind, ChannelMemberSource } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import { searchTimeoutToError } from "../message-search-service-db";
 import { type HydrationContext, hydrateMessages } from "../messaging-message-hydration";
@@ -173,7 +173,7 @@ export interface GlobalSearchService {
 }
 
 const unavailable = () =>
-  new WardenXError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
+  new ChartWardenError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
 
 const REFINE: GlobalSearchResult = { results: [], scanned: 0, scanCapped: true, refine: true };
 const EMPTY: GlobalSearchResult = { results: [], scanned: 0, scanCapped: false, refine: false };
@@ -465,7 +465,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     const terms = parseQueryTerms(input.query);
     const cursor = input.cursor ? decodeSearchCursor(input.cursor) : null;
     if (input.cursor && !cursor) {
-      throw new WardenXError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
+      throw new ChartWardenError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
     }
     return { terms, cursor, excluded };
   }

@@ -70,7 +70,7 @@ const ENCOUNTER = "77777777-7777-7777-7777-777777777777";
 const NOW = new Date("2026-07-31T02:00:00.000Z");
 
 /**
- * Assert a guard raises the exact machine-readable code. `WardenXError.message` is prose for the on-call
+ * Assert a guard raises the exact machine-readable code. `ChartWardenError.message` is prose for the on-call
  * clinician; the CODE is the contract the §5 panel and the §7 tables key off, so the tests assert on it —
  * `toThrowError(/CODE/)` passes only when the prose happens to contain the token (the M15-T03 finding).
  */

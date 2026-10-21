@@ -34,7 +34,7 @@ import {
   type HttpRequestContext,
   UnauthorizedError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -101,13 +101,13 @@ function actorOf(ctx: HttpRequestContext): { organizationId: string; userId: str
 }
 
 /** Map a store-level RoleLockedError onto the spec's HTTP code (409). */
-function roleLockedToHttp(err: RoleLockedError): WardenXError {
-  return new WardenXError("ROLE_LOCKED", err.message, 409);
+function roleLockedToHttp(err: RoleLockedError): ChartWardenError {
+  return new ChartWardenError("ROLE_LOCKED", err.message, 409);
 }
 
 /** Map a refused break-glass co-signature onto 409 (§7.4), preserving which guard fired. */
-function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
-  return new WardenXError(
+function cosignRefusedToHttp(err: BreakGlassCosignError): ChartWardenError {
+  return new ChartWardenError(
     err.kind === "self_cosign" ? "BREAKGLASS_SELF_COSIGN" : "BREAKGLASS_NOT_PENDING",
     err.message,
     409,
@@ -115,21 +115,21 @@ function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
 }
 
 /** GAP-117 — a revoke of a break-glass event that is already settled (revoked / expired / denied). */
-function revokeRefusedToHttp(err: BreakGlassRevokeError): WardenXError {
-  return new WardenXError("BREAKGLASS_NOT_REVOCABLE", err.message, 409);
+function revokeRefusedToHttp(err: BreakGlassRevokeError): ChartWardenError {
+  return new ChartWardenError("BREAKGLASS_NOT_REVOCABLE", err.message, 409);
 }
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 /** GAP-003/GAP-096 — platform authority is neither mintable nor assignable through a tenant's role
  *  surface. Operators grant it out of band (`bun run db:platform-role`, OPS_RUNBOOK §16.5). */
 const lastRequiredRole = (roleKey: string) =>
-  new WardenXError(
+  new ChartWardenError(
     "LAST_REQUIRED_ROLE",
     `cannot remove the last holder of the CoP-required role '${roleKey}'; assign it to another member first`,
     409,
   );
 const reservedRole = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RESERVED_ROLE",
     "platform role keys (platform_*, ai_safety_owner) and the platform_staff category are reserved to the platform",
     422,
@@ -599,7 +599,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
             expiresAt: new Date(engagement.endAt),
           });
         } catch {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "AUDITOR_LINK_DELIVERY_FAILED",
             "the auditor link could not be delivered; the enrolment was not recorded",
             503,

@@ -30,7 +30,7 @@ import {
   repositories,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
 
 // ── shared DB / actor / port primitives (re-used by the whole M23 service slice) ──────────────────────
 
@@ -83,7 +83,7 @@ export interface WriteOutboxPort {
  */
 export function assertNotAiActor(actor: BillingWriteActor): void {
   if (actor.actorKind.startsWith("ai_")) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "AI_ACTOR_FORBIDDEN",
       "AI principals may not author Medicare-billing writes (D13)",
       403,
@@ -94,7 +94,7 @@ export function assertNotAiActor(actor: BillingWriteActor): void {
 /** §D14 server-side step-up gate (override / submit). Fail-closed. */
 export function requireStepUp(actor: BillingWriteActor): void {
   if (!actor.stepUpRecent) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "STEP_UP_REQUIRED",
       "this action requires a recent step-up re-authentication",
       403,
@@ -526,7 +526,7 @@ export function buildClaimStateService(
       : {};
     const reduced = reduceClaim(claim.state, input.event, guardCtx);
     if (reduced.error === "GUARD_FAILED") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "GUARD_FAILED",
         `claim '${input.event}' is blocked by unresolved blocking validation failures`,
         422,
@@ -544,7 +544,7 @@ export function buildClaimStateService(
       input.patch ?? {},
     );
     if (!versioned.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VERSION_CONFLICT",
         `the claim was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
         412,

@@ -14,7 +14,7 @@ import {
   DegradedError,
   type DocLensBatchSudStatus,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
@@ -94,7 +94,7 @@ export function createProspectSummaryService(deps: ProspectSummaryDeps): Prospec
             .orderBy(desc(ER.closedAt))
             .limit(1);
           if (!review) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "REVIEW_NOT_COMPLETE",
               "the prospect summary is built from reviewer-approved values and is available once the review is complete",
               409,

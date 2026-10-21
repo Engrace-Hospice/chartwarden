@@ -64,7 +64,7 @@ import {
 // outbox event atomically. Signed rows are never edited; corrections mint supersession/renewal rows.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type SQL, and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import { type CascadeStatus, type M39AlertPort, attemptsOf, evaluateCascade } from "./cascade-ack";
 
@@ -364,7 +364,7 @@ export function createDbConsentRouteService(
     payload: Record<string, unknown>,
   ): Promise<void> => {
     if (!deps.outbox)
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SERVICE_UNAVAILABLE",
         "M39 transactional outbox is not bound; consent mutation refused",
         503,
@@ -385,7 +385,7 @@ export function createDbConsentRouteService(
     if (plaintext === undefined) return undefined;
     if (plaintext === null || plaintext === "") return null;
     if (!deps.cipher)
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SERVICE_UNAVAILABLE",
         "tenant DEK cipher is not bound; internal consent notes were not stored",
         503,
@@ -1452,7 +1452,7 @@ export function createDbConsentRouteService(
           .limit(1)
       )[0];
       if (!floorRow)
-        throw new WardenXError("NOT_FOUND", `consent type '${input.typeKey}' not found`, 404);
+        throw new ChartWardenError("NOT_FOUND", `consent type '${input.typeKey}' not found`, 404);
 
       const verdict = validateConsentOverlay(
         {

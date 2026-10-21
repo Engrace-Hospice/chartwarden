@@ -2,12 +2,12 @@
 //
 // Every guard / validation failure in the pure administration-lifecycle domain raises an
 // `AdministrationStateError` carrying the machine-readable code below. The error extends the M1
-// `WardenXError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify
+// `ChartWardenError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify
 // error handler renders it with the precise code + HTTP status with no cross-module import edge (the
 // M11/M12 lifecycle convention). Nothing transitions on a string match — each code is an enumerated
 // constant; the §3 DB triggers (M13-T02) repeat the strongest of these at the schema layer as defense in
 // depth. The route layer (M13-T08) reuses these codes verbatim.
-import { type ErrorDetailType, WardenXError } from "@wardenx/types";
+import { type ErrorDetailType, ChartWardenError } from "@wardenx/types";
 
 /** The M13 administration-lifecycle failure-code catalog → canonical HTTP status. */
 export const M13_ERROR_STATUS = {
@@ -89,7 +89,7 @@ export type M13ErrorCode = keyof typeof M13_ERROR_STATUS;
  * so the UI renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Every
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class AdministrationStateError extends WardenXError {
+export class AdministrationStateError extends ChartWardenError {
   constructor(code: M13ErrorCode, message: string, details?: ErrorDetailType[]) {
     super(code, message, M13_ERROR_STATUS[code], details);
     this.name = "AdministrationStateError";

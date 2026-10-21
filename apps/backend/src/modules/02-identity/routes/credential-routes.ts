@@ -6,7 +6,7 @@ import {
   requireStepUp,
 } from "@wardenx/auth";
 import type { AuditExecutor } from "@wardenx/audit";
-import { ValidationError, WardenXError } from "@wardenx/types";
+import { ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   CredentialLifecycleStore,
@@ -188,7 +188,7 @@ export function registerCredentialRoutes(app: FastifyInstance, deps: CredentialR
   app.get("/api/v1/auth/credential-status", async (request) => {
     const actor = await resolveActor(deps, request);
     const state = await deps.lifecycle.state(actor.userId);
-    if (!state) throw new WardenXError("UNAUTHORIZED", "session identity not found", 401);
+    if (!state) throw new ChartWardenError("UNAUTHORIZED", "session identity not found", 401);
     return {
       passwordChangeRequired: state.state === "password_change_required",
       reason: state.state === "password_change_required" ? state.reason : null,

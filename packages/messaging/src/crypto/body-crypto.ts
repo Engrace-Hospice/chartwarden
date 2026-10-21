@@ -15,7 +15,7 @@
 // `body_sha256` (the §164.312(c) integrity digest) is the SHA-256 of the PLAINTEXT computed
 // PRE-encryption (the §4.4 hash-verify job decrypts and re-checks it), so it lives here too.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 const VERSION = 1;
 const NONCE_LEN = 12;
@@ -37,7 +37,7 @@ export function loadMessagingKek(
   raw: string | undefined = process.env.MESSAGING_ENCRYPTION_KEY,
 ): Buffer {
   if (!raw) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       MESSAGING_KEY_UNAVAILABLE,
       MESSAGING_KEY_UNAVAILABLE_MESSAGE,
       503,
@@ -46,7 +46,7 @@ export function loadMessagingKek(
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LEN) {
     // Generic client text: the expected length is not echoed back (no key-length oracle).
-    throw new WardenXError(MESSAGING_KEY_UNAVAILABLE, MESSAGING_KEY_UNAVAILABLE_MESSAGE, 503);
+    throw new ChartWardenError(MESSAGING_KEY_UNAVAILABLE, MESSAGING_KEY_UNAVAILABLE_MESSAGE, 503);
   }
   return key;
 }

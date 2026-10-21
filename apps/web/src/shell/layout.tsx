@@ -1,4 +1,4 @@
-import { createWardenxAuthClient } from "@wardenx/auth/client";
+import { createChartWardenAuthClient } from "@wardenx/auth/client";
 import {
   DegradedBanner,
   EmptyState,
@@ -34,7 +34,7 @@ import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
 
-const authClient = createWardenxAuthClient();
+const authClient = createChartWardenAuthClient();
 
 function getInitials(name: string): string {
   const parts = name

@@ -2,13 +2,13 @@
 //
 // Every guard / validation failure in the pure tenant-lifecycle domain raises a
 // `TenantLifecycleError` carrying the machine-readable code below. The error extends the M1
-// `WardenXError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1
+// `ChartWardenError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1
 // Fastify error handler renders it with the precise code + HTTP status with no cross-module import
 // edge (the M11 `OrderStateError` convention, packages/orders/src/lifecycle/errors.ts). Nothing
 // transitions on a string match — each code is an enumerated constant; the §3.3 DB CHECK constraints
 // (e.g. `(status='destroyed') = (destroyed_at IS NOT NULL)`) repeat the strongest of these at the
 // schema layer as defense in depth. The route/worker layer reuses these codes verbatim.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The M34 tenant-lifecycle failure-code catalog → canonical HTTP status. */
 export const M34_LIFECYCLE_ERROR_STATUS = {
@@ -46,7 +46,7 @@ export type M34LifecycleErrorCode = keyof typeof M34_LIFECYCLE_ERROR_STATUS;
  * UI renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Every guard
  * failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class TenantLifecycleError extends WardenXError {
+export class TenantLifecycleError extends ChartWardenError {
   constructor(code: M34LifecycleErrorCode, message: string) {
     super(code, message, M34_LIFECYCLE_ERROR_STATUS[code]);
     this.name = "TenantLifecycleError";

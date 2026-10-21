@@ -37,7 +37,7 @@ import {
   resolveMfaEnforcement,
 } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -214,7 +214,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       guard: async ({ relativePath, actor }) => {
         if (relativePath !== "/two-factor/disable" || !actor) return;
         if (!(await gate.forUserWithoutTotp(actor.userId)).satisfied)
-          throw new WardenXError("MFA_REQUIRED_FOR_ROLE", "second factor required", 403);
+          throw new ChartWardenError("MFA_REQUIRED_FOR_ROLE", "second factor required", 403);
       },
     });
     app.get(

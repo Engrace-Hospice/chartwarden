@@ -44,7 +44,7 @@ import {
   ForbiddenError,
   NotFoundError,
   type PatientCaregiverRosterReader,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type {
   BereavedContactRelationship,
@@ -188,8 +188,8 @@ export interface M16WriteDeps {
  * the counselor it was saved. A request without any is unaffected.
  */
 export const CHANNEL_STORAGE_UNAVAILABLE = "CHANNEL_STORAGE_UNAVAILABLE";
-const channelStorageUnavailable = (): WardenXError =>
-  new WardenXError(
+const channelStorageUnavailable = (): ChartWardenError =>
+  new ChartWardenError(
     CHANNEL_STORAGE_UNAVAILABLE,
     "contact details and counselor notes cannot be stored until the encrypted store is available; submit without them",
     503,

@@ -19,7 +19,7 @@
 // `contains`, byte-identical for the same (id, asOf)); the flag-gated semantic search §7.7 itself
 // is gated at the route (`ai.full`) — the pgvector HNSW kNN lands in the Drizzle store.
 
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import {
   type TenantExtensionRefusal,
   classifyTenantExtension,
@@ -53,15 +53,15 @@ function tenantExtensionError(
   refusal: TenantExtensionRefusal,
   system: CodeSystemId,
   code: string,
-): WardenXError {
+): ChartWardenError {
   if (refusal.outcome === "redundant") {
-    return new WardenXError(
+    return new ChartWardenError(
       "REDUNDANT_EXTENSION",
       `${system} '${code}' is already a platform member of this value set`,
       409,
     );
   }
-  return new WardenXError(
+  return new ChartWardenError(
     "INVALID_CODE",
     `${system} '${code}' cannot be added (${refusal.reason}); a tenant may only extend with an active code`,
     422,

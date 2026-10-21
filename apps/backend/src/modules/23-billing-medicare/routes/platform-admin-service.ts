@@ -14,7 +14,7 @@
 import { DEFAULT_BILLING_RULES, validateWageIndexEntry } from "@wardenx/billing";
 import type { repositories } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ValidationError, WardenXError } from "@wardenx/types";
+import { ValidationError, ChartWardenError } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import type { M23WriteActor } from "./actor";
 import type {
@@ -107,13 +107,13 @@ export function buildDrizzlePlatformAdminService(
 
     async registerPlatformRule(_actor, body) {
       if (platformRuleKeys.has(body.ruleKey)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PLATFORM_RULE_EXISTS",
           `platform rule '${body.ruleKey}' already exists in the code-defined registry`,
           409,
         );
       }
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PLATFORM_RULES_ARE_CODE_DEFINED",
         "platform validation rules are code-defined (each is a `check` function shipped with a release) and no dynamic platform-rule store or DSL evaluation engine exists; add the rule to packages/billing/src/rules and release it",
         501,

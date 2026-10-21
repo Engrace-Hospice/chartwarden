@@ -22,7 +22,7 @@ import type {
   UpsertConsentOverlayInput,
 } from "@wardenx/consent";
 import { ConsentRouteError } from "@wardenx/consent";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentAccessDeps, ConsentStaffActor } from "../access-scope";
 import { createScopedConsentRouteService } from "../scoped-consent-service";
@@ -172,7 +172,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
       const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const record = await scoped.getConsent(actor, organizationId, consentId);
-      if (!record) throw new WardenXError("NOT_FOUND", "consent not found", 404);
+      if (!record) throw new ChartWardenError("NOT_FOUND", "consent not found", 404);
       return { data: record };
     },
   );

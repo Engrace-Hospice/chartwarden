@@ -14,7 +14,7 @@
 // increment so the duplicate-application unique index (`promo_code_application_sub_active_uq`) fails the
 // transaction before the count is touched; the throw rolls the whole transaction back regardless.
 import { type DbClient, schema } from "@wardenx/db";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import { eq, sql } from "drizzle-orm";
 
 const PROMO = schema.promoCode;
@@ -35,13 +35,13 @@ export interface RedeemablePromo {
 /** Validity window and redemption cap, evaluated against the transaction's own `now`. Throws a 4xx. */
 export function assertPromoRedeemable(promo: RedeemablePromo, now: Date): void {
   if (promo.validFrom && now.getTime() < promo.validFrom.getTime()) {
-    throw new WardenXError("PROMO_NOT_YET_VALID", "promo code is not yet valid", UNPROCESSABLE);
+    throw new ChartWardenError("PROMO_NOT_YET_VALID", "promo code is not yet valid", UNPROCESSABLE);
   }
   if (promo.validTo && now.getTime() >= promo.validTo.getTime()) {
-    throw new WardenXError("PROMO_EXPIRED", "promo code has expired", UNPROCESSABLE);
+    throw new ChartWardenError("PROMO_EXPIRED", "promo code has expired", UNPROCESSABLE);
   }
   if (promo.maxRedemptions !== null && promo.redemptionCount >= promo.maxRedemptions) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PROMO_REDEMPTION_CAP_REACHED",
       "promo code has reached its redemption limit",
       CONFLICT,
@@ -98,7 +98,7 @@ export async function redeemPromoInTx(
     }
     throw err;
   }
-  if (!application) throw new WardenXError("PERSIST_FAILED", "the write returned no row", 500);
+  if (!application) throw new ChartWardenError("PERSIST_FAILED", "the write returned no row", 500);
 
   await tx
     .update(PROMO)

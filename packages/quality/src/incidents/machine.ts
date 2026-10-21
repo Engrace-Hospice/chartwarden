@@ -14,7 +14,7 @@
 // resolver-vs-assignee identity, corrective-action text length) is resolved UPSTREAM and injected as event
 // data — no IO, no DB, no clock. The two-person corrective-action control (M30-F03 / ADR-0022, WF-12) is
 // encoded as the `resolve` guard: the resolver MUST NOT be the incident's assignee.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { IncidentKind, IncidentSeverity, IncidentState } from "../contracts";
 import { isSeverityAtLeastModerate } from "./kinds";
 
@@ -47,11 +47,11 @@ export type M30IncidentErrorCode = keyof typeof M30_INCIDENT_ERROR_STATUS;
 export const INCIDENT_CORRECTIVE_ACTION_MIN_CHARS = 40;
 
 /**
- * A guard / validation failure in the M30 incident-lifecycle domain. Extends the M1 `WardenXError`
+ * A guard / validation failure in the M30 incident-lifecycle domain. Extends the M1 `ChartWardenError`
  * envelope base so the Fastify error handler renders the precise code + HTTP status with no cross-module
  * import edge (the M11 `OrderStateError` precedent).
  */
-export class IncidentStateError extends WardenXError {
+export class IncidentStateError extends ChartWardenError {
   constructor(code: M30IncidentErrorCode, message: string) {
     super(code, message, M30_INCIDENT_ERROR_STATUS[code]);
     this.name = "IncidentStateError";

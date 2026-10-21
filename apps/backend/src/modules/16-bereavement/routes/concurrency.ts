@@ -12,7 +12,7 @@
 //     requires a client-supplied `Idempotency-Key`. This is the HTTP-layer guard against a duplicate
 //     client submission; it is NOT the §4.9 worker-side state-check, which §4.9's own note is explicit
 //     about keeping orthogonal.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */
@@ -21,7 +21,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required",
         400,
@@ -35,7 +35,7 @@ export function rejectOffsetPagination(): PreHandler {
   return async (request) => {
     const query = (request.query ?? {}) as Record<string, unknown>;
     if (query.offset !== undefined) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "OFFSET_PAGINATION_FORBIDDEN",
         "offset pagination is not supported on PHI list routes; use ?cursor=",
         400,
@@ -58,7 +58,7 @@ export function ifMatchVersion(
   const n = Number(cleaned);
   const parsed = cleaned !== "" && Number.isInteger(n) && n >= 0 ? n : undefined;
   if (parsed === undefined && required) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "IF_MATCH_REQUIRED",
       "this route requires an If-Match header carrying the row version you read (§2.5)",
       428,

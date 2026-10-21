@@ -1,20 +1,20 @@
 // apps/backend/src/modules/02-identity/routes/route-helpers.ts — the small request helpers the M2 identity route
 // files share (extracted from identity-routes.ts so `link-routes.ts` can use them without an import cycle).
 import type { AuditContext } from "@wardenx/audit";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import type { Actor, IdentityRouteDeps, LinkError } from "../identity-ports";
 
 /** A 503 envelope: the dependency this route needs is not bound in this deployment (fail closed). */
-export const unavailable = (code: string, message: string): WardenXError =>
-  new WardenXError(code, message, 503);
+export const unavailable = (code: string, message: string): ChartWardenError =>
+  new ChartWardenError(code, message, 503);
 
 /** Map a store LinkError to the spec's HTTP code (§4.2 collaborators/consume, §7.12). */
-export function linkErrorToHttp(err: LinkError): WardenXError {
-  if (err.kind === "used") return new WardenXError("LINK_ALREADY_USED", err.message, 409);
+export function linkErrorToHttp(err: LinkError): ChartWardenError {
+  if (err.kind === "used") return new ChartWardenError("LINK_ALREADY_USED", err.message, 409);
   if (err.kind === "verification_required")
-    return new WardenXError("VERIFICATION_REQUIRED", err.message, 401);
-  return new WardenXError("LINK_EXPIRED", err.message, 410);
+    return new ChartWardenError("VERIFICATION_REQUIRED", err.message, 401);
+  return new ChartWardenError("LINK_EXPIRED", err.message, 410);
 }
 
 /** Resolve the authenticated actor or fail closed (401 envelope). */

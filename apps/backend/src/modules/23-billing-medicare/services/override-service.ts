@@ -26,7 +26,7 @@ import {
   repositories,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import {
   type BillingDb,
   type BillingTx,
@@ -70,7 +70,7 @@ export interface OverrideAuditPort {
 
 const FAIL_CLOSED_AUDIT: OverrideAuditPort = {
   recordOverride() {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "AUDIT_NOT_BOUND",
       "the M23 override audit port is not bound (M4 audit linkage is required for an override)",
       503,
@@ -144,7 +144,7 @@ export function buildOverrideService(
       requireStepUp(actor); // gate 2 — privileged action
 
       if (input.reason.trim().length < REASON_MIN_LENGTH) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VALIDATION_FAILED",
           `an override reason must be at least ${REASON_MIN_LENGTH} characters`,
           422,

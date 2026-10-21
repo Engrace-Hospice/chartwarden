@@ -15,7 +15,7 @@
 import { type MfaVerdict, evaluateMfa } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { withUserContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import type { MfaEnrollmentReader } from "./step-up-ports";
 
@@ -66,8 +66,8 @@ export interface MfaEnrolmentGate {
 }
 
 /** 403 raised when the matrix is unmet. The requirement is in the message so the UI can route to the right enrolment. */
-export const mfaEnrolmentRequired = (requirement: string, reason?: string): WardenXError =>
-  new WardenXError("MFA_ENROLMENT_REQUIRED", mfaDenialMessage(requirement, reason), 403);
+export const mfaEnrolmentRequired = (requirement: string, reason?: string): ChartWardenError =>
+  new ChartWardenError("MFA_ENROLMENT_REQUIRED", mfaDenialMessage(requirement, reason), 403);
 
 /** The user-facing sentence for a denial; shared with the authenticate-stage hold. */
 export function mfaDenialMessage(requirement: string, reason?: string): string {

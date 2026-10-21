@@ -9,7 +9,7 @@
 //   - {@link requireIfMatch} — the §2.5 optimistic-concurrency `If-Match` presence + parse guard; a stale
 //     version is surfaced as 412 by the write service (VERSION_CONFLICT), this guard only enforces that a
 //     mutation of a versioned root CARRIES the header so a lost-update is impossible.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 // Re-export the package cursor codec + page envelope so the route + service layers share one opaque cursor.
 export {
@@ -26,7 +26,7 @@ export {
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — a mutating route did not carry the required `Idempotency-Key` header. */
-export class IdempotencyKeyRequiredError extends WardenXError {
+export class IdempotencyKeyRequiredError extends ChartWardenError {
   constructor() {
     super("IDEMPOTENCY_KEY_REQUIRED", "an Idempotency-Key header is required on this route", 400);
     this.name = "IdempotencyKeyRequiredError";
@@ -34,7 +34,7 @@ export class IdempotencyKeyRequiredError extends WardenXError {
 }
 
 /** 428 IF_MATCH_REQUIRED — a versioned-root mutation did not carry the required `If-Match` header (§2.5). */
-export class IfMatchRequiredError extends WardenXError {
+export class IfMatchRequiredError extends ChartWardenError {
   constructor() {
     super("IF_MATCH_REQUIRED", "an If-Match header is required on this route", 428);
     this.name = "IfMatchRequiredError";
@@ -74,7 +74,7 @@ export function parseIfMatch(request: FastifyRequest): number {
     .replace(/^W\//, "");
   const parsed = Number.parseInt(unquoted, 10);
   if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== unquoted) {
-    throw new WardenXError("VALIDATION_FAILED", "the If-Match header is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the If-Match header is malformed", 400);
   }
   return parsed;
 }

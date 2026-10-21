@@ -15,7 +15,7 @@
 // preceding period's end + 1 day, and the period stays `pending` until that day.
 import { type DbClient, schema } from "@wardenx/db";
 import type { LocalDate } from "@wardenx/types";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import {
   type AdequacyResult,
@@ -320,7 +320,7 @@ export async function assertRecertPeriodReady(
   });
   const adequacy = await evaluateAdequacyForPeriod(tx, ctx.id, startDate);
   if (adequacy && adequacy.verdict === "inadequate") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ELECTION_PERIOD_ADEQUACY_FAILED",
       `The election period cannot start: its certification of terminal illness and/or face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
       409,

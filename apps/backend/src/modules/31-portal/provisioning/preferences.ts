@@ -2,7 +2,7 @@
 // one `portal_notification_preference` row per (account, channel), a channel with no row reading as its default.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 
 const PREF = schema.portalNotificationPreferences;
@@ -88,7 +88,7 @@ export function createPortalPreferences(db: DbClient): PortalPreferences {
       const hasStart = update.quietHoursStartHour !== undefined;
       const hasEnd = update.quietHoursEndHour !== undefined;
       if (hasStart !== hasEnd) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VALIDATION_FAILED",
           "quiet hours need both a start and an end hour",
           422,

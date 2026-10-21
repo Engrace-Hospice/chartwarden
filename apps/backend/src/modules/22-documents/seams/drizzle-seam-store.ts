@@ -27,7 +27,7 @@
 // not a sentinel, since that column IS nullable for exactly this case.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { DocumentSeamStore, RenderUpsert, RenderedDocumentRow } from "./store";
 
@@ -68,7 +68,7 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
           // Mirrors verified-upload.ts's immutability guard for the identical document/version shape — a
           // held/destroyed document's active version must never move underneath a legal hold or tombstone.
           if (existing.status === "legal_hold" || existing.status === "destroyed_tombstone") {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",
               `document ${existing.id} cannot accept a new rendered version (status: ${existing.status})`,
               409,

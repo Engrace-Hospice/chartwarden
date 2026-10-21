@@ -5,7 +5,7 @@ import type { IdentityCredentialAdmin } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, eq, ne, sql } from "drizzle-orm";
 import type {
   MembershipRepository,
@@ -97,11 +97,11 @@ function credentialErrorCode(error: unknown): string | null {
   return typeof candidate.message === "string" ? candidate.message : null;
 }
 
-function asPasswordPolicyError(error: unknown): WardenXError | null {
+function asPasswordPolicyError(error: unknown): ChartWardenError | null {
   const code = credentialErrorCode(error);
   if (!code) return null;
   if (["PASSWORD_TOO_SHORT", "PASSWORD_TOO_LONG", "PASSWORD_COMPROMISED"].includes(code))
-    return new WardenXError(code, "the password does not satisfy credential policy", 422);
+    return new ChartWardenError(code, "the password does not satisfy credential policy", 422);
   return null;
 }
 
@@ -206,7 +206,7 @@ export function createUserProvisioningService(deps: {
   return {
     async provision(input) {
       if (input.roleIds.length === 0)
-        throw new WardenXError("INVALID_ROLE", "at least one role is required", 422);
+        throw new ChartWardenError("INVALID_ROLE", "at least one role is required", 422);
       const roleKeys = await deps.roles.resolveKeys(input.organizationId, input.roleIds);
       await deps.roleGuard.assertProposable({
         organizationId: input.organizationId,
@@ -215,9 +215,9 @@ export function createUserProvisioningService(deps: {
         auditContext: input.auditContext,
       });
       if (!(await deps.lifecycle.validateLocations(input.organizationId, input.defaultLocationIds)))
-        throw new WardenXError("INVALID_LOCATION", "one or more locations are unavailable", 422);
+        throw new ChartWardenError("INVALID_LOCATION", "one or more locations are unavailable", 422);
       const organizationName = await deps.lifecycle.organizationName(input.organizationId);
-      if (!organizationName) throw new WardenXError("NOT_FOUND", "organization not found", 404);
+      if (!organizationName) throw new ChartWardenError("NOT_FOUND", "organization not found", 404);
 
       let userId: string;
       try {
@@ -231,7 +231,7 @@ export function createUserProvisioningService(deps: {
         const policy = asPasswordPolicyError(error);
         if (policy) throw policy;
         // Deliberately does not reveal whether a username or email belongs to another tenant.
-        throw new WardenXError("IDENTITY_CONFLICT", "the requested identity is unavailable", 409);
+        throw new ChartWardenError("IDENTITY_CONFLICT", "the requested identity is unavailable", 409);
       }
 
       let membershipId: string | null = null;
@@ -250,7 +250,7 @@ export function createUserProvisioningService(deps: {
           grantedByUserId: input.actorUserId,
         });
         if (attached.unresolved.length > 0 || attached.attached.length !== roleKeys.length)
-          throw new WardenXError("ROLE_ASSIGNMENT_FAILED", "roles could not be assigned", 409);
+          throw new ChartWardenError("ROLE_ASSIGNMENT_FAILED", "roles could not be assigned", 409);
         await audit(deps.audit, input.auditContext, {
           eventType: "m2.user.provisioned",
           resourceKind: "user",
@@ -289,17 +289,17 @@ export function createUserProvisioningService(deps: {
         input.targetUserId,
         input.organizationId,
       );
-      if (eligibility === "not_member") throw new WardenXError("NOT_FOUND", "user not found", 404);
+      if (eligibility === "not_member") throw new ChartWardenError("NOT_FOUND", "user not found", 404);
       if (eligibility === "shared_identity")
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SHARED_IDENTITY_RESET_RESTRICTED",
           "this global identity requires a platform-authorized reset",
           403,
         );
       if (eligibility === "inactive")
-        throw new WardenXError("USER_INACTIVE", "inactive users cannot be reset", 409);
+        throw new ChartWardenError("USER_INACTIVE", "inactive users cannot be reset", 409);
       const version = await deps.lifecycle.requirePasswordChange(input.targetUserId, "admin_reset");
-      if (version === null) throw new WardenXError("NOT_FOUND", "user not found", 404);
+      if (version === null) throw new ChartWardenError("NOT_FOUND", "user not found", 404);
       try {
         await deps.credentials.replacePassword(input.targetUserId, input.temporaryPassword);
       } catch (error) {
@@ -318,7 +318,7 @@ export function createUserProvisioningService(deps: {
 
     async resetPasswordGlobally(input) {
       const version = await deps.lifecycle.requirePasswordChange(input.targetUserId, "admin_reset");
-      if (version === null) throw new WardenXError("NOT_FOUND", "user not found", 404);
+      if (version === null) throw new ChartWardenError("NOT_FOUND", "user not found", 404);
       try {
         await deps.credentials.replacePassword(input.targetUserId, input.temporaryPassword);
       } catch (error) {
@@ -338,7 +338,7 @@ export function createUserProvisioningService(deps: {
     async completeRequiredChange(input) {
       const current = await deps.lifecycle.state(input.userId);
       if (!current || current.state !== "password_change_required")
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CREDENTIAL_ALREADY_ROTATED",
           "password change is not required",
           409,
@@ -352,12 +352,12 @@ export function createUserProvisioningService(deps: {
       } catch (error) {
         const policy = asPasswordPolicyError(error);
         if (policy) throw policy;
-        throw new WardenXError("INVALID_CURRENT_PASSWORD", "password change was refused", 400);
+        throw new ChartWardenError("INVALID_CURRENT_PASSWORD", "password change was refused", 400);
       }
       const completed = await deps.lifecycle.completePasswordChange(input.userId, current.version);
       await deps.sessions.revokeAllForUser(input.userId);
       if (!completed)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CREDENTIAL_STATE_CHANGED",
           "credential state changed concurrently; sign in and retry",
           409,

@@ -12,7 +12,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   type WristbandIssueReason,
   type WristbandVoidReason,
   parseWristbandPayload,
@@ -116,7 +116,7 @@ export async function issuePatientWristband(
     const tx = asDb(txRaw);
     const patient = await lockPatient(tx, actor.organizationId, input.patientId);
     if (UNBANDABLE_STATUSES.has(patient.status))
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PATIENT_NOT_BANDABLE",
         `a ${patient.status} patient cannot be issued a wristband`,
         409,
@@ -133,7 +133,7 @@ export async function issuePatientWristband(
         throw new ConflictError(
           "another wristband was printed for this patient first; refresh before printing again",
         );
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WRISTBAND_REASON_INVALID",
         input.reason === "first_issue"
           ? "this patient already has a wristband; choose a reprint reason"

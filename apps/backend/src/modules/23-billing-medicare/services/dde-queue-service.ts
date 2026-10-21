@@ -32,7 +32,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type {
   AssignDdeItemBodySchema,
@@ -338,7 +338,7 @@ export function buildDdeQueueService(
       { ...patch, attemptNumber },
     );
     if (!versioned.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VERSION_CONFLICT",
         `the DDE item was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
         412,

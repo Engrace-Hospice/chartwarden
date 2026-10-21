@@ -7,7 +7,7 @@
 // `withOrgContext` (RLS) and inside the actor's provider-entity scope.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   PLATFORM_ROUTE_RULES,
@@ -203,7 +203,7 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
     async setMacReasonCode(actor, denialId, code, ifMatch) {
       const normalized = code === null ? null : code.trim().toUpperCase();
       if (normalized !== null && !MAC_REASON_CODE.test(normalized)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_MAC_REASON_CODE",
           "the MAC reason code is 1 to 16 letters or digits",
           422,
@@ -223,7 +223,7 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
         // code is corrected with a routing rule (`denial_route.manage`), which is itself audited.
         const before = await resolveDenialRoute(tx, denialId, actor.providerEntityScope);
         if (before.route === "reopening" && normalized !== before.macReasonCode) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ROUTE_LOCKED",
             "this denial is routed to a MAC reopening, so its reason code cannot be changed; add a routing rule to correct the path",
             409,
@@ -264,7 +264,7 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
     async upsertRule(actor, input) {
       const code = input.code.trim().toUpperCase();
       if (!CODE_KINDS.includes(input.codeKind) || !MAC_REASON_CODE.test(code)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_ROUTE_CODE",
           "the rule code is 1 to 16 letters or digits",
           422,
@@ -272,7 +272,7 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
       }
       for (const day of [input.verifiedOn, input.effectiveFrom]) {
         if (day !== undefined && !isRealDay(day)) {
-          throw new WardenXError("INVALID_RULE_DATE", "a rule date is not a real date", 422);
+          throw new ChartWardenError("INVALID_RULE_DATE", "a rule date is not a real date", 422);
         }
       }
       const macName = input.macName?.trim() || null;
@@ -320,7 +320,7 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
         } catch (e) {
           // Two first upserts of the same rule raced: the second is a conflict to retry, not a server error.
           if (isUniqueViolation(e)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "RULE_CONFLICT",
               "that rule was just created; reload and retry",
               409,

@@ -17,7 +17,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { NotFoundError, RateLimitedError, WardenXError } from "@wardenx/types";
+import { NotFoundError, RateLimitedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -266,7 +266,7 @@ describe("POST /escalations", () => {
       ["ACK_NOT_REQUESTER", 403],
       ["ACK_ALREADY_REQUESTED", 409],
     ] as const) {
-      failWith = new WardenXError(errorCode, "x", status);
+      failWith = new ChartWardenError(errorCode, "x", status);
       const res = await post(app, "nurse", BASE, createBody());
       expect(res.statusCode).toBe(status);
       expect(code(res)).toBe(errorCode);
@@ -610,7 +610,7 @@ describe("ADR-0078 reassign candidates and the supervisor reassign", () => {
       ["ACK_ASSIGNEE_INVALID", 422],
       ["ACK_STATE_INVALID", 409],
     ] as const) {
-      failWith = new WardenXError(errorCode, "x", status);
+      failWith = new ChartWardenError(errorCode, "x", status);
       const res = await post(app, "supervisor", SUP, body());
       expect(res.statusCode).toBe(status);
       expect(code(res)).toBe(errorCode);

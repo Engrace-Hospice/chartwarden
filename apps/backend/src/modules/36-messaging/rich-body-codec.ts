@@ -7,7 +7,7 @@
 import type { MessageBodyKind, MessageReferenceInput } from "@wardenx/messaging";
 import {
   type RichBody,
-  WardenXError,
+  ChartWardenError,
   canonicalRichBodyJson,
   normalizeMentionLabel,
   parseStoredRichBody,
@@ -25,7 +25,7 @@ export const INVALID_RICH_BODY = "INVALID_RICH_BODY";
 export function sanitizeRichBodyOrThrow(raw: unknown): { richBody: RichBody; plainText: string } {
   const result = sanitizeRichBody(raw);
   if (!result.ok) {
-    throw new WardenXError(INVALID_RICH_BODY, "the structured message body is not valid", 422);
+    throw new ChartWardenError(INVALID_RICH_BODY, "the structured message body is not valid", 422);
   }
   return { richBody: result.value, plainText: richBodyToPlainText(result.value) };
 }
@@ -42,7 +42,7 @@ export function storedBodyFor(args: {
     return { plaintext: canonicalRichBodyJson(richBody), bodyKind: "rich" };
   }
   if (args.bodyKind === "rich") {
-    throw new WardenXError(INVALID_RICH_BODY, "a rich message needs a structured body", 422);
+    throw new ChartWardenError(INVALID_RICH_BODY, "a rich message needs a structured body", 422);
   }
   return { plaintext: args.body, bodyKind: args.bodyKind ?? "plain" };
 }
@@ -77,7 +77,7 @@ export function resolveRichWrite(input: {
 }): { richBody: RichBody; plainText: string; references: MessageReferenceInput[] } | undefined {
   if (input.bodyDoc === undefined) return undefined;
   if (input.body !== undefined || (input.references?.length ?? 0) > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       INVALID_RICH_BODY,
       "send either body (with references) or bodyDoc, not both",
       422,

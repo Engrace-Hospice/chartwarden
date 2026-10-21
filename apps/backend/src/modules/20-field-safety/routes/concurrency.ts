@@ -26,7 +26,7 @@
 // `total_count` IS NEVER EMITTED ON A PHI LIST (ADR-0021 §6 / §8.3): a count is an enumeration oracle.
 // {@link CursorPage} has no field for it, which is the compile-time half of that rule.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route except the SOS press requires an Idempotency-Key (1–128 chars). */
@@ -35,7 +35,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required",
         400,
@@ -49,7 +49,7 @@ export function rejectOffsetPagination(): PreHandler {
   return async (request) => {
     const query = (request.query ?? {}) as Record<string, unknown>;
     if (query.offset !== undefined) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "OFFSET_PAGINATION_FORBIDDEN",
         "offset pagination is not supported on PHI list routes; use ?cursor=",
         400,
@@ -81,7 +81,7 @@ export function ifMatchVersion(
     typeof value === "string" ? value.replace(/^W\//, "").replace(/"/g, "").trim() : "";
   const parsed = /^\d+$/.test(cleaned) ? Number(cleaned) : undefined;
   if (parsed === undefined && required) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "IF_MATCH_REQUIRED",
       "this route requires an If-Match header carrying the row version you read (§2.5)",
       428,
@@ -128,7 +128,7 @@ export interface CursorPage<T> {
 }
 
 /** Raised on a cursor whose signature does not verify, or whose body is not a cursor (§4.1). */
-export class InvalidCursorError extends WardenXError {
+export class InvalidCursorError extends ChartWardenError {
   constructor() {
     super("INVALID_CURSOR", "the pagination cursor is invalid; start from the first page", 422);
     this.name = "InvalidCursorError";

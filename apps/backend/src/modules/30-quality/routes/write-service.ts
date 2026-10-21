@@ -363,7 +363,7 @@ export interface UpdateInfectionOutbreakArgs {
  * V-11 (R-31) — assert the two-person PIP-closure co-sign split. Delegates to the package's canonical
  * {@link assertPipClosureCosign} (the SPLIT-ACTOR invariant: two distinct cosigners, neither the
  * charterer). The route resolves the role identities + the charterer server-side, then calls this before
- * invoking the PIP `conclude` reducer. Pure: no IO. Throws the package's `WardenXError` on a violation.
+ * invoking the PIP `conclude` reducer. Pure: no IO. Throws the package's `ChartWardenError` on a violation.
  */
 export function assertPipCloseSplitActor(cosign: PipClosureCosign): void {
   assertPipClosureCosign(cosign);
@@ -373,7 +373,7 @@ export function assertPipCloseSplitActor(cosign: PipClosureCosign): void {
  * V-12 (R-47) — assert the two-person SRA-cycle-closure co-sign split. Delegates to the package's
  * canonical {@link assertSraClosureCosign} (Security Officer + Compliance Officer, distinct individuals).
  * The route resolves the role identities server-side, then calls this before invoking the SRA `close`
- * reducer. Pure: no IO. Throws the package's `WardenXError` on a violation.
+ * reducer. Pure: no IO. Throws the package's `ChartWardenError` on a violation.
  */
 export function assertSraCloseSplitActor(cosign: SraClosureCosign): void {
   assertSraClosureCosign(cosign);
@@ -386,7 +386,7 @@ export function assertSraCloseSplitActor(cosign: SraClosureCosign): void {
  * adapter implements each method inside ONE `withOrgContext` transaction, drives the pure @wardenx/quality
  * reducers for any lifecycle transition, and emits the §4.10 `m30.*` events through the injected
  * {@link WriteOutboxPort} in the same unit of work. A missing/RLS-hidden row is a non-leaking 404; a
- * domain-rule violation surfaces the package's typed `WardenXError`.
+ * domain-rule violation surfaces the package's typed `ChartWardenError`.
  */
 export interface M30WriteRouteService {
   // Quality measures (R-04)

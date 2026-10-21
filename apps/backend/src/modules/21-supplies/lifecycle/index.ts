@@ -22,7 +22,7 @@
 //                       required when not covered); NOT a §2.2 transition
 //   • ./invoice         GAP-063 / D16 — the vendor-quote accrual + invoice reconciliation rules; NOT a §2.2
 //                       transition
-//   • ./errors         the §7 / §2.10 code → status catalog on the M1 `WardenXError` envelope
+//   • ./errors         the §7 / §2.10 code → status catalog on the M1 `ChartWardenError` envelope
 export * from "./effects";
 export * from "./errors";
 export * from "./supply-request";

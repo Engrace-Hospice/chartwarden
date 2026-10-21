@@ -33,7 +33,7 @@ import type {
   MemberAdminActor,
   MessagingRouteService,
 } from "@wardenx/messaging";
-import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
 import { resolveRichWrite } from "../rich-body-codec";
@@ -232,7 +232,7 @@ export const REQUIRE_IDEMPOTENCY_KEY: PreHandler = async (request) => {
   const raw = request.headers["idempotency-key"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "IDEMPOTENCY_KEY_REQUIRED",
       "an Idempotency-Key header is required",
       400,
@@ -637,7 +637,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const { id } = parse(MessageParamsSchema, request.params);
     const body = parse(EditMessageBodySchema, request.body);
     if (body.body === undefined && body.bodyDoc === undefined) {
-      throw new WardenXError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
+      throw new ChartWardenError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
     }
     const rich = resolveRichWrite(body);
     await assertSbarFlag(request, sbarDeps, rich?.richBody);

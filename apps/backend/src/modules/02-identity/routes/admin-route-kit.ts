@@ -3,7 +3,7 @@
 // the `m2.*` outbox publish. Kept beside the routes (not in identity-routes.ts, which keeps its own private
 // copies) so the new files stay small and the two cannot be confused.
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import type { Actor, ActorResolver, IdentityOutboxPort } from "../identity-ports";
 
@@ -23,7 +23,7 @@ export async function resolveActor(deps: AdminRouteDeps, request: FastifyRequest
 /** The acting admin's bound org must equal the path org (server-side org binding, §7.12). */
 export function assertOrgMatch(request: FastifyRequest, pathOrgId: string): void {
   if (request.context.organizationId !== pathOrgId)
-    throw new WardenXError("FORBIDDEN", "admin actions are scoped to the bound org", 403);
+    throw new ChartWardenError("FORBIDDEN", "admin actions are scoped to the bound org", 403);
 }
 
 export function auditContextFor(request: FastifyRequest, actor: Actor): AuditContext {
@@ -52,7 +52,7 @@ export function publishM2(
   return deps.outbox?.publish(input) ?? Promise.resolve();
 }
 
-export const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+export const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 export function invalid(field: string, message: string): never {
   throw new ValidationError(message, [{ field, code: "INVALID", message }]);

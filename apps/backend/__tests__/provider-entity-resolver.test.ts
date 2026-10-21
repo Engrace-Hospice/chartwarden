@@ -1,6 +1,6 @@
 // #107 item 3 — the primary-provider-entity resolver: prefers the org's active provider entity, falls back
 // to the earliest-created, and fails closed (PROVIDER_ENTITY_UNRESOLVED 503) only when the org has none.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { buildPrimaryProviderEntityResolver } from "../src/bootstrap/provider-entity-resolver";
 
@@ -43,7 +43,7 @@ describe("buildPrimaryProviderEntityResolver", () => {
       statusCode: 503,
     });
     await expect(resolver.primaryProviderEntityId(tx, "org-1")).rejects.toBeInstanceOf(
-      WardenXError,
+      ChartWardenError,
     );
   });
 });

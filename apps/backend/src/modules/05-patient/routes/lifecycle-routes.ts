@@ -20,7 +20,7 @@
 // §4.3 table and the catalog: they act on a REVIEW or AMENDMENT id, which `caseload_or_scope` cannot
 // resolve to a patient (same reasoning as the accept/deny routes in `patient-routes.ts`).
 import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { InvalidDeceasedDateError } from "../deceased";
 import { InvalidDeceasedTransitionError } from "../deceased-db";
@@ -102,8 +102,8 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
-const err = (code: string, message: string, status: number): WardenXError =>
-  new WardenXError(code, message, status);
+const err = (code: string, message: string, status: number): ChartWardenError =>
+  new ChartWardenError(code, message, status);
 
 /** Typed domain errors → the §4.3 HTTP contract. Anything unrecognised rethrows unchanged. */
 export function mapLifecycleError(e: unknown): unknown {

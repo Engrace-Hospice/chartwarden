@@ -27,7 +27,7 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
   type FhirReadDisclosureEnvelope,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 
 import {
@@ -302,11 +302,11 @@ export interface FhirGatewayStore {
 }
 
 /**
- * A store error carrying an HTTP status + a WardenX error code. Extends `WardenXError` so the composition
+ * A store error carrying an HTTP status + a WardenX error code. Extends `ChartWardenError` so the composition
  * root's error handler renders it as the standard WardenX envelope with no per-route mapping (the admin
  * surface, §4.1 R23-R39, uses that envelope; the FHIR-spec surface catches it and renders OperationOutcome).
  */
-export class FhirStoreError extends WardenXError {
+export class FhirStoreError extends ChartWardenError {
   constructor(httpStatus: number, code: string, message: string) {
     super(code, message, httpStatus);
     this.name = "FhirStoreError";

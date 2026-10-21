@@ -21,7 +21,7 @@
 import type { AuditContext } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { eq } from "drizzle-orm";
 import { auditOrganizationTransition } from "./audit/identity-audit";
 
@@ -55,7 +55,7 @@ const nextOrganizationStatus = (
   event: OrganizationLifecycleEvent,
 ): OrganizationLifecycleStatus => {
   if (!ORGANIZATION_LIFECYCLE_GRAPH[from].includes(event)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ILLEGAL_ORGANIZATION_TRANSITION",
       `organization cannot '${event}' from '${from}'`,
       409,

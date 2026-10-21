@@ -14,7 +14,7 @@
 // contract, unchanged).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, WardenXError } from "@wardenx/types";
+import { DegradedError, ChartWardenError } from "@wardenx/types";
 import { and, asc, eq } from "drizzle-orm";
 
 /** The structural ProviderEntityPort M30's write service binds (tx is its org-context WriteTx = DbClient). */
@@ -36,7 +36,7 @@ export function buildPrimaryProviderEntityResolver(): PrimaryProviderEntityResol
         .orderBy(asc(schema.providerEntities.createdAt));
       const chosen = rows.find((r) => r.status === "active") ?? rows[0];
       if (!chosen) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PROVIDER_ENTITY_UNRESOLVED",
           `no provider entity exists for organization ${organizationId}; cannot stamp provider_entity_id`,
           503,

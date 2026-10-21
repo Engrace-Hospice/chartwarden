@@ -22,7 +22,7 @@ import { requirePermission } from "@wardenx/auth";
 // `withOrgContext` so RLS on `app.org_id` is the backstop. Org binding is always server-side: the
 // actor's org/user come from `request.context`, never the body.
 import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@wardenx/terminology";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   ATTRIBUTION_HEADER,
@@ -112,7 +112,7 @@ const EXTEND = requirePermission("terminology.value_set.extend") as PreHandler;
 // still use retired codes is a compliance exposure listing.
 const REMEDIATION = requirePermission("terminology.deprecation_report") as PreHandler;
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 export function registerTerminologyRoutes(app: FastifyInstance, deps: TerminologyRouteDeps): void {
   const { provider, flags, ops, remediation, attribution } = deps;
@@ -182,7 +182,7 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
     const orgId = request.context.organizationId;
     const resolved = orgId && flags ? await flags.forOrg(orgId) : {};
     if (!resolved[AI_FULL_FLAG]) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "FEATURE_NOT_ENABLED",
         "semantic search requires the 'ai.full' capability (Phase 2); use mode=exact or mode=fuzzy",
         403,

@@ -49,7 +49,7 @@ import {
   writeDrilldownAudit,
 } from "@wardenx/reporting";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
 import { type ReportScopeResolverPort, narrowScope } from "./read-service-drizzle";
@@ -104,7 +104,7 @@ export interface DrilldownBulkExportInput {
 }
 
 /** Raised when a render handshake is requested but the M22 render outbox is not yet bound (fail-closed). */
-export class ExportRenderUnbound extends WardenXError {
+export class ExportRenderUnbound extends ChartWardenError {
   constructor() {
     super("EXPORT_RENDER_UNBOUND", "the M22 render-request outbox is not yet bound", 503);
     this.name = "ExportRenderUnbound";

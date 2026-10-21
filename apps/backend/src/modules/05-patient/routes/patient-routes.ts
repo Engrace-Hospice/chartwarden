@@ -46,7 +46,7 @@ import {
   requirePermission,
   requireStepUp,
 } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { IdentifierCipherUnboundError } from "../identifiers/identifier-cipher";
@@ -93,22 +93,22 @@ export interface PatientRouteDeps {
  *  rest are this route's own (the spec names no code for them). Anything else rethrows unchanged. */
 function mapMergeError(err: unknown): unknown {
   if (err instanceof PatientNotFoundError) {
-    return new WardenXError("NOT_FOUND", `patient '${err.patientId}' not found`, 404);
+    return new ChartWardenError("NOT_FOUND", `patient '${err.patientId}' not found`, 404);
   }
   if (err instanceof SelfMergeError) {
-    return new WardenXError("SELF_MERGE", err.message, 422);
+    return new ChartWardenError("SELF_MERGE", err.message, 422);
   }
   if (err instanceof SourceAlreadyMergedError) {
-    return new WardenXError("ALREADY_MERGED", err.message, 409);
+    return new ChartWardenError("ALREADY_MERGED", err.message, 409);
   }
   if (err instanceof TargetAlreadyMergedError) {
-    return new WardenXError("MERGE_TARGET_ALREADY_MERGED", err.message, 409);
+    return new ChartWardenError("MERGE_TARGET_ALREADY_MERGED", err.message, 409);
   }
   if (err instanceof UnmergeableSourceStatusError) {
-    return new WardenXError("PATIENT_NOT_MERGEABLE", err.message, 409);
+    return new ChartWardenError("PATIENT_NOT_MERGEABLE", err.message, 409);
   }
   if (err instanceof UnknownMergeFieldError) {
-    return new WardenXError("UNKNOWN_MERGE_FIELD", err.message, 422);
+    return new ChartWardenError("UNKNOWN_MERGE_FIELD", err.message, 422);
   }
   return err;
 }
@@ -229,7 +229,7 @@ async function censusScope(request: FastifyRequest): Promise<readonly string[] |
   }
 }
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 // §2.5 read-audit: a single-patient chart read. `patientIdParam: "id"` joins the read to the patient
 // for the §164.528 accounting query. Per-tab routes extend this with the field names they surface.
@@ -421,13 +421,13 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       const result = await service.admit(organizationId, body, userId).catch((e: unknown) => {
         // GAP-010: no tenant key bound / ring destroyed -> 503, not a 500 and not a silent unencrypted write.
         if (e instanceof IdentifierCipherUnboundError) {
-          throw new WardenXError("IDENTIFIER_CIPHER_UNBOUND", e.message, 503);
+          throw new ChartWardenError("IDENTIFIER_CIPHER_UNBOUND", e.message, 503);
         }
         throw e;
       });
       if (result.outcome === "hard_block") {
         // §7.1: no patient row created; surface the existing chart for "Open existing patient".
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DUPLICATE_OF",
           `duplicate of ${result.existingPatientId} (matched on ${result.matchedOn})`,
           409,

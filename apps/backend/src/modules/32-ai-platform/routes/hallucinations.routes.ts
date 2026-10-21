@@ -32,7 +32,7 @@
 import type { FastifyInstance } from "fastify";
 import type { TriageFollowUpEnqueuePort } from "../jobs/triage-followup-worker";
 
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 import {
   type AiSafetyServiceDeps,
@@ -69,7 +69,7 @@ export interface HallucinationRouteDeps {
 }
 
 function cipherUnbound(): never {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "AI_REPORT_CIPHER_UNBOUND",
     "no per-tenant DEK envelope is bound for M32, so the reporter narrative cannot be stored encrypted; writing it in the clear into a column named reporter_narrative_cipher would make the §3.7 erasure a lie",
     503,

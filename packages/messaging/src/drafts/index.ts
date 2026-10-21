@@ -15,7 +15,7 @@ import {
   SBAR_URGENCY_HINTS,
   type SbarSections,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { MessageReferenceInput } from "../interfaces/provider";
 
@@ -70,8 +70,8 @@ export function decideDraftSave(
   return current.deviceId === input.deviceId ? "write" : "conflict";
 }
 
-export function draftConflictError(): WardenXError {
-  return new WardenXError(
+export function draftConflictError(): ChartWardenError {
+  return new ChartWardenError(
     "DRAFT_CONFLICT",
     "this draft was changed on another device; read it and choose how to merge",
     409,

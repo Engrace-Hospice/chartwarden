@@ -15,7 +15,7 @@
 // Layer 2 exists because layer 1 is the guarantee people believe they have and layer 2 is the one that
 // survives contact with an adapter written by someone else.
 
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** D13 — the two Phase-1 minimization profiles. `centralized` vendors select dispositions inside their
  *  own scope and therefore need slightly more structured chart context than `hybrid` vendors, who only
@@ -167,7 +167,7 @@ export type VendorDenylistedSourceField = (typeof VENDOR_DENYLISTED_SOURCE_FIELD
 
 /** Thrown when a body about to leave for a vendor carries something the profile does not permit. The
  *  caller treats this as fatal: the call falls back to the in-agency path rather than transmitting. */
-export class VendorPhiMinimizationError extends WardenXError {
+export class VendorPhiMinimizationError extends ChartWardenError {
   constructor(
     message: string,
     public readonly leakedFields: readonly string[],

@@ -12,7 +12,7 @@ import {
   type AckReassignCandidatesResponse,
   type AckSupervisorReasonCode,
   type AckSupervisorReassignResponse,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { type AckEventFacts, M36_ACK_REASSIGNED, publishAckEvent } from "./ack-events";
 import { assigneeInvalid, isWaiting, orElse, requestNotFound } from "./ack-shared";
@@ -48,8 +48,8 @@ export interface SupervisorContext {
   readonly guarded: <T>(work: () => Promise<T>, ids: Record<string, string>) => Promise<T>;
 }
 
-const limitReached = (): WardenXError =>
-  new WardenXError(
+const limitReached = (): ChartWardenError =>
+  new ChartWardenError(
     "ACK_SUPERVISOR_REASSIGN_LIMIT",
     "This request has been moved several times today. Ask the clinical lead to decide who takes it.",
     409,

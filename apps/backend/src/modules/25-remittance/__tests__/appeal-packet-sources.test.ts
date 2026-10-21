@@ -1,6 +1,6 @@
 // GAP-036 - the appeal packet's enclosure rules, pure. The same rules run live (RLS, real seams) in
 // `apps/backend/__tests__/m25-appeal-packet.live.test.ts`.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AppealDocumentPort,
@@ -82,7 +82,7 @@ describe("describeEnclosures", () => {
 
   it("refuses a nonexistent / other-tenant id (the seam reads it as absent) with a 422 and no title", async () => {
     const err = await describeEnclosures(portOf({}), ORG, PATIENT, [D1]).catch((e) => e);
-    expect(err).toBeInstanceOf(WardenXError);
+    expect(err).toBeInstanceOf(ChartWardenError);
     expect(err).toMatchObject({ code: "APPEAL_DOCUMENT_NOT_ATTACHABLE", statusCode: 422 });
     expect(err.message).toContain(D1);
     expect(err.message).toContain("not_found");
@@ -143,6 +143,6 @@ describe("numericToCents", () => {
     expect(numericToCents(input)).toBe(cents);
   });
   it("rejects a non-number instead of returning NaN cents", () => {
-    expect(() => numericToCents("abc")).toThrow(WardenXError);
+    expect(() => numericToCents("abc")).toThrow(ChartWardenError);
   });
 });

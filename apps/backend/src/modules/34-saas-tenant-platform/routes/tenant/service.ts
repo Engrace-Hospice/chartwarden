@@ -11,7 +11,7 @@
 // injected `now()` so timestamps are deterministic in tests), org-scoped reads (a missing/cross-tenant id
 // is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on every list.
 import type { OrgId } from "@wardenx/types";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (Phase 2D worker-trigger seam) ───────────────────────────────────────────────────
@@ -467,7 +467,7 @@ export function createInMemoryTenantBackend(
     async extendDsarExport(organizationId, jobId) {
       const r = loadDsar(organizationId, jobId);
       if (r.extendedUntil) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DSAR_ALREADY_EXTENDED",
           "the §164.524 30-day extension is one-time",
           409,
@@ -486,7 +486,7 @@ export function createInMemoryTenantBackend(
     async dsarDownloadUrl(organizationId, jobId, _actorMembershipId) {
       const r = loadDsar(organizationId, jobId);
       if (r.status !== "fulfilled") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DSAR_NOT_FULFILLED",
           "the bundle is not yet available for download",
           409,
@@ -523,7 +523,7 @@ export function createInMemoryTenantBackend(
     async tenantExportDownloadUrl(organizationId, jobId, _actorMembershipId) {
       const r = loadTenantExport(organizationId, jobId);
       if (r.status !== "fulfilled") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TENANT_EXPORT_NOT_FULFILLED",
           "the bundle is not yet available",
           409,

@@ -25,7 +25,7 @@ import {
   NotFoundError,
   UnauthorizedError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
@@ -583,14 +583,14 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       if (subject !== userId && !isCoordinator) throw attendanceSelfOnlyError();
       const facts = await attendanceTargetFacts(request, organizationId, userId, subject);
       if (facts.kind === "not_found") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ATTENDANCE_MEMBERSHIP_NOT_FOUND",
           "that membership is not an active member of this organization",
           422,
         );
       }
       if (facts.kind === "unavailable") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ATTENDANCE_AUTHORITY_UNAVAILABLE",
           "could not verify the attendee's disciplines; please retry",
           503,

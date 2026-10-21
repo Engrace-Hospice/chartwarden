@@ -79,7 +79,7 @@ export function registerDocLensExtractionRoutes(
   /**
    * §7.1 W1 / depends-on-32 — the feature-flag gate. When `documents.doclens` is OFF (Phase-1 default for
    * every tenant) we set `Retry-After: 0` and throw 503 EXTRACTION_DISABLED BEFORE the handler runs, so the
-   * M32 capability is never reached. The error handler renders the WardenXError envelope and preserves the
+   * M32 capability is never reached. The error handler renders the ChartWardenError envelope and preserves the
    * header already set on the reply.
    */
   const requireDocLensEnabled: PreHandler = async (request, reply) => {

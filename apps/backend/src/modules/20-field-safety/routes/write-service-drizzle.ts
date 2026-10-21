@@ -54,7 +54,7 @@ import {
   type SafetyPolicyEffectiveDto,
   type SafetyPolygonRings,
   type SafetySosLifecycleState,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
@@ -122,7 +122,7 @@ const iso = (d: Date | string): IsoInstant =>
 
 /** Decision 1 — refused rather than written as cleartext into a column named `_cipher`. */
 function cipherUnbound(what: string): never {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "SAFETY_CIPHER_UNBOUND",
     `no per-tenant DEK envelope is bound for M20, so ${what} cannot be stored encrypted; writing it in the clear into a column named _cipher would make the §3.7 erasure a lie`,
     503,
@@ -503,11 +503,11 @@ export function buildDrizzleM20WriteService(
    */
   function assertPolygonValid(polygon: SafetyPolygonRings): void {
     if (polygon.length === 0) {
-      throw new WardenXError("POLYGON_INVALID", "a high-risk area needs at least one ring", 422);
+      throw new ChartWardenError("POLYGON_INVALID", "a high-risk area needs at least one ring", 422);
     }
     polygon.forEach((ring, i) => {
       if (ring.length < 4) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "POLYGON_INVALID",
           `ring ${i} has ${ring.length} points; a closed ring needs at least 4 (the first repeated as the last)`,
           422,
@@ -516,7 +516,7 @@ export function buildDrizzleM20WriteService(
       const first = ring[0] as readonly [number, number];
       const last = ring[ring.length - 1] as readonly [number, number];
       if (first[0] !== last[0] || first[1] !== last[1]) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "POLYGON_INVALID",
           `ring ${i} is not closed; the last point must repeat the first`,
           422,
@@ -531,7 +531,7 @@ export function buildDrizzleM20WriteService(
    */
   function assertAreaWindow(effectiveFrom: Date, effectiveTo: Date): void {
     if (effectiveTo.getTime() <= effectiveFrom.getTime()) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "AREA_WINDOW_INVALID",
         `effectiveTo must be after the area's effectiveFrom (${effectiveFrom.toISOString()})`,
         422,
@@ -549,7 +549,7 @@ export function buildDrizzleM20WriteService(
       // §2.3 — the concern the supervisor acts on has to actually say something. Checked here so the
       // caller gets a 422 naming the field rather than migration 0110's `m20_sci_concern_note` violation.
       if (input.status !== "ok" && (input.concernNote ?? "").trim().length < 20) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CONCERN_NOTE_REQUIRED",
           "a check-in that is not `ok` carries a ≥20-character note; your supervisor reads it",
           422,
@@ -728,7 +728,7 @@ export function buildDrizzleM20WriteService(
         // attestation about her own safety must not be editable an hour later, when the supervisor has
         // already acted on it.
         if (at.getTime() - row.postedAt.getTime() > CHECK_IN_AMENDMENT_GRACE_MINUTES * 60_000) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CHECK_IN_AMENDMENT_WINDOW_CLOSED",
             `the ${CHECK_IN_AMENDMENT_GRACE_MINUTES}-minute amendment grace has closed; post a new check-in instead`,
             422,
@@ -737,7 +737,7 @@ export function buildDrizzleM20WriteService(
 
         const status = input.status ?? (row.status as string);
         if (status !== "ok" && (input.concernNote ?? row.concernNote ?? "").trim().length < 20) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CONCERN_NOTE_REQUIRED",
             "a check-in that is not `ok` carries a ≥20-character note",
             422,
@@ -1313,7 +1313,7 @@ export function buildDrizzleM20WriteService(
         // §3.3's `m20_si_occurred_before_reported` is the half of §2.2.3's rule a CHECK can express;
         // restating it here turns a driver-level constraint violation into a 422 naming the field.
         if (occurredAt.getTime() > at.getTime()) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INCIDENT_OCCURRED_IN_FUTURE",
             "an incident cannot have occurred after it was reported",
             422,
@@ -1483,7 +1483,7 @@ export function buildDrizzleM20WriteService(
         // `m20_si_osha_signoff_required` CHECK is the DB's half; this is the half that names the fix
         // rather than raising a constraint violation on a clinician's Submit button.
         if (input.oshaReportable && row.oshaReportableSignedOffAt === null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "OSHA_SIGNOFF_REQUIRED",
             "an OSHA-reportable incident needs a supervisor's step-up sign-off before it can be submitted (D9); use the osha-signoff route first",
             422,
@@ -1585,7 +1585,7 @@ export function buildDrizzleM20WriteService(
         );
         // §3.3's `m20_si_action_plan_required` — a close WITH a plan needs the plan.
         if (input.toState === "closed_with_action_plan" && actionPlanCipher === null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ACTION_PLAN_REQUIRED",
             "closing with an action plan needs the plan",
             422,
@@ -1738,7 +1738,7 @@ export function buildDrizzleM20WriteService(
         // §3.3 — platform ops froze this tenant's policy (a compliance action). Refusing here rather than
         // at the DB means the DON is told WHY rather than shown a failed write.
         if (locked?.isSystemLocked === true) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "POLICY_SYSTEM_LOCKED",
             "this tenant's safety policy is frozen by platform ops; contact support",
             409,
@@ -1841,7 +1841,7 @@ export function buildDrizzleM20WriteService(
               ? input.providerEntityId
               : "role";
       if (selector === undefined) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SUBSCRIPTION_SCOPE_INCOMPLETE",
           `a '${input.scopeKind}'-scoped subscription must name the ${input.scopeKind === "explicit" ? "clinician" : input.scopeKind === "location" ? "location" : "provider entity"} it covers`,
           422,
@@ -1851,7 +1851,7 @@ export function buildDrizzleM20WriteService(
         (input.isVacationForwarding === true) !==
         (input.vacationForwardToMembershipId !== undefined)
       ) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SUBSCRIPTION_FORWARD_INCOMPLETE",
           "vacation forwarding names its target, in both directions: a forwarding row with no target drops the page entirely",
           422,
@@ -2051,7 +2051,7 @@ export function buildDrizzleM20WriteService(
       // actually carry a number to call. M20-F06: this row IS the emergency-contact record, because M2
       // has no such table.
       if (input.purpose === "emergency_contact_call" && input.contact === undefined) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "EMERGENCY_CONTACT_REQUIRED",
           "granting `emergency_contact_call` needs the contact this platform is to dial (M20-F06)",
           422,
@@ -2068,7 +2068,7 @@ export function buildDrizzleM20WriteService(
         // refusal never echoes the number.
         const normalised = normalizeE164(input.contact.phone, EMERGENCY_CONTACT_DEFAULT_REGION);
         if (!normalised.ok) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "EMERGENCY_CONTACT_NUMBER_INVALID",
             "the emergency contact's phone number cannot be dialled; enter a full number with area code (no extension, no emergency or short codes)",
             422,

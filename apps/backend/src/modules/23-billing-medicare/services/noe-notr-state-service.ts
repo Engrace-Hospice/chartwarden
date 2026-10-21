@@ -17,7 +17,7 @@
 // DB pgEnum at the boundary. NO PHI / NO MBI on any surface (D13). D13 AI-actor reject guard applies here too.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import {
   type BillingDb,
   type BillingTx,
@@ -240,7 +240,7 @@ function notrPatch(p?: NoticeTransitionPatch): repositories.NotrTransitionPatch 
 /** Raise the structured error for a rejected pure-reducer step. */
 function rejectReduce(error: string, event: NoticeTransitionEvent, from: NoticeState): never {
   if (error === "GUARD_FAILED") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "GUARD_FAILED",
       `notice '${event}' requires the upstream election/terminating event to be reversed`,
       422,
@@ -326,7 +326,7 @@ export function buildNoeNotrStateService(
         noePatch(input.patch),
       );
       if (!versioned.ok) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VERSION_CONFLICT",
           `the NOE was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
           412,
@@ -367,7 +367,7 @@ export function buildNoeNotrStateService(
       notrPatch(input.patch),
     );
     if (!versioned.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VERSION_CONFLICT",
         `the NOTR was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
         412,
@@ -420,7 +420,7 @@ export function buildNoeNotrStateService(
             windowBreachedAt: breachedAt.slice(0, 10),
           });
           if (!versioned.ok) {
-            throw new WardenXError("VERSION_CONFLICT", "the NOE was modified concurrently", 412);
+            throw new ChartWardenError("VERSION_CONFLICT", "the NOE was modified concurrently", 412);
           }
           await emit(tx, actor.organizationId, {
             eventName: `${n.prefix}.window_breached`,
@@ -445,7 +445,7 @@ export function buildNoeNotrStateService(
           windowBreachedAt: breachedAt.slice(0, 10),
         });
         if (!versioned.ok) {
-          throw new WardenXError("VERSION_CONFLICT", "the NOTR was modified concurrently", 412);
+          throw new ChartWardenError("VERSION_CONFLICT", "the NOTR was modified concurrently", 412);
         }
         await emit(tx, actor.organizationId, {
           eventName: `${n.prefix}.window_breached`,

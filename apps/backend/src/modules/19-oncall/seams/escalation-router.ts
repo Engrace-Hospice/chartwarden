@@ -35,7 +35,7 @@ import {
   type OncallShiftDiscipline,
   type OrgId,
   type ProviderEntityId,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import {
   type OncallSeamOrgResolver,
@@ -68,8 +68,8 @@ export interface EscalationRouterReads {
   timeZones(providerEntityId: ProviderEntityId): Promise<readonly string[]>;
 }
 
-function invalid(message: string): WardenXError {
-  return new WardenXError("ESCALATION_REQUEST_INVALID", message, 400);
+function invalid(message: string): ChartWardenError {
+  return new ChartWardenError("ESCALATION_REQUEST_INVALID", message, 400);
 }
 
 function parseRequest(request: EscalationRouteRequest): number {
@@ -150,7 +150,7 @@ export function createEscalationRouter(
     async resolveTier(orgId, request): Promise<EscalationRouteAnswer> {
       assertCallerOrg(orgOf, orgId as OrgId);
       if (orgOf() === "") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TRIAGE_SEAM_ORG_MISMATCH",
           "escalation routing requires an organization scope",
           403,

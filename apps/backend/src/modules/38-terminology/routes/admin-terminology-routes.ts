@@ -30,7 +30,7 @@ import {
   isLoadableSystem,
   validateAttestationInput,
 } from "@wardenx/terminology-loader";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { terminologyRefusalOf } from "../db-errors";
 import type { PlatformUploadSigner, TerminologyJobProducer } from "../jobs-ports";
@@ -68,8 +68,8 @@ const UPLOAD_TTL_SECONDS = 900;
 /** Object keys are server-minted under this prefix; the operator's file name is sanitised into the tail only. */
 const UPLOAD_PREFIX = "terminology/uploads";
 
-const unavailable = (code: string, message: string): WardenXError =>
-  new WardenXError(code, message, 503);
+const unavailable = (code: string, message: string): ChartWardenError =>
+  new ChartWardenError(code, message, 503);
 
 /** Map a loader-function refusal onto the HTTP contract (licence → 403, unknown system → 422). */
 function refusalToHttp(err: unknown): never {
@@ -77,10 +77,10 @@ function refusalToHttp(err: unknown): never {
   if (!refusal) throw err;
   if (refusal.code.startsWith("TERMINOLOGY_LICENSE_")) {
     const code = refusal.code.replace("TERMINOLOGY_", "");
-    throw new WardenXError(code, refusal.detail, 403);
+    throw new ChartWardenError(code, refusal.detail, 403);
   }
   if (refusal.code === "TERMINOLOGY_UNKNOWN_SYSTEM") {
-    throw new WardenXError("UNKNOWN_SYSTEM", refusal.detail, 422);
+    throw new ChartWardenError("UNKNOWN_SYSTEM", refusal.detail, 422);
   }
   throw err;
 }
@@ -140,7 +140,7 @@ export function registerAdminTerminologyRoutes(
       const { system } = parse(AdminSystemParamsSchema, request.params);
       const body = parse(AdminLoadBodySchema, request.body);
       if (!isLoadableSystem(system)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SYSTEM_NOT_LOADABLE",
           `${system} has no source release to load`,
           422,
@@ -240,7 +240,7 @@ export function registerAdminTerminologyRoutes(
       const { system } = parse(AdminSystemParamsSchema, request.params);
       const body = parse(AdminAttestationBodySchema, request.body);
       if (!isLoadableSystem(system)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SYSTEM_NOT_LOADABLE",
           `${system} has no source release to attest`,
           422,
@@ -270,7 +270,7 @@ export function registerAdminTerminologyRoutes(
       } catch (err) {
         const refusal = terminologyRefusalOf(err);
         if (refusal?.code === "TERMINOLOGY_LICENSE_NOT_REQUIRED") {
-          throw new WardenXError("LICENSE_NOT_REQUIRED", refusal.detail, 409);
+          throw new ChartWardenError("LICENSE_NOT_REQUIRED", refusal.detail, 409);
         }
         return refusalToHttp(err);
       }
@@ -284,7 +284,7 @@ export function registerAdminTerminologyRoutes(
       const { id } = parse(AdminAttestationParamsSchema, request.params);
       const revoked = await ops.revokeLicenseAttestation(id, operatorOf(request));
       if (!revoked)
-        throw new WardenXError("NOT_FOUND", "attestation not found or already revoked", 404);
+        throw new ChartWardenError("NOT_FOUND", "attestation not found or already revoked", 404);
       return { revoked: true };
     },
   );
@@ -296,7 +296,7 @@ export function registerAdminTerminologyRoutes(
     async (request) => {
       const { system } = parse(AdminSystemParamsSchema, request.params);
       if (!isLoadableSystem(system)) {
-        throw new WardenXError("SYSTEM_NOT_LOADABLE", `${system} has no concepts to embed`, 422);
+        throw new ChartWardenError("SYSTEM_NOT_LOADABLE", `${system} has no concepts to embed`, 422);
       }
       if (!deps.embeddingsAvailable || !deps.jobs) {
         throw unavailable(
@@ -308,7 +308,7 @@ export function registerAdminTerminologyRoutes(
       // The version is resolved server-side from the ACTIVE row, so "no active version" is a real
       // refusal rather than a silently-logged no-op against nothing.
       if (!result.logged || result.versionId === null) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "NO_ACTIVE_VERSION",
           `${system} has no active version to recompute embeddings for`,
           409,

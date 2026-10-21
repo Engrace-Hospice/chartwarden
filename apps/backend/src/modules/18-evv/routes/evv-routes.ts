@@ -21,7 +21,7 @@ import {
   NotFoundError,
   UnauthorizedError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
@@ -429,7 +429,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
         );
       } catch (error) {
         results[index] =
-          error instanceof WardenXError && error.statusCode < 500
+          error instanceof ChartWardenError && error.statusCode < 500
             ? {
                 localId: event.localId,
                 status: "rejected",

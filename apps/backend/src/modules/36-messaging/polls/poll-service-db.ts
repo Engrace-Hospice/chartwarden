@@ -20,7 +20,7 @@ import {
   type PollDetailView,
   type PollView,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
   checkPollInput,
 } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
@@ -112,7 +112,7 @@ export function createDbPollService(deps: PollServiceDeps): MessagePollService {
       )
       .limit(1);
     if (!state || state.status === "deleted") throw new NotFoundError("poll", input.messageId);
-    if (state.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    if (state.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
     const [poll] = await tx
       .select({ id: POLL.id, createdByUserId: POLL.createdByUserId, closedAt: POLL.closedAt })
       .from(POLL)
@@ -168,10 +168,10 @@ export function createDbPollService(deps: PollServiceDeps): MessagePollService {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const channel = await channelOr404(tx, orgId, input.channelId);
         if (channel.isArchived) {
-          throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
         }
         if (BLOCKED_KINDS.has(channel.kind)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL",
             "polls are non-clinical and cannot be created in a channel linked to a patient",
             422,
@@ -250,7 +250,7 @@ export function createDbPollService(deps: PollServiceDeps): MessagePollService {
       await assertMember(orgId, input.userId, input.channelId);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const poll = await lockedPoll(tx, orgId, input, "share");
-        if (poll.closedAt) throw new WardenXError("POLL_CLOSED", "this poll is closed", 409);
+        if (poll.closedAt) throw new ChartWardenError("POLL_CLOSED", "this poll is closed", 409);
         const [option] = await tx
           .select({ id: OPT.id })
           .from(OPT)
@@ -259,7 +259,7 @@ export function createDbPollService(deps: PollServiceDeps): MessagePollService {
           )
           .limit(1);
         if (!option) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_POLL_OPTION",
             "that option is not part of this poll",
             422,

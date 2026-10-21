@@ -24,7 +24,7 @@ import type {
   VisitSetting,
   VisitStatus,
 } from "@wardenx/types";
-import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 import type { CreateOnCallRotationInput, OnCallRotationView } from "../seams/oncall-rotation-store";
@@ -846,7 +846,7 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     _orgId: string,
     membershipId: string,
   ): { membershipId: string; totalProposedMiles: number; overrideRate: number } {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "NOT_IMPLEMENTED",
       `route-efficiency metrics for ${membershipId} are unavailable until route optimisation is enabled`,
       501,

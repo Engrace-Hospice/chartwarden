@@ -10,7 +10,7 @@
 // email / username / login fields. Not a PHI read (staff directory, no patient id), so no read-audit
 // config; the bound org is asserted before any query.
 import { resolveActorPermissions } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { CareTeamStaffPort } from "../care-team-staff";
 import {
@@ -38,7 +38,7 @@ function boundOrg(request: FastifyRequest, pathOrgId: string): void {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   if (ctx.organizationId !== pathOrgId) {
-    throw new WardenXError("FORBIDDEN", "care-team lookups are scoped to the bound org", 403);
+    throw new ChartWardenError("FORBIDDEN", "care-team lookups are scoped to the bound org", 403);
   }
 }
 

@@ -20,7 +20,7 @@ import type { schema } from "@wardenx/db";
 //   - W-M30-28 SUD-decedent Part 2 promotion — the actual `retention_class` set happens in a BEFORE INSERT
 //     DB trigger (a migration-owned column, not a Drizzle column). We surface the PROMOTION DECISION as a
 //     `retention` descriptor so the later trigger/worker phase has the pure determination to mirror.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** Default completion target — 30 days from death (D9). Tenant policy may TIGHTEN (≤ 30), never loosen. */
 export const MORTALITY_DEFAULT_COMPLETION_DAYS = 30;
@@ -111,7 +111,7 @@ function addDays(from: Date, days: number): Date {
  *   - W-M30-28 Part 2 promotion: when the decedent has a SUD flag OR a Part 2 document is in chart, the
  *     `retention` decision promotes to `compliance_42cfr_part2` (the BEFORE INSERT trigger sets the column).
  *
- * Throws a `WardenXError` (`MORTALITY_TARGET_EXCEEDS_FLOOR`, 422) if a tenant completion window exceeds the
+ * Throws a `ChartWardenError` (`MORTALITY_TARGET_EXCEEDS_FLOOR`, 422) if a tenant completion window exceeds the
  * 30-day platform floor (tighten-only, D15-style), or is below 1 day.
  */
 export function buildMortalityReviewFromDeath(
@@ -122,7 +122,7 @@ export function buildMortalityReviewFromDeath(
 
   const days = event.completionTargetDays ?? MORTALITY_DEFAULT_COMPLETION_DAYS;
   if (days > MORTALITY_DEFAULT_COMPLETION_DAYS || days < 1) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "MORTALITY_TARGET_EXCEEDS_FLOOR",
       `mortality completion target must be between 1 and ${MORTALITY_DEFAULT_COMPLETION_DAYS} days (tenant-tighten-only)`,
       422,

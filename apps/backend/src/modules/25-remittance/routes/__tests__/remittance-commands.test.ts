@@ -3,7 +3,7 @@
 // ORM call shape. Live RLS / partition behaviour is covered by the live suite.
 import { Value } from "@sinclair/typebox/value";
 import { schema } from "@wardenx/db";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { M25_OUTBOX_EVENTS } from "../../events-by-m25";
 import type { M25WriteActor } from "../actor";
@@ -335,7 +335,7 @@ describe("manualMatch", () => {
     queue(updates, RL, []);
     await expect(
       cmds().manualMatch(actor, LINE, { proposedClaimId: CLAIM, reason: REASON }),
-    ).rejects.toBeInstanceOf(WardenXError);
+    ).rejects.toBeInstanceOf(ChartWardenError);
     expect(emitted).toEqual([]);
     expect(audits).toEqual([]);
   });

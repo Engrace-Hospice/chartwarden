@@ -25,7 +25,7 @@ import {
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "./body-key-ring";
 import { decodeCursor, encodeCursor } from "./message-cursor";
@@ -63,7 +63,7 @@ export function searchTimeoutToError(error: unknown): unknown {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
     if ((current as { code?: unknown }).code === "57014") {
-      return new WardenXError(
+      return new ChartWardenError(
         "SEARCH_TIMEOUT",
         "the search took too long; narrow it with a filter or try again",
         503,
@@ -74,8 +74,8 @@ export function searchTimeoutToError(error: unknown): unknown {
   return error;
 }
 
-function badInput(message: string): WardenXError {
-  return new WardenXError("INVALID_SEARCH_QUERY", message, 422);
+function badInput(message: string): ChartWardenError {
+  return new ChartWardenError("INVALID_SEARCH_QUERY", message, 422);
 }
 
 function parseInstant(value: string | undefined, label: string): Date | undefined {
@@ -213,7 +213,7 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
           .limit(1);
         if (!channel) throw new NotFoundError("channel", input.channelId);
         if (channel.isArchived) {
-          throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
         }
         const found = await scan(tx, orgId, input, { kind: channel.kind }, filters, cursor);
         const hydrated = await hydrateMessages(tx, found.ctx, found.matched, input.channelId);

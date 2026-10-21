@@ -6,7 +6,7 @@
 // `ShpHttpPort`; in P2a no port is wired, so the default port fails closed (degraded). The worker that
 // owns the real fetch is a later phase.
 import { createHmac } from "node:crypto";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** SHP's documented intake endpoint (platform default). */
 export const SHP_INTAKE_URL = "https://api.shpdata.com/cahps/intake/v2";
@@ -52,7 +52,7 @@ export function signShpRequest(secret: string, body: Buffer, timestamp: string):
 
 /** The default port: no transport is wired in P2a, so any push fails closed as degraded. */
 const NO_TRANSPORT_PORT: ShpHttpPort = () => {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "CAHPS_TRANSPORT_UNAVAILABLE",
     "no SHP transport port is wired (P2a ships the client shape only)",
     503,
@@ -106,7 +106,7 @@ export class ShpClient {
     const request = this.buildIntakeRequest(file, timestamp);
     const response = await this.http(request);
     if (response.status < 200 || response.status >= 300) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CAHPS_PUSH_REJECTED",
         `SHP intake rejected the export (status ${response.status})`,
         502,
@@ -131,5 +131,5 @@ function parseVendorJobId(body: string): string {
   } catch {
     // fall through to the structured error below
   }
-  throw new WardenXError("CAHPS_PUSH_REJECTED", "SHP intake response did not carry a jobId", 502);
+  throw new ChartWardenError("CAHPS_PUSH_REJECTED", "SHP intake response did not carry a jobId", 502);
 }

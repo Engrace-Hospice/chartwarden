@@ -27,7 +27,7 @@ import {
   normalizeAsOf,
   resolveBatchAsOf,
 } from "@wardenx/terminology";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import {
   type SQL,
   and,
@@ -266,7 +266,7 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
     const M = schema.valueSetMembers;
     const X = schema.valueSetTenantExtension;
     const known = await db.select({ id: VS.id }).from(VS).where(eq(VS.id, valueSetId)).limit(1);
-    if (known.length === 0) throw new WardenXError("NOT_FOUND", "value set not found", 404);
+    if (known.length === 0) throw new ChartWardenError("NOT_FOUND", "value set not found", 404);
     const platformWhere = and(
       eq(M.valueSetId, valueSetId),
       eq(M.systemId, system),

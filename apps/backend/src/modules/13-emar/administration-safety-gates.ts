@@ -17,7 +17,7 @@ import {
 import {
   type ErrorDetailType,
   type PatientWristbandVerifier,
-  WardenXError,
+  ChartWardenError,
   type WristbandVerdict,
   type WristbandVerdictStatus,
 } from "@wardenx/types";
@@ -181,7 +181,7 @@ export async function verifyBedsideWristband(args: {
       mode: args.mode,
     });
   } catch {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "WRISTBAND_VERIFIER_UNAVAILABLE",
       "the patient wristband could not be verified right now; the scan was not accepted",
       503,

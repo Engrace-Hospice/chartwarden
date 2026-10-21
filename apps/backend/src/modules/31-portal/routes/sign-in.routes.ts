@@ -22,7 +22,7 @@
 // unverified email, a non-active tenant and an account with no live grant. Idempotent: a replay of the same bind
 // answers 200 `replayed:true`; a different bind of an already-bound session is a 409, never a silent re-scope.
 import { CredentialThrottleError } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError, type WardenXError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError, type ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { PortalStateError } from "../lifecycle/errors";
 import { accountRefusal, decideSignIn } from "../sign-in";
@@ -42,7 +42,7 @@ function preOrgCaller(request: FastifyRequest): { userId: string; sessionId: str
   return { userId: ctx.userId, sessionId };
 }
 
-const unavailable = (): WardenXError =>
+const unavailable = (): ChartWardenError =>
   new PortalStateError("SIGN_IN_UNAVAILABLE", "portal sign-in is not available in this deployment");
 
 export function registerPortalSignInRoutes(app: FastifyInstance, deps: PortalRouteDeps): void {

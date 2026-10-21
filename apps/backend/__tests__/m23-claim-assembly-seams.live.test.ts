@@ -32,7 +32,7 @@ import { join } from "node:path";
 import { CMS_HOSPICE_MODIFIER_VALUE_SET, icd10Sequencing } from "@wardenx/billing";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -91,7 +91,7 @@ const testProviderCcnPort: ProviderCcnPort = {
         ),
       )
       .limit(1);
-    if (!provider) throw new WardenXError("NOT_FOUND", "provider CCN unavailable", 404);
+    if (!provider) throw new ChartWardenError("NOT_FOUND", "provider CCN unavailable", 404);
     return provider.ccn;
   },
 };

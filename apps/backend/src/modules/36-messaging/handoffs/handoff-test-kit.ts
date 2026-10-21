@@ -1,7 +1,7 @@
 // WP 3.5 test support: a fully in-memory handoff service (memory stores, fake db, captured outbox, controllable ports).
 // Not a test file itself; the *.test.ts files in this directory build on it.
 import type { DbClient } from "@wardenx/db";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { allowAllPart2ChannelGate } from "../part2-channel-gate";
 import { createMemoryTaskStore } from "../tasks/task-store-memory";
 import { createMemoryHandoffPolicyStore } from "./handoff-policy-store-db";
@@ -152,7 +152,7 @@ export async function codeOf(p: Promise<unknown>): Promise<string> {
   try {
     await p;
   } catch (e) {
-    if (e instanceof WardenXError) return `${e.statusCode}:${e.code}`;
+    if (e instanceof ChartWardenError) return `${e.statusCode}:${e.code}`;
     throw e;
   }
   return "no-error";

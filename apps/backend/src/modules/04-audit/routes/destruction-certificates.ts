@@ -27,7 +27,7 @@ import {
 import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { LegalHoldCriteria } from "./audit-typebox";
@@ -189,7 +189,7 @@ export function registerDestructionCertificatesRoutes(
           const cert = existing[0];
           if (!cert) throw new NotFoundError("destruction_certificate", id);
           if (cert.status !== "pending") {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVALID_STATUS_TRANSITION",
               `destruction_certificate ${id} is '${cert.status}', not 'pending'`,
               409,
@@ -206,7 +206,7 @@ export function registerDestructionCertificatesRoutes(
             }),
           );
           if (held) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "HELD_RECORDS_PRESENT",
               `destruction_certificate ${id}'s data class ('${cert.dataClass}') is covered by an active legal hold`,
               409,
@@ -250,7 +250,7 @@ export function registerDestructionCertificatesRoutes(
           const cert = existing[0];
           if (!cert) throw new NotFoundError("destruction_certificate", id);
           if (cert.status === "executed" || cert.status === "held") {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVALID_STATUS_TRANSITION",
               `destruction_certificate ${id} is '${cert.status}' and cannot be deferred`,
               409,

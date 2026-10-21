@@ -19,7 +19,7 @@ import {
   type MedicationQuestionResponse,
   NotFoundError,
   type RichBody,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { linkNotAvailable } from "../clinical-link/clinical-link-service";
 import type { HintOutboxPort } from "../message-hint-events";
@@ -83,7 +83,7 @@ export interface MedicationQuestionService {
 }
 
 const channelNotFound = (): NotFoundError => new NotFoundError("channel");
-const typed = (code: string, message: string): WardenXError => new WardenXError(code, message, 422);
+const typed = (code: string, message: string): ChartWardenError => new ChartWardenError(code, message, 422);
 
 /** A port that throws answers "no": a seam outage must never route a question to a guess. */
 async function orElse<T>(read: () => Promise<T>, fallback: T): Promise<T> {

@@ -33,7 +33,7 @@
 // once in M2's contract registry, where the tenant opt-in already validates it (W4.1). Adding a column
 // is a schema change, not an adapter change, and it belongs to whoever decides the per-invocation ref
 // is worth a migration.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 import type { AiBackendHealthStatus } from "@wardenx/types";
 import type {
@@ -70,7 +70,7 @@ export type AnthropicDispatch = (
 ) => Promise<ModelBackendCompletionResult>;
 
 /** §8.4.3 — no ZDR contract on record for the org, or the one on record has expired. */
-export class ZdrContractMissingError extends WardenXError {
+export class ZdrContractMissingError extends ChartWardenError {
   constructor(detail: string) {
     super("AI_ZDR_CONTRACT_MISSING", detail, 503);
     this.name = "ZdrContractMissingError";

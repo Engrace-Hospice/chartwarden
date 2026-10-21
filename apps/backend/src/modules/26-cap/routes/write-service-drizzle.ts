@@ -19,7 +19,7 @@ import {
 } from "@wardenx/cap-management";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, ValidationError, ChartWardenError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import type { PsrFileStorePort, PsrReconcileEnqueuePort } from "../psr/psr-reconcile";
 import { orgContextFor } from "../system-actor";
@@ -44,7 +44,7 @@ import type {
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-class ConflictError extends WardenXError {
+class ConflictError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 409);
     this.name = "ConflictError";

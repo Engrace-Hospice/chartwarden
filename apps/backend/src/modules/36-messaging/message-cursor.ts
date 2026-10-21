@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/message-cursor.ts - the opaque (created_at, id) keyset cursor shared by the
 // channel history, the thread read and the WP 2.7a search.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** Keyset cursor over (created_at, id) — opaque, never an offset (§4.12). `createdAtMicros` is the column read as
  * text (`created_at::text`): a JS Date keeps milliseconds only, and a cursor rounded down to the millisecond re-serves
@@ -24,7 +24,7 @@ export function decodeCursor(cursor: string): { createdAt: string; id: string } 
     !CURSOR_TIME.test(createdAt) ||
     !CURSOR_ID.test(id)
   ) {
-    throw new WardenXError("INVALID_CURSOR", "the cursor is not valid", 400);
+    throw new ChartWardenError("INVALID_CURSOR", "the cursor is not valid", 400);
   }
   return { createdAt, id };
 }

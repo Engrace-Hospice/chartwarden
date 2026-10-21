@@ -11,7 +11,7 @@
 //      caller carries the row `version` it read; a missing header is 428 PRECONDITION_REQUIRED, a malformed
 //      one is 400, and a stale value surfaces (service-side) as 412 VERSION_MISMATCH. Mirrors the M7/M8
 //      routes/concurrency.ts precedent.
-import { ForbiddenError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
@@ -40,7 +40,7 @@ export function decodeCursor(cursor: string): CursorKeyset {
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
-    throw new WardenXError("VALIDATION_FAILED", "the cursor is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
 }
 
@@ -96,7 +96,7 @@ export function paginate<T extends CursorKeyset>(
 export type WithIfMatch = FastifyRequest & { ifMatchVersion?: number };
 
 /** 428 PRECONDITION_REQUIRED — the mutating route did not carry the required `If-Match` header (§2.5). */
-export class IfMatchRequiredError extends WardenXError {
+export class IfMatchRequiredError extends ChartWardenError {
   constructor() {
     super(
       "PRECONDITION_REQUIRED",
@@ -117,7 +117,7 @@ export function requireIfMatch(): PreHandler {
     if (typeof value !== "string" || value.trim().length === 0) throw new IfMatchRequiredError();
     const m = IF_MATCH_RE.exec(value.trim());
     if (!m) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         "If-Match must be the integer row version you read",
         400,
@@ -143,7 +143,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required",
         400,

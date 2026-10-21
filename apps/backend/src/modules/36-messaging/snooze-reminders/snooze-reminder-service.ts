@@ -21,7 +21,7 @@ import {
   SNOOZE_MAX_MINUTES,
   SNOOZE_MIN_MINUTES,
   type SnoozeDto,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 
 export interface Actor {
@@ -98,8 +98,8 @@ const HAS_OFFSET = /T[0-9:.]+(Z|[+-][0-9]{2}:?[0-9]{2})$/i;
 
 const notFound = (kind: string): NotFoundError => new NotFoundError(kind);
 
-const urgentSnooze = (): WardenXError =>
-  new WardenXError(
+const urgentSnooze = (): ChartWardenError =>
+  new ChartWardenError(
     CODES.snoozeUrgent,
     "This conversation has an urgent or response-required item, so it cannot be snoozed.",
     409,
@@ -112,7 +112,7 @@ function parseDuration(raw: unknown): number {
     raw < SNOOZE_MIN_MINUTES ||
     raw > SNOOZE_MAX_MINUTES
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       CODES.snoozeDurationInvalid,
       `A snooze lasts between ${SNOOZE_MIN_MINUTES} minutes and ${SNOOZE_MAX_MINUTES / 60} hours.`,
       422,
@@ -130,7 +130,7 @@ function parseRemindAt(raw: string, now: Date): Date {
     ahead < REMINDER_MIN_LEAD_MINUTES * MINUTE_MS ||
     ahead > REMINDER_MAX_HORIZON_DAYS * DAY_MS
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       CODES.reminderTimeInvalid,
       `Choose a reminder time between ${REMINDER_MIN_LEAD_MINUTES} minute and ${REMINDER_MAX_HORIZON_DAYS} days from now.`,
       422,
@@ -208,13 +208,13 @@ export function createSnoozeReminderService(
       });
       if (result.outcome === "ok") return toReminderDto(result.reminder);
       if (result.outcome === "urgent") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           CODES.reminderUrgent,
           "A reminder cannot be set on an urgent or response-required message.",
           409,
         );
       }
-      throw new WardenXError(
+      throw new ChartWardenError(
         CODES.reminderLimit,
         `You can have at most ${REMINDER_MAX_PENDING} reminders. Cancel one first.`,
         409,

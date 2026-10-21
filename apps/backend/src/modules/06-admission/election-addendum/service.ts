@@ -17,7 +17,7 @@ import {
   type ElectionAddendumFurnishMethod,
   type ElectionAddendumSignerKind,
   type NonCoveredItemsReader,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
@@ -629,7 +629,7 @@ export function createElectionAddendumService(
     input: { readonly documentId: string; readonly documentVersionId: string },
   ): Promise<void> {
     if (!deps.documentValidator) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ADMISSION_EVIDENCE_DOCUMENT_VALIDATOR_UNBOUND",
         "Attaching a scanned addendum requires the M22 document-version validator.",
         503,

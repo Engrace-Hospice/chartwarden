@@ -18,7 +18,7 @@ import {
   DegradedError,
   type ExtractionCommitRequestedPayload,
   M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
@@ -171,7 +171,7 @@ export async function commitReviewWriteback(
   const versionByDoc = new Map(docs.map((d) => [d.id, d.activeVersionId]));
   for (const id of sourceDocumentIds) {
     if (!versionByDoc.get(id)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SOURCE_DOCUMENT_UNRESOLVED",
         "an approved field's source document has no filed version to cite as provenance; the review cannot be committed",
         409,

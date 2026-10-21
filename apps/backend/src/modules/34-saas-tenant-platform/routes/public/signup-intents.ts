@@ -24,7 +24,7 @@
 // is returned to the prospect's email channel (M36), NEVER in the HTTP response, and only its SHA256 hash is
 // persisted (value-capture-denylisted in the audit projection, §3.10).
 import { type Static, Type } from "@sinclair/typebox";
-import { RateLimitedError, WardenXError } from "@wardenx/types";
+import { RateLimitedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AcceptInvitationRequest,
@@ -42,8 +42,8 @@ export const SELF_SERVE_SIGNUP_FLAG = "m34.self_serve_signup" as const;
 export const SIGNUP_DISABLED_CODE = "SIGNUP_DISABLED" as const;
 
 /** 503 SIGNUP_DISABLED — self-serve signup is OFF (Phase-1 deny-default; the body is never reached). */
-export function signupDisabled(): WardenXError {
-  return new WardenXError(SIGNUP_DISABLED_CODE, "self-serve signup is not enabled", 503);
+export function signupDisabled(): ChartWardenError {
+  return new ChartWardenError(SIGNUP_DISABLED_CODE, "self-serve signup is not enabled", 503);
 }
 
 /**

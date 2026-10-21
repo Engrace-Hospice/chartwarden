@@ -7,7 +7,7 @@ import {
   type AckClass,
   type AckRequestDto,
   type AckStatus,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 
 /** Status changes that move to a DIFFERENT status. Terminal states (`resolved`, `cancelled`) have none. */
@@ -31,9 +31,9 @@ export const ACK_SAME_STATUS_UPDATES: readonly AckStatus[] = ["pending", "escala
 
 export const ackStateInvalid = (
   message = "That request is not in a state that allows this.",
-): WardenXError => new WardenXError("ACK_STATE_INVALID", message, 409);
-export const ackNotAcknowledged = (): WardenXError =>
-  new WardenXError(
+): ChartWardenError => new ChartWardenError("ACK_STATE_INVALID", message, 409);
+export const ackNotAcknowledged = (): ChartWardenError =>
+  new ChartWardenError(
     "ACK_NOT_ACKNOWLEDGED",
     "A request is resolved only after it has been acknowledged.",
     409,

@@ -15,7 +15,7 @@
 //
 // Both are pure header guards (no IO, no cross-module import). Mirrors the M6 routes precedent of
 // gating state-change routes server-side; the version never comes from the body for a PATCH.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
@@ -25,7 +25,7 @@ export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promi
 export type WithIfMatch = FastifyRequest & { ifMatchVersion?: number };
 
 /** 428 PRECONDITION_REQUIRED — the PATCH did not carry the required `If-Match` header (§7.7). */
-export class IfMatchRequiredError extends WardenXError {
+export class IfMatchRequiredError extends ChartWardenError {
   constructor() {
     super(
       "PRECONDITION_REQUIRED",
@@ -37,7 +37,7 @@ export class IfMatchRequiredError extends WardenXError {
 }
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — the PATCH did not carry the required `Idempotency-Key` header (§4.1.1). */
-export class IdempotencyKeyRequiredError extends WardenXError {
+export class IdempotencyKeyRequiredError extends ChartWardenError {
   constructor() {
     super("IDEMPOTENCY_KEY_REQUIRED", "an Idempotency-Key header is required on this route", 400);
     this.name = "IdempotencyKeyRequiredError";
@@ -58,7 +58,7 @@ export function requireIfMatch(): PreHandler {
     if (typeof value !== "string" || value.trim().length === 0) throw new IfMatchRequiredError();
     const m = IF_MATCH_RE.exec(value.trim());
     if (!m) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         "If-Match must be the integer row version you read",
         400,

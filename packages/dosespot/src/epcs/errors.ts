@@ -2,7 +2,7 @@
 //
 // Every guard / validation failure in the pure EPCS architecture (the cert gate, the IAL2 tracker, the DEA
 // schedule-authorization check, and the 60-second 2FA signing-session submachine) raises an `EpcsStateError`
-// carrying the machine-readable code below. The error extends the M1 `WardenXError` envelope base
+// carrying the machine-readable code below. The error extends the M1 `ChartWardenError` envelope base
 // (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders it with
 // the precise code + HTTP status with no cross-module import edge (the M11/M12 lifecycle convention). The
 // EPCS controlled-substance routes (M12-T08) are themselves behind the OFF `dosespot.epcs` flag in Phase 1
@@ -13,7 +13,7 @@
 // repeats the strongest guards inline (defence in depth), while this submodule owns the route-level EPCS
 // pre-checks and the `epcs_signing_attempt` records-of-application path (§1311.205). Same wire code, two
 // enforcement points.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The M12 EPCS-architecture failure-code catalog → canonical HTTP status. */
 export const M12_EPCS_ERROR_STATUS = {
@@ -45,7 +45,7 @@ export type M12EpcsErrorCode = keyof typeof M12_EPCS_ERROR_STATUS;
  * an exact message; the M1 error handler maps `statusCode` to the HTTP response. Every guard failure
  * surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class EpcsStateError extends WardenXError {
+export class EpcsStateError extends ChartWardenError {
   constructor(code: M12EpcsErrorCode, message: string) {
     super(code, message, M12_EPCS_ERROR_STATUS[code]);
     this.name = "EpcsStateError";

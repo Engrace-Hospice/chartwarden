@@ -31,7 +31,7 @@ import type {
   DecedentDeathSource,
 } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 import { buildCahpsExportJobPort } from "./export-job-store";
 import type { CahpsPhiCipher } from "./phi-cipher";
@@ -190,7 +190,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
     );
     const parsed: unknown = JSON.parse(plain.toString("utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CAHPS_ADAPTER_UNCONFIGURED",
         "the CAHPS vendor configuration is not a JSON object",
         503,
@@ -208,7 +208,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
   ): Promise<void> => {
     const publisher = deps.outboxPublisher;
     if (!publisher) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CAHPS_OUTBOX_UNBOUND",
         `no outbox publisher is bound — cannot emit ${eventName}`,
         503,
@@ -268,7 +268,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
       const key = deathKey(orgId, sampled.deceasedAdmissionId);
       const deathDate = deathDates.get(key);
       if (deathDate === undefined) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_SAMPLE_STATE",
           "a sampled decedent has no remembered death date (insertSampled before listPriorMonthDecedents)",
           500,
@@ -322,7 +322,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
     async resolve(orgId): Promise<CahpsVendorAdapter> {
       const binding = await loadActiveBinding(orgId);
       if (binding === null) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_ADAPTER_UNCONFIGURED",
           `no active CAHPS vendor binding for org '${orgId}'`,
           503,
@@ -330,7 +330,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
       }
       const factory = deps.adapterFactories[binding.vendorAdapterId as CahpsVendorAdapterId];
       if (factory === undefined) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_VENDOR_UNKNOWN",
           `no CAHPS adapter factory for vendor '${binding.vendorAdapterId}'`,
           500,
@@ -340,7 +340,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
       const adapter = factory(config);
       const verdict = await adapter.validateConfig(config);
       if (!verdict.ok) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_ADAPTER_UNCONFIGURED",
           `the CAHPS vendor configuration is invalid: ${verdict.errors
             .map((e) => `${e.field}: ${e.reason}`)
@@ -383,7 +383,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
         return row ?? null;
       });
       if (binding === null) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_ADAPTER_UNCONFIGURED",
           "the CAHPS vendor binding is gone",
           503,

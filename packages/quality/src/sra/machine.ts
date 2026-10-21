@@ -20,8 +20,8 @@
 //
 // Mirrors the M11 order-machine convention: a transition is a PURE function `(state, event) -> next
 // state` that validates the §2.2 graph then runs the enumerated guards (a guard failure throws a
-// `WardenXError` with the precise code). No IO; every fact a guard needs is injected on the event.
-import { WardenXError } from "@wardenx/types";
+// `ChartWardenError` with the precise code). No IO; every fact a guard needs is injected on the event.
+import { ChartWardenError } from "@wardenx/types";
 import type { SraCycleStatus } from "../contracts";
 
 /** §2.2 — `reopen` requires a reason of at least this many characters. */
@@ -89,7 +89,7 @@ export const SRA_CYCLE_GRAPH: Readonly<
 
 /**
  * V-12 — the SRA-cycle-closure two-person co-sign guard (D12 / M30-F03 / ADR-0022). Throws a
- * {@link WardenXError} if the closure co-sign is not split across two distinct people. Pure; the actual
+ * {@link ChartWardenError} if the closure co-sign is not split across two distinct people. Pure; the actual
  * role checks (Security Officer vs Compliance Officer) are enforced at the backend route — here we
  * enforce the SPLIT-ACTOR invariant the schema CHECK can express only structurally.
  */
@@ -98,14 +98,14 @@ export function assertSraClosureCosign(cosign: SraClosureCosign): void {
     cosign.securityOfficerMembershipId.length === 0 ||
     cosign.complianceOfficerMembershipId.length === 0
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SRA_CLOSE_COSIGN_INCOMPLETE",
       "closing an SRA cycle requires both a Security Officer and a Compliance Officer co-signer",
       422,
     );
   }
   if (cosign.securityOfficerMembershipId === cosign.complianceOfficerMembershipId) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SRA_CLOSE_REQUIRES_DISTINCT_COSIGNERS",
       "the SRA closure co-signers must be two distinct individuals (Security Officer + Compliance Officer)",
       422,
@@ -114,13 +114,13 @@ export function assertSraClosureCosign(cosign: SraClosureCosign): void {
 }
 
 /**
- * Apply an `sra_cycle` lifecycle event (§2.2). Throws {@link WardenXError} `ILLEGAL_SRA_CYCLE_TRANSITION`
+ * Apply an `sra_cycle` lifecycle event (§2.2). Throws {@link ChartWardenError} `ILLEGAL_SRA_CYCLE_TRANSITION`
  * if the event is not accepted from `from`, or the specific §2.2 / W-M30-30 guard code on a guard
  * failure. Returns the next status; the route executes the persistence/audit/outbox around this pure core.
  */
 export function transitionSraCycle(from: SraCycleStatus, event: SraCycleEvent): SraCycleStatus {
   if (!SRA_CYCLE_GRAPH[from].includes(event.type)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ILLEGAL_SRA_CYCLE_TRANSITION",
       `sra_cycle cannot ${event.type} from '${from}'`,
       409,
@@ -140,7 +140,7 @@ export function transitionSraCycle(from: SraCycleStatus, event: SraCycleEvent): 
     case "close":
       assertSraClosureCosign(event.cosign);
       if (!event.recentStepUp) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SRA_CLOSE_REQUIRES_RECENT_STEP_UP",
           "closing an SRA cycle requires a recent step-up authentication",
           403,
@@ -150,21 +150,21 @@ export function transitionSraCycle(from: SraCycleStatus, event: SraCycleEvent): 
 
     case "reopen":
       if (!event.actorIsComplianceOfficer) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SRA_REOPEN_REQUIRES_COMPLIANCE_OFFICER",
           "reopening a closed SRA cycle requires the Compliance Officer override",
           403,
         );
       }
       if (event.reason.trim().length < SRA_REOPEN_REASON_MIN_CHARS) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SRA_REOPEN_REASON_TOO_SHORT",
           `reopening a closed SRA cycle requires a reason of at least ${SRA_REOPEN_REASON_MIN_CHARS} characters`,
           422,
         );
       }
       if (!event.recentStepUp) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SRA_REOPEN_REQUIRES_RECENT_STEP_UP",
           "reopening a closed SRA cycle requires a recent step-up authentication",
           403,

@@ -1,5 +1,5 @@
 import { type DbClient, schema } from "@wardenx/db";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ResourceNotFoundError } from "./routes/service";
 
@@ -109,7 +109,7 @@ export function createAdmissionEvidenceService(
       .limit(1);
     if (!adm) throw new ResourceNotFoundError(scope.admissionId);
     if (adm.patientId !== scope.patientId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ADMISSION_EVIDENCE_PATIENT_MISMATCH",
         "Admission evidence patient does not match the admission.",
         400,
@@ -164,7 +164,7 @@ export function createAdmissionEvidenceService(
   async function recordUploadedEvidence(input: RecordUploadedEvidenceInput) {
     const adm = await admissionTenancy(input);
     if (!documentValidator) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ADMISSION_EVIDENCE_DOCUMENT_VALIDATOR_UNBOUND",
         "Admission uploaded evidence requires the M22 document-version validator.",
         503,

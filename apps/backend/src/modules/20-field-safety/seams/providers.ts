@@ -89,7 +89,7 @@ import type {
   SafetySupervisorRecipientDto,
   SafetyVisitCheckInStatusDto,
 } from "@wardenx/types";
-import { SAFETY_POLICY_FLOOR, WardenXError } from "@wardenx/types";
+import { SAFETY_POLICY_FLOOR, ChartWardenError } from "@wardenx/types";
 import type { SafetyClinicianSignalCache } from "../consumers/m18-gps-spoof";
 import {
   lastKnownLocationFrom,
@@ -134,7 +134,7 @@ export const defaultSafetySeamOrgResolver: SafetySeamOrgResolver = () =>
 export function assertCallerOrg(orgOf: SafetySeamOrgResolver, orgId: OrgId): void {
   const ambient = orgOf();
   if (ambient !== "" && ambient !== orgId) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SAFETY_SEAM_ORG_MISMATCH",
       "field-safety seam called with an organization id that is not the caller's scope",
       403,
@@ -459,7 +459,7 @@ export function createSafetyIncidentReader(
 ): SafetyIncidentReader {
   const project = async (facts: SafetyIncidentGeoFacts): Promise<SafetyIncidentMinNecDto> => {
     if (decipher === undefined) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SAFETY_COORDINATE_DECIPHER_UNBOUND",
         "the §8.6 incident projection cannot resolve coordinates: no tenant-DEK coordinate decipher is bound",
         503,
@@ -562,7 +562,7 @@ export function createSafetyMetricsProvider(
         if (timeZone === null) {
           // See {@link SafetySeamTimeZoneResolver}. Counting against UTC would report a Pacific agency's
           // 22:30 presses as business-hours and the number a reviewer reads would be wrong by a shift.
-          throw new WardenXError(
+          throw new ChartWardenError(
             "SAFETY_SEAM_ORG_TIME_ZONE_UNRESOLVED",
             "the after-hours SOS count needs the organization's IANA time zone and none is bound",
             503,

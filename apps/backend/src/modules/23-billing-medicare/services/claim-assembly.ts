@@ -50,7 +50,7 @@ import {
   telehealthF2fDatesRequiringG0679,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import {
   computeClaimPerDiemClass,
   computeClaimSia,
@@ -150,7 +150,7 @@ export function buildG0679LineInputs(args: {
   return dates.map((date, idx) => {
     const owningPeriod = args.resolvedLoc.find((p) => isWithinInclusive(date, p.from, p.to));
     if (!owningPeriod) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ASSEMBLY_VALIDATION_FAILED",
         `no level-of-care period backs the telehealth face-to-face G0679 line on ${date}`,
         422,
@@ -202,7 +202,7 @@ export function buildClaimAssemblyService(
     async assemble(actor, input): Promise<ClaimAssembleResponse> {
       // AI-BLOCK (D13): no AI actor may create an M23 row — reject before any read.
       if (actor.actorKind.startsWith("ai_")) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "AI_ACTOR_FORBIDDEN",
           "AI actors may not assemble claims (D13)",
           403,
@@ -212,7 +212,7 @@ export function buildClaimAssemblyService(
       const orgId = actor.organizationId;
       const { providerEntityId, patientId, serviceFrom, serviceTo } = input;
       if (serviceTo < serviceFrom) {
-        throw new WardenXError("VALIDATION_FAILED", "serviceTo precedes serviceFrom", 422);
+        throw new ChartWardenError("VALIDATION_FAILED", "serviceTo precedes serviceFrom", 422);
       }
       const range: DateRange = { from: serviceFrom, to: serviceTo };
 
@@ -220,7 +220,7 @@ export function buildClaimAssemblyService(
       // D15 Medicare-primary gate.
       const payer = await seams.patientPayer.medicarePrimaryForRange(orgId, patientId, range);
       if (!payer || !payer.medicarePrimary) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "NON_MEDICARE_PRIMARY_PAYER",
           "Medicare FFS Part A is not the primary payer for this service window (D15)",
           409,
@@ -260,7 +260,7 @@ export function buildClaimAssemblyService(
       const firstPeriod = resolvedPeriods[0];
       const lastPeriod = resolvedPeriods[resolvedPeriods.length - 1];
       if (!firstPeriod || !lastPeriod) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PATIENT_NOT_ELECTED",
           "no active election covers the service window",
           409,
@@ -293,7 +293,7 @@ export function buildClaimAssemblyService(
           (c) => interimTobs.has(c.tob) && c.serviceFrom <= serviceTo && c.serviceTo >= serviceFrom,
         );
         if (overlap) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "OVERLAPPING_ACTIVE_CLAIM",
             "a non-superseded claim already covers part of this service window",
             409,
@@ -334,7 +334,7 @@ export function buildClaimAssemblyService(
               isWithinInclusive(seg.dateFrom, p.from, p.to),
             );
             if (!owningPeriod) {
-              throw new WardenXError(
+              throw new ChartWardenError(
                 "ASSEMBLY_VALIDATION_FAILED",
                 `no level-of-care period backs the assembled segment starting ${seg.dateFrom}`,
                 422,

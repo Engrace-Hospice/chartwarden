@@ -13,7 +13,7 @@ import { repositories, resolveWageIndex, validateWageIndexEntry } from "@wardenx
 import type { ResolvedWageIndex } from "@wardenx/billing";
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateWageIndexBody,
@@ -117,7 +117,7 @@ export function buildDrizzleWageIndexService(
   function validated(body: CreateWageIndexBody | SupersedeWageIndexBody): void {
     const v = validateWageIndexEntry(body, now().toISOString().slice(0, 10));
     if (!v.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WAGE_INDEX_INVALID",
         `invalid wage index: ${v.errors.join("; ")}`,
         422,
@@ -125,8 +125,8 @@ export function buildDrizzleWageIndexService(
     }
   }
 
-  function clashError(clash: schema.TenantWageIndex): WardenXError {
-    return new WardenXError(
+  function clashError(clash: schema.TenantWageIndex): ChartWardenError {
+    return new ChartWardenError(
       "WAGE_INDEX_EXISTS",
       `a live wage index (${clash.id}) already exists for CCN ${clash.ccn} fiscal year ${clash.fiscalYearStarting}; supersede it instead of entering a second one`,
       409,
@@ -156,7 +156,7 @@ export function buildDrizzleWageIndexService(
       });
     } catch (err) {
       if (isUniqueViolation(err)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "WAGE_INDEX_EXISTS",
           "a live wage index for that CCN and fiscal year was entered concurrently",
           409,
@@ -183,14 +183,14 @@ export function buildDrizzleWageIndexService(
         if (!old || old.organizationId !== actor.organizationId)
           throw new NotFoundError("wage index");
         if (old.ccn !== body.ccn || old.fiscalYearStarting !== body.fiscalYearStarting) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "WAGE_INDEX_KEY_MISMATCH",
             "a supersede must keep the same CCN and fiscal year; enter a different CCN/year as a new wage index",
             422,
           );
         }
         if (old.supersededAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "WAGE_INDEX_ALREADY_SUPERSEDED",
             `wage index ${id} was already superseded by ${old.supersededById}`,
             409,
@@ -201,7 +201,7 @@ export function buildDrizzleWageIndexService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "WAGE_INDEX_ALREADY_SUPERSEDED",
             `wage index ${id} was already superseded`,
             409,

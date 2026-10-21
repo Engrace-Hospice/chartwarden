@@ -9,11 +9,11 @@
 // non-IPU tenant is not deficient for omitting them).
 //
 // PURE DOMAIN (P2a): a frozen const catalog + lookup/assert helpers + the `CopStatus` categorical
-// posture helper. No DB, no I/O. V-19 validation (`assertCopCitation`) throws a `WardenXError` the
+// posture helper. No DB, no I/O. V-19 validation (`assertCopCitation`) throws a `ChartWardenError` the
 // route layer renders into the standard envelope in a LATER phase. The 23 rows themselves are also
 // seeded into M38's `value_set` table by the migration (spec step 21) — this file is the in-process
 // source of truth the domain logic resolves against.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { CopStatus } from "../contracts";
 
 /** The 42 CFR Part 418 subpart a CoP citation belongs to (B = eligibility/election, C = patient care, D = organizational environment). */
@@ -233,12 +233,12 @@ export function getCopCitation(citation: string): CopCitationDef | undefined {
 
 /**
  * Resolve a citation definition or throw (V-19). The route/seam layer (a LATER phase) lets the M1
- * error handler render the thrown `WardenXError` into the standard envelope.
+ * error handler render the thrown `ChartWardenError` into the standard envelope.
  */
 export function assertCopCitation(citation: string): CopCitationDef {
   const def = COP_CITATION_BY_ID.get(citation);
   if (def === undefined) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "cop_citation_unknown",
       `'${citation}' is not a member of the cop_citation_v1 value set (V-19)`,
       422,

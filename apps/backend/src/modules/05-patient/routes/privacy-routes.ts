@@ -22,7 +22,7 @@
 // Reads are §2.5 read-audited (Part 2 facts — flag set, origin, consent state — are themselves sensitive);
 // the resync is write-audited by the M4 trigger on `patient_privacy_flag_snapshot` (as the acting user).
 import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SnapshotRebuildSummary } from "../jobs/snapshot-rebuild";
 import type { PrivacyOfficerService } from "../privacy/officer-db";
@@ -48,7 +48,7 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
-const notFound = () => new WardenXError("NOT_FOUND", "patient not found", 404);
+const notFound = () => new ChartWardenError("NOT_FOUND", "patient not found", 404);
 
 export function registerPatientPrivacyRoutes(
   app: FastifyInstance,

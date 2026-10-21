@@ -14,7 +14,7 @@ import type { schema } from "@wardenx/db";
 // on an illegal transition or guard failure. Every fact a guard needs (dimensions complete, reviewer
 // signature present, the W-M30-27 external-source cosign status, the system-actor + deadline facts for the
 // overdue sweep) is resolved UPSTREAM and injected as event data — no IO, no DB, no clock.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The §2.2 mortality_review lifecycle state (mirrors `m30_mortality_review_status`). */
 export type MortalityReviewState = schema.MortalityReview["status"];
@@ -47,11 +47,11 @@ export const M30_MORTALITY_ERROR_STATUS = {
 export type M30MortalityErrorCode = keyof typeof M30_MORTALITY_ERROR_STATUS;
 
 /**
- * A guard / validation failure in the M30 mortality-review domain. Extends the M1 `WardenXError` envelope
+ * A guard / validation failure in the M30 mortality-review domain. Extends the M1 `ChartWardenError` envelope
  * base (the M11 `OrderStateError` precedent) so the Fastify error handler renders the precise code + HTTP
  * status with no cross-module import edge.
  */
-export class MortalityReviewStateError extends WardenXError {
+export class MortalityReviewStateError extends ChartWardenError {
   constructor(code: M30MortalityErrorCode, message: string) {
     super(code, message, M30_MORTALITY_ERROR_STATUS[code]);
     this.name = "MortalityReviewStateError";

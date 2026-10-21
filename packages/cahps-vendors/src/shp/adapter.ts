@@ -10,7 +10,7 @@ import type {
 // parser (./result), and the signed intake client (./client). The vendor transport is an INJECTED port
 // (constructor arg); with none wired (P2a) `pushExport` fails closed as degraded rather than touching the
 // network. Per CMS protocol the minimum cell size is 30.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { ShpClient, type ShpHttpPort } from "./client";
 import { renderShpDecedentCsv, shpExportFilename } from "./export";
 import { parseShpAggregate } from "./result";
@@ -64,7 +64,7 @@ export class ShpCahpsAdapter implements CahpsVendorAdapter {
     const apiKey = configString(merged, "apiKey");
     const apiSecret = configString(merged, "apiSecret");
     if (apiKey === null || apiSecret === null) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         "SHP push requires apiKey and apiSecret in the binding config",
         422,

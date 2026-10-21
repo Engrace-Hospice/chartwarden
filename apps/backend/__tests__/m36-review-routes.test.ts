@@ -14,7 +14,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { NotFoundError, type ReviewItemDto, WardenXError } from "@wardenx/types";
+import { NotFoundError, type ReviewItemDto, ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -228,7 +228,7 @@ describe("POST /review-items/:reviewItemId/reassign", () => {
       [422, "REVIEW_ASSIGNEE_INVALID"],
       [409, "REVIEW_ITEM_STATE_CONFLICT"],
     ] as const) {
-      failWith = new WardenXError(errCode, "x", status);
+      failWith = new ChartWardenError(errCode, "x", status);
       const res = await send(app, "supervisor", "POST", `${BASE}/${R}/reassign`, {
         to_user_id: TARGET,
       });

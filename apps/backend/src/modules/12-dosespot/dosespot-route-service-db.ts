@@ -42,7 +42,7 @@ import {
   NotFoundError,
   StepUpRequiredError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
   assertCoverageDetermination,
 } from "@wardenx/types";
 import {
@@ -425,7 +425,7 @@ export function createDbDoseSpotBackend(
   ): Promise<void> {
     const signerDiscipline = signerDisciplines.find((d) => d.trim().length > 0);
     if (!signerDiscipline)
-      throw new WardenXError(
+      throw new ChartWardenError(
         "DISCIPLINE_NOT_HELD",
         "The caller holds no prescriber discipline to sign under.",
         422,
@@ -867,7 +867,7 @@ export function createDbDoseSpotBackend(
         } catch (err) {
           // Re-raise the generic machine refusal as the richer 422 (class wording + how to acknowledge).
           if (
-            err instanceof WardenXError &&
+            err instanceof ChartWardenError &&
             err.code === "ALLERGY_CHECK_NOT_PASSED" &&
             allergyGate.status !== "clear"
           )
@@ -1339,7 +1339,7 @@ export function createDbDoseSpotBackend(
           .limit(1);
         if (!row) throw new NotFoundError(`medication history record ${historyRecordId}`);
         if (row.decision !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "HISTORY_ALREADY_RECONCILED",
             `medication history record is already reconciled (${row.decision})`,
             409,

@@ -19,7 +19,7 @@ import {
   type HandoffDto,
   type HandoffPolicyView,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -316,7 +316,7 @@ describe("POST /handoffs", () => {
       [422, "HANDOFF_TOO_MANY_ITEMS"],
       [409, "HANDOFF_ITEM_CONFLICT"],
     ] as const) {
-      failWith = new WardenXError(errCode, "x", status);
+      failWith = new ChartWardenError(errCode, "x", status);
       const res = await send(app, "nurse", "POST", BASE, offerBody);
       expect({ s: res.statusCode, c: code(res) }).toEqual({ s: status, c: errCode });
       expect(res.json().handoff).toBeUndefined();
@@ -400,7 +400,7 @@ describe("POST /handoffs/:handoffId/{accept,decline,cancel}", () => {
       [422, "HANDOFF_ITEM_NOT_TRANSFERABLE", "accept"],
       [422, "HANDOFF_ITEM_INVALID", "decline"],
     ] as const) {
-      failWith = new WardenXError(errCode, "x", status);
+      failWith = new ChartWardenError(errCode, "x", status);
       const res = await send(app, "nurse", "POST", `${BASE}/${H}/${action}`, { item_ids: [ITEM] });
       expect({ s: res.statusCode, c: code(res) }).toEqual({ s: status, c: errCode });
     }
@@ -438,7 +438,7 @@ describe("/template-admin/handoff-policy", () => {
 
   it("surfaces HANDOFF_POLICY_INVALID and rejects an unknown body key", async () => {
     const app = makeServer();
-    failWith = new WardenXError("HANDOFF_POLICY_INVALID", "x", 422);
+    failWith = new ChartWardenError("HANDOFF_POLICY_INVALID", "x", 422);
     const res = await send(app, "admin", "PUT", URL, { expiry_minutes: 9999 });
     expect({ s: res.statusCode, c: code(res) }).toEqual({ s: 422, c: "HANDOFF_POLICY_INVALID" });
     failWith = null;

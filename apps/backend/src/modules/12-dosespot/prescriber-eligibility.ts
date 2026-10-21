@@ -2,7 +2,7 @@
 // eligibility matrix, in its own leaf module so BOTH the §4.7 ABAC predicate resolver (abac-predicates.ts)
 // and the route service (routes/service.ts) can import it without a circular dependency (the service injects
 // its `DoseSpotAbacResolver` type into abac-predicates, so the eligibility primitive must live below both).
-import { type MedClass, WardenXError } from "@wardenx/types";
+import { type MedClass, ChartWardenError } from "@wardenx/types";
 
 /** The disciplines eligible to author a non-controlled medication order (RN drafting-on-behalf included). */
 export const PRESCRIBE_DISCIPLINES: ReadonlySet<string> = new Set([
@@ -89,7 +89,7 @@ const HTTP_FORBIDDEN = 403;
 export function assertDisciplineHeld(held: readonly string[], claimed: string): void {
   const key = claimed.trim().toLowerCase();
   if (held.some((d) => d.trim().toLowerCase() === key)) return;
-  throw new WardenXError(
+  throw new ChartWardenError(
     "DISCIPLINE_NOT_HELD",
     `The caller does not hold the '${claimed}' discipline.`,
     HTTP_UNPROCESSABLE,
@@ -138,8 +138,8 @@ export function isVerbalRecorderDiscipline(discipline: string): boolean {
 const HTTP_CONFLICT = 409;
 
 /** 409 — the external physician MDM id is already mapped to another ACTIVE roster row in this tenant. */
-export function mdmIdAlreadyEnrolled(): WardenXError {
-  return new WardenXError(
+export function mdmIdAlreadyEnrolled(): ChartWardenError {
+  return new ChartWardenError(
     "MDM_ID_ALREADY_ENROLLED",
     "That external physician MDM id is already enrolled for another prescriber in this organization; revoke that roster entry first.",
     HTTP_CONFLICT,
@@ -147,8 +147,8 @@ export function mdmIdAlreadyEnrolled(): WardenXError {
 }
 
 /** 422 — the verbal order's named prescriber MDM id has no active roster row, so nobody could ever sign it. */
-export function namedPrescriberNotEnrolled(): WardenXError {
-  return new WardenXError(
+export function namedPrescriberNotEnrolled(): ChartWardenError {
+  return new ChartWardenError(
     "NAMED_PRESCRIBER_NOT_ENROLLED",
     "No enrolled DoseSpot prescriber is mapped to the named prescriber; enroll them (with their external physician MDM id) before recording the verbal order.",
     HTTP_UNPROCESSABLE,
@@ -177,14 +177,14 @@ export function mayRetransmit(orderStatus: string, input: RetransmitStandingInpu
 export function assertRetransmitStanding(input: RetransmitStandingInput): void {
   const standing = signerStanding({ ...input, orderStatus: "transmission_failed" });
   if (!standing.signerEligible) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SIGNER_NOT_ELIGIBLE",
       "the retransmitting discipline is not eligible to sign medication orders",
       HTTP_FORBIDDEN,
     );
   }
   if (!standing.signerIsOrderingPhysician) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SIGNER_NOT_ORDERING_PHYSICIAN",
       "only the order's prescriber or the named ordering physician may retransmit it",
       HTTP_FORBIDDEN,
@@ -255,28 +255,28 @@ export interface CosignStandingInput {
 export function assertCosignStanding(input: CosignStandingInput): void {
   assertDisciplineHeld(input.heldRoles, input.claimedRole);
   if (input.orderStatus !== "pending_signature") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "COSIGN_NOT_ALLOWED_IN_STATUS",
       `a cosignature can only be attached while the order is pending_signature (it is ${input.orderStatus})`,
       HTTP_CONFLICT,
     );
   }
   if (!input.cosignRequired) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "COSIGN_NOT_REQUIRED",
       "this medication order requires no cosignature",
       HTTP_CONFLICT,
     );
   }
   if (input.cosignStatus === "attached") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ALREADY_COSIGNED",
       "this medication order is already cosigned",
       HTTP_CONFLICT,
     );
   }
   if (!COSIGN_SUPERVISING_ROLES.has(input.claimedRole)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "COSIGNER_ROLE_MISMATCH",
       "this order needs a clinical_supervisor or medical_director cosignature",
       HTTP_FORBIDDEN,
@@ -287,7 +287,7 @@ export function assertCosignStanding(input: CosignStandingInput): void {
   const isSigner =
     input.signerMembershipId !== null && input.signerMembershipId === input.cosignerMembershipId;
   if (isDrafter || isSigner) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "COSIGN_SELF",
       "a medication order may not be cosigned by its own drafter or by the physician who signs it (§7.3)",
       HTTP_FORBIDDEN,
@@ -301,7 +301,7 @@ export function assertCosignSatisfied(order: {
   readonly cosignStatus: string | null;
 }): void {
   if (order.cosignRequired && order.cosignStatus !== "attached") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "COSIGN_REQUIRED",
       "this medication order requires a cosignature before it can be signed",
       HTTP_CONFLICT,

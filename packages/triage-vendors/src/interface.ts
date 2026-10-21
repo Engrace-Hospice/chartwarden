@@ -15,7 +15,7 @@
 // `assertVendorPayloadMinimized` (§7.10) before it reaches an adapter's `submit`. An adapter never sees
 // the full `TriageVendorSourceContext` and never logs a body.
 
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 import type { VendorMinimizationProfile, VendorOutboundPayload } from "./minimization";
 
@@ -95,7 +95,7 @@ export interface ExternalTriageVendorAdapter {
 }
 
 /** Thrown when a vendor binding may not carry live calls. */
-export class TriageVendorBindingError extends WardenXError {
+export class TriageVendorBindingError extends ChartWardenError {
   constructor(
     message: string,
     public readonly reason:

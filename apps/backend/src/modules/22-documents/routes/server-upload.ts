@@ -18,7 +18,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DocumentAggregateType, OrgId } from "@wardenx/types";
-import { DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
@@ -108,10 +108,10 @@ export interface VerifiedContent {
 export function verifyUploadContent(content: UploadedContent): VerifiedContent {
   const { bytes, mimeType, sha256Hex } = content;
   if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
-    throw new WardenXError("UNSUPPORTED_MEDIA_TYPE", "unsupported document MIME type", 415);
+    throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "unsupported document MIME type", 415);
   }
   if (bytes.byteLength < 1 || bytes.byteLength > MAX_DOCUMENT_UPLOAD_BYTES) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UPLOAD_SIZE_INVALID",
       `document byteSize must be between 1 and ${MAX_DOCUMENT_UPLOAD_BYTES}`,
       422,
@@ -122,7 +122,7 @@ export function verifyUploadContent(content: UploadedContent): VerifiedContent {
     prefix.every((byte, i) => bytes[i] === byte),
   );
   if (!matchesMagic) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UPLOAD_CONTENT_MISMATCH",
       "document content does not match the declared MIME type",
       415,
@@ -130,7 +130,7 @@ export function verifyUploadContent(content: UploadedContent): VerifiedContent {
   }
   const computed = createHash("sha256").update(bytes).digest("hex");
   if (sha256Hex !== undefined && sha256Hex !== computed) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UPLOAD_INTEGRITY_MISMATCH",
       "document content does not match the declared SHA-256",
       422,
@@ -142,7 +142,7 @@ export function verifyUploadContent(content: UploadedContent): VerifiedContent {
 /** Strict base64 decode (the body field is attacker-shaped; `Buffer.from` alone is lenient). */
 export function decodeBase64Content(contentBase64: string): Uint8Array {
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(contentBase64) || contentBase64.length % 4 !== 0) {
-    throw new WardenXError("VALIDATION_FAILED", "contentBase64 is not valid base64", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "contentBase64 is not valid base64", 422);
   }
   return new Uint8Array(Buffer.from(contentBase64, "base64"));
 }
@@ -180,7 +180,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     }
     const result = await deps.scanner.scan({ bytes: content.bytes, mimeType: verified.mimeType });
     if (result.verdict !== "clean") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "UPLOAD_REJECTED",
         "the uploaded file was rejected by content scan",
         422,
@@ -196,7 +196,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
   ) {
     if (aggregateType !== "referral") return;
     if (!aggregateId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         "aggregateId is required for referral documents",
         422,
@@ -236,7 +236,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       .where(and(eq(LH.documentId, documentId), isNull(LH.releasedAt)))
       .limit(1);
     if (hold || doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
-      throw new WardenXError("DOCUMENT_IMMUTABLE", "document cannot accept a new version", 409);
+      throw new ChartWardenError("DOCUMENT_IMMUTABLE", "document cannot accept a new version", 409);
     }
     return doc;
   }
@@ -263,7 +263,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     });
     if (stored.sha256Hex !== verified.sha256Hex) {
       await destroyQuietly(organizationId, objectKey);
-      throw new WardenXError(
+      throw new ChartWardenError(
         "UPLOAD_INTEGRITY_MISMATCH",
         "stored object does not match the verified checksum",
         422,

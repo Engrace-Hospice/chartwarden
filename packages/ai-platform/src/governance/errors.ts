@@ -20,7 +20,7 @@
 // §2.2/W9 envelope. Duplicating them here would create two vocabularies for one refusal and guarantee
 // they drift. M32-T05's `AI_KILL_SWITCH_*` codes are the opposite direction and belong here: they
 // refuse an attempt to CHANGE a switch, which no consumer ever sees.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The M32-T03 governance failure catalog → HTTP status. */
 export const AI_GOVERNANCE_ERROR_STATUS = {
@@ -188,7 +188,7 @@ export function aiGovernanceRefusal(
 }
 
 /** The M1 error envelope for an M32 governance refusal — rendered by the shared Fastify handler. */
-export class AiGovernanceError extends WardenXError {
+export class AiGovernanceError extends ChartWardenError {
   constructor(code: AiGovernanceErrorCode, detail: string) {
     super(code, detail, AI_GOVERNANCE_ERROR_STATUS[code]);
     this.name = "AiGovernanceError";

@@ -17,7 +17,7 @@
 //     the single home for each rule.
 //   - org/actor/owner binding is ALWAYS the server-assembled {@link M33WriteActor} (context, never body).
 import type { DbClient } from "@wardenx/db";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
 import {
@@ -174,21 +174,21 @@ export interface UpdateScheduleArgs {
 // ── §2.3 domain-rule errors + pure assertion helpers (single home; both backends call these) ──────────
 
 /** §2.3 — a tenant definition must reference an `active` report_base_catalog row. */
-export class BaseNotActiveError extends WardenXError {
+export class BaseNotActiveError extends ChartWardenError {
   constructor(baseKey: string) {
     super("BASE_NOT_ACTIVE", `report base '${baseKey}' is not active`, 422);
     this.name = "BaseNotActiveError";
   }
 }
 /** §2.3 — a schedule's recipients must all be active memberships in the same org. */
-export class RecipientNotInOrgError extends WardenXError {
+export class RecipientNotInOrgError extends ChartWardenError {
   constructor(ids: readonly string[]) {
     super("RECIPIENT_NOT_IN_ORG", `recipients not active in this org: ${ids.join(", ")}`, 422);
     this.name = "RecipientNotInOrgError";
   }
 }
 /** §2.3 — the cron must leave ≥ 5 min between consecutive evaluations. */
-export class CronTooFrequentError extends WardenXError {
+export class CronTooFrequentError extends ChartWardenError {
   constructor() {
     super("CRON_TOO_FREQUENT", "the cron must leave at least 5 minutes between runs", 422);
     this.name = "CronTooFrequentError";
@@ -203,14 +203,14 @@ export class CronTooFrequentError extends WardenXError {
  * occurrence (`0 9 30 2 *` — February 30th); and a `tenantTimezone` `Intl` does not recognize, which
  * `cron-parser` reports only as an opaque `CronDate: unhandled timestamp` deep inside its own evaluator.
  */
-export class CronExpressionInvalidError extends WardenXError {
+export class CronExpressionInvalidError extends ChartWardenError {
   constructor(reason: string) {
     super("CRON_EXPRESSION_INVALID", `the schedule's cron cannot be evaluated: ${reason}`, 422);
     this.name = "CronExpressionInvalidError";
   }
 }
 /** §2.3 — a `pdf` schedule may not render a view whose definition `row_limit > 5000`. */
-export class PdfRowLimitExceededError extends WardenXError {
+export class PdfRowLimitExceededError extends ChartWardenError {
   constructor(rowLimit: number) {
     super("PDF_ROW_LIMIT_EXCEEDED", `pdf export row_limit ${rowLimit} exceeds 5000`, 422);
     this.name = "PdfRowLimitExceededError";

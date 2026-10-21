@@ -27,7 +27,7 @@ import {
   type TaskEventType,
   type TaskSourceKind,
   type TaskStatus,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { publishTaskEvent } from "./task-events";
@@ -96,12 +96,12 @@ export interface TaskServiceDeps {
 
 /** One refusal for missing / not a participant / channel no longer visible / message gone: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("communication_task");
-const assigneeInvalid = (): WardenXError =>
-  new WardenXError("TASK_ASSIGNEE_INVALID", "assignee cannot be assigned this task", 422);
-const stateConflict = (): WardenXError =>
-  new WardenXError("TASK_STATE_CONFLICT", "task is not in a state that allows this", 409);
-const assigneeHasActive = (): WardenXError =>
-  new WardenXError(
+const assigneeInvalid = (): ChartWardenError =>
+  new ChartWardenError("TASK_ASSIGNEE_INVALID", "assignee cannot be assigned this task", 422);
+const stateConflict = (): ChartWardenError =>
+  new ChartWardenError("TASK_STATE_CONFLICT", "task is not in a state that allows this", 409);
+const assigneeHasActive = (): ChartWardenError =>
+  new ChartWardenError(
     "TASK_ASSIGNEE_ALREADY_HAS_ACTIVE",
     "assignee already has an active task on this message",
     409,
@@ -118,7 +118,7 @@ function mapStoreError(err: unknown): never {
 function parseReason(reason: string | null | undefined): TaskCloseReason | null {
   if (reason === undefined || reason === null) return null;
   if (!(TASK_CLOSE_REASONS as readonly string[]).includes(reason)) {
-    throw new WardenXError("TASK_CLOSE_REASON_INVALID", "closing reason is not recognised", 422);
+    throw new ChartWardenError("TASK_CLOSE_REASON_INVALID", "closing reason is not recognised", 422);
   }
   return reason as TaskCloseReason;
 }
@@ -215,7 +215,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       reason === null &&
       requiresCloseReason(row)
     ) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "TASK_CLOSE_REASON_REQUIRED",
         "a closing reason is required for this task",
         422,
@@ -290,13 +290,13 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     async convert(actor, a) {
       const dueAt = a.dueAt ?? null;
       if (validateDue(dueAt, clock()) !== null) {
-        throw new WardenXError("TASK_DUE_INVALID", "due date is outside the allowed window", 422);
+        throw new ChartWardenError("TASK_DUE_INVALID", "due date is outside the allowed window", 422);
       }
       if (!(await canView(actor.orgId, actor.userId, a.channelId))) throw notFound();
       const msg = await deps.messageLookup(actor.orgId, a.channelId, a.messageId);
       if (!msg || !msg.live) throw notFound();
       if (msg.archived === true) {
-        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+        throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
       }
       if (!(await canView(actor.orgId, a.assigneeUserId, a.channelId))) throw assigneeInvalid();
       const patientId = derivePatient(msg.channelKind, msg.subjectId);

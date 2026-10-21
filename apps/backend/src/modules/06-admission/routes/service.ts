@@ -7,7 +7,7 @@
 
 import { localDateInTimeZone } from "@wardenx/shared/dates";
 import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@wardenx/types";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { ActorSite } from "../actor-site";
 import {
   DEFAULT_ORG_TIME_ZONE,
@@ -80,7 +80,7 @@ import { transitionFaceToFace } from "../state-machines/face-to-face";
 import { TEXT_MINIMUMS, daysBetween } from "../state-machines/validation";
 
 /** 409 VERSION_MISMATCH — an optimistic-lock failure on a state-change route (§4 intro). */
-export class VersionMismatchError extends WardenXError {
+export class VersionMismatchError extends ChartWardenError {
   constructor(id: string, current: number, attempted: number) {
     super(
       "VERSION_MISMATCH",
@@ -91,14 +91,14 @@ export class VersionMismatchError extends WardenXError {
 }
 
 /** 404 NOT_FOUND — the resource is absent or cross-tenant (§6.6 non-leak). */
-export class ResourceNotFoundError extends WardenXError {
+export class ResourceNotFoundError extends ChartWardenError {
   constructor(id: string) {
     super("NOT_FOUND", `${id} not found`, 404);
   }
 }
 
 /** 409 EXTERNAL_REFERRAL_ALREADY_INGESTED — re-ingest of a known `externalReferralId` (W-RF-02). */
-export class ExternalReferralAlreadyIngestedError extends WardenXError {
+export class ExternalReferralAlreadyIngestedError extends ChartWardenError {
   constructor(externalReferralId: string) {
     super(
       "EXTERNAL_REFERRAL_ALREADY_INGESTED",
@@ -109,14 +109,14 @@ export class ExternalReferralAlreadyIngestedError extends WardenXError {
 }
 
 /** 409 INVALID_STATE — a referral transition attempted from the wrong state (§4.2.1 / W-RF-03). */
-export class InvalidReferralStateError extends WardenXError {
+export class InvalidReferralStateError extends ChartWardenError {
   constructor(id: string, state: string, action: string) {
     super("INVALID_STATE", `referral ${id} cannot ${action} from state '${state}'`, 409);
   }
 }
 
 /** 409 INELIGIBLE_NOT_TRIAGED — accept attempted on a referral that is not yet `triaged` (§4.2.1). */
-export class ReferralNotTriagedError extends WardenXError {
+export class ReferralNotTriagedError extends ChartWardenError {
   constructor(id: string) {
     super(
       "INELIGIBLE_NOT_TRIAGED",
@@ -126,7 +126,7 @@ export class ReferralNotTriagedError extends WardenXError {
   }
 }
 
-export class ReferralNotReadyError extends WardenXError {
+export class ReferralNotReadyError extends ChartWardenError {
   constructor(public readonly blockers: readonly { code: string; message: string }[]) {
     super(
       "REFERRAL_NOT_READY",
@@ -141,13 +141,13 @@ export class ReferralNotReadyError extends WardenXError {
   }
 }
 
-export class ReferralAlreadyConvertedError extends WardenXError {
+export class ReferralAlreadyConvertedError extends ChartWardenError {
   constructor(id: string) {
     super("REFERRAL_ALREADY_CONVERTED", `referral ${id} has already produced an admission`, 409);
   }
 }
 
-export class ReferralAdmissionPathError extends WardenXError {
+export class ReferralAdmissionPathError extends ChartWardenError {
   constructor() {
     super(
       "REFERRAL_CONVERSION_REQUIRED",
@@ -157,7 +157,7 @@ export class ReferralAdmissionPathError extends WardenXError {
   }
 }
 
-export class LocationProviderMismatchError extends WardenXError {
+export class LocationProviderMismatchError extends ChartWardenError {
   constructor(locationId: string, providerEntityId: string) {
     super(
       "LOCATION_PROVIDER_MISMATCH",
@@ -178,7 +178,7 @@ export class LocationProviderMismatchError extends WardenXError {
  * 422 F2F_OUTSIDE_WINDOW — a scheduled F2F date falls outside the CMS 418.22 prior-to window
  * `[period_start − 30, period_start]` (§7.4 W-F2F-01). The window is server-computed in org TZ.
  */
-export class F2fScheduleOutOfWindowError extends WardenXError {
+export class F2fScheduleOutOfWindowError extends ChartWardenError {
   constructor(scheduledDate: string, windowStart: string, windowEnd: string) {
     super(
       "F2F_OUTSIDE_WINDOW",
@@ -193,7 +193,7 @@ export class F2fScheduleOutOfWindowError extends WardenXError {
  * unmet gate codes ride in the envelope `details` (one entry per gap) so the §5.2.5 checklist can
  * re-render against server truth without a bespoke field on the envelope.
  */
-export class ActivationPreconditionError extends WardenXError {
+export class ActivationPreconditionError extends ChartWardenError {
   constructor(
     public readonly missing: readonly ActivationGap[],
     public readonly requirements?: AdmissionReadinessResult["requirements"],
@@ -1562,7 +1562,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     const active = providerEntityLocations[providerEntityId] ?? [];
     if (requested) {
       if (!active.includes(requested)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY",
           `location ${requested} is not an active location of the admission's elected provider entity`,
           422,
@@ -1572,13 +1572,13 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     }
     if (active.length === 1) return active[0] as string;
     if (active.length === 0) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "M6_LOCATION_REQUIRED",
         "the elected provider entity has no active location, so this admission cannot be sited; activate a location first",
         422,
       );
     }
-    throw new WardenXError(
+    throw new ChartWardenError(
       "M6_LOCATION_REQUIRED",
       `the elected provider entity has ${active.length} active locations; name the one this admission is served from (locationId)`,
       422,
@@ -2399,7 +2399,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         get(organizationId, electionStatementId, "election_statement") ??
         notFound(electionStatementId);
       if (election.state === "signed")
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ELECTION_ALREADY_SIGNED",
           "This Election Statement is already signed.",
           409,
@@ -2427,7 +2427,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         get(organizationId, period.admissionId ?? "", "admission") ??
         notFound(period.admissionId ?? "");
       if (!rec.hospiceMedicalDirectorId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
           "Select a Hospice Physician before creating the CTI.",
           400,
@@ -2619,7 +2619,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const narrative = input.narrative?.trim() ? input.narrative : rec.narrative;
       const narrativeLength = narrative?.trim().length ?? 0;
       if (narrativeLength === 0 || (isRecert && narrativeLength < TEXT_MINIMUMS.ctiNarrative)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CTI_NARRATIVE_REQUIRED",
           `The certification narrative is required before signing: provide a physician narrative of at least ${TEXT_MINIMUMS.ctiNarrative} characters (42 CFR 418.22(b)(3)).`,
           422,
@@ -3018,7 +3018,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "discharge") ?? notFound(id);
       // GAP-121 — two-person control: the person who filed a for-cause discharge cannot cosign it.
       if (rec.filedByUserId && rec.filedByUserId === actorUserId)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DISCHARGE_COSIGNER_IS_FILER",
           "The person who filed a for-cause discharge cannot cosign it; another medical director must.",
           409,
@@ -3061,7 +3061,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async declineDischarge(organizationId, id, _input, ifVersion, _actorUserId) {
       const rec = get(organizationId, id, "discharge") ?? notFound(id);
       if (rec.state !== "awaiting_cosign")
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_STATE",
           `discharge ${id} is not awaiting a medical-director cosign (state '${rec.state}')`,
           409,

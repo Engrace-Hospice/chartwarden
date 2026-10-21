@@ -12,7 +12,7 @@
 //
 // Unconfigured (no DOCLING_WORKER_URL or no DOCLING_WORKER_TOKEN) ⇒ `createUnboundDoclingClient`, which refuses with a
 // typed 503 — never a silent empty parse that the pipeline would read as "a document with no text".
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 export type DoclingBBox = readonly [number, number, number, number];
 
@@ -65,7 +65,7 @@ export interface DoclingClient {
 }
 
 /** A parse that did not produce a usable layout. `kind` decides retry vs terminal at the job layer. */
-export class DoclingParseError extends WardenXError {
+export class DoclingParseError extends ChartWardenError {
   constructor(
     readonly kind: "unavailable" | "parse_failed" | "rejected" | "malformed_response",
     detail: string,

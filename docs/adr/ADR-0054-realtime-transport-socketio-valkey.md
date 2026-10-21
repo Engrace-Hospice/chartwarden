@@ -52,7 +52,7 @@
 6. **Revocation.** A new outbox consumer for `m2.membership.revoked`, `m2.membership.suspended` and `m2.user.deactivated`
    calls `io.in(room).disconnectSockets(true)` (works across nodes via the adapter) and also ends channel memberships (WP 1.4,
    audit F3). Target: socket dropped <= 5 s after the event.
-7. **Placement.** `apps/backend/src/bootstrap/realtime/` (M1), started from `bootWardenX`, **api role only** (not the worker or
+7. **Placement.** `apps/backend/src/bootstrap/realtime/` (M1), started from `bootChartWarden`, **api role only** (not the worker or
    relay role). `socket.io` and the adapter are added as a `VENDOR_ADAPTERS` entry in both manifests (`.ts` + `.cjs`) mapped to the
    code path that owns the import; `packages/messaging/src/realtime` stays contract-only and gets no socket.io import
    (ADR-0036 Consequences, unchanged).

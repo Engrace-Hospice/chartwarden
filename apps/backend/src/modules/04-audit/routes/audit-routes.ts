@@ -14,7 +14,7 @@
 // typed query port from @wardenx/audit (the only sanctioned reader).
 import type { AuditContext, AuditExecutor, AuditQuery } from "@wardenx/audit";
 import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditElevatedAccess, isElevatedAuditRead } from "../audit/audit-meta";
 import {
@@ -87,7 +87,7 @@ export function registerAuditRoutes(app: FastifyInstance, deps: AuditRouteDeps):
     const { id } = parse(AuditEventParamsSchema, request.params);
     await metaLogIfElevated(request, "GET /api/v1/audit/events/:id");
     const event = await deps.query.getEvent(organizationId, id);
-    if (!event) throw new WardenXError("EVENT_NOT_FOUND", "audit event not found", 404);
+    if (!event) throw new ChartWardenError("EVENT_NOT_FOUND", "audit event not found", 404);
     return event;
   });
 

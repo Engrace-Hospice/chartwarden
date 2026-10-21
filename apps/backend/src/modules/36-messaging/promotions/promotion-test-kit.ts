@@ -2,7 +2,7 @@
 // source reader. Not a test file itself; the *.test.ts files in this directory build on it.
 import type { DbClient } from "@wardenx/db";
 import { messageBodySha256 } from "@wardenx/messaging";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type PromotionService, createPromotionService } from "./promotion-service";
 import type { PromotionBodyPorts, StoredBody } from "./promotion-snapshot";
 import { createPromotionSourceReader } from "./promotion-source-reader";
@@ -160,7 +160,7 @@ export async function codeOf(p: Promise<unknown>): Promise<string> {
   try {
     await p;
   } catch (e) {
-    if (e instanceof WardenXError) return `${e.statusCode}:${e.code}`;
+    if (e instanceof ChartWardenError) return `${e.statusCode}:${e.code}`;
     throw e;
   }
   return "no-error";

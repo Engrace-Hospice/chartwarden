@@ -9,7 +9,7 @@ import {
   SBAR_PLATFORM_FLOOR,
   SBAR_SECTION_KEYS,
   type SbarSectionKey,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import {
   PHI_FINDING_MESSAGES,
@@ -65,8 +65,8 @@ export function effectiveSbarPolicy(stored: StoredSbarPolicy | null): EffectiveS
   };
 }
 
-const invalid = (field: string, message: string): WardenXError =>
-  new WardenXError("VALIDATION_FAILED", "request validation failed", 422, [
+const invalid = (field: string, message: string): ChartWardenError =>
+  new ChartWardenError("VALIDATION_FAILED", "request validation failed", 422, [
     { field, code: "INVALID", message },
   ]);
 
@@ -79,7 +79,7 @@ function prepareHint(key: SbarSectionKey, raw: string | null | undefined): strin
     throw invalid(field, `must be at most ${SBAR_HINT_MAX_CHARS} characters`);
   const codes = lintTemplateText(text);
   if (codes.length > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SBAR_HINT_PHI_DETECTED",
       "SBAR hints must not contain patient identifiers.",
       422,
@@ -107,7 +107,7 @@ export function prepareSbarPolicy(input: SbarPolicyInput): StoredSbarPolicy {
     if (hint !== undefined) hints[key] = hint;
   }
   if (below.length > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SBAR_POLICY_FLOOR_VIOLATION",
       "A tenant policy cannot go below the platform floor.",
       422,

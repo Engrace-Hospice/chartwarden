@@ -10,7 +10,7 @@
 // Read audit: one aggregate `message.list_viewed` from the hook (`q` and `cursor` omitted; no resourceIdParam, so the list
 // branch) plus one attributed `message.viewed` per patient on the page, written by the service in its transaction.
 import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { GlobalSearchService } from "../global-search/query-service";
 import type { RoleGate } from "../global-search/role-gate";
@@ -30,7 +30,7 @@ const READ = requirePermission("messaging.read") as PreHandler;
 
 /** The default limiter: with no real one injected the route refuses (ADR P2: the limiter is a probing control). */
 export const failClosedRateLimit: GlobalSearchRateLimit = async () => {
-  throw new WardenXError("DEGRADED", "global search rate limiting is not available", 503);
+  throw new ChartWardenError("DEGRADED", "global search rate limiting is not available", 503);
 };
 
 export interface GlobalSearchRouteDeps {
@@ -71,10 +71,10 @@ export function registerGlobalSearchRoutes(
         { reason: error instanceof Error ? error.name : "unknown" },
         "global search role gate failed closed",
       );
-      throw new WardenXError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
+      throw new ChartWardenError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
     }
     if (!allowed) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "GLOBAL_SEARCH_ROLE_NOT_PERMITTED",
         "global search is not available to this account",
         403,
@@ -106,7 +106,7 @@ export function registerGlobalSearchRoutes(
       const slot = `${organizationId}:${userId}`;
       const running = inFlight.get(slot) ?? 0;
       if (running >= MAX_IN_FLIGHT_SEARCHES_PER_USER) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "GLOBAL_SEARCH_TOO_MANY_REQUESTS",
           "too many searches in progress; wait for one to finish",
           429,

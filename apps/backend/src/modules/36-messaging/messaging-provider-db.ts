@@ -25,7 +25,7 @@ import type {
   ResolvedMessage,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
@@ -95,7 +95,7 @@ export function createDbMessagingProvider(
   });
 
   function notWired(hook: string): never {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "NOT_IMPLEMENTED",
       `${hook} is driven by a source-module outbox event (M5/M16/M17/M19) not wired in Phase 1`,
       501,
@@ -105,7 +105,7 @@ export function createDbMessagingProvider(
   return {
     async openChannel(orgId, spec) {
       if (spec.kind === "dm") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DM_REQUIRES_PARTICIPANT",
           "direct messages must be opened through the membership-validating DM workflow",
           422,
@@ -174,7 +174,7 @@ export function createDbMessagingProvider(
         { organizationId: orgId, userId: input.authorUserId },
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
-          if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          if (ch.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
           const sent = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
@@ -378,7 +378,7 @@ export function createDbMessagingProvider(
             }
           }
           if (!channel) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "CARE_TEAM_CHANNEL_CREATE_FAILED",
               "could not open care team conversation",
               503,

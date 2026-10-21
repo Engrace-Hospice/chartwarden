@@ -9,7 +9,7 @@
 // the overdue signal is a nightly alert (jobs/qic-overdue.ts).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
   DEFAULT_DEADLINE_ZONE,
@@ -182,10 +182,10 @@ function checkedDay(day: string, what: string, now: Date): string {
   try {
     ms = parseNoticeDay(day);
   } catch {
-    throw new WardenXError("INVALID_DATE", `${what} is not a real calendar date (YYYY-MM-DD)`, 422);
+    throw new ChartWardenError("INVALID_DATE", `${what} is not a real calendar date (YYYY-MM-DD)`, 422);
   }
   if (ms > now.getTime() + MS_PER_DAY) {
-    throw new WardenXError("DATE_IN_FUTURE", `${what} cannot be in the future`, 422);
+    throw new ChartWardenError("DATE_IN_FUTURE", `${what} cannot be in the future`, 422);
   }
   return day;
 }
@@ -193,7 +193,7 @@ function checkedDay(day: string, what: string, now: Date): string {
 /** M25 holds no Medicare number by design: free text that carries one is refused, not stored. */
 function assertNoMbi(value: string | null, what: string): void {
   if (value !== null && containsMbi(value)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "MBI_NOT_ALLOWED",
       `${what} looks like a Medicare number. Do not enter the Medicare number here; the request is completed and signed by hand.`,
       422,
@@ -228,7 +228,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
 
   function requireReconsideration(row: AppealRow): void {
     if (row.tier !== "reconsideration") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "NOT_RECONSIDERATION",
         "this applies only to a QIC reconsideration appeal",
         409,
@@ -367,14 +367,14 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
 
     async setCitedEvidence(actor, id, input, ifMatch) {
       if (input.items.length > MAX_CITED_EVIDENCE_ITEMS) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TOO_MANY_EVIDENCE_ITEMS",
           `a reconsideration may cite at most ${MAX_CITED_EVIDENCE_ITEMS} items`,
           422,
         );
       }
       if (input.none && input.items.length > 0) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "EVIDENCE_LIST_CONFLICT",
           "the list names documentation but also says the notice named none; keep one or the other",
           422,
@@ -388,7 +388,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
         const cur = await load(tx, actor, id);
         requireReconsideration(cur);
         if (cur.state !== "draft") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "EVIDENCE_FROZEN",
             "the cited evidence is part of the filed request and cannot change after it is submitted",
             409,
@@ -417,7 +417,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
       const now = nowOf();
       if ("extensionDays" in input) {
         const refusal = checkQicExtension(input.extensionDays);
-        if (refusal) throw new WardenXError(refusal, QIC_EXTENSION_MESSAGES[refusal], 422);
+        if (refusal) throw new ChartWardenError(refusal, QIC_EXTENSION_MESSAGES[refusal], 422);
       }
       const receivedOn =
         "receivedOn" in input ? checkedDay(input.receivedOn, "the receipt date", now) : null;
@@ -426,21 +426,21 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
         requireReconsideration(cur);
         // The QIC acknowledges after the request is filed; a draft has no clock to record against.
         if (cur.state !== "submitted" && cur.state !== "under_review") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_STATE",
             "the QIC clock is recorded after the request is submitted and while the QIC is reviewing it",
             409,
           );
         }
         if (receivedOn === null && cur.state !== "under_review") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_STATE",
             "a late-evidence extension is recorded while the QIC is reviewing the request",
             409,
           );
         }
         if (cur.escalationRequestedAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CLOCK_FROZEN",
             "an escalation request is recorded, so the QIC clock it was measured against cannot change",
             409,
@@ -454,7 +454,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
             parseNoticeDay(receivedOn) <
               parseNoticeDay(cur.submittedAt.toISOString().slice(0, 10)) - MS_PER_DAY
           ) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "RECEIPT_BEFORE_FILING",
               "the QIC cannot have received the request before it was filed in ChartWarden; check the date on the acknowledgement",
               422,
@@ -473,7 +473,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           );
         }
         if (cur.qicReceivedOn === null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "QIC_RECEIPT_NOT_RECORDED",
             "record the date the QIC received the request before adding a late-evidence extension",
             409,
@@ -496,7 +496,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
       const now = nowOf();
       const requestedAt = new Date(input.requestedAt);
       if (Number.isNaN(requestedAt.getTime())) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_REQUESTED_AT",
           "the request time is not a real date and time",
           422,
@@ -511,7 +511,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           ...(notBefore ? { notBefore } : {}),
         });
       const early = fileWith();
-      if (early) throw new WardenXError(early, QIC_ESCALATION_FILING_MESSAGES[early], 422);
+      if (early) throw new ChartWardenError(early, QIC_ESCALATION_FILING_MESSAGES[early], 422);
       assertNoMbi(input.confirmationRef, "the confirmation reference");
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
@@ -523,11 +523,11 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           alreadyRequested: cur.escalationRequestedAt !== null,
           now,
         });
-        if (refusal) throw new WardenXError(refusal, QIC_ESCALATION_MESSAGES[refusal], 409);
+        if (refusal) throw new ChartWardenError(refusal, QIC_ESCALATION_MESSAGES[refusal], 409);
         // The request was made after the QIC's decision date (and so after the receipt and the filing): this also
         // bounds the forwarding date and the ALJ case's stored instant.
         const late = fileWith(clock?.decisionDueAt);
-        if (late) throw new WardenXError(late, QIC_ESCALATION_FILING_MESSAGES[late], 422);
+        if (late) throw new ChartWardenError(late, QIC_ESCALATION_FILING_MESSAGES[late], 422);
         // The state stays `under_review`: the QIC may still decide until it forwards the case.
         const result = await update(
           tx,
@@ -563,14 +563,14 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
         const cur = await load(tx, actor, id);
         requireReconsideration(cur);
         if (!canTransitionAppeal(cur.state, "escalated")) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_TRANSITION",
             `cannot transition from '${cur.state}' to 'escalated'`,
             409,
           );
         }
         if (cur.escalationRequestedAt === null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ESCALATION_NOT_REQUESTED",
             "record the escalation request before confirming that the QIC forwarded the case",
             409,
@@ -581,7 +581,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           parseNoticeDay(forwardedOn) <
           parseNoticeDay(cur.escalationRequestedAt.toISOString().slice(0, 10)) - MS_PER_DAY
         ) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "FORWARDED_BEFORE_REQUEST",
             "the case cannot have been forwarded before the escalation was requested",
             422,

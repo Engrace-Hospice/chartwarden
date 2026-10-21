@@ -18,7 +18,7 @@
 //     acknowledge it with a written reason (spec §6 "Allergy banner"); unreadable data is never overridable.
 import { isSudTreatmentDrug } from "@wardenx/dosespot";
 import { type AllergyMatch, matchDrugToAllergy } from "@wardenx/dosespot";
-import { type PatientAllergyReader, WardenXError } from "@wardenx/types";
+import { type PatientAllergyReader, ChartWardenError } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The M12-side structural projection of M39's `ConsentEvaluator.evaluateForInternalAccess`. */
@@ -194,16 +194,16 @@ export function resolveAllergyOverride(
 /** The 422 for an unacknowledged conflict / unreadable list. Class wording only: the allergy text is PHI. */
 export function allergyGateError(
   gate: Exclude<AllergyGateResult, { status: "clear" }>,
-): WardenXError {
+): ChartWardenError {
   if (gate.status === "unreadable")
-    return new WardenXError(
+    return new ChartWardenError(
       "ALLERGY_CHECK_NOT_PASSED",
       "the patient's allergy list could not be read, so the allergy check cannot pass",
       422,
     );
   const labels = [...new Set(gate.matches.map((m) => m.label ?? "the ordered drug"))];
   const severe = gate.matches.some((m) => m.severity === "severe");
-  return new WardenXError(
+  return new ChartWardenError(
     "ALLERGY_CHECK_NOT_PASSED",
     `the ordered drug conflicts with a recorded allergy (${labels.join(", ")}${severe ? "; severe" : ""}); ` +
       `a prescriber may acknowledge it by supplying allergyOverrideReason (minimum ${ALLERGY_OVERRIDE_MIN_REASON_LENGTH} characters, recent step-up required)`,

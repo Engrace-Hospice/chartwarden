@@ -11,7 +11,7 @@
 // scopes every read and write by `app.org_id`.
 import { randomBytes, randomUUID } from "node:crypto";
 import { generateRecordsRequestCode } from "@wardenx/intake-extraction";
-import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ValidationError, ChartWardenError } from "@wardenx/types";
 
 export const RECORDS_REQUEST_KINDS = [
   "history_and_physical",
@@ -238,14 +238,14 @@ export const newRecordsRequestCode = (): string =>
   generateRecordsRequestCode((n) => randomBytes(n));
 
 export const notExtendable = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_NOT_EXTENDABLE",
     "only an open or expired records request can be extended",
     409,
   );
 
 export const notCancellable = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_NOT_CANCELLABLE",
     "this records request can no longer be cancelled",
     409,
@@ -253,7 +253,7 @@ export const notCancellable = () =>
 
 /** In-memory slice (route tests). Org-scoped: another org's request is a non-leaking 404. */
 export const cancelledRequest = () =>
-  new WardenXError("RECORDS_REQUEST_CANCELLED", "this records request was cancelled", 409);
+  new ChartWardenError("RECORDS_REQUEST_CANCELLED", "this records request was cancelled", 409);
 
 export function createInMemoryRecordsRequestService(
   opts: { now?: () => Date; code?: () => string } = {},

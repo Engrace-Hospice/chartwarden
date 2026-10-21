@@ -10,7 +10,7 @@
 // §4.13 source marking (D22): every produced row carries the `deathSource` of the candidate so the QAPI
 // Coordinator can spot-check external-source samples for CMS-eligibility-rule correctness. This marker is
 // platform-side only and is intentionally NOT forwarded into the vendor-facing `CahpsDecedentSampleRow`.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /**
  * Where the death record originated (§4.13). `admission_discharge` is the in-system M6 discharge/death
@@ -81,7 +81,7 @@ const MS_PER_HOUR = 3_600_000;
 function instant(value: string, field: string): number {
   const t = Date.parse(value);
   if (Number.isNaN(t)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       `'${field}' is not a valid ISO-8601 value: '${value}'`,
       422,
@@ -112,7 +112,7 @@ function classify(candidate: CahpsSampleCandidate): CahpsExclusionReason | null 
       instant(candidate.admissionStartAt, "admissionStartAt")) /
     MS_PER_HOUR;
   if (stayHours < 0) {
-    throw new WardenXError("VALIDATION_FAILED", "deathAt precedes admissionStartAt", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "deathAt precedes admissionStartAt", 422);
   }
   if (stayHours < MIN_STAY_HOURS) {
     return "hospice_stay_under_48h";
@@ -142,7 +142,7 @@ export function sampleDecedents(
   const periodStart = instant(samplePeriod.start, "samplePeriod.start");
   const periodEnd = instant(samplePeriod.end, "samplePeriod.end");
   if (periodEnd < periodStart) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       "samplePeriod.end precedes samplePeriod.start",
       422,
@@ -153,7 +153,7 @@ export function sampleDecedents(
   return candidates.map((candidate) => {
     const death = instant(candidate.deathDate, "deathDate");
     if (death < periodStart || death > periodEnd) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         `decedent '${candidate.deceasedPatientId}' death '${candidate.deathDate}' is outside the sample period`,
         422,

@@ -1,4 +1,4 @@
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryEscalationRouter } from "../src/escalation/in-memory-escalation-router";
 
@@ -128,7 +128,7 @@ describe("in-memory EscalationRouter", () => {
 
   it("refuses a call for another org rather than answering from its own roster", async () => {
     const promise = ask(routerA(), 1, "2026-06-01T16:00:00Z", RN, ORG_B);
-    await expect(promise).rejects.toBeInstanceOf(WardenXError);
+    await expect(promise).rejects.toBeInstanceOf(ChartWardenError);
     await expect(promise).rejects.toMatchObject({
       code: "ESCALATION_ORG_MISMATCH",
       statusCode: 403,
@@ -158,7 +158,7 @@ describe("in-memory EscalationRouter", () => {
         code: "ESCALATION_REQUEST_INVALID",
       });
     }
-    await expect(ask(r, 1, "yesterday")).rejects.toBeInstanceOf(WardenXError);
+    await expect(ask(r, 1, "yesterday")).rejects.toBeInstanceOf(ChartWardenError);
   });
 
   it("refuses offset-less and loose asOf strings even when the process zone differs", async () => {

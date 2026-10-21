@@ -447,7 +447,7 @@ describe("D10 evidence, bound into the lifecycle gate", () => {
     expect(row.lifecycleState).toBe("PILOT");
   });
 
-  // `WardenXError`'s MESSAGE is the detail, not the code — asserting on the message would pass on any
+  // `ChartWardenError`'s MESSAGE is the detail, not the code — asserting on the message would pass on any
   // refusal that happened to mention the same words.
   async function expectRefusalCode(promise: Promise<unknown>, code: string): Promise<void> {
     await expect(promise).rejects.toThrow(AiGovernanceError);

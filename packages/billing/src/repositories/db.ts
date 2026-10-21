@@ -27,7 +27,7 @@
 // reconstructed from drizzle-orm's own `NodePgDatabase<typeof schema>` (identical to the M1 `DbClient`,
 // so a `DbClient` / `withOrgContext` tx handle is structurally assignable) without taking the M1 edge.
 import * as schema from "@wardenx/db/schema";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type SQL, and, eq, lt, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
@@ -215,7 +215,7 @@ export function decodeCursor(cursor: string): CursorKeyset {
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
-    throw new WardenXError("VALIDATION_FAILED", "the cursor is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
 }
 

@@ -21,7 +21,7 @@ import {
   type ClaimDayProjectionQuery as ClaimDayProjectionQueryType,
   type ClaimDayProjectionResponse,
 } from "@wardenx/billing";
-import { ForbiddenError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
 import { parse } from "./billing-typebox";
@@ -51,14 +51,14 @@ export interface M23InternalSeamProvider {
 /** Fail-closed default — every internal seam read 503s until the composition root binds the real provider. */
 export const denyStubInternalSeamProvider: M23InternalSeamProvider = {
   async claimDayProjection() {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SEAM_UNBOUND",
       "the M23 claim-day-projection provider is not bound",
       503,
     );
   },
   async acceptedSubmissionsInWindow() {
-    throw new WardenXError("SEAM_UNBOUND", "the M23 claim-submission reader is not bound", 503);
+    throw new ChartWardenError("SEAM_UNBOUND", "the M23 claim-submission reader is not bound", 503);
   },
 };
 

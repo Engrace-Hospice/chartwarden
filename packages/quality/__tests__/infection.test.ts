@@ -7,7 +7,7 @@ import {
   normalizeSurveillanceEvent,
   toNewOutbreakCase,
 } from "@wardenx/quality";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 // @wardenx/quality — M30 §7.8 / D11 (WF-18) infection outbreak-detector unit tests (PURE; no DB).
 //
 // Proves the ≥3-events-in-14-days cluster algorithm: a cluster OPENS exactly at the threshold (the third
@@ -154,7 +154,7 @@ describe("infection outbreak detector — the ≥3-events / 14-day cluster rule 
   });
 
   it("rejects a blank surveillance code at normalization (V-17 — a real observation always carries codes)", () => {
-    expect(() => event(0, { pathogen: "   " })).toThrowError(WardenXError);
+    expect(() => event(0, { pathogen: "   " })).toThrowError(ChartWardenError);
     expect(() => event(0, { bodySite: "" })).toThrowError(/non-empty code/);
   });
 });

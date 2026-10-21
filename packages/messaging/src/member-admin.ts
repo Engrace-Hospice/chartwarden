@@ -4,7 +4,7 @@
 // channels" (`location_membership`). The permission alone is NOT enough: a holder could otherwise add
 // themselves to any care_team channel, and because channel visibility is a membership check that is a
 // PHI read grant. This pure rule is shared by the route predicate and both service implementations.
-import { ForbiddenError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, ChartWardenError } from "@wardenx/types";
 import type { ChannelKind } from "./interfaces/kinds";
 
 /** Who is administering members. Internal/system callers pass the explicit `system` marker — it is
@@ -86,7 +86,7 @@ export function assertMayArchiveChannel(
   }
   if (kind === "dm") throw new ForbiddenError(`a direct message cannot be ${verb}d`);
   if (!ADMIN_ARCHIVABLE_CHANNEL_KINDS.includes(kind)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "CHANNEL_LIFECYCLE_MANAGED",
       "this channel's archive state follows its source record",
       409,

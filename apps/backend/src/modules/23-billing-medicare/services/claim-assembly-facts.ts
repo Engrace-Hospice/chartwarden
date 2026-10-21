@@ -22,7 +22,7 @@ import {
   splitAtFiscalYears,
   wageIndexFactorForLevelOfCare,
 } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { ClaimAssemblySeams, DateRange, InpatientStay } from "./claim-assembly-types";
 
 /** The CMS hospice fiscal year STARTING year for a service date (the rate year flips each Oct 1). */
@@ -48,14 +48,14 @@ export async function readAssemblyFacts(
   const range: DateRange = { from: serviceFrom, to: serviceTo };
   const admission = await seams.admission.resolveForRange(orgId, patientId, range);
   if (!admission) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PATIENT_NOT_ELECTED",
       "no hospice admission covers the service window",
       409,
     );
   }
   if (admission.deceasedDate !== null && admission.deceasedDate < serviceFrom) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PATIENT_DECEASED_BEFORE_FROM",
       "the patient died before the claim's service_from",
       409,
@@ -68,7 +68,7 @@ export async function readAssemblyFacts(
     a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0,
   );
   if (resolvedPeriods.length === 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PATIENT_NOT_ELECTED",
       "no active election covers the service window",
       409,
@@ -89,7 +89,7 @@ export async function readAssemblyFacts(
 
   const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId);
   if (!pe) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PROVIDER_ENTITY_UNRESOLVED",
       "the provider entity could not be resolved (M40)",
       422,
@@ -98,7 +98,7 @@ export async function readAssemblyFacts(
   const fiscalYearStarting = hospiceFiscalYearStarting(serviceFrom);
   const wageIndex = await seams.referenceData.wageIndexForCcn(pe.ccn, fiscalYearStarting, orgId);
   if (!wageIndex) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "WAGE_INDEX_UNAVAILABLE",
       `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${fiscalYearStarting} (D12); enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
       422,
@@ -116,7 +116,7 @@ export async function readAssemblyFacts(
     serviceFrom,
   );
   if (!seqPolicy) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SEQUESTRATION_POLICY_UNAVAILABLE",
       `no sequestration policy covers service date ${serviceFrom} for provider entity ${providerEntityId} (D11); enter the Medicare sequestration schedule for that period (POST /api/v1/billing/sequestration-policies, permission billing.sequestration_policy.edit) and retry`,
       422,
@@ -317,7 +317,7 @@ async function readFiscalYearPricing(
             input.orgId,
           );
     if (!wageIndex) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WAGE_INDEX_UNAVAILABLE",
         `no authoritative wage-index factor is available for CCN ${input.ccn} fiscal year starting ${part.fiscalYearStarting} (D12); the claim crosses Oct 1 and each fiscal year is priced with its own index. Enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
         422,
@@ -380,7 +380,7 @@ export function computeClaimPerDiemClass(
       (fiscalYearStarting) => {
         const pricing = fiscalYearPricing.get(fiscalYearStarting);
         if (!pricing) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "FISCAL_YEAR_PRICING_UNAVAILABLE",
             `no rates were read for the fiscal year starting ${fiscalYearStarting}`,
             422,
@@ -392,7 +392,7 @@ export function computeClaimPerDiemClass(
   } catch (err) {
     if (err instanceof WageIndexAreaError) {
       const where = err.source === "residence" ? "patient residence" : "inpatient facility";
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WAGE_INDEX_AREA_UNRESOLVED",
         `${err.message}; correct the ${where} address (ZIP code) and retry`,
         422,
@@ -400,7 +400,7 @@ export function computeClaimPerDiemClass(
     }
     // F-211 — CHC is paid hourly; an undocumented / sub-8h / >24h / non-quarter-hour CHC day cannot be priced.
     if (err instanceof ChcHoursError) {
-      throw new WardenXError("CHC_HOURS_UNPRICEABLE", err.message, 422);
+      throw new ChartWardenError("CHC_HOURS_UNPRICEABLE", err.message, 422);
     }
     throw err;
   }
@@ -475,7 +475,7 @@ async function siaPricing(
       rateScope.orgId,
     );
     if (!providerIndex) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WAGE_INDEX_UNAVAILABLE",
         `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${deathFiscalYear} (D12), the year of the death; the SIA add-on is priced with it. Enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
         422,
@@ -499,7 +499,7 @@ async function siaPricing(
     );
   } catch (err) {
     if (err instanceof WageIndexAreaError) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WAGE_INDEX_AREA_UNRESOLVED",
         `${err.message}; the SIA add-on is priced as continuous home care. Correct the patient residence address (ZIP code) and retry`,
         422,

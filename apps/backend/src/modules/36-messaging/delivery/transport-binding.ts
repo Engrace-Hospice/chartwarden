@@ -30,7 +30,7 @@ import {
   sendPostmarkEmail,
   sendTwilioSms,
 } from "@wardenx/messaging";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -48,7 +48,7 @@ export interface OutOfBandBinding {
   readonly missing: Readonly<Record<OutOfBandTransportChannel, readonly string[]>>;
   /** True only when Tier-1 SOS voice escalation can actually place a call. */
   readonly sosVoiceAvailable: boolean;
-  /** Delivers the §4.2 OTP over the bound sms/email adapter; throws a 503 `WardenXError` when that one is unbound. */
+  /** Delivers the §4.2 OTP over the bound sms/email adapter; throws a 503 `ChartWardenError` when that one is unbound. */
   readonly sendEndpointVerificationCode: EndpointVerificationSender;
 }
 
@@ -68,8 +68,8 @@ const need = (env: Env, keys: readonly string[]): string[] => keys.filter((k) =>
 const VERIFICATION_TEXT = (code: string) =>
   `Your ChartWarden verification code is ${code}. If you did not request it, ignore this message.`;
 
-function unavailable(channel: string): WardenXError {
-  return new WardenXError(
+function unavailable(channel: string): ChartWardenError {
+  return new ChartWardenError(
     "ENDPOINT_VERIFICATION_UNAVAILABLE",
     `${channel} verification is not available: the ${channel} delivery provider is not configured`,
     503,
@@ -204,9 +204,9 @@ export function bindOutOfBandTransports(options: OutOfBandBindingOptions): OutOf
         });
       }
     } catch (err) {
-      if (err instanceof WardenXError) throw err;
+      if (err instanceof ChartWardenError) throw err;
       // A vendor refusal: surface a generic 503 (the registration rolls back); never echo vendor detail.
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ENDPOINT_VERIFICATION_DELIVERY_FAILED",
         `could not deliver the ${channel} verification code; try again`,
         503,

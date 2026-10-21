@@ -7,7 +7,7 @@
 // here over the raw payload bytes so re-ingesting the same export is idempotent.
 import { createHash } from "node:crypto";
 import type { CahpsResultSummaryInput } from "@wardenx/quality";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** One entry in the normalized SHP aggregate (the XLSX-to-JSON decoder's per-provider/period row). */
 interface ShpAggregateEntry {
@@ -27,12 +27,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function numberMap(value: unknown, field: string): Record<string, number> {
   if (!isRecord(value)) {
-    throw new WardenXError("VALIDATION_FAILED", `SHP aggregate '${field}' must be an object`, 422);
+    throw new ChartWardenError("VALIDATION_FAILED", `SHP aggregate '${field}' must be an object`, 422);
   }
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(value)) {
     if (typeof v !== "number" || Number.isNaN(v)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         `SHP aggregate '${field}.${k}' must be a number`,
         422,
@@ -46,7 +46,7 @@ function numberMap(value: unknown, field: string): Record<string, number> {
 function str(record: Record<string, unknown>, field: string): string {
   const v = record[field];
   if (typeof v !== "string" || v.length === 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       `SHP aggregate '${field}' must be a non-empty string`,
       422,
@@ -58,7 +58,7 @@ function str(record: Record<string, unknown>, field: string): string {
 function int(record: Record<string, unknown>, field: string): number {
   const v = record[field];
   if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       `SHP aggregate '${field}' must be a non-negative integer`,
       422,
@@ -69,7 +69,7 @@ function int(record: Record<string, unknown>, field: string): number {
 
 function parseEntry(value: unknown): ShpAggregateEntry {
   if (!isRecord(value)) {
-    throw new WardenXError("VALIDATION_FAILED", "SHP aggregate entry must be an object", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "SHP aggregate entry must be an object", 422);
   }
   const rate = value.responseRate;
   return {
@@ -98,14 +98,14 @@ export function parseShpAggregate(payload: Buffer): CahpsResultSummaryInput[] {
   try {
     decoded = JSON.parse(payload.toString("utf8"));
   } catch {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       "SHP aggregate payload is not valid UTF-8 JSON",
       422,
     );
   }
   if (!Array.isArray(decoded)) {
-    throw new WardenXError("VALIDATION_FAILED", "SHP aggregate payload must be a JSON array", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "SHP aggregate payload must be a JSON array", 422);
   }
 
   return decoded.map((raw) => {

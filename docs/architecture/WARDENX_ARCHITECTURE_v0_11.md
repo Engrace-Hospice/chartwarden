@@ -3091,7 +3091,7 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 
 ### 25.7 Error Handling
 
-**Pattern:** Typed error classes (`WardenXError`, `ValidationError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `DegradedError`). Never throw strings. Route handlers convert to standard error envelope via Fastify error handler.
+**Pattern:** Typed error classes (`ChartWardenError`, `ValidationError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `DegradedError`). Never throw strings. Route handlers convert to standard error envelope via Fastify error handler.
 
 **Implementation:** Module 1 §4.3 error envelope contract.
 

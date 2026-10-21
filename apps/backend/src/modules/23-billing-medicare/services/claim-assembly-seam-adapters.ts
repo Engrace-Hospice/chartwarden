@@ -17,7 +17,7 @@ import {
 } from "@wardenx/billing";
 import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
@@ -144,8 +144,8 @@ export function buildM23PatientPayerAdapter(
 // `electionPeriodContextForOrg` (M6) "second wall behind RLS, org-explicit rather than ambient" pattern —
 // instead of assuming the caller's ambient request context reaches an object built at boot time.
 /** No MAC submitter credential (hence no MAC jurisdiction) is on file for a resolved provider entity. */
-function macSubmitterCredentialMissing(ccn: string): WardenXError {
-  return new WardenXError(
+function macSubmitterCredentialMissing(ccn: string): ChartWardenError {
+  return new ChartWardenError(
     "MAC_SUBMITTER_CREDENTIAL_MISSING",
     `provider entity CCN ${ccn} has no MAC submitter credential on file, so its MAC jurisdiction is unknown; onboard the provider entity's MAC portal credential and retry`,
     422,
@@ -360,8 +360,8 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
 // built once at boot, so each read opens its own explicit `withOrgContext`.
 
 /** F-210 — the fail-closed error when no tenant-entered rate table covers the claim's service date. */
-function rateTableMissing(scope: RateLookupScope): WardenXError {
-  return new WardenXError(
+function rateTableMissing(scope: RateLookupScope): ChartWardenError {
+  return new ChartWardenError(
     "RATE_TABLE_MISSING",
     `no hospice rate table covers service date ${scope.serviceFrom} for provider entity ${scope.providerEntityId}; enter the CMS hospice per-diem rates for that fiscal year (POST /api/v1/billing/rate-tables, permission billing.rate_table.admin) and retry`,
     422,
@@ -369,8 +369,8 @@ function rateTableMissing(scope: RateLookupScope): WardenXError {
 }
 
 /** F-211 — fail closed on a rate version entered before migration 0280 (no labor shares); never guess a share. */
-function laborSharesMissing(rateTableId: string): WardenXError {
-  return new WardenXError(
+function laborSharesMissing(rateTableId: string): ChartWardenError {
+  return new ChartWardenError(
     "RATE_TABLE_LABOR_SHARE_MISSING",
     `hospice rate table ${rateTableId} carries no labor shares (entered before they were required); the wage index adjusts only the labor share of each rate. Supersede it with the CMS-published labor shares (POST /api/v1/billing/rate-tables/:id/supersede) and retry`,
     422,

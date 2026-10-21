@@ -36,7 +36,7 @@ import {
 } from "@wardenx/billing";
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import { claimDischargeCodeColumns, rederivedTypeOfBill } from "./claim-discharge";
 import {
   type BillingDb,
@@ -69,7 +69,7 @@ export interface ValidationContextPort {
 
 const FAIL_CLOSED_CONTEXT: ValidationContextPort = {
   build() {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SEAM_NOT_BOUND",
       "the M23 ValidationContextPort is not bound (the reader-seam materializer is a follow-up)",
       503,
@@ -203,7 +203,7 @@ export function buildClaimValidationService(
       );
     }
     if (input.expectedVersion !== undefined && input.expectedVersion !== claim.version) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VERSION_CONFLICT",
         `the claim was modified concurrently (current version ${claim.version})`,
         412,

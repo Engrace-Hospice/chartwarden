@@ -53,7 +53,7 @@ export interface RegisterIdentityAuthOptions {
   onAuditError?: (err: unknown, event: AuthAuditEvent) => void;
   /**
    * GAP-005 - runs BEFORE the handler for the endpoints that act on an existing session (`needsActor` paths) with the
-   * resolved actor (null when anonymous). Throw a `WardenXError` to refuse - e.g. `two-factor/disable` for a role
+   * resolved actor (null when anonymous). Throw a `ChartWardenError` to refuse - e.g. `two-factor/disable` for a role
    * whose MFA matrix requires a second factor. Absent means no pre-handler policy.
    */
   guard?: (input: { relativePath: string; actor: AuthAuditActor | null }) => Promise<void>;

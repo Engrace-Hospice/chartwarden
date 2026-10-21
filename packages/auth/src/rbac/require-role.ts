@@ -34,7 +34,7 @@ export interface GuardRequest {
 
 /**
  * A route preHandler in the §2.2 pipeline. Resolves (no-op) when access is permitted and
- * THROWS a `WardenXError` (401/403/404) when denied — the M1 error handler renders the
+ * THROWS a `ChartWardenError` (401/403/404) when denied — the M1 error handler renders the
  * envelope. Async so a guard may consult the DB-backed resolver/evaluator seams.
  */
 export type GuardHandler = (request: GuardRequest) => Promise<void>;

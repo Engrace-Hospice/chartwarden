@@ -6,7 +6,7 @@ import {
   REMINDER_MAX_PENDING,
   SNOOZE_MAX_MINUTES,
   SNOOZE_MIN_MINUTES,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { type Actor, createSnoozeReminderService } from "./snooze-reminder-service";
@@ -56,7 +56,7 @@ const codeOf = async (p: Promise<unknown>): Promise<string> => {
   try {
     await p;
   } catch (e) {
-    return e instanceof WardenXError ? e.code : "OTHER";
+    return e instanceof ChartWardenError ? e.code : "OTHER";
   }
   return "NO_ERROR";
 };

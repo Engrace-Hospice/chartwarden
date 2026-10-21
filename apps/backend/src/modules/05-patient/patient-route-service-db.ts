@@ -14,7 +14,7 @@ import { audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   assertAdmitDemographicsStorable,
@@ -814,14 +814,14 @@ export function createDbPatientRouteService(
   ): Promise<AssignmentView> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const [patient] = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
-      if (!patient) throw new WardenXError("NOT_FOUND", "patient not found", 404);
+      if (!patient) throw new ChartWardenError("NOT_FOUND", "patient not found", 404);
       const [membership] = await tx
         .select({ userId: MEM.userId, status: MEM.status })
         .from(MEM)
         .where(eq(MEM.id, input.clinicianMembershipId))
         .limit(1);
       if (!membership || membership.status !== "active")
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CLINICIAN_MEMBERSHIP_INVALID",
           "The selected clinician is not an active member of this organization.",
           422,
@@ -839,7 +839,7 @@ export function createDbPatientRouteService(
         )
         .limit(1);
       if (duplicate[0])
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ACTIVE_ASSIGNMENT_EXISTS",
           "This clinician already has this active care team role.",
           409,
@@ -884,9 +884,9 @@ export function createDbPatientRouteService(
         .from(ASSIGN)
         .where(and(eq(ASSIGN.id, assignmentId), eq(ASSIGN.patientId, patientId)))
         .limit(1);
-      if (!row) throw new WardenXError("NOT_FOUND", "care team assignment not found", 404);
+      if (!row) throw new ChartWardenError("NOT_FOUND", "care team assignment not found", 404);
       if (row.unassignedAt)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ASSIGNMENT_ALREADY_ENDED",
           "This care team assignment has already ended.",
           409,
@@ -1087,7 +1087,7 @@ export function createDbPatientRouteService(
       // GAP-118 — typed errors (a plain `Error` surfaced as a 500) and a status guard: a decided request
       // cannot be re-decided (an accepted amendment flipped to denied would rewrite the HIPAA §164.526 record).
       if (!decision.accept && !decision.denialReason)
-        throw new WardenXError("DENIAL_REASON_REQUIRED", "A denial requires a reason.", 422);
+        throw new ChartWardenError("DENIAL_REASON_REQUIRED", "A denial requires a reason.", 422);
       const rows = (await tx
         .select({
           patientId: schema.patientAmendmentRequests.patientId,
@@ -1106,9 +1106,9 @@ export function createDbPatientRouteService(
         slaDueAt: Date;
       }>;
       const row = rows[0];
-      if (!row) throw new WardenXError("NOT_FOUND", "amendment request not found", 404);
+      if (!row) throw new ChartWardenError("NOT_FOUND", "amendment request not found", 404);
       const notPending = () =>
-        new WardenXError(
+        new ChartWardenError(
           "AMENDMENT_NOT_PENDING",
           "This amendment request has already been decided.",
           409,

@@ -8,7 +8,7 @@
 import { repositories } from "@wardenx/billing";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,
@@ -50,7 +50,7 @@ type M25Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 /** The appeal tiers CMS lets a provider file late with good cause (42 CFR §405.942(b)). */
 const GOOD_CAUSE_TIERS: ReadonlySet<string> = new Set(["redetermination", "reconsideration"]);
 
-class InvalidTransitionError extends WardenXError {
+class InvalidTransitionError extends ChartWardenError {
   constructor(from: string, to: string) {
     super("INVALID_TRANSITION", `cannot transition from '${from}' to '${to}'`, 409);
     this.name = "InvalidTransitionError";
@@ -122,7 +122,7 @@ export function buildDrizzleM25WriteService(
     // cannot be inferred: the printed date of the prior notice must be supplied, never guessed.
     if (tier !== "redetermination") {
       if (!given) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "NOTICE_DATE_REQUIRED",
           `a ${tier} appeal needs the date printed on the prior tier's decision notice (noticeDate)`,
           422,
@@ -151,7 +151,7 @@ export function buildDrizzleM25WriteService(
       // denial's open date is the latest the notice can be.
       const latest = adviceDay ?? (denial[0] ? noticeDayOf(denial[0].openedAt) : null);
       if (latest && given > latest) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "NOTICE_DATE_AFTER_REMITTANCE",
           `notice date ${given} is later than the ${adviceDay ? "remittance advice" : "denial open"} date ${latest}`,
           422,
@@ -162,7 +162,7 @@ export function buildDrizzleM25WriteService(
     if (adviceDay) return adviceDay;
     // No 835 is linked (e.g. a 277CA-seeded denial): the denial's open date is later than the real notice, so
     // it would silently lengthen the deadline. Ask for the printed date instead.
-    throw new WardenXError(
+    throw new ChartWardenError(
       "NOTICE_DATE_REQUIRED",
       "this denial has no remittance advice; supply the date printed on the notice (noticeDate)",
       422,
@@ -189,7 +189,7 @@ export function buildDrizzleM25WriteService(
       .from(AC)
       .where(eq(AC.denialCaseId, denialCaseId));
     if (rows.some((r) => r.tier === tier && r.state !== "withdrawn" && r.state !== "closed")) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "APPEAL_TIER_EXISTS",
         `a ${tier} appeal is already open on this denial`,
         409,
@@ -201,14 +201,14 @@ export function buildDrizzleM25WriteService(
       (r) => r.decidedAt && r.outcome !== "favorable" && nextTier(r.tier) === tier,
     );
     if (!prior?.decidedAt) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PRIOR_TIER_REQUIRED",
         `a ${tier} appeal needs a recorded unfavorable or partial decision of the prior tier on this denial`,
         422,
       );
     }
     if (given > noticeDayOf(prior.decidedAt)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "NOTICE_DATE_AFTER_DECISION",
         `notice date ${given} is later than the prior tier's decision date`,
         422,
@@ -221,14 +221,14 @@ export function buildDrizzleM25WriteService(
     try {
       deriveTierDeadline("redetermination", day);
     } catch {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "INVALID_NOTICE_DATE",
         "notice date must be a real calendar date (YYYY-MM-DD)",
         422,
       );
     }
     if (day > noticeDayOf(new Date(Date.now() + 86_400_000))) {
-      throw new WardenXError("NOTICE_DATE_IN_FUTURE", "notice date cannot be in the future", 422);
+      throw new ChartWardenError("NOTICE_DATE_IN_FUTURE", "notice date cannot be in the future", 422);
     }
     return day;
   }
@@ -269,7 +269,7 @@ export function buildDrizzleM25WriteService(
           .limit(1);
         if (!rows[0]) throw new NotFoundError("remittance advice not found");
         if (rows[0].status !== "failed") {
-          throw new WardenXError("INVALID_STATE", "only a failed advice can be replayed", 409);
+          throw new ChartWardenError("INVALID_STATE", "only a failed advice can be replayed", 409);
         }
         await tx.update(RA).set({ parseStatus: "queued" }).where(eq(RA.id, adviceId));
         await outbox.publish(tx, {
@@ -390,7 +390,7 @@ export function buildDrizzleM25WriteService(
         const cur = await denialState(tx, denialCaseId);
         const tier = input.tier ?? "redetermination";
         if (!cur.claimId)
-          throw new WardenXError("INVALID_STATE", "the denial has no claim to appeal", 409);
+          throw new ChartWardenError("INVALID_STATE", "the denial has no claim to appeal", 409);
         // Milestone 3: a denial the routing rules send to a MAC reopening (a 56900 non-response) is not appealable.
         // The first appeal needs an audited override reason; a later tier follows an appeal that already existed.
         let routeOverride: { reason: string; ruleId: string | null } | null = null;
@@ -408,7 +408,7 @@ export function buildDrizzleM25WriteService(
           if (routed.route === "reopening" || reopeningLive) {
             const reason = input.routeOverrideReason?.trim() ?? "";
             if (reason.length < 10) {
-              throw new WardenXError(
+              throw new ChartWardenError(
                 "ROUTE_IS_REOPENING",
                 "the routing rules send this denial to a MAC reopening, not an appeal; open a reopening, or appeal with an override reason of at least 10 characters",
                 409,
@@ -582,7 +582,7 @@ export function buildDrizzleM25WriteService(
         (cur) => {
           // CMS permits a good-cause late filing only at the first two tiers (42 CFR §405.942(b)).
           if (!GOOD_CAUSE_TIERS.has(cur.tier)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "GOOD_CAUSE_NOT_AVAILABLE",
               `the ${cur.tier} tier has no CMS good-cause late-filing path`,
               409,
@@ -590,7 +590,7 @@ export function buildDrizzleM25WriteService(
           }
           // Before T-0 there is nothing late about it: the normal submit (the within-deadline path) applies.
           if (cur.tierDeadlineAt.getTime() > Date.now()) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "NOT_LATE",
               "the appeal deadline has not elapsed; use the normal submit route",
               409,
@@ -612,7 +612,7 @@ export function buildDrizzleM25WriteService(
         const decidedAt = new Date(input.decidedAt);
         const noticeDay = checkedNoticeDay(input.decisionNoticeDate ?? noticeDayOf(decidedAt));
         if (noticeDay > noticeDayOf(decidedAt)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "NOTICE_DATE_AFTER_DECISION",
             "decision notice date cannot be later than the decided-at date",
             422,

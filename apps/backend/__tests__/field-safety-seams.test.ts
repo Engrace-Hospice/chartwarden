@@ -162,7 +162,7 @@ describe("M20-T05 §4.3 — the seven seams are declared and fail CLOSED", () =>
 describe("M20-T05 — the orgId argument is an ASSERTION, never a selector", () => {
   it("refuses a seam call whose org disagrees with the caller's scope", async () => {
     const provider = createSafetyPolicyProvider(store(), orgOf, now);
-    // `WardenXError`'s message is not its code — assert on the CODE, which is the contract a caller
+    // `ChartWardenError`'s message is not its code — assert on the CODE, which is the contract a caller
     // branches on (the platform-wide `expect().toThrowError(/CODE/)` false-green, M15-T07).
     await expect(provider.effectivePolicy(OTHER_ORG)).rejects.toMatchObject({
       code: "SAFETY_SEAM_ORG_MISMATCH",

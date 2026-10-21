@@ -9,7 +9,7 @@
 // category or the required phrases, cannot drop a required phrase, and is held to the same PHI lint. The floor is
 // re-checked when the overlay is RESOLVED, not only when it is saved, so a stored overlay that no longer satisfies a
 // (later tightened) floor silently falls back to the platform text instead of being served.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import {
   PHI_FINDING_MESSAGES,
   PHI_LINT_VERSION,
@@ -69,8 +69,8 @@ export interface TemplateView {
   readonly customized: boolean;
 }
 
-function phiError(field: "title" | "body", codes: readonly PhiFindingCode[]): WardenXError {
-  return new WardenXError(
+function phiError(field: "title" | "body", codes: readonly PhiFindingCode[]): ChartWardenError {
+  return new ChartWardenError(
     "TEMPLATE_PHI_DETECTED",
     "Saved replies must not contain patient identifiers.",
     422,
@@ -78,8 +78,8 @@ function phiError(field: "title" | "body", codes: readonly PhiFindingCode[]): Wa
   );
 }
 
-function shapeError(field: "title" | "body", message: string): WardenXError {
-  return new WardenXError("VALIDATION_FAILED", "request validation failed", 422, [
+function shapeError(field: "title" | "body", message: string): ChartWardenError {
+  return new ChartWardenError("VALIDATION_FAILED", "request validation failed", 422, [
     { field, code: "INVALID", message },
   ]);
 }
@@ -118,8 +118,8 @@ export function overlayViolatesFloor(
   return platform.requiredPhrases.some((phrase) => !haystack.includes(matchForm(phrase)));
 }
 
-export function floorError(missing: readonly string[]): WardenXError {
-  return new WardenXError(
+export function floorError(missing: readonly string[]): ChartWardenError {
+  return new ChartWardenError(
     "TEMPLATE_FLOOR_VIOLATION",
     "This template must keep the platform's required wording.",
     422,
@@ -199,7 +199,7 @@ export interface OverlayFields {
 /** Validate a complete create payload: category in the closed list, then trim/bound/lint title and body. */
 export function prepareTemplate(input: TemplateFields): TemplateFields {
   if (!(TEMPLATE_CATEGORIES as readonly string[]).includes(input.category)) {
-    throw new WardenXError("VALIDATION_FAILED", "request validation failed", 422, [
+    throw new ChartWardenError("VALIDATION_FAILED", "request validation failed", 422, [
       { field: "category", code: "INVALID", message: "category is not one of the allowed values" },
     ]);
   }
@@ -229,7 +229,7 @@ export function prepareOverlay(
     overlay.body === null ? null : checkOne("body", overlay.body, TEMPLATE_LIMITS.bodyMax);
   assertOverlayRespectsFloor(platform, { body });
   if (!overlay.isEnabled && platform.requiredPhrases.length > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "TEMPLATE_FLOOR_VIOLATION",
       "This template carries required platform wording and cannot be hidden.",
       422,
@@ -248,8 +248,8 @@ export function prepareOverlay(
 /** Case-insensitive uniqueness key for a title within one owner scope (the DB index is lower(title)). */
 export const titleKey = (title: string): string => title.trim().toLowerCase();
 
-export const titleTakenError = (): WardenXError =>
-  new WardenXError("TEMPLATE_TITLE_TAKEN", "A saved reply with this title already exists.", 409);
+export const titleTakenError = (): ChartWardenError =>
+  new ChartWardenError("TEMPLATE_TITLE_TAKEN", "A saved reply with this title already exists.", 409);
 
-export const limitReachedError = (): WardenXError =>
-  new WardenXError("TEMPLATE_LIMIT_REACHED", "The saved reply limit has been reached.", 409);
+export const limitReachedError = (): ChartWardenError =>
+  new ChartWardenError("TEMPLATE_LIMIT_REACHED", "The saved reply limit has been reached.", 409);

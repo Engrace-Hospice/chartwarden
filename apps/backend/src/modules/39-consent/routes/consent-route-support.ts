@@ -4,7 +4,7 @@
 // move: no behaviour differs from when these lived inline.
 import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { ConsentRouteError } from "@wardenx/consent";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentStaffActor } from "../access-scope";
 import { accessActorOf } from "./consent-guards";
@@ -66,9 +66,9 @@ export const nowIso = (): string => new Date().toISOString();
 
 export function mapError(e: unknown): never {
   if (e instanceof ConsentRouteError) {
-    if (e.code === "not_found") throw new WardenXError("NOT_FOUND", e.message, 404);
-    if (e.code === "validation") throw new WardenXError("VALIDATION_FAILED", e.message, 422);
-    throw new WardenXError("CONFLICT", e.message, 409);
+    if (e.code === "not_found") throw new ChartWardenError("NOT_FOUND", e.message, 404);
+    if (e.code === "validation") throw new ChartWardenError("VALIDATION_FAILED", e.message, 422);
+    throw new ChartWardenError("CONFLICT", e.message, 409);
   }
   throw e;
 }
@@ -88,7 +88,7 @@ export function deriveStaffRevocationAttribution(claimedKind: string): {
 } {
   const kind = STAFF_ROUTE_REVOKER_KINDS.find((k) => k === claimedKind);
   if (!kind) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       `revokedByKind '${claimedKind}' is not accepted on the staff revoke route`,
       422,

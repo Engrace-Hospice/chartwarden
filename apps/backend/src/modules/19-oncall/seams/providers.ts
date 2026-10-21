@@ -56,7 +56,7 @@ import {
   type TriageDisposition,
   type TriageEscalationTier,
   type TriageMetricsWindow,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { OncallSeamStore, PortalTriageCallRow, RnCoverageRead } from "./store";
 
@@ -81,7 +81,7 @@ export const defaultOncallSeamClock: OncallSeamClock = () => new Date().toISOStr
 export function assertCallerOrg(orgOf: OncallSeamOrgResolver, orgId: OrgId): void {
   const ambient = orgOf();
   if (ambient !== "" && ambient !== orgId) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "TRIAGE_SEAM_ORG_MISMATCH",
       "on-call seam called with an organization id that is not the caller's scope",
       403,

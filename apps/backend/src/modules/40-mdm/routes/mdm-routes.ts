@@ -21,7 +21,7 @@ import { requireStepUp } from "@wardenx/auth";
 // resolves of the duplicate id keep returning the survivor via the redirect throughout (the T04
 // engine over the post-merge store).
 import type { MdmEntityKind, MdmEntityProvider, MdmResolved, MdmRouteService } from "@wardenx/mdm";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   BaaBodySchema,
@@ -75,7 +75,7 @@ const MERGE_APPROVE = requireAbac("mdm.merge.approve", PLATFORM_PREDICATE) as Pr
 const CANONICAL_WRITE = requireAbac("mdm.canonical.write", PLATFORM_PREDICATE) as PreHandler;
 const STEP_UP = requireStepUp("mdm.merge.approve") as PreHandler;
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 /** Resolve one entity by kind through the seam (the merge-redirect is followed inside the provider). */
 function resolveByKind(
@@ -154,7 +154,7 @@ export function registerMdmRoutes(app: FastifyInstance, deps: MdmRouteDeps): voi
       if (kind !== "physician") {
         // Only the physician kind ships a Phase-1 overlay table (manifest §3.4); others have nowhere
         // to write an overlay yet — a clear 422 rather than a silent no-op.
-        throw new WardenXError("NOT_SUPPORTED", `${kind} has no tenant overlay in Phase 1`, 422);
+        throw new ChartWardenError("NOT_SUPPORTED", `${kind} has no tenant overlay in Phase 1`, 422);
       }
       const b = parse(OverlayBodySchema, request.body);
       const { applied } = await service.upsertPhysicianOverlay(

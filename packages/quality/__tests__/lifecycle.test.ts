@@ -33,12 +33,12 @@ import {
 //
 // PURE: no DB / Valkey / BullMQ — every reducer is `(state, event) → state(+effects)` and every guard fact
 // is injected on the event (the M33 `refresh.test.ts` / M30 `measure-registrations.test.ts` idiom). Each
-// test asserts an OBSERVABLE outcome (next state, effect list, or the precise WardenXError `code`/status),
+// test asserts an OBSERVABLE outcome (next state, effect list, or the precise ChartWardenError `code`/status),
 // never a tautology.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
-/** Assert `fn` throws a WardenXError carrying the exact `code` (+ optional HTTP status). */
+/** Assert `fn` throws a ChartWardenError carrying the exact `code` (+ optional HTTP status). */
 function expectWardenError(fn: () => unknown, code: string, status?: number): void {
   let thrown: unknown;
   try {
@@ -46,8 +46,8 @@ function expectWardenError(fn: () => unknown, code: string, status?: number): vo
   } catch (e) {
     thrown = e;
   }
-  expect(thrown).toBeInstanceOf(WardenXError);
-  const err = thrown as WardenXError;
+  expect(thrown).toBeInstanceOf(ChartWardenError);
+  const err = thrown as ChartWardenError;
   expect(err.code).toBe(code);
   if (status !== undefined) expect(err.statusCode).toBe(status);
 }

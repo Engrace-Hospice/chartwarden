@@ -1,4 +1,4 @@
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
@@ -191,7 +191,7 @@ export function buildM23OutboxBackedSubmissionGate(
         GATED_QUEUES.has(queueName) ||
         [...M23_SUBMISSION_REQUEST_EVENTS].some((event) => event.includes(queueName));
       if (!known || !isEnabled(queueName)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SEAM_UNBOUND",
           `billing worker capability '${queueName}' is not available`,
           503,

@@ -187,7 +187,7 @@ export interface MentionCandidate {
 
 /**
  * The §4.1–4.2 application service the M36 routes compose over. Mutations are idempotent where
- * the spec calls for it (openDm, markRead). Domain failures throw `WardenXError` subclasses the
+ * the spec calls for it (openDm, markRead). Domain failures throw `ChartWardenError` subclasses the
  * M1 error handler renders (NOT_FOUND 404, CHANNEL_ARCHIVED 410, CHANNEL_NOT_VISIBLE 403,
  * SYSTEM_LOCKED 403, INVALID_RESOLVER 422, INVALID_ROUTING_MAP 422, VACATION_FORWARD_* 409).
  */

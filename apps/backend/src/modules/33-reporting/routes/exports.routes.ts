@@ -17,7 +17,7 @@ import {
   CsvExportRowCapExceeded,
   PdfRowLimitExceeded,
 } from "@wardenx/reporting";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -80,7 +80,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
       // §4.8 cap: refuse over-cap BEFORE any byte streams (no partial response). 413 is a normal JSON reply.
       const estimate = await service.estimateCsvExport(actor, id, query);
       if (estimate.estimatedRowCount > CSV_EXPORT_ROW_CAP) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "EXPORT_ROW_CAP_EXCEEDED",
           `estimated ${estimate.estimatedRowCount} rows exceeds the CSV cap of ${CSV_EXPORT_ROW_CAP}`,
           413,
@@ -128,7 +128,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         return reply.code(202).send(res);
       } catch (err) {
         if (err instanceof PdfRowLimitExceeded) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "PDF_ROW_LIMIT_EXCEEDED",
             `pdf export row limit ${err.rowLimit} exceeds the cap of ${err.cap} rows`,
             413,

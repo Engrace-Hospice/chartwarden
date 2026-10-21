@@ -77,7 +77,7 @@ import {
   type VisitSetting,
   type VisitStatus,
 } from "@wardenx/types";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
@@ -2269,7 +2269,7 @@ export function createDbSchedulingBackend(
     routeEfficiencyMetrics(_orgId: string, _membershipId: string) {
       // GAP-131 — route optimisation is OFF (Phase 1), so there is no proposed-mileage or override data to
       // aggregate. A fabricated zero would read as a real measurement; refuse instead.
-      throw new WardenXError(
+      throw new ChartWardenError(
         "NOT_IMPLEMENTED",
         "route-efficiency metrics are unavailable until route optimisation is enabled",
         501,

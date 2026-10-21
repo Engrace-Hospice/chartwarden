@@ -45,7 +45,7 @@ export interface SessionInfo {
   readonly activeOrganizationId?: string | null;
 }
 
-export interface WardenxAuthClient {
+export interface ChartWardenAuthClient {
   signIn: {
     email(input: { email: string; password: string }): Promise<SignInResult>;
     username(input: { username: string; password: string }): Promise<SignInResult>;
@@ -91,9 +91,9 @@ export interface WardenxAuthClient {
  * serves `/api/auth/*` under; omit it in the browser to use the current origin (the Vite dev proxy
  * forwards /api to the backend).
  */
-export function createWardenxAuthClient(baseURL?: string): WardenxAuthClient {
+export function createChartWardenAuthClient(baseURL?: string): ChartWardenAuthClient {
   return createAuthClient({
     ...(baseURL ? { baseURL } : {}),
     plugins: [twoFactorClient(), usernameClient(), passkeyClient()],
-  }) as unknown as WardenxAuthClient;
+  }) as unknown as ChartWardenAuthClient;
 }

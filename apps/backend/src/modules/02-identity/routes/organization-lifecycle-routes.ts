@@ -13,7 +13,7 @@
 // wants to attribute the transition to, which may be a platform-ops actor's membership in a
 // DIFFERENT org than the one being suspended).
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   OrganizationLifecycleEvent,
@@ -68,7 +68,7 @@ export function registerOrganizationLifecycleRoutes(
     async (request, reply) => {
       const { organizationId } = request.params as { organizationId: string };
       if (!organizationId)
-        throw new WardenXError("VALIDATION_FAILED", "organizationId is required", 400);
+        throw new ChartWardenError("VALIDATION_FAILED", "organizationId is required", 400);
       const event = readEvent(request.body);
       const reason = readReason(request.body);
       const ctx = request.context;

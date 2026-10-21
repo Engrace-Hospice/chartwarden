@@ -34,7 +34,7 @@ import {
   ClaimVoidRequest,
   ManualValidateRequest,
 } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
 import type { ClaimAssemblyService } from "../services/claim-assembly";
@@ -69,8 +69,8 @@ export interface ClaimsRouteDeps {
 const BROAD_DRAFT_EDIT_ROLES: ReadonlySet<string> = new Set(["billing_manager", "biller"]);
 
 /** 403 FIELD_OUT_OF_SCOPE — a Coder-restricted actor carried a non-ICD field on the DRAFT PATCH (§6). */
-function fieldOutOfScope(field: string): WardenXError {
-  return new WardenXError(
+function fieldOutOfScope(field: string): ChartWardenError {
+  return new ChartWardenError(
     "FIELD_OUT_OF_SCOPE",
     `the coder role may only edit the claim's ICD-10 list + sequencing; '${field}' is out of scope`,
     403,

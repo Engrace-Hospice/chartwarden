@@ -8,7 +8,7 @@
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
 import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { DegradedError, NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   RECORDS_REQUEST_FILEABLE,
@@ -448,14 +448,14 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const rr = await deps.recordsRequests?.findForLink(organizationId, body.recordsRequestId);
       if (!rr) throw new NotFoundError("records_request");
       if (!RECORDS_REQUEST_FILEABLE.has(rr.status)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "RECORDS_REQUEST_CANCELLED",
           "this records request was cancelled; records cannot be filed against it",
           409,
         );
       }
       if (referralId && referralId !== rr.referralId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "RECORDS_REQUEST_REFERRAL_CONFLICT",
           "this records request belongs to a different referral than the one named",
           409,
@@ -471,7 +471,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       });
       if (!subject) throw new NotFoundError("referral");
       if (subject.patientId && patientId && subject.patientId !== patientId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "REFERRAL_PATIENT_CONFLICT",
           "this referral is resolved to a different patient than the one named",
           409,

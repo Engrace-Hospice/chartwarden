@@ -37,7 +37,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
 import {
@@ -336,60 +336,60 @@ export function actionItemNotAssigneeError(): ForbiddenError {
   return new ForbiddenError("only the assignee or an IDG coordinator may update this action item");
 }
 /** GAP-127 — 409: an action item of an adjourned meeting is part of the closed record and cannot be removed. */
-export function actionItemMeetingAdjournedError(): WardenXError {
-  return new WardenXError(
+export function actionItemMeetingAdjournedError(): ChartWardenError {
+  return new ChartWardenError(
     "MEETING_ADJOURNED",
     "the meeting is adjourned: its action items can no longer be removed",
     409,
   );
 }
 /** The 422 for a note write on a meeting that is neither `live` nor (in-window) `adjourned`. */
-export function noteMeetingNotLiveError(): WardenXError {
-  return new WardenXError(
+export function noteMeetingNotLiveError(): ChartWardenError {
+  return new ChartWardenError(
     "MEETING_NOT_LIVE",
     "discipline notes may only be written while the meeting is live, or as a late addendum after it is adjourned",
     422,
   );
 }
 /** The 422 for an edit of a note that is FROZEN (original note of an adjourned meeting) or of a non-live meeting. */
-export function noteFrozenError(): WardenXError {
-  return new WardenXError(
+export function noteFrozenError(): ChartWardenError {
+  return new ChartWardenError(
     "MEETING_NOT_LIVE",
     "the meeting is no longer live: its notes are frozen; record a late addendum instead",
     422,
   );
 }
 /** The 422 for a PATCH of a late addendum (append-only; a correction is a further addendum). */
-export function addendumImmutableError(): WardenXError {
-  return new WardenXError(
+export function addendumImmutableError(): ChartWardenError {
+  return new ChartWardenError(
     "ADDENDUM_IMMUTABLE",
     "a late addendum cannot be edited; record a further addendum to correct it",
     422,
   );
 }
 /** The 422 for an addendum attempted after {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days past adjournment. */
-export function addendumWindowClosedError(): WardenXError {
-  return new WardenXError(
+export function addendumWindowClosedError(): ChartWardenError {
+  return new ChartWardenError(
     "ADDENDUM_WINDOW_CLOSED",
     `late addenda are only accepted within ${DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days of adjournment`,
     422,
   );
 }
 /** The 422 for an addendum without a (non-blank) reason. */
-export function addendumReasonRequiredError(): WardenXError {
-  return new WardenXError("ADDENDUM_REASON_REQUIRED", "a late addendum requires a reason", 422);
+export function addendumReasonRequiredError(): ChartWardenError {
+  return new ChartWardenError("ADDENDUM_REASON_REQUIRED", "a late addendum requires a reason", 422);
 }
 /** The 422 for a patient-scoped addendum when a NEWER ADJOURNED IDG meeting has included that patient (WINDOW B). */
-export function addendumSupersededError(): WardenXError {
-  return new WardenXError(
+export function addendumSupersededError(): ChartWardenError {
+  return new ChartWardenError(
     "ADDENDUM_SUPERSEDED_BY_NEWER_IDG",
     "a late addendum for this patient is no longer accepted: a more recent IDG meeting that included the patient has since been adjourned; record the note in the patient's current IDG instead",
     422,
   );
 }
 /** The retryable 503 when the WINDOW B eligibility lookup itself fails (fail-closed: never allow on error). */
-export function addendumEligibilityUnavailableError(): WardenXError {
-  return new WardenXError(
+export function addendumEligibilityUnavailableError(): ChartWardenError {
+  return new ChartWardenError(
     "ADDENDUM_ELIGIBILITY_UNAVAILABLE",
     "could not verify whether a newer IDG meeting supersedes this addendum; please retry",
     503,
@@ -444,8 +444,8 @@ export function normalizeNoteReason(reason: string | null | undefined): string |
   return t.length > 0 ? t : null;
 }
 /** The 422 for a note about a patient who is not on the meeting's caseload (URL-tamper defense, §2.3 D9). */
-export function noteInclusionError(): WardenXError {
-  return new WardenXError(
+export function noteInclusionError(): ChartWardenError {
+  return new ChartWardenError(
     "INCLUSION_CRITERIA_FAILED",
     "the patient is not on this meeting's agenda",
     422,
@@ -480,7 +480,7 @@ export function assertMayWriteDisciplineNote(
 /** 412 STALE_VERSION when the `If-Match` version no longer matches the row (optimistic concurrency, §7.7). */
 export function assertNoteVersion(expected: number, current: number): void {
   if (expected !== current) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "STALE_VERSION",
       `stale write: expected row version ${expected} but current is ${current}`,
       412,
@@ -489,8 +489,8 @@ export function assertNoteVersion(expected: number, current: number): void {
 }
 
 /** 412 STALE_VERSION when the row moved between the version check and the guarded write (a lost race). */
-export function staleRowError(readVersion: number): WardenXError {
-  return new WardenXError(
+export function staleRowError(readVersion: number): ChartWardenError {
+  return new ChartWardenError(
     "STALE_VERSION",
     `stale write: the row changed after version ${readVersion} was read; re-read and retry`,
     412,
@@ -1270,7 +1270,7 @@ export function createInMemoryIdgBackend(
         if (o.organizationId !== orgId || o.locationId !== args.locationId) continue;
         if (o.status === "cancelled" || o.status === "rescheduled") continue;
         if (Date.parse(o.scheduledStart) < e && Date.parse(o.scheduledEnd) > s) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "IDG_MEETING_OVERLAP",
             "another IDG meeting at this location overlaps the requested window",
             409,

@@ -8,7 +8,7 @@ import {
   type EscalationRouteAnswer,
   type EscalationRouteRequest,
   type EscalationRouter,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import {
   type ShiftSchedule,
@@ -39,8 +39,8 @@ export interface InMemoryEscalationRouterOptions {
 
 const SOURCE = "in_memory_fake" as const;
 
-function bad(code: string, message: string, status = 400): WardenXError {
-  return new WardenXError(code, message, status);
+function bad(code: string, message: string, status = 400): ChartWardenError {
+  return new ChartWardenError(code, message, status);
 }
 
 function validateLadders(ladders: readonly FakeLadder[]): void {

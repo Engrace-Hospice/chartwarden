@@ -2208,7 +2208,7 @@ Ordered P0 to P3 (no P0 was reported); within a severity, by gap id. Sweep the Â
       "title": "POST /api/v1/provider-entities always returns 503 TAX_ID_CIPHER_UNBOUND in production because mountOrgAdminRoutes is never given a taxIdCipher",
       "evidence": [
         "apps/backend/src/index.ts:3889-3894 `mountOrgAdminRoutes(app, dbHandle.db, { outbox: m2OutboxPublisher })` with comment that the cipher is not bound",
-        "apps/backend/src/modules/02-identity/routes/org-admin-routes.ts:223-230 throws WardenXError(\"TAX_ID_CIPHER_UNBOUND\", ..., 503) when deps.taxIdCipher is absent"
+        "apps/backend/src/modules/02-identity/routes/org-admin-routes.ts:223-230 throws ChartWardenError(\"TAX_ID_CIPHER_UNBOUND\", ..., 503) when deps.taxIdCipher is absent"
       ],
       "verified": false,
       "recommended_fix": "Bind a TaxIdCipherPort over the M34 tenant key ring (tenant-kek.ts) at the composition root and add a live create-PE test.",
@@ -2815,7 +2815,7 @@ Ordered P0 to P3 (no P0 was reported); within a severity, by gap id. Sweep the Â
       "module": "M17",
       "title": "GET /metrics/route-efficiency always returns 501; proposal sources m11/m14/m15 are never produced",
       "evidence": [
-        "scheduling-route-service-db.ts:2267-2275 throws WardenXError NOT_IMPLEMENTED 501.",
+        "scheduling-route-service-db.ts:2267-2275 throws ChartWardenError NOT_IMPLEMENTED 501.",
         "M17 consumers handle only m7.care_plan.version_signed (consumers/care-plan-proposals.ts:36-43). There is no consumer of m11.order_requires_visit or idg.decision_recorded (consumers/index.ts:12-14 says they are 'wired by M17-T04', but they are not). SupervisoryCadenceReader is exported (seams/consumed.ts:40) but never called.",
         "grep: m11.order_requires_visit has no producer in M11; the only generated source is frequency_driven_m7 (scheduling-route-service-db.ts:1816). Proposals never move to 'stale' (spec 2.2.4)."
       ],
@@ -2997,7 +2997,7 @@ Ordered P0 to P3 (no P0 was reported); within a severity, by gap id. Sweep the Â
       "title": "Spec routes still unbuilt: right-of-access PHI bundle export fails closed (503) and template-version publish returns 501",
       "evidence": [
         "apps/backend/src/modules/22-documents/documents-route-service-db.ts:786-794 exportPhiBundle throws DegradedError('m22.export-phi-bundle'); the route is registered at routes/documents-routes.ts:419-432 with step-up and ABAC but produces nothing",
-        "documents-route-service-db.ts:1192-1199 publishTemplateVersion throws WardenXError NOT_IMPLEMENTED 501; routes/documents-routes.ts:740 exposes the publish route",
+        "documents-route-service-db.ts:1192-1199 publishTemplateVersion throws ChartWardenError NOT_IMPLEMENTED 501; routes/documents-routes.ts:740 exposes the publish route",
         "Spec \u00a74.1 row 11 / \u00a78.9 (164.524 export, document.phi_bundle_exported alert) and \u00a74.7 form_template_publish_authority"
       ],
       "verified": true,
@@ -4035,7 +4035,7 @@ Ordered P0 to P3 (no P0 was reported); within a severity, by gap id. Sweep the Â
       "module": "M36",
       "title": "on_call, bereavement, discipline and location channels are never created or synced (501 NOT_IMPLEMENTED); only care_team and announcement exist",
       "evidence": [
-        "apps/backend/src/modules/36-messaging/messaging-provider-db.ts:69-74 notWired throws WardenXError NOT_IMPLEMENTED 501",
+        "apps/backend/src/modules/36-messaging/messaging-provider-db.ts:69-74 notWired throws ChartWardenError NOT_IMPLEMENTED 501",
         "messaging-provider-db.ts:82 openChannel('bereavement') -> notWired; lines 303-308 syncOnCallChannel/syncBereavementChannel -> notWired",
         "grep -rn 'syncOnCallChannel\\|syncBereavementChannel\\|openBereavementChannel' apps packages: no caller outside the provider",
         "no discipline/location sync code exists (spec \u00a73.1 lists discipline-sync.ts and location-sync.ts)",
@@ -4349,7 +4349,7 @@ Ordered P0 to P3 (no P0 was reported); within a severity, by gap id. Sweep the Â
         "spec \u00a77.6, \u00a74.2 approve route"
       ],
       "verified": true,
-      "recommended_fix": "Add repoint jobs or a documented redirect-only contract, emit the merge/promotion events through the 0186 platform insert, and map the PG exceptions to WardenXError 409/422 per \u00a74.2.",
+      "recommended_fix": "Add repoint jobs or a documented redirect-only contract, emit the merge/promotion events through the 0186 platform insert, and map the PG exceptions to ChartWardenError 409/422 per \u00a74.2.",
       "verification": "read 0205 lines 95-165 and cron-workers.ts header",
       "prior_gap_ids": []
     },

@@ -56,7 +56,7 @@ import {
   transitionTenant,
 } from "@wardenx/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type InvitationDeliveryPort,
@@ -567,7 +567,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             sideEffectsRecorded: { queue: "tenant.provision" },
           });
         } else if (existing.status !== "provisioning") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ILLEGAL_TENANT_TRANSITION",
             `tenant cannot provision from '${existing.status}'`,
             409,
@@ -644,7 +644,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       return inPlatformCtx("platform-ops request tenant shred", async (tx) => {
         const { account } = await loadByOrgSlug(tx, orgSlug);
         if (account.status !== "destruction_pending") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ILLEGAL_TENANT_TRANSITION",
             "shred requires status='destruction_pending'",
             409,
@@ -672,7 +672,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const { account } = await loadByOrgSlug(tx, orgSlug);
         const keyRing = await new TenantKeyRingRepository(tx).findByTenantAccountId(account.id);
         if (!keyRing || keyRing.destroyedAt || !keyRing.currentDekKekWrappedCiphertext) {
-          throw new WardenXError("TENANT_KEY_UNAVAILABLE", "tenant key ring is unavailable", 409);
+          throw new ChartWardenError("TENANT_KEY_UNAVAILABLE", "tenant key ring is unavailable", 409);
         }
         const current = /^v(\d+)$/.exec(keyRing.currentDekVersion)?.[1];
         if (!current) throw new Error("malformed tenant DEK version");
@@ -703,7 +703,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         loadByOrgSlug(tx, orgSlug),
       );
       if (account.status !== "provisioning") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PROVISION_NOT_RETRYABLE",
           `only a tenant in 'provisioning' can be retried; this one is '${account.status}'`,
           409,
@@ -711,7 +711,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       }
       const result = await deps.provisionJobs.retry(account.id);
       if (result === "missing") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PROVISION_JOB_MISSING",
           "no provisioning job exists for this tenant; it was never enqueued or has been cleared",
           409,
@@ -719,7 +719,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       }
       if (result === "not_failed") {
         const { state } = await deps.provisionJobs.status(account.id);
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PROVISION_JOB_NOT_FAILED",
           `the provisioning job is '${state}', not failed — nothing to retry`,
           409,
@@ -755,7 +755,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       return inPlatformCtx("platform-ops issue invitation", async (tx) => {
         const { account } = await loadByOrgSlug(tx, args.orgSlug);
         if (!canInviteFirstAdmin(account.status)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TENANT_NOT_INVITABLE",
             `a first-admin invitation cannot be issued while the tenant is '${account.status}'`,
             409,
@@ -1027,7 +1027,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const intent = await repo.findIntentById(intentId);
         if (!intent) throw new NotFoundError("signup intent");
         if (intent.intentStatus !== "new") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ILLEGAL_INTENT_TRANSITION",
             `intent cannot qualify from '${intent.intentStatus}'`,
             409,
@@ -1093,7 +1093,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const intent = await repo.findIntentById(intentId);
         if (!intent) throw new NotFoundError("signup intent");
         if (intent.intentStatus !== "new") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ILLEGAL_INTENT_TRANSITION",
             `intent cannot reject from '${intent.intentStatus}'`,
             409,
@@ -1133,7 +1133,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.listByTenantAccountId(args.tenantAccountId);
         if (existing.some((b) => b.addendumVersion === args.addendumVersion)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "DUPLICATE_BAA_RECORD",
             "a BAA record for this addendum version exists",
             409,
@@ -1252,7 +1252,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         // release a whole-tenant PHI bundle alone — same control as break-glass's
         // `bge_cosigner_distinct`.
         if (job.requestingMembershipId === actorMembershipId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TENANT_EXPORT_SELF_APPROVAL",
             "oversized-hold approval requires a platform-ops actor distinct from the export requestor",
             403,
@@ -1264,7 +1264,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         // unheld job does).
         const [latest] = await repo.listEvents(jobId, { limit: 1 });
         if (job.status !== "generating" || latest?.eventKind !== "oversized_hold") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TENANT_EXPORT_NOT_HELD",
             "the bundle is not awaiting oversized-hold approval",
             409,
@@ -1280,7 +1280,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           !receipt.bundleSha256 ||
           typeof receipt.bundleSizeBytes !== "number"
         ) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TENANT_EXPORT_HOLD_INCOMPLETE",
             "the hold event is missing its bundle artifact handles",
             409,
@@ -1447,7 +1447,7 @@ export function lifecycleEventForStatus(
 ): LifecycleEvent {
   const k: LifecycleActorKind = "platform_ops";
   const illegal = (): never => {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ILLEGAL_TENANT_TRANSITION",
       `no platform-ops transition reaches status '${toStatus}' from '${fromStatus}'`,
       409,

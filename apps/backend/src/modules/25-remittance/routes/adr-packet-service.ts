@@ -15,7 +15,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   MAX_ADR_ENCLOSURES,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   buildAdrPacketRenderPayload,
 } from "@wardenx/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -125,7 +125,7 @@ const REFUSAL_MESSAGE: Readonly<Record<AdrSignOffRefusal | AdrFilingRefusal, str
 const CONFLICT_REFUSALS = new Set<string>(["REVIEWER_IS_ASSEMBLER", "NOT_SIGNED_OFF"]);
 
 function refuse(code: AdrSignOffRefusal | AdrFilingRefusal): never {
-  throw new WardenXError(code, REFUSAL_MESSAGE[code], CONFLICT_REFUSALS.has(code) ? 409 : 422);
+  throw new ChartWardenError(code, REFUSAL_MESSAGE[code], CONFLICT_REFUSALS.has(code) ? 409 : 422);
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -185,7 +185,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
 
   const requireState = (cur: { state: string }, state: string): void => {
     if (cur.state !== state) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ADR_WRONG_STATE",
         `this change needs the ADR to be '${state}', not '${cur.state}'`,
         409,
@@ -227,7 +227,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
   async function claimPatientId(organizationId: string, claimId: string): Promise<string> {
     const claim = await sources.claims().claimCopyForAppeal(organizationId, claimId);
     if (!claim) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ADR_CLAIM_UNAVAILABLE",
         "the claim for this ADR cannot be read, so documents cannot be validated",
         422,
@@ -239,7 +239,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
   return {
     async attachAdrDocument(actor, id, input, ifMatch) {
       if (input.checklistKey !== undefined && !isChecklistKey(input.checklistKey)) {
-        throw new WardenXError("INVALID_CHECKLIST_KEY", "unknown checklist item", 422);
+        throw new ChartWardenError("INVALID_CHECKLIST_KEY", "unknown checklist item", 422);
       }
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadCase(tx, actor, id);
@@ -249,14 +249,14 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
           .from(DOC)
           .where(and(eq(DOC.adrCaseId, id), isNull(DOC.removedAt)));
         if (live.length >= MAX_ADR_ENCLOSURES) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ADR_TOO_MANY_ENCLOSURES",
             `an ADR response carries at most ${MAX_ADR_ENCLOSURES} documents`,
             422,
           );
         }
         if (live.some((d) => d.documentId === input.documentId)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ADR_DUPLICATE_DOCUMENT",
             "that document is already attached",
             409,
@@ -305,7 +305,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
 
     async setAdrChecklistItem(actor, id, key, state, ifMatch) {
       if (!isChecklistKey(key)) {
-        throw new WardenXError("INVALID_CHECKLIST_KEY", "unknown checklist item", 422);
+        throw new ChartWardenError("INVALID_CHECKLIST_KEY", "unknown checklist item", 422);
       }
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadCase(tx, actor, id);
@@ -323,7 +323,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
         const cur = await loadCase(tx, actor, id);
         requireState(cur, "in_review");
         if (!cur.sentToReviewByMembershipId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ADR_ASSEMBLER_UNKNOWN",
             "who sent this packet to review is not recorded; send it to review again",
             409,
@@ -352,7 +352,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
     async submitAdr(actor, id, input, ifMatch) {
       const filedAt = new Date(input.filedAt);
       if (Number.isNaN(filedAt.getTime())) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_FILING_TIME",
           "the filing time is not a real date and time",
           422,
@@ -361,7 +361,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
       // No outbox, no retained copy: refuse rather than record a filing whose PDF would never be rendered.
       const outbox = ports.outbox;
       if (!outbox) {
-        throw new WardenXError("SEAM_UNBOUND", "the ADR packet outbox is not bound", 503);
+        throw new ChartWardenError("SEAM_UNBOUND", "the ADR packet outbox is not bound", 503);
       }
       const now = new Date();
       return withOrgContext(db, actor, async (tx) => {

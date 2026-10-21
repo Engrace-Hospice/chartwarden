@@ -18,7 +18,7 @@ import {
   type repositories,
   visitUnitChargeOn,
 } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 type NewClaimLineInput = repositories.NewClaimLineInput;
 
@@ -123,7 +123,7 @@ export function visitLineInputs(args: {
 }): NewClaimLineInput[] {
   const missing = missingVisitCharges(args.chargeVersions, args.result.lines);
   if (missing.length > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VISIT_CHARGE_MISSING",
       `the claim bills visits for ${[...missing].sort().join(", ")} but no visit charge is entered for that discipline on the visit date; enter the visit-charge schedule (POST /api/v1/billing/visit-charge-schedules, permission billing.visit_charge.admin) and retry`,
       422,
@@ -137,7 +137,7 @@ export function visitLineInputs(args: {
     );
     if (unitRateCents === null) {
       // `missingVisitCharges` above found a charge for every line, so this is a logic error — never bill it as free.
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VISIT_CHARGE_MISSING",
         `no visit charge resolved for ${visit.discipline} on ${visit.serviceDate} after the schedule check passed`,
         422,

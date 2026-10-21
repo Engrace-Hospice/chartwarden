@@ -13,7 +13,7 @@
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { ClaimAssemblySnapshot } from "../claim-lines/claim-snapshot";
 import type { ClaimPhysicianNpis } from "../claim-lines/physician-npis";
@@ -431,7 +431,7 @@ export class ClaimRepository {
     const current = await this.findById(id);
     if (current === null) return false;
     if (SNAPSHOT_MUTABLE_STATES.includes(current.state)) return false; // unchanged
-    throw new WardenXError(
+    throw new ChartWardenError(
       "CLAIM_SNAPSHOT_IMMUTABLE",
       `the snapshot of a claim in state '${current.state}' cannot be changed; only a draft, validating or ready claim's can`,
       409,

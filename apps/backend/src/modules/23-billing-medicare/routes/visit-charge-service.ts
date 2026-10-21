@@ -18,7 +18,7 @@ import {
 } from "@wardenx/billing";
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateVisitChargeBody,
@@ -160,7 +160,7 @@ export function buildDrizzleVisitChargeService(
       charges: chargesOfBody(body),
     });
     if (!v.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VISIT_CHARGE_INVALID",
         `invalid visit-charge schedule: ${v.errors.join("; ")}`,
         422,
@@ -169,8 +169,8 @@ export function buildDrizzleVisitChargeService(
     return v.effectiveTo;
   }
 
-  function overlapError(clash: schema.HospiceVisitChargeSchedule): WardenXError {
-    return new WardenXError(
+  function overlapError(clash: schema.HospiceVisitChargeSchedule): ChartWardenError {
+    return new ChartWardenError(
       "VISIT_CHARGE_OVERLAP",
       `the effective window overlaps live visit-charge schedule ${clash.id} (${clash.effectiveFrom}..${clash.effectiveTo ?? "open"}); supersede that version instead of entering a second one`,
       409,
@@ -219,7 +219,7 @@ export function buildDrizzleVisitChargeService(
       });
     } catch (err) {
       if (isExclusionViolation(err)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VISIT_CHARGE_OVERLAP",
           "the effective window overlaps a live visit-charge schedule entered concurrently",
           409,
@@ -247,7 +247,7 @@ export function buildDrizzleVisitChargeService(
           throw new NotFoundError("visit-charge schedule");
         }
         if (old.supersededAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VISIT_CHARGE_ALREADY_SUPERSEDED",
             `visit-charge schedule ${id} was already superseded by ${old.supersededById}`,
             409,
@@ -258,7 +258,7 @@ export function buildDrizzleVisitChargeService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VISIT_CHARGE_ALREADY_SUPERSEDED",
             `visit-charge schedule ${id} was already superseded`,
             409,

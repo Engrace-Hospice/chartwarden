@@ -27,7 +27,7 @@ import {
   voidTob,
 } from "@wardenx/medicaid-adapters";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
@@ -57,13 +57,13 @@ import type {
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-class ConflictError extends WardenXError {
+class ConflictError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 409);
     this.name = "ConflictError";
   }
 }
-class DegradedError extends WardenXError {
+class DegradedError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 503);
     this.name = "DegradedError";
@@ -263,7 +263,7 @@ export function buildDrizzleM24WriteService(
     }
     const resolved = await facilityNames.resolveFacility(orgId, facilityMdmId);
     if (!resolved) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "NF_FACILITY_NOT_FOUND",
         `no M40 facility resolves for '${facilityMdmId}' — pick the facility from the master-data list`,
         422,

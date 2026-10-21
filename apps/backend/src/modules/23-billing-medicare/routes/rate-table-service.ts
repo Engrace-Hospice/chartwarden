@@ -17,7 +17,7 @@ import {
 } from "@wardenx/billing";
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateRateTableBody,
@@ -116,7 +116,7 @@ export function buildDrizzleRateTableService(
   function validated(body: CreateRateTableBody | SupersedeRateTableBody): string {
     const v = validateRateTableEntry(body);
     if (!v.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "RATE_TABLE_INVALID",
         `invalid rate table: ${v.errors.join("; ")}`,
         422,
@@ -125,8 +125,8 @@ export function buildDrizzleRateTableService(
     return v.effectiveTo;
   }
 
-  function overlapError(clash: schema.HospiceRateTable): WardenXError {
-    return new WardenXError(
+  function overlapError(clash: schema.HospiceRateTable): ChartWardenError {
+    return new ChartWardenError(
       "RATE_TABLE_OVERLAP",
       `the effective window overlaps live rate table ${clash.id} (${clash.effectiveFrom}..${clash.effectiveTo ?? "open"}); supersede that version instead of entering a second one`,
       409,
@@ -179,7 +179,7 @@ export function buildDrizzleRateTableService(
       });
     } catch (err) {
       if (isExclusionViolation(err)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "RATE_TABLE_OVERLAP",
           "the effective window overlaps a live rate table entered concurrently",
           409,
@@ -207,7 +207,7 @@ export function buildDrizzleRateTableService(
           throw new NotFoundError("rate table");
         }
         if (old.supersededAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "RATE_TABLE_ALREADY_SUPERSEDED",
             `rate table ${id} was already superseded by ${old.supersededById}`,
             409,
@@ -218,7 +218,7 @@ export function buildDrizzleRateTableService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "RATE_TABLE_ALREADY_SUPERSEDED",
             `rate table ${id} was already superseded`,
             409,

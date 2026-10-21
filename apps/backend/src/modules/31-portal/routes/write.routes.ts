@@ -21,7 +21,7 @@
 // `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
 // composed in `./mount`.
 import type { MedicationOrderProvider } from "@wardenx/types";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { toPreferencesView } from "../provisioning/preferences";
@@ -55,7 +55,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** GAP-006 — M5's intake, or a 503: never a success the patient is told about while nothing is recorded. */
 function amendmentIntakeOf(deps: PortalRouteDeps) {
   if (!deps.amendmentIntake) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "AMENDMENT_INTAKE_UNAVAILABLE",
       "Amendment requests cannot be accepted right now. Please contact your care team.",
       503,
@@ -66,7 +66,7 @@ function amendmentIntakeOf(deps: PortalRouteDeps) {
 
 function caregiverAttestationOf(deps: PortalRouteDeps) {
   if (!deps.caregiverAttestation) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "CAREGIVER_ATTESTATION_UNAVAILABLE",
       "Dose attestations cannot be recorded right now. Please tell your care team directly.",
       503,
@@ -78,7 +78,7 @@ function caregiverAttestationOf(deps: PortalRouteDeps) {
 /** GAP-092 — the provisioning services, or a 503: never a success the caller is told about while nothing is stored. */
 export function provisioningOf(deps: PortalRouteDeps) {
   if (!deps.provisioning) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PORTAL_PROVISIONING_UNAVAILABLE",
       "This is not available right now. Please contact your care team.",
       503,
@@ -135,7 +135,7 @@ async function verifiedAmendmentTargetRef(
       "SignedEncountersReader",
     ).signedEncountersForPatientSince(organizationId, patientId, ALL_TIME);
   } catch {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "AMENDMENT_TARGET_UNVERIFIABLE",
       "We cannot check that visit right now. Please try again later or contact your care team.",
       503,
@@ -278,7 +278,7 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       } catch (error) {
         // GAP-159 - a validation refusal (4xx) is an upload_rejected event; the sanitized reason is the stable
         // error CODE, never pipeline detail (spec 7.8 step 7). A 5xx (unbound port) is not a rejection.
-        if (error instanceof WardenXError && error.statusCode < 500) {
+        if (error instanceof ChartWardenError && error.statusCode < 500) {
           await deps.events?.emit(
             actor.organizationId,
             "m31.portal_document.upload_rejected",
@@ -468,7 +468,7 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         patientId,
         actor.userId,
       );
-      if (!channel) throw new WardenXError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
+      if (!channel) throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
       const sent = await provider.sendMessage(actor.organizationId, {
         channelId: channel.channelId,
         authorUserId: actor.userId,
@@ -522,7 +522,7 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       // A bereaved family member who opts out must never be told "ok" while outreach continues: the opt-out is
       // M16's own D9 transition (it cancels the contact's future outreach), or the call refuses.
       if (!deps.bereavementOptOut) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "BEREAVEMENT_OPT_OUT_UNAVAILABLE",
           "Opting out is not available right now. Please contact your care team.",
           503,

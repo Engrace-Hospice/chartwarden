@@ -23,7 +23,7 @@ import {
   type RetentionClassDto,
   type RetentionOverviewDto,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import {
@@ -341,11 +341,11 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
       return inTx(actor, async (tx) => {
         const row = await requireHold(tx, actor.organizationId, id);
         if (row.status === "released") {
-          throw new WardenXError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
+          throw new ChartWardenError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
         }
         const eligible = await eligibleOnRelease(tx, actor.organizationId, row);
         if (eligible !== body.confirmed_eligible_count) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             RELEASE_PREVIEW_STALE_CODE,
             "the number of messages this release makes eligible changed; review the preview again",
             409,

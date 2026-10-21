@@ -27,7 +27,7 @@ import {
   type HandoffItemState,
   type HandoffPolicyView,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
@@ -119,8 +119,8 @@ const MS_PER_MINUTE = 60_000;
 
 /** One refusal for missing / not a participant: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("clinical_handoff");
-const typed = (code: string, message: string, status: number): WardenXError =>
-  new WardenXError(code, message, status);
+const typed = (code: string, message: string, status: number): ChartWardenError =>
+  new ChartWardenError(code, message, status);
 const recipientInvalid = () =>
   typed("HANDOFF_RECIPIENT_INVALID", "this person cannot receive a handoff", 422);
 const itemInvalid = () =>

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/26-cap/routes/concurrency.ts — keyset-pagination cursor helpers + the
 // Idempotency-Key presence guard (the M25/M27 precedent). A cursor is the base64url of `{ts,id}`; pages
 // order by `(anchor DESC, id DESC)`.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { PreHandler } from "./actor";
 
 /** §F08 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */
@@ -10,7 +10,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required",
         400,

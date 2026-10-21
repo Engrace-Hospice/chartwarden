@@ -69,7 +69,7 @@ import {
   ACK_ESCALATION_REQUIRED_ROLE,
   DegradedError,
   type Npi,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type {
   AdmissionStatusReader,
@@ -1707,7 +1707,7 @@ export function wireModuleSeams(
     caseloadShiftCacheRedis?: Redis | null;
     /** WP 3.7 - the ONE message-body cipher the messaging provider and the chart-promotion snapshot reader share. */
     messageBodyCipher?: ReturnType<typeof createMessageBodyCipher>;
-    /** Told how many orgs the real M19 EscalationRouter was bound for (0 when none), so the boot probe in `bootWardenX` can stay quiet about the deny-stub. */
+    /** Told how many orgs the real M19 EscalationRouter was bound for (0 when none), so the boot probe in `bootChartWarden` can stay quiet about the deny-stub. */
     onEscalationRouterBound?: (boundOrgCount: number) => void;
     /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
     promotionSource?: ChartPromotionSourceReader;
@@ -2965,7 +2965,7 @@ function buildFirstAdminAcceptanceService(deps: {
   auditBypass: PlatformBypassAuditor<DbClient>;
 }): SignupIntentRouteService {
   const disabled = (): never => {
-    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+    throw new ChartWardenError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
   };
   return {
     async createIntent() {
@@ -2992,10 +2992,10 @@ function buildFirstAdminAcceptanceService(deps: {
             .limit(1)
             .for("update");
           if (!invitation) {
-            throw new WardenXError("INVITATION_INVALID", "invitation is invalid", 404);
+            throw new ChartWardenError("INVITATION_INVALID", "invitation is invalid", 404);
           }
           if (invitation.status !== "pending" || invitation.expiresAt <= new Date()) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVITATION_INVALID",
               "invitation is expired or already used",
               409,
@@ -3012,7 +3012,7 @@ function buildFirstAdminAcceptanceService(deps: {
             // so a tenant suspended between this check and the membership insert cannot slip an admin in.
             .for("share");
           if (!tenant || !canInviteFirstAdmin(tenant.status)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVITATION_INVALID",
               "invitation is expired or already used",
               409,
@@ -3124,7 +3124,7 @@ function buildFirstAdminAcceptanceService(deps: {
             )
             .returning({ id: schema.tenantInvitation.id });
           if (consumed.length !== 1) {
-            throw new WardenXError("INVITATION_INVALID", "invitation was already used", 409);
+            throw new ChartWardenError("INVITATION_INVALID", "invitation was already used", 409);
           }
           return invitation.inviteeEmail.trim().toLowerCase();
         },
@@ -3267,7 +3267,7 @@ function buildM23AssemblyPorts(db: DbClient): {
   return { providerCcn, assemblyPorts };
 }
 
-export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<void> {
+export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promise<void> {
   // GAP-086 — `listener` is the M29 MLLP listener process (§4.11: a SIBLING process to the API for crash isolation). It
   // boots the same composition root (seams, tenancy, key ring) but, like `api`, constructs NO BullMQ workers / crons / outbox
   // dispatcher — it only binds the feed listeners and serves /health on `LISTENER_HEALTH_PORT`.
@@ -5876,7 +5876,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   contactsOptedOut += 1;
                 }
                 if (contactsOptedOut === 0 && alreadyOptedOut === 0) {
-                  throw new WardenXError(
+                  throw new ChartWardenError(
                     "BEREAVEMENT_OPT_OUT_NOT_AVAILABLE",
                     "there is no bereavement contact on this account that can opt out right now",
                     409,
@@ -6398,7 +6398,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               if (relativePath !== "/two-factor/disable" || !actor) return;
               const verdict = await mfaGate.forUserWithoutTotp(actor.userId);
               if (!verdict.satisfied)
-                throw new WardenXError(
+                throw new ChartWardenError(
                   "MFA_REQUIRED_FOR_ROLE",
                   "your role requires a second factor; it cannot be disabled",
                   403,
@@ -11901,8 +11901,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
 }
 
 if ((import.meta as { main?: boolean }).main) {
-  // Start only when run directly (not when imported by tests/tooling/worker.ts) — see `bootWardenX`.
-  await bootWardenX((process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all");
+  // Start only when run directly (not when imported by tests/tooling/worker.ts) — see `bootChartWarden`.
+  await bootChartWarden((process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all");
 }
 
 /**

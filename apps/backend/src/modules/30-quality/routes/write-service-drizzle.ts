@@ -54,7 +54,7 @@ import {
   validateIncidentKindData,
 } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 import { ROLE_QAPI_COORDINATOR, ROLE_SECURITY_OFFICER } from "../abac-predicates";
 import { createOrGetLiveExportJob, toCahpsExportJobView } from "../cahps/export-job-store";
@@ -377,7 +377,7 @@ export function buildDrizzleM30WriteService(
   const providerEntity: ProviderEntityPort = ports.providerEntity ?? {
     async primaryProviderEntityId() {
       // Fail-closed: the composition root MUST bind this before provider-scoped inserts succeed.
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PROVIDER_ENTITY_UNRESOLVED",
         "no provider-entity resolver is bound; cannot stamp provider_entity_id server-side",
         503,
@@ -781,7 +781,7 @@ export function buildDrizzleM30WriteService(
       if (args.configuration !== undefined) {
         const factory = ports.cahpsAdapterFactories?.[args.vendorAdapterId as CahpsVendorAdapterId];
         if (!ports.cahpsCipher || !factory) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CAHPS_CONFIGURATION_UNAVAILABLE",
             "this deployment cannot store a CAHPS vendor configuration (no tenant key cipher / adapter factory bound)",
             503,
@@ -791,7 +791,7 @@ export function buildDrizzleM30WriteService(
           args.configuration as Record<string, unknown>,
         );
         if (!verdict.ok) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VALIDATION_FAILED",
             `the CAHPS vendor configuration is invalid: ${verdict.errors
               .map((e) => `${e.field}: ${e.reason}`)
@@ -1589,7 +1589,7 @@ export function buildDrizzleM30WriteService(
           subkind !== undefined &&
           !isAllowedSubkind(args.kind, subkind)
         ) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VALIDATION_FAILED",
             `'${subkind}' is not a valid exposure subkind`,
             422,

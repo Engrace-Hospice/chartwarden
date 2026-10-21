@@ -8,7 +8,7 @@
 // never sees a real identity (per-participant short-TTL tokens), and the room url/token are cipher-only in
 // the row (never projected). The Record button is D9-gated by `state_two_party_recording_consent_present`
 // (+ step-up), composed in `./mount`; the webhooks verify the vendor HMAC before touching the row.
-import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
 import {
@@ -84,8 +84,8 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   };
 
   /** GAP-095 — every vendor-facing call that cannot be made refuses 503; nothing is fabricated or half-written. */
-  const vendorUnavailable = (what: string): WardenXError =>
-    new WardenXError(
+  const vendorUnavailable = (what: string): ChartWardenError =>
+    new ChartWardenError(
       "TELEHEALTH_VENDOR_UNAVAILABLE",
       `the telehealth vendor is unavailable: ${what}`,
       503,

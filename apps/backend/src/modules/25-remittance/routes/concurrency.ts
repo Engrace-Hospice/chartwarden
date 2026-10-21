@@ -3,13 +3,13 @@
 // Idempotency-Key presence guard, and the If-Match version parser the PATCH routes 412 on. Mirrors the
 // M27/M30 routes/concurrency.ts precedent: base64url JSON in the slice (HMAC-signed in prod); a malformed/
 // tampered cursor or a missing/invalid If-Match is a 400, never a page-from-start / blind write.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — a mutating route did not carry the required `Idempotency-Key` header. */
-export class IdempotencyKeyRequiredError extends WardenXError {
+export class IdempotencyKeyRequiredError extends ChartWardenError {
   constructor() {
     super("IDEMPOTENCY_KEY_REQUIRED", "an Idempotency-Key header is required on this route", 400);
     this.name = "IdempotencyKeyRequiredError";
@@ -17,7 +17,7 @@ export class IdempotencyKeyRequiredError extends WardenXError {
 }
 
 /** 400 IF_MATCH_REQUIRED — a PATCH route under optimistic concurrency lacked a valid If-Match version. */
-export class IfMatchRequiredError extends WardenXError {
+export class IfMatchRequiredError extends ChartWardenError {
   constructor() {
     super("IF_MATCH_REQUIRED", "a numeric If-Match header is required on this route", 400);
     this.name = "IfMatchRequiredError";
@@ -25,7 +25,7 @@ export class IfMatchRequiredError extends WardenXError {
 }
 
 /** 409 VERSION_CONFLICT — the persisted row version moved since the client last read it (§2.5). */
-export class VersionConflictError extends WardenXError {
+export class VersionConflictError extends ChartWardenError {
   constructor(currentVersion: number | null) {
     super(
       "VERSION_CONFLICT",
@@ -90,7 +90,7 @@ export function decodeCursor(raw: string | undefined): CursorKeyset | null {
   } catch {
     /* fallthrough to the 400 below */
   }
-  throw new WardenXError("VALIDATION_FAILED", "malformed pagination cursor", 400);
+  throw new ChartWardenError("VALIDATION_FAILED", "malformed pagination cursor", 400);
 }
 
 /** Clamp a page-size query param to [1, 100] with a default of 50. */

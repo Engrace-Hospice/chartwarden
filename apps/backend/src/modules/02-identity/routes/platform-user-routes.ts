@@ -27,7 +27,7 @@
 // them; the revoked ids ride on the audit row instead.
 import type { AuditContext } from "@wardenx/audit";
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditUserDeactivated } from "../audit/identity-audit";
 import type { IdentityRouteDeps } from "../identity-ports";
@@ -85,7 +85,7 @@ export function registerPlatformUserRoutes(
 
       const { outcome, memberOrganizationIds, revokedMemberships } =
         await deps.users.deactivateGlobally({ userId });
-      if (outcome === "not_found") throw new WardenXError("NOT_FOUND", "user not found", 404);
+      if (outcome === "not_found") throw new ChartWardenError("NOT_FOUND", "user not found", 404);
 
       const sessionsRevoked = await deps.sessions.revokeAllForUser(userId);
       if (outcome === "deactivated") {

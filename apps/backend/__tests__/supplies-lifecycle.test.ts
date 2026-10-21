@@ -54,7 +54,7 @@ const LORAZEPAM_LINE = "aaaaaaaa-0000-0000-0000-000000000002";
 const GLOVES_LINE = "aaaaaaaa-0000-0000-0000-000000000003";
 
 /**
- * Assert a guard raises the exact machine-readable code. `WardenXError.message` is prose for the
+ * Assert a guard raises the exact machine-readable code. `ChartWardenError.message` is prose for the
  * coordinator; the CODE is the contract the UI and the §7 tables key off, so the tests assert on it —
  * `toThrowError(/CODE/)` passes only when the prose happens to contain the token.
  */

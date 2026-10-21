@@ -15,7 +15,7 @@
 //   • ./schedule  D4 — the death-anchored cadence floor materialized into `bereavement_outreach` rows
 //   • ./cascades  §2.6 — the D9 patient-flag flip, the M39 consent-revocation cascade, the D6 roster close
 //   • ./validation §2.5 — the guards that belong to paths which do not move state (D18 gate, `If-Match`)
-//   • ./errors    the §2.5 / §4.2 code → status catalog on the M1 `WardenXError` envelope
+//   • ./errors    the §2.5 / §4.2 code → status catalog on the M1 `ChartWardenError` envelope
 export * from "./effects";
 export * from "./errors";
 export * from "./plan";

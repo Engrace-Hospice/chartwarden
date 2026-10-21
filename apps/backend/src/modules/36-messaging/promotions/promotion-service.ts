@@ -25,7 +25,7 @@ import {
   type ChartPromotionTargetModule,
   ForbiddenError,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   isChartPromotionTarget,
 } from "@wardenx/types";
 import { gateAdmits } from "../handoffs/handoff-eligibility";
@@ -126,18 +126,18 @@ export interface PromotionServiceDeps {
 
 /** One refusal for missing / not visible / no longer permitted / message gone / Part 2: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("chart_promotion_request");
-const targetInvalid = (): WardenXError =>
-  new WardenXError("PROMOTION_TARGET_INVALID", "that chart target is not available", 422);
-const suggestedInvalid = (): WardenXError =>
-  new WardenXError("PROMOTION_SUGGESTED_REF_INVALID", "the suggested meeting is not valid", 422);
-const notPatientLinked = (): WardenXError =>
-  new WardenXError(
+const targetInvalid = (): ChartWardenError =>
+  new ChartWardenError("PROMOTION_TARGET_INVALID", "that chart target is not available", 422);
+const suggestedInvalid = (): ChartWardenError =>
+  new ChartWardenError("PROMOTION_SUGGESTED_REF_INVALID", "the suggested meeting is not valid", 422);
+const notPatientLinked = (): ChartWardenError =>
+  new ChartWardenError(
     "PROMOTION_SOURCE_NOT_PATIENT_LINKED",
     "only a message in a patient's channel can be proposed for the chart",
     422,
   );
-const stateConflict = (): WardenXError =>
-  new WardenXError(
+const stateConflict = (): ChartWardenError =>
+  new ChartWardenError(
     "PROMOTION_STATE_CONFLICT",
     "the request is not in a state that allows this",
     409,

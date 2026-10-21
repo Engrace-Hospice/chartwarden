@@ -14,7 +14,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { type ChartPromotionDto, NotFoundError, WardenXError } from "@wardenx/types";
+import { type ChartPromotionDto, NotFoundError, ChartWardenError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -210,9 +210,9 @@ describe("POST /channels/:id/messages/:messageId/chart-promotions", () => {
 
   it("passes typed service errors through (422 not patient linked, 409 conflict)", async () => {
     const app = makeServer();
-    failWith = new WardenXError("PROMOTION_SOURCE_NOT_PATIENT_LINKED", "x", 422);
+    failWith = new ChartWardenError("PROMOTION_SOURCE_NOT_PATIENT_LINKED", "x", 422);
     const a = await call(app, "clinician", "POST", MSG_URL, body);
-    failWith = new WardenXError("PROMOTION_STATE_CONFLICT", "x", 409);
+    failWith = new ChartWardenError("PROMOTION_STATE_CONFLICT", "x", 409);
     const b = await call(app, "clinician", "POST", MSG_URL, body);
     expect([a.statusCode, code(a), b.statusCode, code(b)]).toEqual([
       422,
@@ -327,7 +327,7 @@ describe("GET /chart-promotions/:promotionId and POST .../withdraw", () => {
 
   it("withdraw by a non-requester surfaces the service's 403 and a closed request its 409", async () => {
     const app = makeServer();
-    failWith = new WardenXError("PROMOTION_STATE_CONFLICT", "x", 409);
+    failWith = new ChartWardenError("PROMOTION_STATE_CONFLICT", "x", 409);
     expect((await call(app, "clinician", "POST", `${BASE}/${P}/withdraw`)).statusCode).toBe(409);
     await app.close();
   });

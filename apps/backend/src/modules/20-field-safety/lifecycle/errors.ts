@@ -2,7 +2,7 @@
 //
 // Every guard failure in the M20 field-safety domain raises a `SafetyStateError` carrying the
 // machine-readable code the §7 workflow tables and the §4.2 route error blocks name. The error extends the
-// M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify
+// M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify
 // error handler renders the exact code + status with no cross-module import edge. Mirrors the M19
 // `TriageStateError` / M16 `BereavementStateError` precedent.
 //
@@ -18,7 +18,7 @@
 // — both are recorded FACTS on a delivered alert (M20-F16, §2.2.2), never refusals. The codes that DO exist
 // refuse writes that would make the record lie: a cancel after the window, a resolve with no outcome, a
 // location-stream sample the consent gates do not authorise.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The §2.3 / §7 machine-readable failure-code catalog → HTTP status. */
 export const M20_ERROR_STATUS = {
@@ -94,7 +94,7 @@ export type M20ErrorCode = keyof typeof M20_ERROR_STATUS;
  * can render an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.2 every
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class SafetyStateError extends WardenXError {
+export class SafetyStateError extends ChartWardenError {
   constructor(code: M20ErrorCode, message: string) {
     super(code, message, M20_ERROR_STATUS[code]);
     this.name = "SafetyStateError";

@@ -21,7 +21,7 @@ import {
   type MedicationQuestionOptions,
   type MedicationQuestionResponse,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -250,7 +250,7 @@ describe("POST /channels/:id/medication-questions", () => {
       "MEDICATION_QUESTION_NO_NURSE",
       "CLINICAL_LINK_NOT_AVAILABLE",
     ]) {
-      failWith = new WardenXError(code, "x", 422);
+      failWith = new ChartWardenError(code, "x", 422);
       const res = await post(app, "aide", askUrl(), body());
       expect(res.statusCode).toBe(422);
       expect(res.json().error?.code ?? res.json().code).toBe(code);

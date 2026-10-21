@@ -1,14 +1,14 @@
 // @wardenx/inpatient — the M37 domain failure-code catalog. Every guard failure in the pure IPU domain
 // kernels (the bed-cleaning machine, the admission machine, IRC cap, restraint cadence, GIP validators,
 // RN-coverage evaluator, …) raises an `IpuStateError` carrying an enumerated machine-readable code. The
-// error extends the M1 `WardenXError` envelope (`@wardenx/types` — the M18 `EvvStateError` / M6
+// error extends the M1 `ChartWardenError` envelope (`@wardenx/types` — the M18 `EvvStateError` / M6
 // `AdmissionStateError` convention) so the Fastify error handler renders code + HTTP status with NO
 // cross-module import edge; the §3.x DB CHECK / partial-unique backstops repeat the strongest of these at
 // the schema layer as defense in depth. The route layer (M37-T11) reuses these codes verbatim.
 //
 // The catalog grows per task: T03 seeds the §2.12 bed-cleaning codes; T04–T10 append the admission / IRC /
 // restraint / GIP / RN-coverage / census codes below. All share one `IpuStateError` envelope.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The M37 domain failure-code catalog → HTTP status. */
 export const M37_ERROR_STATUS = {
@@ -143,7 +143,7 @@ export type M37ErrorCode = keyof typeof M37_ERROR_STATUS;
  * exact message; the M1 error handler maps `statusCode` to the HTTP response. Nothing transitions on a
  * string match — each code is an enumerated constant.
  */
-export class IpuStateError extends WardenXError {
+export class IpuStateError extends ChartWardenError {
   constructor(code: M37ErrorCode, message: string) {
     super(code, message, M37_ERROR_STATUS[code]);
     this.name = "IpuStateError";

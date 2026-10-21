@@ -13,7 +13,7 @@ import {
   type AckEscalationNote,
   type AckQueueCounts,
   type AckQueueStatus,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { type SQL, and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 import type { AckRow } from "./ack-types";
@@ -75,8 +75,8 @@ function isRealTime(text: string): boolean {
     (om as number) < 60
   );
 }
-const invalidCursor = (): WardenXError =>
-  new WardenXError("INVALID_CURSOR", "the cursor is not valid", 400);
+const invalidCursor = (): ChartWardenError =>
+  new ChartWardenError("INVALID_CURSOR", "the cursor is not valid", 400);
 
 export function encodeQueueCursor(deadlineAtText: string, tie: string): string {
   return Buffer.from(`${deadlineAtText}|${tie}`, "utf8").toString("base64url");

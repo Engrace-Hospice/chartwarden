@@ -12,7 +12,7 @@ import type { schema } from "@wardenx/db";
 //
 // This file is the translator leaf: it owns the domain-error class, the comparator-by-type table, and
 // the SQL-identifier guard that the filter/scope/sql steps reuse — so there is no sibling import cycle.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 // ── Domain error catalog (§2.3) ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ export const TRANSLATOR_ERROR_STATUS = {
 export type TranslatorErrorCode = keyof typeof TRANSLATOR_ERROR_STATUS;
 
 /** A report-builder translation failure carrying one of the §2.3 codes. */
-export class ReportTranslatorError extends WardenXError {
+export class ReportTranslatorError extends ChartWardenError {
   constructor(
     code: TranslatorErrorCode,
     message: string,

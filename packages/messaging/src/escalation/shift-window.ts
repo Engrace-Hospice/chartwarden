@@ -16,7 +16,7 @@
 //    assignee on the request and keys idempotency on the request, not on the clock.
 //  - Every instant is a full ISO-8601 date-time with an explicit offset (Z or +hh:mm); offset-less or non-ISO strings are refused
 //    rather than read in the server's zone.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 export interface ShiftWindow {
   /** Local wall-clock start, "HH:MM" 24h. */
@@ -43,8 +43,8 @@ const WEEKDAYS: Readonly<Record<string, number>> = {
   Sat: 6,
 };
 
-function invalid(message: string): WardenXError {
-  return new WardenXError("ESCALATION_SHIFT_INVALID", message, 400);
+function invalid(message: string): ChartWardenError {
+  return new ChartWardenError("ESCALATION_SHIFT_INVALID", message, 400);
 }
 
 function minutesOf(time: string): number {

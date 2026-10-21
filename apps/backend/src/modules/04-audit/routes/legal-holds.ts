@@ -23,7 +23,7 @@ import {
 import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, ChartWardenError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -213,7 +213,7 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       const { origin: _origin, ...bodyCriteria } = parsed.criteria;
       const body = { ...parsed, criteria: bodyCriteria };
       if (!hasSelector(body.criteria)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "EMPTY_CRITERIA",
           "legal hold criteria must specify at least one of patientIds, dateRange, resourceKinds, channelIds, or userIds",
           422,

@@ -2,12 +2,12 @@
 //
 // Every guard / validation failure in the M6 domain raises a `AdmissionStateError` carrying the
 // machine-readable code the spec's §2.4 table enumerates (e.g. `PATIENT_ALREADY_ELECTED`,
-// `F2F_OUTSIDE_WINDOW`). The error extends the M1 `WardenXError` envelope base (packages/types — NOT
+// `F2F_OUTSIDE_WINDOW`). The error extends the M1 `ChartWardenError` envelope base (packages/types — NOT
 // the banned packages/foundation) so the M1 Fastify error handler renders it with the precise code +
 // HTTP status the UI keys its message off, with no cross-module import edge. The code→status mapping
 // is the single source mirrored from §2.4; nothing transitions on a string match — each code is an
 // enumerated constant.
-import { type ErrorDetailType, WardenXError } from "@wardenx/types";
+import { type ErrorDetailType, ChartWardenError } from "@wardenx/types";
 
 /** The full §2.4 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
 export const M6_ERROR_STATUS = {
@@ -126,7 +126,7 @@ export type M6ErrorCode = keyof typeof M6_ERROR_STATUS;
  * exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.3 every guard
  * failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class AdmissionStateError extends WardenXError {
+export class AdmissionStateError extends ChartWardenError {
   constructor(code: M6ErrorCode, message: string, details?: ErrorDetailType[]) {
     super(code, message, M6_ERROR_STATUS[code], details);
     this.name = "AdmissionStateError";

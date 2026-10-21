@@ -61,7 +61,7 @@ import {
 } from "@wardenx/idg";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
-import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@wardenx/types";
 import {
   and,
   asc,
@@ -774,7 +774,7 @@ export function createDbIdgBackend(
           )
           .limit(1);
         if (clash) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "IDG_MEETING_OVERLAP",
             "another IDG meeting at this location overlaps the requested window",
             409,

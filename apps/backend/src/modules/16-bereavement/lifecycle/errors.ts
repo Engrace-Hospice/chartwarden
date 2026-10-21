@@ -2,7 +2,7 @@
 //
 // Every guard / validation failure in the M16 bereavement domain raises a `BereavementStateError` carrying
 // the machine-readable code the §2.5 validation-rule table and the §4.2 route error blocks name. The error
-// extends the M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation) so the
+// extends the M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation) so the
 // M1 Fastify error handler renders the exact code + status the UI keys its message off, with no
 // cross-module import edge. Mirrors the M7 `CarePlanStateError` / M15 `DisciplinePlanStateError` precedent.
 //
@@ -10,7 +10,7 @@
 // §2.5 / §4.3.2 spell in lower snake (`external_source_cosign_pending`, …) and which `@wardenx/bereavement`
 // already exports as `BereavementExternalGateDenialCode`. The wire code is the contract, so they are kept
 // verbatim rather than normalized into a shape the spec never wrote.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The §2.5 / §4.2 machine-readable failure-code catalog → HTTP status. */
 export const M16_ERROR_STATUS = {
@@ -89,7 +89,7 @@ export type M16ErrorCode = keyof typeof M16_ERROR_STATUS;
  * renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.2 every
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class BereavementStateError extends WardenXError {
+export class BereavementStateError extends ChartWardenError {
   constructor(code: M16ErrorCode, message: string) {
     super(code, message, M16_ERROR_STATUS[code]);
     this.name = "BereavementStateError";

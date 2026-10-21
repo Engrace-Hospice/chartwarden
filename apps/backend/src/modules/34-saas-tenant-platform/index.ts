@@ -221,7 +221,7 @@ export {
 } from "./routes/public/signup-intents";
 
 import type { DbClient } from "@wardenx/db";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import {
   type TenantPlatformRouteService as _TenantPlatformRouteService,
@@ -258,13 +258,13 @@ import {
  */
 const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
   async createIntent() {
-    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+    throw new ChartWardenError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
   },
   async verifyEmail() {
-    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+    throw new ChartWardenError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
   },
   async acceptInvitation() {
-    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+    throw new ChartWardenError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
   },
 };
 

@@ -1,7 +1,7 @@
 // apps/backend/src/bootstrap/plugins/error-handler.ts — M1 Fastify error handler
 // (spec §4.4; M1-T10).
 //
-// Renders the ONE error envelope (spec §4.3) for every error path: a thrown WardenXError
+// Renders the ONE error envelope (spec §4.3) for every error path: a thrown ChartWardenError
 // (or any subclass — ValidationError, ForbiddenError, RateLimitedError, DegradedError, …)
 // maps to its declared code + statusCode; a Postgres `23505` on a constraint whose meaning is
 // registered beside its index (`businessRule()` in @wardenx/db) maps to 409 carrying that meaning;
@@ -10,7 +10,7 @@
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
 import { classifyDatabaseError } from "@wardenx/db";
-import { ConflictError, WardenXError } from "@wardenx/types";
+import { ConflictError, ChartWardenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.wardenx.app/errors";
@@ -39,7 +39,7 @@ export function applyErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, request, reply) => {
     const correlationId = request.context?.correlationId ?? "unknown";
 
-    if (err instanceof WardenXError) {
+    if (err instanceof ChartWardenError) {
       // GAP-002 — a request whose session the authenticate hook just expired is anonymous, so its
       // guards throw the ordinary UNAUTHORIZED. Say why, so the client can show "signed out for
       // inactivity" instead of a generic failure. Same 401; only the code and message differ.
@@ -56,7 +56,7 @@ export function applyErrorHandler(app: FastifyInstance): void {
           },
         });
       }
-      // A 5xx WardenXError is a SERVER-side condition the platform declared on purpose — a fail-closed
+      // A 5xx ChartWardenError is a SERVER-side condition the platform declared on purpose — a fail-closed
       // unbound infra port answering DEGRADED, say. It is not a caller error and it is not an
       // unhandled fault, and it has to be readable as neither: `warn` with the full error keeps the
       // diagnosis (which dependency, which operation) in the log, while leaving `error` /
@@ -116,7 +116,7 @@ export function applyErrorHandler(app: FastifyInstance): void {
     }
 
     // These messages are designed to be shown to the caller, unlike a genuinely unexpected internal
-    // error, so pass the real status through instead of collapsing every non-WardenXError into a
+    // error, so pass the real status through instead of collapsing every non-ChartWardenError into a
     // blanket 500 (API-009).
     const frameworkErr = asFrameworkError(err);
     if (frameworkErr) {

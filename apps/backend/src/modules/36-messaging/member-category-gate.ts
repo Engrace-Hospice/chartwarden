@@ -14,7 +14,7 @@
 // Every code path that writes a `channel_member` row (insert OR re-activation) must call this module; the unit ratchet
 // `member-category-gate.test.ts` fails when a new write path skips it.
 import { schema } from "@wardenx/db";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { GLOBAL_SEARCH_ROLE_POLICY } from "./global-search/role-gate";
 import type { Tx } from "./messaging-write-core";
@@ -69,7 +69,7 @@ export async function assertMemberCategoryAllowed(
   userId: string,
 ): Promise<void> {
   if ((await excludedMemberUserIds(tx, orgId, [userId])).size === 0) return;
-  throw new WardenXError(
+  throw new ChartWardenError(
     MEMBER_CATEGORY_NOT_ALLOWED,
     "this identity's role category cannot be a channel member",
     422,

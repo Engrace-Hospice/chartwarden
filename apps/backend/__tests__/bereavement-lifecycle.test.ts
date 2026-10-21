@@ -57,7 +57,7 @@ const DEATH_AT = "2026-03-01T04:20:00.000Z";
 const ELIGIBLE_AT = "2026-03-02T15:00:00.000Z";
 
 /**
- * Assert a guard raises the exact §2.5 / §4.2 machine-readable code. `WardenXError.message` is prose for
+ * Assert a guard raises the exact §2.5 / §4.2 machine-readable code. `ChartWardenError.message` is prose for
  * the clinician; the CODE is the contract the UI and the route table key off, so the tests assert on it.
  */
 function expectCode(fn: () => unknown, code: string): void {

@@ -29,7 +29,7 @@ import {
   TenantExportRepository,
 } from "@wardenx/saas-tenant-platform";
 import { getRequestContext, withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
+import { NotFoundError, type OrgId, ChartWardenError } from "@wardenx/types";
 import { eq } from "drizzle-orm";
 import { paginate } from "./concurrency";
 import { tenantMayCompleteStep } from "./onboarding-completion-guard";
@@ -164,7 +164,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           organizationId,
         );
         if (!tenantAccount) {
-          throw new WardenXError("TENANT_ACCOUNT_NOT_FOUND", "no tenant_account for this org", 500);
+          throw new ChartWardenError("TENANT_ACCOUNT_NOT_FOUND", "no tenant_account for this org", 500);
         }
         const jobInput: DsarExportJobInput = {
           jobId: row.id,
@@ -209,7 +209,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const repo = new DsarExportRepository(tx);
         const existing = await loadDsar(tx, organizationId, jobId);
         if (existing.extendedUntil) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "DSAR_ALREADY_EXTENDED",
             "the §164.524 30-day extension is one-time",
             409,
@@ -245,7 +245,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const repo = new DsarExportRepository(tx);
         const row = await loadDsar(tx, organizationId, jobId);
         if (row.status !== "fulfilled" || !row.bundleMinioObjectKey) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "DSAR_NOT_FULFILLED",
             "the bundle is not yet available for download",
             409,
@@ -310,7 +310,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const repo = new TenantExportRepository(tx);
         const row = await loadTenantExport(tx, organizationId, jobId);
         if (row.status !== "fulfilled" || !row.bundleMinioObjectKey) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TENANT_EXPORT_NOT_FULFILLED",
             "the bundle is not yet available",
             409,
@@ -356,7 +356,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const task = await loadOnboarding(tx, organizationId, taskId);
         const template = await repo.findTemplateByKey(task.templateKey);
         if (!template || !tenantMayCompleteStep(template))
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ONBOARDING_STEP_PLATFORM_VERIFIED",
             "this step is verified by the platform and completes on its own once its requirement is met",
             422,

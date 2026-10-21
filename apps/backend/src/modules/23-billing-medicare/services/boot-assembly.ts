@@ -1,5 +1,5 @@
 import { createDefaultBillingRegistry, type repositories } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 // apps/backend/src/modules/23-billing-medicare/services/boot-assembly.ts — the boot-time CLAIM-ASSEMBLY
 // service the composition root binds into `mountM23Routes` (route #1 `POST /claims/assemble`).
 //
@@ -138,7 +138,7 @@ type BillingDb = repositories.BillingDb;
 
 /** Throw the typed fail-closed error every still-unbound assembly reader raises at call time (RULE 4). */
 function unbound(seam: string): never {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "SEAM_UNBOUND",
     `M23 claim-assembly seam '${seam}' is not bound at boot — see boot-assembly.ts's header for the exact, per-seam reason (a real new read-surface addition needed in the owning module, or genuinely absent CMS reference data)`,
     503,

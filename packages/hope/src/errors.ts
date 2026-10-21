@@ -2,12 +2,12 @@
 //
 // Every guard / validation failure in the M10 HOPE domain raises a `HopeStateError` carrying the
 // machine-readable code the spec's §4.4 table enumerates (e.g. `M10_TIMEPOINT_EXPIRED`,
-// `M10_DISCIPLINE_NOT_PERMITTED`, `M10_SFV_PAST_DUE`). The error extends the M1 `WardenXError` envelope
+// `M10_DISCIPLINE_NOT_PERMITTED`, `M10_SFV_PAST_DUE`). The error extends the M1 `ChartWardenError` envelope
 // base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders
 // it with the precise code + HTTP status with no cross-module import edge. The code→status mapping is the
 // single source mirrored from §4.4; nothing transitions on a string match — each code is an enumerated
 // constant (the M8/M9 lifecycle convention). The route layer (M10-T06) reuses these codes verbatim.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** The §4.4 M10-specific failure-code catalog → canonical HTTP status (full table; the timepoint /
  * discipline / SFV codes are raised by the M10-T03 pure machines, the remainder by later tasks' routes,
@@ -61,7 +61,7 @@ export type M10ErrorCode = keyof typeof M10_ERROR_STATUS;
  * an exact message; the M1 error handler maps `statusCode` to the HTTP response. Every guard failure
  * surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class HopeStateError extends WardenXError {
+export class HopeStateError extends ChartWardenError {
   constructor(code: M10ErrorCode, message: string) {
     super(code, message, M10_ERROR_STATUS[code]);
     this.name = "HopeStateError";

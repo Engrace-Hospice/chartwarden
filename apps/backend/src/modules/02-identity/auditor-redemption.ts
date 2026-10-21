@@ -26,7 +26,7 @@ import { isUserStatusBlocked } from "@wardenx/auth";
 import type { AuditorSessionIssuer, IssuedAuditorSession } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, eq, ne } from "drizzle-orm";
 import {
   type AuditorLinkRow,
@@ -101,42 +101,42 @@ export interface AuditorRedemption {
 }
 
 /** The refusal → typed envelope map. Unknown and revoked links read the same: no oracle for which exist. */
-export function auditorRefusalError(reason: AuditorRefusalReason): WardenXError {
+export function auditorRefusalError(reason: AuditorRefusalReason): ChartWardenError {
   switch (reason) {
     case "consumed":
-      return new WardenXError("LINK_ALREADY_USED", "this auditor link has already been used", 409);
+      return new ChartWardenError("LINK_ALREADY_USED", "this auditor link has already been used", 409);
     case "expired":
-      return new WardenXError("LINK_EXPIRED", "this auditor link has expired", 410);
+      return new ChartWardenError("LINK_EXPIRED", "this auditor link has expired", 410);
     case "not_yet_open":
-      return new WardenXError(
+      return new ChartWardenError(
         "ENGAGEMENT_NOT_OPEN",
         "this engagement's access window has not opened yet",
         403,
       );
     case "engagement_not_active":
-      return new WardenXError("ENGAGEMENT_NOT_ACTIVE", "this engagement is not active", 403);
+      return new ChartWardenError("ENGAGEMENT_NOT_ACTIVE", "this engagement is not active", 403);
     case "identity_is_member":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_IDENTITY_IS_MEMBER",
         "this email belongs to a member of the organization; an auditor session cannot be minted for it",
         409,
       );
     case "membership_not_active":
-      return new WardenXError(
+      return new ChartWardenError(
         "MEMBERSHIP_NOT_ACTIVE",
         "this identity's membership in the organization is not active",
         403,
       );
     case "role_over_privileged":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_ROLE_MISCONFIGURED",
         "the organization's external auditor role holds more than the auditor minimum; an administrator must correct it",
         403,
       );
     case "user_inactive":
-      return new WardenXError("USER_INACTIVE", "this account is not active", 403);
+      return new ChartWardenError("USER_INACTIVE", "this account is not active", 403);
     default:
-      return new WardenXError("LINK_INVALID", "this auditor link is not valid", 410);
+      return new ChartWardenError("LINK_INVALID", "this auditor link is not valid", 410);
   }
 }
 
@@ -326,7 +326,7 @@ export async function redeemAuditorLink(
           });
         } catch (error) {
           // Nothing is committed (the throw rolls the consume back), so the link stays redeemable.
-          throw new WardenXError(
+          throw new ChartWardenError(
             "AUDITOR_SESSION_UNAVAILABLE",
             error instanceof Error ? error.message : "the auditor session could not be created",
             503,

@@ -20,7 +20,7 @@
 //   • ./paper-reentry    §2.7 / M19-F08 / DR-013 — outage detection by absence, the 72-hour worklist, and
 //                        the paper-origin coherence guard
 //   • ./effects          §2.4 — the declarative side-effect vocabulary (closed timestamp-column union)
-//   • ./errors           the §2.3 / §7 code → status catalog on the M1 `WardenXError` envelope
+//   • ./errors           the §2.3 / §7 code → status catalog on the M1 `ChartWardenError` envelope
 export * from "./effects";
 export * from "./errors";
 export * from "./protocol";

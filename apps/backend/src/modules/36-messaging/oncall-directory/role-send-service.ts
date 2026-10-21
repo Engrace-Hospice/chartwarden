@@ -23,7 +23,7 @@ import {
   ROLE_SEND_TELEPHONE_PROCEDURE,
   type RoleSendResolutionDto,
   type RoleSendResponse,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { UrgentActorRef, UrgentService, ValidateLinks } from "../urgent/urgent-service";
 import { rankedIds, unavailableStatus, validShiftEnd } from "./oncall-coverage-service";
@@ -79,20 +79,20 @@ export interface RoleSendService {
 
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
-const noCoverage = (status: string): WardenXError =>
-  new WardenXError(ROLE_SEND_ERROR_CODES.noCoverage, ROLE_SEND_TELEPHONE_PROCEDURE, 422, [
+const noCoverage = (status: string): ChartWardenError =>
+  new ChartWardenError(ROLE_SEND_ERROR_CODES.noCoverage, ROLE_SEND_TELEPHONE_PROCEDURE, 422, [
     { field: "status", code: status, message: status },
   ]);
 
-const clientIdReused = (): WardenXError =>
-  new WardenXError(
+const clientIdReused = (): ChartWardenError =>
+  new ChartWardenError(
     ROLE_SEND_ERROR_CODES.clientIdReused,
     "That message id was already used for a different message. Nothing was sent.",
     409,
   );
 
-const resolutionChanged = (): WardenXError =>
-  new WardenXError(
+const resolutionChanged = (): ChartWardenError =>
+  new ChartWardenError(
     ROLE_SEND_ERROR_CODES.resolutionChanged,
     "Who is on call changed. Nothing was sent. Review the new name and confirm again.",
     409,

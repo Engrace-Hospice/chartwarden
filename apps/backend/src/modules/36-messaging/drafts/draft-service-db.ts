@@ -18,7 +18,7 @@ import {
   sbarToStore,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, type SbarSections, WardenXError } from "@wardenx/types";
+import { NotFoundError, type SbarSections, ChartWardenError } from "@wardenx/types";
 import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";
 
@@ -165,7 +165,7 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
                 { n: number },
               ];
               if (Number(n) >= maxPerUser) {
-                throw new WardenXError(
+                throw new ChartWardenError(
                   "DRAFT_LIMIT_REACHED",
                   `at most ${maxPerUser} drafts can be kept; send or discard one first`,
                   409,

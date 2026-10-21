@@ -17,7 +17,7 @@ import {
   NotFoundError,
   type ProblemKind,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
   normalizeIcd10CmShape,
 } from "@wardenx/types";
 import { and, asc, eq, sql } from "drizzle-orm";
@@ -138,7 +138,7 @@ export function createDbProblemProposalService(
       throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
     }
     if (row.status !== "pending") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PROPOSAL_NOT_PENDING",
         `this proposed problem was already ${row.status}`,
         409,

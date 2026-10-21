@@ -39,7 +39,7 @@ import type {
 } from "@wardenx/mdm";
 import type { BaaEntityKind } from "@wardenx/mdm";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { type SQL, and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
 /** Rows the platform-ops NPPES console shows (the DB function clamps it again at 200). */
@@ -517,7 +517,7 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
       // 0 rows = the proposal is absent or already settled. A silent success there would tell an admin
       // acting on a stale queue that they rejected something they did not.
       if (settled === 0) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "NOT_FOUND",
           `merge request ${mergeId} is not open for rejection`,
           404,

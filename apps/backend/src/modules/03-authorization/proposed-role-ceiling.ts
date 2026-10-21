@@ -18,7 +18,7 @@ import { isReservedPlatformRoleKey, isTenantRoleReserved } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { auditEscalationBlocked } from "./audit/authz-audit";
 import type { ActorPermissionResolver } from "./authz-ports";
@@ -93,7 +93,7 @@ export function createDbProvisioningRoleResolver(db: DbClient): ProvisioningRole
       );
       // One generic result prevents a foreign role id from becoming a cross-tenant existence oracle.
       if (rows.length !== wanted.length)
-        throw new WardenXError("INVALID_ROLE", "one or more roles are unavailable", 422);
+        throw new ChartWardenError("INVALID_ROLE", "one or more roles are unavailable", 422);
       const byId = new Map(rows.map((row) => [row.id, row.key]));
       return wanted.map((id) => byId.get(id)!);
     },
@@ -138,7 +138,7 @@ export function createDbOrgRoleLookup(db: DbClient): OrgRoleLookup {
 }
 
 const reservedRole = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RESERVED_ROLE",
     "platform role keys (platform_*, ai_safety_owner) and the platform_staff category are reserved to the platform",
     422,
@@ -178,7 +178,7 @@ export function createProposedRoleGuard(deps: {
       const attemptedPermission =
         verdict.reason === "escalation" ? verdict.permission : ROLE_ASSIGN_PERMISSION;
       await auditEscalationBlocked(deps.audit, auditContext, { attemptedPermission });
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ESCALATION_BLOCKED",
         verdict.reason === "escalation"
           ? `cannot propose role '${verdict.roleKey}': it grants '${verdict.permission}', which you do not hold`

@@ -3,7 +3,7 @@
 // A scheduled message is a PRIVATE, sealed message-to-be (like a draft) that the dispatcher sends at `scheduledFor`
 // after re-checking, at dispatch, that the sender may still send it. This file holds the pure rules shared by the
 // route service and the dispatcher (so they cannot disagree) and the service interface the routes depend on.
-import { ValidationError, WardenXError } from "@wardenx/types";
+import { ValidationError, ChartWardenError } from "@wardenx/types";
 import { MAX_DRAFT_BODY_LENGTH } from "../drafts";
 
 /** A schedule must be at least this far ahead: the sweep runs every minute, so anything nearer is just "send". */
@@ -83,14 +83,14 @@ export function assertScheduleTime(raw: string, now: Date): Date {
   }
   const ahead = when.getTime() - now.getTime();
   if (ahead < MIN_SCHEDULE_LEAD_MS) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SCHEDULE_TOO_SOON",
       "a message can be scheduled at least one minute ahead; send it now instead",
       422,
     );
   }
   if (ahead > MAX_SCHEDULE_HORIZON_MS) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SCHEDULE_TOO_FAR",
       "a message can be scheduled at most 30 days ahead",
       422,

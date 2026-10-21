@@ -37,7 +37,7 @@ import {
   M22_INTAKE_SUD_WITHDRAWN_EVENT,
   NotFoundError,
   type OrgId,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import { and, desc, eq, exists, gte, inArray, isNull, lte } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
@@ -228,7 +228,7 @@ export function createDbDocumentRouteService(
       .limit(1);
     if (!b) throw new NotFoundError("intake batch");
     if (refused.has(b.status)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "BATCH_STATE_CONFLICT",
         `cannot ${action}: the intake batch is ${b.status}`,
         409,
@@ -258,7 +258,7 @@ export function createDbDocumentRouteService(
   ): Promise<{ id: string; batchId: string; status: string }> {
     const r = await requireReview(tx, reviewId);
     if (r.status !== "in_progress") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "REVIEW_NOT_IN_PROGRESS",
         `review is ${r.status}; decisions can only be recorded on an in-progress review`,
         409,
@@ -275,7 +275,7 @@ export function createDbDocumentRouteService(
       .where(and(eq(LH.documentId, documentId), isNull(LH.releasedAt)))
       .limit(1);
     if (h)
-      throw new WardenXError(
+      throw new ChartWardenError(
         "LEGAL_HOLD_ACTIVE",
         "the document is under an active legal hold",
         409,
@@ -708,7 +708,7 @@ export function createDbDocumentRouteService(
         await loadDocRow(tx, organizationId, documentId); // 404
         await assertNoHold(tx, documentId);
         if (patch.patientId === undefined && patch.admissionId === undefined) {
-          throw new WardenXError("VALIDATION_FAILED", "at least one link field is required", 422);
+          throw new ChartWardenError("VALIDATION_FAILED", "at least one link field is required", 422);
         }
         const set: Record<string, unknown> = { updatedAt: new Date() };
         if (patch.patientId !== undefined) set.patientId = patch.patientId;
@@ -852,7 +852,7 @@ export function createDbDocumentRouteService(
         // human-confirmed by this membership (the §2.2.6 confirm pairing CHECK needs both).
         for (const range of args?.pageRanges ?? []) {
           if (range.toPage < range.fromPage || !isClassifiedDocType(range.docType)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVALID_PAGE_RANGE",
               `page range ${range.fromPage}-${range.toPage} / '${range.docType}' is not a valid correction`,
               422,
@@ -875,7 +875,7 @@ export function createDbDocumentRouteService(
             )
             .returning({ id: CP.id });
           if (updated.length === 0) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVALID_PAGE_RANGE",
               `no classified page lies inside pages ${range.fromPage}-${range.toPage}`,
               422,
@@ -929,7 +929,7 @@ export function createDbDocumentRouteService(
         // F-238 — a field from a document the reviewer marked as another patient's cannot be approved for
         // this one (the commit excludes it regardless). Relinking the batch clears that resolution.
         if (args.decision !== "reject" && cand.identityResolution === "other_patient") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "DOCUMENT_IS_OTHER_PATIENT",
             "this field comes from a document marked as another patient's; it cannot be approved here",
             409,
@@ -938,7 +938,7 @@ export function createDbDocumentRouteService(
         // F-237 — stage 5 read the page differently. Approving the extraction as-is over that
         // disagreement is allowed, but only with the reviewer's stated reason (an edit is a correction).
         if (args.decision === "approve" && cand.visionDisagreement !== null && !args.reason) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VISION_DISAGREEMENT_REASON_REQUIRED",
             "the vision check read this field differently; approving it unchanged needs a reason",
             422,
@@ -1049,7 +1049,7 @@ export function createDbDocumentRouteService(
         // the writeback was committed by the first one — never emit it twice.
         if (r.status === "complete") return { reviewId, status: "complete" as const };
         if (r.status !== "in_progress") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "REVIEW_NOT_IN_PROGRESS",
             `review is ${r.status}; only an in-progress review can be completed`,
             409,
@@ -1067,7 +1067,7 @@ export function createDbDocumentRouteService(
         if (!batch) throw new NotFoundError("intake batch");
         // F-237 — §7.4 W4: a SUD detection must be confirmed or rejected before anything is committed.
         if (batch.sudStatus === "detected") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "SUD_DETECTION_UNRESOLVED",
             "possible substance-use content was detected; confirm or reject it before completing the review",
             409,
@@ -1076,7 +1076,7 @@ export function createDbDocumentRouteService(
         // F-238 — a document that may be another patient's must be resolved (same patient / other patient)
         // before anything from this fax reaches a chart.
         if (batch.identityStatus === "possible" || batch.identityStatus === "mismatch") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "IDENTITY_UNRESOLVED",
             "a document in this fax may belong to another patient; resolve it before completing the review",
             409,
@@ -1192,7 +1192,7 @@ export function createDbDocumentRouteService(
       // `form_template_version` is PLATFORM reference (wardenx_app has SELECT only): a version publish is a
       // platform-admin operation this tenant-scoped service cannot perform. It used to return the current
       // active version (or a random uuid) as if a version had been published — a fake 201 (GAP-140).
-      throw new WardenXError(
+      throw new ChartWardenError(
         "NOT_IMPLEMENTED",
         "publishing a form-template version is a platform-admin operation and is not available on the tenant API",
         501,
@@ -1211,7 +1211,7 @@ export function createDbDocumentRouteService(
         const existing = await tx.select({ id: OVL.id }).from(OVL).where(eq(OVL.templateId, t.id));
         const current = existing.length;
         if (ifVersion !== current) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VERSION_MISMATCH",
             "the overlay was modified since you read it",
             412,
@@ -1250,7 +1250,7 @@ export function createDbDocumentRouteService(
         // state-machine violation, not a retry. (No worker consumes `queued` fills yet — the render
         // handshake is synchronous in the DocumentRenderer — so this records the operator's intent.)
         if (f.status !== "failed") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "FORM_FILL_NOT_RETRYABLE",
             `only a failed render can be retried; this form fill is ${f.status}`,
             409,

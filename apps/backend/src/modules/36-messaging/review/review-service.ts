@@ -16,7 +16,7 @@ import {
   TASK_ACTIVE_STATUSES,
   TASK_CLOSE_REASONS,
   type TaskCloseReason,
-  WardenXError,
+  ChartWardenError,
 } from "@wardenx/types";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import type { HintOutboxPort } from "../message-hint-events";
@@ -71,16 +71,16 @@ const REVIEW_NAME_LIMIT = 200;
 
 /** One refusal for missing / other tenant / restricted: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("messaging_review_item");
-const assigneeInvalid = (): WardenXError =>
-  new WardenXError("REVIEW_ASSIGNEE_INVALID", "this person cannot be assigned the task", 422);
-const stateConflict = (): WardenXError =>
-  new WardenXError(
+const assigneeInvalid = (): ChartWardenError =>
+  new ChartWardenError("REVIEW_ASSIGNEE_INVALID", "this person cannot be assigned the task", 422);
+const stateConflict = (): ChartWardenError =>
+  new ChartWardenError(
     "REVIEW_ITEM_STATE_CONFLICT",
     "review item is not in a state that allows this",
     409,
   );
-const reasonInvalid = (): WardenXError =>
-  new WardenXError("REVIEW_REASON_INVALID", "closing reason is not recognised", 422);
+const reasonInvalid = (): ChartWardenError =>
+  new ChartWardenError("REVIEW_REASON_INVALID", "closing reason is not recognised", 422);
 
 const isActiveStatus = (status: string): boolean =>
   (TASK_ACTIVE_STATUSES as readonly string[]).includes(status);

@@ -22,10 +22,10 @@ import type {
 // call in-agency" — never as "transmit anyway with a default adapter", and never as a silent no-op that
 // would leave a caller on hold while M19 believed a vendor had them. There is no fallback adapter and
 // there is no default; a registry miss is a refusal with the key in the message.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 
 /** Raised when a tenant's configured `adapter_key` resolves to no registered adapter (§8.5). */
-export class TriageVendorAdapterUnavailableError extends WardenXError {
+export class TriageVendorAdapterUnavailableError extends ChartWardenError {
   constructor(adapterKey: string) {
     super(
       "TRIAGE_VENDOR_ADAPTER_UNAVAILABLE",

@@ -9,7 +9,7 @@ import type {
 // The manual adapter needs no credentials: it renders a decedent CSV the QAPI Coordinator emails to a
 // vendor of their choice, NEVER pushes (returns `no_push`), and ingests an aggregate the coordinator
 // uploads back as CSV (R-16). Column schemas + CSV helpers live in ./csv_format.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@wardenx/types";
 import { MANUAL_DECEDENT_COLUMNS, MANUAL_RESULT_COLUMNS, parseCsv, renderCsv } from "./csv_format";
 
 function jsonNumberMap(raw: string, field: string): Record<string, number> {
@@ -17,10 +17,10 @@ function jsonNumberMap(raw: string, field: string): Record<string, number> {
   try {
     parsed = raw.length === 0 ? {} : JSON.parse(raw);
   } catch {
-    throw new WardenXError("VALIDATION_FAILED", `manual result '${field}' is not valid JSON`, 422);
+    throw new ChartWardenError("VALIDATION_FAILED", `manual result '${field}' is not valid JSON`, 422);
   }
   if (typeof parsed !== "object" || parsed === null) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       `manual result '${field}' must be a JSON object`,
       422,
@@ -29,7 +29,7 @@ function jsonNumberMap(raw: string, field: string): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(parsed)) {
     if (typeof v !== "number" || Number.isNaN(v)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         `manual result '${field}.${k}' must be a number`,
         422,
@@ -43,7 +43,7 @@ function jsonNumberMap(raw: string, field: string): Record<string, number> {
 function intField(value: string, field: string): number {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       `manual result '${field}' must be a non-negative integer`,
       422,
@@ -98,7 +98,7 @@ export class ManualCahpsAdapter implements CahpsVendorAdapter {
     const inputs = records.map<CahpsResultSummaryInput>((r) => {
       for (const col of MANUAL_RESULT_COLUMNS) {
         if (!(col in r)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VALIDATION_FAILED",
             `manual result CSV is missing column '${col}'`,
             422,
