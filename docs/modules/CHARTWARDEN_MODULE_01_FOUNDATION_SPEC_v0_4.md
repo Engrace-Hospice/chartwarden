@@ -52,8 +52,8 @@ as ADR-000N live in `docs/adr/`.
 | M01-F02 | MAJOR | `feature_flag_evaluation`, `organization_settings_registry`, `outbox_event_catalog` added to M1 `ownedTables` in `module-manifest.ts`/`.cjs` (closes the ownership-checker enforcement hole). |
 | M01-F03 | MAJOR | Compliance retention **6 → 7 years** in all three places (§3.2 enum, §3.11 COMMENT, archive narrative); aligned to M4 D1 / ADR-0004. |
 | M01-F04 | MAJOR | **Seam Registry & Boot-Time Validation specified (new §3.18):** `apps/backend/src/bootstrap/seams.ts`, `registerSeam`/`registerEraser`, `REQUIRED_SEAMS` with deny-stub defaults, and `validateSeams()` run after module inits / before `server.listen()`, failing the boot when a PHI data class has no `DataEraser` or a required seam is unregistered. Interface types live in `packages/types`. |
-| M01-F05 | MAJOR | **`withPlatformContext` no longer `SET ROLE wardenx_admin` on the tenant pool** (§3.14): runs against a separately-pooled platform credential, gated by a platform-job allowlist, cross-tenant scope audited at severity=critical. `wardenx_admin` stays confined to migration-runner/break-glass. |
-| M01-F06 | MAJOR | **RLS `OR organization_id IS NULL` blast radius removed** (§3.11): `audit_event` is tenant-scoped read-only for `wardenx_app` (writes via the audit-writer role); `feature_flag` reads see own+global but per-command write policies keep WITH CHECK free of the NULL branch, so a tenant can never write a global flag/kill-switch. |
+| M01-F05 | MAJOR | **`withPlatformContext` no longer `SET ROLE chartwarden_admin` on the tenant pool** (§3.14): runs against a separately-pooled platform credential, gated by a platform-job allowlist, cross-tenant scope audited at severity=critical. `chartwarden_admin` stays confined to migration-runner/break-glass. |
+| M01-F06 | MAJOR | **RLS `OR organization_id IS NULL` blast radius removed** (§3.11): `audit_event` is tenant-scoped read-only for `chartwarden_app` (writes via the audit-writer role); `feature_flag` reads see own+global but per-command write policies keep WITH CHECK free of the NULL branch, so a tenant can never write a global flag/kill-switch. |
 | M01-F07 | MAJOR | Org-settings collision trigger made **`SECURITY DEFINER` + `SET search_path`**, backed by a partial `UNIQUE` index per `uniqueAcrossTenants` key; tenant-context collision test added (§3.15). |
 | M01-F08 | MAJOR | Base CI pipeline now declares the full ARCH-220 stage order incl. **`arch:fitness` after typecheck/before unit**, Playwright-against-artifacts, SBOM+cosign (§1.1). |
 | M01-F09 | MAJOR | **Per-queue retry/backoff/concurrency/DLQ declared** (§4.8.1); outbox dispatcher max-attempts(8)/exponential-backoff/`outbox.dlq`/no-silent-drop; consumer-idempotency promoted to a binding contract (DR-022). |
@@ -1121,16 +1121,16 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- Application role (used by backend connections via PgBouncer)
-CREATE ROLE wardenx_app NOLOGIN;
-GRANT USAGE ON SCHEMA public TO wardenx_app;
+CREATE ROLE chartwarden_app NOLOGIN;
+GRANT USAGE ON SCHEMA public TO chartwarden_app;
 
 -- Admin role (used only for migrations and emergency ops)
-CREATE ROLE wardenx_admin NOLOGIN;
-GRANT ALL ON SCHEMA public TO wardenx_admin;
+CREATE ROLE chartwarden_admin NOLOGIN;
+GRANT ALL ON SCHEMA public TO chartwarden_admin;
 
 -- Read-only role (for read replicas / reporting)
-CREATE ROLE wardenx_readonly NOLOGIN;
-GRANT USAGE ON SCHEMA public TO wardenx_readonly;
+CREATE ROLE chartwarden_readonly NOLOGIN;
+GRANT USAGE ON SCHEMA public TO chartwarden_readonly;
 
 -- (Enums and table DDL would come here via Drizzle generation)
 
@@ -1196,14 +1196,14 @@ CREATE INDEX audit_event_resource_idx ON audit_event (resource_kind, resource_id
 CREATE INDEX audit_event_correlation_idx ON audit_event (correlation_id);
 
 -- Grants
-GRANT INSERT, SELECT ON audit_event TO wardenx_app;
--- Critically: no UPDATE, no DELETE granted to wardenx_app on audit_event
-GRANT ALL ON audit_event TO wardenx_admin;
+GRANT INSERT, SELECT ON audit_event TO chartwarden_app;
+-- Critically: no UPDATE, no DELETE granted to chartwarden_app on audit_event
+GRANT ALL ON audit_event TO chartwarden_admin;
 
 GRANT INSERT, SELECT, UPDATE, DELETE ON
   organization, provider_entity, location, "user", membership, session, account, verification,
   system_status, feature_flag, idempotency_key, outbox_event
-TO wardenx_app;
+TO chartwarden_app;
 
 -- Enable RLS on all tenant-scoped tables
 ALTER TABLE organization ENABLE ROW LEVEL SECURITY;
@@ -1218,17 +1218,17 @@ ALTER TABLE outbox_event ENABLE ROW LEVEL SECURITY;
 -- RLS policies (use current_setting('app.org_id'))
 
 CREATE POLICY organization_self ON organization
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (id = current_setting('app.org_id', true)::uuid);
 
 CREATE POLICY provider_entity_org ON provider_entity
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 
 CREATE POLICY location_org ON location
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (
     provider_entity_id IN (
       SELECT id FROM provider_entity
@@ -1237,7 +1237,7 @@ CREATE POLICY location_org ON location
   );
 
 CREATE POLICY membership_org ON membership
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 -- audit_event (M01-F06b fix): tenants may READ only their own org's rows. The prior
@@ -1245,10 +1245,10 @@ CREATE POLICY membership_org ON membership
 -- audit rows AND INSERT org-NULL rows — a cross-tenant blast radius if the RBAC layer alone
 -- failed (SEC-035). Reads are scoped to the tenant; platform-wide (org-NULL) rows are visible
 -- only through the platform context. INSERTs come from the SECURITY DEFINER audit-writer role
--- (wardenx_audit_writer — its INSERT policy is defined in M4's migration, M04-F06), never from
--- wardenx_app: there is no FOR ALL / WITH CHECK here, so wardenx_app cannot write audit_event.
+-- (chartwarden_audit_writer — its INSERT policy is defined in M4's migration, M04-F06), never from
+-- chartwarden_app: there is no FOR ALL / WITH CHECK here, so chartwarden_app cannot write audit_event.
 CREATE POLICY audit_event_org_read ON audit_event
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 -- feature_flag (M01-F06a fix): tenants may READ their own org's flags and GLOBAL (org-NULL)
@@ -1256,28 +1256,28 @@ CREATE POLICY audit_event_org_read ON audit_event
 -- the NULL branch, so a tenant-context write can never create or mutate a GLOBAL flag or
 -- kill-switch. Global flags are managed only through the platform context.
 CREATE POLICY feature_flag_org_read ON feature_flag
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (
     organization_id = current_setting('app.org_id', true)::uuid
     OR organization_id IS NULL
   );
 CREATE POLICY feature_flag_org_insert ON feature_flag
-  FOR INSERT TO wardenx_app
+  FOR INSERT TO chartwarden_app
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 CREATE POLICY feature_flag_org_update ON feature_flag
-  FOR UPDATE TO wardenx_app
+  FOR UPDATE TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 CREATE POLICY feature_flag_org_delete ON feature_flag
-  FOR DELETE TO wardenx_app
+  FOR DELETE TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 CREATE POLICY idempotency_key_org ON idempotency_key
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 CREATE POLICY outbox_event_org ON outbox_event
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 -- Users, sessions, accounts, verifications are NOT RLS'd by org —
@@ -1289,7 +1289,7 @@ ALTER TABLE audit_event
   CHECK (created_at > '2020-01-01' AND created_at < NOW() + INTERVAL '1 day');
 
 -- Comments for documentation
-COMMENT ON TABLE audit_event IS 'Append-only audit trail. INSERT and SELECT only via wardenx_app role; no UPDATE/DELETE granted.';
+COMMENT ON TABLE audit_event IS 'Append-only audit trail. INSERT and SELECT only via chartwarden_app role; no UPDATE/DELETE granted.';
 COMMENT ON COLUMN audit_event.retention_class IS 'Drives partition retention: operational=1yr, compliance=7yr (HIPAA floor 6, ADR-0004), legal_hold=indefinite';
 ```
 
@@ -1431,7 +1431,7 @@ import { sql } from 'drizzle-orm'
 export type RlsPolicyOptions = {
   tableName: string
   orgIdColumn?: string // default 'organization_id'
-  appRole?: string // default 'wardenx_app'
+  appRole?: string // default 'chartwarden_app'
   policyName?: string // default '<tableName>_org_isolation'
   allowNullOrgId?: boolean // default false
 }
@@ -1444,7 +1444,7 @@ export function generateRlsPolicy(opts: RlsPolicyOptions): string {
   const {
     tableName,
     orgIdColumn = 'organization_id',
-    appRole = 'wardenx_app',
+    appRole = 'chartwarden_app',
     policyName = `${tableName}_org_isolation`,
     allowNullOrgId = false,
   } = opts
@@ -1483,7 +1483,7 @@ export function generateRlsPolicyViaJoin(opts: {
     joinFkColumn,
     joinPkColumn = 'id',
     joinOrgIdColumn = 'organization_id',
-    appRole = 'wardenx_app',
+    appRole = 'chartwarden_app',
     policyName = `${tableName}_org_isolation`,
   } = opts
 
@@ -1538,13 +1538,13 @@ export async function withOrgContext<T>(
  * platform-shared mutations) that must bypass tenant RLS. (M01-F05 / SEC-097 /
  * OPS-070 fix.)
  *
- * SECURITY — this does NOT `SET LOCAL ROLE wardenx_admin` on a tenant connection.
- * Doing so would require the backend's login role to be a member of `wardenx_admin`,
+ * SECURITY — this does NOT `SET LOCAL ROLE chartwarden_admin` on a tenant connection.
+ * Doing so would require the backend's login role to be a member of `chartwarden_admin`,
  * collapsing the RLS-bypass boundary into the app process — any injection/bug could
  * escalate to full cross-tenant read. Instead the helper runs against a SEPARATELY
  * POOLED platform credential (`platformDb` — a distinct Postgres login role with the
  * minimum cross-tenant grants, reachable ONLY from designated platform-job workers,
- * never from request-handling pools). `wardenx_admin` stays confined to the
+ * never from request-handling pools). `chartwarden_admin` stays confined to the
  * migration-runner / break-glass path (SEC-097/OPS-070).
  *
  * The helper is GATED: the caller must be a registered platform-job identity on the
@@ -1582,7 +1582,7 @@ export async function withPlatformContext<T>(
 `organization.settings` is a typed JSONB column governed by a registered-keys discipline (Decision D6). M1 hosts a single `validate_organization_settings()` trigger that runs `BEFORE INSERT OR UPDATE` on `organization`; the trigger validates `settings` against a registered schema map and checks tenant-scoped uniqueness on flagged keys. The schema map lives in `packages/db/src/organization-settings/registry.ts` (re-homed from the banned `packages/foundation`, ADR-0005 D3); modules add entries via per-module contribution files aggregated at boot.
 
 > **M01-F07 fix — the collision check must not be RLS-blind.** The `uniqueAcrossTenants` check
-> (e.g. `hl7_internal_mrn_authority`) `SELECT`s `organization` **cross-tenant**. Under `wardenx_app`
+> (e.g. `hl7_internal_mrn_authority`) `SELECT`s `organization` **cross-tenant**. Under `chartwarden_app`
 > + the `organization_self` RLS policy the trigger would see only the caller's own org row, so a
 > tenant-context settings write would silently pass the collision check. The trigger function is
 > therefore declared **`SECURITY DEFINER`, owned by a role that can read all orgs**, hardened with
@@ -2669,7 +2669,7 @@ Module 1 routes have a minimal permission model — auth + RBAC for the system s
 - For any tenant-scoped table, a query executed with `app.org_id` set to Org A returns zero rows for data belonging to Org B
 - An attempt to INSERT a row with `organization_id = OrgB` while `app.org_id = OrgA` is blocked at the database (RLS WITH CHECK)
 - A connection without `app.org_id` set returns zero rows from any tenant-scoped table
-- The `wardenx_app` role has no UPDATE or DELETE grants on `audit_event` — attempts fail with permission denied
+- The `chartwarden_app` role has no UPDATE or DELETE grants on `audit_event` — attempts fail with permission denied
 - All of the above is verified by automated RLS isolation tests run in CI
 
 ### 7.3 User Story: Audit Trail Reliability
@@ -3014,7 +3014,7 @@ describe('RLS cross-tenant isolation', () => {
     expect(rows).toHaveLength(0)
   })
 
-  test('wardenx_app cannot DELETE from audit_event', async () => {
+  test('chartwarden_app cannot DELETE from audit_event', async () => {
     await expect(
       withOrgContext(db, { organizationId: orgA, userId: userA }, async (tx) => {
         return tx.delete(auditEvents).where(eq(auditEvents.organizationId, orgA))
@@ -3022,7 +3022,7 @@ describe('RLS cross-tenant isolation', () => {
     ).rejects.toThrow(/permission denied/)
   })
 
-  test('wardenx_app cannot UPDATE audit_event', async () => {
+  test('chartwarden_app cannot UPDATE audit_event', async () => {
     await expect(
       withOrgContext(db, { organizationId: orgA, userId: userA }, async (tx) => {
         return tx
@@ -3190,7 +3190,7 @@ Module 1 is **DONE** when every box is checked:
 - [ ] All 12 dev services start healthy via Docker Compose
 - [ ] Foundation migration applies cleanly to a fresh database
 - [ ] All foundation tables have RLS enabled with policies that pass the cross-tenant isolation test suite
-- [ ] `wardenx_app` role has no UPDATE/DELETE grants on `audit_event` — verified by test
+- [ ] `chartwarden_app` role has no UPDATE/DELETE grants on `audit_event` — verified by test
 - [ ] Audit partition rotation job creates next 3 months of partitions on schedule
 - [ ] `audit()` helper writes records with correct fields, retention class defaults work
 - [ ] Outbox dispatcher claims and dispatches events without double-delivery

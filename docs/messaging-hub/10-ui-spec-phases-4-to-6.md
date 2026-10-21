@@ -68,7 +68,7 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 2. **Keyboard**: scripted walk (Tab, Shift+Tab, Enter, Space, Esc, arrows in menus) completes the primary action and each destructive action without a
    pointer; follows the pattern of `keyboard-only.gate.dom.test.tsx`.
 3. **Live check**: a `test:messaging-hub:<id>:live` suite on a private `pgvector/pgvector:pg18` container (never the shared cluster), connecting as the
-   NOBYPASSRLS `wardenx_app` role, asserting the route's tenant isolation and that the audit row lands. Each new live suite needs a `package.json`
+   NOBYPASSRLS `chartwarden_app` role, asserting the route's tenant isolation and that the audit row lands. Each new live suite needs a `package.json`
    script **and** a `ci.yml` job row (`arch:live-suites`).
 4. **Screen index**: add the screen to `docs/design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md` and `SCREEN_SPEC_STATUS.md` (`bun run docs:ui`); one
    `## Layout Pattern` line per screen spec.

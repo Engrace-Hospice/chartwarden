@@ -1,12 +1,12 @@
-# WardenX — Wave G: Revenue cycle (M23 Billing-Medicare · M25 Remittance · M26 Cap)
+# ChartWarden — Wave G: Revenue cycle (M23 Billing-Medicare · M25 Remittance · M26 Cap)
 
 Wave G from `PHASE_1_PLAN.md` — **how money comes in.** M23 is the go-live gate (the §11.A
 Pre-Submission Validation Framework, 30+ rules). **Conventions, determinism rules, the validate gate,
 and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.** Each spec ends with a §12
 Acceptance Sign-Off Checklist — the authoritative sub-steps.
 
-Specs (all `docs/modules/`): `WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md`,
-`WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md`, `WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md`.
+Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_25_REMITTANCE_SPEC_v0_2.md`, `CHARTWARDEN_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md`.
 
 > **Build order + the non-circular bidirectionals (read first).** Deps: M23←[6,8,22,38,40],
 > M25←[23,36], M26←[23,36]. Build **M23 first → M25 ∥ M26**. Two handshakes are bidirectional in
@@ -110,4 +110,4 @@ ownedTables (12): cap_beneficiary_accrual, cap_beneficiary_accrual_line, cap_inp
    closes the M23/M25/M11/M13/M12 FHIR + HL7 forward seams.
 
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m23-billing "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md (Module 23 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m23-billing "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md (Module 23 only)"`

@@ -1,13 +1,13 @@
-# WardenX — Wave P2-1: M15 Discipline Plans · M16 Bereavement · M21 Supplies/DME · M24 Medicaid
+# ChartWarden — Wave P2-1: M15 Discipline Plans · M16 Bereavement · M21 Supplies/DME · M24 Medicaid
 
 Phase 2 Part B, Wave P2-1 from `PHASE_2_PLAN.md` §3 — independent operational modules; all
 dependencies satisfied by Phase 1, so **buildable in parallel** (with two intra-wave seam orderings
 noted). **Conventions, determinism rules, the validate gate, and the legend are inherited from
 `M01-M02_VERTICAL_SLICE_PLAN.md`.** Each spec ends with a §12 Acceptance Sign-Off Checklist.
 
-Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.md`,
-`WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md`, `WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md`,
-`WARDENX_MODULE_24_BILLING_MEDICAID_SPEC_v0_2_1.md`.
+Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_16_BEREAVEMENT_SPEC_v0_5.md`, `CHARTWARDEN_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_24_BILLING_MEDICAID_SPEC_v0_2_1.md`.
 
 > **Build order.** Deps: M15←[7,8], M16←[5,6,36], M21←[11,40], M24←[23,40]. Parallel, but seam
 > ordering inside the wave: **M15 before M16** (M16 risk rubric reads M15 `MswRiskFactorReader` — else
@@ -77,4 +77,4 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.
 6. **→ Wave P2-2 (M19 On-Call Triage, M20 Field Safety)** — both consume M17 (and M19's `OnCallProvider`
    feeds M20).
 
-> Run per module via Archon, e.g.: `archon workflow run wardenx-piv --branch feat/m24-medicaid "Use the plan at docs/plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md (Module 24 only)"`
+> Run per module via Archon, e.g.: `archon workflow run chartwarden-piv --branch feat/m24-medicaid "Use the plan at docs/plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md (Module 24 only)"`

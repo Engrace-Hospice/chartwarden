@@ -1,4 +1,4 @@
-# WardenX — M6 Admission live-wire (Archon task plan)
+# ChartWarden — M6 Admission live-wire (Archon task plan)
 
 Make **Module 6 (Admission, Election & Certification)** real end-to-end. Wave D built M6 — tables,
 seams, the §4.1 route inventory (46 routes), the in-memory `AdmissionRouteService` slice, and the
@@ -13,7 +13,7 @@ unchanged: `bun run build && bun run arch:fitness && bun run test` all green.
 
 > **Pattern to mirror.** The M5 live store `apps/backend/src/modules/05-patient/patient-route-service-db.ts`
 > and the M40 `apps/backend/src/modules/40-mdm/mdm-store-db.ts` are the templates: a `createDb…RouteService`
-> that runs under `withOrgContext` (RLS backstops as `wardenx_app`, never the superuser), org bound
+> that runs under `withOrgContext` (RLS backstops as `chartwarden_app`, never the superuser), org bound
 > from `request.context` (never the body). The **in-memory `createInMemoryAdmissionBackend`**
 > (`routes/service.ts`) is the behavioral reference for every method — match its state machine,
 > optimistic-concurrency (`ifVersion`), `MutationResult` shape, and event names. The §4.4 outbox names
@@ -24,7 +24,7 @@ unchanged: `bun run build && bun run arch:fitness && bun run test` all green.
 1. **Backend-first + contract.** Mounting routes regenerates the contract: run `bun run openapi:emit`
    (else `openapi:check` fails) **and** `bun run client:gen`, committing both. Non-trivial bodies get an
    `enrichments.ts` entry.
-2. **RLS-correct Drizzle.** All reads/writes run under `withOrgContext` as `wardenx_app`, scoped by the
+2. **RLS-correct Drizzle.** All reads/writes run under `withOrgContext` as `chartwarden_app`, scoped by the
    request org/session. No cross-module schema imports (M6 owns its tables only). Extend
    `rls-isolation.live.test.ts` where cross-tenant isolation matters (CI `rls-live`).
 3. **No new authz on the frontend.** Routes keep the real `requirePermission`/`requireAbac` guards on
@@ -32,7 +32,7 @@ unchanged: `bun run build && bun run arch:fitness && bun run test` all green.
 4. **No manifest `codePaths` change** — the M6 backend `routes/` + the `apps/web/src/modules/06-admission`
    slice are already on `main`. Mount lines live in M1's composition root (its job).
 
-Specs: `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md` (§4.1 routes,
+Specs: `docs/modules/CHARTWARDEN_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md` (§4.1 routes,
 §4.5 permissions, §4.6 ABAC, §2.3 state machines, §6.3 discharge, §7.x workflows).
 
 ---
@@ -124,4 +124,4 @@ Specs: `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_
 4. `bun run build && bun run arch:fitness && bun run test` green; `rls-live` green on real Postgres.
 
 > Run via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m6-live-wire "Use the plan at docs/plans/WAVE_M6_LIVE_WIRE_PLAN.md"`
+> `archon workflow run chartwarden-piv --branch feat/m6-live-wire "Use the plan at docs/plans/WAVE_M6_LIVE_WIRE_PLAN.md"`

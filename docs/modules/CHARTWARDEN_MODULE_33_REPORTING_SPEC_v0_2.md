@@ -52,15 +52,15 @@
   left explicitly unbound. `mvRefresh`/`lagProbe`'s outbox emits are bound for real: `outbox_event.
   organization_id` is now nullable (migration 0186), admitted not by a second RLS-policy session
   variable (ADR-0010 D2 forbids one — a first attempt was reverted) but by a SECURITY DEFINER writer
-  surface on the EXISTING `report_writer` role (the `wardenx_audit_writer`/`audit_writer_insert`
+  surface on the EXISTING `report_writer` role (the `chartwarden_audit_writer`/`audit_writer_insert`
   precedent, migration 0013). The `m33.scheduled_report.render_requested` catalog schema now marks
   `scheduleId`/`runId` Optional so the ad-hoc PDF/XLSX export path's payload validates too (the schema
-  mismatch was the actual bug, not either producer). Verifying under REAL RLS (`SET ROLE wardenx_app`,
+  mismatch was the actual bug, not either producer). Verifying under REAL RLS (`SET ROLE chartwarden_app`,
   NOBYPASSRLS — this pass's own first test draft used a superuser connection and caught nothing) surfaced
   a SEVERE, codebase-wide, pre-existing bug tracked separately as **WX-PR-024**:
   `packages/tenancy/src/context.ts`'s `withPlatformContext` throws under real RLS in EVERY module that
   calls it (not just M33), because its mandatory `platform.bypass_invoked` audit write has no RLS policy
-  admitting a null-org row for `wardenx_app`. `report_run` and `materialized_view_metadata` were found to
+  admitting a null-org row for `chartwarden_app`. `report_run` and `materialized_view_metadata` were found to
   have the identical gap `outbox_event` had — neither is fixed here (see WX-PR-024 for the full writeup
   and blast radius). Full gate green; the M33 live suite now runs 4/4 under genuine, hardened RLS
   enforcement rather than a superuser bypass.
@@ -1766,7 +1766,7 @@ PostgreSQL materialized views do not natively respect RLS on their source tables
    AS SELECT * FROM report_mv.census_org_daily
       WHERE organization_id = current_setting('app.org_id', true)::uuid;
    ```
-3. The wrapper view is owned by the `wardenx_mv_owner` role; the application role `wardenx_app` has SELECT on the wrapper view but **no privilege** on `report_mv.*` directly.
+3. The wrapper view is owned by the `wardenx_mv_owner` role; the application role `chartwarden_app` has SELECT on the wrapper view but **no privilege** on `report_mv.*` directly.
 
 All M33 application code reads from `report_mv_public.*`, never from `report_mv.*` directly. A dependency-cruiser rule blocks any `report_mv.` literal in application source.
 
@@ -2047,7 +2047,7 @@ Tasks are ordered for execution by a competent implementer; dependencies are exp
 Create the 11 owned tables in `apps/backend/migrations/0033_reporting_core.sql` per §3 schema. Includes RLS policies, indexes, partition setup for `report_run`, `report_schedule_run`, `report_drilldown_audit`. Verify against fitness rules: every table has `organization_id` (except catalogs), every table has audit triggers (except denylist), every JSONB column has a JSON schema CHECK constraint.
 
 **T-02: Schema migration — MV substrate**
-Create `report_mv` and `report_mv_public` schemas. Define the 36 MVs from §3 catalog with their SQL bodies. Create SECURITY DEFINER wrapper views in `report_mv_public`. Grant SELECT on wrappers to `wardenx_app`; revoke all on `report_mv.*` from `wardenx_app`.
+Create `report_mv` and `report_mv_public` schemas. Define the 36 MVs from §3 catalog with their SQL bodies. Create SECURITY DEFINER wrapper views in `report_mv_public`. Grant SELECT on wrappers to `chartwarden_app`; revoke all on `report_mv.*` from `chartwarden_app`.
 
 **T-03: Catalog seeds**
 Populate `report_base_catalog` (≥20 entries) and `report_metric_catalog` (≥200 entries: dims + measures). System-authored definitions (≥12) seeded as `report_definition` rows with `is_system_authored=true`, all with a published v1 in `report_definition_version`.

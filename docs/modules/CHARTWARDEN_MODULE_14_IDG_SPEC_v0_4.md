@@ -1893,7 +1893,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 2. **Per-discipline meeting notes and late addenda (implementation extension; migrations 0282 / 0283 / 0284).** The
    spec records only agenda-item body text and the minutes closing note; a live IDG is run by disciplines that
    each keep their own notes, so the implementation adds `idg_discipline_note` (M14-owned; org-scoped `app.org_id`
-   RLS ENABLED + FORCED; `wardenx_app` SELECT/INSERT/UPDATE, no DELETE; `body_text` denylisted in the M4 audit
+   RLS ENABLED + FORCED; `chartwarden_app` SELECT/INSERT/UPDATE, no DELETE; `body_text` denylisted in the M4 audit
    trigger). A note is about one agenda patient or the meeting as a whole, for one discipline
    (`GET/POST /idg/meetings/{id}/discipline-notes`, `PATCH /idg/discipline-notes/{id}`; `idg.attend` or
    `idg.coordinate`; a non-coordinator must be present/tardy/partial for that discipline; `idg_meeting_scope` ABAC

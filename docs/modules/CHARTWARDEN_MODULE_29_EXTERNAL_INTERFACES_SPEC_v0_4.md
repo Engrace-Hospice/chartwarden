@@ -700,7 +700,7 @@ CREATE TYPE nppes_sync_status AS ENUM ('in_progress', 'completed', 'failed');
 
 **Phase B — tables** in dependency order: `external_feed` first (no FKs to other M29 tables); `external_feed_credential` (FK to `external_feed`); `hl7_message_inbound` (FK to `external_feed`; monthly partitioned by `received_at` per M4 §3.6 PHI conventions); `hl7_message_outbound` (FK to `external_feed`; monthly partitioned by `transmitted_at`); `hl7_inbound_proposal` (FK to `hl7_message_inbound`; monthly partitioned by `proposed_at`); `lab_observation` (FK to `hl7_message_inbound`; monthly partitioned by `received_at`); `lab_observation_value` (FK to `lab_observation`; partitioned with parent); `lab_observation_inbound_link` (FK to `lab_observation`, FK to `hl7_message_inbound`); `nppes_provider` (platform-shared, NOT partitioned, no `organization_id`); `nppes_sync_run` (platform-shared, NOT partitioned); `external_feed_health` (composite PK `(feed_id, hour_bucket)`; aged by M4 retention runner at 90 days).
 
-**Phase C — RLS policies per the standard pattern (§3.5).** Note that `nppes_provider` and `nppes_sync_run` are platform-shared (no `organization_id`) and use the `wardenx_admin` role for write + `wardenx_app` for read; the per-tenant tables use the standard `withOrgContext` pattern.
+**Phase C — RLS policies per the standard pattern (§3.5).** Note that `nppes_provider` and `nppes_sync_run` are platform-shared (no `organization_id`) and use the `chartwarden_admin` role for write + `chartwarden_app` for read; the per-tenant tables use the standard `withOrgContext` pattern.
 
 **Phase D — write-audit triggers per the M4 §3.6 denylist (§3.6).**
 
@@ -1068,14 +1068,14 @@ CREATE POLICY efc_org_isolation ON external_feed_credential
 -- hl7_inbound_proposal, lab_observation, lab_observation_value,
 -- lab_observation_inbound_link, external_feed_health
 
--- Platform-shared tables: NPPES — no organization_id; readable by wardenx_app, writable only by wardenx_admin
+-- Platform-shared tables: NPPES — no organization_id; readable by chartwarden_app, writable only by chartwarden_admin
 ALTER TABLE nppes_provider ENABLE ROW LEVEL SECURITY;
 CREATE POLICY nppes_provider_read ON nppes_provider FOR SELECT USING (true);
-CREATE POLICY nppes_provider_write ON nppes_provider FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+CREATE POLICY nppes_provider_write ON nppes_provider FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 ALTER TABLE nppes_sync_run ENABLE ROW LEVEL SECURITY;
 CREATE POLICY nppes_sync_run_read ON nppes_sync_run FOR SELECT USING (true);
-CREATE POLICY nppes_sync_run_write ON nppes_sync_run FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+CREATE POLICY nppes_sync_run_write ON nppes_sync_run FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 ```
 
 **Cross-partition app-side FK note.** `hl7_inbound_proposal.source_message_id`, `lab_observation.source_message_id`, and `lab_observation_inbound_link.source_message_id` reference the partitioned `hl7_message_inbound` table. Postgres does not enforce FK constraints to partitioned-parent tables; the references are app-side, validated by the service layer at write time. The same pattern applies to all cross-module references (`order_id`, `patient_id`, `attached_document_id`, `performing_lab_facility_id`, `sending_facility_id`, `destination_facility_id`) per the architecture §25.15 outbox-only-cross-module rule.

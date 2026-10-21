@@ -34,7 +34,7 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
 
 1. Starts a source Postgres 18 (pgvector) and MinIO; creates database `wardenx`; runs `scripts/db/migrate.ts` and
    `scripts/db/provision-runtime-roles.ts` (the production path).
-2. Seeds two tenants **through the real M36 routes** as `wardenx_app` (Authorization Contract, `channel_visibility` ABAC,
+2. Seeds two tenants **through the real M36 routes** as `chartwarden_app` (Authorization Contract, `channel_visibility` ABAC,
    idempotency store, catalog-validating outbox): messages, two edits (revisions), attachments uploaded by real presigned
    PUT to MinIO and scanned, and one quarantined attachment destroyed by the real reaper under the destruction credential.
    Only organizations, users and memberships are inserted directly.
@@ -49,16 +49,16 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
    - `audit_event` count and hash chain per org equal the source;
    - every non-destroyed `message_attachment` row has its object present, with matching size, sha256 (of the bytes, not the
      stored checksum header) and etag; destroyed rows have no object; no stored object lacks a row;
-   - as `wardenx_app` on the restored DB: not superuser/BYPASSRLS; no tenant context reads nothing; org A reads its rows;
+   - as `chartwarden_app` on the restored DB: not superuser/BYPASSRLS; no tenant context reads nothing; org A reads its rows;
      org A reads nothing of org B (messages, attachments, channels, audit);
    - `runHashVerifyForOrg` (the production job body) over every message and `message_revision` row (run last: it writes audit rows).
 
 ## 3. Restore procedure the drill proved
 
 1. New Postgres 18 + pgvector. **Create the roles first**: `pg_dump` has none, and the dump's `OWNER TO` / `GRANT` /
-   `CREATE POLICY ... TO wardenx_app` lines name them. The drill bootstraps them by running migrate + provision against a
+   `CREATE POLICY ... TO chartwarden_app` lines name them. The drill bootstraps them by running migrate + provision against a
    throwaway database and dropping it. Verified failure without this step: `bun run m36:restore-drill -- --no-role-bootstrap`
-   stops with `ERROR: role "wardenx_admin" does not exist`. Without `ON_ERROR_STOP` the same restore completes with
+   stops with `ERROR: role "chartwarden_admin" does not exist`. Without `ON_ERROR_STOP` the same restore completes with
    thousands of errors and a database whose policies and grants are partly missing.
 2. `gunzip -c backup.sql.gz | psql -U postgres -d wardenx -v ON_ERROR_STOP=1`.
 3. Restore the object store (the drill copies the volume tar into a fresh MinIO container before it starts).

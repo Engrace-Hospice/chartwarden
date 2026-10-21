@@ -1,6 +1,6 @@
-# WardenX — Frontend Integration Plan (Foundation + dedicated backlog + per-module)
+# ChartWarden — Frontend Integration Plan (Foundation + dedicated backlog + per-module)
 
-How WardenX starts shipping UI **without disrupting the backend-first wave workflow**. The backend
+How ChartWarden starts shipping UI **without disrupting the backend-first wave workflow**. The backend
 has been built wave-by-wave (A→C done; D…P3 planned), and at the end of nearly every module task the
 screens were **deferred** ("screens defer — no UI codePath"). This plan turns that backlog on, and
 defines how every *future* module ships its screens, using **one mechanism** and **zero changes to the
@@ -101,7 +101,7 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
 
 ### F0-T03 — App shell + screen registry + build tooling (M1 codePath)
 - files: `apps/web/src/shell`, `apps/web` (Vite), `packages/types` (registry contract) · spec:
-  `docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`, ADR-0030
+  `docs/design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md`, ADR-0030
 - do: Vite app + entry; router; auth/session/tenant-org context; the **screen registry** (ADR-0030) —
   the shell lazily mounts each module's screens via a registry contract in `packages/types` (leaf), so
   the shell **never imports a feature module**. Compose the existing `packages/ui` providers
@@ -112,7 +112,7 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
 
 ### F0-T04 — Layout patterns as reusable components ✅ done
 - files: `packages/ui/src/layouts/` (`regions.tsx`, `patterns.tsx`, `index.ts`) · spec:
-  `WARDENX_UI_LAYOUT_PATTERNS.md` (authoritative glossary)
+  `CHARTWARDEN_UI_LAYOUT_PATTERNS.md` (authoritative glossary)
 - **Scope (deliberate):** the glossary has ~24 base patterns, many domain/surface-specific (MAR Grid,
   Bed Board, Scheduling Calendar, Admin/Portal variants, Assistant, …). Building all now — with zero
   consuming screens — would be speculative. F0-T04 ships the **Tier-1 region primitives** (every
@@ -127,7 +127,7 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
   Vite bundles. Specialized patterns tracked to their module screens.
 
 ### F0-T05 — Backlog ledger ✅ done
-- files: `docs/design/DEFERRED_SCREENS.md` · source: `docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md` + each
+- files: `docs/design/DEFERRED_SCREENS.md` · source: `docs/design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md` + each
   spec's `Module:` line
 - do: derived the screen→module map for all 69 specs and built the ledger — a **Track A worklist** of
   the 11 screens whose primary owner is a merged module (M2/M3/M4/M5/M36/M38/M40), a **partial** set

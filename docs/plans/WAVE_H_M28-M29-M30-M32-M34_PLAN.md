@@ -1,13 +1,13 @@
-# WardenX — Wave H: M28 FHIR · M29 External Interfaces · M30 HQRP/Quality · M32 AI · M34 SaaS
+# ChartWarden — Wave H: M28 FHIR · M29 External Interfaces · M30 HQRP/Quality · M32 AI · M34 SaaS
 
 Final Phase-1 wave from `PHASE_1_PLAN.md` — interop + accounting + quality (basic cuts) + parallel
 platform. **Completes the 29 Phase-1 modules.** **Conventions, determinism rules, the validate gate,
 and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.** Each spec ends with a §10/§12
 sign-off / acceptance section — the authoritative sub-steps.
 
-Specs (all `docs/modules/`): `WARDENX_MODULE_28_FHIR_GATEWAY_SPEC_v0_4.md`,
-`WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md`, `WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md`,
-`WARDENX_MODULE_32_AI_PLATFORM_SPEC_v0_2.md`, `WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md`.
+Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_28_FHIR_GATEWAY_SPEC_v0_4.md`,
+`CHARTWARDEN_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md`, `CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md`,
+`CHARTWARDEN_MODULE_32_AI_PLATFORM_SPEC_v0_2.md`, `CHARTWARDEN_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md`.
 
 > **Build order.** Deps: M28←[5,6,7,8,11,12,13,38,40], M29←[5,11,40], M30←[10,23,27,36,38],
 > M32←[1,2,3,4], M34←[2,3,4,36]. Mostly parallel: **M32 ∥ M34 ∥ M29** (lightest deps) → **M28**
@@ -132,4 +132,4 @@ ownedTables (17): dsar_export_job, dsar_export_job_event, onboarding_task, onboa
 > EPCS + FHIR-write + multi-tenant + CAHPS/HVLDL/HCI + full cap watch.
 >
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m28-fhir "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md (Module 28 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m28-fhir "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md (Module 28 only)"`

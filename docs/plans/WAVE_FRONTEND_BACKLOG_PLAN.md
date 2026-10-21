@@ -1,8 +1,8 @@
-# WardenX — Frontend Backlog Wave (Track A · Archon task plan)
+# ChartWarden — Frontend Backlog Wave (Track A · Archon task plan)
 
 The **Track A** dedicated backlog wave from
 [`FRONTEND_INTEGRATION_PLAN.md`](./FRONTEND_INTEGRATION_PLAN.md) §"Track A", made executable as an
-ordered `wardenx-piv` task ladder. It runs as its own wave (`feat/frontend-backlog` worktree, same
+ordered `chartwarden-piv` task ladder. It runs as its own wave (`feat/frontend-backlog` worktree, same
 archon/`/loop` + gate machinery). **Conventions, determinism rules, the validate gate, and the legend
 are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`** — read its header first. The gate is the same:
 `bun run build && bun run arch:fitness && bun run test` all green (lint is separate CI, pre-existing-red).
@@ -37,7 +37,7 @@ manifest `codePaths` change is required — the `apps/web/src/modules/NN-*` slic
    both. Non-trivial bodies get an `enrichments.ts` entry (F0-T01).
 2. **No new authz on the frontend.** Screens reuse the server's permission keys via the client; the
    server stays the only enforcement point. PHI reads stay RLS-scoped by the ambient request context.
-3. **Drizzle stores are RLS-correct.** New stores read/write under `wardenx_app` (not the superuser),
+3. **Drizzle stores are RLS-correct.** New stores read/write under `chartwarden_app` (not the superuser),
    scoped by the request's org/session context — mirror the M2/M3/M4/M5 live stores
    (`membership-repository.ts`, `role-store.ts`, `patient-route-service-db.ts`). Where cross-tenant
    isolation matters, extend `rls-isolation.live.test.ts` (CI `rls-live`).
@@ -120,7 +120,7 @@ one doesn't exist yet (then `openapi:emit` + `client:gen`). Cross-module tabs (e
 eMAR, …) stay Track B.
 
 ### FB-T06 — Demographics & Identifiers tab
-- deps: none (M5 reads live) · spec: `docs/design/screens/clinical/WARDENX_UI_PATIENT_CHART.md`
+- deps: none (M5 reads live) · spec: `docs/design/screens/clinical/CHARTWARDEN_UI_PATIENT_CHART.md`
 - do: real Demographics tab — names/aliases, DOB, SOGI/race/ethnicity/language (M38 value-set labels),
   identifiers with **gated SSN/state-ID** (masked; step-up to reveal — reuse `/step-up`), MRN immutable.
   Add `GET /api/v1/patients/:id/identifiers` + `/demographics` if not covered by the existing detail.
@@ -155,7 +155,7 @@ eMAR, …) stay Track B.
 ## Group 3 — Unblockable partial screens
 
 ### FB-T11 — Global Search Results (M5 + M2 facets only)
-- deps: FB-T01..T05 · spec: `docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md`
+- deps: FB-T01..T05 · spec: `docs/design/screens/core/CHARTWARDEN_UI_GLOBAL_SEARCH_RESULTS.md`
 - do: build the Global Search frame + the **patient facet** (`GET /api/v1/patients?q=`) and **staff
   facet** (`GET /api/v1/orgs/:id/members?q=`). Later facets (orders/docs/visits) render as labeled
   "available when <module> ships" rows — visible, not fabricated. Register into the shell top-nav search.

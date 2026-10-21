@@ -198,13 +198,13 @@ gh run list --workflow=ci.yml --status=success --limit=1
 #    deploy.yml on this ref, per GitHub's OIDC issuer". A signature from any other workflow, repo,
 #    branch or actor fails here — which is what makes this worth running while `main` still has no
 #    branch protection (#16).
-cosign verify ghcr.io/engrace-hospice/wardenx:sha-<sha> \
+cosign verify ghcr.io/engrace-hospice/chartwarden:sha-<sha> \
   --certificate-identity \
     "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 
 #    The SBOM travels with the image as an attestation:
-cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/wardenx:sha-<sha> \
+cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/chartwarden:sha-<sha> \
   --certificate-identity \
     "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
@@ -218,7 +218,7 @@ cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/wardenx:sha-<s
 #    NOTE the real image name is ghcr.io/<repository_owner>/wardenx (deploy.yml's metadata-action),
 #    NOT ghcr.io/wardenx/backend. Tags are `sha-<full-sha>` and `latest` on the default branch.
 for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "docker pull ghcr.io/<owner>/wardenx:sha-<sha>" &
+  ssh $vm "docker pull ghcr.io/<owner>/chartwarden:sha-<sha>" &
 done
 wait
 
@@ -229,7 +229,7 @@ for vm in wardenx-app-01 wardenx-app-02; do
     --network wardenx \
     --env-file /etc/wardenx/.env \
     -p 3000:3000 \
-    ghcr.io/<owner>/wardenx:sha-<sha>"
+    ghcr.io/<owner>/chartwarden:sha-<sha>"
 done
 
 # 5. Wait for health on green
@@ -359,10 +359,10 @@ ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=wardenx --type=incr --ta
 # scripts/db/migrate.ts is the real production migration path (TASK-040E, OPS-016) — a
 # checksum-tracked, idempotent runner over packages/db/migrations/*.sql. The per-deploy step
 # uses --strict --schema-only (db:migrate:deploy): apply pending migrations and hard-fail on any
-# checksum drift, without touching the wardenx_app LOGIN/password/BYPASSRLS state (that's a
+# checksum drift, without touching the chartwarden_app LOGIN/password/BYPASSRLS state (that's a
 # one-time/rotation-only step — see the file header). Requires a superuser/owner connection: the
 # migration files themselves CREATE EXTENSION / CREATE ROLE / own tables.
-DATABASE_ADMIN_URL=postgres://wardenx_admin:<pass>@wardenx-db-01/wardenx \
+DATABASE_ADMIN_URL=postgres://chartwarden_admin:<pass>@wardenx-db-01/wardenx \
   bun run db:migrate:deploy
 
 # 4. Verify migration applied
@@ -995,8 +995,8 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 
 | Secret | Used by | Rotation cadence | Last rotated | Next due |
 |---|---|---|---|---|
-| `DATABASE_URL` (wardenx_app) | Backend, workers | Annual | YYYY-MM-DD | YYYY-MM-DD |
-| `DATABASE_URL` (wardenx_admin) | Migrations only | Annual | | |
+| `DATABASE_URL` (chartwarden_app) | Backend, workers | Annual | YYYY-MM-DD | YYYY-MM-DD |
+| `DATABASE_URL` (chartwarden_admin) | Migrations only | Annual | | |
 | `DATABASE_URL` (wardenx_replicator) | Replication | Annual | | |
 | `BETTER_AUTH_SECRET` | Backend | Annual | | |
 | `VALKEY_PASSWORD` | All services | Annual | | |
@@ -1062,11 +1062,11 @@ NEW_PASS=$(openssl rand -base64 32)
 
 # 2. Update PG with both passwords valid temporarily
 # (Better Auth keeps old session alive; want both passwords valid during deploy)
-psql -h wardenx-db-01 -U postgres -c "ALTER ROLE wardenx_app PASSWORD '$NEW_PASS';"
+psql -h wardenx-db-01 -U postgres -c "ALTER ROLE chartwarden_app PASSWORD '$NEW_PASS';"
 
 # 3. Update PgBouncer userlist
-ssh wardenx-app-01 "sudo bash -c 'echo \"wardenx_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
-ssh wardenx-app-02 "sudo bash -c 'echo \"wardenx_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
+ssh wardenx-app-01 "sudo bash -c 'echo \"chartwarden_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
+ssh wardenx-app-02 "sudo bash -c 'echo \"chartwarden_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
 
 # 4. Reload PgBouncer (no connection drop)
 ssh wardenx-app-01 "sudo systemctl reload pgbouncer"
@@ -1274,7 +1274,7 @@ done
 
 For emergency admin access when normal channels unavailable:
 
-- One break-glass `wardenx_admin` PostgreSQL credential, password sealed in offline envelope
+- One break-glass `chartwarden_admin` PostgreSQL credential, password sealed in offline envelope
 - One break-glass MinIO root credential, similarly sealed
 - One break-glass SSH key for `wardenx-edge-01` (host of last resort), sealed
 
@@ -2040,14 +2040,14 @@ Handoff log format:
 
 ```
 Connection rules:
-- wardenx_app: from backend VMs only, via PgBouncer, password-authenticated
+- chartwarden_app: from backend VMs only, via PgBouncer, password-authenticated
 - wardenx_replicator: from replica VM only, IP-restricted
-- wardenx_readonly: from observability VM and explicit engineer connections, audit-logged
-- wardenx_admin: from migration runner only OR break-glass; password sealed offline
+- chartwarden_readonly: from observability VM and explicit engineer connections, audit-logged
+- chartwarden_admin: from migration runner only OR break-glass; password sealed offline
 - postgres (superuser): break-glass only
 ```
 
-Database admin access (wardenx_admin or postgres role):
+Database admin access (chartwarden_admin or postgres role):
 
 - Triggered by maintenance or emergency
 - Logged in physical security log
@@ -2065,7 +2065,7 @@ Database admin access (wardenx_admin or postgres role):
 
 ### 16.4 Audit of Admin Actions
 
-Every admin (wardenx_admin role, platform_ops user) action audited:
+Every admin (chartwarden_admin role, platform_ops user) action audited:
 
 - Logged in audit_event
 - Reviewed monthly by compliance officer
@@ -2097,7 +2097,7 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
 - **The user must already hold an ACTIVE membership** in the named org. A platform role is bound to a
   membership; the CLI never creates users or memberships.
 - **Connection.** Use the owner connection the migration runner uses (`DATABASE_ADMIN_URL`, else
-  `DATABASE_URL`). `wardenx_app` cannot write platform-owned rows.
+  `DATABASE_URL`). `chartwarden_app` cannot write platform-owned rows.
 - **What it writes.** It upserts the platform-owned role row (one per key, `role_platform_key_idx`), adds
   the key's M35 template permission grants (`PLATFORM_OPS_ROLE_GRANTS`) for keys already in the
   `permission` mirror (it warns about missing ones; run `bun run db:sync:permissions` first), deletes any

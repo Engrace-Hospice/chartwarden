@@ -2652,7 +2652,7 @@ PostgreSQL + Valkey + a minimal M3/M4/M5/M6/M9/M10/M29/M36/M40 substrate. The in
 
 ### 9.4 Security / Authorization Independence
 
-A separate suite runs **without RLS** (as `wardenx_admin`) to prove ABAC alone catches violations:
+A separate suite runs **without RLS** (as `chartwarden_admin`) to prove ABAC alone catches violations:
 
 - Off-caseload RN cannot author or sign an order
 - Chaplain cannot author a `lab` or `dme` order (`discipline_can_order` blocks)

@@ -422,7 +422,7 @@ psql -h wardenx-db-02 -U postgres -c "SELECT pg_last_wal_receive_lsn(), pg_last_
 # If these differ significantly, replica is behind — consider RPO impact
 
 # Step 2: Halt writes to primary (if reachable)
-# Disable pg_hba.conf for wardenx_app role on primary, OR shut down primary entirely
+# Disable pg_hba.conf for chartwarden_app role on primary, OR shut down primary entirely
 
 # Step 3: Promote replica
 sudo -u postgres pg_ctl promote -D /var/lib/postgresql/18/main
@@ -637,7 +637,7 @@ Used when: data corruption detected, accidental destructive query, ransomware re
 
 ```bash
 # Step 1: Stop all writes to PG
-# Disable wardenx_app role; halt backend services
+# Disable chartwarden_app role; halt backend services
 for vm in wardenx-app-01 wardenx-app-02; do
   ssh $vm "sudo systemctl stop wardenx-backend"
 done
@@ -1128,7 +1128,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 - Off-site backups not accessible from primary network
 - MinIO object lock on compliance buckets (claims, cost reports) — cannot be overwritten or deleted for 7 years
 - RLS prevents one tenant's compromised account from accessing another tenant's data
-- Audit log is INSERT-only via wardenx_app role — UPDATE/DELETE require wardenx_admin (separate credential)
+- Audit log is INSERT-only via chartwarden_app role — UPDATE/DELETE require chartwarden_admin (separate credential)
 - Separate backup VM with its own credentials
 
 #### 10.4.2 Insider Threat / Malicious Access

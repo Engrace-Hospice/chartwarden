@@ -1,8 +1,8 @@
-# WardenX — Phase 1 Vertical Slice: M1 Foundation + M2 Identity (Archon task plan)
+# ChartWarden — Phase 1 Vertical Slice: M1 Foundation + M2 Identity (Archon task plan)
 
 **Purpose.** The first feature work after Phase 0 (PHASE_0_SCAFFOLD_PLAN §7): a thin-but-real
 vertical slice that proves the fitness gates against actual code before fanning out to all 29 Phase-1
-modules. This file is the **plan an Archon workflow consumes** (`wardenx-piv` or the bundled
+modules. This file is the **plan an Archon workflow consumes** (`chartwarden-piv` or the bundled
 `archon-plan-to-pr`): the implement-loop builds one task at a time; the `bash:` gate
 (`bun run build && bun run arch:fitness && bun run test`) decides "done."
 
@@ -24,8 +24,8 @@ modules. This file is the **plan an Archon workflow consumes** (`wardenx-piv` or
 > **Slice scoping note.** Full M2 Definition-of-Done touches M3 (permission registration) and M4
 > (audit/erasers), which are the *next* Wave-A modules. Where M2 needs them, this plan uses the
 > established **deny-stub / forward-seam** pattern now and flags the wire-up for the M3/M4 tasks.
-> That keeps the slice gate-green and honest. Spec: `docs/modules/WARDENX_MODULE_01_FOUNDATION_SPEC_v0_4.md`,
-> `WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md`.
+> That keeps the slice gate-green and honest. Spec: `docs/modules/CHARTWARDEN_MODULE_01_FOUNDATION_SPEC_v0_4.md`,
+> `CHARTWARDEN_MODULE_02_IDENTITY_SPEC_v0_4.md`.
 
 ---
 
@@ -57,7 +57,7 @@ feature_flag_evaluation, organization_settings_registry, outbox_event_catalog.
 ### M1-T04 — Initial migration: RLS + partitioning + DB roles
 - deps: T01–T03 · files: `packages/db/migrations`, `packages/db` · spec §3.11–3.12
 - do: `bunx drizzle-kit generate`; enable RLS + policies (canonical `app.org_id` only), monthly
-  partition rotation for `audit_event`, DB roles `wardenx_app`/`wardenx_admin`/`wardenx_audit_writer`,
+  partition rotation for `audit_event`, DB roles `chartwarden_app`/`chartwarden_admin`/`chartwarden_audit_writer`,
   the append-only GRANT model, organization-settings + outbox-catalog migration.
 - accept: `arch:tenancy` (canonical var, three-column, no `OR org IS NULL` write) + `arch:ddl` green;
   RLS isolation integration test (T12) drafted.
@@ -173,7 +173,7 @@ ownedTables (4): two_factor, passkey, organization_invitation, tenant_step_up_po
 > **STATUS — BLOCKED (recorded by maintainer 2026-06-14).** This task as written cannot be built
 > under M2. The manifest (law) scopes M2 to `packages/auth/src/identity` +
 > `apps/backend/src/modules/02-identity` — **M2 owns no frontend codePath**. The screens named here are
-> *core/app-shell* identity flows (authoritative spec: `docs/design/screens/core/WARDENX_UI_AUTH.md`), **not**
+> *core/app-shell* identity flows (authoritative spec: `docs/design/screens/core/CHARTWARDEN_UI_AUTH.md`), **not**
 > portal screens — yet this task points them at `apps/portal` (manifest owner: **M31**, the patient/family
 > portal) and `apps/admin` (manifest owner: **M34**, the SaaS tenant platform). Neither M31 nor M34 is the
 > obvious home for *core staff* auth UI, and no core front-end app exists in the tree (`apps/` = `admin`,
@@ -189,7 +189,7 @@ ownedTables (4): two_factor, passkey, organization_invitation, tenant_step_up_po
 
 ### M2-T10 — DR tier + INT inventory + eraser
 - deps: M2-T02 · files: module + bootstrap · spec §8, roadmap DoD
-- do: declare DR tier (per WARDENX_DR_BCP) + INT inventory (per WARDENX_INTEGRATIONS) for auth
+- do: declare DR tier (per CHARTWARDEN_DR_BCP) + INT inventory (per CHARTWARDEN_INTEGRATIONS) for auth
   touchpoints; register M2 eraser.
 - accept: `validateErasers()` passes; docs present; gates green.
 

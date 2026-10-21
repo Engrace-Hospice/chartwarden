@@ -37,7 +37,7 @@
   - **Four new decisions** — D8 (Part 2 retention class), D9 (action namespace convention), D10 (denylist categories), D11 (accounting scope parameter).
   - **Four new workflow acceptance criteria** — W-M4-08 (Part 2 audit row written, retention class enforced), W-M4-09 (eraser refuses Part 2 row during patient lifetime), W-M4-10 (Part 2 accounting returns disclosures lifetime-back), W-M4-11 (denylist category sud_value applied to lab_observation_value triggers).
   - **Four new implementation tasks** — T-M4-08 through T-M4-11. Retention values for `operational`/`compliance` unchanged; hash-chain seal still Phase 2.
-- **v0.2 (Locked)** — Resolved all seven open questions into binding decisions (§11). Wrote full Drizzle for `audit_export` and `audit_seal`. Expanded §3.7 to complete migration DDL (`audit_scrub`, `wardenx_audit_writer`, all tables, RLS, seed). Added complete per-route TypeBox schemas (§4.3) and the exact permission-key set this module registers into Module 3 (§4.5). Updated sign-off to lock-grade. Phase boundary fixed: hash-chain seal is Phase 2; everything else is Phase 1.
+- **v0.2 (Locked)** — Resolved all seven open questions into binding decisions (§11). Wrote full Drizzle for `audit_export` and `audit_seal`. Expanded §3.7 to complete migration DDL (`audit_scrub`, `chartwarden_audit_writer`, all tables, RLS, seed). Added complete per-route TypeBox schemas (§4.3) and the exact permission-key set this module registers into Module 3 (§4.5). Updated sign-off to lock-grade. Phase boundary fixed: hash-chain seal is Phase 2; everything else is Phase 1.
 - **v0.1** — Initial draft. Builds the full audit module on Module 1's `audit_event` foundation: trigger-based PHI **write** capture with before/after diffs, application-layer PHI **read** capture, the audit query/search surface, HIPAA §164.528 Accounting of Disclosures, integrity & tamper-evidence controls (append-only verification, audit-of-audit, optional hash-chain seal), and the retention / destruction-certification / legal-hold lifecycle from architecture §24.
 
 ## Remediation Changelog — Phase 1 (v0.5, 2026-06-11)
@@ -49,7 +49,7 @@
 | M04-F03 | MAJOR | `eraseFn`/`DataEraser` registry + **boot-time fail-at-startup** specified via M1 §3.18 (`registerEraser`, `validateSeams()` fails if any PHI data class lacks an eraser); legal-hold propagation via a registered `HoldApplier` seam (§4.3, D4). |
 | M04-F04 | MAJOR | Bulk-export gains SEC-052 controls: mandatory justification, 1/hr/user rate limit, 10k-record cap (elevated approval beyond), 24-h URL TTL, warn/critical severity + notification, step-up (§4.3 POST /exports). |
 | M04-F05 | MAJOR | `packages/foundation` banned; M4 logic only in `packages/audit` + `apps/backend/src/modules/04-audit`; single trigger-generator location; no shadow `packages/db` writer (header banner; ADR-0005 D3). |
-| M04-F06 | MAJOR | SECURITY DEFINER trigger: `ALTER FUNCTION … OWNER TO wardenx_audit_writer`, INSERT-only RLS policy for the writer role on `audit_event`, `SET search_path` hardening, SEC-006 review (§3.3 note). |
+| M04-F06 | MAJOR | SECURITY DEFINER trigger: `ALTER FUNCTION … OWNER TO chartwarden_audit_writer`, INSERT-only RLS policy for the writer role on `audit_event`, `SET search_path` hardening, SEC-006 review (§3.3 note). |
 | M04-F07 | MAJOR | Migration consumes M1's **TypeScript** `generateRlsPolicy()` (emits SQL at authoring time); the spec no longer calls a nonexistent SQL `wardenx_enable_rls()` function (§3.7). |
 | M04-F08 | MINOR | `partial_refused` added to the `destruction_status` enum (Drizzle + migration). |
 | M04-F09 | MINOR | Part 2 accounting citation corrected to §2.25 / §2.13(d); lifetime-lookback ratified as policy; rationale-retention trade-off flagged to Privacy sign-off. |
@@ -266,7 +266,7 @@ stateDiagram-v2
 
 | Rule | Type | Detail |
 |---|---|---|
-| Append-only | infra (GRANT) | `wardenx_app` has only INSERT, SELECT on `audit_event`; no UPDATE/DELETE (Security Hardening T6) |
+| Append-only | infra (GRANT) | `chartwarden_app` has only INSERT, SELECT on `audit_event`; no UPDATE/DELETE (Security Hardening T6) |
 | No PHI value duplication | sync (trigger) | high-sensitivity columns scrubbed to change-markers in diffs |
 | Read-audit completeness | build-time lint | every PHI resource route must declare `auditRead` or an explicit `auditRead: none` justification |
 | Retention class valid | sync | one of operational/compliance/legal_hold/compliance_42cfr_part2 |
@@ -370,7 +370,7 @@ export function generateAuditTrigger(opts: {
 ```
 
 ```sql
--- generated shape (per PHI table) — runs as table owner, not wardenx_app
+-- generated shape (per PHI table) — runs as table owner, not chartwarden_app
 CREATE OR REPLACE FUNCTION audit_phi_write_<table>() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
@@ -404,15 +404,15 @@ CREATE TRIGGER trg_audit_<table>
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_<table>();
 ```
 
-> **Why SECURITY DEFINER:** `wardenx_app` cannot INSERT-with-impunity into a foreign partition or bypass the append-only model, but the trigger must always succeed even though the app role's own grants are minimal. The function is owned by a dedicated `wardenx_audit_writer` role with INSERT-only on `audit_event`, and the trigger runs as definer. The app role still has no UPDATE/DELETE anywhere.
+> **Why SECURITY DEFINER:** `chartwarden_app` cannot INSERT-with-impunity into a foreign partition or bypass the append-only model, but the trigger must always succeed even though the app role's own grants are minimal. The function is owned by a dedicated `chartwarden_audit_writer` role with INSERT-only on `audit_event`, and the trigger runs as definer. The app role still has no UPDATE/DELETE anywhere.
 >
 > **M04-F06 — make the definer machinery actually work (and not over-privileged).** The migration MUST:
-> 1. `ALTER FUNCTION <trigger_fn>() OWNER TO wardenx_audit_writer;` — otherwise the function is owned
->    by the migration-runner (`wardenx_admin`) and SECURITY DEFINER executes with **full admin rights**
+> 1. `ALTER FUNCTION <trigger_fn>() OWNER TO chartwarden_audit_writer;` — otherwise the function is owned
+>    by the migration-runner (`chartwarden_admin`) and SECURITY DEFINER executes with **full admin rights**
 >    (RLS-bypassing, UPDATE/DELETE-capable) on every PHI write.
-> 2. Give `wardenx_audit_writer` an **INSERT-only RLS policy** on `audit_event`
->    (`CREATE POLICY audit_writer_insert ON audit_event FOR INSERT TO wardenx_audit_writer WITH CHECK (true);`)
->    — `audit_event` has RLS enabled (M1) with policies only `TO wardenx_app`, so without this the
+> 2. Give `chartwarden_audit_writer` an **INSERT-only RLS policy** on `audit_event`
+>    (`CREATE POLICY audit_writer_insert ON audit_event FOR INSERT TO chartwarden_audit_writer WITH CHECK (true);`)
+>    — `audit_event` has RLS enabled (M1) with policies only `TO chartwarden_app`, so without this the
 >    definer's inserts are **denied**. (No `BYPASSRLS` — the targeted INSERT policy is the least-privilege
 >    path; if `BYPASSRLS` is ever used it requires explicit SEC-006 Security-Owner justification.)
 > 3. Harden every definer function with `SET search_path = pg_catalog, public` (standard PG
@@ -542,11 +542,11 @@ export const auditActionCatalog = pgTable('audit_action_catalog', {
 
 | Table | Policy / grant |
 |---|---|
-| `audit_event` (M1) | append-only: `wardenx_app` = INSERT, SELECT only; trigger writer = INSERT only; **no UPDATE/DELETE anywhere**. RLS scopes SELECT to `app.org_id`. Reading audit requires Module 3 `audit.read`. |
+| `audit_event` (M1) | append-only: `chartwarden_app` = INSERT, SELECT only; trigger writer = INSERT only; **no UPDATE/DELETE anywhere**. RLS scopes SELECT to `app.org_id`. Reading audit requires Module 3 `audit.read`. |
 | `legal_hold`, `destruction_certificate`, `audit_export` | org-scoped via generator; managed actions require Compliance permissions |
 | `state_retention_override` | platform reference, read-all; write `platform_ops` |
 | `audit_denylist_catalog`, `audit_action_catalog` | platform-shared reference, read-all; writes via M4 boot/migration under the platform role |
-| Retention class re-point | executed by a privileged migration/worker role, never `wardenx_app`; each change audited |
+| Retention class re-point | executed by a privileged migration/worker role, never `chartwarden_app`; each change audited |
 | Partition detach/erase | executed by partition worker (Module 1 mechanism) under destruction-certificate approval; `compliance_42cfr_part2` rows refused per the eraser (§6) |
 
 ### 3.7 Migration
@@ -560,9 +560,9 @@ CREATE TYPE destruction_status AS ENUM ('pending','approved','held','executed','
 CREATE TYPE audit_export_format AS ENUM ('csv','ndjson','pdf');
 
 -- 2. Dedicated capture role: INSERT-only on audit_event, owns the trigger functions.
-CREATE ROLE wardenx_audit_writer NOLOGIN;
-GRANT INSERT ON audit_event TO wardenx_audit_writer;
--- (wardenx_app retains only INSERT, SELECT on audit_event from migration 0000; no UPDATE/DELETE anywhere)
+CREATE ROLE chartwarden_audit_writer NOLOGIN;
+GRANT INSERT ON audit_event TO chartwarden_audit_writer;
+-- (chartwarden_app retains only INSERT, SELECT on audit_event from migration 0000; no UPDATE/DELETE anywhere)
 
 -- 3. Scrub helper: replaces denylisted column values with the marker '<changed>'.
 CREATE OR REPLACE FUNCTION audit_scrub(doc jsonb, denylist text[])
@@ -651,9 +651,9 @@ CREATE INDEX audit_seal_chain_idx ON audit_seal(sealed_at);
 -- migration (same usage as the trigger generator in §3.3), not calls to a nonexistent DB function:
 --   generateRlsPolicy('legal_hold'), ('destruction_certificate'), ('audit_export'), ('audit_seal')
 -- each expands to `ALTER TABLE … ENABLE ROW LEVEL SECURITY;` + the standard
--- `organization_id = current_setting('app.org_id')::uuid` USING/WITH CHECK policy for wardenx_app.
+-- `organization_id = current_setting('app.org_id')::uuid` USING/WITH CHECK policy for chartwarden_app.
 -- state_retention_override: no RLS (platform reference, read-all; writes restricted by GRANT)
-REVOKE INSERT, UPDATE, DELETE ON state_retention_override FROM wardenx_app;
+REVOKE INSERT, UPDATE, DELETE ON state_retention_override FROM chartwarden_app;
 
 -- 7. Seed state overrides (architecture §24.4; extend per tenant geography)
 INSERT INTO state_retention_override (state_code, data_class, retention_spec, citation) VALUES
@@ -1455,7 +1455,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 **Done means:** for a date range up to 6 years, the report lists external disclosures (recipient, date, purpose, description) and correctly **excludes** routine TPO access; it's generated as an accessible PDF and the generation is itself audited.
 
 ### 10.4 Tamper attempt fails and is detectable
-**Done means:** `wardenx_app` attempting UPDATE/DELETE on `audit_event` fails with a permission error (no grant exists); the quarterly sample-vs-backup job detects any out-of-band modification; elevated reads are logged and monthly-reviewed.
+**Done means:** `chartwarden_app` attempting UPDATE/DELETE on `audit_event` fails with a permission error (no grant exists); the quarterly sample-vs-backup job detects any out-of-band modification; elevated reads are logged and monthly-reviewed.
 
 ### 10.5 Retention, destruction, and the certificate
 **Done means:** the retention scan flags an expired partition, creates a pending certificate with a pre-destruction report; Compliance approves with re-auth; the partition is cryptographically erased; a signed Certificate of Destruction is filed and retained; `data.destruction_certified` is emitted. Nothing in `legal_hold` is ever touched.
@@ -1463,7 +1463,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 ### 10.6 Legal hold supremacy
 **Done means:** applying a hold flips matching records to `legal_hold`; the next retention scan skips them entirely; releasing the hold returns them to their prior class with an adjusted clock; both transitions audited.
 
-> **As-built (GAP-008, [ADR-0051](../adr/ADR-0051-legal-hold-is-an-overlay-not-a-retention-class-flip.md)).** On `audit_event` a hold does **not** flip a column: `retention_class` is part of the integrity hash and `wardenx_app` has no UPDATE on the append-only table. A hold is an append-only overlay, `legal_hold_audit_event` (one row per held audit row; no `released_at` — a row is held while its `legal_hold.status = 'active'`, so releasing is the one existing UPDATE). The `audit.legal_hold_materialise` sweep (every 5 minutes) writes it in day windows from `legal_hold.materialised_through` (`materialisation_status` pending → running → complete | failed; pre-existing holds are backfilled on the first tick). "Flipped to `legal_hold`" is realised as: the destruction executor's DELETE excludes held rows; a BEFORE DELETE trigger on `audit_event` refuses a held row (`23001`) whoever deletes it; the retention scan reports a held row as the `legal_hold` class and skips it with an explicit reason; `audit_event_effective` / the search and export `legalHold` field show it as held; a certificate that left held rows behind is `partial_refused` (`held` when nothing could be touched) and its `recordCount` excludes them. The group-level structural check (`holdCoversGroup`) remains the first gate and covers rows the overlay has not reached yet. `audit_archive_detach` refuses a partition holding actively-held rows unless the verified archive manifest is attested. **"An adjusted clock" on release is not built** — §10.6 defines no rule (ADR-0051, open decision). **Phase 2, not built:** the `LegalHoldReader` / `HoldApplier` seams for M10 / M22 / M34 / M39 and the `arch:hold-coverage` ratchet over every `registerEraser(...)` site. Residual: `DROP`/`TRUNCATE` of a partition by a superuser bypasses the trigger (procedural control).
+> **As-built (GAP-008, [ADR-0051](../adr/ADR-0051-legal-hold-is-an-overlay-not-a-retention-class-flip.md)).** On `audit_event` a hold does **not** flip a column: `retention_class` is part of the integrity hash and `chartwarden_app` has no UPDATE on the append-only table. A hold is an append-only overlay, `legal_hold_audit_event` (one row per held audit row; no `released_at` — a row is held while its `legal_hold.status = 'active'`, so releasing is the one existing UPDATE). The `audit.legal_hold_materialise` sweep (every 5 minutes) writes it in day windows from `legal_hold.materialised_through` (`materialisation_status` pending → running → complete | failed; pre-existing holds are backfilled on the first tick). "Flipped to `legal_hold`" is realised as: the destruction executor's DELETE excludes held rows; a BEFORE DELETE trigger on `audit_event` refuses a held row (`23001`) whoever deletes it; the retention scan reports a held row as the `legal_hold` class and skips it with an explicit reason; `audit_event_effective` / the search and export `legalHold` field show it as held; a certificate that left held rows behind is `partial_refused` (`held` when nothing could be touched) and its `recordCount` excludes them. The group-level structural check (`holdCoversGroup`) remains the first gate and covers rows the overlay has not reached yet. `audit_archive_detach` refuses a partition holding actively-held rows unless the verified archive manifest is attested. **"An adjusted clock" on release is not built** — §10.6 defines no rule (ADR-0051, open decision). **Phase 2, not built:** the `LegalHoldReader` / `HoldApplier` seams for M10 / M22 / M34 / M39 and the `arch:hold-coverage` ratchet over every `registerEraser(...)` site. Residual: `DROP`/`TRUNCATE` of a partition by a superuser bypasses the trigger (procedural control).
 
 ### 10.7 W-M4-08 — Part 2 audit row written with correct retention class
 
@@ -1594,7 +1594,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 
 ### 12.3 Immutability & Integrity (security-critical)
 
-- `wardenx_app` UPDATE/DELETE on `audit_event` → permission error (Security Hardening T6 validation, Module 1 §9.3 cross-ref).
+- `chartwarden_app` UPDATE/DELETE on `audit_event` → permission error (Security Hardening T6 validation, Module 1 §9.3 cross-ref).
 - Sample-vs-backup job detects a deliberately altered backup row (negative test).
 - Elevated/cross-tenant read emits `audit.elevated_access`.
 - (Phase 2) seal chain breaks on any simulated modification.
@@ -1627,7 +1627,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 
 | # | Task | Size | Depends on |
 |---|---|---|---|
-| 1 | `audit_scrub` SQL helper + `wardenx_audit_writer` role | S | M1 |
+| 1 | `audit_scrub` SQL helper + `chartwarden_audit_writer` role | S | M1 |
 | 2 | Write-audit trigger generator (`packages/audit/triggers`) | M | 1 |
 | 3 | Read-audit helper + route `auditRead` config + `require-read-audit` lint | M | M3 |
 | 4 | Schema: legal_hold/destruction_certificate/state_retention_override/audit_export + migration `0004` + RLS | M | M1 |
@@ -1663,7 +1663,7 @@ All prior open questions are now decided. Two carry a *legal-confirmation* note 
 | D3 | **Read-audit granularity: aggregate for list views, individual for chart opens and all disclosures.** `patient.list_viewed` carries count+filter; `patient.viewed`/`*.disclosed` are per-resource. | Individual events are the §164.528-relevant ones; list views at row granularity would explode volume with no compliance gain. | **Decided** |
 | D4 | **Module 4 owns the shared Certificate-of-Destruction artifact + approval workflow; owning modules execute their own data-class erasure through it.** Interface: a module calls `requestDestruction(dataClass, scope)` → M4 creates the pending cert → on approval M4 calls back the module's registered `eraseFn` → module erases → M4 records execution + files the certificate. M4 directly erases only the **audit-class** partitions. **M04-F03:** the `eraseFn`/`DataEraser` registry and its **boot-time validation** are the M1-owned seam registry (M01 §3.18): owners register via `registerEraser(dataClass, eraser)`, and **`validateSeams()` fails the boot if any PHI data class has no registered `DataEraser`** (the canonical fail-loud example). A refusing eraser returns `partial_refused`; legal-hold/Part 2 propagation uses the `HoldApplier` seam (§4.3). | Keeps one auditable workflow + one certificate format, while each module retains responsibility for its own storage erasure (M5 clinical, M22 documents, M36 messages); a forgotten eraser is a failed boot, never silent data loss. | **Decided** |
 | D5 | **`disclosure` classification is inferred from integration egress, with optional manual marking.** Inference rules: any read served through the FHIR Gateway (M28), patient/family portal (M31), external-collaborator session (M2/M3), or funeral-home session is recorded as `*.disclosed` with `{to, purpose}`; internal staff reads are `*.viewed`. A clinician may additionally mark a manual disclosure (e.g. faxed records) via the access UI. | Captures the real §164.528 disclosure surface (data leaving the perimeter) automatically; manual path covers off-system sends. | **Decided** |
-| D6 | **Capture path is `wardenx_audit_writer`, INSERT-only, `SECURITY DEFINER`.** `wardenx_app` retains no UPDATE/DELETE anywhere. | Least-privilege capture that still always succeeds; consistent with Security Hardening T6 Layer 1. | **Decided** (ratify in next Security Hardening review) |
+| D6 | **Capture path is `chartwarden_audit_writer`, INSERT-only, `SECURITY DEFINER`.** `chartwarden_app` retains no UPDATE/DELETE anywhere. | Least-privilege capture that still always succeeds; consistent with Security Hardening T6 Layer 1. | **Decided** (ratify in next Security Hardening review) |
 | D7 | **Accounting lookback default 6 years (the §164.528 right), extensible per `state_retention_override`.** Requests beyond the effective window are clamped with a note. | Honors the federal right exactly; states with longer obligations extend via the existing override table. | **Decided** |
 | D8 | **New retention class `compliance_42cfr_part2`. Retention rules: indefinite while `patient.status='active'`; on death (`patient.deceased_date` set per M5 v0.2 D7), retention extends 6 years past the deceased_date before destruction eligibility. The destruction `eraseFn` (D4) is called with the retention class as a parameter; for `compliance_42cfr_part2`, the eraser refuses (returns `{ outcome: 'refused_part_two_retention', reason: 'patient_alive' | 'within_6yr_post_death' }`) even when the destruction certificate is approved. The retention scan (existing v0.2 worker) skips Part 2 rows entirely during scan. Legal-hold supremacy (D1) still applies — a legal hold supersedes the Part 2 retention rule and locks indefinitely. The class is selectable on any audit action; modules declare it per action in their catalog registration.** | 42 CFR Part 2 doesn't pin a numeric retention period in the regulation, but §2.13 gives patients a right to request accounting that effectively requires lifetime retention. Industry practice for SUD-treatment EHRs is "lifetime + 6 years post-death" to give the patient or their estate a window to request accounting. The 6-year post-death window matches HIPAA's §164.316(b)(2) floor as a reasonable post-mortem floor. The refusal semantic on the eraser is critical: tenant offboarding (per M5 v0.2 D7 deceased-class retention) should not silently erase Part 2 audit data while patients are still alive at the originating tenant. | **Decided** (legal may amend retention math post-launch with real volume) |
 | D9 | **Action namespace convention: `mN.<resource>.<verb>[_from_<source>]`. Module `mN` may register actions ONLY under its `mN.` prefix; the M4 boot registration refuses to accept an action that crosses module boundaries (e.g., M11 cannot register a `m6.*` action). Optional `_from_<source>` suffix marks external-event-driven actions (e.g., `m11.order.transmission_status_changed_from_hl7`). The `mN.applier.*` sub-namespace is reserved for outbox-consumer appliers (e.g., M6's `m6.applier.processed`). System actions stay un-prefixed (`audit.partition_created`, `data.destruction_certified`, `data.legal_hold_applied`). M4 publishes an `ActionCatalog` that consolidates all registered actions; the catalog is queryable as a Compliance reporting surface (which modules emit which actions, at which retention class, with what denylist?).** | The generic `<resource>.<verb>` shape worked at lock-grade for a small number of modules. With 40+ planned modules and audit actions multiplying (M11 alone added 4), the catalog needs structure. The prefix convention makes provenance unambiguous, enables grep-friendly debugging, and lets M4 enforce module-ownership of action names at boot. The `_from_<source>` suffix surfaces external-event provenance for compliance reporting — Surveys-readiness wants to distinguish "operator-driven" from "external-event-driven" actions. | **Decided** |
@@ -1674,10 +1674,10 @@ All prior open questions are now decided. Two carry a *legal-confirmation* note 
 
 ## 15. Acceptance Sign-Off Checklist
 
-- [ ] Migration `0004` applied; `wardenx_audit_writer` role + `audit_scrub` + all five tables live with RLS; state overrides seeded
+- [ ] Migration `0004` applied; `chartwarden_audit_writer` role + `audit_scrub` + all five tables live with RLS; state overrides seeded
 - [ ] `generateAuditTrigger()` produces correct DDL; capture test fixture (mutate→assert) green; rollback proves no un-audited write
 - [ ] `auditRead()` + route `auditRead` config working; `require-read-audit` lint blocks unaudited PHI routes in CI
-- [ ] **Immutability proven:** `wardenx_app` cannot UPDATE/DELETE `audit_event`; no grant exists (Security Hardening T6 test)
+- [ ] **Immutability proven:** `chartwarden_app` cannot UPDATE/DELETE `audit_event`; no grant exists (Security Hardening T6 test)
 - [ ] All §4.3 routes implemented to their TypeBox schemas; cursor pagination; RLS isolates per tenant
 - [ ] Patient access history accurate; break-glass flagged; distinct from accounting
 - [ ] Accounting of Disclosures (§164.528) correct — TPO excluded, disclosure-inference (D5) working, 6-yr/state scope (D7), accessible PDF, generation audited

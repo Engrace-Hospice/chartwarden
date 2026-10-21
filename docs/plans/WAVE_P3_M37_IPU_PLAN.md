@@ -1,9 +1,9 @@
-# WardenX — Phase 3 new build: M37 Inpatient Unit (IPU) Management
+# ChartWarden — Phase 3 new build: M37 Inpatient Unit (IPU) Management
 
 Phase 3 new build from `PHASE_3_PLAN.md` §2 — the largest single module (26 tables) and the most
 self-contained. Activated only for tenants operating IPUs. **Conventions, determinism rules, the
 validate gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.** Spec:
-`docs/modules/WARDENX_MODULE_37_IPU_SPEC_v0_2.md` (has §5 W-IPU workflows).
+`docs/modules/CHARTWARDEN_MODULE_37_IPU_SPEC_v0_2.md` (has §5 W-IPU workflows).
 
 > **⚠ Format outlier — convert first.** M37's spec authors schema as **raw `CREATE TABLE`** blocks.
 > `check-table-ownership.ts` registers ownership only from Drizzle **`pgTable()`** declarations, so the
@@ -72,4 +72,4 @@ validate gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md
 4. RLS isolation passes for all 26 PHI tables.
 5. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
 
-> Run via Archon, e.g.: `archon workflow run wardenx-piv --branch feat/m37-ipu "Use the plan at docs/plans/WAVE_P3_M37_IPU_PLAN.md"`
+> Run via Archon, e.g.: `archon workflow run chartwarden-piv --branch feat/m37-ipu "Use the plan at docs/plans/WAVE_P3_M37_IPU_PLAN.md"`

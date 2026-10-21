@@ -127,7 +127,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > (`/admin/mdm`) now hits live endpoints instead of 404s. The §7.6 platform-ops governance **writes**
 > (merge approve/reject, provisional promote) stay deferred — they need the `mdm_canonical_writer`
 > SECURITY DEFINER functions (a deeper M40 surface), so they fail-clear with 501 rather than corrupt
-> the redirect graph; the merge-queue / NPPES-sync-log / on-demand-NPI **reads** are wired (wardenx_admin
+> the redirect graph; the merge-queue / NPPES-sync-log / on-demand-NPI **reads** are wired (chartwarden_admin
 > break-glass surface). No new routes (already in the contract), so `openapi.json`/the client are
 > unchanged. RLS isolation for the org-scoped overlay/BAA/provisional tables is covered by
 > `rls-isolation.live.test.ts`.

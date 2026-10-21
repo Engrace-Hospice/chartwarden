@@ -856,55 +856,55 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format($p$CREATE POLICY %I_org_isolation ON %I
-                     FOR ALL TO wardenx_app
+                     FOR ALL TO chartwarden_app
                      USING (organization_id = current_setting('app.org_id', true)::uuid)
                      WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid)$p$, t, t);
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO wardenx_app', t);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO chartwarden_app', t);
   END LOOP;
 END $$;
 
 -- channel_member: tenant-scoped via channel; RLS via subquery
 ALTER TABLE channel_member ENABLE ROW LEVEL SECURITY;
 CREATE POLICY channel_member_org_isolation ON channel_member
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (channel_id IN (
     SELECT id FROM channel
     WHERE organization_id = current_setting('app.org_id', true)::uuid
   ));
-GRANT SELECT, INSERT, UPDATE, DELETE ON channel_member TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON channel_member TO chartwarden_app;
 
 -- message_receipt: same via message
 ALTER TABLE message_receipt ENABLE ROW LEVEL SECURITY;
 CREATE POLICY message_receipt_org_isolation ON message_receipt
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (message_id IN (
     SELECT id FROM message
     WHERE organization_id = current_setting('app.org_id', true)::uuid
   ));
-GRANT SELECT, INSERT, UPDATE, DELETE ON message_receipt TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON message_receipt TO chartwarden_app;
 
--- platform-default alert_rule rows (organization_id IS NULL): visible to all wardenx_app reads
+-- platform-default alert_rule rows (organization_id IS NULL): visible to all chartwarden_app reads
 -- (refine the policy above to allow NULL org_id read-only)
 DROP POLICY alert_rule_org_isolation ON alert_rule;
 CREATE POLICY alert_rule_read ON alert_rule
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (organization_id IS NULL OR organization_id = current_setting('app.org_id', true)::uuid);
 CREATE POLICY alert_rule_write ON alert_rule
-  FOR INSERT TO wardenx_app
+  FOR INSERT TO chartwarden_app
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 CREATE POLICY alert_rule_update ON alert_rule
-  FOR UPDATE TO wardenx_app
+  FOR UPDATE TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid AND system_locked = false);
 CREATE POLICY alert_rule_delete ON alert_rule
-  FOR DELETE TO wardenx_app
+  FOR DELETE TO chartwarden_app
   USING (organization_id = current_setting('app.org_id', true)::uuid AND system_locked = false);
 
 -- ------- user-scoped, tenant-agnostic tables ---------------------------------
 -- presence: a user's presence; visible to any tenant context that user is in (app-layer filter)
 ALTER TABLE presence ENABLE ROW LEVEL SECURITY;
 CREATE POLICY presence_self_or_coworker ON presence
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (
     user_id = current_setting('app.user_id', true)::uuid
     OR user_id IN (
@@ -913,24 +913,24 @@ CREATE POLICY presence_self_or_coworker ON presence
         AND status = 'active'
     )
   );
-GRANT SELECT, INSERT, UPDATE ON presence TO wardenx_app;
-GRANT DELETE ON presence TO wardenx_admin;
+GRANT SELECT, INSERT, UPDATE ON presence TO chartwarden_app;
+GRANT DELETE ON presence TO chartwarden_admin;
 
--- delivery_endpoint: only the user themself (and audited admin paths via wardenx_admin)
+-- delivery_endpoint: only the user themself (and audited admin paths via chartwarden_admin)
 ALTER TABLE delivery_endpoint ENABLE ROW LEVEL SECURITY;
 CREATE POLICY delivery_endpoint_self ON delivery_endpoint
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (user_id = current_setting('app.user_id', true)::uuid)
   WITH CHECK (user_id = current_setting('app.user_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON delivery_endpoint TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON delivery_endpoint TO chartwarden_app;
 
 -- user_notification_preferences: only the user themself
 ALTER TABLE user_notification_preferences ENABLE ROW LEVEL SECURITY;
 CREATE POLICY user_notif_pref_self ON user_notification_preferences
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (user_id = current_setting('app.user_id', true)::uuid)
   WITH CHECK (user_id = current_setting('app.user_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON user_notification_preferences TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON user_notification_preferences TO chartwarden_app;
 ```
 
 ### 3.8 Channel Visibility (ABAC, not just RLS)
@@ -1421,10 +1421,10 @@ CREATE INDEX idx_notification_template_key ON notification_template (template_ke
 -- Platform-floor rows (organization_id IS NULL) are readable by all tenants; tenant-scoped rows are org-isolated.
 ALTER TABLE notification_template ENABLE ROW LEVEL SECURITY;
 CREATE POLICY notification_template_read ON notification_template
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (organization_id IS NULL OR organization_id = current_setting('app.org_id', true)::uuid);  -- ADR-0010 D2: canonical app.org_id
 CREATE POLICY notification_template_write ON notification_template
-  FOR INSERT TO wardenx_app
+  FOR INSERT TO chartwarden_app
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 
 -- Phase B: per-tenant overlay (tighten-only; title/body wording override, never schema/resolver change)
@@ -1441,12 +1441,12 @@ CREATE TABLE tenant_notification_template_overlay (
 
 ALTER TABLE tenant_notification_template_overlay ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_notification_template_overlay_org_isolated ON tenant_notification_template_overlay
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING      (organization_id = current_setting('app.org_id', true)::uuid)   -- ADR-0010 D2: canonical app.org_id (app.organization_id never set → fail-closed)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON notification_template TO wardenx_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_notification_template_overlay TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON notification_template TO chartwarden_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_notification_template_overlay TO chartwarden_app;
 
 -- Phase C: seed the platform-floor templates (organization_id NULL, version 1) for the moved cross-module events.
 INSERT INTO notification_template
@@ -2087,13 +2087,13 @@ multi-tenant channel membership, and exposes inbound webhooks from external vend
 | T-1 | **Tampering** | Message body cipher replacement — a privileged DB user (or compromised migration) replaces `body_cipher` on a clinical message with different ciphertext, altering the historical record without leaving an application-layer trace | Record tampering (HIPAA §164.312(c)); audit trail invalidated | **M36-F03 `body_sha256`**: SHA-256 of plaintext computed pre-encryption at write time and stored separately; `messaging.hash_verify` nightly job decrypts and verifies; mismatch written to compliance-class audit (`m36.integrity.hash_mismatch`) and paged to ops; M4 write-audit trigger also records any UPDATE to the `message` row | §9.4 integrity test: mutate `body_cipher` in a fixture row → hash-verify job detects and emits audit event |
 | T-2 | **Tampering** | Room membership tampering — attacker (or compromised internal service) directly modifies `channel_member` rows via a migration or direct DB access to add themselves to a patient care-team channel without going through the auto-sync or admin-override path | Unauthorized PHI access; ABAC enforcement bypassed | M4 write-audit trigger on `channel_member` (`compliance`-class) records every INSERT/UPDATE/DELETE; `assertChannelVisible` checks `channel_member` membership at read time; auto-managed membership changes outside the seam produce an orphaned audit trail gap detectable by the M4 audit sweep | §9.2 ABAC test: manually-inserted channel_member row without matching audit trail is detected by M4 audit sweep; ABAC check still runs at API layer |
 | T-3 | **Tampering** | Alert rule tightening bypass — tenant constructs a `tenant_alert_routing_override` row that reduces the default `escalated_severity` (loosening the platform floor), removes default channels, or suppresses the alert by adding a null resolver | Clinical alerts silently downgraded; SOS may not reach on-call | DB trigger `enforce_alert_routing_tighten_only` (§3.11.1) rejects any `escalated_severity` below the catalog default at INSERT/UPDATE; `added_channels` / `added_recipients` are additive-only (no removal columns exist on the table); `system_locked` rules have a separate RLS policy | §9.4 tighten-only trigger test: loosen attempt → `alert_routing_override_loosen_forbidden` |
-| R-1 | **Repudiation** | Author denies sending or deleting a message — particularly for a clinical care-team message whose deletion may affect care decisions | Record integrity dispute; HIPAA compliance gap | M4 write-audit trigger (`compliance`-class) on `message` records every INSERT (`sent`), UPDATE (`edited`), and the tombstone transition (`deleted`); `body_sha256` anchors the pre-encryption plaintext to the author's session at the moment of send; audit rows are immutable (M4 prevents modification by `wardenx_app`) | §9.2 audit trail: fixture send + delete → two M4 audit rows with correct actor + session ID |
+| R-1 | **Repudiation** | Author denies sending or deleting a message — particularly for a clinical care-team message whose deletion may affect care decisions | Record integrity dispute; HIPAA compliance gap | M4 write-audit trigger (`compliance`-class) on `message` records every INSERT (`sent`), UPDATE (`edited`), and the tombstone transition (`deleted`); `body_sha256` anchors the pre-encryption plaintext to the author's session at the moment of send; audit rows are immutable (M4 prevents modification by `chartwarden_app`) | §9.2 audit trail: fixture send + delete → two M4 audit rows with correct actor + session ID |
 | I-1 | **Information Disclosure** | PHI exfiltration via notification payloads — attacker exploits a dispatcher bug or a new dispatcher that bypasses `sanitizeForOutOfBand`, leaking patient names, diagnoses, or message bodies into SMS/email/push | HIPAA breach; regulatory penalty | `sanitizeForOutOfBand` is the **only** path to out-of-band channels (architecture §25.15 dependency-cruiser rule blocks direct vendor calls outside `packages/messaging/notification/dispatchers/*`); golden-test suite asserts no `phi:true`-tagged field traverses the sanitizer output for every alert category × channel; voice script is a static string | §7.2 PHI sanitizer; §9.4 dependency-cruiser rule; §9.4 sanitizer chokepoint |
 | I-2 | **Information Disclosure** | Presence information disclosure — non-member of Org A queries Socket.IO or the presence endpoint to enumerate online users in a tenant they are not a member of | Disclosure of staffing patterns / operational intelligence | `presence_self_or_coworker` RLS policy restricts presence reads to the requesting user's own row or active co-workers in the same tenant (`membership` join); Socket.IO room joins computed at connect from `channel_member` (no cross-tenant rooms); `org:<orgId>` room requires active session in that org | §9.5 RLS: non-member cannot read presence rows; cross-org join refused at connect |
 | D-1 | **Denial of Service** | Alert-suppression DoS — attacker floods `AlertEmitter.emit` (or the BullMQ fan-out queue) with a high volume of synthetic events, overwhelming the `messaging.fan_out` and `messaging.send_sms` workers and delaying or dropping legitimate clinical alerts | Clinical alert delivery degraded; SOS delayed | **Rate limiting** at the API gateway for the alert-emitting route; BullMQ `messaging.send_sms` and `messaging.send_voice` are separate queues with fixed concurrency (10 / 5 workers) and Twilio-rate-limit-aware backoff; `system_locked` SOS alerts use `priority: 10` (highest) across all queues, jumping ahead of lower-priority commercial traffic; circuit-breaker state monitored via `messaging_dispatcher_breaker_state` metric; M1 system-status event fires on breaker-open | §9.3 concurrency test: 1k concurrent emits; Tier-1 SOS queued at priority 10 ahead of bulk |
 | D-2 | **Denial of Service** | Webhook replay flood — attacker replays thousands of captured valid Twilio/Postmark webhooks within the 5-minute replay window to DDoS the webhook handlers and inflate Valkey/PG write load | Webhook worker saturation; delayed delivery-status reconciliation | §4.9.1 replay window (rejects stale payloads); **idempotency on `vendor_message_id`** means replayed webhooks within the window still produce no extra DB writes (idempotent consumer); API gateway rate-limits the `/webhooks/*` path per source IP; BullMQ `messaging.delivery_reconcile` is decoupled from the webhook handler (handler returns 200 immediately and enqueues; worker processes async) | §9.2 webhook idempotency: replay → no double-write; §9.4 replay-window test |
 | E-1 | **Elevation of Privilege** | Breaking out of the `care_team` ABAC predicate — a clinical user constructs a request to read messages in a care-team channel for a patient they are not assigned to, by guessing or enumerating channel IDs | Unauthorized PHI access; HIPAA §164.502(b) minimum-necessary violation | `assertChannelVisible` (§3.8) calls M3's `evaluate('caseload_membership', { patientId })` for `care_team` channels; RLS additionally restricts the `channel` row to the correct org; `channel_member` check is a second gate at the Socket.IO connect path; guessing channel IDs yields only a 403 — no information about the patient or channel contents | §9.2 ABAC: `clinical_rn` not on patient X's care team → 403 on channel read; channel ID does not leak patient identity |
-| E-2 | **Elevation of Privilege** | Disabling a `system_locked` alert rule — org_admin or Compliance Officer (who hold `alert.rules.manage`) attempts to set `enabled = false` on the SOS, NOE late-risk, or backup-failure rules | Life-safety alert suppressed; compliance violation | `alert_rule_update` RLS policy (`WITH CHECK`) enforces `system_locked = false` on all UPDATE operations by `wardenx_app`; UI marks `system_locked` rules as read-only; the `system_locked` column itself is protected from UPDATE by the same RLS policy (it can only be set to `true` by a migration, never toggled back by tenants) | §7.4 / §9.4: `wardenx_app` UPDATE on `system_locked = true` row → DB rejects |
+| E-2 | **Elevation of Privilege** | Disabling a `system_locked` alert rule — org_admin or Compliance Officer (who hold `alert.rules.manage`) attempts to set `enabled = false` on the SOS, NOE late-risk, or backup-failure rules | Life-safety alert suppressed; compliance violation | `alert_rule_update` RLS policy (`WITH CHECK`) enforces `system_locked = false` on all UPDATE operations by `chartwarden_app`; UI marks `system_locked` rules as read-only; the `system_locked` column itself is protected from UPDATE by the same RLS policy (it can only be set to `true` by a migration, never toggled back by tenants) | §7.4 / §9.4: `chartwarden_app` UPDATE on `system_locked = true` row → DB rejects |
 
 > **STRIDE sign-off required from:** Security Officer (S-1, S-2, I-1, I-2, E-1, E-2); Compliance Officer (T-1, T-2, R-1); Platform team (D-1, D-2). Sign-off is a gate for PR merge on any change to `packages/messaging/`, `packages/messaging/notification/`, or the M36 migration files.
 
@@ -2274,7 +2274,7 @@ async function composeAndDispatch(input: {
 **Done means:** patient created (M5 fixture event) → `care_team` channel exists within seconds with members = current care team; care-team change → membership re-syncs; patient discharged → channel `is_archived = true`, `archives_at` set, no new messages allowed. On-call rotation (M19 fixture) → on-call channel members rotate at the shift boundary with messages from the prior shift preserved and attributed.
 
 ### 7.4 Tenant cannot disable `system_locked` rules
-**Done means:** `wardenx_app` attempting to UPDATE `alert_rule` with `system_locked = true` to set `enabled = false` is rejected by RLS policy (§3.7); UI surfaces the rule as read-only; SOS, NOE late-risk critical, and backup-failure critical are always-on regardless of tenant config.
+**Done means:** `chartwarden_app` attempting to UPDATE `alert_rule` with `system_locked = true` to set `enabled = false` is rejected by RLS policy (§3.7); UI surfaces the rule as read-only; SOS, NOE late-risk critical, and backup-failure critical are always-on regardless of tenant config.
 
 ### 7.5 Quiet hours respect severity override
 **Done means:** an `info` alert during a user's configured quiet hours is delivered in-app only (other channels show `skipped_quiet_hours`); a `critical` alert during the same window is delivered on all preferred channels because severity is at/above the override floor (default `critical`). Tested with both default and customized override thresholds.
@@ -2465,15 +2465,15 @@ m36_alert_dispatch_latency_seconds                 histogram, labels: severity
 - **Dependency-cruiser** rule: a fixture consumer module importing `packages/db/src/schema/messaging/*` directly → CI fails.
 - **Vendor adapter mandate**: a fixture calling `twilio-client.sms` or `web-push` outside `packages/messaging/notification/dispatchers/*` → CI fails.
 - **Sanitizer chokepoint**: a fixture dispatcher that calls `twilio.send` without going through `sanitizeForOutOfBand` → CI fails (file-level grep + unit-test wrapper assertion).
-- **`system_locked` enforcement**: `wardenx_app` UPDATE to set `enabled=false` on a `system_locked = true` row → DB rejects per RLS WITH CHECK.
-- **Self-only preferences**: `wardenx_app` UPDATE on another user's `user_notification_preferences` → RLS rejects.
+- **`system_locked` enforcement**: `chartwarden_app` UPDATE to set `enabled=false` on a `system_locked = true` row → DB rejects per RLS WITH CHECK.
+- **Self-only preferences**: `chartwarden_app` UPDATE on another user's `user_notification_preferences` → RLS rejects.
 - **Tighten-only trigger**: `tenant_alert_routing_override` INSERT/UPDATE with `escalated_severity` below the catalog default → trigger rejects with `alert_routing_override_loosen_forbidden`.
 
 ### 9.5 RLS Isolation
 
 - Cross-tenant message read denied (RLS); break-glass path emits `audit.elevated_access`.
 - DM cross-tenant attempt rejected at write (channel.organization_id = current tenant).
-- Platform-default alert rules visible to all wardenx_app reads; tenant overrides only visible to owning tenant.
+- Platform-default alert rules visible to all chartwarden_app reads; tenant overrides only visible to owning tenant.
 - `tenant_alert_routing_override` rows visible only to the owning tenant per RLS.
 
 ### 9.6 E2E (Playwright)

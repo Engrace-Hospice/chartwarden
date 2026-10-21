@@ -839,7 +839,7 @@ export const VOLUNTEER_PLAN_REQUIRED_SIGNERS = {
 **Phase A:** tables, enums, indexes (including the partial unique indexes above). **M15-F06: no
 partition declarations** — `discipline_care_plan` and `discipline_assessment` are **unpartitioned**
 (trivial per-admission volumes; their partial unique constraints require it, ADR-0022 D1.1).
-**Phase B:** RLS emitted by M1's `generateRlsPolicy()` (canonical `app.org_id`/`wardenx_app`) for every table; M4 audit triggers via the M4 trigger generator with denylists for: `revised_text`, `notes`, `corrective_actions`, `supervisory_narrative`, `spiritual_care_declined`, `discontinuation_reason`, `adjustment_reason`, and the free-text paths inside the `data` jsonb (`data->>'safetyConsiderations'`, `data->>'techniqueNotes'`, `data->>'precautions'`, `data->>'contraindications'`, `data->>'narrativeRef'`); GRANT policy to `wardenx_app`.
+**Phase B:** RLS emitted by M1's `generateRlsPolicy()` (canonical `app.org_id`/`chartwarden_app`) for every table; M4 audit triggers via the M4 trigger generator with denylists for: `revised_text`, `notes`, `corrective_actions`, `supervisory_narrative`, `spiritual_care_declined`, `discontinuation_reason`, `adjustment_reason`, and the free-text paths inside the `data` jsonb (`data->>'safetyConsiderations'`, `data->>'techniqueNotes'`, `data->>'precautions'`, `data->>'contraindications'`, `data->>'narrativeRef'`); GRANT policy to `chartwarden_app`.
 **Phase C:** (no partition rotation — there are no partitioned M15 tables, M15-F06).
 **Phase D:** seed of platform-level value sets pulled from M38 (ADL SNOMED codes, family-violence risk-factor catalog) — read-only.
 

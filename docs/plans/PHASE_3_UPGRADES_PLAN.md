@@ -1,4 +1,4 @@
-# WardenX — Phase 3 upgrades: flag activations (Archon task plan)
+# ChartWarden — Phase 3 upgrades: flag activations (Archon task plan)
 
 Phase 3 upgrades from `PHASE_3_PLAN.md` §3 — **re-open existing modules to flip the last default-off
 flags on**, each re-running DoD for the new surface. **Conventions, determinism rules, and the validate
@@ -61,4 +61,4 @@ already-owned tables/code). Run **in parallel with the M37 build** (`WAVE_P3_M37
    is Phase 4 / v2 (additional state Medicaid adapters, advanced analytics, multi-CCN, HITRUST/SOC2) —
    see `PHASE_4_PLAN.md`.
 
-> Run via Archon, e.g.: `archon workflow run wardenx-piv --branch feat/multi-tenant "Use the plan at docs/plans/PHASE_3_UPGRADES_PLAN.md (P3-U1 only)"`
+> Run via Archon, e.g.: `archon workflow run chartwarden-piv --branch feat/multi-tenant "Use the plan at docs/plans/PHASE_3_UPGRADES_PLAN.md (P3-U1 only)"`

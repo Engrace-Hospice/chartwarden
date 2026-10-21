@@ -1,4 +1,4 @@
-# WardenX — Wave C: M5 Patient & Demographics + M39 Consent (Archon task plan)
+# ChartWarden — Wave C: M5 Patient & Demographics + M39 Consent (Archon task plan)
 
 Wave C from `PHASE_1_PLAN.md` — the **patient record + consent** layer; the first PHI clinical
 modules and the first real SUD / 42 CFR Part 2 surface. Build order **M5 → M39** (M39 `dependsOn`
@@ -6,8 +6,8 @@ M5). M5 depends on Wave A (M2–M4) + Wave B (M36/M38/M40); M39 depends on M1–
 determinism rules, the validate gate, and the legend are inherited from
 `M01-M02_VERTICAL_SLICE_PLAN.md`** — read its header first.
 
-Specs: `docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md` (has §10 Implementation Tasks + §12
-Sign-Off), `WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md`.
+Specs: `docs/modules/CHARTWARDEN_MODULE_05_PATIENT_SPEC_v0_4.md` (has §10 Implementation Tasks + §12
+Sign-Off), `CHARTWARDEN_MODULE_39_CONSENT_SPEC_v0_3.md`.
 
 > **Wave-C interplay (read first).**
 > 1. **M5 closes three boot-gate deny-stubs.** The Phase-0/Wave-A bootstrap deny-stubbed
@@ -207,4 +207,4 @@ consent_type_catalog, delegated_access, tenant_consent_type_overlay.
    + documentation spine, the first modules to admit and chart on a real patient.
 
 > Run per module via Archon, e.g.:
-> `archon workflow run wardenx-piv --branch feat/m5-patient "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md (Module 5 only)"`
+> `archon workflow run chartwarden-piv --branch feat/m5-patient "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md (Module 5 only)"`

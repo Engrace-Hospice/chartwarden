@@ -5,7 +5,7 @@
 
 **Module ID:** 21
 **Phase:** 1 (clinical-operations tier — required for Engrace go-live; CoP 42 CFR §418.106 requires DME and medical supplies be provided in accordance with the plan of care, and the only fulfillment surface for the M11-signed DME / supply / comfort-kit orders and the M13-emitted comfort-kit replenishment + return cascade is M21)
-**Depends on:** 1 (Foundation — `wardenx_app` / `wardenx_admin` role split, RLS generator, `withOrgContext` / `withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions, seam registry, `validateSeams()` at boot), 2 (Identity — actor resolution for dispatch/courier/supply-team membership; `discipline` taxonomy referenced by the `controlled_substance_dispatcher_eligible` ABAC matrix), 3 (Authorization — `supplies.*`, `dme.*`, `comfort_kit.*`, `par_stock.*` permission keys this module registers; new ABAC predicates `controlled_substance_dispatcher_eligible` and `comfort_kit_return_reconciler_eligible` registered with M3's named-predicate registry), 4 (Audit — PHI write-audit trigger generator on every owned table; audit-read declaration on every PHI route; retention class `compliance` for controlled-substance dispatch/return rows; `eraseFn` registered with M4), 5 (Patient & Demographics — `patient.id` on every per-patient request; demographic snapshot for the delivery-address resolver; deceased-status driving the home-comfort-kit return cascade via M13's `m13.comfort_kit.return_required` chain; subscribes to no M5 events directly — M5 changes propagate through M11 / M13), 6 (Admission, Election & Certification — `admission.id` anchors every per-patient supply request and comfort-kit dispatch; `m6.transfer.created` drives the deployment-site reassignment workflow; M21 does **not** subscribe to `m6.admission.discharged` directly — the cascade flows M6 → M11 → `m11.order.supply_cancellation_requested` and M6 → M13 → `m13.comfort_kit.return_required`, and M21 consumes only the M11 / M13 derived events per the cascade-recipient pattern), 11 (Orders — M21 **consumes** `m11.order.supply_fulfillment_requested` (kind ∈ `{dme, supply, comfort_kit}`) and `m11.order.supply_cancellation_requested`; M21 emits `m21.supply_request.status_changed` consumed by M11's `m21-fulfillment-status.ts` consumer for one-shot auto-completion; M21 reads M11's `OrderProvider` seam for the authoritative order context at fulfillment time; M21 **never imports** M11 schemas), 13 (eMAR & Med Administration — M21 **consumes** `m13.comfort_kit.replenishment_needed`, `m13.comfort_kit.return_required`, and `m13.comfort_kit.controlled_substance_discrepancy`; M21 emits `m21.comfort_kit.deployed_at_patient`, `m21.comfort_kit.returned`, and `m21.comfort_kit.return_reconciliation` consumed by M13's `m21-comfort-kit-deployed.ts`, `m21-comfort-kit-returned.ts`, and `m21-comfort-kit-return-reconciliation.ts` consumers; M21 **never imports** M13 schemas — the seam is outbox-only-cross-module per M11 D6 / M13 D5), 22 (Document Management — BOL/packing-slip rendering on dispatch via `m21.supply_request.document_requested`; controlled-substance return receipt and DEA 1304-format perpetual-log line items via `m21.comfort_kit.document_requested` (return-receipt subtype); M22 renders, M21 emits typed payload), 36 (Secure Messaging & Alerts — par-below-threshold alerts, dispatch-failure alerts, courier-no-show alerts, controlled-substance discrepancy alerts, kit-return-overdue alerts; typed alert payloads per M36 §4.9), 38 (Clinical Terminology — HCPCS RxNorm/NDC for kit medications by reference (the medication identity lives on M12's `medication_order` and M21 never resolves it locally), HCPCS for DME and billable supplies, `dme_modifier_code` value set (NU / RR / UE / KX), `route_of_administration` and `dosage_form` for comfort-kit medication content metadata, `asOfDate` lookups for survey-grade reconstruction), 40 (MDM — `DmeVendor` canonical for the vendor on every dispatch row; tenant-overlay preferred-vendor selection on the `DmeVendor` overlay; canonical SKU catalog of vendor-supplied DME items is **MDM-side** (the `DmeVendor.supplied_skus` projection); M21's `supply_item` table is **the tenant-and-platform-shared SKU catalog identified by HCPCS** — M21 owns the SKU rows, M40 owns the vendor that supplies the SKU)
+**Depends on:** 1 (Foundation — `chartwarden_app` / `chartwarden_admin` role split, RLS generator, `withOrgContext` / `withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions, seam registry, `validateSeams()` at boot), 2 (Identity — actor resolution for dispatch/courier/supply-team membership; `discipline` taxonomy referenced by the `controlled_substance_dispatcher_eligible` ABAC matrix), 3 (Authorization — `supplies.*`, `dme.*`, `comfort_kit.*`, `par_stock.*` permission keys this module registers; new ABAC predicates `controlled_substance_dispatcher_eligible` and `comfort_kit_return_reconciler_eligible` registered with M3's named-predicate registry), 4 (Audit — PHI write-audit trigger generator on every owned table; audit-read declaration on every PHI route; retention class `compliance` for controlled-substance dispatch/return rows; `eraseFn` registered with M4), 5 (Patient & Demographics — `patient.id` on every per-patient request; demographic snapshot for the delivery-address resolver; deceased-status driving the home-comfort-kit return cascade via M13's `m13.comfort_kit.return_required` chain; subscribes to no M5 events directly — M5 changes propagate through M11 / M13), 6 (Admission, Election & Certification — `admission.id` anchors every per-patient supply request and comfort-kit dispatch; `m6.transfer.created` drives the deployment-site reassignment workflow; M21 does **not** subscribe to `m6.admission.discharged` directly — the cascade flows M6 → M11 → `m11.order.supply_cancellation_requested` and M6 → M13 → `m13.comfort_kit.return_required`, and M21 consumes only the M11 / M13 derived events per the cascade-recipient pattern), 11 (Orders — M21 **consumes** `m11.order.supply_fulfillment_requested` (kind ∈ `{dme, supply, comfort_kit}`) and `m11.order.supply_cancellation_requested`; M21 emits `m21.supply_request.status_changed` consumed by M11's `m21-fulfillment-status.ts` consumer for one-shot auto-completion; M21 reads M11's `OrderProvider` seam for the authoritative order context at fulfillment time; M21 **never imports** M11 schemas), 13 (eMAR & Med Administration — M21 **consumes** `m13.comfort_kit.replenishment_needed`, `m13.comfort_kit.return_required`, and `m13.comfort_kit.controlled_substance_discrepancy`; M21 emits `m21.comfort_kit.deployed_at_patient`, `m21.comfort_kit.returned`, and `m21.comfort_kit.return_reconciliation` consumed by M13's `m21-comfort-kit-deployed.ts`, `m21-comfort-kit-returned.ts`, and `m21-comfort-kit-return-reconciliation.ts` consumers; M21 **never imports** M13 schemas — the seam is outbox-only-cross-module per M11 D6 / M13 D5), 22 (Document Management — BOL/packing-slip rendering on dispatch via `m21.supply_request.document_requested`; controlled-substance return receipt and DEA 1304-format perpetual-log line items via `m21.comfort_kit.document_requested` (return-receipt subtype); M22 renders, M21 emits typed payload), 36 (Secure Messaging & Alerts — par-below-threshold alerts, dispatch-failure alerts, courier-no-show alerts, controlled-substance discrepancy alerts, kit-return-overdue alerts; typed alert payloads per M36 §4.9), 38 (Clinical Terminology — HCPCS RxNorm/NDC for kit medications by reference (the medication identity lives on M12's `medication_order` and M21 never resolves it locally), HCPCS for DME and billable supplies, `dme_modifier_code` value set (NU / RR / UE / KX), `route_of_administration` and `dosage_form` for comfort-kit medication content metadata, `asOfDate` lookups for survey-grade reconstruction), 40 (MDM — `DmeVendor` canonical for the vendor on every dispatch row; tenant-overlay preferred-vendor selection on the `DmeVendor` overlay; canonical SKU catalog of vendor-supplied DME items is **MDM-side** (the `DmeVendor.supplied_skus` projection); M21's `supply_item` table is **the tenant-and-platform-shared SKU catalog identified by HCPCS** — M21 owns the SKU rows, M40 owns the vendor that supplies the SKU)
 **Consumed by:** 22 (Document Management — see "Depends on"; cited bidirectionally because M22 consumes M21's `supply_request.document_requested` event), 23 (Billing — Medicare — every billable DME / supply line on a claim consults M21's `SupplyFulfillmentProvider.getDeliveredSupplyLines(admissionId, dateRange)` to verify a covering delivery confirmation exists before the claim line can leave `READY` — this is the "every billed supply has a covering order *and* a covering delivery confirmation" rule contributed to M23's Claim Pre-Submission Validation Framework; M21 publishes the seam, M23 consumes), 25 (Remittance & Denials — denial categories for "DME line denied for missing modifier" / "DME line denied for non-covered HCPCS" propagate from M25 to M21 as `m25.denial.opened` triggering M21's `denial-driven-redispatch` worker that may reissue the dispatch with a corrected modifier-code line item or escalate to compliance), 27 (Cost Report — `SupplyCostProvider` seam consumed by M27 for cost-center supply rollups per the architecture §11.B Cost Report Validation Framework; M21 emits `m21.supply_request.invoice_accrued` and `m21.supply_request.invoice_reconciled` events read by M27's accrual engine; M21 publishes the seam today, M27 consumes when M27 locks — forward seam per the M11 D14 / M13 D16 precedent), 28 (FHIR Gateway — `supply_request` projected as FHIR R4 `SupplyRequest` with `category=hospice-supply` and `itemCodeableConcept` carrying the HCPCS / SNOMED code from M38; `comfort_kit_dispatch` projected as FHIR R4 `SupplyDelivery` with `type=device` and the kit medication contents as `suppliedItem.itemReference` to FHIR `Medication`; M21 publishes the typed mapping at lock; M28 owns the HTTP surface when M28 lands), 30 (HQRP & Quality — DME-on-time-delivery rate, comfort-kit-deploy-to-first-administration interval (jointly with M13), controlled-substance-discrepancy rate, kit-return-on-time rate, par-stock-stockout rate; all read M21 via `SupplyFulfillmentProvider` and `ComfortKitDispatchProvider`), 33 (Reporting & Dashboards — operational dashboards: dispatch volume by vendor / by SKU / by location, par-stock posture, courier reliability rate, kit-return reconciliation discrepancies, vendor-invoice variance), 37 (IPU Management — IPU-room comfort kit physical-stock model reads M21's `ComfortKitDispatchProvider.getIpuRoomKitInventory(locationId, roomId)`; the IPU dispensing-cabinet integration overlay layers on top at M37 lock; M21 ships the unified `deployment_site` discriminator today including `ipu_room` per D17)
 **Spec status:** Re-locked v0.4 (Phase-2 RLS + Phase-4 DMEPOS + Phase-5 INT remediation; supersedes Locked v0.2)
 
@@ -302,7 +302,7 @@ Template data lives in two tables:
 - `comfort_kit_template` — the named recipe (`name`, `is_platform_floor`, `effective_from`, `effective_to`, `replaces_template_id`, `state_labeling_policy_jsonb`).
 - `comfort_kit_template_medication` — per-medication row carrying `rxNorm`, `ndc`, `drugName`, `strength`, `dosageForm`, `routeOfAdministration`, `isControlledSubstance`, `controlledSubstanceSchedule`, `expectedQuantity`, `expectedUnit`, `replenishmentThresholdPct`, `system_locked`, `notes` (PHI-denylist-scrubbed).
 
-The platform-floor rows are seeded in migration `0021_comfort_kit_platform_floor` (§3); the seed runs as `wardenx_admin` (platform-write-capable) and inserts the four rows with `is_platform_floor=true` and `system_locked=true` against the platform-canonical template.
+The platform-floor rows are seeded in migration `0021_comfort_kit_platform_floor` (§3); the seed runs as `chartwarden_admin` (platform-write-capable) and inserts the four rows with `is_platform_floor=true` and `system_locked=true` against the platform-canonical template.
 
 ### 2.4 Vendor Routing Rule (D4)
 
@@ -453,7 +453,7 @@ The agency maintains a par-stock supply hub per Location (or per supply-cabinet 
 
 The nightly `par-monitor` cron (runs at 04:00 in each Location's timezone) iterates active rows, emits `m21.par.below_threshold` for any row where `current_quantity <= reorder_point`, and `m21.par.stockout_imminent` for `current_quantity <= min_safety_stock`. The events go to M36 (Supply Manager + DME / Logistics Coordinator roles per the §7 role catalog) and to M33's operational dashboard.
 
-Par-stock is **not** patient PHI — `par_stock` is `wardenx_app` write-capable with RLS scoping to the org. The audit trail is M4-decorated (every quantity change captures actor + reason) but rows are retention class `operational` (3-year retention) rather than `compliance`.
+Par-stock is **not** patient PHI — `par_stock` is `chartwarden_app` write-capable with RLS scoping to the org. The audit trail is M4-decorated (every quantity change captures actor + reason) but rows are retention class `operational` (3-year retention) rather than `compliance`.
 
 ### 2.8 Cross-Module Logical FK Boundaries
 
@@ -793,7 +793,7 @@ reason, determinedAt, determinedByUserId.
 
 ### 3.1 Migration `0021_supplies_dme_comfort_kits`
 
-Roles, enums, tables, partitions, RLS policies, M4 PHI-audit triggers, seed of the platform-floor comfort-kit template, and the deny-stub `packages/vendor-edi` adapter package. The migration runs as `wardenx_admin` for the platform-shared writes (the platform-floor template + its medications + the canonical `supply_item` HCPCS catalog seed) and as `wardenx_app` for everything else.
+Roles, enums, tables, partitions, RLS policies, M4 PHI-audit triggers, seed of the platform-floor comfort-kit template, and the deny-stub `packages/vendor-edi` adapter package. The migration runs as `chartwarden_admin` for the platform-shared writes (the platform-floor template + its medications + the canonical `supply_item` HCPCS catalog seed) and as `chartwarden_app` for everything else.
 
 ```sql
 -- Migration 0021_supplies_dme_comfort_kits
@@ -861,8 +861,8 @@ CREATE TYPE m21_comfort_kit_dispatch_status AS ENUM (        -- M21-F04: folded 
 
 CREATE OR REPLACE FUNCTION m21_canonical_writer_check() RETURNS void AS $$
 BEGIN
-  IF current_user <> 'wardenx_admin' THEN
-    RAISE EXCEPTION 'platform-shared M21 rows may only be written by wardenx_admin';
+  IF current_user <> 'chartwarden_admin' THEN
+    RAISE EXCEPTION 'platform-shared M21 rows may only be written by chartwarden_admin';
   END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -911,15 +911,15 @@ ALTER TABLE supply_item        FORCE ROW LEVEL SECURITY;
 ALTER TABLE tenant_supply_item_extension ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_supply_item_extension FORCE ROW LEVEL SECURITY;
 
--- supply_item: tenants READ all platform rows; only wardenx_admin can WRITE
+-- supply_item: tenants READ all platform rows; only chartwarden_admin can WRITE
 CREATE POLICY supply_item_select_app ON supply_item
-  FOR SELECT TO wardenx_app USING (is_active = true);
+  FOR SELECT TO chartwarden_app USING (is_active = true);
 CREATE POLICY supply_item_all_admin ON supply_item
-  FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+  FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 -- tenant_supply_item_extension: tenant-scoped read/write
 CREATE POLICY tenant_supply_item_extension_tenant_rw ON tenant_supply_item_extension
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -985,17 +985,17 @@ ALTER TABLE comfort_kit_template_medication FORCE ROW LEVEL SECURITY;
 
 -- comfort_kit_template: tenants READ platform-floor + their own; WRITE only their own non-system_locked
 CREATE POLICY comfort_kit_template_select_app ON comfort_kit_template
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (is_platform_floor = true OR org_id = current_setting('app.org_id')::uuid);
 CREATE POLICY comfort_kit_template_insert_app ON comfort_kit_template
-  FOR INSERT TO wardenx_app
+  FOR INSERT TO chartwarden_app
   WITH CHECK (
     is_platform_floor = false AND
     system_locked = false AND
     org_id = current_setting('app.org_id')::uuid
   );
 CREATE POLICY comfort_kit_template_update_app ON comfort_kit_template
-  FOR UPDATE TO wardenx_app
+  FOR UPDATE TO chartwarden_app
   USING (
     org_id = current_setting('app.org_id')::uuid AND
     system_locked = false AND
@@ -1006,11 +1006,11 @@ CREATE POLICY comfort_kit_template_update_app ON comfort_kit_template
     system_locked = false
   );
 CREATE POLICY comfort_kit_template_all_admin ON comfort_kit_template
-  FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+  FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 -- comfort_kit_template_medication: parent-scoped (template's policy applies)
 CREATE POLICY comfort_kit_template_medication_select_app ON comfort_kit_template_medication
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (
     EXISTS (
       SELECT 1 FROM comfort_kit_template t
@@ -1019,7 +1019,7 @@ CREATE POLICY comfort_kit_template_medication_select_app ON comfort_kit_template
     )
   );
 CREATE POLICY comfort_kit_template_medication_modify_app ON comfort_kit_template_medication
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (
     EXISTS (
       SELECT 1 FROM comfort_kit_template t
@@ -1040,7 +1040,7 @@ CREATE POLICY comfort_kit_template_medication_modify_app ON comfort_kit_template
     )
   );
 CREATE POLICY comfort_kit_template_medication_all_admin ON comfort_kit_template_medication
-  FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+  FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 -- ============================================================================
 -- 3.1.5 VENDOR_ROUTING_RULE
@@ -1084,14 +1084,14 @@ ALTER TABLE vendor_routing_rule ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendor_routing_rule FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY vendor_routing_rule_select_app ON vendor_routing_rule
-  FOR SELECT TO wardenx_app
+  FOR SELECT TO chartwarden_app
   USING (scope_kind = 'platform' OR org_id = current_setting('app.org_id')::uuid);
 CREATE POLICY vendor_routing_rule_modify_app ON vendor_routing_rule
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (scope_kind <> 'platform' AND org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (scope_kind <> 'platform' AND org_id = current_setting('app.org_id')::uuid);
 CREATE POLICY vendor_routing_rule_all_admin ON vendor_routing_rule
-  FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+  FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 -- ============================================================================
 -- 3.1.6 PAR_STOCK (operational, tenant-scoped)
@@ -1128,7 +1128,7 @@ ALTER TABLE par_stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE par_stock FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY par_stock_tenant_rw ON par_stock
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -1206,7 +1206,7 @@ ALTER TABLE supply_request ENABLE ROW LEVEL SECURITY;
 ALTER TABLE supply_request FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY supply_request_tenant_rw ON supply_request
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -1267,7 +1267,7 @@ ALTER TABLE comfort_kit_dispatch ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comfort_kit_dispatch FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY comfort_kit_dispatch_tenant_rw ON comfort_kit_dispatch
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -1322,7 +1322,7 @@ ALTER TABLE comfort_kit_dispatched_content ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comfort_kit_dispatched_content FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY comfort_kit_dispatched_content_tenant_rw ON comfort_kit_dispatched_content
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -1390,7 +1390,7 @@ ALTER TABLE comfort_kit_return ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comfort_kit_return FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY comfort_kit_return_tenant_rw ON comfort_kit_return
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -1448,7 +1448,7 @@ ALTER TABLE comfort_kit_returned_content ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comfort_kit_returned_content FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY comfort_kit_returned_content_tenant_rw ON comfort_kit_returned_content
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (org_id = current_setting('app.org_id')::uuid)
   WITH CHECK (org_id = current_setting('app.org_id')::uuid);
 
@@ -1501,7 +1501,7 @@ SELECT m4_install_phi_audit_trigger('tenant_supply_item_extension',
   retention_class => 'operational');
 
 -- ============================================================================
--- 3.1.12 PLATFORM-FLOOR COMFORT-KIT TEMPLATE SEED (runs as wardenx_admin)
+-- 3.1.12 PLATFORM-FLOOR COMFORT-KIT TEMPLATE SEED (runs as chartwarden_admin)
 -- ============================================================================
 
 INSERT INTO comfort_kit_template
@@ -3139,7 +3139,7 @@ discharge) OR an RN directly initiates from S21.4.
    exactly one `m21.supply_request.coverage_determination_changed` in the same transaction; an unchanged
    re-save emits nothing.
 6. `NonCoveredDmeSuppliesReader.listForAdmission` returns only that admission's not-covered requests outside
-   `cancelled` / `cancellation_pending` / `returned`; run as the NOBYPASSRLS `wardenx_app` role it never returns
+   `cancelled` / `cancellation_pending` / `returned`; run as the NOBYPASSRLS `chartwarden_app` role it never returns
    another tenant's rows.
 7. **(forward seam)** M6's addendum consumer binds the event at the COP27 integration and the pair leaves
    `scripts/outbox-deferred-consumers.ts`.

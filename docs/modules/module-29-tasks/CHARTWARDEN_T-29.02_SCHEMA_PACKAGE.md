@@ -1135,13 +1135,13 @@ ALTER TABLE nppes_provider ENABLE ROW LEVEL SECURITY;
 CREATE POLICY nppes_provider_read ON nppes_provider
   FOR SELECT USING (true);
 CREATE POLICY nppes_provider_write ON nppes_provider
-  FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+  FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 ALTER TABLE nppes_sync_run ENABLE ROW LEVEL SECURITY;
 CREATE POLICY nppes_sync_run_read ON nppes_sync_run
   FOR SELECT USING (true);
 CREATE POLICY nppes_sync_run_write ON nppes_sync_run
-  FOR ALL TO wardenx_admin USING (true) WITH CHECK (true);
+  FOR ALL TO chartwarden_admin USING (true) WITH CHECK (true);
 
 -- ---------------------------------------------------------------------
 -- PHASE D — Write-audit triggers (per M4 §3.6 denylist)

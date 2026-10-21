@@ -91,7 +91,7 @@ and feature-flagged per tenant.
 ## 5. Working agreements for this repo
 
 - Every PR: `bun run typecheck && bun run arch:fitness && bun run test`, plus the relevant live suite on a **private**
-  `pgvector/pgvector:pg18` container (never the shared Docker cluster — suites `DROP ROLE wardenx_app`).
+  `pgvector/pgvector:pg18` container (never the shared Docker cluster — suites `DROP ROLE chartwarden_app`).
 - New migration → check `arch:migration-numbering` against `main` first; mirror enums/tables into `packages/db/src/enums.ts`,
   `packages/types`, and **both** manifests (`.ts` + `.cjs`).
 - New live suite → `package.json` script **and** a `ci.yml` job row.

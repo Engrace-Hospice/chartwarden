@@ -14,7 +14,7 @@ Clinical features additionally need a simulated hospice workflow run and clinica
 |---|---|---|
 | Unit | State machines (ack, handoff, task, message), sanitiser, ACL predicates | vitest in `packages/messaging/__tests__` |
 | Contract | TypeBox schemas, OpenAPI, seam types, event catalog | `client:check`, `arch:openapi-*`, `arch:outbox-bindings` |
-| Integration (live) | RLS as real `wardenx_app`, workers, M22 scan, M19 seam, outbox with the **real catalog-validating publisher** | New live suites; **private** `pgvector/pgvector:pg18` + `valkey/valkey:8`; one DB at a time |
+| Integration (live) | RLS as real `chartwarden_app`, workers, M22 scan, M19 seam, outbox with the **real catalog-validating publisher** | New live suites; **private** `pgvector/pgvector:pg18` + `valkey/valkey:8`; one DB at a time |
 | Security | IDOR across every route/socket, RLS bypass attempts, stored/reflected XSS corpus, token revocation, search leakage, attachment IDOR | Dedicated adversarial live suite |
 | Concurrency | Duplicate sends, concurrent ack/reassign, double timers, edit races | Parallel-call tests with idempotency keys |
 | Failure injection | Valkey, DB failover, push vendor, scan service, M19 unavailable | Chaos suite; assert `failed_unreachable` + no silent loss |

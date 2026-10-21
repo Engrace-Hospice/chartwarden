@@ -1,11 +1,11 @@
-# WardenX — Wave P2-2: M19 On-Call Triage · M20 Field Safety
+# ChartWarden — Wave P2-2: M19 On-Call Triage · M20 Field Safety
 
 Phase 2 Part B, Wave P2-2 from `PHASE_2_PLAN.md` §3 — after-hours coordination + field safety, both
 depending on M17 scheduling. **Conventions, determinism rules, the validate gate, and the legend are
 inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.** Each spec ends with a §12 sign-off.
 
-Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
-`WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md`.
+Specs: `docs/modules/CHARTWARDEN_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
+`CHARTWARDEN_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md`.
 
 > **Build order: M19 → M20.** Deps: M19←[5,17,36], M20←[17,36]; but M20's after-hours SOS path
 > consumes M19's `OnCallProvider` (seam, no edge) — build M19 first or deny-stub.
@@ -67,4 +67,4 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 5. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
 6. **→ Wave P2-3 (M27 Cost Report, M31 Portal, M33 Reporting, M35 Subscription Billing).**
 
-> Run per module via Archon, e.g.: `archon workflow run wardenx-piv --branch feat/m19-oncall "Use the plan at docs/plans/WAVE_P2-2_M19-M20_PLAN.md (Module 19 only)"`
+> Run per module via Archon, e.g.: `archon workflow run chartwarden-piv --branch feat/m19-oncall "Use the plan at docs/plans/WAVE_P2-2_M19-M20_PLAN.md (Module 19 only)"`

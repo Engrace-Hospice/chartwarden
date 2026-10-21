@@ -805,7 +805,7 @@ Phase 1:
 Phase 2:
 1. Install RLS via M1's generator: `SELECT wardenx_enable_rls('document', 'document_version', ...)` for every M22 table.
 2. Install audit triggers via M4's generator per §3.6 with denylist applied.
-3. GRANTs: `wardenx_app` has `SELECT, INSERT, UPDATE` on every M22 table and `DELETE` only on `document_tag` (tags are user-removable). There is **no user soft-delete** of documents or versions (F19/§2.2.2): `document_version` is append-only, "superseding" flips `document.active_version_id` (service-layer), and erroneous-upload removal routes through the M4 destruction path (`status → destroyed_tombstone`).
+3. GRANTs: `chartwarden_app` has `SELECT, INSERT, UPDATE` on every M22 table and `DELETE` only on `document_tag` (tags are user-removable). There is **no user soft-delete** of documents or versions (F19/§2.2.2): `document_version` is append-only, "superseding" flips `document.active_version_id` (service-layer), and erroneous-upload removal routes through the M4 destruction path (`status → destroyed_tombstone`).
 4. Install partition-create function calls for first 3 future months per M1's partition manager.
 5. Create the `tenant_template_overlay` golden-template-diff CHECK helper function (validates overlay is a strict superset of platform-floor mandatory fields — D16).
 

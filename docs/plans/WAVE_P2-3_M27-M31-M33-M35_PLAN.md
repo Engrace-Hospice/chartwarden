@@ -1,13 +1,13 @@
-# WardenX — Wave P2-3: M27 Cost Report · M31 Portal/Telehealth · M33 Reporting · M35 Subscription Billing
+# ChartWarden — Wave P2-3: M27 Cost Report · M31 Portal/Telehealth · M33 Reporting · M35 Subscription Billing
 
 Phase 2 Part B, Wave P2-3 from `PHASE_2_PLAN.md` §3 — finance + engagement + reporting + monetization;
 the broadest-surface modules. **Completes Phase 2 (10 new modules).** **Conventions, determinism rules,
 the validate gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`.** Each spec ends
 with a §12 / acceptance section.
 
-Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
-`WARDENX_MODULE_31_PORTAL_TELEHEALTH_SPEC_v0_2.md`, `WARDENX_MODULE_33_REPORTING_SPEC_v0_2.md`,
-`WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md`.
+Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_31_PORTAL_TELEHEALTH_SPEC_v0_2.md`, `CHARTWARDEN_MODULE_33_REPORTING_SPEC_v0_2.md`,
+`CHARTWARDEN_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md`.
 
 > **Build order: M27 ∥ M31 ∥ M35 → M33 LAST.** Deps: M27←[23,26,38], M31←[5,7,8,22,36,39], M35←[]
 > (M34↔M35 seam both ways, ADR-0025), M33←[almost everything incl. 15,16,19,20,21,24,27]. M33 consumes
@@ -97,4 +97,4 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
    **M37 (Inpatient Unit)** remains, in Phase 3 (`PHASE_3_PLAN.md`) alongside the Phase-3 flag
    activations (EPCS, FHIR-write, multi-tenant, CAHPS/HVLDL/HCI, full cap watch).
 
-> Run per module via Archon, e.g.: `archon workflow run wardenx-piv --branch feat/m33-reporting "Use the plan at docs/plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md (Module 33 only)"`
+> Run per module via Archon, e.g.: `archon workflow run chartwarden-piv --branch feat/m33-reporting "Use the plan at docs/plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md (Module 33 only)"`
