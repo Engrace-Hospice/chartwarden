@@ -270,5 +270,5 @@ Migration `1139_chartwarden_role_rename.sql` renames the database roles `wardenx
   *new* connections until the new image is up; deploy at a quiet time and confirm `/health`.
 - Before the first production run: `pg_dump` the database, and confirm `SHOW password_encryption;` is
   `scram-sha-256` and the login roles' verifiers are SCRAM (an MD5 verifier is cleared by a rename).
-- Rollback to an older image after this migration keeps working because the new `compose.yml` supplies the new
+- Rollback to an older image after this migration keeps working (once it has committed; `deploy.sh` leaves the running containers alone if migrations did not complete) because the new `compose.yml` supplies the new
   role names; there is no down-migration.
