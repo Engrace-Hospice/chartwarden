@@ -139,3 +139,11 @@
   color: var(--color-on-surface-variant);
   text-align: center;
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-schedule-field input,
+  .wx-scheduled-edit input {
+    min-height: 2.75rem;
+  }
+}

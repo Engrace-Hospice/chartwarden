@@ -69,3 +69,10 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-reassign-form fieldset label {
+    min-height: 2.75rem;
+  }
+}

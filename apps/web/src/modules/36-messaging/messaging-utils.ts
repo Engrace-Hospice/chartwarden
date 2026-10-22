@@ -140,3 +140,12 @@ export function correlationIdOf(error: unknown): string | null {
   if (typeof record.correlationId === "string" && record.correlationId) return record.correlationId;
   return record.error !== undefined ? correlationIdOf(record.error) : null;
 }
+
+/** New messages a live merge brought in that someone else wrote (the user's own sends are never announced). */
+export function countNewFromOthers(
+  incoming: readonly Message[],
+  existingIds: ReadonlySet<string>,
+  meId: string,
+): number {
+  return incoming.filter((m) => !existingIds.has(m.messageId) && m.authorUserId !== meId).length;
+}

@@ -1,0 +1,27 @@
+/* WP 5.2: connection chip. Text always carries the state; colour only reinforces it. */
+.wx-realtime-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+.wx-realtime-chip::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.wx-realtime-chip--live {
+  color: var(--color-success-pill-fg);
+}
+.wx-realtime-chip--catching-up {
+  color: var(--color-warning-pill-fg);
+}
+.wx-realtime-chip--paused {
+  color: var(--color-muted);
+}

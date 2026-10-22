@@ -108,3 +108,13 @@
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-conversation-type-tabs button {
+    min-height: 2.75rem;
+  }
+  .wx-conversation-picker-search input {
+    min-height: 2.75rem;
+  }
+}

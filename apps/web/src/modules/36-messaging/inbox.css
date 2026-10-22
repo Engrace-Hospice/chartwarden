@@ -328,3 +328,14 @@
   color: var(--color-on-surface-variant);
   font-size: 0.8125rem;
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-messaging-search {
+    min-height: 2.75rem;
+  }
+  .wx-messaging-filters button,
+  .wx-conversation-type-tabs button {
+    min-height: 2.75rem;
+  }
+}

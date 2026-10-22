@@ -22,7 +22,12 @@ import { type AuditExecutor, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import type { MessageAttachmentView } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
-import { DegradedError, NotFoundError, RateLimitedError, ChartWardenError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  DegradedError,
+  NotFoundError,
+  RateLimitedError,
+} from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
   activeLiveHolds,
@@ -30,6 +35,7 @@ import {
   messageHeldByAnyPredicate,
 } from "../jobs/retention-hold-sql";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
+import { inspectImageMetadata } from "./attachment-metadata";
 import {
   ATTACHMENT_ACCESS_TTL_SECONDS,
   ATTACHMENT_UPLOAD_TTL_SECONDS,
@@ -658,6 +664,10 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       if (sha !== row.sha256Hex || bytes.length !== row.byteSize) {
         return quarantine("checksum-mismatch");
       }
+      // WP 5.3: the client strips EXIF; the server cannot rewrite the (checksum-bound) object, so it fails closed.
+      const imageVerdict = inspectImageMetadata(bytes);
+      if (imageVerdict === "metadata") return quarantine("image-metadata-present");
+      if (imageVerdict === "unparseable") return quarantine("image-metadata-unparseable");
       phase = "scanner";
       let result: Awaited<ReturnType<ScanPort["scan"]>>;
       try {
@@ -958,7 +968,11 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             )
           : null;
         if (!found) {
-          throw new ChartWardenError("ATTACHMENT_NOT_UPLOADED", "the file has not been uploaded", 409);
+          throw new ChartWardenError(
+            "ATTACHMENT_NOT_UPLOADED",
+            "the file has not been uploaded",
+            409,
+          );
         }
         if (
           found.byteSize !== row.byteSize ||

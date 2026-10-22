@@ -22,9 +22,14 @@ import {
   requestedText,
 } from "./needs-response";
 import { recipientChoices } from "./urgent-message-dialog";
+import { NEEDS_CONNECTION_TEXT } from "./urgent-wording";
+import { useOfflineGate } from "./use-offline-gate";
 import { useUrgentOptions } from "./use-urgent-options";
 import "./needs-response.css";
 
+/** Said (politely) when the connection drops while the box is checked. */
+export const NEEDS_RESPONSE_OFFLINE_CLEARED_TEXT =
+  "Needs a response was cleared because you are offline. Reconnect to ask for a response.";
 const SEND_PERMISSION = "messaging.send";
 /** The picker's legend: the composer's Send button is described by it while nobody is chosen. */
 export const NEEDS_RESPONSE_PICKER_ID = "messaging-needs-response-picker";
@@ -130,6 +135,16 @@ export function NeedsResponseControl({
   const boxRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLFieldSetElement>(null);
   const { checked, recipientId, missing, status, choices } = state;
+  const gate = useOfflineGate();
+  const { online, announce } = gate;
+  const { setChecked } = state; // referentially stable (useCallback with no deps)
+  // Never queued: a request still checked when the connection drops is cleared rather than left to fail at send time,
+  // and the person is told, so a message that now goes out as a plain one is not a surprise.
+  useEffect(() => {
+    if (online || !checked) return;
+    setChecked(false);
+    announce(NEEDS_RESPONSE_OFFLINE_CLEARED_TEXT);
+  }, [online, checked, setChecked, announce]);
   // The sender refused (checked, nobody chosen): move to the picker so the error is heard.
   useEffect(() => {
     if (missing) pickerRef.current?.focus();
@@ -165,14 +180,24 @@ export function NeedsResponseControl({
           type="checkbox"
           checked={checked}
           disabled={disabled || choices.length === 0}
+          aria-disabled={online ? undefined : true}
           aria-describedby={`${id}-notice`}
-          onChange={(event) => state.setChecked(event.target.checked)}
+          onClick={() => {
+            if (!online) gate.onBlocked();
+          }}
+          onChange={(event) => {
+            if (online) state.setChecked(event.target.checked);
+          }}
         />
         <span>{NEEDS_RESPONSE_LABEL}</span>
       </label>
-      <p id={`${id}-notice`} className="wx-needs-response-notice">
-        {choices.length === 0 ? NEEDS_RESPONSE_NONE_TEXT : NEEDS_RESPONSE_NOTICE}
-      </p>
+      <output id={`${id}-notice`} className="wx-needs-response-notice" aria-live="off">
+        {!online
+          ? NEEDS_CONNECTION_TEXT
+          : choices.length === 0
+            ? NEEDS_RESPONSE_NONE_TEXT
+            : NEEDS_RESPONSE_NOTICE}
+      </output>
       {checked ? (
         <fieldset
           ref={pickerRef}
@@ -206,6 +231,7 @@ export function NeedsResponseControl({
         </fieldset>
       ) : null}
       {statusNode}
+      {gate.region}
     </div>
   );
 }

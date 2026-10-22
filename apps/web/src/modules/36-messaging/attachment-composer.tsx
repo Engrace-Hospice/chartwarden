@@ -1,9 +1,10 @@
 import { Glyph } from "@chartwarden/ui";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX, RefObject } from "react";
 import { ATTACHMENT_ACCEPT, displayFileName, formatBytes } from "./attachment-utils";
 import type { AttachmentChip } from "./messaging-types";
 import type { AttachmentUploads } from "./use-attachment-upload";
+import "./camera-capture.css";
 
 const STATUS_LABEL: Readonly<Record<AttachmentChip["status"], string>> = {
   hashing: "Preparing…",
@@ -51,6 +52,106 @@ export function AttachButton({ uploads, disabled, buttonRef }: AttachButtonProps
           event.target.value = "";
         }}
       />
+    </>
+  );
+}
+
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+/** Touch devices only (phones/tablets); desktops keep the ordinary file picker. */
+function hasCoarsePointer(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia(COARSE_POINTER_QUERY).matches;
+}
+
+interface CameraButtonProps {
+  uploads: Pick<AttachmentUploads, "addFiles">;
+  disabled: boolean;
+}
+
+/**
+ * WP 5.3 camera capture: opens the device camera, shows the shot for Retake / Use photo, then hands it to the same
+ * upload pipeline as a picked file (which strips location/device metadata before anything is hashed or sent).
+ * The server's scan gate is unchanged: the photo stays invisible to everyone but the uploader until it is clean.
+ */
+export function CameraButton({ uploads, disabled }: CameraButtonProps): JSX.Element | null {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [enabled] = useState(hasCoarsePointer);
+  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
+  const previewUrl = preview?.url;
+  const previewRef = useRef<HTMLElement>(null);
+
+  // A shot just appeared where the Take photo button was: move attention to it so Retake / Use photo are next.
+  useEffect(() => {
+    if (previewUrl) previewRef.current?.focus();
+  }, [previewUrl]);
+
+  // Revoke the object URL when it is replaced, discarded or the composer unmounts.
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  if (!enabled) return null;
+
+  function acceptPhoto(): void {
+    if (preview) uploads.addFiles([preview.file]);
+    setPreview(null);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="wx-attach-button"
+        aria-label="Take photo"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Glyph name="video" size={18} />
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        data-testid="camera-input"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) setPreview({ file, url: URL.createObjectURL(file) });
+        }}
+      />
+      {preview ? (
+        <section
+          ref={previewRef}
+          tabIndex={-1}
+          className="wx-camera-preview"
+          aria-label="Photo preview"
+        >
+          <img src={preview.url} alt="Captured shot, ready to attach" />
+          <p>Location data will be removed before upload</p>
+          <div className="wx-camera-actions">
+            <button
+              type="button"
+              className="wx-camera-action"
+              disabled={disabled}
+              onClick={() => inputRef.current?.click()}
+            >
+              Retake
+            </button>
+            <button
+              type="button"
+              className="wx-camera-action is-primary"
+              disabled={disabled}
+              onClick={acceptPhoto}
+            >
+              Use photo
+            </button>
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }

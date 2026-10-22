@@ -64,3 +64,10 @@
   color: var(--color-on-surface-variant);
   font-size: 0.75rem;
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-draft-conflict-actions button {
+    min-height: 2.75rem;
+  }
+}

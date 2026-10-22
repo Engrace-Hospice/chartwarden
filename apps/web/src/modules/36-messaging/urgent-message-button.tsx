@@ -16,6 +16,7 @@ import {
   UNAVAILABLE_TEXT,
   URGENT_BUTTON_LABEL,
 } from "./urgent-wording";
+import { useOfflineGate } from "./use-offline-gate";
 import { useUrgentDraft } from "./use-urgent-draft";
 import { type EnabledUrgentOptions, useUrgentOptions } from "./use-urgent-options";
 import "./urgent.css";
@@ -47,6 +48,8 @@ function UrgentControl({
 }: ButtonProps): JSX.Element | null {
   const state = useUrgentOptions(channelId, kind !== "care_team");
   const draft = useUrgentDraft();
+  const gate = useOfflineGate();
+  const { online } = gate;
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   // What the open dialog shows. Fixed while a recipient is chosen (the list must not shift under the person's hands) and kept
@@ -93,7 +96,9 @@ function UrgentControl({
         tone="secondary"
         size="lg"
         disabled={disabled || state.status !== "ready"}
+        {...gate.controlProps}
         onClick={() => {
+          if (!online) return gate.onBlocked();
           setStatus("");
           if (state.status === "ready") setDialogOptions(state.options);
           setTurnedOff(false);
@@ -103,6 +108,7 @@ function UrgentControl({
       >
         {URGENT_BUTTON_LABEL}
       </Button>
+      {gate.hint}
       {open && dialogOptions ? (
         <UrgentMessageDialog
           channelId={channelId}

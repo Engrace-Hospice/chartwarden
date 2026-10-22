@@ -4,7 +4,11 @@
 // Urgent clinical options route (shared: it supplies the patient and says the urgent mode is on) allows it. The server stays the
 // authority on every one of them. The draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome
 // stays on screen in a focusable status that clears after a while or when the composer text changes.
-import { ROLE_SEND_FLAG_KEY, ROLE_SEND_PERMISSION, URGENT_SEND_PERMISSION } from "@chartwarden/types";
+import {
+  ROLE_SEND_FLAG_KEY,
+  ROLE_SEND_PERMISSION,
+  URGENT_SEND_PERMISSION,
+} from "@chartwarden/types";
 import { Button, useFeatureFlag } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -12,6 +16,7 @@ import { useSession } from "../../shell/session";
 import type { ChannelKind } from "./messaging-types";
 import { RoleSendDialog, type RoleSent } from "./role-send-dialog";
 import { ROLE_SEND_BUTTON_LABEL, SENT_REPLAY_TEXT, sentText } from "./role-send-wording";
+import { useOfflineGate } from "./use-offline-gate";
 import { useUrgentDraft } from "./use-urgent-draft";
 import { useUrgentOptions } from "./use-urgent-options";
 import "./urgent.css";
@@ -57,6 +62,8 @@ function RoleSendControl({
 }: ButtonProps): JSX.Element | null {
   const options = useUrgentOptions(channelId, false);
   const draft = useUrgentDraft();
+  const gate = useOfflineGate();
+  const { online } = gate;
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -94,13 +101,16 @@ function RoleSendControl({
         tone="secondary"
         size="lg"
         disabled={disabled}
+        {...gate.controlProps}
         onClick={() => {
+          if (!online) return gate.onBlocked();
           setStatus("");
           setOpen(true);
         }}
       >
         {ROLE_SEND_BUTTON_LABEL}
       </Button>
+      {gate.hint}
       {open ? (
         <RoleSendDialog
           channelId={channelId}

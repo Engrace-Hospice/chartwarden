@@ -225,3 +225,10 @@ fieldset.wx-poll-confirm {
   border: 0;
   min-width: 0;
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-poll-dialog input[type="text"] {
+    min-height: 2.75rem;
+  }
+}

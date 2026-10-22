@@ -1,0 +1,17 @@
+/* The offline gate (use-offline-gate.tsx): the control is aria-disabled, not disabled, so it must LOOK disabled. */
+.wx-urgent [aria-disabled="true"],
+.wx-needs-response [aria-disabled="true"],
+.wx-needs-response [aria-disabled="true"] + span {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.wx-offline-hint {
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}
+
+.wx-offline-hint:empty {
+  display: none;
+}

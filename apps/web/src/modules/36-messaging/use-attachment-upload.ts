@@ -1,6 +1,13 @@
 import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiErrorCode, selectFiles, sha256Hex, withRequestDeadline } from "./attachment-utils";
+import {
+  MAX_ATTACHMENT_BYTES,
+  apiErrorCode,
+  selectFiles,
+  sha256Hex,
+  withRequestDeadline,
+} from "./attachment-utils";
+import { needsMetadataStrip, stripImageMetadata } from "./image-metadata-strip";
 import type { AttachmentChip } from "./messaging-types";
 
 /**
@@ -27,6 +34,8 @@ interface UploadTicket {
 interface Tracked extends AttachmentChip {
   readonly stage: Stage;
   readonly sha256Hex: string | null;
+  /** `file` is already the metadata-stripped re-encode: a retry must not strip (and re-encode) it again. */
+  readonly stripped: boolean;
   readonly ticket: UploadTicket | null;
   readonly authorizeKey: string;
   readonly completeKey: string;
@@ -46,6 +55,10 @@ const NETWORK_MESSAGE = "Upload interrupted. Check your connection and retry.";
 const STALLED_MESSAGE = "The upload took too long. Check your connection and retry.";
 const REATTACH_MESSAGE = "The server refused this file. Remove it and attach it again.";
 const SCAN_UNREADABLE_MESSAGE = "The scan result could not be read. Retry, or remove the file.";
+
+const STRIP_FAILED_MESSAGE =
+  "This photo could not be prepared, so it was not uploaded. Remove it and try another.";
+const STRIPPED_TOO_LARGE_MESSAGE = "This photo is too large to attach. Remove it and try another.";
 
 const AUTHORIZE_MESSAGES: Readonly<Record<string, string>> = {
   UNSUPPORTED_MEDIA_TYPE: "This file type is not allowed.",
@@ -226,6 +239,25 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
           patch(localId, { status: "hashing", message: null });
           let digest = item.sha256Hex;
           if (!digest) {
+            // Strip location/device metadata BEFORE hashing: the hash, size and uploaded bytes must all be the
+            // stripped file. A failure never falls back to the original.
+            if (!item.stripped && needsMetadataStrip(item.contentType)) {
+              let stripped: File;
+              try {
+                stripped = await stripImageMetadata(item.file, item.contentType);
+              } catch {
+                if (live()) fail(STRIP_FAILED_MESSAGE);
+                return;
+              }
+              if (!live()) return;
+              if (stripped.size === 0 || stripped.size > MAX_ATTACHMENT_BYTES) {
+                fail(STRIPPED_TOO_LARGE_MESSAGE);
+                return;
+              }
+              patch(localId, { file: stripped, byteSize: stripped.size, stripped: true });
+              item = live();
+              if (!item) return;
+            }
             try {
               digest = await sha256Hex(item.file);
             } catch {
@@ -420,6 +452,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
         attachmentId: null,
         stage: "authorize",
         sha256Hex: null,
+        stripped: false,
         ticket: null,
         authorizeKey: crypto.randomUUID(),
         completeKey: crypto.randomUUID(),

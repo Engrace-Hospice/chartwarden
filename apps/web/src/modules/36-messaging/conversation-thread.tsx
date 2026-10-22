@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
 import { sendBlockedReason } from "./attachment-utils";
+import { catchUpIfNeeded } from "./catch-up";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
 import { deferUntilLoaded } from "./defer-until-loaded";
@@ -21,6 +22,7 @@ import {
   channelLabel,
   compareMessages,
   correlationIdOf,
+  countNewFromOthers,
   initialsOf,
   isAccessError,
   mergeMessages,
@@ -31,6 +33,7 @@ import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
+import { ThreadNotices } from "./thread-notices";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
@@ -67,6 +70,7 @@ export interface ConversationThreadProps {
   onLanded?: () => void;
   /** Changes when a realtime hint (or a socket reconnect) says this channel has news: read the latest now. */
   liveToken?: number;
+  onLiveMerge?: (added: number) => void;
   /** While the socket is up, polling is only a safety net and runs slowly. */
   realtimeConnected?: boolean;
   /** WP 2.2: what the latest realtime hint said changed, so an open thread panel refreshes only when it is concerned. */
@@ -107,6 +111,7 @@ function ConversationThreadView({
   landOnMessageId = null,
   onLanded,
   liveToken = 0,
+  onLiveMerge,
   realtimeConnected = false,
   liveHint = null,
   canAnnounce = false,
@@ -123,6 +128,7 @@ function ConversationThreadView({
   const [loadCorrelationId, setLoadCorrelationId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [catchUpGap, setCatchUpGap] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftReferences, setDraftReferences] = useState<MessageReferenceInput[]>([]);
   // WP 3.3: the SBAR form's text lives here, not in the dialog, so Cancel keeps it (this thread is keyed by channel).
@@ -176,6 +182,7 @@ function ConversationThreadView({
   const meIdRef = useRef(meId);
   const onReadConfirmedRef = useRef(onReadConfirmed);
   const onAccessRevokedRef = useRef(onAccessRevoked);
+  const onLiveMergeRef = useRef(onLiveMerge);
   // The route anchor follows ONLY its own prop: "Back to latest" clears the mirror, and a re-render with new callback
   // identities must not write the old anchor back.
   useEffect(() => {
@@ -185,7 +192,8 @@ function ConversationThreadView({
     meIdRef.current = meId;
     onReadConfirmedRef.current = onReadConfirmed;
     onAccessRevokedRef.current = onAccessRevoked;
-  }, [meId, onReadConfirmed, onAccessRevoked]);
+    onLiveMergeRef.current = onLiveMerge;
+  }, [meId, onReadConfirmed, onAccessRevoked, onLiveMerge]);
 
   // WP 2.2 jump-to-parent (and "Back to latest" after an anchored page): see use-jump-to-message.ts.
   const readViewRef = useRef<ReadView>(INITIAL_READ_VIEW);
@@ -335,6 +343,17 @@ function ConversationThreadView({
             ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
           },
         );
+        const caught =
+          background && !error && !view.anchor && !view.replace
+            ? await catchUpIfNeeded(
+                client,
+                channel.channelId,
+                messagesRef.current,
+                data,
+                // A channel switch, jump or back-to-latest makes this walk's answer useless: stop paging.
+                () => generation !== generationRef.current || view !== readViewRef.current,
+              )
+            : null;
         if (generation !== generationRef.current) return false;
         if (view !== readViewRef.current) {
           // A newer request (a jump, back to latest) arrived while this read was in flight: this answer is for the
@@ -360,7 +379,7 @@ function ConversationThreadView({
           }
           return false;
         }
-        const incoming = (data?.messages ?? []) as Message[];
+        const incoming = caught ? [...caught.messages] : ((data?.messages ?? []) as Message[]);
         latestPageIdsRef.current = new Set(incoming.map((message) => message.messageId));
         // WP 2.2: a jump to an unloaded message (or back to latest) shows ONE contiguous page, never a merge of two.
         const replace = view.replace;
@@ -374,6 +393,8 @@ function ConversationThreadView({
         setLoadError(null);
         setLoadCorrelationId(null);
         setRefreshError(false);
+        // Latched: a later clean overlapping poll must not hide the hole; only a replace load clears it.
+        setCatchUpGap((previous) => !replace && (previous || (caught?.gap ?? false)));
         setOlderCursor((data?.nextCursor as string | undefined) ?? null);
         const merged =
           currentMessages === null ? incoming : mergeMessages(currentMessages, incoming);
@@ -392,6 +413,8 @@ function ConversationThreadView({
             if (timeline) timeline.scrollTop = timeline.scrollHeight;
           });
         }
+        const others = countNewFromOthers(incoming, existingIds, meIdRef.current);
+        if (background && nearBottomRef.current && others > 0) onLiveMergeRef.current?.(others);
         if (!background) window.setTimeout(() => void markReadBoundary(incoming), 0);
         return true;
       } finally {
@@ -457,6 +480,7 @@ function ConversationThreadView({
     panelReset();
     jumpReset();
     setNewMessageCount(0);
+    setCatchUpGap(false);
     readBoundaryRef.current = null;
     latestPageIdsRef.current = new Set();
     // The previous channel's latest read may still be in flight: its reply is discarded by the generation
@@ -713,27 +737,17 @@ function ConversationThreadView({
         ) : null}
       </div>
 
-      {newMessageCount > 0 ? (
-        <button type="button" className="wx-new-messages" onClick={showLatest}>
-          {newMessageCount} new {newMessageCount === 1 ? "message" : "messages"}
-        </button>
-      ) : null}
-      {jump.browsingHistory ? (
-        <button type="button" className="wx-new-messages" onClick={jump.backToLatest}>
-          Back to latest messages
-        </button>
-      ) : null}
-      {jump.anchorMissing ? (
-        <output className="wx-thread-refresh-warning">That message is no longer available.</output>
-      ) : null}
-      {refreshError && !loadError ? (
-        <output className="wx-thread-refresh-warning">
-          Connection interrupted.{" "}
-          <button type="button" onClick={() => void loadLatest(true)}>
-            Retry now
-          </button>
-        </output>
-      ) : null}
+      <ThreadNotices
+        newMessageCount={newMessageCount}
+        onShowLatest={showLatest}
+        browsingHistory={jump.browsingHistory}
+        onBackToLatest={jump.backToLatest}
+        anchorMissing={jump.anchorMissing}
+        catchUpGap={catchUpGap}
+        timelineRef={timelineRef}
+        refreshError={refreshError && !loadError}
+        onRetry={() => void loadLatest(true)}
+      />
 
       <TypingIndicator presence={presence} />
       <ThreadComposer

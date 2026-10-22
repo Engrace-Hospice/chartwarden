@@ -70,7 +70,12 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0005";
 const ORG_B = "22222222-2222-4222-8222-2222000f0005";
@@ -344,7 +349,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     userId: string,
     channelId: string,
     bytes: Uint8Array,
-    opts: { complete?: boolean; over?: Record<string, unknown> } = {},
+    opts: { complete?: boolean; over?: Record<string, unknown>; mime?: string } = {},
   ) {
     const res = await authorize(userId, channelId, bytes, opts.over);
     expect(res.statusCode).toBe(201);
@@ -352,7 +357,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     const row = (
       await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [attachmentId])
     ).rows[0];
-    storage.put(ORG_A, row.object_key, bytes);
+    storage.put(ORG_A, row.object_key, bytes, opts.mime);
     const done = opts.complete === false ? null : await complete(userId, attachmentId);
     return { attachmentId, done };
   }
@@ -1003,6 +1008,105 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         over: { contentType: "application/pdf" },
       });
       expect(done?.json().scanState).toBe("quarantined");
+    });
+
+    it("WP 5.3: a JPEG that still carries GPS EXIF is quarantined; the same image stripped is clean", async () => {
+      const seg = (code: number, payload: number[]) => [
+        0xff,
+        code,
+        (payload.length + 2) >> 8,
+        (payload.length + 2) & 0xff,
+        ...payload,
+      ];
+      const ascii = (s: string) => Array.from(new TextEncoder().encode(s));
+      const jfif = seg(0xe0, [...ascii("JFIF\0"), 1, 1, 0, 0, 1, 0, 1, 0, 0]);
+      const exif = seg(0xe1, [...ascii("Exif\0\0"), ...ascii("MM\0*GPS 48.85N 2.35E")]);
+      const tail = [...seg(0xda, [0, 0]), 1, 2, 3, 0xff, 0xd9];
+      const withGps = new Uint8Array([0xff, 0xd8, ...jfif, ...exif, ...tail]);
+      const stripped = new Uint8Array([0xff, 0xd8, ...jfif, ...tail]);
+
+      const dirty = await uploaded(u1, dm, withGps, {
+        over: { contentType: "image/jpeg" },
+        mime: "image/jpeg",
+      });
+      expect(dirty.done?.statusCode, dirty.done?.body).toBe(200);
+      expect(dirty.done?.json().scanState).toBe("quarantined");
+      const sig = await admin.query(`SELECT scan_signature FROM message_attachment WHERE id=$1`, [
+        dirty.attachmentId,
+      ]);
+      expect(sig.rows[0].scan_signature).toBe("image-metadata-present");
+
+      const clean = await uploaded(u1, dm, stripped, {
+        over: { contentType: "image/jpeg" },
+        mime: "image/jpeg",
+      });
+      expect(clean.done?.json().scanState).toBe("clean");
+    });
+
+    it("WP 5.3 (review H1-H3, M1): trailing Exif, a mislabelled JPEG, GPS TIFF and unparseable input all quarantine", async () => {
+      const seg = (code: number, payload: number[]) => [
+        0xff,
+        code,
+        (payload.length + 2) >> 8,
+        (payload.length + 2) & 0xff,
+        ...payload,
+      ];
+      const ascii = (s: string) => Array.from(new TextEncoder().encode(s));
+      const jfif = seg(0xe0, [...ascii("JFIF\0"), 1, 1, 0, 0, 1, 0, 1, 0, 0]);
+      const exif = seg(0xe1, [...ascii("Exif\0\0"), ...ascii("MM\0*GPS 48.85N 2.35E")]);
+      const tail = [...seg(0xda, [0, 0]), 1, 2, 3, 0xff, 0xd9];
+      const signatureOf = async (id: string) =>
+        (await admin.query(`SELECT scan_signature FROM message_attachment WHERE id=$1`, [id]))
+          .rows[0].scan_signature;
+
+      const afterEoi = await uploaded(
+        u1,
+        dm,
+        new Uint8Array([0xff, 0xd8, ...jfif, ...tail, ...exif]),
+        {
+          over: { contentType: "image/jpeg" },
+          mime: "image/jpeg",
+        },
+      );
+      expect(afterEoi.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(afterEoi.attachmentId)).toBe("image-metadata-present");
+
+      // A JPEG with Exif declared as image/png is walked by its magic bytes, not its label.
+      const mislabelled = await uploaded(
+        u1,
+        dm,
+        new Uint8Array([0xff, 0xd8, ...jfif, ...exif, ...tail]),
+        {
+          over: { contentType: "image/png" },
+          mime: "image/png",
+        },
+      );
+      expect(mislabelled.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(mislabelled.attachmentId)).toBe("image-metadata-present");
+
+      // TIFF with a GPS IFD pointer (tag 0x8825), little-endian, one entry.
+      const gpsTiff = new Uint8Array([
+        0x49, 0x49, 0x2a, 0, 8, 0, 0, 0, 1, 0, 0x25, 0x88, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ]);
+      const tiff = await uploaded(u1, dm, gpsTiff, {
+        over: { contentType: "image/tiff" },
+        mime: "image/tiff",
+      });
+      expect(tiff.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(tiff.attachmentId)).toBe("image-metadata-present");
+
+      // A JPEG cut off before EOI cannot be proven metadata-free: fail closed.
+      const truncated = await uploaded(
+        u1,
+        dm,
+        new Uint8Array([0xff, 0xd8, ...jfif, ...tail.slice(0, 6)]),
+        {
+          over: { contentType: "image/jpeg" },
+          mime: "image/jpeg",
+        },
+      );
+      expect(truncated.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(truncated.attachmentId)).toBe("image-metadata-unparseable");
     });
   });
 

@@ -18,7 +18,7 @@ import {
 } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { OfflineBanner } from "./offline-banner";
-import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
+import { RealtimeBanner, RealtimeChip, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useFocusThreadAfterPick } from "./use-focus-thread-after-pick";
 import { useMessagingRealtime } from "./use-messaging-realtime";
@@ -28,6 +28,7 @@ import "./messaging-layout.css";
 import "./inbox.css";
 import "./thread.css";
 import "./message-list.css";
+import { useLiveAnnouncement } from "./use-live-announcement";
 import "./patient-context.css";
 import "./composer.css";
 import "./new-conversation.css";
@@ -252,6 +253,14 @@ function OrganizationStaffMessaging({
     if (activeId !== null) setAccessEnded(false);
   }, [activeId]);
   activeIdRef.current = activeId;
+  const [catchingUp, setCatchingUp] = useState(false);
+  const liveAnnouncement = useLiveAnnouncement();
+  const clearLiveAnnouncement = liveAnnouncement.clear;
+  // A switched conversation must not announce (or finish announcing) the previous one's merge.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the active conversation on purpose
+  useEffect(() => clearLiveAnnouncement(), [activeId, clearLiveAnnouncement]);
+  // Newest reconnect wins: an older, slower refresh must not flip the chip back to Live while a newer one is pending.
+  const catchUpRequest = useRef(0);
   const refreshFromHint = useCallback(async (): Promise<void> => {
     const generation = generationRef.current;
     if (channelLoadInFlight.current) await channelLoadInFlight.current;
@@ -278,7 +287,16 @@ function OrganizationStaffMessaging({
       [refreshFromHint],
     ),
     useCallback(() => {
-      void refreshFromHint();
+      // WP 5.2: "Catching up…" lasts until the list read behind the reconnect has resolved.
+      // It covers the channel-list read only; the open thread's own catch-up read is not awaited here.
+      catchUpRequest.current += 1;
+      const request = catchUpRequest.current;
+      setCatchingUp(true);
+      refreshFromHint()
+        .catch(() => undefined) // a failed read is surfaced by the poll's own error path; never an unhandled rejection
+        .finally(() => {
+          if (request === catchUpRequest.current) setCatchingUp(false);
+        });
       setLiveToken((n) => n + 1);
       setLiveHint((previous) => pushLiveHint(previous, null, null));
     }, [refreshFromHint]),
@@ -452,6 +470,13 @@ function OrganizationStaffMessaging({
       />
 
       <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
+      <RealtimeChip
+        connected={realtimeConnected}
+        degraded={realtimeDegraded}
+        catchingUp={catchingUp}
+      />
+      {/* Counts only, never message text. One persistent region: cleared then set, so a repeat is announced again. */}
+      {liveAnnouncement.region}
       <OfflineBanner />
 
       <section
@@ -492,6 +517,9 @@ function OrganizationStaffMessaging({
               onMessageSent={() => void loadChannels(true)}
               onAccessRevoked={onAccessRevoked}
               liveToken={liveToken}
+              onLiveMerge={(added) =>
+                liveAnnouncement.announce(`${added} new ${added === 1 ? "message" : "messages"}`)
+              }
               liveHint={liveHint}
               realtimeConnected={realtimeConnected}
               canAnnounce={canAnnounce}

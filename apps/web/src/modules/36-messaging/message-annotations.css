@@ -16,7 +16,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  min-height: 1.5rem;
+  min-height: 1.5rem; /* WCAG 2.5.8 floor; the 44px target is the coarse-pointer rule below */
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--color-card-border);
   border-radius: 999px;
@@ -203,4 +203,22 @@
 .wx-pin-toggle[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* WP 5.4: 44px touch targets live on the control itself and only where a finger is the pointer, so a mouse layout keeps its
+   old row height. */
+@media (pointer: coarse) {
+  .wx-reaction-chip,
+  .wx-reaction-add,
+  .wx-pin-toggle {
+    min-height: 2.75rem;
+  }
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-reaction-picker-options button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
 }

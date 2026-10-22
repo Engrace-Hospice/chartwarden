@@ -197,3 +197,18 @@
     max-height: 60vh;
   }
 }
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-msg-search-input {
+    min-height: 2.75rem;
+  }
+  .wx-msg-search-close {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .wx-msg-search-filters select,
+  .wx-msg-search-filters input[type="date"] {
+    min-height: 2.75rem;
+  }
+}
