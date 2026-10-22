@@ -141,7 +141,7 @@ export function DraftSyncNotice({ sync }: { sync: ServerDraftSync }): JSX.Elemen
   return (
     <output className="wx-draft-status">
       {sync.saveGaveUp
-        ? "Could not save this draft. It is kept on this device only, and saving restarts when you type."
+        ? "Could not save this draft. It is kept in this tab only, and closing the tab loses it. Saving restarts when you type."
         : "Draft not saved yet. Your text is kept here; we are retrying."}
     </output>
   );

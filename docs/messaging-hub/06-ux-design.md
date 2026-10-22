@@ -35,7 +35,7 @@ as muted inline rows; **urgent/ack cards visually distinct** (icon + text + bord
 ## 3. Composer
 Compact by default: rich text (bold/italic/list/link), `@` mention picker (staff directory is minimum-necessary), `#`/`+` clinical link picker
 (opens a scoped search per source module, filtered by permission), attachment button (+ camera on mobile), template menu (SBAR, saved replies),
-**urgency toggle** (opens the Urgent flow, never a hidden default), schedule send, and draft status ("Saved" / "Saved on this device only").
+**urgency toggle** (opens the Urgent flow, never a hidden default), schedule send, and draft status ("Saved" / "Not saved to the server; kept in this tab only").
 Enter sends, Shift+Enter newline, Esc closes pickers, `Ctrl/⌘+K` global jump, `Ctrl/⌘+F` in-conversation search.
 
 ## 4. Required states (every list/panel)

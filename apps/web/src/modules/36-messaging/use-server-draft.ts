@@ -43,7 +43,7 @@ export type DraftResolution = "mine" | "theirs" | "both";
 export interface ServerDraftSync {
   readonly conflict: DraftConflict | null;
   readonly saveFailed: boolean;
-  /** Autosave stopped retrying (a permanent refusal, or the attempt cap): the text is kept on this device only until the next edit. */
+  /** Autosave stopped retrying (a permanent refusal, or the attempt cap): the text is kept in this tab's memory only until the next edit. */
   readonly saveGaveUp: boolean;
   /** The server confirmed exactly what the composer holds now (text and SBAR), so a "saved" claim is true. */
   readonly sbarSaved: boolean;
