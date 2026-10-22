@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { renderCmsAssessmentXml } from "./hope-cms-xml-render";
 import { OPTIONAL_ASSESSMENT_ITEMS } from "./hope-readiness-service";
 import type { HopeIsc } from "./hope-spec-registry";
 import {
@@ -26,15 +27,6 @@ export interface SerializedHopeXml {
 }
 
 export { HopeSubmissionPayloadError };
-
-function xmlEscape(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
 
 function answerToCmsValue(answer: AnswerRow | undefined): string {
   if (!answer)
@@ -196,35 +188,31 @@ export async function serializeHopeAssessmentXml(
   };
   const correctionNumber = await correctionNumberFor(tx, assessment);
 
-  const body = items
-    .map((item) => {
+  const xml = renderCmsAssessmentXml(
+    items.map((item) => {
       if (item.kind === "control") {
-        const value = controlItemValue(item.itemCode, {
-          isc: assessment.isc as string,
-          header,
-          correctionNumber,
-          optionsFor,
-        });
-        return `    <${item.itemCode}>${xmlEscape(value)}</${item.itemCode}>`;
+        return {
+          itemCode: item.itemCode,
+          value: controlItemValue(item.itemCode, {
+            isc: assessment.isc as string,
+            header,
+            correctionNumber,
+            optionsFor,
+          }),
+        };
       }
       const answer = answersByItem.get(item.id);
       // An optional item readiness allowed to stay unanswered (e.g. no middle initial) is the CMS
       // blank `^` ("not available or unknown"), not a missing answer.
-      const value =
-        !answer && OPTIONAL_ASSESSMENT_ITEMS.has(item.itemCode) ? "^" : answerToCmsValue(answer);
-      return `    <${item.itemCode}>${xmlEscape(value)}</${item.itemCode}>`;
-    })
-    .join("\n");
-  const xml = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    `<HOPE_SUBMISSION_RECORD dataSpecVersion="${xmlEscape(version.code)}" validationProfile="${VALIDATION_PROFILE}">`,
-    `  <RECORD assessmentId="${xmlEscape(assessment.id)}" isc="${assessment.isc}" operation="${operation}">`,
-    body,
-    "  </RECORD>",
-    "</HOPE_SUBMISSION_RECORD>",
-    "",
-  ].join("\n");
-  const bytes = Buffer.from(xml, "utf8");
+      return {
+        itemCode: item.itemCode,
+        value:
+          !answer && OPTIONAL_ASSESSMENT_ITEMS.has(item.itemCode) ? "^" : answerToCmsValue(answer),
+      };
+    }),
+  );
+  // renderCmsAssessmentXml guarantees printable ASCII, so utf8 and ascii bytes are identical.
+  const bytes = Buffer.from(xml, "ascii");
   return {
     xml,
     bytes,

@@ -11,8 +11,8 @@
 // reported 201 Created.
 //
 // SCOPE. This is stage 1 of the three §4.10 stages. Stages 2 and 3 terminate in `@chartwarden/iqies-client`,
-// whose sole adapter is `createUnboundIqiesAdapter` — a deny-stub, because the live transport (CMS HOPE
-// submission XML, per-MAC submitter auth, sandbox/prod selection) does not exist. That is a genuine
+// whose sole adapter is `createUnboundIqiesAdapter` — a deny-stub, because iQIES has no submission API (CMS
+// HOPE FAQs Q30); submission is the manual package upload. That is a genuine
 // declared absence, and `./cron-workers.ts` states it. Stage 1 is different: it needs nothing outside
 // M10, and it runs NIGHTLY — F-072 registered `assemble-hope-submission` as a repeatable 02:00 cron.
 // Which is why the F-086 defect below mattered: it is not a button someone might press twice.

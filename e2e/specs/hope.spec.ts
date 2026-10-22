@@ -99,7 +99,6 @@ test.describe("HOPE", () => {
     // keyboard-actionable, and an explicit role REPLACES the implicit one — `getByRole("row")` matches
     // only the header. Same trap F-023 documents in `e2e/fixtures/patients.ts`, from the other side.
     const rows = page.getByRole("table").getByRole("button");
-    const before = await rows.count();
 
     await page.getByRole("button", { name: "Record timepoint" }).click();
     const dialog = page.getByRole("dialog", { name: "Record HOPE timepoint" });
@@ -128,7 +127,11 @@ test.describe("HOPE", () => {
     // The dialog closes only on a committed write; a refusal keeps it open carrying the server's own
     // message verbatim. Before the fix this is exactly where the spec failed, on a 422.
     await expect(dialog).toBeHidden({ timeout: 15_000 });
-    await expect.poll(() => rows.count(), { timeout: 15_000 }).toBe(before + 1);
+    // A Draft Admission row exists — not "one more row than before": a draft left by an earlier run is
+    // reused by the server rather than duplicated, so a row COUNT stops growing on a re-run.
+    await expect(
+      rows.filter({ hasText: "Admission" }).filter({ hasText: "Draft" }).first(),
+    ).toBeVisible({ timeout: 15_000 });
 
     // Open the draft. The row navigates to the assessment detail, where signing lives.
     //
@@ -251,7 +254,8 @@ async function openSection(page: Page, code: string): Promise<void> {
 /** The workspace defaults to one group at a time; this spec answers whole sections, so show all. */
 async function showAll(page: Page): Promise<void> {
   const toggle = workspace(page).getByRole("switch", { name: "Show all" });
-  if (!(await toggle.isChecked())) await toggle.check();
+  // The native input sits under the styled track, so it is checked by force (a click on the label would do the same).
+  if (!(await toggle.isChecked())) await toggle.check({ force: true });
   await expect(page.getByRole("navigation", { name: "Jump to section" })).toBeVisible();
 }
 
@@ -295,7 +299,10 @@ async function answerSelect(select: Locator, page: Page): Promise<void> {
 
 async function answerText(page: Page, label: string, value: string): Promise<void> {
   const box = workspace(page).getByRole("textbox", { name: label });
-  if ((await box.inputValue()) !== "") return;
+  // Already holding this value (a re-run on a left-over draft), so nothing to save. Not "any value": a stale
+  // one — e.g. the old 123456789 placeholder CMS rejects — must be replaced.
+  // Disabled = a CMS special value (e.g. "N") is already selected for the item, which is an answer.
+  if ((await box.isDisabled()) || (await box.inputValue()) === value) return;
   await box.fill(value);
   await saving(page, () => box.blur());
 }
@@ -311,9 +318,10 @@ async function completeAdmissionSections(page: Page): Promise<void> {
   // A — Administrative. Identity, payer and admission items arrive pre-filled from the chart; the rest
   // is the nurse's. "Select all that apply" groups: CMS scores every box, so each one left unticked must
   // be answered "not checked" too — in the workspace that is ticking it and clearing it again.
-  await showAll(page);
+  // Leave Review first: "Show all" has no jump bar there (the Review step is never a long form).
   await openSection(page, "A");
-  await answerText(page, "Social Security Number", "123456789");
+  await showAll(page);
+  await answerText(page, "Social Security Number", "492718356");
   await answerText(page, "Patient Medicaid number", "N");
   for (const legend of [/^Ethnicity/, /^Race/, /^Payer information/]) {
     const boxes = main.getByRole("group", { name: legend }).getByRole("checkbox");
@@ -394,7 +402,7 @@ async function completeAdmissionSections(page: Page): Promise<void> {
   await answerRadio(page, "Was symptom impact screening completed", "Yes");
   await answerText(
     page,
-    "J2050B Date of symptom impact screening",
+    "Date of symptom impact screening",
     new Date().toLocaleDateString("en-CA"),
   );
   await answerRadio(page, "Symptom Impact - Pain", "Moderate");

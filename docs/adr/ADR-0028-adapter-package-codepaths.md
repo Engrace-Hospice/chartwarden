@@ -37,7 +37,7 @@ three — a thin adapter could import a banned package, leak a vendor SDK, or dr
 | `packages/triage-vendors` | M19 On-Call Triage | external triage-vendor APIs (§8.5) |
 | `packages/xero-client` | M27 Cost Report | Xero GL SDK (§4.5 D6) |
 | `packages/gusto-client` | M27 Cost Report | Gusto payroll SDK (§4.5 D6) |
-| `packages/iqies-client` | M10 HOPE Engine | CMS iQIES HOPE-submission endpoint (§4.10) |
+| `packages/iqies-client` | M10 HOPE Engine | CMS iQIES HOPE-submission contract (§4.10) — typed contract and deny-stub only: iQIES has no submission API, so submission is operator upload of the generated package |
 
 Phase 0 deferred these (ADR-0027 deviation note) to keep the scan set 1:1 with the manifest. They must
 be governed **before** their owning module builds (M10 is Phase 1; M18/M19/M27 are Phase 2; the rule

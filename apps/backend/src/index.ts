@@ -8772,8 +8772,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // `iqies-reconcile-worker`. `alerts`/`scheduling`/`validation`/`retention` are still out of scope —
     // see jobs/cron-workers.ts's own header.
     //
-    // The iQIES adapter is bound to `createUnboundIqiesAdapter` because there is no live transport in
-    // this codebase: the CMS endpoint, its auth flow and the HOPE submission XML schema are not here
+    // The iQIES adapter is bound to `createUnboundIqiesAdapter` because there is no live transport to
+    // bind: iQIES has no submission API (CMS HOPE FAQs Q30) — submission is the manual package upload
     // (#177). That binding is DELIBERATE and is not the same as leaving the port unbound — the deny-stub
     // raises a typed `retryable: false` DegradedError, so the job DLQs immediately (no retry storm) and
     // `attachDlqAlertsToAll` surfaces it, while Tier-2 capture is untouched (§5.6 / §7.10).
