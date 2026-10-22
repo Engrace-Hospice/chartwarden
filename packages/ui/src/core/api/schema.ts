@@ -72452,6 +72452,7 @@ export interface operations {
                 "application/json": {
                     channel: "push" | "sms" | "email";
                     target: string;
+                    provider?: "web" | "fcm" | "apns";
                 };
             };
         };

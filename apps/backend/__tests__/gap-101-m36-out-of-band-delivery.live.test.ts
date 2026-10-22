@@ -25,7 +25,12 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "33333333-3333-3333-3333-333333333333";
@@ -451,6 +456,50 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
     for (const ch of ["push", "sms", "voice", "email"] as const)
       await runDeliverySweep(sweepDeps(fakes().transports), ch);
     expect((await row(d.id)).status).toBe("pending");
+  });
+
+  // WP 5.11 / W6 — migration 1153: a native endpoint's bare device token reaches the transport together with the delivery's own
+  // alert id, a Web Push row is passed through untouched, and the provider is only legal on the push channel.
+  it("W6: a native endpoint resolves to {provider, token, alertId}; a web row is untouched; sms cannot carry a native provider", async () => {
+    const FCM = `${"a".repeat(40)}:tok`;
+    const d = await delivery(ORG_A, USER_A, "push", { endpoint: false });
+    await admin.query(
+      `INSERT INTO delivery_endpoint (user_id, channel, provider, endpoint_value, verification_status, verified_at)
+       VALUES ($1,'push','fcm',$2,'verified', now())`,
+      [USER_A, FCM],
+    );
+    const fake = fakes();
+    await runDeliverySweep(sweepDeps(fake.transports), "push");
+    const sent = fake.calls.find((c) => c.request.destination.includes(FCM));
+    expect(sent).toBeDefined();
+    expect(JSON.parse(sent!.request.destination)).toEqual({
+      provider: "fcm",
+      token: FCM,
+      alertId: d.alert,
+    });
+    expect((await row(d.id)).status).toBe("delivered");
+
+    await expect(
+      admin.query(
+        `INSERT INTO delivery_endpoint (user_id, channel, provider, endpoint_value) VALUES ($1,'sms','apns','+15550009999')`,
+        [USER_A],
+      ),
+    ).rejects.toThrow(/delivery_endpoint_provider_push_only_chk/);
+
+    // a different recipient's web-provider push row is handed over verbatim (no native envelope)
+    const w = await delivery(ORG_B, USER_B, "push", { endpoint: false });
+    await admin.query(
+      `INSERT INTO delivery_endpoint (user_id, channel, endpoint_value, verification_status, verified_at)
+       VALUES ($1,'push','{"endpoint":"https://push.example.test/x","keys":{}}','verified', now())`,
+      [USER_B],
+    );
+    const webFake = fakes();
+    await runDeliverySweep(sweepDeps(webFake.transports), "push");
+    const webCall = webFake.calls.find((c) => c.request.destination.includes("push.example.test"));
+    expect(webCall?.request.destination).toBe(
+      '{"endpoint":"https://push.example.test/x","keys":{}}',
+    );
+    expect((await row(w.id)).status).toBe("delivered");
   });
 
   it("CROSS-TENANT: org B's sweep and endpoint resolution never reach org A's deliveries", async () => {

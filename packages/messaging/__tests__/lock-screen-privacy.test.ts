@@ -250,6 +250,8 @@ const AUDITED_SENDERS: Readonly<Record<string, string>> = {
     "alert SMS/voice; renders via renderOutOfBand",
   "packages/messaging/src/dispatch/web-push-transport.ts":
     "alert push; renders via renderOutOfBand",
+  "packages/messaging/src/dispatch/native-push-transports.ts":
+    "native alert push (FCM/APNs); deliberately does NOT use the notification text: a fixed generic title/body plus an opaque alert id (native-push-transports.test.ts proves no notification text or link reaches the payload)",
   "packages/messaging/src/dispatch/vendor-http.ts": "the HTTP helper itself",
   "packages/messaging/src/notification/postmark-transactional-email.ts":
     "auth links (reset / magic link): pre-session, no PHI source, a token link by design",

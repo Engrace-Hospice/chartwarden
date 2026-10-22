@@ -6,7 +6,11 @@
 // RLS (user-ownership) lands in M36-T03.
 import { sql } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { deliveryEndpointChannel, deliveryEndpointVerification } from "../../enums";
+import {
+  deliveryEndpointChannel,
+  deliveryEndpointProvider,
+  deliveryEndpointVerification,
+} from "../../enums";
 import { users } from "../users";
 
 export const deliveryEndpoints = pgTable(
@@ -17,7 +21,9 @@ export const deliveryEndpoints = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     channel: deliveryEndpointChannel("channel").notNull(),
-    endpointValue: text("endpoint_value").notNull(), // VAPID sub | E.164 | email
+    endpointValue: text("endpoint_value").notNull(), // web push subscription JSON | FCM/APNs token | E.164 | email
+    // WP 5.11 (migration 1153): who delivers a push endpoint. `web` for every non-push channel (a CHECK pins it).
+    provider: deliveryEndpointProvider("provider").notNull().default("web"),
     verificationStatus: deliveryEndpointVerification("verification_status")
       .notNull()
       .default("pending"),

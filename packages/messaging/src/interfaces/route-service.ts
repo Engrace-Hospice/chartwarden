@@ -27,6 +27,7 @@ import type {
   ChannelMemberRole,
   ChannelMemberSource,
   DeliveryEndpointChannel,
+  DeliveryEndpointProvider,
   DeliveryEndpointVerification,
   MessageBodyKind,
 } from "./kinds";
@@ -134,6 +135,8 @@ export interface DeliveryEndpointInput {
   readonly channel: DeliveryEndpointChannel;
   /** push: the subscription endpoint URL; sms: an E.164 number; email: an address. */
   readonly target: string;
+  /** WP 5.11: push only. Absent = `web` (a browser subscription). `fcm`/`apns` carry a bare native device token in `target`. */
+  readonly provider?: DeliveryEndpointProvider;
   /**
    * WP 5.5 (ADR-0083): the session that registers the endpoint, stamped by the route from the authenticated request (never the body).
    * A session revoke expires the endpoints linked to it. Absent = not linked (a revoke never touches it).

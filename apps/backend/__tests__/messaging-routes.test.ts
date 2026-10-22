@@ -1161,6 +1161,43 @@ describe("M36-T07 messaging route inventory", () => {
     });
   });
 
+  describe("WP 5.11 native push registration", () => {
+    const register = async (payload: Record<string, unknown>) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/notifications/endpoints",
+        headers: RN1,
+        payload,
+      });
+      await app.close();
+      return res;
+    };
+
+    it("rejects a native provider on a non-push channel or with a malformed token", async () => {
+      const smsRes = await register({ channel: "sms", provider: "fcm", target: "+15555550123" });
+      expect(smsRes.statusCode).toBe(422);
+      const badFcm = await register({ channel: "push", provider: "fcm", target: "short" });
+      expect(badFcm.statusCode).toBe(422);
+      const badApns = await register({ channel: "push", provider: "apns", target: "not-hex!" });
+      expect(badApns.statusCode).toBe(422);
+    });
+
+    it("refuses a well-formed native token that is not tied to a signed-in session", async () => {
+      const res = await register({ channel: "push", provider: "apns", target: "ab".repeat(32) });
+      expect(res.statusCode).toBe(422);
+    });
+
+    it("rejects an unknown provider and keeps the default web registration working", async () => {
+      expect(
+        (await register({ channel: "push", provider: "carrier-pigeon", target: "x" })).statusCode,
+      ).toBe(422);
+      expect(
+        (await register({ channel: "push", target: "https://push.example.test/x" })).statusCode,
+      ).toBe(201);
+    });
+  });
+
   describe("§4.2 alerts inbox + alert-rules", () => {
     it("returns the actor's alert inbox", async () => {
       const { app } = makeServer();

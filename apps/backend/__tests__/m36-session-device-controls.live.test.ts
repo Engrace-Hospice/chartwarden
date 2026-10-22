@@ -197,13 +197,14 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     const endpointRows = async (userId: string) =>
       (
         await admin.query(
-          "SELECT endpoint_value, verification_status, session_id FROM delivery_endpoint WHERE user_id=$1 ORDER BY created_at",
+          "SELECT endpoint_value, verification_status, session_id, provider FROM delivery_endpoint WHERE user_id=$1 ORDER BY created_at",
           [userId],
         )
       ).rows as {
         endpoint_value: string;
         verification_status: string;
         session_id: string | null;
+        provider: string;
       }[];
 
     async function openSocket(who: Login): Promise<Socket> {
@@ -645,6 +646,39 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(res.statusCode).toBe(201);
       const row = (await endpointRows(a.userId)).find((r) => r.endpoint_value === PUSH_A2);
       expect(row).toMatchObject({ verification_status: "verified", session_id: a4.sessionId });
+    }, 60_000);
+
+    it("W6: a native push token registers from a signed-in session with its provider, expires when that session is revoked, and is refused without a valid token", async () => {
+      await resetSessions(a);
+      const a6 = await login(a, ORG, UA_IPHONE);
+      const APNS = "cd".repeat(32);
+      const bad = await call("POST", "/api/v1/notifications/endpoints", a6, {
+        channel: "push",
+        provider: "apns",
+        target: "not-a-device-token",
+      });
+      expect(bad.statusCode).toBe(422);
+      const ok = await call("POST", "/api/v1/notifications/endpoints", a6, {
+        channel: "push",
+        provider: "apns",
+        target: APNS,
+      });
+      expect(ok.statusCode).toBe(201);
+      expect((await endpointRows(a.userId)).find((r) => r.endpoint_value === APNS)).toMatchObject({
+        provider: "apns",
+        verification_status: "verified",
+        session_id: a6.sessionId,
+      });
+      // The device list reports it as a push device without ever returning the token.
+      const devices = await call("GET", "/api/v1/devices", a6);
+      expect(JSON.stringify(devices.json())).not.toContain(APNS);
+
+      const out = await login(a, ORG, UA_MAC);
+      const revoked = await call("DELETE", `/api/v1/devices/${a6.sessionId}`, out);
+      expect(revoked.statusCode).toBe(200);
+      expect((await endpointRows(a.userId)).find((r) => r.endpoint_value === APNS)).toMatchObject({
+        verification_status: "expired",
+      });
     }, 60_000);
 
     it("revoking the CURRENT session says so and signs the caller out", async () => {

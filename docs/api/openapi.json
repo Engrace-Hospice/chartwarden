@@ -189131,6 +189131,22 @@
                     "minLength": 1,
                     "maxLength": 512,
                     "type": "string"
+                  },
+                  "provider": {
+                    "anyOf": [
+                      {
+                        "const": "web",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fcm",
+                        "type": "string"
+                      },
+                      {
+                        "const": "apns",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }

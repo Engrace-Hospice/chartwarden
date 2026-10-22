@@ -442,6 +442,14 @@ export const deliveryEndpointChannel = pgEnum("delivery_endpoint_channel", [
   "email",
 ]);
 
+// `delivery_endpoint_provider` (migration 1153) — who delivers a push endpoint: a browser Web Push subscription, an Android
+// token via FCM v1, or an iOS device token via APNs. Non-push channels are always `web` (the default; a CHECK pins it).
+export const deliveryEndpointProvider = pgEnum("delivery_endpoint_provider", [
+  "web",
+  "fcm",
+  "apns",
+]);
+
 // `delivery_endpoint_verification` — endpoint verification lifecycle (§3.5).
 export const deliveryEndpointVerification = pgEnum("delivery_endpoint_verification", [
   "verified",
