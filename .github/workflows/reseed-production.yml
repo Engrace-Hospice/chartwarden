@@ -54,13 +54,26 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Preflight (before any upload)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/chartwarden' }}
+        run: |
+          # Read-only, runs BEFORE any upload, mkdir or chmod, so a refused cutover leaves the host untouched.
+          # Same preflight.sh that deploy.sh runs (INFRA_RENAME_RUNBOOK.md, "Merge order").
+          ssh -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_DIR' 2>/dev/null || { echo 'PREFLIGHT FAILED: $DEPLOY_DIR does not exist (cutover Step C not done)' >&2; exit 67; }; sh -s" \
+            < deploy/production/preflight.sh \
+            || { echo "::error::preflight refused the host; nothing was uploaded or changed (see the log above)"; exit 1; }
       - name: Upload and run reseed-demo.sh
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           RESEED_MODE: ${{ inputs.mode }}
-          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/wardenx' }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/chartwarden' }}
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
           test -n "$DEPLOY_DIR"

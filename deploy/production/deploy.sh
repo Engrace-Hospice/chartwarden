@@ -38,30 +38,20 @@ case "$docling_image" in
   *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
 esac
 
-# Defaults to the directory this script was uploaded to, so the same file works from /opt/wardenx today and
-# /opt/chartwarden after the infra-rename cutover (INFRA_RENAME_RUNBOOK.md). Override with CHARTWARDEN_DEPLOY_DIR.
+# Defaults to the directory this script was uploaded to (the workflow's DEPLOY_DIR, /opt/chartwarden unless overridden).
+# Override with CHARTWARDEN_DEPLOY_DIR.
 deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-$(cd "$(dirname "$0")" && pwd)}
-cd "$deploy_dir"
+cd "$deploy_dir" || { echo "PREFLIGHT FAILED: deploy dir $deploy_dir does not exist" >&2; exit 67; }
 
 if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   echo "expected .env.production and compose.yml in $deploy_dir" >&2
   exit 66
 fi
 
-# Installs that predate CHARTWARDEN_DB_NAME run the database `wardenx` and rely on the old compose default. The default is now
-# `chartwarden`, so pin the legacy value in the env file BEFORE anything interpolates it; otherwise the next compose command
-# would point every service at a database that does not exist. Fresh installs get an explicit value from the env template.
-# The operator renames the database later (INFRA_RENAME_RUNBOOK.md) by replacing this line.
-if ! grep -q '^CHARTWARDEN_DB_NAME=' .env.production; then
-  [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
-  printf 'CHARTWARDEN_DB_NAME=wardenx\n' >> .env.production
-  echo "pinned legacy CHARTWARDEN_DB_NAME=wardenx in .env.production"
-fi
-
 # The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-chartwarden}). It is interpolated into
 # connection URLs and psql/pg_dump arguments, so fail fast unless it is a plain lower-case identifier.
 # An exported variable wins over .env.production, exactly as it does for compose interpolation.
-db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
+db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
 db_name=${db_name:-chartwarden}
 case "$db_name" in
   '' | [!a-z_]* | *[!a-z0-9_]*)
@@ -70,11 +60,17 @@ case "$db_name" in
     ;;
 esac
 
+# ── PREFLIGHT: read-only, fails closed (exit 67) before anything below writes or restarts anything. The same file is
+# piped over SSH by the workflows before they upload; running it here covers manual deploys and rollbacks.
+[ -f "$deploy_dir/preflight.sh" ] || { echo "PREFLIGHT FAILED: $deploy_dir/preflight.sh is missing" >&2; exit 67; }
+(cd "$deploy_dir" && sh ./preflight.sh) || exit 67
+
 # GAP-138/139 — secrets the release needs but an older `.env.production` predates. Generated ONCE and
 # appended BEFORE the rollback backup is taken, so the backup (and therefore a rollback, which runs the
 # new compose.yml against the restored env file) interpolates cleanly. Existing values are never touched.
 ensure_secret() {
   if ! grep -q "^$1=" .env.production; then
+    [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
     printf '%s=%s\n' "$1" "$2" >> .env.production
     echo "generated $1 in .env.production"
   fi
@@ -178,7 +174,7 @@ restore_previous_release() {
 # one (the GitHub rename, INFRA_RENAME_RUNBOOK.md Step B) is an explicit, time-boxed opt-in: set CHARTWARDEN_COSIGN_IDENTITY
 # (space-separated for several) in the environment or in .env.production, and remove it again afterwards. Never leave an old
 # or future repository name listed: whoever could recreate that repository could then sign images this host accepts.
-cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1)}
+cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
 cosign_identities=${cosign_identities:-https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main}
 cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
 

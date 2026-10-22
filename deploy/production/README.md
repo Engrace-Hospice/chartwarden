@@ -28,9 +28,9 @@ To automate that first-time setup (and start MinIO before the first release), co
 sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 ```
 
-A fresh install lives in `/opt/chartwarden`, so set the repository variable `DEPLOY_DIR=/opt/chartwarden` for `deploy.yml` and
-`reseed-production.yml` (their fallback is `/opt/wardenx`, the live host's path until its cutover), or bootstrap with
-`DEPLOY_DIR=/opt/wardenx`. The env template already carries `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, which bootstrap rewrites with the domains.
+An install lives in `/opt/chartwarden`, which is the fallback of `deploy.yml` and `reseed-production.yml` (override with the repository variable
+`DEPLOY_DIR`). `preflight.sh` (piped by the workflows before any upload, and run by `deploy.sh`) is read-only and refuses (exit 67) on a host that still holds the old `wardenx` names; see
+`INFRA_RENAME_RUNBOOK.md`, "Merge order". The env template already carries `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, which bootstrap rewrites with the domains.
 
 Override domains when needed:
 
@@ -78,7 +78,7 @@ are not rolled back.
   attests `ghcr.io/<owner>/chartwarden-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
   argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
-- **`minio-provision`** — a one-shot that creates the IAM policy (`CHARTWARDEN_MINIO_POLICY`, default `wardenx-app` until the infra-rename cutover sets `chartwarden-app`) and the service account the api/worker use
+- **`minio-provision`** — a one-shot that creates the IAM policy (`CHARTWARDEN_MINIO_POLICY`, default `chartwarden-app`) and the service account the api/worker use
   (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*`
   and `chartwarden-*` buckets only; the MinIO root account is no longer an application credential.
 
@@ -171,8 +171,8 @@ reporting success for something never measured. To deploy without it, set
 
 | Variable | Default |
 | --- | --- |
-| `CHARTWARDEN_SMOKE_APP_URL` | `.env.production` key of the same name, else `https://wardenx.chartwarden.cloud` |
-| `CHARTWARDEN_SMOKE_API_URL` | `.env.production` key of the same name, else `https://be082026.wardenx.chartwarden.cloud` |
+| `CHARTWARDEN_SMOKE_APP_URL` | `.env.production` key of the same name, else `https://app.chartwarden.cloud` |
+| `CHARTWARDEN_SMOKE_API_URL` | `.env.production` key of the same name, else `https://api.chartwarden.cloud` |
 
 An exported variable wins, then the `.env.production` key, then the legacy host (what the live host serves until the
 infra-rename cutover). The cutover sets both keys in `.env.production`, so the post-deploy smoke follows the new hosts
@@ -245,7 +245,7 @@ which is a stronger rollback target than a tag: it names one artefact and cannot
 export DEPLOY_HOST="2.25.109.137"
 export DEPLOY_USER="deploy"
 export DEPLOY_PORT="22"
-export DEPLOY_DIR="/opt/wardenx"   # /opt/chartwarden after the infra-rename cutover
+export DEPLOY_DIR="/opt/chartwarden"
 
 SHA="94b4ca9dfb56e3c1d0551d08e18b78532e26728f"
 # Image names: releases built before the infra rename were published as `wardenx` / `wardenx-web` (and
@@ -273,7 +273,7 @@ Migration `1139_chartwarden_role_rename.sql` renames the database roles `wardenx
 `body_backfill_login`). Grants, RLS policies and SCRAM passwords move with the rename. A privilege-free
 `NOLOGIN` role `wardenx_destruction` remained after 1139 because nine already-applied function bodies tested
 `pg_has_role(current_user, 'wardenx_destruction', 'MEMBER')`; migration 1142 rewrites those bodies and drops the
-alias (migrate every database of a cluster back to back: the role is cluster-global). The database name `wardenx` is unchanged.
+alias (migrate every database of a cluster back to back: the role is cluster-global). The database is named `chartwarden` (`CHARTWARDEN_DB_NAME`) after the infra-rename cutover.
 
 - `compose.yml` now connects as `chartwarden_app` / `chartwarden_platform_login` / `chartwarden_destruction_login`.
   `deploy.sh` runs the migration before recreating containers, so the running containers briefly cannot open
