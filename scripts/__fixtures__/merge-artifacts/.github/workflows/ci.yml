@@ -1,6 +1,6 @@
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg; exit 1
       - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
         run: bun run test:auth:live
 

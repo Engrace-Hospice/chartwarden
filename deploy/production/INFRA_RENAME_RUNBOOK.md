@@ -289,68 +289,69 @@ If the rename itself failed, nothing changed: just restart the containers. Last 
 <!-- BEGIN DB-RENAME ADDENDUM (owner: refactor/rename-db-name-dev-items; the infra agent need not edit between these markers) -->
 ## Database rename: ordered procedure and what changes at the same moment
 
-State after the code-side PR (`refactor/rename-db-name-dev-items`): every NON-production default is already
-`chartwarden` (root `docker-compose.yml`, `.env.example`, `drizzle.config.ts`, `scripts/db/wait-for-postgres.ts`,
-`scripts/m36-restore-drill.ts`, CI databases `chartwarden_test|boot|e2e|migration_gate`). Production still
-defaults to `wardenx` in `deploy/production/**` and keeps working until the window below. The window itself is
-the numbered procedure in "Database rename downtime window" above; this addendum adds the ordering, the coupled
-file edits, the ledger facts and the checks.
+This addendum supersedes the shorter "Database rename downtime window" section above wherever they differ
+(that section's "default `wardenx`", "Until the flip, behaviour is unchanged" and the rollback wording "or remove
+`CHARTWARDEN_DB_NAME`" are stale once the infra branch has flipped the defaults; see the end of this addendum).
 
-Ordered procedure (downtime ~5-10 min; run only with the user's go-ahead):
+State of the code: every NON-production default is already `chartwarden` (root `docker-compose.yml`,
+`.env.example`, `drizzle.config.ts`, `scripts/db/wait-for-postgres.ts`, `scripts/m36-restore-drill.ts`, CI
+databases). For `deploy/production/**` there are two possible states, depending on whether the infra branch
+(`refactor/rename-infra-wardenx`) has been merged:
 
-1. Step 0 safety net (`pg_dump -d wardenx`, `pg_dumpall --globals-only`, MinIO mirror, copy of `.env.production`).
-2. Freeze: disable `deploy.yml` and `reseed-production.yml` in the Actions UI; no merges to `main`.
-3. Stop `api`, `worker`, `web` (+ any `seed-api` / `docling-worker` / `provision-gateway` containers). Nothing else
-   may hold a connection: pgbouncer/pgBackRest are not part of this compose file, so verify with
-   `SELECT pid, usename, application_name FROM pg_stat_activity WHERE datname = 'wardenx';` before terminating.
-4. Connect to the `postgres` maintenance DB (not `wardenx`), `pg_terminate_backend` any leftovers, then
-   `ALTER DATABASE wardenx RENAME TO chartwarden;`. It fails with "database is being accessed by other users" if a
-   connection is left, and changes nothing in that case.
-5. In `/opt/wardenx/.env.production` (same moment, before step 6): add `CHARTWARDEN_DB_NAME=chartwarden` and change
-   the path of every whole-URL value (`DATABASE_URL`, `DATABASE_ADMIN_URL`, `DATABASE_PLATFORM_URL`,
-   `DATABASE_DESTRUCTION_URL`, `PROVISION_DATABASE_URL`, any `DATABASE_*_URL`) from `/wardenx` to `/chartwarden`.
-6. `docker compose ... up -d`, then `./smoke.sh`. Then re-enable the workflows.
-7. Only after a green smoke and one successful deploy: merge the infra follow-up that flips the production defaults
-   (list below). Until then production relies on the explicit `CHARTWARDEN_DB_NAME`, which wins over any default.
+- **Infra NOT merged:** `compose.yml`, `deploy.sh` and `reseed-demo.sh` still default to `wardenx`; production keeps
+  working with no `CHARTWARDEN_DB_NAME`.
+- **Infra merged:** those three default to `chartwarden`, and `deploy.sh` APPENDS `CHARTWARDEN_DB_NAME=wardenx` to
+  `.env.production` when the key is absent (the pin). From then on ONLY that pin keeps production on the existing
+  `wardenx` database. Do not remove it except as part of step 5 below.
 
-Do NOT flip the production defaults before step 5: an unset variable would then point compose at a database that
-does not exist yet.
+Downtime ~5-10 min. Run only with the user's go-ahead.
 
-What must change in `deploy/production/**` at the same time (defaults only; the explicit env var in step 5 already
-covers the running system):
-
-| File | Change |
-| --- | --- |
-| `compose.yml` lines 17, 21, 144, 157, 198, 214-216, 268-270, 336-338, 408-410 | `${CHARTWARDEN_DB_NAME:-wardenx}` -> `${CHARTWARDEN_DB_NAME:-chartwarden}` (17 occurrences) |
-| `deploy.sh` line 53 | `db_name=${db_name:-wardenx}` -> `:-chartwarden`; update the comment on line 49 |
-| `reseed-demo.sh` line 31 | `db_name=${db_name:-wardenx}` -> `:-chartwarden` (its `pg_dump -d "$db_name"` follows the variable) |
-| `README.md` line 269 | "The database name `wardenx` is unchanged." -> now `chartwarden` |
-| `INFRA_RENAME_RUNBOOK.md` "Explicitly NOT renamed" first bullet and Phase 1 step `pg_dump -d wardenx` | historical wording; mark as done |
-| `.env.production.example` | add `CHARTWARDEN_DB_NAME=chartwarden` if the template lists whole DATABASE_* URLs |
+1. Step 0 safety net: `pg_dump -d wardenx`, `pg_dumpall --globals-only`, MinIO mirror, copy of `.env.production`.
+2. DISABLE `deploy.yml` and `reseed-production.yml` in the Actions UI, and hold merges to `main`. This is mandatory,
+   not tidiness: any `deploy.sh` run during the window sees the key absent or still `wardenx` and re-pins/starts
+   against `wardenx`, undoing or racing the rename.
+3. Stop `api`, `worker`, `web` and any `seed-api` / `docling-worker` / `provision-gateway` containers. Check
+   `SELECT pid, usename, application_name FROM pg_stat_activity WHERE datname = 'wardenx';` is empty.
+4. Connect to the `postgres` maintenance DB (not `wardenx`), `pg_terminate_backend` leftovers, then
+   `ALTER DATABASE wardenx RENAME TO chartwarden;` (fails and changes nothing if a connection remains).
+5. In `.env.production`, in the same minute: SET OR REPLACE the single existing `CHARTWARDEN_DB_NAME` line so it
+   reads `CHARTWARDEN_DB_NAME=chartwarden` (unquoted, no trailing comment, LF endings). Never add a second line:
+   `deploy.sh` reads it with `sed -n ... | tail -n 1` and compose takes one value. If the key is absent (infra not yet
+   merged), add it. Also change `/wardenx` to `/chartwarden` in every whole `DATABASE_*_URL` and
+   `PROVISION_DATABASE_URL` value. Verify: `grep -c '^CHARTWARDEN_DB_NAME=' .env.production` prints 1 and
+   `docker compose --env-file .env.production -f compose.yml config | grep -E '/(wardenx|chartwarden)$'` shows
+   only `chartwarden`.
+6. `docker compose ... up -d`, then `./smoke.sh`. Re-enable the workflows only after smoke is green.
+7. Defaults in `deploy/production/**`, conditional on the infra merge state:
+   - Infra already merged: `compose.yml`, `deploy.sh` and `reseed-demo.sh` already default to `chartwarden`, and the
+     pin is now the explicit `chartwarden` value from step 5. Nothing to flip.
+   - Infra not merged: after smoke is green and one good deploy, flip these (by content, not line number): every
+     `${CHARTWARDEN_DB_NAME:-wardenx}` in `compose.yml` to `:-chartwarden`; the `db_name=${db_name:-wardenx}` default
+     and its comment in `deploy.sh`; the same default in `reseed-demo.sh`; the `README.md` sentence saying the database
+     name `wardenx` is unchanged. Do NOT flip before step 5: with the variable unset, compose would then point at a
+     database that does not exist yet.
 
 Facts to carry into the window:
 
 - The `_wardenx_migration` view and the `_chartwarden_migration` ledger live INSIDE the database, so they travel
-  with `ALTER DATABASE ... RENAME`; nothing to copy. `scripts/db/migrate.ts` is unchanged by this PR (the compat view
-  stays for rollback of the previous release's runner; drop it in a later cleanup).
-- Roles are cluster-global and already `chartwarden_*` (migration 1139); the rename does not touch roles, grants,
-  RLS policies or the `app.org_id` GUC. Role passwords are unchanged in production (the dev password rename in this PR
-  applies to the local compose stack only).
-- pgBackRest is cluster-level (`pg1-path`), has no database name in `ops/pgbackrest/pgbackrest.conf.template`, and the
-  stanza is already `chartwarden_*`; nothing to change. Take a fresh full backup after the rename anyway
-  (`pgbackrest --stanza=... --type=full backup`) so the first post-rename WAL sits in a known-good backup set.
-  Logical dumps (`reseed-demo.sh`, `pre-reseed-*.sql.gz`) taken before the window restore into a database of any
-  name; the m36 restore drill reads `CHARTWARDEN_DB_NAME` (default now `chartwarden`).
-- Session-level or per-database settings (`ALTER DATABASE ... SET`) move with the database. Logical-replication
-  subscriptions or external monitors that name the database (Prometheus postgres_exporter DSN, Grafana data source,
-  pgbouncer `[databases]` section if you run one) are NOT in this repo: update them in the same minute.
+  with `ALTER DATABASE ... RENAME`. `scripts/db/migrate.ts` is unchanged by this PR (the compat view stays for
+  rollback of the previous release's runner; drop it in a later cleanup).
+- Roles are cluster-global and already `chartwarden_*` (migration 1139); the rename touches no roles, grants, RLS
+  policies or the `app.org_id` GUC. Production role passwords are unchanged (the dev password rename applies to the
+  local compose stack only).
+- pgBackRest is cluster-level, has no database name in `ops/pgbackrest/pgbackrest.conf.template`, and its stanza is
+  already `chartwarden_*`. Take a fresh full backup after the rename anyway. Logical dumps restore into a database of
+  any name; the m36 restore drill reads `CHARTWARDEN_DB_NAME` (default now `chartwarden`).
+- `ALTER DATABASE ... SET` settings move with the database. External monitors naming the database (postgres_exporter
+  DSN, Grafana data source, a pgbouncer `[databases]` section) are not in this repo: update them in the same minute.
 
-Rollback (any point up to step 6): stop api/worker/web, terminate backends,
-`ALTER DATABASE chartwarden RENAME TO wardenx;`, restore `.env.production` from the step-0 copy, `up -d`,
-`./smoke.sh`. If the rename itself failed nothing changed: just restart the containers. Last resort: restore the
-step-0 dump into a fresh `wardenx` database. After step 7 is merged, rolling back also means reverting that PR.
+Rollback (any point up to step 6): keep the workflows disabled, stop api/worker/web, terminate backends,
+`ALTER DATABASE chartwarden RENAME TO wardenx;`, then SET `CHARTWARDEN_DB_NAME=wardenx` in `.env.production`
+(restoring the step-0 copy also works). Never remove the key once the infra defaults are merged: `deploy.sh` would
+then default to `chartwarden`. Then `up -d`, `./smoke.sh`. If the rename itself failed nothing changed: just restart
+the containers. Last resort: restore the step-0 dump into a fresh `wardenx` database.
 
 Verification after step 6: `psql -U postgres -d postgres -c '\l'` lists `chartwarden` and not `wardenx`;
 `SELECT count(*) FROM _chartwarden_migration;` equals the pre-window count; `/api/health` and `/api/ready` green;
-one sign-in as a demo user; `docker compose ... config | grep -E '/(wardenx|chartwarden)$'` shows only `chartwarden`.
+one demo sign-in.
 <!-- END DB-RENAME ADDENDUM -->
