@@ -46,7 +46,7 @@ describe("classifyTenantHost", () => {
     ["chartwarden.com.evil.test", { kind: "outside" }],
     ["evilchartwarden.com", { kind: "outside" }],
     ["localhost:3000", { kind: "outside" }],
-    ["wardenx.chartwarden.cloud", { kind: "outside" }],
+    ["other.chartwarden.cloud", { kind: "outside" }],
     ["", { kind: "outside" }],
   ])("%s", (host, expected) => {
     expect(classifyTenantHost(host, BASE)).toEqual(expected);
@@ -129,7 +129,7 @@ describe("createTenantHostGuard", () => {
     expect([gone.statusCode, gone.json().error?.code ?? gone.json().code]).toEqual([410, "TENANT_CLOSED"]);
   });
 
-  it.each(["chartwarden.com", "admin.chartwarden.com", "localhost:3000", "wardenx.chartwarden.cloud"])(
+  it.each(["chartwarden.com", "admin.chartwarden.com", "localhost:3000", "other.chartwarden.cloud"])(
     "does nothing on %s (not a tenant host)",
     async (host) => {
       const res = await get(buildApp({ sessionOrg: ORG_SUNRISE }), host);

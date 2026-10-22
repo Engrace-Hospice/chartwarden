@@ -307,9 +307,8 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         },
       });
       await hook(reqWith({ "x-chartwarden-background": "1" }).req);
-      await hook(reqWith({ "x-wardenx-background": "1" }).req); // legacy alias
       await hook(reqWith().req);
-      expect(calls).toEqual([false, false, true]);
+      expect(calls).toEqual([false, true]);
     });
 
     it("an active session resolves exactly as before", async () => {

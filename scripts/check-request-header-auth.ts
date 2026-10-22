@@ -86,11 +86,6 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "Replay collapsing (§4.1.1). Scoped to the caller's own prior request; it grants nothing it did not already have.",
   },
-  "x-wardenx-background": {
-    classification: "not-authorization",
-    reason:
-      "Pre-rename alias of x-chartwarden-background, honoured during the transition; same semantics.",
-  },
   "x-chartwarden-background": {
     classification: "not-authorization",
     reason:
