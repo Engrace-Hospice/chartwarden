@@ -4,14 +4,20 @@
 // Urgent clinical options route (shared: it supplies the patient and says the urgent mode is on) allows it. The server stays the
 // authority on every one of them. The draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome
 // stays on screen in a focusable status that clears after a while or when the composer text changes.
-import { ROLE_SEND_FLAG_KEY, ROLE_SEND_PERMISSION, URGENT_SEND_PERMISSION } from "@chartwarden/types";
+import {
+  ROLE_SEND_FLAG_KEY,
+  ROLE_SEND_PERMISSION,
+  URGENT_SEND_PERMISSION,
+} from "@chartwarden/types";
 import { Button, useFeatureFlag } from "@chartwarden/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import type { ChannelKind } from "./messaging-types";
+import { useOnlineStatus } from "./offline-banner";
 import { RoleSendDialog, type RoleSent } from "./role-send-dialog";
 import { ROLE_SEND_BUTTON_LABEL, SENT_REPLAY_TEXT, sentText } from "./role-send-wording";
+import { NEEDS_CONNECTION_TEXT } from "./urgent-wording";
 import { useUrgentDraft } from "./use-urgent-draft";
 import { useUrgentOptions } from "./use-urgent-options";
 import "./urgent.css";
@@ -57,6 +63,8 @@ function RoleSendControl({
 }: ButtonProps): JSX.Element | null {
   const options = useUrgentOptions(channelId, false);
   const draft = useUrgentDraft();
+  const online = useOnlineStatus();
+  const hintId = useId();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -94,13 +102,17 @@ function RoleSendControl({
         tone="secondary"
         size="lg"
         disabled={disabled}
+        aria-disabled={online ? undefined : true}
+        aria-describedby={online ? undefined : hintId}
         onClick={() => {
+          if (!online) return;
           setStatus("");
           setOpen(true);
         }}
       >
         {ROLE_SEND_BUTTON_LABEL}
       </Button>
+      {online ? null : <span id={hintId}>{NEEDS_CONNECTION_TEXT}</span>}
       {open ? (
         <RoleSendDialog
           channelId={channelId}

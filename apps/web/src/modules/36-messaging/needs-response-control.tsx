@@ -21,7 +21,9 @@ import {
   askLine,
   requestedText,
 } from "./needs-response";
+import { useOnlineStatus } from "./offline-banner";
 import { recipientChoices } from "./urgent-message-dialog";
+import { NEEDS_CONNECTION_TEXT } from "./urgent-wording";
 import { useUrgentOptions } from "./use-urgent-options";
 import "./needs-response.css";
 
@@ -130,6 +132,11 @@ export function NeedsResponseControl({
   const boxRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLFieldSetElement>(null);
   const { checked, recipientId, missing, status, choices } = state;
+  const online = useOnlineStatus();
+  // Never queued: a request still checked when the connection drops is cleared rather than left to fail at send time.
+  useEffect(() => {
+    if (!online && checked) state.setChecked(false);
+  }, [online, checked, state.setChecked]);
   // The sender refused (checked, nobody chosen): move to the picker so the error is heard.
   useEffect(() => {
     if (missing) pickerRef.current?.focus();
@@ -165,13 +172,20 @@ export function NeedsResponseControl({
           type="checkbox"
           checked={checked}
           disabled={disabled || choices.length === 0}
+          aria-disabled={online ? undefined : true}
           aria-describedby={`${id}-notice`}
-          onChange={(event) => state.setChecked(event.target.checked)}
+          onChange={(event) => {
+            if (online) state.setChecked(event.target.checked);
+          }}
         />
         <span>{NEEDS_RESPONSE_LABEL}</span>
       </label>
       <p id={`${id}-notice`} className="wx-needs-response-notice">
-        {choices.length === 0 ? NEEDS_RESPONSE_NONE_TEXT : NEEDS_RESPONSE_NOTICE}
+        {!online
+          ? NEEDS_CONNECTION_TEXT
+          : choices.length === 0
+            ? NEEDS_RESPONSE_NONE_TEXT
+            : NEEDS_RESPONSE_NOTICE}
       </p>
       {checked ? (
         <fieldset

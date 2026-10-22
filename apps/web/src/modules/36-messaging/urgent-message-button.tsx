@@ -4,12 +4,14 @@
 // draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome stays on screen in a
 // focusable status that clears after a while or when the composer text changes.
 import { Button } from "@chartwarden/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { ChannelKind } from "./messaging-types";
+import { useOnlineStatus } from "./offline-banner";
 import { UrgentMessageDialog, type UrgentSent } from "./urgent-message-dialog";
 import {
   LOAD_FAILED_TEXT,
+  NEEDS_CONNECTION_TEXT,
   RETRY_LABEL,
   SENT_REPLAY_TEXT,
   SENT_TEXT,
@@ -47,6 +49,8 @@ function UrgentControl({
 }: ButtonProps): JSX.Element | null {
   const state = useUrgentOptions(channelId, kind !== "care_team");
   const draft = useUrgentDraft();
+  const online = useOnlineStatus();
+  const hintId = useId();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   // What the open dialog shows. Fixed while a recipient is chosen (the list must not shift under the person's hands) and kept
@@ -93,7 +97,10 @@ function UrgentControl({
         tone="secondary"
         size="lg"
         disabled={disabled || state.status !== "ready"}
+        aria-disabled={online ? undefined : true}
+        aria-describedby={online ? undefined : hintId}
         onClick={() => {
+          if (!online) return;
           setStatus("");
           if (state.status === "ready") setDialogOptions(state.options);
           setTurnedOff(false);
@@ -103,6 +110,7 @@ function UrgentControl({
       >
         {URGENT_BUTTON_LABEL}
       </Button>
+      {online ? null : <span id={hintId}>{NEEDS_CONNECTION_TEXT}</span>}
       {open && dialogOptions ? (
         <UrgentMessageDialog
           channelId={channelId}

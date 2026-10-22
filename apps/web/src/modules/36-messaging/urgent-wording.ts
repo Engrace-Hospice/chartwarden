@@ -35,6 +35,9 @@ export const TURNED_OFF_NOTICE =
 export const SENT_TEXT =
   "Urgent message sent. Your colleague has been told in the app. This is not a page.";
 export const SENT_REPLAY_TEXT = "That urgent message was already sent. It was not sent again.";
+// Shown by Urgent clinical, Needs a response and Message on-call role while the browser reports no network: none of them is ever
+// queued (only a plain message waits in the outbox), so the person is sent to the telephone procedure instead.
+export const NEEDS_CONNECTION_TEXT = "Needs a connection. Use the agency telephone procedure.";
 export const UNKNOWN_PERSON = "a colleague";
 
 export const confirmLine = (name: string | null): string =>
