@@ -4,7 +4,7 @@
 // supervisors' unacknowledged queue, AND raises the shared supervisor attention alert (ADR-0079), once per request and version.
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
-import type { AckSupervisorReasonCode } from "@chartwarden/types";
+import type { AckReasonCode } from "@chartwarden/types";
 import { type SQL, and, count, eq, gte, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import {
   type SupervisorAttentionDeps,
@@ -20,7 +20,7 @@ const R = schema.messageAckRequests;
 const M = schema.messages;
 
 /** The dedicated fixed reason for an offboarding reassign (ADR-0084 decision 6, migration 1158): the assignee has left the organisation. */
-export const OFFBOARDING_ACK_REASON: AckSupervisorReasonCode = "assignee_left_organisation";
+export const OFFBOARDING_ACK_REASON: AckReasonCode = "assignee_left_organisation";
 
 /** An urgent message with no tracked request is only "open" for this long (ADR-0084, PROPOSED): older ones are history, not live risk. */
 export const UNTRACKED_URGENT_WINDOW_HOURS = 72;

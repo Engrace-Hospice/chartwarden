@@ -89,7 +89,7 @@ The owner of each decision has not signed. Each item below carries an engineerin
 
 ### 6. The reason code (decided and built)
 
-Not an owner decision, built as asked: the dedicated `assignee_left_organisation` (migration 1158 widens the ack-history CHECK of migration 1126; wording "The assigned person has left the organisation"; the offboarding reassign writes it). It is part of the shared reason set, so the supervisor reassign route and screen accept it too (accepted: it is accurate, non-clinical and audited). Rows written before 1158 keep `assignee_unable_to_sign_in`.
+Not an owner decision, built as asked: the dedicated `assignee_left_organisation` (migration 1158 widens the ack-history CHECK of migration 1126; wording "The assigned person has left the organisation"; the offboarding reassign writes it). It is **offboarding-only**: the history, the DB CHECK and the offboarding step use the full list (`ACK_REASON_CODES`), but the supervisor reassign route and screen accept only the six earlier reasons (`ACK_SUPERVISOR_REASON_CODES`; the new code is a 422 there), so a supervisor cannot record "left the organisation" for a person who has not left. Rows written before 1158 keep `assignee_unable_to_sign_in`.
 
 ### 7. The untracked-urgent window
 
@@ -100,7 +100,7 @@ Not an owner decision, built as asked: the dedicated `assignee_left_organisation
 
 ## Consequences
 
-- Two migrations. `1131_m36_workforce_offboarding.sql`: a permission row and its admin grants. `1158_m36_ack_reason_assignee_left.sql`: the ack-history reason CHECK widened by one value (mirrored in `packages/types`, the Drizzle schema, the web wording and the typed client). No table, no column, so no manifest, ownership or tenancy change.
+- Two migrations. `1131_m36_workforce_offboarding.sql`: a permission row and its admin grants. `1158_m36_ack_reason_assignee_left.sql`: the ack-history reason CHECK widened by one value (mirrored in `packages/types`, the Drizzle schema, the web wording and the typed client; only the history response and the offboarding step see the new value). No table, no column, so no manifest, ownership or tenancy change.
 - Two routes, one service with ports, three step files, two audit actions, one new supervisor-attention reason, one screen. OpenAPI enriched and the typed client regenerated.
 - A live suite (`test:m36:workforce-offboarding:live`, CI row added) proves, as `wardenx_app` with REAL Better Auth sessions: preview changes nothing; execute moves the request an eligible colleague can take (history names officer and reason), leaves the stuck one assigned and visible with one alert, revokes both sessions (next REST call 401) and expires every endpoint (linked and unlinked), ends memberships, moves the task and handoff, removes the scheduled send / reminder / snooze, keeps the draft and past messages, leaves M19 untouched; re-run is a no-op; a step that failed once resumes; no step-up, no key, no review key and another tenant are refused (foreign = unknown); audit rows carry counts only.
 

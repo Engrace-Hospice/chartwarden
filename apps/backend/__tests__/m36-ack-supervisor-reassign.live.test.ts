@@ -77,7 +77,6 @@ const REASONS = [
   "coverage_change",
   "workload",
   "other_operational",
-  "assignee_left_organisation",
 ];
 
 describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () => {
@@ -681,6 +680,8 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
       for (const bad of [
         { assigned_user_id: rn2 },
         { assigned_user_id: rn2, reason_code: "the patient is dying" },
+        // Offboarding-only (ADR-0084): a supervisor cannot assert that the assignee left the organisation.
+        { assigned_user_id: rn2, reason_code: "assignee_left_organisation" },
         { assigned_user_id: rn2, reason_code: "workload", note: "free text" },
         { assigned_user_id: rn2, reason_code: "workload", status: "acknowledged" },
       ]) {

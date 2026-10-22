@@ -1,15 +1,16 @@
-// apps/backend/src/modules/36-messaging/routes/ack-typebox.ts - WP 4.2 request + response schemas for the acknowledgment-request
-// routes. The create body has NO class, deadline, role or status field: the class is derived from the message, the deadline
-// from the platform policy, and the only choice the sender makes is one named colleague. `additionalProperties:false`.
-import { type TSchema, Type } from "@sinclair/typebox";
 import {
   ACK_ADDRESSED_ROLES,
   ACK_CLASSES,
   ACK_ESCALATION_NOTES,
   ACK_EVENT_TYPES,
+  ACK_REASON_CODES,
   ACK_STATUSES,
   ACK_SUPERVISOR_REASON_CODES,
 } from "@chartwarden/types";
+// apps/backend/src/modules/36-messaging/routes/ack-typebox.ts - WP 4.2 request + response schemas for the acknowledgment-request
+// routes. The create body has NO class, deadline, role or status field: the class is derived from the message, the deadline
+// from the platform policy, and the only choice the sender makes is one named colleague. `additionalProperties:false`.
+import { type TSchema, Type } from "@sinclair/typebox";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });
@@ -73,7 +74,7 @@ const AckEvent = Type.Object({
   assigned_user_id: nullable(UuidOut),
   previous_assigned_user_id: nullable(UuidOut),
   tier: Type.Integer(),
-  reason_code: nullable(oneOf(ACK_SUPERVISOR_REASON_CODES)),
+  reason_code: nullable(oneOf(ACK_REASON_CODES)),
   created_at: Type.String({ format: "date-time" }),
 });
 

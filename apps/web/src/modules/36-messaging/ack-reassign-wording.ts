@@ -2,7 +2,7 @@
 // PROVISIONAL pending clinical-lead review: change the text here, never the codes. A refusal never says WHY a person is
 // ineligible. Reassigning does not acknowledge anything, the new person must sign in and take responsibility themselves, and
 // messaging is not the emergency path. No patient, message text or id appears here.
-import type { AckSupervisorReasonCode } from "@chartwarden/types";
+import type { AckReasonCode } from "@chartwarden/types";
 
 export const REASSIGN_LABEL = "Reassign";
 export const REASSIGN_CONFIRM_LABEL = "Reassign request";
@@ -27,7 +27,7 @@ export const REASSIGN_NEEDS_CHOICE_TEXT = "Choose a reason and a colleague to co
 export const REASSIGN_NEEDS_REASON_TEXT = "Choose a reason to continue.";
 export const REASSIGN_NEEDS_COLLEAGUE_TEXT = "Choose a colleague to continue.";
 
-export const REASSIGN_REASON_TEXT: Readonly<Record<AckSupervisorReasonCode, string>> = {
+export const REASSIGN_REASON_TEXT: Readonly<Record<AckReasonCode, string>> = {
   assignee_unreachable: "The assigned person cannot be reached",
   assignee_unable_to_sign_in: "The assigned person cannot sign in",
   assignee_off_shift: "The assigned person is off shift",

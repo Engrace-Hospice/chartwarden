@@ -24,14 +24,14 @@ import {
 import {
   ACK_CHANNEL_LIST_CAP,
   type AckChannelListResponse,
+  type AckReasonCode,
   type AckReassignCandidatesResponse,
   type AckRequestDetailResponse,
   type AckRequestResponse,
-  type AckSupervisorReasonCode,
   type AckSupervisorReassignResponse,
+  ChartWardenError,
   ForbiddenError,
   NotFoundError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { toAckEventDto, toAckRequestDto } from "./ack-dto";
@@ -131,7 +131,7 @@ export interface AckService {
     actor: AckActorRef,
     requestId: string,
     newAssigneeUserId: string,
-    reasonCode: AckSupervisorReasonCode,
+    reasonCode: AckReasonCode,
   ): Promise<AckSupervisorReassignResponse>;
 }
 
@@ -530,7 +530,11 @@ export function createAckService(deps: AckServiceDeps): AckService {
         throw isWaiting(seen.status) ? ackNotAcknowledged() : ackStateInvalid();
       }
       if (!(await deps.stillQualified(actor.orgId, actor.userId, seen.channelId))) {
-        throw new ChartWardenError("ACK_NOT_QUALIFIED", "Your role cannot close this message.", 403);
+        throw new ChartWardenError(
+          "ACK_NOT_QUALIFIED",
+          "Your role cannot close this message.",
+          403,
+        );
       }
       const at = clock();
       return guarded(

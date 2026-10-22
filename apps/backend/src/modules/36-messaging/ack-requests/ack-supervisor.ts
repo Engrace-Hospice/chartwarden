@@ -8,9 +8,9 @@ import { defaultDeadline } from "@chartwarden/messaging";
 import { ackStateInvalid } from "@chartwarden/messaging";
 import {
   ACK_REASSIGN_CANDIDATE_CAP,
+  type AckReasonCode,
   type AckReassignCandidate,
   type AckReassignCandidatesResponse,
-  type AckSupervisorReasonCode,
   type AckSupervisorReassignResponse,
   ChartWardenError,
 } from "@chartwarden/types";
@@ -128,7 +128,7 @@ export function createAckSupervisor(ctx: SupervisorContext) {
     actor: Actor,
     requestId: string,
     newAssigneeUserId: string,
-    reasonCode: AckSupervisorReasonCode,
+    reasonCode: AckReasonCode,
   ): Promise<AckSupervisorReassignResponse> {
     const seen = await supervisedRequest(actor, requestId);
     const response = (row: AckRow, changed: boolean): AckSupervisorReassignResponse => ({

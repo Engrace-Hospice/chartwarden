@@ -1,10 +1,11 @@
+import type { AckQueueItemDto, AckQueueResponse } from "@chartwarden/types";
+import { ACK_SUPERVISOR_REASON_CODES } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 ADR-0078 (G-2, G-7) - the supervisor queue: "Sent by" in words on every row (a restricted one too), and the supervisor reassign
 // dialog: opened from a row (a restricted row acts on request_ref alone), a REQUIRED reason and a colleague, a fresh Idempotency-Key,
 // generic words for every refusal, the list re-read after a save, focus never lost to the page, and a background refresh that never
 // disturbs the open dialog.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { AckQueueItemDto, AckQueueResponse } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -159,11 +160,19 @@ describe("supervisor reassign (G-2)", () => {
     expect(within(dialog).getByText(/does not open the conversation/)).toBeTruthy();
     expect(within(dialog).getByText(/must then sign in and take responsibility/)).toBeTruthy();
     // none of the six reasons is preselected
-    for (const label of Object.values(REASSIGN_REASON_TEXT)) {
+    for (const code of ACK_SUPERVISOR_REASON_CODES) {
+      const label = REASSIGN_REASON_TEXT[code];
       expect((within(dialog).getByRole("radio", { name: label }) as HTMLInputElement).checked).toBe(
         false,
       );
     }
+    // the offboarding-only reason is never offered to a supervisor, but history still has wording for it
+    expect(
+      within(dialog).queryByRole("radio", { name: REASSIGN_REASON_TEXT.assignee_left_organisation }),
+    ).toBeNull();
+    expect(REASSIGN_REASON_TEXT.assignee_left_organisation).toBe(
+      "The assigned person has left the organisation",
+    );
     expect(document.body.textContent).not.toContain(PERSON_ID);
     expect(await axe.run(document.body)).toHaveProperty("violations", []);
   });

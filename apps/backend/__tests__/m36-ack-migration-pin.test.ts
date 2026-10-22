@@ -9,6 +9,7 @@ import {
   ACK_DEADLINE_POLICY,
   ACK_EVENT_TYPES,
   ACK_EVENT_TYPES_WRITTEN_BY_4_4,
+  ACK_REASON_CODES,
   ACK_STATUSES,
   ACK_SUPERVISOR_REASON_CODES,
   type AckStatus,
@@ -200,10 +201,10 @@ describe("migration 1126 supervisor reassign (ADR-0078)", () => {
     );
     // 1126 created the CHECK with the original six; migration 1158 (below) widens it to the full list.
     expect(flatSql).toContain(
-      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES.filter((c) => c !== "assignee_left_organisation"))})`,
+      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
     );
     expect(flat(read("packages/db/src/schema/messaging/message-acknowledgments.ts"))).toContain(
-      `${"${t.eventType}"} = 'reassigned' AND ${"${t.actorKind}"} = 'user' AND ${"${t.reasonCode}"} IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
+      `${"${t.eventType}"} = 'reassigned' AND ${"${t.actorKind}"} = 'user' AND ${"${t.reasonCode}"} IN (${list(ACK_REASON_CODES)})`,
     );
   });
 
@@ -211,7 +212,7 @@ describe("migration 1126 supervisor reassign (ADR-0078)", () => {
     const sql1158 = flat(read("packages/db/migrations/1158_m36_ack_reason_assignee_left.sql"));
     expect(sql1158).toContain('DROP CONSTRAINT "message_ack_event_reason_code"');
     expect(sql1158).toContain(
-      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
+      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_REASON_CODES)})`,
     );
   });
 
