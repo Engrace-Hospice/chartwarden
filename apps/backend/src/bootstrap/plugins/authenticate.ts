@@ -68,8 +68,6 @@ const MFA_ENROLMENT_ALLOWED_PREFIXES: readonly string[] = ["/api/auth/", "/api/v
 
 /** GAP-002 — a timer poll the user did not cause; checked for timeout but not counted as activity. */
 const BACKGROUND_HEADER = "x-chartwarden-background";
-/** Pre-rename header, still honoured so a cached web bundle's polls stay non-activity until it reloads. */
-const LEGACY_BACKGROUND_HEADER = "x-wardenx-background";
 
 /** Exact capabilities of a limited password-rotation session. No business route uses this prefix. */
 const PASSWORD_CHANGE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
@@ -189,9 +187,7 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     if (!snap) return; // unauthenticated — context stays anonymous (org routes deny)
     if (deps.sessionTimeout) {
       const state = await deps.sessionTimeout.enforce(snap.sessionId, {
-        recordActivity:
-          headerOf(request, BACKGROUND_HEADER) !== "1" &&
-          headerOf(request, LEGACY_BACKGROUND_HEADER) !== "1",
+        recordActivity: headerOf(request, BACKGROUND_HEADER) !== "1",
       });
       if (state !== "active") {
         // Terminal: the enforcer has deleted the row. Nothing about the session is stamped, so
