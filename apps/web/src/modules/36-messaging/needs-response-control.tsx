@@ -191,7 +191,7 @@ export function NeedsResponseControl({
         />
         <span>{NEEDS_RESPONSE_LABEL}</span>
       </label>
-      <output id={`${id}-notice`} className="wx-needs-response-notice">
+      <output id={`${id}-notice`} className="wx-needs-response-notice" aria-live="off">
         {!online
           ? NEEDS_CONNECTION_TEXT
           : choices.length === 0

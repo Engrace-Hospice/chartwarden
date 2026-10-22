@@ -11,6 +11,12 @@ import type { Page } from "@playwright/test";
 import { RN_ACCOUNT } from "../fixtures/credentials";
 import { signInAs } from "../fixtures/helpers";
 
+declare global {
+  interface Window {
+    __uploadedPutBody?: string;
+  }
+}
+
 const SOI = 0xd8;
 const SOS = 0xda;
 const APP1 = 0xe1;
@@ -153,6 +159,21 @@ test.describe("Messaging — photo metadata strip (WP 5.3)", () => {
   test("the uploaded JPEG carries no Exif, XMP or IPTC even though the source had all three", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
+    // Playwright's request.postDataBuffer() is null for a Blob-bodied fetch in Chromium, so the bytes are captured in the page
+    // instead: wrap fetch BEFORE any navigation, read the PUT's body, then still call the real fetch.
+    await page.addInitScript(() => {
+      const realFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        if (init?.method === "PUT" && init.body instanceof Blob) {
+          const bytes = new Uint8Array(await init.body.arrayBuffer());
+          let binary = "";
+          for (const byte of bytes) binary += String.fromCharCode(byte);
+          window.__uploadedPutBody = btoa(binary);
+        }
+        return realFetch(input, init);
+      };
+    });
     await signInAs(page, RN_ACCOUNT());
     await openFirstConversation(page);
 
@@ -163,24 +184,19 @@ test.describe("Messaging — photo metadata strip (WP 5.3)", () => {
     expect(sourceSegments.some((s) => s.body.subarray(0, 28).equals(XMP_NAMESPACE))).toBe(true);
     expect(sourceSegments.some((s) => s.marker === APP13)).toBe(true);
 
-    let uploaded: Buffer | null = null;
-    await page.route(
-      (url) => url.pathname.length > 0,
-      async (route) => {
-        const request = route.request();
-        if (request.method() === "PUT" && request.postDataBuffer()) {
-          uploaded = request.postDataBuffer();
-        }
-        await route.continue();
-      },
-    );
-
     await page
       .getByTestId("attachment-input")
       .setInputFiles({ name: "wound.jpg", mimeType: "image/jpeg", buffer: source });
 
-    await expect.poll(() => uploaded, { timeout: 30_000 }).not.toBeNull();
-    const bytes = uploaded as unknown as Buffer;
+    // Smaller than the test timeout, so a missing upload fails here with a clear message rather than as a timeout.
+    await expect
+      .poll(() => page.evaluate(() => window.__uploadedPutBody ?? null), {
+        timeout: 45_000,
+        message: "the composer should PUT the stripped bytes",
+      })
+      .not.toBeNull();
+    const base64 = await page.evaluate(() => window.__uploadedPutBody as string);
+    const bytes = Buffer.from(base64, "base64");
     expect(bytes.length).toBeGreaterThan(0);
 
     const segments = headerSegments(bytes);

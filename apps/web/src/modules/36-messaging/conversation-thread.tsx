@@ -4,7 +4,6 @@ import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
 import { sendBlockedReason } from "./attachment-utils";
 import { catchUpIfNeeded } from "./catch-up";
-import { CatchUpGapNotice, RefreshErrorNotice } from "./catch-up-gap-notice";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
 import { deferUntilLoaded } from "./defer-until-loaded";
@@ -34,6 +33,7 @@ import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
+import { ThreadNotices } from "./thread-notices";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
@@ -350,7 +350,8 @@ function ConversationThreadView({
                 channel.channelId,
                 messagesRef.current,
                 data,
-                () => generation !== generationRef.current,
+                // A channel switch, jump or back-to-latest makes this walk's answer useless: stop paging.
+                () => generation !== generationRef.current || view !== readViewRef.current,
               )
             : null;
         if (generation !== generationRef.current) return false;
@@ -736,23 +737,17 @@ function ConversationThreadView({
         ) : null}
       </div>
 
-      {newMessageCount > 0 ? (
-        <button type="button" className="wx-new-messages" onClick={showLatest}>
-          {newMessageCount} new {newMessageCount === 1 ? "message" : "messages"}
-        </button>
-      ) : null}
-      {jump.browsingHistory ? (
-        <button type="button" className="wx-new-messages" onClick={jump.backToLatest}>
-          Back to latest messages
-        </button>
-      ) : null}
-      {jump.anchorMissing ? (
-        <output className="wx-thread-refresh-warning">That message is no longer available.</output>
-      ) : null}
-      {catchUpGap ? <CatchUpGapNotice onReload={jump.backToLatest} /> : null}
-      {refreshError && !loadError ? (
-        <RefreshErrorNotice onRetry={() => void loadLatest(true)} />
-      ) : null}
+      <ThreadNotices
+        newMessageCount={newMessageCount}
+        onShowLatest={showLatest}
+        browsingHistory={jump.browsingHistory}
+        onBackToLatest={jump.backToLatest}
+        anchorMissing={jump.anchorMissing}
+        catchUpGap={catchUpGap}
+        timelineRef={timelineRef}
+        refreshError={refreshError && !loadError}
+        onRetry={() => void loadLatest(true)}
+      />
 
       <TypingIndicator presence={presence} />
       <ThreadComposer

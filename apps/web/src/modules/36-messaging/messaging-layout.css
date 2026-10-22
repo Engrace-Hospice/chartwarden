@@ -38,7 +38,8 @@
 
 /* WP 5.4 / WCAG 2.4.7 + 2.4.11: one visible keyboard focus ring for every interactive control in the workspace, including the
    portalled dialogs (the modal scrim is mounted outside the page). :where() keeps this at the lowest specificity, so a
-   control's own :focus-visible ring always wins. */
+   control's own :focus-visible ring wins. It also loses to any bare `outline: none` on a control, so a rule that removes the
+   outline must draw its own indicator (e.g. .wx-mention-menu button in composer.css). */
 :where(.wx-messaging-page, .wx-modal-scrim)
   :where(a[href], button, input, select, textarea, summary, [role="button"], [role="tab"], [role="menuitem"], [tabindex="0"]):focus-visible {
   outline: 2px solid var(--color-primary);

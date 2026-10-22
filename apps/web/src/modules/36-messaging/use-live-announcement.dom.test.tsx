@@ -39,4 +39,15 @@ describe("useLiveAnnouncement", () => {
     await tick();
     expect(region.textContent).toBe("");
   });
+
+  it("does not set state after unmount (the pending timer is cleared)", async () => {
+    vi.useFakeTimers();
+    const clearSpy = vi.spyOn(window, "clearTimeout");
+    const { unmount } = render(<Harness />);
+    act(() => api.announce("late"));
+    unmount();
+    expect(clearSpy).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    clearSpy.mockRestore();
+  });
 });

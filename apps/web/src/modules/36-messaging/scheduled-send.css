@@ -48,7 +48,7 @@
 
 .wx-schedule-field input,
 .wx-scheduled-edit input {
-  min-height: 2.75rem;
+  min-height: 2.5rem;
   padding: 0 0.65rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-lg);
@@ -138,4 +138,12 @@
   padding: 1rem 0;
   color: var(--color-on-surface-variant);
   text-align: center;
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-schedule-field input,
+  .wx-scheduled-edit input {
+    min-height: 2.75rem;
+  }
 }

@@ -12,10 +12,12 @@ import { RN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 
 const MIN_TARGET_PX = 44;
-const VIEWPORTS = [
+// The 44 px target size is a touch rule: much of the workspace keeps its denser mouse sizes under (pointer: fine) and only
+// grows under @media (pointer: coarse). Chromium reports a coarse pointer only for a mobile, touch context, so the size
+// assertion runs there; the desktop case checks axe alone.
+const TOUCH_VIEWPORTS = [
   { name: "phone", width: 360, height: 740 },
   { name: "tablet", width: 768, height: 1024 },
-  { name: "desktop", width: 1280, height: 800 },
 ] as const;
 
 interface TargetRow {
@@ -83,24 +85,47 @@ const tooSmall = (rows: readonly TargetRow[]): string[] =>
     .map((r) => `${r.selector}: ${r.width}x${r.height}`);
 
 test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () => {
-  for (const viewport of VIEWPORTS) {
-    test(`${viewport.name} ${viewport.width}px: axe clean and every target is at least ${MIN_TARGET_PX}px`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await openMessaging(page);
-      await expectNoAxeViolations(page);
-      const listTargets = await targetTable(page);
-      test.info().annotations.push({ type: "targets", description: JSON.stringify(listTargets) });
-      expect(tooSmall(listTargets), "targets under 44px in the conversation list").toEqual([]);
+  for (const viewport of TOUCH_VIEWPORTS) {
+    test.describe(`${viewport.name} ${viewport.width}px (touch)`, () => {
+      test.use({
+        viewport: { width: viewport.width, height: viewport.height },
+        hasTouch: true,
+        isMobile: true,
+      });
 
-      await openFirstConversation(page);
-      await expectNoAxeViolations(page);
-      expect(tooSmall(await targetTable(page)), "targets under 44px in the open thread").toEqual(
-        [],
-      );
+      test(`axe clean and every target is at least ${MIN_TARGET_PX}px`, async ({ page }) => {
+        await openMessaging(page);
+        expect(
+          await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
+          "the context must report a coarse pointer, or the 44px rules are not in force",
+        ).toBe(true);
+        await expectNoAxeViolations(page);
+        const listTargets = await targetTable(page);
+        test.info().annotations.push({ type: "targets", description: JSON.stringify(listTargets) });
+        expect(listTargets.length, "the workspace must expose targets to measure").toBeGreaterThan(
+          0,
+        );
+        expect(tooSmall(listTargets), "targets under 44px in the conversation list").toEqual([]);
+
+        await openFirstConversation(page);
+        await expectNoAxeViolations(page);
+        const threadTargets = await targetTable(page);
+        expect(
+          threadTargets.some((t) => t.selector.startsWith("textarea")),
+          "the open thread must expose its composer",
+        ).toBe(true);
+        expect(tooSmall(threadTargets), "targets under 44px in the open thread").toEqual([]);
+      });
     });
   }
+
+  test("desktop 1280px (mouse): axe clean in the list and in an open thread", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openMessaging(page);
+    await expectNoAxeViolations(page);
+    await openFirstConversation(page);
+    await expectNoAxeViolations(page);
+  });
 
   test("1024px: the patient-context slide-over opens, closes on Escape and returns focus", async ({
     page,
@@ -109,6 +134,8 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
     await openMessaging(page);
     await openFirstConversation(page);
     const toggle = page.getByRole("button", { name: /Patient context/ });
+    // Deliberately a skip, not an expect: whether the FIRST seeded conversation is a patient-linked care-team channel is a
+    // property of the demo seed's ordering, not of the feature under test. The conversation itself is a hard precondition.
     if ((await toggle.count()) === 0)
       test.skip(true, "first seeded conversation has no patient context");
     await toggle.click();
@@ -144,7 +171,7 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
     );
     expect(overflow, "horizontal scroll at 200% text").toBe(false);
     await openFirstConversation(page);
-    const composer = page.getByRole("textbox", { name: "Message" });
+    const composer = page.getByRole("textbox", { name: "Message", exact: true });
     await composer.scrollIntoViewIfNeeded();
     await expect(composer).toBeVisible();
   });
@@ -159,9 +186,9 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
     await context.setOffline(true);
     // Axe must not run until the banner (a live region) has rendered, or it audits the pre-offline page.
     await expect(page.getByRole("status").filter({ hasText: /You're offline/ })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
+    await expect(page.getByRole("textbox", { name: "Message", exact: true })).toBeEnabled();
     await expectNoAxeViolations(page);
     await context.setOffline(false);
-    await expect(page.getByText(/You're offline/)).toBeHidden();
+    await expect(page.getByRole("status").filter({ hasText: /You're offline/ })).toBeHidden();
   });
 });

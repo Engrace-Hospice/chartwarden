@@ -10,7 +10,7 @@ import {
   URGENT_SEND_PERMISSION,
 } from "@chartwarden/types";
 import { Button, useFeatureFlag } from "@chartwarden/ui";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import type { ChannelKind } from "./messaging-types";

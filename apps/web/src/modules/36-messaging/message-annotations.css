@@ -116,8 +116,8 @@
 }
 
 .wx-reaction-picker-options button {
-  min-width: 2.75rem;
-  min-height: 2.75rem;
+  min-width: 2rem;
+  min-height: 2rem;
   border: 1px solid transparent;
   border-radius: 0.5rem;
   background: transparent;
@@ -211,6 +211,14 @@
   .wx-reaction-chip,
   .wx-reaction-add,
   .wx-pin-toggle {
+    min-height: 2.75rem;
+  }
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-reaction-picker-options button {
+    min-width: 2.75rem;
     min-height: 2.75rem;
   }
 }

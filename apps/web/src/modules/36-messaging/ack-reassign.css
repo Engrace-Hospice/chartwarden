@@ -45,7 +45,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 2.75rem;
+  min-height: 2rem;
 }
 
 .wx-reassign-actions {
@@ -68,4 +68,11 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-reassign-form fieldset label {
+    min-height: 2.75rem;
+  }
 }

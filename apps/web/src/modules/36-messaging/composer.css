@@ -82,7 +82,13 @@ a.wx-message-reference:hover {
 .wx-mention-menu button.is-active,
 .wx-mention-menu button:focus-visible {
   background: var(--color-surface-container);
-  outline: none;
+}
+
+/* A tint alone is not a focus indicator (WCAG 2.4.7 / 1.4.11): draw the ring inside the menu so it is never clipped. */
+.wx-mention-menu button:focus-visible,
+.wx-mention-menu button.is-active {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .wx-mention-menu button span,

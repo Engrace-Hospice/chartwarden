@@ -4,7 +4,7 @@
 // draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome stays on screen in a
 // focusable status that clears after a while or when the composer text changes.
 import { Button } from "@chartwarden/ui";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { ChannelKind } from "./messaging-types";
 import { UrgentMessageDialog, type UrgentSent } from "./urgent-message-dialog";

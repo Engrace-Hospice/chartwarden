@@ -197,7 +197,7 @@
 
 .wx-poll-dialog input[type="text"] {
   width: 100%;
-  min-height: 2.75rem;
+  min-height: 2.5rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-lg);
@@ -224,4 +224,11 @@ fieldset.wx-poll-confirm {
   padding: 0;
   border: 0;
   min-width: 0;
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-poll-dialog input[type="text"] {
+    min-height: 2.75rem;
+  }
 }

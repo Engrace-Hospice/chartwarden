@@ -26,7 +26,7 @@
 }
 
 .wx-conversation-type-tabs button {
-  min-height: 2.75rem;
+  min-height: 2.5rem;
 }
 
 .wx-conversation-picker-search {
@@ -38,7 +38,7 @@
 }
 
 .wx-conversation-picker-search input {
-  min-height: 2.75rem;
+  min-height: 2.6rem;
   padding: 0 0.75rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-md);
@@ -107,4 +107,14 @@
 .wx-messaging-patient-context a:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-conversation-type-tabs button {
+    min-height: 2.75rem;
+  }
+  .wx-conversation-picker-search input {
+    min-height: 2.75rem;
+  }
 }

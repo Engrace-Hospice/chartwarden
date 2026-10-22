@@ -1,6 +1,7 @@
 // The shared "needs a connection" gate for the actions that are never queued (Urgent clinical, Message on-call role, Needs a
-// response). The control stays focusable and aria-disabled (not `disabled`) so its reason can be read; a click that is
-// blocked says why. The hint is a status region that is always mounted, so its text appearing is announced.
+// response). The control stays focusable and aria-disabled (not `disabled`) so its reason can be read (aria-describedby); a
+// click that is blocked says why. The hint is visible but NOT live (aria-live="off"): the offline transition is announced once,
+// by the page-level OfflineBanner, and a blocked click or a cleared request once, through the polite region below.
 import { useCallback, useId } from "react";
 import type { ReactElement } from "react";
 import { useOnlineStatus } from "./offline-banner";
@@ -29,7 +30,7 @@ export function useOfflineGate(): OfflineGate {
   const onBlocked = useCallback(() => announce(NEEDS_CONNECTION_TEXT), [announce]);
   const hint = (
     <>
-      <output id={hintId} className="wx-offline-hint">
+      <output id={hintId} className="wx-offline-hint" aria-live="off">
         {online ? "" : NEEDS_CONNECTION_TEXT}
       </output>
       {region}

@@ -62,7 +62,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 2.75rem;
+  min-height: 2.5rem;
   padding: 0 0.7rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-md);
@@ -96,7 +96,7 @@
 
 .wx-messaging-filters button,
 .wx-conversation-type-tabs button {
-  min-height: 2.75rem;
+  min-height: 2rem;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
@@ -327,4 +327,15 @@
   background: var(--color-surface-container, rgb(0 0 0 / 0.06));
   color: var(--color-on-surface-variant);
   font-size: 0.8125rem;
+}
+
+/* WP 5.4: 44px touch targets apply to a coarse pointer only; a mouse layout keeps its original density. */
+@media (pointer: coarse) {
+  .wx-messaging-search {
+    min-height: 2.75rem;
+  }
+  .wx-messaging-filters button,
+  .wx-conversation-type-tabs button {
+    min-height: 2.75rem;
+  }
 }
