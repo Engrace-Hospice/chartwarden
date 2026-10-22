@@ -179,7 +179,7 @@ restore_previous_release() {
 # (space-separated for several) in the environment or in .env.production, and remove it again afterwards. Never leave an old
 # or future repository name listed: whoever could recreate that repository could then sign images this host accepts.
 cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1)}
-cosign_identities=${cosign_identities:-https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main}
+cosign_identities=${cosign_identities:-https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main}
 cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
 
 # `https://github.com/<owner>/<repo>/.github/...` -> `<owner>/<repo>`, so the certificate's repository claim is checked as well.
