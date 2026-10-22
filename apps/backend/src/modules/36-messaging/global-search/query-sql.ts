@@ -15,7 +15,7 @@ import { CANDIDATE_CAP, MAX_QUERY_CHANNELS } from "@chartwarden/messaging";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { MESSAGE_ROW_COLUMNS, type MessageRow } from "../messaging-message-hydration";
 import type { Tx } from "../messaging-write-core";
-import { type VersionQuery, tagSetsOf } from "./query-terms";
+import type { VersionQuery } from "./query-terms";
 
 const MSG = schema.messages;
 const CH = schema.channels;
@@ -76,12 +76,6 @@ export async function selectQueryChannels(
   return result.rows.map((row) => row.id);
 }
 
-/** `set_id` is an array index we generated: inlined as a validated integer literal, never user input. */
-function setIdLiteral(setId: number) {
-  if (!Number.isInteger(setId) || setId < 0) throw new Error("invalid tag set id");
-  return sql.raw(`${setId}::int`);
-}
-
 const ISO_MS = sql`'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 
 export async function selectCandidates(
@@ -95,12 +89,10 @@ export async function selectCandidates(
   const values = sql.join(
     queries.flatMap((query) =>
       query.channels.flatMap((channel) =>
-        // One independent conjunction per label set (`set_id`): a message must carry ALL tags of ONE set.
-        tagSetsOf(channel).flatMap((set, setId) =>
-          set.map(
-            (tag) =>
-              sql`(${setIdLiteral(setId)}, ${query.keyVersion}::text, ${channel.channelId}::uuid, ${tag}::int, ${set.length}::int)`,
-          ),
+        // A message must carry ALL of the channel's distinct tags.
+        channel.tags.map(
+          (tag) =>
+            sql`(${query.keyVersion}::text, ${channel.channelId}::uuid, ${tag}::int, ${channel.tags.length}::int)`,
         ),
       ),
     ),
@@ -116,14 +108,14 @@ export async function selectCandidates(
                     < (${after.createdAtIso}::timestamptz, ${after.id}::uuid)`
     : sql``;
   const result = await tx.execute<CandidateRow>(sql`
-    WITH q(set_id, key_version, channel_id, tag, k) AS (VALUES ${values}),
+    WITH q(key_version, channel_id, tag, k) AS (VALUES ${values}),
     hits AS (
       SELECT t.message_id, t.key_version
         FROM message_search_token t
         JOIN q ON q.key_version = t.key_version AND q.channel_id = t.channel_id AND q.tag = t.tag
         ${early}
        WHERE t.organization_id = ${organizationId}
-       GROUP BY t.message_id, t.key_version, q.set_id, q.k
+       GROUP BY t.message_id, t.key_version, q.k
       HAVING count(DISTINCT t.tag) = q.k
     ),
     -- ONE row per message BEFORE the LIMIT: a message indexed under two live key versions must not take two of the 501 slots.

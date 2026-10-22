@@ -1,8 +1,8 @@
-// M23 MAC portal credential (`mac_submitter_credential.client_secret_cipher`): HKDF DEK label + AAD label, one set.
+// M23 MAC portal credential (`mac_submitter_credential.client_secret_cipher`): HKDF DEK label + AAD label.
 import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import type { MacSecretCipher } from "../../../apps/backend/src/modules/23-billing-medicare/routes/secret-cipher";
-import { type RowClass, type Scan, type WriteResult, inOrg, rowsOf, tryOpen } from "./core";
+import { type RowClass, type Scan, inOrg, rowsOf, tryOpen } from "./core";
 
 interface MacCredentialRow {
   readonly id: string;
@@ -21,8 +21,7 @@ export function m23MacCredentialScan(
     // The DB enum text is the cipher's context value (the write path passes the same enum member).
     macJurisdiction: row.macJurisdiction as never,
   });
-  const open = (row: MacCredentialRow, generation?: "current" | "legacy") =>
-    cipher.decrypt(organizationId, context(row), row.cipher, generation);
+  const open = (row: MacCredentialRow) => cipher.decrypt(organizationId, context(row), row.cipher);
 
   return {
     module: "m23",
@@ -54,31 +53,7 @@ export function m23MacCredentialScan(
       );
     },
     async classify(row): Promise<RowClass> {
-      if ((await tryOpen(() => open(row, "current"))) !== undefined) return "current";
-      return (await tryOpen(() => open(row, "legacy"))) !== undefined ? "legacy" : "unreadable";
-    },
-    async reseal(row): Promise<WriteResult> {
-      const plaintext = await tryOpen(() => open(row));
-      if (plaintext === undefined) return "failed";
-      try {
-        const sealed = await cipher.encrypt(organizationId, plaintext, context(row));
-        const reopened = await open({ ...row, cipher: sealed.cipher }, "current");
-        if (reopened !== plaintext) return "failed";
-        const swapped = await inOrg(db, organizationId, async (tx) =>
-          rowsOf<{ id: string }>(
-            await tx.execute(sql`
-              UPDATE mac_submitter_credential
-                 SET client_secret_cipher = ${sealed.cipher},
-                     client_secret_dek_version = ${sealed.dekVersion}
-               WHERE organization_id = ${organizationId} AND id = ${row.id}::uuid
-                 AND client_secret_cipher = ${row.cipher}
-              RETURNING id`),
-          ),
-        );
-        return swapped.length === 1 ? "resealed" : "skipped";
-      } catch {
-        return "failed";
-      }
+      return (await tryOpen(() => open(row))) !== undefined ? "current" : "unreadable";
     },
   };
 }

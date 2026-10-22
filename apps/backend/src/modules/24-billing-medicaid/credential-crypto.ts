@@ -32,22 +32,9 @@ const NONCE_LEN = 12;
 const TAG_LEN = 16;
 const KEY_LEN = 32;
 const MIN_LEN = 1 + NONCE_LEN + TAG_LEN; // header + tag, even with an empty ciphertext
-// HKDF `info` label — org-bound AND module-bound. ChartWarden rename (release 1 = READ-SIDE): readers derive a DEK under
-// every label (current first); the writer uses DEK_INFO_PREFIX_WRITE. There is no AAD here, so the label is the only binding.
-// LEGACY(wardenx->chartwarden): remove the legacy entry after the backfill (release 3).
-const DEK_INFO_PREFIX_CURRENT = "chartwarden-m24-trading-partner-dek:";
-const DEK_INFO_PREFIX_LEGACY = "wardenx-m24-trading-partner-dek:";
-// Release 2 (write-side flip done): new credentials are sealed under the CURRENT label; scripts/db/backfill-crypto-labels.ts
-// re-seals the older ones. Readers still accept both (release 3 removes the legacy one).
-const DEK_INFO_PREFIX_WRITE = DEK_INFO_PREFIX_CURRENT;
-const DEK_INFO_PREFIXES_READ = [DEK_INFO_PREFIX_CURRENT, DEK_INFO_PREFIX_LEGACY] as const;
-
-/** Which label generation to derive a DEK for; only the backfill's decrypt probe asks for one. */
-export type LabelGeneration = "current" | "legacy";
-const DEK_INFO_PREFIX_BY_GENERATION: Record<LabelGeneration, string> = {
-  current: DEK_INFO_PREFIX_CURRENT,
-  legacy: DEK_INFO_PREFIX_LEGACY,
-};
+// HKDF `info` label - org-bound AND module-bound. There is no AAD here, so the label is the only binding. The ChartWarden
+// rename is complete: the legacy `wardenx-m24-...` label is no longer readable.
+const DEK_INFO_PREFIX = "chartwarden-m24-trading-partner-dek:";
 
 /** The sentinel the pre-crypto placeholder wrote. Recognised so a legacy row reads as "no usable secret". */
 export const LEGACY_DEFERRED_SENTINEL = "ENC:deferred";
@@ -72,25 +59,9 @@ export function loadCredentialKek(
 
 /** Derive a tenant's 32-byte credential DEK from the master KEK + org id (HKDF-SHA256, org-bound). */
 export function deriveOrgCredentialDek(kek: Buffer, orgId: string): Buffer {
-  return deriveDekFor(kek, orgId, DEK_INFO_PREFIX_WRITE);
-}
-
-function deriveDekFor(kek: Buffer, orgId: string, prefix: string): Buffer {
-  return Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), `${prefix}${orgId}`, KEY_LEN));
-}
-
-/** The DEK under ONE label generation (the backfill's decrypt probe: "does this open under the new label alone?"). */
-export function deriveOrgCredentialDekForGeneration(
-  kek: Buffer,
-  orgId: string,
-  generation: LabelGeneration,
-): Buffer {
-  return deriveDekFor(kek, orgId, DEK_INFO_PREFIX_BY_GENERATION[generation]);
-}
-
-/** Every DEK a stored credential of this tenant may have been sealed under (current label first, then legacy). */
-export function deriveOrgCredentialReadDeks(kek: Buffer, orgId: string): readonly Buffer[] {
-  return DEK_INFO_PREFIXES_READ.map((prefix) => deriveDekFor(kek, orgId, prefix));
+  return Buffer.from(
+    hkdfSync("sha256", kek, Buffer.alloc(0), `${DEK_INFO_PREFIX}${orgId}`, KEY_LEN),
+  );
 }
 
 /** Seal a secret → base64 envelope (fresh random nonce per call) under the tenant DEK. */
@@ -107,7 +78,7 @@ export function sealCredentialSecret(plaintext: string, dek: Buffer): string {
  * "ENC:deferred" placeholder — a caller must never treat an unopenable cipher as an empty secret and
  * proceed to submit with no credential.
  */
-export function openCredentialSecret(cipherB64: string, dek: Buffer | readonly Buffer[]): string {
+export function openCredentialSecret(cipherB64: string, dek: Buffer): string {
   if (cipherB64 === LEGACY_DEFERRED_SENTINEL) {
     throw new Error(
       "M24 credential: this credential predates secret encryption and holds no usable secret — re-enter it",
@@ -119,20 +90,9 @@ export function openCredentialSecret(cipherB64: string, dek: Buffer | readonly B
   const nonce = raw.subarray(1, 1 + NONCE_LEN);
   const tag = raw.subarray(raw.length - TAG_LEN);
   const ct = raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN);
-  // A list of DEKs (current, legacy label) is tried in order; the failure after the last one is the GCM error of the first
-  // key, so which label (if any) matched is not observable.
-  const deks = Array.isArray(dek) ? dek : [dek];
-  let firstError: unknown;
-  for (const candidate of deks) {
-    const decipher = createDecipheriv("aes-256-gcm", candidate, nonce);
-    decipher.setAuthTag(tag);
-    try {
-      return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
-    } catch (err) {
-      firstError ??= err;
-    }
-  }
-  throw firstError ?? new Error("M24 credential-crypto: no key supplied");
+  const decipher = createDecipheriv("aes-256-gcm", dek, nonce);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
 }
 
 /**
@@ -156,6 +116,6 @@ export interface CredentialCipherPort {
 export function buildCredentialCipherPort(kek: Buffer = loadCredentialKek()): CredentialCipherPort {
   return {
     seal: (orgId, plaintext) => sealCredentialSecret(plaintext, deriveOrgCredentialDek(kek, orgId)),
-    open: (orgId, cipher) => openCredentialSecret(cipher, deriveOrgCredentialReadDeks(kek, orgId)),
+    open: (orgId, cipher) => openCredentialSecret(cipher, deriveOrgCredentialDek(kek, orgId)),
   };
 }

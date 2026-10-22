@@ -9,15 +9,7 @@
 //   * `createUnavailableSearchKeyProvider` always throws (nothing can be indexed or searched); kept for tests/unwired boots.
 //   * `createLegacyTestSearchKeyProvider` derives K_search from the legacy HKDF DEK (label "legacy"). TEST ONLY: under the
 //     legacy scheme there is no tenant key to destroy, which is exactly why the ADR gates production on P1.
-import {
-  SEARCH_LABELS_CURRENT,
-  SEARCH_LABELS_LEGACY,
-  SEARCH_LABELS_READ,
-  type SearchKeyProvider,
-  deriveOrgDek,
-  deriveOrgReadDeks,
-  deriveSearchKey,
-} from "@chartwarden/messaging";
+import { type SearchKeyProvider, deriveOrgDek, deriveSearchKey } from "@chartwarden/messaging";
 import type { RingDekCache } from "../body-key-ring";
 
 export const LEGACY_TEST_KEY_VERSION = "legacy";
@@ -37,7 +29,6 @@ export function createUnavailableSearchKeyProvider(): SearchKeyProvider {
     activeVersion: async () => fail(),
     liveVersions: async () => fail(),
     tagKey: async () => fail(),
-    tagKeysForRead: async () => fail(),
   };
 }
 
@@ -46,21 +37,6 @@ export function createLegacyTestSearchKeyProvider(kek: Buffer): SearchKeyProvide
     activeVersion: async () => LEGACY_TEST_KEY_VERSION,
     liveVersions: async () => [LEGACY_TEST_KEY_VERSION],
     tagKey: async (orgId, version) => deriveSearchKey(deriveOrgDek(kek, orgId), orgId, version),
-    // LEGACY(wardenx->chartwarden): both label generations, each search label set with the DEK derived under its own
-    // generation (`deriveOrgReadDeks` returns [current, legacy]).
-    tagKeysForRead: async (orgId, version) => {
-      const [currentDek, legacyDek] = deriveOrgReadDeks(kek, orgId) as [Buffer, Buffer];
-      return [
-        {
-          labels: SEARCH_LABELS_CURRENT,
-          key: deriveSearchKey(currentDek, orgId, version, SEARCH_LABELS_CURRENT),
-        },
-        {
-          labels: SEARCH_LABELS_LEGACY,
-          key: deriveSearchKey(legacyDek, orgId, version, SEARCH_LABELS_LEGACY),
-        },
-      ];
-    },
   };
 }
 
@@ -94,15 +70,6 @@ export function createRingSearchKeyProvider(
         const dek = await cache().byVersion(orgId, version);
         if (dek.version !== version) throw new Error("ring returned a different key version");
         return deriveSearchKey(dek.key, orgId, version);
-      }),
-    tagKeysForRead: (orgId, version) =>
-      guarded(async () => {
-        const dek = await cache().byVersion(orgId, version);
-        if (dek.version !== version) throw new Error("ring returned a different key version");
-        return SEARCH_LABELS_READ.map((labels) => ({
-          labels,
-          key: deriveSearchKey(dek.key, orgId, version, labels),
-        }));
       }),
   };
 }

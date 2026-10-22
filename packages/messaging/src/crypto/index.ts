@@ -2,8 +2,6 @@
 export {
   loadMessagingKek,
   deriveOrgDek,
-  deriveOrgReadDeks,
-  deriveOrgDekForGeneration,
   sealMessageBody,
   openMessageBody,
   messageBodySha256,
@@ -13,5 +11,4 @@ export {
   ringEnvelopeVersion,
   type BodyEnvelopeScheme,
   type RingBodyDek,
-  type LabelGeneration as BodyLabelGeneration,
 } from "./body-crypto";

@@ -593,11 +593,11 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     expect(versions.rows.map((r) => r.v)).toEqual(["v1", "v2"]);
   });
 
-  // ── 7b. ChartWarden label rename, releases 1-2: the matcher finds a blind index stored under EITHER label ───────
-  // LEGACY(wardenx->chartwarden): since release 2 the writer emits the NEW "chartwarden:" label (asserted below); this
-  // rewrites one row's index under the LEGACY "wardenx:" label, exactly what production holds until the backfill has run,
-  // and proves the REAL probe (key ring -> HKDF -> `IN (...)` on Postgres) still blocks the duplicate instead of missing it.
-  it("a blind index stored under the LEGACY wardenx label is still found (no duplicate chart), and a different SSN is not a hit", async () => {
+  // ── 7b. ChartWarden label rename, release 3: the matcher probes the chartwarden blind-index label ONLY ──────────
+  // A blind index still stored under the removed LEGACY "wardenx:" label is no longer found by the REAL probe (key ring -> HKDF ->
+  // `IN (...)` on Postgres): that is the fail-closed consequence of removing the legacy read path, and exactly why the release-3
+  // merge gate demands `crypto-labels:verify` report zero legacy-only rows first. The chartwarden-label row is found.
+  it("a blind index stored under the REMOVED legacy wardenx label is no longer found; the chartwarden label is, and a different SSN is not a hit", async () => {
     const dob = "1961-01-01";
     const pid = admitted(
       await service.admit(
@@ -629,15 +629,8 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
       )
         .update("ssn:444556666", "utf8")
         .digest();
-    // the writer now stores the NEW-label token (independent oracle) ...
+    // the writer stores the chartwarden-label token (independent oracle) ...
     expect(tokenUnder("chartwarden").equals(row.value_blind_index)).toBe(true);
-    // ... and the row is then put back to the LEGACY one, the state before the backfill
-    const legacyLabelToken = tokenUnder("wardenx");
-    expect(legacyLabelToken.equals(row.value_blind_index)).toBe(false);
-    await admin.query("UPDATE patient_identifier SET value_blind_index=$1 WHERE id=$2", [
-      legacyLabelToken,
-      row.id,
-    ]);
     const before = await patientCount(ORG_A);
     const blocked = await service.admit(
       ORG_A,
@@ -646,6 +639,19 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     );
     expect(blocked).toMatchObject({ outcome: "hard_block", existingPatientId: pid });
     expect(await patientCount(ORG_A)).toBe(before);
+    // ... and the same row put back under the removed LEGACY label is not found (fails closed: no match, not a wrong match)
+    const legacyLabelToken = tokenUnder("wardenx");
+    expect(legacyLabelToken.equals(row.value_blind_index)).toBe(false);
+    await admin.query("UPDATE patient_identifier SET value_blind_index=$1 WHERE id=$2", [
+      legacyLabelToken,
+      row.id,
+    ]);
+    const missed = await service.admit(
+      ORG_A,
+      { lastName: "Dup2", firstName: "Flip", dob, administrativeSex: "female", ssn: "444556666" },
+      STAFF,
+    );
+    expect(missed.outcome).not.toBe("hard_block");
     const other = await service.admit(
       ORG_A,
       { lastName: "Other", firstName: "Flip", dob, administrativeSex: "female", ssn: "444556667" },

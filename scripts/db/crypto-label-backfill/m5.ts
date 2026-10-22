@@ -1,7 +1,6 @@
 // M5 sensitive identifiers (`patient_identifier.value_encrypted` AAD label + the SSN blind index HKDF label).
-// A row is "current" only when BOTH its envelope and (for an SSN) its blind index are under the new label; a row that is
-// half-and-half is legacy and is re-sealed whole. The re-seal uses the cipher's own `seal` / `blindIndex` (WRITE label,
-// current DEK), so the stored `value_dek_version` moves to the DEK that sealed it.
+// A row is "current" only when BOTH its envelope opens and (for an SSN) its stored blind index equals the one recomputed from
+// the plaintext; a mismatch (e.g. an index still under the removed legacy label) cannot be found by lookup, so it is reported.
 import type { Buffer } from "node:buffer";
 import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
@@ -9,7 +8,7 @@ import type {
   PatientIdentifierCipher,
   SensitiveIdentifierKind,
 } from "../../../apps/backend/src/modules/05-patient/identifiers/identifier-cipher";
-import { type RowClass, type Scan, type WriteResult, inOrg, rowsOf, tryOpen } from "./core";
+import { type RowClass, type Scan, inOrg, rowsOf, tryOpen } from "./core";
 
 interface IdentifierRow {
   readonly id: string;
@@ -24,26 +23,14 @@ export function m5IdentifierScan(
   organizationId: string,
 ): Scan<IdentifierRow> {
   const { db, cipher } = deps;
-  const open = (row: IdentifierRow, generation?: "current" | "legacy") =>
-    cipher.open(organizationId, row.id, row.kind, row.valueEncrypted, generation);
+  const open = (row: IdentifierRow) =>
+    cipher.open(organizationId, row.id, row.kind, row.valueEncrypted);
 
-  /** "current" | "legacy" for the blind index, or undefined when it matches neither token (corrupt). */
-  async function indexGeneration(
-    row: IdentifierRow,
-    plaintext: string,
-  ): Promise<"current" | "legacy" | undefined> {
-    if (row.kind !== "ssn") return "current"; // state_id has no blind index
-    if (!row.valueBlindIndex || !row.valueDekVersion) return undefined;
-    for (const generation of ["current", "legacy"] as const) {
-      const token = await cipher.blindIndex(
-        organizationId,
-        plaintext,
-        row.valueDekVersion,
-        generation,
-      );
-      if (token.token.equals(row.valueBlindIndex)) return generation;
-    }
-    return undefined;
+  async function indexMatches(row: IdentifierRow, plaintext: string): Promise<boolean> {
+    if (row.kind !== "ssn") return true; // state_id has no blind index
+    if (!row.valueBlindIndex || !row.valueDekVersion) return false;
+    const token = await cipher.blindIndex(organizationId, plaintext, row.valueDekVersion);
+    return token.token.equals(row.valueBlindIndex);
   }
 
   return {
@@ -78,42 +65,11 @@ export function m5IdentifierScan(
       });
     },
     async classify(row): Promise<RowClass> {
-      const asCurrent = await tryOpen(() => open(row, "current"));
-      const plaintext = asCurrent ?? (await tryOpen(() => open(row, "legacy")));
-      if (plaintext === undefined) return "unreadable";
-      const index = await tryOpen(() => indexGeneration(row, plaintext));
-      if (index === undefined) return "unreadable";
-      return asCurrent !== undefined && index === "current" ? "current" : "legacy";
-    },
-    async reseal(row): Promise<WriteResult> {
       const plaintext = await tryOpen(() => open(row));
-      if (plaintext === undefined) return "failed";
-      try {
-        const sealed = await cipher.seal(organizationId, row.id, row.kind, plaintext);
-        // Verify under the NEW label alone before anything is written.
-        const reopened = await open({ ...row, valueEncrypted: sealed.ciphertext }, "current");
-        if (reopened !== plaintext) return "failed";
-        const index =
-          row.kind === "ssn"
-            ? (await cipher.blindIndex(organizationId, plaintext, sealed.dekVersion, "current"))
-                .token
-            : null;
-        const swapped = await inOrg(db, organizationId, async (tx) =>
-          rowsOf<{ id: string }>(
-            await tx.execute(sql`
-              UPDATE patient_identifier
-                 SET value_encrypted = ${sealed.ciphertext}::bytea,
-                     value_blind_index = ${index}::bytea,
-                     value_dek_version = ${sealed.dekVersion}
-               WHERE organization_id = ${organizationId} AND id = ${row.id}::uuid
-                 AND value_encrypted = ${row.valueEncrypted}::bytea
-              RETURNING id`),
-          ),
-        );
-        return swapped.length === 1 ? "resealed" : "skipped";
-      } catch {
-        return "failed";
-      }
+      if (plaintext === undefined) return "unreadable";
+      return (await tryOpen(() => indexMatches(row, plaintext))) === true
+        ? "current"
+        : "unreadable";
     },
   };
 }

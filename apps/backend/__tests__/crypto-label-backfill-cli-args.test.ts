@@ -1,4 +1,4 @@
-// The backfill CLI's argument handling. Every case must be refused (exit 1) BEFORE any connection is opened, so these run with no
+// The read-only label verifier CLI's argument handling. Every case must be refused (exit 1) BEFORE any connection is opened, so these run with no
 // database and no environment: a bad flag can never reach a table.
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ const cli = (...args: string[]) =>
 // each case starts a bun process; give them room when the whole suite runs in parallel
 vi.setConfig({ testTimeout: 30_000 });
 
-describe("backfill-crypto-labels argument validation", () => {
+describe("backfill-crypto-labels (verify-only) argument validation", () => {
   it.each([
     [["--verify", "--all-orgs", "--batch-size", "0"], /--batch-size must be an integer >= 1/],
     [["--verify", "--all-orgs", "--max-rows", "0"], /--max-rows must be an integer >= 1/],
@@ -34,8 +34,10 @@ describe("backfill-crypto-labels argument validation", () => {
       /exactly one of --org/,
     ],
     [["--verify"], /exactly one of --org/],
-    [["--verify", "--dry-run", "--all-orgs"], /exactly one of --verify/],
-    [["--all-orgs"], /exactly one of --verify/],
+    // The release-2 re-seal modes are gone: the tool is read-only.
+    [["--verify", "--dry-run", "--all-orgs"], /unknown flag '--dry-run'/],
+    [["--apply", "--all-orgs"], /unknown flag '--apply'/],
+    [["--verify", "--all-orgs", "--i-have-a-backup"], /unknown flag '--i-have-a-backup'/],
   ])("%j is a usage error (exit 1)", (args, message) => {
     const r = cli(...args);
     expect(r.status, r.stderr).toBe(1);

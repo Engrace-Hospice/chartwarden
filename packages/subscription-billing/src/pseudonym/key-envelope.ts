@@ -115,21 +115,8 @@ export function loadPseudonymKekRing(
   return { active, byId };
 }
 
-// ChartWarden rename of the AAD label (release 1 = READ-SIDE): open accepts both labels (current first), seal keeps the
-// legacy one. The AAD lives only here. LEGACY(wardenx->chartwarden): remove the legacy entry after the backfill (release 3).
-const AAD_LABEL_CURRENT = "chartwarden-m35-pseudonym-key";
-const AAD_LABEL_LEGACY = "wardenx-m35-pseudonym-key";
-// Release 2 (write-side flip done): new key material is sealed under the CURRENT label; scripts/db/backfill-crypto-labels.ts
-// re-seals the older rows. `open` still accepts both (release 3 removes the legacy label).
-const AAD_LABEL_WRITE = AAD_LABEL_CURRENT;
-const AAD_LABELS_READ = [AAD_LABEL_CURRENT, AAD_LABEL_LEGACY] as const;
-
-/** Which label generation to use; only the backfill's decrypt probe passes one (omitted = try both). */
-export type PseudonymLabelGeneration = "current" | "legacy";
-const AAD_LABEL_BY_GENERATION: Record<PseudonymLabelGeneration, string> = {
-  current: AAD_LABEL_CURRENT,
-  legacy: AAD_LABEL_LEGACY,
-};
+// The AAD label lives only here. The ChartWarden rename is complete: the legacy `wardenx-m35-...` label is no longer readable.
+const AAD_LABEL = "chartwarden-m35-pseudonym-key";
 
 /** The AAD every seal/open binds: the label, the format version, the wrapping KEK, and the OWNING KEY EPOCH. */
 function aad(label: string, kekId: string, keyEpoch: string): Buffer {
@@ -152,7 +139,7 @@ export function sealPseudonymKeyMaterial(
   }
   const nonce = randomBytes(NONCE_LEN);
   const cipher = createCipheriv("aes-256-gcm", ring.active.key, nonce);
-  cipher.setAAD(aad(AAD_LABEL_WRITE, ring.active.kekId, keyEpoch));
+  cipher.setAAD(aad(AAD_LABEL, ring.active.kekId, keyEpoch));
   const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const wrapped = Buffer.concat([Buffer.from([VERSION]), nonce, ct, cipher.getAuthTag()]);
   return { ciphertextB64: wrapped.toString("base64"), kekId: ring.active.kekId };
@@ -168,8 +155,6 @@ export function openPseudonymKeyMaterial(
   kekId: string,
   keyEpoch: string,
   ciphertextB64: string,
-  /** Backfill probe only: open under this label generation alone. Omitted = try both. */
-  onlyGeneration?: PseudonymLabelGeneration,
 ): Buffer {
   const key = ring.byId.get(kekId);
   if (!key) {
@@ -189,20 +174,16 @@ export function openPseudonymKeyMaterial(
   const nonce = wrapped.subarray(1, 1 + NONCE_LEN);
   const ct = wrapped.subarray(1 + NONCE_LEN, 1 + NONCE_LEN + KEY_LEN);
   const tag = wrapped.subarray(1 + NONCE_LEN + KEY_LEN);
-  const labels = onlyGeneration ? [AAD_LABEL_BY_GENERATION[onlyGeneration]] : AAD_LABELS_READ;
-  for (const label of labels) {
-    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-    decipher.setAAD(aad(label, kekId, keyEpoch));
-    decipher.setAuthTag(tag);
-    try {
-      return Buffer.concat([decipher.update(ct), decipher.final()]);
-    } catch {
-      // authentication failed under this label; try the next
-    }
+  const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+  decipher.setAAD(aad(AAD_LABEL, kekId, keyEpoch));
+  decipher.setAuthTag(tag);
+  try {
+    return Buffer.concat([decipher.update(ct), decipher.final()]);
+  } catch {
+    throw new PseudonymKekError(
+      `wrapped pseudonym key for epoch '${keyEpoch}' failed authentication under KEK '${kekId}'`,
+    );
   }
-  throw new PseudonymKekError(
-    `wrapped pseudonym key for epoch '${keyEpoch}' failed authentication under KEK '${kekId}'`,
-  );
 }
 
 /** Mint 32 random bytes of fresh HMAC key material. CSPRNG — the same `randomBytes(32)` every DEK/KEK

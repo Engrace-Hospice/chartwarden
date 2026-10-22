@@ -1,8 +1,8 @@
-// ChartWarden rename, release 1: a ciphertext sealed under an UNKNOWN label ("otherapp") must fail with the same error type
-// and message as a tampered one in every module, so the dual-label retry is not an oracle for "which label is this".
-// Fixtures use literal label strings (independent of the modules' constants).
+// ChartWarden rename, release 3: a ciphertext sealed under an UNKNOWN label ("otherapp") and one sealed under the REMOVED legacy
+// label ("wardenx") must each fail with the same error type and message as a tampered one in every module, so a refusal is no
+// oracle for "which label is this". Fixtures use literal label strings (independent of the modules' constants).
 import { createCipheriv, hkdfSync, randomBytes } from "node:crypto";
-import { deriveOrgReadDeks, openMessageBody, openMessageBodyRing } from "@chartwarden/messaging";
+import { deriveOrgDek, openMessageBody, openMessageBodyRing } from "@chartwarden/messaging";
 import { PseudonymKekError, openPseudonymKeyMaterial } from "@chartwarden/subscription-billing";
 import { describe, expect, it } from "vitest";
 import { PlatformKekError, createPlatformKekAdapter } from "../src/bootstrap/tenant-kek";
@@ -45,25 +45,20 @@ const sameFailure = (a: Error, b: Error) => {
   expect(a.message).toBe(b.message);
 };
 
-describe("unknown label fails exactly like a tampered ciphertext", () => {
-  it("deriveOrgReadDeks returns [chartwarden-derived, wardenx-derived], in that order", () => {
-    const [current, legacy, ...rest] = deriveOrgReadDeks(KEK, ORG);
-    expect(rest).toEqual([]);
-    expect(current?.equals(hkdf(KEK, `chartwarden-message-dek:${ORG}`))).toBe(true);
-    expect(legacy?.equals(hkdf(KEK, `wardenx-message-dek:${ORG}`))).toBe(true);
-  });
-
+describe("unknown and legacy labels fail exactly like a tampered ciphertext", () => {
   it("M36 v1 body", async () => {
     const mk = (prefix: string) => {
       const { nonce, ct, tag } = gcm(hkdf(KEK, `${prefix}-message-dek:${ORG}`), Buffer.from("x"));
       return Buffer.concat([Buffer.from([1]), nonce, ct, tag]);
     };
-    const deks = deriveOrgReadDeks(KEK, ORG);
-    const wrong = await errorOf(() => openMessageBody(mk("otherapp"), deks));
-    const tampered = await errorOf(() => openMessageBody(flip(mk("wardenx")), deks));
-    // positive control: the same fixture layout with the real legacy label opens
-    expect(openMessageBody(mk("wardenx"), deks)).toBe("x");
+    const dek = deriveOrgDek(KEK, ORG);
+    const wrong = await errorOf(() => openMessageBody(mk("otherapp"), dek));
+    const tampered = await errorOf(() => openMessageBody(flip(mk("chartwarden")), dek));
+    const legacy = await errorOf(() => openMessageBody(mk("wardenx"), dek));
+    // positive control: the same fixture layout with the real label opens
+    expect(openMessageBody(mk("chartwarden"), dek)).toBe("x");
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
   });
 
   it("M36 ring AAD", async () => {
@@ -73,9 +68,11 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
       return Buffer.concat([Buffer.from([2, 2]), Buffer.from("v1"), nonce, ct, tag]);
     };
     const wrong = await errorOf(() => openMessageBodyRing(mk("otherapp"), key, ORG));
-    const tampered = await errorOf(() => openMessageBodyRing(flip(mk("wardenx")), key, ORG));
-    expect(openMessageBodyRing(mk("wardenx"), key, ORG)).toBe("x");
+    const tampered = await errorOf(() => openMessageBodyRing(flip(mk("chartwarden")), key, ORG));
+    const legacy = await errorOf(() => openMessageBodyRing(mk("wardenx"), key, ORG));
+    expect(openMessageBodyRing(mk("chartwarden"), key, ORG)).toBe("x");
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
   });
 
   it("M24", async () => {
@@ -86,9 +83,11 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
       return Buffer.concat([Buffer.from([1]), nonce, ct, tag]);
     };
     const wrong = await errorOf(() => port.open(ORG, b64(mk("otherapp"))));
-    const tampered = await errorOf(() => port.open(ORG, b64(flip(mk("wardenx")))));
-    expect(port.open(ORG, b64(mk("wardenx")))).toBe("x");
+    const tampered = await errorOf(() => port.open(ORG, b64(flip(mk("chartwarden")))));
+    const legacy = await errorOf(() => port.open(ORG, b64(mk("wardenx"))));
+    expect(port.open(ORG, b64(mk("chartwarden")))).toBe("x");
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
   });
 
   it("M35", async () => {
@@ -101,10 +100,14 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
       openPseudonymKeyMaterial(ring, "k", "e1", b64(mk("otherapp"))),
     );
     const tampered = await errorOf(() =>
-      openPseudonymKeyMaterial(ring, "k", "e1", b64(flip(mk("wardenx")))),
+      openPseudonymKeyMaterial(ring, "k", "e1", b64(flip(mk("chartwarden")))),
     );
-    expect(openPseudonymKeyMaterial(ring, "k", "e1", b64(mk("wardenx"))).length).toBe(32);
+    const legacy = await errorOf(() =>
+      openPseudonymKeyMaterial(ring, "k", "e1", b64(mk("wardenx"))),
+    );
+    expect(openPseudonymKeyMaterial(ring, "k", "e1", b64(mk("chartwarden"))).length).toBe(32);
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
     expect(wrong).toBeInstanceOf(PseudonymKekError);
   });
 
@@ -120,9 +123,11 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     const unwrap = (b: Buffer) =>
       adapter.unwrap({ organizationId: ORG, kekWrappedCiphertext: b, kekId: "k" });
     const wrong = await errorOf(() => unwrap(mk("otherapp")));
-    const tampered = await errorOf(() => unwrap(flip(mk("wardenx"))));
-    expect((await unwrap(mk("wardenx"))).length).toBe(32);
+    const tampered = await errorOf(() => unwrap(flip(mk("chartwarden"))));
+    const legacy = await errorOf(() => unwrap(mk("wardenx")));
+    expect((await unwrap(mk("chartwarden"))).length).toBe(32);
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
     expect(wrong).toBeInstanceOf(PlatformKekError);
   });
 
@@ -136,9 +141,11 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
       return Buffer.concat([Buffer.from([2]), nonce, ct, tag]);
     };
     const wrong = await errorOf(() => cipher.decrypt(ORG, ctx, b64(mk("otherapp"))));
-    const tampered = await errorOf(() => cipher.decrypt(ORG, ctx, b64(flip(mk("wardenx")))));
-    expect(await cipher.decrypt(ORG, ctx, b64(mk("wardenx")))).toBe("x");
+    const tampered = await errorOf(() => cipher.decrypt(ORG, ctx, b64(flip(mk("chartwarden")))));
+    const legacy = await errorOf(() => cipher.decrypt(ORG, ctx, b64(mk("wardenx"))));
+    expect(await cipher.decrypt(ORG, ctx, b64(mk("chartwarden")))).toBe("x");
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
   });
 
   it("M5", async () => {
@@ -155,9 +162,11 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
       return Buffer.concat([Buffer.from([1, 1]), Buffer.from("1"), nonce, tag, ct]);
     };
     const wrong = await errorOf(() => cipher.open(ORG, row, "ssn", mk("otherapp")));
-    const tampered = await errorOf(() => cipher.open(ORG, row, "ssn", flip(mk("wardenx"))));
-    expect(await cipher.open(ORG, row, "ssn", mk("wardenx"))).toBe("123456789");
+    const tampered = await errorOf(() => cipher.open(ORG, row, "ssn", flip(mk("chartwarden"))));
+    const legacy = await errorOf(() => cipher.open(ORG, row, "ssn", mk("wardenx")));
+    expect(await cipher.open(ORG, row, "ssn", mk("chartwarden"))).toBe("123456789");
     sameFailure(wrong, tampered);
+    sameFailure(legacy, tampered);
     expect(wrong).toBeInstanceOf(IdentifierCipherIntegrityError);
   });
 });

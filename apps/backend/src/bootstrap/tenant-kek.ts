@@ -129,23 +129,10 @@ export function loadPlatformKekRing(env: NodeJS.ProcessEnv = process.env): Platf
   return { active, byId };
 }
 
-// ChartWarden rename of the wrap AAD label (release 1 = READ-SIDE). HIGHEST-RISK label in the repo: every tenant data key
-// is wrapped under it, and a wrong label makes every tenant's PHI unreadable. `unwrap` therefore accepts BOTH labels (current
-// first); `mintAndWrapDek` keeps emitting WRAP_AAD_LABEL_WRITE. The AAD lives only here (no SQL / migration embeds it).
-// LEGACY(wardenx->chartwarden): remove the legacy entry after every tenant_key_ring row has been re-wrapped (release 3).
-const WRAP_AAD_LABEL_CURRENT = "chartwarden-m34-tenant-dek";
-const WRAP_AAD_LABEL_LEGACY = "wardenx-m34-tenant-dek";
-// Release 2 (write-side flip done): new wraps use the CURRENT label; scripts/db/backfill-crypto-labels.ts re-wraps every
-// older wrapped DEK (current + prior versions). `unwrap` still accepts both (release 3 removes the legacy label).
-const WRAP_AAD_LABEL_WRITE = WRAP_AAD_LABEL_CURRENT;
-const WRAP_AAD_LABELS_READ = [WRAP_AAD_LABEL_CURRENT, WRAP_AAD_LABEL_LEGACY] as const;
-
-/** Which label generation to use; only the backfill's decrypt probe passes one (omitted = try both). */
-export type LabelGeneration = "current" | "legacy";
-const WRAP_AAD_LABEL_BY_GENERATION: Record<LabelGeneration, string> = {
-  current: WRAP_AAD_LABEL_CURRENT,
-  legacy: WRAP_AAD_LABEL_LEGACY,
-};
+// The wrap AAD label. HIGHEST-RISK label in the repo: every tenant data key is wrapped under it. The ChartWarden rename is
+// complete: a DEK still wrapped under the legacy `wardenx-m34-tenant-dek` label no longer opens (it fails closed with the one
+// generic refusal below). The AAD lives only here (no SQL / migration embeds it).
+const WRAP_AAD_LABEL = "chartwarden-m34-tenant-dek";
 
 /** The AAD every wrap/unwrap binds: the label, the format version, the wrapping KEK, and the OWNING TENANT. */
 function aad(label: string, kekId: string, organizationId: string): Buffer {
@@ -169,26 +156,14 @@ export interface PlatformKekAdapter {
     readonly organizationId: string;
     readonly kekWrappedCiphertext: Buffer;
     readonly kekId: string;
-    /** Backfill probe only: open under this label generation alone. Omitted = try both. */
-    readonly onlyGeneration?: LabelGeneration;
   }): Promise<Buffer>;
-  /**
-   * Re-wrap an EXISTING wrapped DEK under the WRITE label, under the SAME KEK that wrapped it (so `kekId` is unchanged).
-   * The new wrap is opened under the new label alone and compared with the old DEK before it is returned, so a result is
-   * always a wrap that opens; the plaintext DEK never leaves this function. Used only by the label backfill.
-   */
-  rewrapDek(input: {
-    readonly organizationId: string;
-    readonly kekWrappedCiphertext: Buffer;
-    readonly kekId: string;
-  }): Promise<{ readonly wrappedCiphertextB64: string; readonly kekId: string }>;
 }
 
 /** Wrap `dek` under `kek` with the WRITE label and the AAD that binds the KEK id and the tenant. */
 function wrapUnder(kek: PlatformKek, organizationId: string, dek: Buffer): Buffer {
   const nonce = randomBytes(NONCE_LEN);
   const cipher = createCipheriv("aes-256-gcm", kek.key, nonce);
-  cipher.setAAD(aad(WRAP_AAD_LABEL_WRITE, kek.kekId, organizationId));
+  cipher.setAAD(aad(WRAP_AAD_LABEL, kek.kekId, organizationId));
   const ct = Buffer.concat([cipher.update(dek), cipher.final()]);
   return Buffer.concat([Buffer.from([VERSION]), nonce, ct, cipher.getAuthTag()]);
 }
@@ -206,7 +181,7 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
         dek.fill(0);
       }
     },
-    async unwrap({ organizationId, kekWrappedCiphertext, kekId, onlyGeneration }) {
+    async unwrap({ organizationId, kekWrappedCiphertext, kekId }) {
       if (!organizationId) throw new PlatformKekError("unwrap requires an organizationId");
       const key = ring.byId.get(kekId);
       if (!key) {
@@ -227,46 +202,19 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
       const nonce = kekWrappedCiphertext.subarray(1, 1 + NONCE_LEN);
       const ct = kekWrappedCiphertext.subarray(1 + NONCE_LEN, 1 + NONCE_LEN + DEK_LEN);
       const tag = kekWrappedCiphertext.subarray(1 + NONCE_LEN + DEK_LEN);
-      // Both labels, current first. The refusal after the last is one message that names no label, so the retry is no oracle.
-      const labels = onlyGeneration
-        ? [WRAP_AAD_LABEL_BY_GENERATION[onlyGeneration]]
-        : WRAP_AAD_LABELS_READ;
-      for (const label of labels) {
-        const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-        decipher.setAAD(aad(label, kekId, organizationId));
-        decipher.setAuthTag(tag);
-        try {
-          return Buffer.concat([decipher.update(ct), decipher.final()]);
-        } catch {
-          // authentication failed under this label; try the next
-        }
+      const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+      decipher.setAAD(aad(WRAP_AAD_LABEL, kekId, organizationId));
+      decipher.setAuthTag(tag);
+      try {
+        return Buffer.concat([decipher.update(ct), decipher.final()]);
+      } catch {
+        // fall through to the one generic refusal, which names no label
       }
-      // GCM authentication failed under every label: a tampered ciphertext, the wrong KEK, or - the case the AAD exists
+      // GCM authentication failed: a tampered ciphertext, the wrong KEK, or - the case the AAD exists
       // for - a wrapped DEK lifted from ANOTHER tenant's key ring. All three are the same refusal.
       throw new PlatformKekError(
         `wrapped DEK for org ${organizationId} failed authentication under KEK '${kekId}'`,
       );
-    },
-    async rewrapDek({ organizationId, kekWrappedCiphertext, kekId }) {
-      const dek = await adapter.unwrap({ organizationId, kekWrappedCiphertext, kekId });
-      try {
-        const key = ring.byId.get(kekId);
-        if (!key) throw new PlatformKekError(`no platform KEK '${kekId}' is configured`);
-        const wrapped = wrapUnder({ kekId, key }, organizationId, dek);
-        // Open the new wrap under the NEW label alone and compare: a wrap that does not round-trip is never returned.
-        const reopened = await adapter.unwrap({
-          organizationId,
-          kekWrappedCiphertext: wrapped,
-          kekId,
-          onlyGeneration: "current",
-        });
-        const same = reopened.length === dek.length && timingSafeEqual(reopened, dek);
-        reopened.fill(0);
-        if (!same) throw new PlatformKekError("re-wrapped DEK did not round-trip; refusing it");
-        return { wrappedCiphertextB64: wrapped.toString("base64"), kekId };
-      } finally {
-        dek.fill(0);
-      }
     },
   };
   return adapter;
