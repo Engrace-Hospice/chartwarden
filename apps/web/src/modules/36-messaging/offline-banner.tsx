@@ -25,7 +25,9 @@ export function OfflineBanner(): JSX.Element {
   const online = useOnlineStatus();
   return (
     <output className={online ? "wx-sr-only" : "wx-messaging-realtime-banner"}>
-      {online ? "" : "You're offline — new messages stay Not sent until you reconnect. Urgent messages, response requests and role sends need a connection."}
+      {online
+        ? ""
+        : "You're offline — new messages stay Not sent until you reconnect. Urgent messages, response requests and role sends need a connection."}
     </output>
   );
 }
