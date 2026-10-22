@@ -314,7 +314,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       );
     });
 
-    it("release C writes and removes only the chartwarden hash (24 h TTL), never the legacy one", async () => {
+    it("release C writes only the chartwarden hash (24 h TTL), never the legacy one", async () => {
       const visitId = "aaaaaaaa-5000-4000-8000-0000000000d1";
       const patientId = "aaaaaaaa-5000-4000-8000-0000000000d2";
       const legacy = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
@@ -334,7 +334,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(await redis.hget(renamed, visitId)).toBeNull();
     });
 
-    it("release C ignores a legacy-only hash and leaves it untouched on unassign", async () => {
+    it("release C ignores a legacy-only hash on read, but unassign still deletes the visit from it", async () => {
       const legacyVisit = "aaaaaaaa-5000-4000-8000-0000000000e1";
       const legacyPatient = "aaaaaaaa-5000-4000-8000-0000000000e2";
       const legacy = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
@@ -348,7 +348,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         legacyPatient,
       );
       await removeShiftAssignment(redis, ORG_A, userClinicianA, legacyVisit);
-      expect(await redis.hget(legacy, legacyVisit)).not.toBeNull();
+      expect(await redis.hget(legacy, legacyVisit)).toBeNull();
     });
 
     it("a malformed cache entry is skipped rather than thrown on the ABAC hot read path", async () => {

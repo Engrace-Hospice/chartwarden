@@ -1,4 +1,4 @@
-// wardenx -> chartwarden Valkey rename, release C: only the chartwarden hash is written, read and deleted; a legacy hash is ignored.
+// wardenx -> chartwarden Valkey rename, release C: only the chartwarden hash is written and read (a legacy hash is ignored); unassign still deletes from both.
 import type Redis from "ioredis";
 import { describe, expect, it } from "vitest";
 import {
@@ -29,6 +29,21 @@ function fakeRedis() {
     },
     async hgetall(k: string) {
       return Object.fromEntries(hashes.get(k) ?? []);
+    },
+    multi() {
+      const ops: Array<() => Promise<number>> = [];
+      const tx = {
+        hdel: (k: string, f: string) => {
+          ops.push(() => redis.hdel(k, f));
+          return tx;
+        },
+        async exec() {
+          const out: Array<[Error | null, number]> = [];
+          for (const op of ops) out.push([null, await op()]);
+          return out;
+        },
+      };
+      return tx;
     },
   };
   return { redis: redis as unknown as Redis, hashes, ttl, writes };
@@ -65,21 +80,47 @@ describe("shift caseload cache (chartwarden key only)", () => {
     expect(await readShiftAssignedPatientIds(f.redis, "org", "u")).toEqual(["p-new"]);
   });
 
-  it("unassign deletes only the chartwarden entry and leaves a legacy hash untouched", async () => {
+  it("unassign deletes the visit from BOTH hashes (a release-B pod must not re-grant it)", async () => {
     const f = fakeRedis();
     f.hashes.set(LEGACY, new Map([["v1", entry("p1")]]));
     f.hashes.set(KEY, new Map([["v1", entry("p1")]]));
     await removeShiftAssignment(f.redis, "org", "u", "v1");
-    expect(f.hashes.has(KEY)).toBe(false);
-    expect(f.hashes.get(LEGACY)?.has("v1")).toBe(true);
+    expect(f.hashes.size).toBe(0);
   });
 
-  it("propagates a delete error so the outbox retries", async () => {
+  it("a legacy-only hash is still ignored by reads", async () => {
     const f = fakeRedis();
-    f.redis.hdel = (async () => {
-      throw new Error("READONLY");
-    }) as never;
+    f.hashes.set(LEGACY, new Map([["v1", entry("p1")]]));
+    expect(await readShiftAssignedPatientIds(f.redis, "org", "u")).toEqual([]);
+  });
+
+  it("throws when one of the deletes errors, so the outbox retries", async () => {
+    const f = fakeRedis();
+    f.redis.multi = (() => ({
+      hdel() {
+        return this;
+      },
+      async exec() {
+        return [
+          [null, 1],
+          [new Error("READONLY"), 0],
+        ];
+      },
+    })) as never;
     await expect(removeShiftAssignment(f.redis, "org", "u", "v1")).rejects.toThrow("READONLY");
+  });
+
+  it("throws when the transaction was not executed", async () => {
+    const f = fakeRedis();
+    f.redis.multi = (() => ({
+      hdel() {
+        return this;
+      },
+      async exec() {
+        return null;
+      },
+    })) as never;
+    await expect(removeShiftAssignment(f.redis, "org", "u", "v1")).rejects.toThrow(/not executed/);
   });
 
   it("degrades to no contribution on a read error", async () => {
