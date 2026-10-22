@@ -354,7 +354,7 @@ Message the on-call role                                   Step 2 of 2: confirm 
 ```
 Thread (offline)  ⚠ You're offline. New messages stay Not sent until you reconnect; closing this tab discards them.
  You: Will visit at 3         ◔ Not sent                           [Retry] [Delete]
- Composer: [Message…]                       Draft: Saved on this device only
+ Composer: [Message…]                       Draft: not saved while offline; closing this tab discards it
 ```
 - **Rule:** an offline message is **never** shown as sent, delivered or read. States, in order: *Draft → Not sent (queued) → Sending → Sent → Failed (retry)*;
   text and icon each. Reuse the existing `use-outbox` and `client_message_id` (replay returns the original, so no duplicate).
