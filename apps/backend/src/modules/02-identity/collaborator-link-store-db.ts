@@ -44,8 +44,6 @@ const DEFAULT_COLLAB_SESSION_TTL_SEC = 8 * 3600;
 const TOKEN_SECRET_BYTES = 32;
 /** The synthetic principal's domain: reserved by RFC 6761 - it can never receive mail. */
 const PRINCIPAL_EMAIL_DOMAIN = "principals.chartwarden.invalid";
-/** LEGACY(wardenx->chartwarden): principals minted before the rename (migration 1151 rewrites them; this read-compat covers the window before it runs). */
-const LEGACY_PRINCIPAL_EMAIL_DOMAIN = "principals.wardenx.invalid";
 
 /** `<orgId uuid>.<43 url-safe base64 chars>` - the shape of a 256-bit secret. */
 const TOKEN_RE =
@@ -294,14 +292,9 @@ export function createDbCollaboratorLinkStore(
 
 /** Find-or-create the link's synthetic principal user and pin it on the link row. Runs inside the claim's tx. */
 async function ensurePrincipal(tx: DbClient, row: { id: string; kind: string }): Promise<string> {
-  const legacyEmail = `link-${row.id}@${LEGACY_PRINCIPAL_EMAIL_DOMAIN}`;
-  // A legacy principal wins (same person, pre-rename address); otherwise create under the new domain.
-  const [legacy] = await tx
-    .select({ id: USERS.id })
-    .from(USERS)
-    .where(eq(USERS.email, legacyEmail))
-    .limit(1);
-  const email = legacy ? legacyEmail : `link-${row.id}@${PRINCIPAL_EMAIL_DOMAIN}`;
+  // Principals minted under the old domain are rewritten by migration 1151; the link row pins the principal by id, so this
+  // address is only the find-or-create key for a link's FIRST redemption.
+  const email = `link-${row.id}@${PRINCIPAL_EMAIL_DOMAIN}`;
   await tx
     .insert(USERS)
     .values({

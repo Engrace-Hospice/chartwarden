@@ -7,8 +7,7 @@
 --      (only a tenant that stored the platform's own URN fallback is touched; a tenant's real host / URI base is not).
 --
 -- Idempotent: every UPDATE is guarded by the old-value predicate, so a re-run changes nothing. A principal whose new-form
--- address already exists is skipped (user_email_idx is unique) rather than failing the file; the application reads both
--- forms (collaborator-link-store-db.ts), so the skipped row keeps working.
+-- address already exists is skipped (user_email_idx is unique) rather than failing the file, and a NOTICE reports how many; a skipped legacy row is a harmless orphan .invalid user (the link pins its principal by id).
 -- No DDL, no object is renamed. MIGRATOR ROLE: tenant_fhir_config has FORCEd org RLS, so this must run as the
 -- DATABASE_ADMIN_URL role (superuser / BYPASSRLS), like 1069; the guard below fails loudly otherwise.
 -- Not renamed on purpose: audit_event rows (an audit trail is not rewritten).
@@ -27,6 +26,15 @@ UPDATE "user" u
      SELECT 1 FROM "user" n
       WHERE n.email = replace(u.email, '@principals.wardenx.invalid', '@principals.chartwarden.invalid')
    );--> statement-breakpoint
+
+DO $$
+DECLARE skipped integer;
+BEGIN
+  SELECT count(*) INTO skipped FROM "user" WHERE email LIKE 'link-%@principals.wardenx.invalid';
+  IF skipped > 0 THEN
+    RAISE NOTICE '1151: % legacy link principal(s) skipped because the new-form address already exists; each is a harmless orphan .invalid user (no mail, no password, no account, no membership)', skipped;
+  END IF;
+END $$;--> statement-breakpoint
 
 UPDATE tenant_fhir_config
    SET tenant_fhir_host = replace(tenant_fhir_host, 'urn:wardenx:org:', 'urn:chartwarden:org:'),
