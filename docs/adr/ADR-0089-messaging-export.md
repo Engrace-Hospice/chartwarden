@@ -1,6 +1,6 @@
 # ADR-0089 — Messaging export: a scoped, two-person-approved export to one encrypted, expiring artefact
 
-- **Status:** **Proposed** (2026-10-21). Only slice S1 (tables, permissions, shared contract) is built. The four open questions below were not answered by the product owner; decisions D1 to D9 are the build team's defaults. Compliance and clinical-lead concurrence is not recorded.
+- **Status:** **Proposed** (2026-10-21). Slices S1 to S5 are built (see Implementation status). The four open questions below were not answered by the product owner; decisions D1 to D9 are the build team's defaults. Compliance and clinical-lead concurrence is not recorded.
 - **Date:** 2026-10-21
 - **Phase:** Messaging Hub Phase 5, WP 5.7 (capability SG-07).
 - **Related:** [ADR-0087](ADR-0087-messaging-break-glass.md) (the grant, guard-trigger and step-up pattern reused here; a grantee is never an export role), [ADR-0086](ADR-0086-messaging-retention-and-legal-hold.md) (legal hold, which this export excludes), [ADR-0010](ADR-0010-tenancy-rls-invariants.md).
@@ -21,11 +21,15 @@ Messages are readable only inside the product, by channel membership. WP 5.7 ask
 8. **D8: events and audit.** PHI-free outbox events `m36.export.requested|approved|rejected|ready|downloaded|expired` carry the job id only. A consumer alerts the approvers on `requested` through a `system_locked` alert rule (`m36.export.requested`, holders of the approve permission, tenant administrators as the backstop). Both tables carry audit triggers (job severity warn, download info); the audit row omits the justification, decision note and wrapped key.
 9. **D9: never.** Attachment bytes, edit or redaction, messages retention has already destroyed, author-deleted messages (the tombstone keeps its cipher, but the normal read path blanks it, so the export neither lists nor counts it), cross-tenant data, platform staff, external auditors, family or caregiver identities.
 
+## Implementation status
+
+S2 to S5 landed with PR #551 (`2ea2a8e5f`): routes (`routes/export-routes.ts`), service, outbox events and approver alert, artefact builder, worker, hourly expiry sweep (`modules/36-messaging/export/`), web screens (`apps/web/src/modules/36-messaging/export-*.tsx`), the `messaging.export` tenant flag, the live suite `test:m36:export:live` with its `ci.yml` job row, and the unit tests. The "Not built" and "What S1 builds" sections below describe the state at S1 and are kept as history. This ADR stays **Proposed**: D1 to D9 are still the build team's defaults. The product owner has answered none of the open human items 1 to 5; all remain open.
+
 ## What S1 builds (migration 1147)
 
 `message_export_job` and `message_export_download`: FORCEd RLS on `app.org_id`, no app DELETE (only `chartwarden_destruction`), audit triggers, a job guard (insert forces status and instants and nulls the artefact fields; update is forward-only: pending_approval to approved|rejected|cancelled, approved to building, building to ready|failed, ready to expired; scope, requester, justification and request instant are frozen; instants come from the database clock; `expires_at` = `ready_at` + 24 h only on building to ready; expiry needs `expires_at <= now()` and drops the wrapped key), and a download guard (SECURITY INVOKER; the actor from `app.user_id` must be the requester and the job ready and unexpired now; allow-listed in `check-tenancy` like the break-glass read guard). Permissions with role grants, role-template and permission mirrors, manifest ownership, Drizzle schema, and the shared contract `packages/types/src/messaging-export.ts`. A migration pin test covers the text.
 
-## Not built
+## Not built (as of S1; now built, see Implementation status)
 
 The request, approve, reject, cancel, list, detail and download routes; the outbox events and the approver alert; the artefact builder and worker; the expiry sweep; the web screens; the tenant flag registration; the live suite. Slices follow in the WP 5.7 work package.
 
@@ -57,7 +61,7 @@ The request, approve, reject, cancel, list, detail and download routes; the outb
 
 - **S0** this ADR and its index row.
 - **S1** (built, migration 1147) the two tables, guards, audit, permissions and role grants, manifest and tenancy mirrors, Drizzle schema, shared contract, migration pin test.
-- **S2** backend service, routes, events and approver alert.
-- **S3** artefact builder, worker and expiry sweep.
-- **S4** web request, approve and download screens.
-- **S5** live suite and CI job.
+- **S2** (built) backend service, routes, events and approver alert.
+- **S3** (built) artefact builder, worker and expiry sweep.
+- **S4** (built) web request, approve and download screens.
+- **S5** (built) live suite and CI job.
