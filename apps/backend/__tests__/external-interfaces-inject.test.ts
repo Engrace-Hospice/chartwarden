@@ -755,7 +755,7 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
     const res = await app.inject({
       method: "GET",
       url: "/api/clinical/labs/observations",
-      headers: SUPER,
+      headers: { ...SUPER, "x-test-roles": "registered_nurse" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().items).toEqual([]);

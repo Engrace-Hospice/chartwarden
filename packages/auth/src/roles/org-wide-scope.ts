@@ -10,7 +10,8 @@
 //
 // A copied constant is not a shared decision. This is the shared decision.
 //
-// The first three are the platform's oversight roles. The fourth arm is DERIVED, and had to be: M3's
+// The named oversight roles (`compliance_officer`, `medical_director`, `survey_coordinator`) are the
+// platform's own. The derived arm had to be derived: M3's
 // `SYSTEM_LOCKED_FLOORS` is the platform's statement of which CoP-required roles may never LOSE a
 // permission, and two of those floors lock `patient.read` on — `medical_director` (CoP 418.102) and
 // `director_of_nursing` (CoP 418.64(a)). A role the platform refuses to let a tenant strip
@@ -20,11 +21,12 @@
 // against patients the holder may not see. Deriving means the next CoP floor that locks `patient.read`
 // on does not have to be found by hand, in four files.
 //
-// `org_admin` is deliberately NOT here, even though ~10 predicates across M20/M22/M23/M24/M25/M32/M33/
-// M34 treat it as the tenant's top authority and the demo admin holds it. It carries no `patient.read`
-// floor, so the platform has never asserted that role reads charts, and an org-wide PHI bypass for a
-// business role is the kind of quiet widening this control exists to prevent. An org_admin who needs a
-// chart holds a clinical role, holds an assignment, or breaks glass — which is audited.
+// `administrator` and `org_admin` are named here by ROLE (ADR-0090). Neither carries a `patient.read` floor, so
+// the platform never asserted by derivation that they read charts; the tenant's owner decided they do. This
+// reverses the exclusion this file carried until ADR-0090 ("an org-wide PHI bypass for a business role is
+// the quiet widening this control exists to prevent"). The widening is now deliberate and recorded, and the
+// ADR names its cost: these roles read every patient in the org, in every module that asks this question
+// (census, orders, eMAR, prescribing, consent, FHIR, scheduling, billing, portal), and the reads are audited.
 import { SYSTEM_LOCKED_FLOORS } from "./templates";
 
 /** The permission whose CoP floor makes a role an org-wide patient reader. */
@@ -39,8 +41,10 @@ const PATIENT_READ = "patient.read";
  */
 export const ORG_WIDE_SCOPE_ROLES: readonly string[] = [
   ...new Set([
-    "medical_director",
+    "administrator",
     "compliance_officer",
+    "medical_director",
+    "org_admin",
     "survey_coordinator",
     ...Object.entries(SYSTEM_LOCKED_FLOORS)
       .filter(([, floor]) => (floor as readonly string[]).includes(PATIENT_READ))

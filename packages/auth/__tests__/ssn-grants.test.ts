@@ -61,9 +61,10 @@ describe("SSN_DEFAULT_GRANTS", () => {
   it("is frozen", () => {
     expect(Object.isFrozen(SSN_DEFAULT_GRANTS)).toBe(true);
   });
-  it("documents the scope boundary: only the compliance officer is an org-wide chart reader", () => {
-    expect(hasOrgWideScope(["compliance_officer"])).toBe(true);
-    for (const key of ["intake_supervisor", "billing_manager", "org_admin"])
+  it("documents the scope boundary: oversight and tenant-admin roles are org-wide chart readers (ADR-0090)", () => {
+    for (const key of ["compliance_officer", "org_admin", "administrator"])
+      expect(hasOrgWideScope([key]), key).toBe(true);
+    for (const key of ["intake_supervisor", "billing_manager"])
       expect(hasOrgWideScope([key]), key).toBe(false);
   });
 });

@@ -239,6 +239,24 @@ describe("M3-T08 authorization route inventory", () => {
       await app.close();
     });
 
+    it.each(["org_admin", "administrator", "compliance_officer"])(
+      "ADR-0090 a tenant cannot create a role under the org-wide-scope key %s → 422",
+      async (key) => {
+        const { app, auditSink } = makeServer();
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/roles",
+          headers: ADMIN,
+          // Zero permissions: anti-escalation passes trivially, so the key itself must be refused.
+          payload: { key, category: "operations", name: "Spoof", permissionKeys: [] },
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.json().error.code).toBe("RESERVED_ROLE");
+        expect(auditSink.rows.some((r) => r.eventType === "m3.role.created")).toBe(false);
+        await app.close();
+      },
+    );
+
     it.each([
       { key: "platform_admin", category: "operations" },
       { key: "platform_ops", category: "operations" },

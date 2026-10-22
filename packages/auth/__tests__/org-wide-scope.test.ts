@@ -41,12 +41,14 @@ describe("ORG_WIDE_SCOPE_ROLES is derived from the CoP floors", () => {
     }
   });
 
-  it("does NOT include org_admin", () => {
-    // Deliberate, and worth a test because ~10 predicates treat org_admin as the tenant's top authority
-    // and the demo admin holds it. It carries no `patient.read` floor, so the platform has never
-    // asserted that role reads charts; an org-wide PHI bypass for a business role is the widening this
-    // control exists to prevent.
-    expect(hasOrgWideScope(["org_admin"])).toBe(false);
+  it("includes administrator and org_admin — the tenant-admin roles, org-wide by ADR-0090", () => {
+    // ADR-0090 reverses the earlier exclusion. Neither role carries a `patient.read` floor, so like the
+    // oversight names they are org-wide by ROLE, not by derivation: the platform owner decided a
+    // tenant administrator (CoP 418.100) and the tenant-admin business role read every patient in the
+    // org. Pinned by name so a later narrowing is a visible test change, not a silent refactor.
+    for (const role of ["administrator", "org_admin"]) {
+      expect(hasOrgWideScope([role])).toBe(true);
+    }
   });
 
   it("is false for a clinical role, an empty set, and an unknown name", () => {
