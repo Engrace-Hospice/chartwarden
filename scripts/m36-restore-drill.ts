@@ -44,8 +44,10 @@ import {
   type DrillReport,
   compareCounts,
   compareObjects,
+  parseRtoTargetMs,
   reconcileCheck,
   renderMarkdown,
+  requireApplied,
   rtoCheck,
   summarise,
 } from "./lib/restore-drill/report";
@@ -81,7 +83,7 @@ const PLATFORM_PW = "drill-platform-pw";
 const DESTRUCTION_PW = "drill-destruction-pw";
 const ORGS = [ORG_A, ORG_B] as const;
 /** DR/BCP section 3 Tier 1 RTO (1 h), the stricter of the two candidate M36 tiers; override with WX_DRILL_RTO_TARGET_S. Still a TARGET, not an SLO. */
-const RTO_TARGET_MS = Number(process.env.WX_DRILL_RTO_TARGET_S ?? 3600) * 1000;
+const RTO_TARGET_MS = parseRtoTargetMs(process.env.WX_DRILL_RTO_TARGET_S);
 
 function arg(name: string): string | undefined {
   return process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -160,22 +162,25 @@ async function injectAuditFault(
   return withClient(pg.url(DB), async (c) => {
     await c.query("SET session_replication_role = replica");
     if (fault === "orphan-audit") {
-      await c.query(
+      const res = await c.query(
         `INSERT INTO audit_event (organization_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome)
          SELECT organization_id, 'system', 'message.insert', 'message', gen_random_uuid(), 'drill-orphan', 'success' FROM message LIMIT 1`,
       );
+      requireApplied(res.rowCount, fault);
       return "orphan-audit: one message.insert audit event added for a message id that has no row";
     }
     if (fault === "missing-audit") {
-      await c.query(
+      const res = await c.query(
         `DELETE FROM audit_event WHERE id = (SELECT id FROM audit_event WHERE event_type='message.insert' ORDER BY id LIMIT 1)`,
       );
+      requireApplied(res.rowCount, fault);
       return "missing-audit: one message.insert audit event removed (message row still present)";
     }
     // Remove a message that owns an attachment: leaves the attachment pointing at nothing and its audit event orphaned.
-    await c.query(
-      `DELETE FROM message WHERE id = (SELECT message_id FROM message_attachment ORDER BY id LIMIT 1)`,
+    const res = await c.query(
+      `DELETE FROM message WHERE id = (SELECT message_id FROM message_attachment WHERE message_id IS NOT NULL ORDER BY id LIMIT 1)`,
     );
+    requireApplied(res.rowCount, fault);
     return "message-deleted: a message that owns an attachment removed (attachment and audit left dangling)";
   });
 }
@@ -185,9 +190,10 @@ async function injectFault(fault: Fault, pg: Pg, minio: Minio): Promise<string> 
   if (fault === "hash-flip") {
     await withClient(pg.url(DB), async (c) => {
       await c.query("SET session_replication_role = replica"); // an attacker/corruption bypasses the immutability triggers
-      await c.query(
+      const res = await c.query(
         `UPDATE message SET body_sha256 = repeat('f', 64) WHERE id = (SELECT id FROM message ORDER BY id LIMIT 1)`,
       );
+      requireApplied(res.rowCount, "hash-flip");
     });
     return "hash-flip: one message.body_sha256 overwritten after restore";
   }
@@ -203,6 +209,10 @@ async function injectFault(fault: Fault, pg: Pg, minio: Minio): Promise<string> 
         )
       ).rows[0],
   );
+  if (!row)
+    throw new Error(
+      `fault did not apply: ${fault} found no completed attachment object to corrupt`,
+    );
   const bucket = deriveTenantBucket(row.organization_id as never);
   if (fault === "missing-object") {
     await createS3ObjectStore({

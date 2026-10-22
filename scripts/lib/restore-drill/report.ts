@@ -158,6 +158,27 @@ export function rtoCheck(restoreWallMs: number, targetMs: number): Check {
   };
 }
 
+/** A fault that touched nothing would make the detection proof vacuous: fail loudly instead of reporting a clean run. */
+export function requireApplied(rowCount: number | null | undefined, fault: string): void {
+  if (!rowCount || rowCount < 1) {
+    throw new Error(
+      `fault did not apply: ${fault} changed 0 rows (does the seed contain a row to corrupt?)`,
+    );
+  }
+}
+
+const DEFAULT_RTO_TARGET_S = 3600;
+
+/** WX_DRILL_RTO_TARGET_S -> milliseconds; unset means the default, anything else must be a positive finite number. */
+export function parseRtoTargetMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_RTO_TARGET_S * 1000;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error(`WX_DRILL_RTO_TARGET_S must be a positive number of seconds, got "${raw}"`);
+  }
+  return seconds * 1000;
+}
+
 export interface DrillReport {
   readonly runId: string;
   readonly startedAt: string;

@@ -148,6 +148,9 @@ export async function reconcileFindings(adminUrl: string): Promise<ReconcileFind
       c,
       `SELECT a.id FROM message_attachment a JOIN message m ON m.id=a.message_id WHERE m.organization_id <> a.organization_id`,
     ),
+    // ponytail: assumes M36 never hard-deletes message / message_revision / message_attachment rows. WP 5.6 destruction
+    // (feat/m36-wp56-retention-finish) does, so a restore taken AFTER a destruction run reports those audit rows as orphans
+    // BY DESIGN. Upgrade path once 5.6 merges: exempt ids named in an m36.retention_destruction.batch_completed audit record.
     orphanAudit: await ids(
       c,
       `SELECT e.resource_id AS id FROM audit_event e WHERE e.event_type IN ('message.insert','message_revision.insert','message_attachment.insert')

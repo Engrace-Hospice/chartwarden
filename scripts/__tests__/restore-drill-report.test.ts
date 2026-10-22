@@ -6,7 +6,9 @@ import {
   compareCounts,
   compareObjects,
   objectId,
+  parseRtoTargetMs,
   reconcileCheck,
+  requireApplied,
   rtoCheck,
 } from "../lib/restore-drill/report";
 
@@ -114,5 +116,25 @@ describe("restore drill reconcile and RTO verdicts", () => {
     expect(rtoCheck(12_500, 3_600_000).ok).toBe(true);
     expect(rtoCheck(3_600_000, 3_600_000).ok).toBe(true);
     expect(rtoCheck(3_600_001, 3_600_000).ok).toBe(false);
+  });
+});
+
+describe("restore drill guards", () => {
+  it("requireApplied throws when a fault changed no rows", () => {
+    expect(() => requireApplied(0, "message-deleted")).toThrow(
+      /fault did not apply: message-deleted/,
+    );
+    expect(() => requireApplied(null, "x")).toThrow(/fault did not apply/);
+    expect(() => requireApplied(1, "x")).not.toThrow();
+  });
+
+  it("parseRtoTargetMs defaults to 1 h and accepts a positive number", () => {
+    expect(parseRtoTargetMs(undefined)).toBe(3_600_000);
+    expect(parseRtoTargetMs("")).toBe(3_600_000);
+    expect(parseRtoTargetMs("90")).toBe(90_000);
+  });
+
+  it.each(["abc", "0", "-5", "Infinity", "NaN"])("parseRtoTargetMs rejects %s", (raw) => {
+    expect(() => parseRtoTargetMs(raw)).toThrow(/WX_DRILL_RTO_TARGET_S must be a positive number/);
   });
 });

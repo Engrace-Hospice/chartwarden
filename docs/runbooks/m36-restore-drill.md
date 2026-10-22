@@ -55,8 +55,13 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
      and `message_attachment` row has its `<table>.insert` audit event (the generic audit trigger writes one per row); no such
      audit event points at a row that does not exist; every attachment with a `message_id` has a message in the same org (an
      upload not yet attached has `message_id` NULL by design and is not flagged);
+     **Known limit:** the orphan-audit rule assumes M36 never hard-deletes `message`, `message_revision` or `message_attachment`
+     rows. WP 5.6 retention destruction (branch `feat/m36-wp56-retention-finish`) does, and records the ids in
+     `m36.retention_destruction.batch_completed`; a drill against a database that has had a destruction run will therefore report
+     those audit rows as orphans by design. Not exempted yet (it would couple the drill to code not on this branch); once 5.6
+     merges, exempt audit rows whose id appears in a `batch_completed` record, and add a fault test for it.
    - `runHashVerifyForOrg` (the production job body) over every message and `message_revision` row (run last: it writes audit rows);
-   - restore wall time against the Tier 1 RTO target (1 h; `WX_DRILL_RTO_TARGET_S` overrides). This compares a measurement with a
+   - restore wall time against the Tier 1 RTO target (1 h; `WX_DRILL_RTO_TARGET_S` overrides, must be a positive number or the drill refuses to start). This compares a measurement with a
      TARGET; it is not evidence that any service level is committed.
 
 ## 3. Restore procedure the drill proved
