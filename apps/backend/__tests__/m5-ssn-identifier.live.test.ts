@@ -593,11 +593,11 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     expect(versions.rows.map((r) => r.v)).toEqual(["v1", "v2"]);
   });
 
-  // ── 7b. ChartWarden label rename, release 1: the matcher finds a blind index stored under EITHER label ──────────
-  // LEGACY(wardenx->chartwarden): the writer still emits the legacy "wardenx:" label (every row above proves that); this
-  // rewrites one row's index under the NEW "chartwarden:" label, exactly what the future writer flip would leave behind,
+  // ── 7b. ChartWarden label rename, releases 1-2: the matcher finds a blind index stored under EITHER label ───────
+  // LEGACY(wardenx->chartwarden): since release 2 the writer emits the NEW "chartwarden:" label (asserted below); this
+  // rewrites one row's index under the LEGACY "wardenx:" label, exactly what production holds until the backfill has run,
   // and proves the REAL probe (key ring -> HKDF -> `IN (...)` on Postgres) still blocks the duplicate instead of missing it.
-  it("a blind index stored under the NEW chartwarden label is still found (no duplicate chart), and a different SSN is not a hit", async () => {
+  it("a blind index stored under the LEGACY wardenx label is still found (no duplicate chart), and a different SSN is not a hit", async () => {
     const dob = "1961-01-01";
     const pid = admitted(
       await service.admit(
@@ -614,19 +614,28 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     );
     const [row] = await identifierRow(pid);
     const dek = await getTenantKeyProvider().dekForOrgVersion(ORG_A, row.value_dek_version);
-    const indexKey = Buffer.from(
-      hkdfSync(
+    const tokenUnder = (prefix: string) =>
+      createHmac(
         "sha256",
-        dek.key,
-        Buffer.alloc(0),
-        Buffer.from(`chartwarden:m5:ssn-blind-index:v1:${ORG_A}`),
-        32,
-      ),
-    );
-    const newLabelToken = createHmac("sha256", indexKey).update("ssn:444556666", "utf8").digest();
-    expect(newLabelToken.equals(row.value_blind_index)).toBe(false);
+        Buffer.from(
+          hkdfSync(
+            "sha256",
+            dek.key,
+            Buffer.alloc(0),
+            Buffer.from(`${prefix}:m5:ssn-blind-index:v1:${ORG_A}`),
+            32,
+          ),
+        ),
+      )
+        .update("ssn:444556666", "utf8")
+        .digest();
+    // the writer now stores the NEW-label token (independent oracle) ...
+    expect(tokenUnder("chartwarden").equals(row.value_blind_index)).toBe(true);
+    // ... and the row is then put back to the LEGACY one, the state before the backfill
+    const legacyLabelToken = tokenUnder("wardenx");
+    expect(legacyLabelToken.equals(row.value_blind_index)).toBe(false);
     await admin.query("UPDATE patient_identifier SET value_blind_index=$1 WHERE id=$2", [
-      newLabelToken,
+      legacyLabelToken,
       row.id,
     ]);
     const before = await patientCount(ORG_A);

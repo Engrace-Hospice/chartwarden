@@ -135,9 +135,17 @@ export function loadPlatformKekRing(env: NodeJS.ProcessEnv = process.env): Platf
 // LEGACY(wardenx->chartwarden): remove the legacy entry after every tenant_key_ring row has been re-wrapped (release 3).
 const WRAP_AAD_LABEL_CURRENT = "chartwarden-m34-tenant-dek";
 const WRAP_AAD_LABEL_LEGACY = "wardenx-m34-tenant-dek";
-// Release 2 (write-side flip): set to WRAP_AAD_LABEL_CURRENT, then re-wrap every wrapped DEK (current + prior versions).
-const WRAP_AAD_LABEL_WRITE = WRAP_AAD_LABEL_LEGACY;
+// Release 2 (write-side flip done): new wraps use the CURRENT label; scripts/db/backfill-crypto-labels.ts re-wraps every
+// older wrapped DEK (current + prior versions). `unwrap` still accepts both (release 3 removes the legacy label).
+const WRAP_AAD_LABEL_WRITE = WRAP_AAD_LABEL_CURRENT;
 const WRAP_AAD_LABELS_READ = [WRAP_AAD_LABEL_CURRENT, WRAP_AAD_LABEL_LEGACY] as const;
+
+/** Which label generation to use; only the backfill's decrypt probe passes one (omitted = try both). */
+export type LabelGeneration = "current" | "legacy";
+const WRAP_AAD_LABEL_BY_GENERATION: Record<LabelGeneration, string> = {
+  current: WRAP_AAD_LABEL_CURRENT,
+  legacy: WRAP_AAD_LABEL_LEGACY,
+};
 
 /** The AAD every wrap/unwrap binds: the label, the format version, the wrapping KEK, and the OWNING TENANT. */
 function aad(label: string, kekId: string, organizationId: string): Buffer {
@@ -161,27 +169,44 @@ export interface PlatformKekAdapter {
     readonly organizationId: string;
     readonly kekWrappedCiphertext: Buffer;
     readonly kekId: string;
+    /** Backfill probe only: open under this label generation alone. Omitted = try both. */
+    readonly onlyGeneration?: LabelGeneration;
   }): Promise<Buffer>;
+  /**
+   * Re-wrap an EXISTING wrapped DEK under the WRITE label, under the SAME KEK that wrapped it (so `kekId` is unchanged).
+   * The new wrap is opened under the new label alone and compared with the old DEK before it is returned, so a result is
+   * always a wrap that opens; the plaintext DEK never leaves this function. Used only by the label backfill.
+   */
+  rewrapDek(input: {
+    readonly organizationId: string;
+    readonly kekWrappedCiphertext: Buffer;
+    readonly kekId: string;
+  }): Promise<{ readonly wrappedCiphertextB64: string; readonly kekId: string }>;
+}
+
+/** Wrap `dek` under `kek` with the WRITE label and the AAD that binds the KEK id and the tenant. */
+function wrapUnder(kek: PlatformKek, organizationId: string, dek: Buffer): Buffer {
+  const nonce = randomBytes(NONCE_LEN);
+  const cipher = createCipheriv("aes-256-gcm", kek.key, nonce);
+  cipher.setAAD(aad(WRAP_AAD_LABEL_WRITE, kek.kekId, organizationId));
+  const ct = Buffer.concat([cipher.update(dek), cipher.final()]);
+  return Buffer.concat([Buffer.from([VERSION]), nonce, ct, cipher.getAuthTag()]);
 }
 
 export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdapter {
-  return {
+  const adapter: PlatformKekAdapter = {
     async mintAndWrapDek({ organizationId }) {
       if (!organizationId) throw new PlatformKekError("mintAndWrapDek requires an organizationId");
       const dek = randomBytes(DEK_LEN);
       try {
-        const nonce = randomBytes(NONCE_LEN);
-        const cipher = createCipheriv("aes-256-gcm", ring.active.key, nonce);
-        cipher.setAAD(aad(WRAP_AAD_LABEL_WRITE, ring.active.kekId, organizationId));
-        const ct = Buffer.concat([cipher.update(dek), cipher.final()]);
-        const wrapped = Buffer.concat([Buffer.from([VERSION]), nonce, ct, cipher.getAuthTag()]);
+        const wrapped = wrapUnder(ring.active, organizationId, dek);
         return { wrappedCiphertextB64: wrapped.toString("base64"), kekId: ring.active.kekId };
       } finally {
         // The raw DEK never leaves this function (§WrappedDek: "minted, wrapped, and zeroized inside the port").
         dek.fill(0);
       }
     },
-    async unwrap({ organizationId, kekWrappedCiphertext, kekId }) {
+    async unwrap({ organizationId, kekWrappedCiphertext, kekId, onlyGeneration }) {
       if (!organizationId) throw new PlatformKekError("unwrap requires an organizationId");
       const key = ring.byId.get(kekId);
       if (!key) {
@@ -203,7 +228,10 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
       const ct = kekWrappedCiphertext.subarray(1 + NONCE_LEN, 1 + NONCE_LEN + DEK_LEN);
       const tag = kekWrappedCiphertext.subarray(1 + NONCE_LEN + DEK_LEN);
       // Both labels, current first. The refusal after the last is one message that names no label, so the retry is no oracle.
-      for (const label of WRAP_AAD_LABELS_READ) {
+      const labels = onlyGeneration
+        ? [WRAP_AAD_LABEL_BY_GENERATION[onlyGeneration]]
+        : WRAP_AAD_LABELS_READ;
+      for (const label of labels) {
         const decipher = createDecipheriv("aes-256-gcm", key, nonce);
         decipher.setAAD(aad(label, kekId, organizationId));
         decipher.setAuthTag(tag);
@@ -219,5 +247,27 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
         `wrapped DEK for org ${organizationId} failed authentication under KEK '${kekId}'`,
       );
     },
+    async rewrapDek({ organizationId, kekWrappedCiphertext, kekId }) {
+      const dek = await adapter.unwrap({ organizationId, kekWrappedCiphertext, kekId });
+      try {
+        const key = ring.byId.get(kekId);
+        if (!key) throw new PlatformKekError(`no platform KEK '${kekId}' is configured`);
+        const wrapped = wrapUnder({ kekId, key }, organizationId, dek);
+        // Open the new wrap under the NEW label alone and compare: a wrap that does not round-trip is never returned.
+        const reopened = await adapter.unwrap({
+          organizationId,
+          kekWrappedCiphertext: wrapped,
+          kekId,
+          onlyGeneration: "current",
+        });
+        const same = reopened.length === dek.length && timingSafeEqual(reopened, dek);
+        reopened.fill(0);
+        if (!same) throw new PlatformKekError("re-wrapped DEK did not round-trip; refusing it");
+        return { wrappedCiphertextB64: wrapped.toString("base64"), kekId };
+      } finally {
+        dek.fill(0);
+      }
+    },
   };
+  return adapter;
 }

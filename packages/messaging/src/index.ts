@@ -16,6 +16,7 @@ export {
   loadMessagingKek,
   deriveOrgDek,
   deriveOrgReadDeks,
+  deriveOrgDekForGeneration,
   sealMessageBody,
   openMessageBody,
   messageBodySha256,
@@ -25,6 +26,7 @@ export {
   ringEnvelopeVersion,
   type BodyEnvelopeScheme,
   type RingBodyDek,
+  type BodyLabelGeneration,
 } from "./crypto";
 
 // ── M36-T08 realtime event & room CONTRACT (§4.3) — pure room-set + sanitized event payloads ──

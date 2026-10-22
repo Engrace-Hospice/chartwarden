@@ -79,8 +79,8 @@ are not rolled back.
   argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
 - **`minio-provision`** — a one-shot that creates the IAM policy (`CHARTWARDEN_MINIO_POLICY`, default `wardenx-app` until the infra-rename cutover sets `chartwarden-app`) and the service account the api/worker use
-  (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*`,
-  `wardenx-*` and `chartwarden-*` buckets only (the last is the rename target); the MinIO root account is no longer an application credential.
+  (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*`
+  and `chartwarden-*` buckets only; the MinIO root account is no longer an application credential.
 
 - **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
   `deploy/clamav/clamd.conf` (shipped to `<deploy dir>/clamav/` by `deploy.yml`): alerts on encrypted archives/documents

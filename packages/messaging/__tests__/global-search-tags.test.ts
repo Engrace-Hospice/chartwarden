@@ -5,6 +5,8 @@ import {
   CANDIDATE_CAP,
   DEFAULT_TAG_BITS,
   MAX_PAGES_PER_QUERY,
+  SEARCH_LABELS_LEGACY,
+  SEARCH_LABELS_WRITE,
   type SearchKeyProvider,
   buildMessageTags,
   decodeSearchCursor,
@@ -24,7 +26,6 @@ import {
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
-  SEARCH_LABELS_WRITE,
 } from "../src/search/global";
 
 const KEK = Buffer.alloc(32, 7);
@@ -43,22 +44,34 @@ const stubProvider: SearchKeyProvider = {
 
 describe("known-answer vectors (independent HKDF/HMAC reference, fixed inputs)", () => {
   const dek = Buffer.alloc(32, 0x42);
-  const keyA = deriveSearchKey(dek, ORG_A, "v1");
+  // The vectors below are for the LEGACY label (explicit); the default (writer) label is the chartwarden one since release 2.
+  const keyA = deriveSearchKey(dek, ORG_A, "v1", SEARCH_LABELS_LEGACY);
 
-  it("deriveSearchKey: HKDF-SHA256, empty salt, info wardenx-message-search:<org>:<label>", () => {
+  it("deriveSearchKey: HKDF-SHA256, empty salt, info wardenx-message-search:<org>:<label> (legacy label)", () => {
     expect(keyA.toString("hex")).toBe(
       "478d04a66604da7c9697c06edcfabe1069097599c1757c0fbb9bc73691f70d03",
     );
     // the SAME DEK with another org, or another label, must give another key
-    expect(deriveSearchKey(dek, ORG_B, "v1").toString("hex")).toBe(
+    expect(deriveSearchKey(dek, ORG_B, "v1", SEARCH_LABELS_LEGACY).toString("hex")).toBe(
       "06680fa9f0947e984273f4630cedac1af8680f4b98470da3e2c732808307d636",
     );
-    expect(deriveSearchKey(dek, ORG_A, "v2").toString("hex")).toBe(
+    expect(deriveSearchKey(dek, ORG_A, "v2", SEARCH_LABELS_LEGACY).toString("hex")).toBe(
       "42889e49d4e317549140dc2702d89f200fc9d21005edccad6d03aeb7d239126f",
     );
   });
 
-  it("tags at T=19 are literal integers over the w\\0 / p\\0 len \\0 encodings", () => {
+  it("the writer's default is the chartwarden label: a literal key (independent Node HKDF) and literal tags", () => {
+    const keyW = deriveSearchKey(dek, ORG_A, "v1");
+    expect(keyW.toString("hex")).toBe(
+      "6ceb092d6799ec6ad124bd0c8f93261fa039860c52b3b68125093056b347cb99",
+    );
+    expect(keyW.equals(keyA)).toBe(false);
+    expect(tagForWord(keyW, "morphine", 19)).toBe(256730);
+    expect(tagForPrefix(keyW, "morp", 19)).toBe(248389);
+    expect(tagForPrefix(keyW, "mor", 19)).toBe(233133);
+  });
+
+  it("tags at T=19 are literal integers over the w\\0 / p\\0 len \\0 encodings (legacy key)", () => {
     expect(tagForWord(keyA, "morphine", 19)).toBe(427393);
     expect(tagForPrefix(keyA, "morp", 19)).toBe(264399);
     expect(tagForPrefix(keyA, "mor", 19)).toBe(291042);

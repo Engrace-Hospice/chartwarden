@@ -37,9 +37,17 @@ const MIN_LEN = 1 + NONCE_LEN + TAG_LEN; // header + tag, even with an empty cip
 // LEGACY(wardenx->chartwarden): remove the legacy entry after the backfill (release 3).
 const DEK_INFO_PREFIX_CURRENT = "chartwarden-m24-trading-partner-dek:";
 const DEK_INFO_PREFIX_LEGACY = "wardenx-m24-trading-partner-dek:";
-// Release 2 (write-side flip): set to DEK_INFO_PREFIX_CURRENT, then re-seal every stored credential.
-const DEK_INFO_PREFIX_WRITE = DEK_INFO_PREFIX_LEGACY;
+// Release 2 (write-side flip done): new credentials are sealed under the CURRENT label; scripts/db/backfill-crypto-labels.ts
+// re-seals the older ones. Readers still accept both (release 3 removes the legacy one).
+const DEK_INFO_PREFIX_WRITE = DEK_INFO_PREFIX_CURRENT;
 const DEK_INFO_PREFIXES_READ = [DEK_INFO_PREFIX_CURRENT, DEK_INFO_PREFIX_LEGACY] as const;
+
+/** Which label generation to derive a DEK for; only the backfill's decrypt probe asks for one. */
+export type LabelGeneration = "current" | "legacy";
+const DEK_INFO_PREFIX_BY_GENERATION: Record<LabelGeneration, string> = {
+  current: DEK_INFO_PREFIX_CURRENT,
+  legacy: DEK_INFO_PREFIX_LEGACY,
+};
 
 /** The sentinel the pre-crypto placeholder wrote. Recognised so a legacy row reads as "no usable secret". */
 export const LEGACY_DEFERRED_SENTINEL = "ENC:deferred";
@@ -69,6 +77,15 @@ export function deriveOrgCredentialDek(kek: Buffer, orgId: string): Buffer {
 
 function deriveDekFor(kek: Buffer, orgId: string, prefix: string): Buffer {
   return Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), `${prefix}${orgId}`, KEY_LEN));
+}
+
+/** The DEK under ONE label generation (the backfill's decrypt probe: "does this open under the new label alone?"). */
+export function deriveOrgCredentialDekForGeneration(
+  kek: Buffer,
+  orgId: string,
+  generation: LabelGeneration,
+): Buffer {
+  return deriveDekFor(kek, orgId, DEK_INFO_PREFIX_BY_GENERATION[generation]);
 }
 
 /** Every DEK a stored credential of this tenant may have been sealed under (current label first, then legacy). */

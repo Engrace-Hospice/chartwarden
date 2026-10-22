@@ -2021,9 +2021,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await q(`DELETE FROM message_search_index_state WHERE key_version='v2'`);
     }, 180_000);
 
-    it("ChartWarden label rename (release 1): a message indexed under the NEW search labels is found; a mix of two label sets is not a match", async () => {
-      // LEGACY(wardenx->chartwarden): `send` indexes under the legacy writer labels; these rows are planted by hand under
-      // the labels the future writer flip will use, exactly as the MED-3 case plants a second key version.
+    it("ChartWarden label rename (releases 1-2): a message indexed under either search label set is found; a mix of two label sets is not a match", async () => {
+      // LEGACY(wardenx->chartwarden): since release 2 `send` indexes under the NEW writer labels; these rows are planted by hand
+      // under BOTH label sets (the legacy one is what production holds until the backfill), exactly as the MED-3 case plants a
+      // second key version.
       const [newDek, legacyDek] = deriveOrgReadDeks(KEK, ORG_A);
       const channelKeyFor = (set: 0 | 1, channelId: string) => {
         const labels = set === 0 ? SEARCH_LABELS_CURRENT : SEARCH_LABELS_LEGACY;

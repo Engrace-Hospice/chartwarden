@@ -376,7 +376,7 @@ describe.skipIf(!DB_URL)(
           clinicalNotes: ["FASTING REQUIRED", "Draw before 8am"],
           patientDemographics: {
             mrn: "MRN-OK",
-            internalMrnAuthority: `WARDENX-${ORG_A}`,
+            internalMrnAuthority: `CHARTWARDEN-${ORG_A}`,
             familyName: "Doe",
             givenName: "Jane",
             dateOfBirth: "1950-04-05",
@@ -395,7 +395,7 @@ describe.skipIf(!DB_URL)(
       // M29's worker built and "sent" the real ORM^O01 wire.
       expect(wires).toHaveLength(1);
       expect(wires[0]).toContain("ORM^O01");
-      expect(wires[0]).toContain("MRN-OK^^^WARDENX-");
+      expect(wires[0]).toContain("MRN-OK^^^CHARTWARDEN-");
       expect(wires[0]).toContain("Doe^Jane");
       expect(wires[0]).toContain("1234567893^Smith^Sam");
       expect(wires[0]).toContain("2345-7^Glucose^LN");

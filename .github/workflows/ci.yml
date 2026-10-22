@@ -139,6 +139,7 @@ jobs:
           - { name: "Alias drop (1142)", script: "test:alias-drop:live" }
           - { name: "Function rename (1143)", script: "test:function-rename:live" }
           - { name: "Reserved username (1146)", script: "test:reserved-username:live" }
+          - { name: "Stored identifiers (1151)", script: "test:stored-identifiers:live" }
           - { name: "M24 Billing-Medicaid", script: "test:rls:live:m24" }
           - { name: "M25 Remittance", script: "test:rls:live:m25" }
           - { name: "M26 Cap Management", script: "test:rls:live:m26" }
@@ -764,6 +765,7 @@ jobs:
           - { name: "M36 Integrity Jobs", scripts: "test:m36:integrity-jobs:live" }
           # WP 2.13 / ADR-0058 P1 — message bodies on the M34 wrapped-DEK ring (both-scheme read, backfill, rotation, shred).
           - { name: "M36 Body key ring", scripts: "test:m36:body-key-ring:live" }
+          - { name: "Crypto label backfill (release 2)", scripts: "test:crypto-labels:backfill:live" }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-158 / GAP-161 / GAP-164 (batch 17 close-out) - caregiver->user link + M40 grief catalog,
           # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.

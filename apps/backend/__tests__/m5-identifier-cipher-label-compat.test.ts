@@ -1,6 +1,6 @@
-// ChartWarden rename, release 1 (read-side): the M5 identifier envelope AAD and the SSN blind-index label are read under
-// BOTH the legacy "wardenx:" and the new "chartwarden:" label. Fixtures are built here with literal strings (an oracle
-// independent of the module's constants) to stand for what production holds / what the future writer flip will emit.
+// ChartWarden rename, releases 1-2: the M5 identifier envelope AAD and the SSN blind-index label are read under BOTH the
+// legacy "wardenx:" and the new "chartwarden:" label, and (since release 2) written under the new one. Fixtures are built here
+// with literal strings (an oracle independent of the module's constants).
 // LEGACY(wardenx->chartwarden): delete the legacy cases after the backfill.
 import { createCipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
@@ -53,16 +53,33 @@ describe("identifier envelope labels", () => {
     expect(await cipher.open(ORG, ROW, "ssn", envelope("chartwarden", SSN))).toBe(SSN);
   });
 
-  it("still seals under the legacy label in this release", async () => {
+  it("seals under the NEW label since release 2 (and the legacy probe refuses it)", async () => {
     const sealed = (await cipher.seal(ORG, ROW, "ssn", SSN)).ciphertext;
     const nonce = sealed.subarray(3, 3 + 12);
     const tag = sealed.subarray(3 + 12, 3 + 12 + 16);
     const c = createCipheriv("aes-256-gcm", DEK, nonce, { authTagLength: 16 });
-    c.setAAD(Buffer.from(aad("wardenx"), "utf8"));
+    c.setAAD(Buffer.from(aad("chartwarden"), "utf8"));
     c.update(SSN, "utf8");
     c.final();
     expect(c.getAuthTag().equals(tag)).toBe(true);
+    await expect(cipher.open(ORG, ROW, "ssn", sealed, "legacy")).rejects.toThrow(
+      IdentifierCipherIntegrityError,
+    );
+    expect(await cipher.open(ORG, ROW, "ssn", sealed, "current")).toBe(SSN);
   });
+
+  it.each([
+    ["wardenx", "legacy", "current"],
+    ["chartwarden", "current", "legacy"],
+  ] as const)(
+    "a %s envelope opens under the %s probe and not the %s one",
+    async (prefix, yes, no) => {
+      expect(await cipher.open(ORG, ROW, "ssn", envelope(prefix, SSN), yes)).toBe(SSN);
+      await expect(cipher.open(ORG, ROW, "ssn", envelope(prefix, SSN), no)).rejects.toThrow(
+        IdentifierCipherIntegrityError,
+      );
+    },
+  );
 
   it("fails closed under any other label, with a generic error that names no label", async () => {
     await expect(cipher.open(ORG, ROW, "ssn", envelope("somethingelse", SSN))).rejects.toThrow(
@@ -87,8 +104,18 @@ describe("identifier envelope labels", () => {
 describe("SSN blind-index labels", () => {
   const cipher = createPatientIdentifierCipher(keys);
 
-  it("writes the legacy-label token in this release", async () => {
-    expect((await cipher.blindIndex(ORG, SSN)).token.equals(token("wardenx"))).toBe(true);
+  it("writes the NEW-label token since release 2", async () => {
+    expect((await cipher.blindIndex(ORG, SSN)).token.equals(token("chartwarden"))).toBe(true);
+    expect((await cipher.blindIndex(ORG, SSN)).token.equals(token("wardenx"))).toBe(false);
+  });
+
+  it("an explicit generation yields that generation's token (the backfill's probe)", async () => {
+    expect((await cipher.blindIndex(ORG, SSN, "1", "legacy")).token.equals(token("wardenx"))).toBe(
+      true,
+    );
+    expect(
+      (await cipher.blindIndex(ORG, SSN, "1", "current")).token.equals(token("chartwarden")),
+    ).toBe(true);
   });
 
   it("the dual probe contains both the legacy and the new token, so either stored row is found", async () => {

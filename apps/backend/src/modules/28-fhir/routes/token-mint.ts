@@ -162,6 +162,8 @@ export interface FhirTokenError {
     readonly error: string;
     readonly error_description: string;
     /** Only set for a BAA refusal, which is reported AFTER the credential verified (no oracle). */
+    readonly chartwarden_code?: string;
+    /** DEPRECATED alias of `chartwarden_code`, emitted alongside it so clients written against the old name keep working. LEGACY(wardenx->chartwarden): drop once partners confirm they read `chartwarden_code`. */
     readonly wardenx_code?: string;
   };
   /** Seconds to wait; set on a 429 so the route can emit `Retry-After`. */
@@ -430,6 +432,7 @@ export async function mintFhirToken(
           error: "invalid_client",
           error_description:
             "the presenting client could not be authenticated: no BAA is in force for this client",
+          chartwarden_code: BAA_NOT_IN_FORCE_CODE,
           wardenx_code: BAA_NOT_IN_FORCE_CODE,
         },
         baaFailure: {

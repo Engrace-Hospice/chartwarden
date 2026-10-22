@@ -61,7 +61,7 @@ function badInput(message: string): never {
 /** Better Auth plugin: the server-only link-session mint. Registered by `createIdentityAuth`. */
 export const linkSessionPlugin = () =>
   ({
-    id: "wardenx-link-session",
+    id: "chartwarden-link-session",
     endpoints: {
       mintLinkSession: createAuthEndpoint.serverOnly({ method: "POST" }, async (ctx) => {
         const body = (ctx.body ?? {}) as MintBody;

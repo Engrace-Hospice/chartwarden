@@ -62,12 +62,18 @@ export interface PatientIdentifierCipher {
     identifierId: string,
     kind: SensitiveIdentifierKind,
     ciphertext: Buffer,
+    /** Backfill probe only: open under this label generation alone. Omitted = try both. */
+    onlyGeneration?: LabelGeneration,
   ): Promise<string>;
-  /** The SSN blind-index token under the current DEK (or under `dekVersion` when given). */
+  /**
+   * The SSN blind-index token under the current DEK (or under `dekVersion` when given), under the WRITE label unless the
+   * backfill asks for one generation explicitly.
+   */
   blindIndex(
     organizationId: string,
     ssnDigits: string,
     dekVersion?: string,
+    generation?: LabelGeneration,
   ): Promise<BlindIndexToken>;
   /**
    * Every token a stored row could carry, for each listed DEK version (the multi-version matcher probe): one token per
@@ -118,12 +124,27 @@ const AAD_LABEL_CURRENT = "chartwarden:m5:patient_identifier:value_encrypted:v1:
 const AAD_LABEL_LEGACY = "wardenx:m5:patient_identifier:value_encrypted:v1:";
 const INDEX_LABEL_CURRENT = "chartwarden:m5:ssn-blind-index:v1:";
 const INDEX_LABEL_LEGACY = "wardenx:m5:ssn-blind-index:v1:";
-// Release 2 (write-side flip): point these two at the CURRENT labels, then backfill (re-seal + re-index every row).
-const AAD_LABEL_WRITE = AAD_LABEL_LEGACY;
-const INDEX_LABEL_WRITE = INDEX_LABEL_LEGACY;
+// Release 2 (write-side flip done): writers emit the CURRENT labels; scripts/db/backfill-crypto-labels.ts re-seals and
+// re-indexes every older row. Readers still accept both (release 3 removes the legacy ones).
+const AAD_LABEL_WRITE = AAD_LABEL_CURRENT;
+const INDEX_LABEL_WRITE = INDEX_LABEL_CURRENT;
 /** Read order: current first, legacy second. */
 const AAD_LABELS_READ = [AAD_LABEL_CURRENT, AAD_LABEL_LEGACY] as const;
 const INDEX_LABELS_READ = [INDEX_LABEL_CURRENT, INDEX_LABEL_LEGACY] as const;
+
+/**
+ * Which label generation to use. Only the backfill's decrypt probe passes one (to find rows that open ONLY under the
+ * legacy label); every runtime caller leaves it out and gets "try both".
+ */
+export type LabelGeneration = "current" | "legacy";
+const AAD_BY_GENERATION: Record<LabelGeneration, string> = {
+  current: AAD_LABEL_CURRENT,
+  legacy: AAD_LABEL_LEGACY,
+};
+const INDEX_BY_GENERATION: Record<LabelGeneration, string> = {
+  current: INDEX_LABEL_CURRENT,
+  legacy: INDEX_LABEL_LEGACY,
+};
 
 const aadFor = (
   label: string,
@@ -233,13 +254,14 @@ export function createPatientIdentifierCipher(
       };
     },
 
-    async open(organizationId, identifierId, kind, ciphertext) {
+    async open(organizationId, identifierId, kind, ciphertext, onlyGeneration) {
       const parsed = parseEnvelope(ciphertext);
       const { key } = await dekAtVersion(keys, organizationId, parsed.version, "open");
       assertDek(key);
       // Try the current label, then the legacy one. A failure under both is the same generic integrity error: it does not
       // say which label (if any) was close, so the retry adds no oracle.
-      for (const label of AAD_LABELS_READ) {
+      const labels = onlyGeneration ? [AAD_BY_GENERATION[onlyGeneration]] : AAD_LABELS_READ;
+      for (const label of labels) {
         const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
           authTagLength: TAG_BYTES,
         });
@@ -254,13 +276,18 @@ export function createPatientIdentifierCipher(
       throw new IdentifierCipherIntegrityError();
     },
 
-    async blindIndex(organizationId, ssnDigits, dekVersion) {
+    async blindIndex(organizationId, ssnDigits, dekVersion, generation) {
       const { version, key } =
         dekVersion === undefined
           ? await currentDek(keys, organizationId, "index")
           : await dekAtVersion(keys, organizationId, dekVersion, "index");
       return {
-        token: tokenFor(key, organizationId, ssnDigits, INDEX_LABEL_WRITE),
+        token: tokenFor(
+          key,
+          organizationId,
+          ssnDigits,
+          generation ? INDEX_BY_GENERATION[generation] : INDEX_LABEL_WRITE,
+        ),
         dekVersion: version,
       };
     },

@@ -35,7 +35,7 @@ const loinc = (code: string, display: string, effectiveDate: string): ResolvedCo
 });
 
 const LOINC_META = { url: "http://loinc.org", version: "2.76" };
-const VS_URL = "urn:wardenx:valueset:hospice_vitals";
+const VS_URL = "urn:chartwarden:valueset:hospice_vitals";
 
 // Three LOINC concepts, deliberately seeded OUT of code order to prove the projection sorts.
 const CONCEPTS: ResolvedConcept<"loinc">[] = [

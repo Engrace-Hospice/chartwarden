@@ -481,7 +481,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     const principal = (
       await admin.query(`SELECT email FROM "user" WHERE id=$1`, [after.principal_user_id])
     ).rows[0];
-    expect(principal.email).toMatch(/@principals\.wardenx\.invalid$/);
+    expect(principal.email).toMatch(/@principals\.chartwarden\.invalid$/);
     expect(
       (
         await admin.query("SELECT count(*)::int n FROM account WHERE user_id=$1", [
