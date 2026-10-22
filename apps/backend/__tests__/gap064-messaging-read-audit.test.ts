@@ -18,6 +18,7 @@ import {
   CHANNEL_VISIBILITY_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/index";
+import { CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/routes/messaging-routes";
 
 const ORG = "org_a";
 const CT = "ch_ct";
@@ -89,6 +90,11 @@ function makeServer() {
   registry.register(CHANNEL_VISIBILITY_PREDICATE, async (ctx, target) =>
     typeof target.id === "string" && ctx.organizationId && ctx.userId
       ? service.canViewChannel(ctx.organizationId, ctx.userId, target.id)
+      : false,
+  );
+  registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) =>
+    typeof target.id === "string" && ctx.organizationId && ctx.userId
+      ? service.canReadChannel(ctx.organizationId, ctx.userId, target.id)
       : false,
   );
   registerAbacRegistry(registry);
