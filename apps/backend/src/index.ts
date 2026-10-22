@@ -379,6 +379,7 @@ import {
   activeLegalHolds,
   approvedMessageCertificates,
   completeMessageCertificate,
+  consumeMessageCertificateCount,
   createMessagingGovernanceHoldPort,
   openMessageCertificate,
 } from "./modules/04-audit/messaging-hold-workflow";
@@ -3382,6 +3383,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "⚠️  DATABASE_DESTRUCTION_URL is not configured: right-to-erasure paths over append-only tables (clinical core, billing, audit_event) will fail loudly rather than certify undone work.",
     );
   }
+  // WP 5.6 (ADR-0086): the message destruction executor exists only with BOTH the destruction credential and the platform pool (the weekly
+  // retention tick fans out over active orgs). Without them nothing can ever run, so the screen must not claim dry_run or live.
+  const m36RetentionDestructionWired = Boolean(destructionDbHandle && platformDbHandle);
+  if (!m36RetentionDestructionWired && process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true") {
+    console.warn(
+      `\u26a0\ufe0f  ${RETENTION_DESTRUCTION_EXECUTE_ENV}=true but the message destruction executor is NOT wired (it needs DATABASE_DESTRUCTION_URL and DATABASE_PLATFORM_URL): nothing will be destroyed and the retention screen reports destruction as off.`,
+    );
+  }
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
   if (platformDbHandle) registerPlatformJob(M35_JOBS_PLATFORM_JOB_ID); // GAP-059 — M35 worker set's active-org fan-out
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
@@ -5103,12 +5112,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               staffNames: readStaffNames,
               // The destruction executor's mode for the screen: the tenant ops flag, then the deployment's execute switch.
               destructionMode: async (organizationId) =>
-                retentionDestructionModeOf(
-                  (await featureFlagReader?.forOrg(organizationId))?.[
-                    RETENTION_DESTRUCTION_FLAG_KEY
-                  ] === true,
-                  process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true",
-                ),
+                m36RetentionDestructionWired
+                  ? retentionDestructionModeOf(
+                      (await featureFlagReader?.forOrg(organizationId))?.[
+                        RETENTION_DESTRUCTION_FLAG_KEY
+                      ] === true,
+                      process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true",
+                    )
+                  : "off",
             },
             globalSearch: {
               keys: m36SearchKeys,
@@ -9522,7 +9533,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   openCertificate: openMessageCertificate,
                   approvedCertificates: approvedMessageCertificates,
                   completeCertificate: completeMessageCertificate,
+                  consumeCertificateCount: consumeMessageCertificateCount,
                 },
+                onBatchError: (err: unknown) =>
+                  app.log.error(
+                    { err: err instanceof Error ? { name: err.name, message: err.message } : "unknown" },
+                    "M36 retention destruction batch failed",
+                  ),
                 isEnabled: async (organizationId: string) =>
                   (await featureFlagReader?.forOrg(organizationId))?.[
                     RETENTION_DESTRUCTION_FLAG_KEY

@@ -48,22 +48,21 @@ describe("Legal hold chip", () => {
   it("shows the words 'Legal hold' and a labelled note on a held message", () => {
     mount(message({ legalHold: true }));
     expect(screen.getByText("Legal hold")).toBeTruthy();
-    const note = screen.getByRole("note", {
-      name: /under a legal hold.*cannot be edited or destroyed/i,
-    });
-    expect(note.textContent).toContain("Legal hold");
+    // The visible words stay the accessible text (no aria-label overriding them) and a short hidden description follows them.
+    const chip = screen.getByText("Legal hold").closest(".wx-legal-hold-chip") as HTMLElement;
+    expect(chip.getAttribute("aria-label")).toBeNull();
+    expect(chip.textContent).toBe("Legal hold. This message cannot be edited or destroyed.");
   });
 
   it("shows nothing when the server did not send the flag (ordinary readers never learn of a hold)", () => {
     mount(message());
     expect(screen.queryByText("Legal hold")).toBeNull();
-    expect(screen.queryByRole("note")).toBeNull();
+    expect(document.querySelector(".wx-legal-hold-chip")).toBeNull();
   });
 
   it("the thread variant says part of the thread is held", () => {
-    render(<LegalHoldChip scope="thread" />);
-    expect(screen.getByRole("note", { name: /At least one message in this thread/ })).toBeTruthy();
-    expect(screen.getByText("Legal hold")).toBeTruthy();
+    const { container } = render(<LegalHoldChip scope="thread" />);
+    expect(container.textContent).toBe("Legal hold. At least one message in this thread is held.");
   });
 
   it("is axe clean beside a message", async () => {

@@ -25,6 +25,7 @@
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
+import { audit } from "@chartwarden/audit";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -33,6 +34,7 @@ import {
   activeLegalHolds,
   approvedMessageCertificates,
   completeMessageCertificate,
+  consumeMessageCertificateCount,
   openMessageCertificate,
 } from "../src/modules/04-audit/messaging-hold-workflow";
 import { createMessageRedactionService } from "../src/modules/36-messaging/governance/message-redaction-service";
@@ -43,6 +45,7 @@ import {
   runRetentionDestructionForOrg,
 } from "../src/modules/36-messaging/jobs/retention-destruction";
 import type { MessageDestructionHoldPort } from "../src/modules/36-messaging/jobs/retention-hold-sql";
+import { runRetentionScanForOrg } from "../src/modules/36-messaging/jobs/retention-scan";
 import { type LiveKit, bootLiveKit } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -73,6 +76,7 @@ describe.skipIf(!DB_URL)(
       openCertificate: openMessageCertificate,
       approvedCertificates: (tx, org, limit) => approvedMessageCertificates(tx, org, limit),
       completeCertificate: completeMessageCertificate,
+      consumeCertificateCount: consumeMessageCertificateCount,
     };
     const deps = (over: Partial<RetentionDestructionDeps> = {}): RetentionDestructionDeps => ({
       db: kit.handle.db,
@@ -96,14 +100,29 @@ describe.skipIf(!DB_URL)(
       )[0].id;
     const exists = async (id: string) =>
       (await kit.count("SELECT count(*)::int AS n FROM message WHERE id = $1", [id])) === 1;
-    const certificate = async (org: string, status: string, dataClass = "message.care_related") =>
+    /** `recordCount` is the approved ceiling (the scan records the exact destroyable count); `ageDays` back-dates the scan's opening of it. */
+    const certificate = async (
+      org: string,
+      status: string,
+      dataClass = "message.care_related",
+      recordCount = 1000,
+      ageDays = 0,
+    ) =>
       (
         await kit.one<{ id: string }>(
-          `INSERT INTO destruction_certificate (organization_id, data_class, record_count, date_range_start, date_range_end, method, status, approved_by)
-         VALUES ($1,$2,0, date_trunc('month', now()), date_trunc('month', now()) + interval '1 month', 'secure_delete', $3::destruction_status, $4) RETURNING id`,
-          [org, dataClass, status, status === "approved" ? officer1 : null],
+          `INSERT INTO destruction_certificate (organization_id, data_class, record_count, date_range_start, date_range_end, method, status, approved_by, created_at)
+         VALUES ($1,$2,$5, date_trunc('month', now()), date_trunc('month', now()) + interval '1 month', 'secure_delete', $3::destruction_status, $4,
+                 now() - make_interval(days => $6::int)) RETURNING id`,
+          [org, dataClass, status, status === "approved" ? officer1 : null, recordCount, ageDays],
         )
       )[0].id;
+    const recordCountOf = async (id: string) =>
+      (
+        await kit.one<{ record_count: number }>(
+          "SELECT record_count FROM destruction_certificate WHERE id=$1",
+          [id],
+        )
+      )[0]?.record_count;
     const certStatus = async (id: string) =>
       (
         await kit.one<{ status: string }>(
@@ -500,6 +519,323 @@ describe.skipIf(!DB_URL)(
           table,
         ).toBe(1);
       }
+    });
+
+    it("the approved count is a CEILING: more eligible messages than recordCount never mean more deletions, and the certificate closes when it is spent", async () => {
+      const ids = [
+        await aged(ORG_A, channel, 8),
+        await aged(ORG_A, channel, 8),
+        await aged(ORG_A, channel, 8),
+        await aged(ORG_A, channel, 8),
+        await aged(ORG_A, channel, 8),
+      ];
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 3);
+      const first = await run();
+      expect(first.destroyed).toBe(3);
+      expect(first.certificates[0]).toMatchObject({
+        destroyed: 3,
+        approvedRemaining: 0,
+        certificateExecuted: true,
+      });
+      expect(await certStatus(cert)).toBe("executed");
+      expect(await recordCountOf(cert)).toBe(0);
+      let alive = 0;
+      for (const id of ids) if (await exists(id)) alive += 1;
+      expect(alive).toBe(2);
+      // Another run changes nothing: the certificate is spent and closed.
+      expect((await run()).destroyed).toBe(0);
+    });
+
+    it("the ceiling holds ACROSS runs: a run cut short leaves the rest of the count, and the next run never exceeds the total", async () => {
+      for (let i = 0; i < 6; i += 1) await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 4);
+      const partial = await run(ORG_A, { batchSize: 3, maxBatchesPerCertificate: 1 });
+      expect(partial.destroyed).toBe(3);
+      expect(partial.certificates[0]).toMatchObject({
+        approvedRemaining: 1,
+        certificateExecuted: false,
+      });
+      expect(await recordCountOf(cert)).toBe(1);
+      const rest = await run();
+      expect(rest.destroyed).toBe(1);
+      expect(rest.certificates[0]).toMatchObject({
+        approvedRemaining: 0,
+        certificateExecuted: true,
+      });
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM message WHERE organization_id=$1", [ORG_A]),
+      ).toBe(2);
+    });
+
+    it("the scan records the EXACT destroyable count (not the 5000 capped plan list), excluding held, object-bearing and referenced messages", async () => {
+      await kit.admin.query(
+        `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         SELECT $1, $2, $3, 'user', $4::bytea, repeat('0',64), now() - interval '8 years' - (g || ' seconds')::interval
+           FROM generate_series(1, 5003) g`,
+        [ORG_A, channel, author, BODY_CIPHER_FAKE],
+      );
+      const withFile = await aged(ORG_A, channel, 8);
+      await kit.admin.query(
+        `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, scan_state, scanned_at, completed_at)
+         VALUES ($1,$2,$3,$4,'text/plain',10,'f.txt','k/f.txt',repeat('a',64),'clean', now(), now())`,
+        [ORG_A, channel, withFile, author],
+      );
+      const scan = await runRetentionScanForOrg({ db: kit.handle.db, messageHolds }, ORG_A);
+      expect(scan.eligibleByClass.care_related).toBe(5000); // the plan list is capped
+      const certId = scan.certificates.find((c) => c.dataClass === "message.care_related")
+        ?.certificateId as string;
+      expect(await recordCountOf(certId)).toBe(5003); // the certificate is not: 5003 destroyable, the object-bearing one is out
+    });
+
+    it("an approved certificate older than its validity is refused: a message held at approval and released long after is not destroyed under it", async () => {
+      const heldThen = await aged(ORG_A, channel, 8);
+      const stale = await certificate(ORG_A, "approved", "message.care_related", 1000, 40);
+      const holdId = await hold({ channelIds: [channel] });
+      await setHold(holdId, "released");
+      const result = await run();
+      expect(result.destroyed).toBe(0);
+      expect(result.expiredCertificateIds).toEqual([stale]);
+      expect(result.certificates).toHaveLength(0);
+      expect(await exists(heldThen)).toBe(true);
+      expect(await certStatus(stale)).toBe("approved");
+      const summary = (await auditRows("m36.retention_destruction.run", result.runId))[0]
+        ?.context as {
+        expiredCertificateIds: string[];
+      };
+      expect(summary.expiredCertificateIds).toEqual([stale]);
+    });
+
+    it("a failing batch ends only its own certificate: the org's other certificate still runs, then the run reports the failure", async () => {
+      const opsChannel = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+           VALUES ($1,'announcement',NULL,'wp56-ops','operational') RETURNING id`,
+          [ORG_A],
+        )
+      )[0].id;
+      const care = await aged(ORG_A, channel, 8);
+      const ops = await aged(ORG_A, opsChannel, 3);
+      const careCert = await certificate(ORG_A, "approved", "message.care_related");
+      const opsCert = await certificate(ORG_A, "approved", "message.operational");
+      // Calls: approvedCertificates, then (care) plan = activeHolds #1, delete = #2 (made to throw), then (ops) plan #3, delete #4.
+      let calls = 0;
+      const flaky: MessageDestructionHoldPort = {
+        ...messageHolds,
+        activeHolds: async (tx, org) => {
+          calls += 1;
+          if (calls === 2) throw new Error("boom in the destructive transaction");
+          return activeLegalHolds(tx, org);
+        },
+      };
+      const failures: unknown[] = [];
+      await expect(
+        run(ORG_A, { messageHolds: flaky, onBatchError: (e) => failures.push(e) }),
+      ).rejects.toThrow(/1 certificate\(s\) failed after the others ran/);
+      expect(failures).toHaveLength(1);
+      expect(await exists(care)).toBe(true);
+      expect(await certStatus(careCert)).toBe("approved");
+      expect(await exists(ops)).toBe(false);
+      expect(await certStatus(opsCert)).toBe("executed");
+    });
+
+    it("if recording a committed batch fails, it is retried; if it keeps failing the destroyed ids are on the error, never lost", async () => {
+      const flakyWriter = (failTimes: number) => {
+        let left = failTimes;
+        return async (...args: Parameters<typeof audit>) => {
+          if (args[2].eventType === "m36.retention_destruction.batch_completed" && left > 0) {
+            left -= 1;
+            throw new Error("audit store unavailable");
+          }
+          return audit(...args);
+        };
+      };
+      // Fails twice, succeeds on the third attempt: nothing is lost and the count is spent once.
+      const a = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 10);
+      const ok = await run(ORG_A, { auditWriter: flakyWriter(2) as never });
+      expect(ok.destroyed).toBe(1);
+      expect(await exists(a)).toBe(false);
+      expect(await recordCountOf(cert)).toBe(9);
+      expect(await auditRows("m36.retention_destruction.batch_completed", ok.runId)).toHaveLength(
+        1,
+      );
+
+      // Fails every time: the message is gone, so its id must surface on the error and in the run summary.
+      await kit.admin.query("DELETE FROM destruction_certificate");
+      const b = await aged(ORG_A, channel, 8);
+      const cert2 = await certificate(ORG_A, "approved", "message.care_related", 10);
+      const runId = randomUUID();
+      const errors: unknown[] = [];
+      await expect(
+        run(ORG_A, {
+          auditWriter: flakyWriter(99) as never,
+          newRunId: () => runId,
+          onBatchError: (e) => errors.push(e),
+        }),
+      ).rejects.toThrow(new RegExp(`destroyed but unrecorded: ${b}`));
+      expect(await exists(b)).toBe(false);
+      expect((errors[0] as { destroyedMessageIds: string[] }).destroyedMessageIds).toEqual([b]);
+      expect(await certStatus(cert2)).toBe("approved"); // not closed while a batch is unrecorded
+      const summary = (await auditRows("m36.retention_destruction.run", runId))[0]?.context as {
+        destroyed: number;
+        certificates: { failure?: { unrecordedDestroyedIds: string[] } }[];
+      };
+      expect(summary.destroyed).toBe(1);
+      expect(summary.certificates[0]?.failure?.unrecordedDestroyedIds).toEqual([b]);
+      // The planned ids were committed BEFORE the delete, so the trail still names them.
+      const started = (await auditRows("m36.retention_destruction.batch_started", runId))[0]
+        ?.context as {
+        plannedMessageIds: string[];
+      };
+      expect(started.plannedMessageIds).toEqual([b]);
+    });
+
+    it("destroys a message that carries EVERY child table, and every foreign key to message is accounted for", async () => {
+      const doomed = await aged(ORG_A, channel, 8);
+      const reply = await aged(ORG_A, channel, 8, doomed); // the parent outlives its reply: both go, reply first
+      const released = await hold({ channelIds: [] }, "released");
+      const { rows: classRows } = await kit.admin.query(
+        "SELECT enumlabel FROM pg_enum WHERE enumtypid='message_ack_class'::regtype LIMIT 1",
+      );
+      const ackClass = classRows[0].enumlabel as string;
+      const ins = (sql: string, params: unknown[]) => kit.admin.query(sql, params);
+      await ins(
+        "INSERT INTO message_receipt (organization_id, message_id, user_id) VALUES ($1,$2,$3)",
+        [ORG_A, doomed, officer1],
+      );
+      await ins(
+        "INSERT INTO message_reaction (organization_id, channel_id, message_id, user_id, emoji) VALUES ($1,$2,$3,$4,'heart')",
+        [ORG_A, channel, doomed, officer1],
+      );
+      await ins(
+        "INSERT INTO message_entity_reference (organization_id, message_id, reference_kind, entity_id, start_offset, end_offset) VALUES ($1,$2,'staff',$3,0,3)",
+        [ORG_A, doomed, officer1],
+      );
+      await ins(
+        "INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id) VALUES ($1,'v1',$2,5,$3)",
+        [ORG_A, channel, doomed],
+      );
+      await ins(
+        "INSERT INTO message_pin (organization_id, channel_id, message_id, pinned_by_user_id) VALUES ($1,$2,$3,$4)",
+        [ORG_A, channel, doomed, officer1],
+      );
+      await ins(
+        "INSERT INTO message_poll (organization_id, channel_id, message_id, created_by_user_id) VALUES ($1,$2,$3,$4)",
+        [ORG_A, channel, doomed, officer1],
+      );
+      await ins(
+        "INSERT INTO message_reminder (organization_id, user_id, channel_id, message_id, remind_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')",
+        [ORG_A, officer1, channel, doomed],
+      );
+      await ins(
+        "INSERT INTO message_revision (organization_id, message_id, revision_no, body_cipher, body_sha256, body_kind, body_written_at, edited_by) VALUES ($1,$2,1,$3::bytea,repeat('0',64),'plain',now(),$4)",
+        [ORG_A, doomed, BODY_CIPHER_FAKE, officer1],
+      );
+      await ins(
+        "INSERT INTO clinical_link (organization_id, message_id, link_kind, source_id, created_by) VALUES ($1,$2,'medication',$3,$4)",
+        [ORG_A, doomed, randomUUID(), officer1],
+      );
+      await ins(
+        "INSERT INTO communication_task (organization_id, message_id, channel_id, created_by, assignee_id) VALUES ($1,$2,$3,$4,$5)",
+        [ORG_A, doomed, channel, officer1, officer2],
+      );
+      await ins(
+        "INSERT INTO legal_hold_message (organization_id, legal_hold_id, message_id) VALUES ($1,$2,$3)",
+        [ORG_A, released, doomed],
+      );
+      await ins(
+        "INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, scan_state, scanned_at, completed_at, object_destroyed_at) VALUES ($1,$2,$3,$4,'text/plain',10,'f.txt','k/f.txt',repeat('a',64),'clean',now(),now(),now())",
+        [ORG_A, channel, doomed, author],
+      );
+      const request = (
+        await ins(
+          `INSERT INTO message_acknowledgment_request (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, deadline_at)
+           VALUES ($1,$2,$3,$4,$5::message_ack_class,$6,$7, now() + interval '1 hour') RETURNING id`,
+          [ORG_A, doomed, channel, PATIENT, ackClass, author, officer2],
+        )
+      ).rows[0].id as string;
+      await ins(
+        "INSERT INTO message_thread_access_grant (organization_id, channel_id, root_message_id, request_id, grantee_user_id, reason, expires_at) VALUES ($1,$2,$3,$4,$5,'escalated', now() + interval '1 day')",
+        [ORG_A, channel, doomed, request, officer2],
+      );
+      await ins(
+        "INSERT INTO message_draft (organization_id, channel_id, user_id, body_cipher, device_id, parent_message_id) VALUES ($1,$2,$3,$4::bytea,'dev-1',$5)",
+        [ORG_A, channel, officer1, BODY_CIPHER_FAKE, doomed],
+      );
+      await ins(
+        "INSERT INTO scheduled_message (organization_id, channel_id, user_id, body_cipher, scheduled_for, parent_message_id) VALUES ($1,$2,$3,$4::bytea, now() + interval '1 day', $5)",
+        [ORG_A, channel, officer1, BODY_CIPHER_FAKE, doomed],
+      );
+      await ins(
+        "UPDATE channel_member SET last_read_message_id = $1 WHERE organization_id=$2 AND channel_id=$3 AND user_id=$4",
+        [doomed, ORG_A, channel, author],
+      );
+      // The redaction guard binds the requester to app.user_id: seed it the way the service does.
+      await kit.admin.query("BEGIN");
+      await kit.admin.query("SELECT set_config('app.user_id', $1, true)", [officer1]);
+      await kit.admin.query(
+        "INSERT INTO message_redaction (organization_id, message_id, requested_by, reason) VALUES ($1,$2,$3,$4)",
+        [ORG_A, doomed, officer1, REASON],
+      );
+      await kit.admin.query("COMMIT");
+
+      // Coverage guard: every table with a foreign key to message is one this test seeded (a new child table must be added here).
+      const children = (
+        await kit.one<{ child: string }>(
+          "SELECT DISTINCT conrelid::regclass::text AS child FROM pg_constraint WHERE contype='f' AND confrelid='message'::regclass",
+        )
+      )
+        .map((r) => r.child)
+        .sort();
+      const SEEDED = {
+        channel_member: "last_read_message_id",
+        clinical_link: "message_id",
+        communication_task: "message_id",
+        legal_hold_message: "message_id",
+        message: "parent_message_id",
+        message_acknowledgment_request: "message_id",
+        message_attachment: "message_id",
+        message_draft: "parent_message_id",
+        message_entity_reference: "message_id",
+        message_pin: "message_id",
+        message_poll: "message_id",
+        message_reaction: "message_id",
+        message_receipt: "message_id",
+        message_redaction: "message_id",
+        message_reminder: "message_id",
+        message_revision: "message_id",
+        message_search_token: "message_id",
+        message_thread_access_grant: "root_message_id",
+        scheduled_message: "parent_message_id",
+      } as const;
+      expect(children).toEqual(Object.keys(SEEDED).sort());
+      for (const [table, column] of Object.entries(SEEDED)) {
+        const n = await kit.count(`SELECT count(*)::int AS n FROM ${table} WHERE ${column}=$1`, [
+          doomed,
+        ]);
+        expect(n, `${table} seeded`).toBeGreaterThan(0);
+      }
+
+      await certificate(ORG_A, "approved");
+      const result = await run();
+      expect(result.destroyed).toBe(2);
+      expect(result.certificates[0]?.failure).toBeUndefined();
+      expect(await exists(doomed)).toBe(false);
+      expect(await exists(reply)).toBe(false);
+      for (const [table, column] of Object.entries(SEEDED)) {
+        if (table === "message" || table === "channel_member") continue;
+        const n = await kit.count(`SELECT count(*)::int AS n FROM ${table} WHERE ${column}=$1`, [
+          doomed,
+        ]);
+        expect(n, `${table} gone with the message`).toBe(0);
+      }
+      // The channel member row stays; only its pointer to the destroyed message is cleared.
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM channel_member WHERE channel_id=$1 AND user_id=$2 AND last_read_message_id IS NULL",
+          [channel, author],
+        ),
+      ).toBe(1);
     });
 
     it("destroys replies before the parent they point at, in one run", async () => {

@@ -85,10 +85,9 @@ export const heldMessagesText = (n: number): string =>
 export const placedText = (by: string, at: string): string => `Placed by ${by} on ${at}`;
 // WP 5.6: the message / thread chip. The words carry the meaning (colour is never the only signal).
 export const LEGAL_HOLD_CHIP_TEXT = "Legal hold";
-export const LEGAL_HOLD_MESSAGE_ARIA =
-  "This message is under a legal hold. It cannot be edited or destroyed while the hold is active.";
-export const LEGAL_HOLD_THREAD_ARIA =
-  "At least one message in this thread is under a legal hold. A held message cannot be edited or destroyed while the hold is active.";
+// Read after the visible words "Legal hold" (visually hidden).
+export const LEGAL_HOLD_MESSAGE_HINT = ". This message cannot be edited or destroyed.";
+export const LEGAL_HOLD_THREAD_HINT = ". At least one message in this thread is held.";
 export const REDACTED_TEXT = "Message redacted";
 export const PLACED_BY_YOU = "you";
 export const shortUserId = (id: string): string => `user ${id.slice(0, 8)}`;

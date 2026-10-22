@@ -306,6 +306,33 @@ export async function completeMessageCertificate(
   return rows.length > 0;
 }
 
+/**
+ * Spend part of an approved message certificate's count (the ceiling of what it may destroy). Only an `approved` `message.*` certificate
+ * of this org moves; returns the count left (0 when the certificate is not approved or unknown, so a stale caller destroys nothing more).
+ */
+export async function consumeMessageCertificateCount(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly destroyed: number;
+  },
+): Promise<number> {
+  const rows = await tx
+    .update(CERT)
+    .set({ recordCount: sql`greatest(${CERT.recordCount} - ${input.destroyed}, 0)` })
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .returning({ left: CERT.recordCount });
+  return rows[0]?.left ?? 0;
+}
+
 /** One legal hold as the messaging governance screen reads it (the free-text reason stays in the audit row). */
 export interface LegalHoldSummary {
   readonly id: string;

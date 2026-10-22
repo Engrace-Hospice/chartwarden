@@ -54,7 +54,27 @@ export interface MessageDestructionHoldPort extends MessageHoldPort {
       readonly executedAt: Date;
     },
   ): Promise<boolean>;
+  /**
+   * Spend `destroyed` of the certificate's approved count (record_count never goes below 0) and return what is left. The approved count is
+   * the CEILING of what the certificate may ever destroy, across runs; the audit trail of the certificate row keeps the original figure.
+   */
+  consumeCertificateCount(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly destroyed: number;
+    },
+  ): Promise<number>;
 }
+
+/** An attachment whose stored object has not been destroyed: deleting the message row would orphan the only copy of the bytes. Alias m = message. */
+export const HAS_PENDING_OBJECT: SQL = sql`EXISTS (SELECT 1 FROM message_attachment a
+  WHERE a.organization_id = m.organization_id AND a.message_id = m.id
+    AND a.object_key IS NOT NULL AND a.object_destroyed_at IS NULL)`;
+/** A reply or quote still points at this message: the parent/quote FKs are NO ACTION, so it goes after them. Alias m = message. */
+export const IS_REFERENCED: SQL = sql`EXISTS (SELECT 1 FROM message r
+  WHERE r.organization_id = m.organization_id AND (r.parent_message_id = m.id OR r.quoted_message_id = m.id))`;
 
 export const uuidList = (ids: readonly string[]): SQL =>
   sql.join(

@@ -1383,10 +1383,7 @@ describe("WP 5.6 the thread's Legal hold chip", () => {
           : world.handlers.GET(path, init),
     });
     const dialog = await openThread();
-    const chip = await within(dialog).findByRole("note", {
-      name: /At least one message in this thread is under a legal hold/,
-    });
-    expect(chip.textContent).toContain("Legal hold");
+    await within(dialog).findByText(/At least one message in this thread is held/);
     // The held reply carries its own chip as well.
     expect(within(dialog).getAllByText("Legal hold").length).toBeGreaterThanOrEqual(2);
   });
@@ -1397,6 +1394,6 @@ describe("WP 5.6 the thread's Legal hold chip", () => {
     const dialog = await openThread();
     await within(dialog).findByText("body of reply-a");
     expect(within(dialog).queryByText("Legal hold")).toBeNull();
-    expect(within(dialog).queryByRole("note")).toBeNull();
+    expect(dialog.querySelector(".wx-legal-hold-chip")).toBeNull();
   });
 });

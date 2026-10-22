@@ -3,15 +3,21 @@
 //   * OFF unless the tenant ops flag `messaging.retention_destruction` is on (absent = off). ON alone is a DRY RUN: it reports what it
 //     would destroy and deletes nothing. It deletes only when the deployment also sets `execute` (M36_RETENTION_DESTRUCTION_EXECUTE=true).
 //   * It acts only under an APPROVED M4 `message.<class>` certificate (approval is M4's: permission, step-up, a person other than the
-//     scan). The window is measured from the moment the scan opened the certificate, so it never destroys more than the approver's
-//     count covered; messages that age past the window later wait for the next month's certificate.
+//     scan), and only while that approval is FRESH: CERTIFICATE_VALIDITY_DAYS after the scan opened it. An older one is refused, so a message
+//     held at approval and released years later is never destroyed under a stale approval.
+//   * The certificate's count is a CEILING. The scan records the exact number of destroyable messages (not the capped plan list), every
+//     committed batch spends it (`record_count`, in the same transaction as the batch's audit row), and no batch plans more than is left, so
+//     the total across runs never exceeds what the approver was shown. The window is measured from the moment the scan opened the
+//     certificate; messages that age past it later wait for a later certificate.
 //   * A held message is never a candidate and is never deleted: the hold is re-read, and the delete re-evaluates it, INSIDE the
 //     destructive transaction, under the shared per-org hold lock (an apply takes it exclusive, so apply and destroy serialise). The
 //     database trigger (migration 1138) is the backstop behind that. A message with an undestroyed attachment object, or a reply or quote
 //     that still points at it, is kept (the bytes cannot be rolled back; a parent outlives its replies).
 //   * Per batch: (A) plan, in the app role's tenant tx, and COMMIT an audit row naming the ids; (B) delete, in the destruction
 //     credential's tenant tx (the only role the append-only history cascades accept), RE-checking everything and returning the ids it
-//     deleted; (C) audit what B did. A crash between steps leaves the planned ids on record, never an unrecorded delete.
+//     deleted; (C) audit what B did and spend the count, in ONE transaction, retried. A crash between steps leaves the planned ids on
+//     record. If C still fails after the retries, the destroyed ids are carried on the thrown error and in the run summary (ids only).
+//   * One failing batch ends only its own certificate; the org's other certificates still run and the failure is reported at the end.
 //   * Idempotent (deleting a gone row is a no-op, an executed certificate is not picked up again) and bounded (a batch size and a
 //     per-run batch budget). A worker is not a request: every transaction is org-explicit (`withOrgContext(systemOrgContext(org))`).
 import { randomUUID } from "node:crypto";
@@ -28,6 +34,8 @@ import { type SQL, sql } from "drizzle-orm";
 import {
   type ActiveMessageHold,
   type ApprovedMessageCertificateRef,
+  HAS_PENDING_OBJECT,
+  IS_REFERENCED,
   type MessageDestructionHoldPort,
   anyHoldPredicate,
   overlayHeldPredicate,
@@ -47,6 +55,10 @@ export const DESTRUCTION_BATCH_SIZE = 500;
 export const DESTRUCTION_MAX_BATCHES_PER_CERTIFICATE = 40;
 /** Approved certificates acted on per org per run. */
 export const DESTRUCTION_MAX_CERTIFICATES_PER_RUN = 6;
+/** An approved certificate is acted on only this long after the scan opened it; later it is refused (a new scan opens a fresh one). */
+export const CERTIFICATE_VALIDITY_DAYS = 35;
+/** Attempts at recording a committed batch (audit plus spending the count) before the destroyed ids are reported on the error. */
+export const BATCH_RECORD_ATTEMPTS = 3;
 
 export interface RetentionDestructionDeps {
   /** The tenant (app role) pool: candidate planning, certificate close, audit. */
@@ -62,6 +74,26 @@ export interface RetentionDestructionDeps {
   readonly newRunId?: () => string;
   readonly batchSize?: number;
   readonly maxBatchesPerCertificate?: number;
+  readonly certificateValidityDays?: number;
+  /** Tests only: the audit writer (default `@chartwarden/audit`). */
+  readonly auditWriter?: typeof audit;
+  /** Called with the error of a failed batch (the worker logs it; ids only). */
+  readonly onBatchError?: (error: unknown) => void;
+}
+
+/** A batch's rows are gone but recording it failed after the retries: the ids are here (ids only) so they are never lost. */
+export class DestructionUnrecordedError extends Error {
+  constructor(
+    readonly certificateId: string,
+    readonly destroyedMessageIds: readonly string[],
+    options?: { cause?: unknown },
+  ) {
+    super(
+      `retention destruction: ${destroyedMessageIds.length} message(s) were destroyed under certificate ${certificateId} but the batch could not be recorded: ${destroyedMessageIds.join(",")}`,
+      options,
+    );
+    this.name = "DestructionUnrecordedError";
+  }
 }
 
 export interface CertificateDestructionResult {
@@ -69,7 +101,7 @@ export interface CertificateDestructionResult {
   readonly dataClass: string;
   /** Messages past this certificate's window that still exist (any reason). */
   readonly pastWindowRemaining: number;
-  /** Dry run: what a live run would plan now (bounded by one run's budget). Live: planned across the run's batches. */
+  /** Dry run: what a live run would plan now (bounded by the approved count left). Live: planned across the run's batches. */
   readonly eligible: number;
   readonly destroyed: number;
   /** Past the window but withheld by an active hold (the overlay or the live criteria). */
@@ -82,7 +114,14 @@ export interface CertificateDestructionResult {
   readonly refusedAtDelete: number;
   /** True when a batch found nothing left to plan (the certificate is not stopped by the run's batch budget). */
   readonly drained: boolean;
+  /** What the approved count still allows after this run (the ceiling across runs). */
+  readonly approvedRemaining: number;
   readonly certificateExecuted: boolean;
+  /** A batch failed (the rest of the org's certificates still ran); ids of any message destroyed but not recorded. */
+  readonly failure?: {
+    readonly message: string;
+    readonly unrecordedDestroyedIds: readonly string[];
+  };
 }
 
 export interface RetentionDestructionResult {
@@ -90,6 +129,8 @@ export interface RetentionDestructionResult {
   readonly mode: RetentionDestructionMode;
   readonly destroyed: number;
   readonly certificates: readonly CertificateDestructionResult[];
+  /** Approved certificates older than their validity: refused, nothing destroyed under them. */
+  readonly expiredCertificateIds: readonly string[];
 }
 
 const SYSTEM = (organizationId: string, correlationId: string) => ({
@@ -108,14 +149,6 @@ const retentionClassOf = (dataClass: string): MessageRetentionClass | null => {
 
 const heldPredicate = (holds: readonly ActiveMessageHold[]): SQL =>
   sql`(${overlayHeldPredicate(holds)} OR ${anyHoldPredicate(holds)})`;
-
-/** An attachment whose stored object has not been destroyed: deleting the message row would orphan the only copy of the bytes. */
-const HAS_PENDING_OBJECT = sql`EXISTS (SELECT 1 FROM message_attachment a
-  WHERE a.organization_id = m.organization_id AND a.message_id = m.id
-    AND a.object_key IS NOT NULL AND a.object_destroyed_at IS NULL)`;
-/** A reply or quote still points at this message: the parent/quote FKs are NO ACTION, so it goes after them. */
-const IS_REFERENCED = sql`EXISTS (SELECT 1 FROM message r
-  WHERE r.organization_id = m.organization_id AND (r.parent_message_id = m.id OR r.quoted_message_id = m.id))`;
 
 /** Everything that must hold for a message to be destroyed. ONE definition: planning, the delete and the dry run all use it. */
 export function destroyablePredicate(
@@ -222,8 +255,9 @@ async function auditIn(
   resourceId: string,
   context: Record<string, unknown>,
 ): Promise<void> {
+  const write = deps.auditWriter ?? audit;
   await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
-    audit(txRaw as unknown as AuditExecutor, SYSTEM(orgId, runId), {
+    write(txRaw as unknown as AuditExecutor, SYSTEM(orgId, runId), {
       eventType,
       resourceKind: "message_retention_run",
       resourceId,
@@ -231,6 +265,78 @@ async function auditIn(
       context,
     }),
   );
+}
+
+/** Record a committed batch: its audit row and the spent count, in ONE tenant transaction, retried. Returns what the approved count still allows. */
+async function recordBatch(
+  deps: RetentionDestructionDeps,
+  orgId: string,
+  runId: string,
+  cert: ApprovedMessageCertificateRef,
+  batchId: string,
+  planned: number,
+  deletedIds: readonly string[],
+): Promise<number> {
+  const write = deps.auditWriter ?? audit;
+  let last: unknown;
+  for (let attempt = 0; attempt < BATCH_RECORD_ATTEMPTS; attempt += 1) {
+    try {
+      return await withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
+        const tx = txRaw as unknown as DbClient;
+        await write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
+          eventType: "m36.retention_destruction.batch_completed",
+          resourceKind: "message_retention_run",
+          resourceId: batchId,
+          outcome: "success",
+          context: {
+            runId,
+            batchId,
+            certificateId: cert.id,
+            planned,
+            destroyed: deletedIds.length,
+            refusedAtDelete: planned - deletedIds.length,
+            destroyedMessageIds: deletedIds,
+          },
+        });
+        return deps.messageHolds.consumeCertificateCount(tx, {
+          organizationId: orgId,
+          certificateId: cert.id,
+          destroyed: deletedIds.length,
+        });
+      });
+    } catch (error) {
+      last = error;
+    }
+  }
+  throw new DestructionUnrecordedError(cert.id, deletedIds, { cause: last });
+}
+
+async function closeCertificate(
+  deps: RetentionDestructionDeps,
+  orgId: string,
+  runId: string,
+  cert: ApprovedMessageCertificateRef,
+  now: Date,
+): Promise<boolean> {
+  const write = deps.auditWriter ?? audit;
+  return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
+    const tx = txRaw as unknown as DbClient;
+    const closed = await deps.messageHolds.completeCertificate(tx, {
+      organizationId: orgId,
+      certificateId: cert.id,
+      executedAt: now,
+    });
+    if (closed) {
+      await write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
+        eventType: "m36.retention_destruction.certificate_executed",
+        resourceKind: "destruction_certificate",
+        resourceId: cert.id,
+        outcome: "success",
+        context: { runId, certificateId: cert.id, dataClass: cert.dataClass },
+      });
+    }
+    return closed;
+  });
 }
 
 async function destroyUnderCertificate(
@@ -245,84 +351,82 @@ async function destroyUnderCertificate(
   const windowEndsAt = windowEnd(cert.createdAt, MESSAGE_RETENTION_YEARS[cls]);
   const batchSize = deps.batchSize ?? DESTRUCTION_BATCH_SIZE;
   const maxBatches = deps.maxBatchesPerCertificate ?? DESTRUCTION_MAX_BATCHES_PER_CERTIFICATE;
+  const write = deps.auditWriter ?? audit;
   let destroyed = 0;
   let planned = 0;
   let refusedAtDelete = 0;
   let drained = !live;
+  // The approved count is the ceiling across runs: every committed batch spends it, and no batch may plan more than is left.
+  let remaining = Math.max(cert.recordCount, 0);
+  let failure: CertificateDestructionResult["failure"];
 
-  for (let batch = 0; live && batch < maxBatches; batch += 1) {
-    const batchId = randomUUID();
-    const ids = await planBatch(deps, orgId, cls, windowEndsAt, batchSize, (tx, plannedIds) =>
-      audit(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
-        eventType: "m36.retention_destruction.batch_started",
-        resourceKind: "message_retention_run",
-        resourceId: batchId,
-        outcome: "success",
-        context: {
-          runId,
-          batchId,
-          certificateId: cert.id,
-          dataClass: cert.dataClass,
-          plannedMessageIds: plannedIds,
-        },
-      }),
-    );
-    if (ids.length === 0) {
-      drained = true;
-      break;
+  try {
+    for (let batch = 0; live && batch < maxBatches && remaining > 0; batch += 1) {
+      const batchId = randomUUID();
+      const ids = await planBatch(
+        deps,
+        orgId,
+        cls,
+        windowEndsAt,
+        Math.min(batchSize, remaining),
+        (tx, plannedIds) =>
+          write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
+            eventType: "m36.retention_destruction.batch_started",
+            resourceKind: "message_retention_run",
+            resourceId: batchId,
+            outcome: "success",
+            context: {
+              runId,
+              batchId,
+              certificateId: cert.id,
+              dataClass: cert.dataClass,
+              plannedMessageIds: plannedIds,
+            },
+          }),
+      );
+      if (ids.length === 0) {
+        drained = true;
+        break;
+      }
+      planned += ids.length;
+      const deletedIds = await deleteBatch(deps, orgId, cls, windowEndsAt, ids);
+      destroyed += deletedIds.length;
+      refusedAtDelete += ids.length - deletedIds.length;
+      remaining = await recordBatch(deps, orgId, runId, cert, batchId, ids.length, deletedIds);
+      // Everything planned was refused at delete time (a hold or reference landed in between): planning again would repeat itself.
+      if (deletedIds.length === 0) break;
     }
-    planned += ids.length;
-    const deletedIds = await deleteBatch(deps, orgId, cls, windowEndsAt, ids);
-    destroyed += deletedIds.length;
-    refusedAtDelete += ids.length - deletedIds.length;
-    await auditIn(deps, orgId, runId, "m36.retention_destruction.batch_completed", batchId, {
-      runId,
-      batchId,
-      certificateId: cert.id,
-      planned: ids.length,
-      destroyed: deletedIds.length,
-      refusedAtDelete: ids.length - deletedIds.length,
-      destroyedMessageIds: deletedIds,
-    });
-    // Everything planned was refused at delete time (a hold or reference landed in between): planning again would repeat itself.
-    if (deletedIds.length === 0) break;
+  } catch (error) {
+    // One failing batch ends THIS certificate only; the org's other certificates still run, and the run reports it at the end.
+    const unrecorded = error instanceof DestructionUnrecordedError ? error.destroyedMessageIds : [];
+    failure = {
+      message: error instanceof Error ? error.name : "unknown",
+      unrecordedDestroyedIds: unrecorded,
+    };
+    deps.onBatchError?.(error);
   }
 
   const rest = await countRemainder(deps, orgId, cls, windowEndsAt);
-  // Close the certificate only when nothing past its window remains for the class: held, object-bearing or referenced rows keep it open.
+  // Close the certificate when its approved count is spent, or when nothing past its window remains for the class; held, object-bearing or
+  // referenced rows (with count left) keep it open until it expires.
   let certificateExecuted = false;
-  if (live && drained && rest.pastWindowRemaining === 0) {
-    certificateExecuted = await withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
-      const tx = txRaw as unknown as DbClient;
-      const closed = await deps.messageHolds.completeCertificate(tx, {
-        organizationId: orgId,
-        certificateId: cert.id,
-        executedAt: now,
-      });
-      if (closed) {
-        await audit(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
-          eventType: "m36.retention_destruction.certificate_executed",
-          resourceKind: "destruction_certificate",
-          resourceId: cert.id,
-          outcome: "success",
-          context: { runId, certificateId: cert.id, dataClass: cert.dataClass },
-        });
-      }
-      return closed;
-    });
+  if (live && !failure && (remaining === 0 || (drained && rest.pastWindowRemaining === 0))) {
+    certificateExecuted = await closeCertificate(deps, orgId, runId, cert, now);
   }
   return {
     certificateId: cert.id,
     dataClass: cert.dataClass,
     pastWindowRemaining: rest.pastWindowRemaining,
-    eligible: live ? planned : rest.eligible,
+    eligible: live ? planned : Math.min(rest.eligible, remaining),
     destroyed,
     heldRefused: rest.heldRefused,
     attachmentPending: rest.attachmentPending,
     referenced: rest.referenced,
     refusedAtDelete,
     drained,
+    approvedRemaining: remaining,
     certificateExecuted,
+    ...(failure ? { failure } : {}),
   };
 }
 
@@ -332,9 +436,13 @@ export async function runRetentionDestructionForOrg(
   orgId: string,
 ): Promise<RetentionDestructionResult> {
   const runId = (deps.newRunId ?? randomUUID)();
-  if (!(await deps.isEnabled(orgId))) return { runId, mode: "off", destroyed: 0, certificates: [] };
+  if (!(await deps.isEnabled(orgId))) {
+    return { runId, mode: "off", destroyed: 0, certificates: [], expiredCertificateIds: [] };
+  }
   const live = deps.execute === true;
   const mode: RetentionDestructionMode = live ? "live" : "dry_run";
+  const now = (deps.now ?? (() => new Date()))();
+  const validityMs = (deps.certificateValidityDays ?? CERTIFICATE_VALIDITY_DAYS) * 86_400_000;
   const approved = await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
     deps.messageHolds.approvedCertificates(
       txRaw as unknown as DbClient,
@@ -343,9 +451,14 @@ export async function runRetentionDestructionForOrg(
     ),
   );
   const certificates: CertificateDestructionResult[] = [];
+  const expiredCertificateIds: string[] = [];
   for (const cert of approved) {
     const cls = retentionClassOf(cert.dataClass);
     if (!cls) continue; // not a class this module owns: never guess
+    if (now.getTime() - cert.createdAt.getTime() > validityMs) {
+      expiredCertificateIds.push(cert.id); // a stale approval is never acted on
+      continue;
+    }
     certificates.push(await destroyUnderCertificate(deps, orgId, runId, cert, cls, live));
   }
   const destroyed = certificates.reduce((n, c) => n + c.destroyed, 0);
@@ -354,6 +467,20 @@ export async function runRetentionDestructionForOrg(
     mode,
     destroyed,
     certificates,
+    expiredCertificateIds,
   });
-  return { runId, mode, destroyed, certificates };
+  const failures = certificates.filter((c) => c.failure);
+  if (failures.length > 0) {
+    const reasons = failures.map((c) => {
+      const ids = c.failure?.unrecordedDestroyedIds ?? [];
+      return `certificate ${c.certificateId}: ${c.failure?.message}${
+        ids.length > 0 ? ` (destroyed but unrecorded: ${ids.join(",")})` : ""
+      }`;
+    });
+    throw new AggregateError(
+      reasons.map((r) => new Error(r)),
+      `retention destruction run ${runId} for org ${orgId}: ${failures.length} certificate(s) failed after the others ran; ${reasons.join("; ")}`,
+    );
+  }
+  return { runId, mode, destroyed, certificates, expiredCertificateIds };
 }

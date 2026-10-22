@@ -13,6 +13,8 @@ import { MESSAGE_RETENTION_CLASSES, type MessageRetentionClass } from "@chartwar
 import { type SQL, sql } from "drizzle-orm";
 import {
   type ActiveMessageHold,
+  HAS_PENDING_OBJECT,
+  IS_REFERENCED,
   type MessageHoldPort,
   anyHoldPredicate,
   holdPredicate,
@@ -163,6 +165,9 @@ export async function runRetentionScanForOrg(
 
     const heldNow = sql`(${overlayHeldPredicate(holds)} OR ${anyHoldPredicate(holds)})`;
     const eligibleByClass = zeroByClass();
+    // The EXACT number the destruction executor could remove for a class (held, object-bearing and still-referenced rows excluded; NOT capped
+    // like the id list). It is the approver's number and the executor's ceiling: the plan list is capped at RETENTION_SCAN_BATCH_LIMIT, this is not.
+    const destroyableByClass = zeroByClass();
     const heldByClass = zeroByClass();
     const heldCounts = new Map<string, number>(holds.map((h) => [h.id, 0]));
     const toDestroyMessageIds: string[] = [];
@@ -179,6 +184,10 @@ export async function runRetentionScanForOrg(
       if (rows.length > RETENTION_SCAN_BATCH_LIMIT) capped = true;
       const page = rows.slice(0, RETENTION_SCAN_BATCH_LIMIT);
       eligibleByClass[cls] = page.length;
+      destroyableByClass[cls] = await count(
+        tx,
+        sql`${base} AND NOT ${heldNow} AND NOT ${HAS_PENDING_OBJECT} AND NOT ${IS_REFERENCED}`,
+      );
       toDestroyMessageIds.push(...page.map((r) => r.id));
       if (holds.length === 0) continue;
       heldByClass[cls] = await count(tx, sql`${base} AND ${heldNow}`);
@@ -192,14 +201,14 @@ export async function runRetentionScanForOrg(
     const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     const certificates: { dataClass: string; certificateId: string; created: boolean }[] = [];
     for (const cls of MESSAGE_RETENTION_CLASSES) {
-      if (eligibleByClass[cls] === 0) continue;
+      if (destroyableByClass[cls] === 0) continue;
       const dataClass = `message.${cls}`;
       const cert = await deps.messageHolds.openCertificate(tx, {
         organizationId: orgId,
         dataClass,
         rangeStart: monthStart,
         rangeEnd: monthEnd,
-        recordCount: eligibleByClass[cls],
+        recordCount: destroyableByClass[cls],
       });
       certificates.push({ dataClass, certificateId: cert.id, created: cert.created });
     }
