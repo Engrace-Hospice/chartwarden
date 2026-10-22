@@ -1,5 +1,5 @@
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
@@ -122,5 +122,42 @@ describe("realtime reconnect soak (WP 5.2)", () => {
     expect(shownBodies()).toEqual(expected); // same set, same order, no duplicates, no holes
     expect(screen.queryByText(/Some messages may be missing/)).toBeNull();
     expect(document.activeElement).toBe(composer);
+  });
+
+  it("latches the gap warning across a clean overlapping poll until Reload (back to latest)", async () => {
+    vi.useFakeTimers();
+    const server = fakeServer();
+    server.append(5);
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={server.api}>
+          <SessionProvider session={SESSION}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await settle();
+    await emit("connect");
+    await settle();
+
+    await emit("disconnect");
+    server.append(PAGE * 8); // far more than the catch-up page budget
+    await emit("connect");
+    await settle();
+    await settle();
+    expect(screen.queryByText(/Some messages may be missing/)).not.toBeNull();
+
+    await emit("disconnect");
+    server.append(1);
+    await emit("connect"); // this poll's newest page overlaps what is held: it must not hide the hole
+    await settle();
+    await settle();
+    expect(screen.queryByText(/Some messages may be missing/)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await settle();
+    await settle();
+    expect(screen.queryByText(/Some messages may be missing/)).toBeNull();
   });
 });

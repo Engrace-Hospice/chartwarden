@@ -14,7 +14,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { STORE_PATHS, calls, mountThread, sendButton } from "./attachments-test-support";
 import { NEEDS_RESPONSE_LABEL } from "./needs-response";
-import { NeedsResponseControl, useNeedsResponse } from "./needs-response-control";
+import {
+  NEEDS_RESPONSE_OFFLINE_CLEARED_TEXT,
+  NeedsResponseControl,
+  useNeedsResponse,
+} from "./needs-response-control";
 import { RoleSendButton } from "./role-send-button";
 import { ROLE_SEND_BUTTON_LABEL } from "./role-send-wording";
 import { UrgentMessageButton } from "./urgent-message-button";
@@ -125,6 +129,44 @@ describe("Phase 5 gate: offline never falsely delivered", () => {
     expect(urgent.getAttribute("aria-disabled")).toBeNull();
     expect(role.getAttribute("aria-disabled")).toBeNull();
     expect(needs.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("says why when a blocked click is swallowed, in a polite status region", async () => {
+    mountControls();
+    const urgent = await screen.findByRole("button", { name: URGENT_BUTTON_LABEL });
+    await waitFor(() => expect(urgent).toHaveProperty("disabled", false));
+    setOnline(false);
+    const regions = () =>
+      screen.getAllByRole("status").filter((node) => node.getAttribute("aria-live") === "polite");
+    fireEvent.click(urgent);
+    await waitFor(() =>
+      expect(regions().some((node) => node.textContent === NEEDS_CONNECTION_TEXT)).toBe(true),
+    );
+    // The visible hint is itself a status region with the same wording.
+    expect(
+      screen
+        .getAllByRole("status")
+        .some((n) => n.id !== "" && n.textContent === NEEDS_CONNECTION_TEXT),
+    ).toBe(true);
+  });
+
+  it("announces that a checked Needs a response was cleared when the connection drops", async () => {
+    mountControls();
+    const needs = await screen.findByRole("checkbox", { name: NEEDS_RESPONSE_LABEL });
+    await waitFor(() => expect(needs).toHaveProperty("disabled", false));
+    fireEvent.click(needs);
+    expect((needs as HTMLInputElement).checked).toBe(true);
+
+    setOnline(false);
+
+    expect((needs as HTMLInputElement).checked).toBe(false);
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByRole("status")
+          .some((node) => node.textContent === NEEDS_RESPONSE_OFFLINE_CLEARED_TEXT),
+      ).toBe(true),
+    );
   });
 
   it("yields one delivered row when the same idempotency key is replayed", async () => {

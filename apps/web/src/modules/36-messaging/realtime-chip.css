@@ -17,11 +17,11 @@
   background: currentColor;
 }
 .wx-realtime-chip--live {
-  color: #146c43;
+  color: var(--color-success-pill-fg);
 }
 .wx-realtime-chip--catching-up {
-  color: #8a5a00;
+  color: var(--color-warning-pill-fg);
 }
 .wx-realtime-chip--paused {
-  color: #5f6368;
+  color: var(--color-muted);
 }

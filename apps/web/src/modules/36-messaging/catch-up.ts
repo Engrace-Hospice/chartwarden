@@ -35,12 +35,15 @@ export async function catchUp(
   knownIds: ReadonlySet<string>,
   firstPage: CatchUpPage,
   maxPages = CATCH_UP_MAX_PAGES,
+  /** True once the caller no longer wants the result (channel switched): stop requesting pages. */
+  isStale: () => boolean = () => false,
 ): Promise<CatchUpResult> {
   let messages: readonly Message[] = firstPage.messages;
   let cursor = firstPage.nextCursor;
   let pages = 1;
   let reached = overlaps(firstPage.messages, knownIds);
   while (!reached && cursor !== null && pages < maxPages) {
+    if (isStale()) return { messages, gap: true };
     const page = await fetchOlderPage(cursor);
     if (!page) return { messages, gap: true };
     pages += 1;
@@ -58,22 +61,30 @@ export async function catchUpIfNeeded(
   channelId: string,
   known: readonly Message[] | null,
   data: { messages?: unknown; nextCursor?: unknown } | undefined,
+  isStale: () => boolean = () => false,
 ): Promise<CatchUpResult | null> {
   const firstMessages = (data?.messages ?? []) as Message[];
   if (!known || !needsCatchUp(known, firstMessages)) return null;
   return catchUp(
     async (cursor) => {
-      const { data: page, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
-        params: { path: { id: channelId }, query: { limit: 50, direction: "backward", cursor } },
-        headers: BACKGROUND_REQUEST_HEADERS,
-      });
-      if (error || !page) return null;
-      return {
-        messages: page.messages as Message[],
-        nextCursor: (page.nextCursor as string | undefined) ?? null,
-      };
+      // openapi-fetch rejects on a network failure: that must read as a failed page (gap), never discard the first page.
+      try {
+        const { data: page, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
+          params: { path: { id: channelId }, query: { limit: 50, direction: "backward", cursor } },
+          headers: BACKGROUND_REQUEST_HEADERS,
+        });
+        if (error || !page) return null;
+        return {
+          messages: page.messages as Message[],
+          nextCursor: (page.nextCursor as string | undefined) ?? null,
+        };
+      } catch {
+        return null;
+      }
     },
     new Set(known.map((message) => message.messageId)),
     { messages: firstMessages, nextCursor: (data?.nextCursor as string | undefined) ?? null },
+    CATCH_UP_MAX_PAGES,
+    isStale,
   );
 }

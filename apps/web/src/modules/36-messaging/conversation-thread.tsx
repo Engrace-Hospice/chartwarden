@@ -4,6 +4,7 @@ import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
 import { sendBlockedReason } from "./attachment-utils";
 import { catchUpIfNeeded } from "./catch-up";
+import { CatchUpGapNotice, RefreshErrorNotice } from "./catch-up-gap-notice";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
 import { deferUntilLoaded } from "./defer-until-loaded";
@@ -22,6 +23,7 @@ import {
   channelLabel,
   compareMessages,
   correlationIdOf,
+  countNewFromOthers,
   initialsOf,
   isAccessError,
   mergeMessages,
@@ -343,7 +345,13 @@ function ConversationThreadView({
         );
         const caught =
           background && !error && !view.anchor && !view.replace
-            ? await catchUpIfNeeded(client, channel.channelId, messagesRef.current, data)
+            ? await catchUpIfNeeded(
+                client,
+                channel.channelId,
+                messagesRef.current,
+                data,
+                () => generation !== generationRef.current,
+              )
             : null;
         if (generation !== generationRef.current) return false;
         if (view !== readViewRef.current) {
@@ -384,7 +392,8 @@ function ConversationThreadView({
         setLoadError(null);
         setLoadCorrelationId(null);
         setRefreshError(false);
-        setCatchUpGap(caught?.gap ?? false);
+        // Latched: a later clean overlapping poll must not hide the hole; only a replace load clears it.
+        setCatchUpGap((previous) => !replace && (previous || (caught?.gap ?? false)));
         setOlderCursor((data?.nextCursor as string | undefined) ?? null);
         const merged =
           currentMessages === null ? incoming : mergeMessages(currentMessages, incoming);
@@ -403,7 +412,8 @@ function ConversationThreadView({
             if (timeline) timeline.scrollTop = timeline.scrollHeight;
           });
         }
-        if (background && added > 0) onLiveMergeRef.current?.(added);
+        const others = countNewFromOthers(incoming, existingIds, meIdRef.current);
+        if (background && nearBottomRef.current && others > 0) onLiveMergeRef.current?.(others);
         if (!background) window.setTimeout(() => void markReadBoundary(incoming), 0);
         return true;
       } finally {
@@ -469,6 +479,7 @@ function ConversationThreadView({
     panelReset();
     jumpReset();
     setNewMessageCount(0);
+    setCatchUpGap(false);
     readBoundaryRef.current = null;
     latestPageIdsRef.current = new Set();
     // The previous channel's latest read may still be in flight: its reply is discarded by the generation
@@ -738,21 +749,9 @@ function ConversationThreadView({
       {jump.anchorMissing ? (
         <output className="wx-thread-refresh-warning">That message is no longer available.</output>
       ) : null}
-      {catchUpGap ? (
-        <output className="wx-thread-refresh-warning">
-          Some messages may be missing.{" "}
-          <button type="button" onClick={jump.backToLatest}>
-            Reload
-          </button>
-        </output>
-      ) : null}
+      {catchUpGap ? <CatchUpGapNotice onReload={jump.backToLatest} /> : null}
       {refreshError && !loadError ? (
-        <output className="wx-thread-refresh-warning">
-          Connection interrupted.{" "}
-          <button type="button" onClick={() => void loadLatest(true)}>
-            Retry now
-          </button>
-        </output>
+        <RefreshErrorNotice onRetry={() => void loadLatest(true)} />
       ) : null}
 
       <TypingIndicator presence={presence} />

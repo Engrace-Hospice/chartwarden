@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { type CatchUpPage, catchUp, needsCatchUp } from "./catch-up";
+import { type CatchUpPage, catchUp, catchUpIfNeeded, needsCatchUp } from "./catch-up";
 import type { Message } from "./messaging-types";
 
 const msg = (id: string) => ({ messageId: id }) as unknown as Message;
@@ -47,6 +47,33 @@ describe("catchUp", () => {
     const result = await catchUp(async () => page(["a0"], null), new Set(["x"]), page(["f"], "c1"));
     expect(ids(result.messages)).toEqual(["f", "a0"]);
     expect(result.gap).toBe(false);
+  });
+});
+
+describe("catchUp staleness and network failure", () => {
+  it("stops requesting pages once isStale() turns true", async () => {
+    let stale = false;
+    const fetchOlder = vi.fn(async (cursor: string) => {
+      stale = true; // the channel switches while the first older page is in flight
+      return page([`m${cursor}`], `${cursor}x`);
+    });
+    const result = await catchUp(fetchOlder, new Set(["never"]), page(["f"], "c"), 5, () => stale);
+    expect(fetchOlder).toHaveBeenCalledTimes(1);
+    expect(result.gap).toBe(true);
+  });
+
+  it("keeps the first page and flags a gap when the older-page GET rejects (TypeError)", async () => {
+    const get = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const client = { GET: get } as unknown as Parameters<typeof catchUpIfNeeded>[0];
+    const result = await catchUpIfNeeded(client, "ch", [msg("a")], {
+      messages: [msg("f"), msg("e")],
+      nextCursor: "c1",
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(result && ids(result.messages)).toEqual(["f", "e"]);
+    expect(result?.gap).toBe(true);
   });
 });
 

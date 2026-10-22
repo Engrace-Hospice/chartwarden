@@ -45,3 +45,7 @@
   color: var(--color-error);
   font-size: 0.8125rem;
 }
+
+output.wx-needs-response-notice {
+  display: block;
+}
