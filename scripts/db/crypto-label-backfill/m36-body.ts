@@ -5,7 +5,7 @@
 // and the SAME ring version, so this job does not depend on the legacy->ring migration (m36:body-backfill) and cannot be mistaken
 // for it. `message` is rewritten by the app role (as the ring backfill does; a legal-held message is skipped and stays counted);
 // the other four tables are append-only / owner-isolated for the app role and go through the two audited SECURITY DEFINER
-// functions of migration 1148 on the operator's reseal credential.
+// functions of migration 1150 on the operator's reseal credential.
 import type { Buffer } from "node:buffer";
 import type { DbClient } from "@chartwarden/db";
 import {

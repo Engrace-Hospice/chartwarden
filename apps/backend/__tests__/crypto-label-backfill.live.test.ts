@@ -284,7 +284,7 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
     urls.app = await appRoleConnectionString(admin, DB_URL as string);
     app = createDbClient({ connectionString: urls.app });
     // The REAL production credentials, created by the operator's own provisioning script with its enumerated grants: the platform
-    // login (BYPASSRLS, UPDATE on tenant_key_ring / patient_pseudonym_key) and the reseal login (EXECUTE on the 1090 / 1094 / 1148
+    // login (BYPASSRLS, UPDATE on tenant_key_ring / patient_pseudonym_key) and the reseal login (EXECUTE on the 1090 / 1094 / 1150
     // functions only). Nothing here stands in for them, so a missing grant fails this suite the way it would fail the operator.
     const provision = spawnSync(
       "bun",
