@@ -72,7 +72,7 @@ function makeProvider() {
       },
     ],
     codeSystemMeta: { icd10cm: { url: "http://hl7.org/fhir/sid/icd-10-cm", version: "2024" } },
-    valueSetUrls: { hospice_terminal_dx: "urn:wardenx:valueset:hospice_terminal_dx" },
+    valueSetUrls: { hospice_terminal_dx: "urn:chartwarden:valueset:hospice_terminal_dx" },
   });
   return createTerminologyProvider(store);
 }

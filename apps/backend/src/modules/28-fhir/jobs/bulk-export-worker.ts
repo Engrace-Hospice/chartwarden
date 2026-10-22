@@ -421,7 +421,7 @@ async function execute(
 ): Promise<BulkExportOutcome> {
   await assertExportAllowed(deps, job, at);
   const config = await loadExportConfig(deps.db, job.organizationId);
-  const fallbackBase = `urn:wardenx:org:${job.organizationId}`;
+  const fallbackBase = `urn:chartwarden:org:${job.organizationId}`;
   const ctx: FhirProjectionContext = {
     organizationId: job.organizationId,
     recipientClientId: job.clientId,

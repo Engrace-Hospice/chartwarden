@@ -271,12 +271,12 @@ export function createInMemoryTerminologyStore(seed: InMemoryTerminologySeed = {
 
     async codeSystemMeta(system) {
       return (
-        seed.codeSystemMeta?.[system] ?? { url: `urn:wardenx:codesystem:${system}`, version: "0" }
+        seed.codeSystemMeta?.[system] ?? { url: `urn:chartwarden:codesystem:${system}`, version: "0" }
       );
     },
 
     async valueSetMeta(valueSetId) {
-      return { url: seed.valueSetUrls?.[valueSetId] ?? `urn:wardenx:valueset:${valueSetId}` };
+      return { url: seed.valueSetUrls?.[valueSetId] ?? `urn:chartwarden:valueset:${valueSetId}` };
     },
   };
 

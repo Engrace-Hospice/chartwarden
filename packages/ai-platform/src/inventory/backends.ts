@@ -142,7 +142,7 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
   {
     backendKey: "local-distilbert-classifier",
     kind: "local",
-    vendor: "wardenx",
+    vendor: "chartwarden",
     modelFamily: "distilbert",
     supportedModalities: ["classification"],
     contextWindowTokens: 512,

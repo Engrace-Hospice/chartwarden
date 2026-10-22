@@ -481,7 +481,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     const principal = (
       await admin.query(`SELECT email FROM "user" WHERE id=$1`, [after.principal_user_id])
     ).rows[0];
-    expect(principal.email).toMatch(/@principals\.wardenx\.invalid$/);
+    expect(principal.email).toMatch(/@principals\.chartwarden\.invalid$/);
     expect(
       (
         await admin.query("SELECT count(*)::int n FROM account WHERE user_id=$1", [
@@ -571,6 +571,26 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       [row.id],
     );
     expect(refused.rows[0].context).toMatchObject({ kind: "funeral_home", reason: "used" });
+  });
+
+  it("reuses a principal minted under the pre-rename domain instead of minting a second one", async () => {
+    const token = await issue(deceasedA2);
+    const row = await linkRow(token);
+    const legacyEmail = `link-${row.id}@principals.wardenx.invalid`;
+    const legacy = await admin.query(
+      `INSERT INTO "user" (email, email_verified, name) VALUES ($1, true, 'External collaborator') RETURNING id`,
+      [legacyEmail],
+    );
+    expect((await redeem(token)).statusCode).toBe(200);
+    const after = await linkRow(token);
+    expect(after.principal_user_id).toBe(legacy.rows[0].id);
+    expect(
+      (
+        await admin.query(`SELECT count(*)::int n FROM "user" WHERE email LIKE $1`, [
+          `link-${row.id}@%`,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
   });
 
   it("an expired link and a revoked link are refused (410) and mint no session", async () => {

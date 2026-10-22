@@ -787,7 +787,7 @@ const dateOrderRule: HopeValidationRule = {
 };
 
 const recordConsistencyRule: HopeValidationRule = {
-  id: "wardenx-hope-record-consistency",
+  id: "chartwarden-hope-record-consistency",
   evaluate(ctx) {
     const a0050 = answerValue(ctx.answers, "A0050");
     const a0250 = answerValue(ctx.answers, "A0250");

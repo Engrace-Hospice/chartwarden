@@ -38,7 +38,7 @@ const order = (over: Partial<OrmOrderFacts> = {}): OrmOrderFacts => ({
 const patient = (over: Partial<OrmPatientFacts> = {}): OrmPatientFacts => ({
   patientId: PATIENT,
   mrn: "MRN-100",
-  mrnAssigningAuthority: `WARDENX-${ORG}`,
+  mrnAssigningAuthority: `CHARTWARDEN-${ORG}`,
   familyName: "Doe",
   givenName: "Jane",
   dateOfBirth: "1950-04-05",
@@ -84,7 +84,7 @@ describe("planOrmRequested — the happy path builds the exact catalogued payloa
         clinicalNotes: ["FASTING REQUIRED", "Draw before 8am"],
         patientDemographics: {
           mrn: "MRN-100",
-          internalMrnAuthority: `WARDENX-${ORG}`,
+          internalMrnAuthority: `CHARTWARDEN-${ORG}`,
           familyName: "Doe",
           givenName: "Jane",
           dateOfBirth: "1950-04-05",

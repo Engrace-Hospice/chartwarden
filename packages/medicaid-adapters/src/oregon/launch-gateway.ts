@@ -150,7 +150,7 @@ export function assembleOregonSubmissionPayload(snapshot: MedicaidClaimAssemblyS
   idempotencyKey: string;
 } {
   const envelope = {
-    schema: "wardenx.oregon-direct-mmis.v1",
+    schema: "chartwarden.oregon-direct-mmis.v1",
     claimId: snapshot.claimId,
     patientId: snapshot.patientId,
     serviceState: snapshot.serviceState,

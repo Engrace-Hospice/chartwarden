@@ -17,7 +17,7 @@
 //     answer the same typed `LinkError`; only the AUDIT (never the client) learns which.
 //
 // The credential-less PRINCIPAL. Better Auth's `session.user_id` is NOT NULL, so a redeemed link needs a `user`. The
-// first redemption creates one synthetic user per link (`link-<linkId>@principals.wardenx.invalid` - an address that
+// first redemption creates one synthetic user per link (`link-<linkId>@principals.chartwarden.invalid` - an address that
 // cannot receive mail, with no password, no `account` row and no membership), so it can authenticate ONLY through this
 // link and holds no staff permission. It is created in the same transaction as the use-count claim: a failure to
 // create it rolls the claim back.
@@ -43,7 +43,9 @@ const COLLABORATOR_LINK_TTL_SEC = 30 * 60;
 const DEFAULT_COLLAB_SESSION_TTL_SEC = 8 * 3600;
 const TOKEN_SECRET_BYTES = 32;
 /** The synthetic principal's domain: reserved by RFC 6761 - it can never receive mail. */
-const PRINCIPAL_EMAIL_DOMAIN = "principals.wardenx.invalid";
+const PRINCIPAL_EMAIL_DOMAIN = "principals.chartwarden.invalid";
+/** LEGACY(wardenx->chartwarden): principals minted before the rename (migration 1151 rewrites them; this read-compat covers the window before it runs). */
+const LEGACY_PRINCIPAL_EMAIL_DOMAIN = "principals.wardenx.invalid";
 
 /** `<orgId uuid>.<43 url-safe base64 chars>` - the shape of a 256-bit secret. */
 const TOKEN_RE =
@@ -117,7 +119,11 @@ export function createDbCollaboratorLinkStore(
         (kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : DEFAULT_COLLAB_SESSION_TTL_SEC);
       const maxUses = input.maxUses ?? 1;
       if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 10) {
-        throw new ChartWardenError("VALIDATION_FAILED", "maxUses must be an integer from 1 to 10", 422);
+        throw new ChartWardenError(
+          "VALIDATION_FAILED",
+          "maxUses must be an integer from 1 to 10",
+          422,
+        );
       }
       const token = mintLinkToken(input.organizationId);
       const expiresAt = new Date(now().getTime() + linkTtlSec * 1000);
@@ -288,7 +294,14 @@ export function createDbCollaboratorLinkStore(
 
 /** Find-or-create the link's synthetic principal user and pin it on the link row. Runs inside the claim's tx. */
 async function ensurePrincipal(tx: DbClient, row: { id: string; kind: string }): Promise<string> {
-  const email = `link-${row.id}@${PRINCIPAL_EMAIL_DOMAIN}`;
+  const legacyEmail = `link-${row.id}@${LEGACY_PRINCIPAL_EMAIL_DOMAIN}`;
+  // A legacy principal wins (same person, pre-rename address); otherwise create under the new domain.
+  const [legacy] = await tx
+    .select({ id: USERS.id })
+    .from(USERS)
+    .where(eq(USERS.email, legacyEmail))
+    .limit(1);
+  const email = legacy ? legacyEmail : `link-${row.id}@${PRINCIPAL_EMAIL_DOMAIN}`;
   await tx
     .insert(USERS)
     .values({

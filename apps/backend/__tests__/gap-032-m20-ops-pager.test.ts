@@ -33,6 +33,7 @@ describe("GAP-032 webhook ops pager", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.headers.authorization).toBe("Bearer t0ken");
     expect(JSON.parse(calls[0]?.body ?? "{}")).toMatchObject({
+      source: "chartwarden.m20.sos_terminus",
       severity: "critical",
       sosAlertId: "sos-1",
       organizationId: "org-1",
