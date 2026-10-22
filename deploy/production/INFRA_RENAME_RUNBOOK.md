@@ -630,8 +630,8 @@ needs the stack stopped anyway and the rename needs zero connections. Both run o
 
 1. Local gates green (`bun run build`, `typecheck`, `arch:fitness`, non-live tests, `check:boot:platform`).
 2. Merge. The auto-deploy runs `preflight.sh` (now with the object-store volume check) and recreates `minio` for the renamed webhook id.
-3. Verify (read-only): `docker ps` all healthy, `./smoke.sh`, MinIO logs / `mc admin config get local audit_webhook` show target `chartwarden`.
-4. Copy the helper to the host once (the deploy workflow does not upload it): `scp deploy/production/volumes-copy.sh deploy@2.25.109.137:/opt/chartwarden/`.
+3. Verify (read-only): `docker ps` all healthy, `./smoke.sh`, MinIO logs / `mc admin config get local audit_webhook` show target `chartwarden` and exactly ONE audit_webhook target (a stale `wardenx` target set via `mc admin config set` would double-deliver events).
+4. Copy the helper to the host once (the deploy workflow does not upload it): `scp deploy/production/volumes-copy.sh deploy@2.25.109.137:/opt/chartwarden/`, and make sure its helper image is cached (it refuses otherwise): `docker pull alpine:3` on the host.
 
 Rollback: revert the PR; the next deploy restores the old target id (`minio` restarts once more).
 Note: `compose.yml` pins `image: minio/minio:latest` for `minio` and `minio-provision`, and `docker pull minio/minio` is denied from at least some networks
@@ -687,6 +687,7 @@ nginx -t && systemctl reload nginx                      # if -t fails, do the ro
 curl -sI https://wardenx.chartwarden.cloud/ | head -3   # expect 308 -> https://app.chartwarden.cloud/
 certbot renew --dry-run
 ```
+Immediately after the swap: remove the transition old origin from `TRUSTED_ORIGINS` (it is a CORS/CSRF allow-list entry; it must not outlive the old DNS), `up -d --no-deps --force-recreate api worker web`, and confirm `grep -c 'wardenx.chartwarden.cloud' .env.production` prints 0. This is a hard precondition for deleting any legacy DNS record. During the soak the live `wardenx-*` vhosts still log full request URIs (they lack the PHI-safe format): keep the soak short and rotate/scrub their `/var/log/nginx` logs after the swap.
 The redirect is a 308 (not 301) on purpose: it keeps the method and body of redirected POST/PUT calls (API clients, FHIR/HL7), which a 301 does not
 guarantee; browsers treat both as permanent. Presigned storage URLs minted for the old host cannot follow a redirect (the host is signed) and expire in minutes.
 
@@ -701,14 +702,18 @@ Preconditions: Window 0 merged and the helper on the host; free space on `/var/l
 `deploy.yml` and `reseed-production.yml` disabled in the Actions UI; no merges to `main`.
 ```sh
 cd /opt/chartwarden
-# 1. Safety net (Step 0): pg_dump -d wardenx, pg_dumpall --globals-only, MinIO mirror, cp .env.production ~/.env.production.pre-phase2-window2
+umask 077   # dumps hold PHI and role verifiers: owner-only; keep them on encrypted storage and delete them after Window 3
+# 1. Safety net (run Step 0 in full: pg_dump -d wardenx, pg_dumpall --globals-only, MinIO mirror), then the env backup the rollback needs:
+cp .env.production ~/.env.production.pre-phase2-window2 && chmod 600 ~/.env.production.pre-phase2-window2 && test -s ~/.env.production.pre-phase2-window2
 docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d wardenx -tAc "SELECT count(*) FROM _chartwarden_migration"   # record N
 docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -tAc "SELECT rolname FROM pg_roles WHERE rolname ~ '^wardenx'"   # expect no rows
-# 2. Stop everything (NEVER -v). Downtime starts here.
-docker compose --env-file .env.production -f compose.yml down
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -Atc "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate"   # expect exactly: postgres, wardenx (migration 1142 is cluster-global)
+# 2. Stop everything (NEVER -v) with a long grace so postgres can checkpoint (the default 10 s can end in SIGKILL). Downtime starts here.
+docker compose --env-file .env.production -f compose.yml down -t 120
+docker run --rm -u postgres -v wardenx_postgres-data:/var/lib/postgresql:ro --entrypoint pg_controldata pgvector/pgvector:pg18 /var/lib/postgresql/18/docker | grep 'Database cluster state'   # must say: shut down
 # 3. Copy + verify. Refuses if a container still uses a source volume or a destination already holds data; never writes to the source.
 sh volumes-copy.sh copy wardenx chartwarden        # one "identical" digest line per volume; any non-zero exit: STOP (Rollback)
-sh volumes-copy.sh verify wardenx chartwarden      # optional second proof, read-only
+sh volumes-copy.sh verify wardenx chartwarden      # REQUIRED green before step 4 (re-reads both sides; read-only)
 # 4. Flip the prefix: delete the line (default = project = chartwarden). Keep CHARTWARDEN_DB_NAME=wardenx for now.
 sed -i '/^CHARTWARDEN_VOLUME_PREFIX=/d' .env.production
 docker compose --env-file .env.production -f compose.yml config | grep -E '^name:|    name:'   # volumes chartwarden_*-data
@@ -716,8 +721,10 @@ sh preflight.sh                                      # "preflight ok ... volume=
 # 5. Start ONLY postgres on the copied volume and rename the database there (zero other connections)
 docker compose --env-file .env.production -f compose.yml up -d postgres
 docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  -c "ALTER DATABASE wardenx ALLOW_CONNECTIONS false" \
   -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wardenx' AND pid <> pg_backend_pid();" \
-  -c "ALTER DATABASE wardenx RENAME TO chartwarden;"
+  -c "ALTER DATABASE wardenx RENAME TO chartwarden;" \
+  -c "ALTER DATABASE chartwarden ALLOW_CONNECTIONS true"
 # 6. Env: replace the single CHARTWARDEN_DB_NAME line; change /wardenx -> /chartwarden in any whole DATABASE_*_URL / PROVISION_DATABASE_URL
 sed -i 's/^CHARTWARDEN_DB_NAME=.*/CHARTWARDEN_DB_NAME=chartwarden/' .env.production
 grep -c '^CHARTWARDEN_DB_NAME=' .env.production      # exactly 1
@@ -726,7 +733,7 @@ docker compose --env-file .env.production -f compose.yml config | grep -E '/(war
 #    environment on every start and the app account (chartwarden-app) is a separate IAM user, but this was NOT rehearsed (see Open items):
 #    record `mc admin user list` before and after; if the list or the buckets differ, put the old value back.
 # 8. Everything up, re-apply the MinIO policy/account (idempotent), smoke
-docker compose --env-file .env.production -f compose.yml up -d
+docker compose --env-file .env.production -f compose.yml up -d     # postgres restarts once more (POSTGRES_DB changed in the config); expected
 docker compose --env-file .env.production -f compose.yml run --rm minio-provision
 ./smoke.sh
 ```
@@ -745,8 +752,10 @@ partial destination: inspect it, `docker volume rm chartwarden_<name>-data`, rer
 
 ### Window 3 - cleanup (after the rollback windows close)
 
-Volumes and MinIO, no earlier than 14 days after Window 2 and after a restore drill from a post-window backup:
+Volumes and MinIO, no earlier than 14 days after Window 2 and after a restore drill from a post-window backup. Gates first (run the removal only if all pass):
 ```sh
+grep -E '^(MINIO_APP_ACCESS_KEY|CHARTWARDEN_MINIO_POLICY)=' .env.production      # expect chartwarden-app (policy key absent or chartwarden-app)
+docker compose --env-file .env.production -f compose.yml exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null; mc admin user info local chartwarden-app'   # must succeed
 docker volume rm wardenx_postgres-data wardenx_valkey-data wardenx_minio-data wardenx_clamav-data      # irreversible; refuses while a container uses one
 docker compose --env-file .env.production -f compose.yml exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null; mc admin policy detach local wardenx-app --user wardenx-app; mc admin user rm local wardenx-app; mc admin policy rm local wardenx-app'
 docker compose --env-file .env.production -f compose.yml exec minio sh -c 'mc admin user list local; mc admin policy list local'   # read-only: only chartwarden-app remains

@@ -158,6 +158,7 @@ describe("preflight.sh across the infra-rename windows", () => {
       databases: ["postgres", "chartwarden"],
     });
     expect(r.code).toBe(67);
+    expect(r.out).toContain("database 'wardenx' does not exist");
   });
 
   it("refuses an existing stack with no explicit database key", () => {
@@ -179,10 +180,12 @@ describe("preflight.sh across the infra-rename windows", () => {
       pgProjects: ["wardenx"],
     });
     expect(r.code).toBe(67);
+    expect(r.out).toContain("no postgres container");
   });
 
   it("refuses when docker is down (fail closed)", () => {
     const r = run({ env: [], dockerDown: true });
     expect(r.code).toBe(67);
+    expect(r.out).toContain("docker is not reachable");
   });
 });

@@ -11,7 +11,7 @@
 # after looking at it); the postgres or minio source is missing (valkey/clamav are caches and are skipped when absent).
 # Destination volumes get the labels Compose puts on its own volumes, so `compose up` adopts them without a warning.
 # Env: COPY_IMAGE (default alpine:3), TO_PROJECT (compose project label, default <to-prefix>), VERIFY_DEEP=0 skips the
-# per-file sha256 pass (sizes, modes, owners and the file list are still compared).
+# per-file sha256 pass (sizes, modes, owners and the file list are still compared; symlink targets are not).
 set -eu
 
 die() { echo "volumes-copy: $1" >&2; exit 1; }
@@ -35,14 +35,21 @@ vol_empty() { [ -z "$(docker run --rm -v "$1:/v:ro" "$image" sh -c 'ls -A /v' </
 in_use() { [ -n "$(docker ps -q --filter "volume=$1" </dev/null)" ]; }
 
 # Prints one digest for a directory tree: file list + type/mode/owner (+ size, + content hash when deep).
+# Every stage must succeed and the output must be non-empty: POSIX sh has no pipefail, and an empty comparison would
+# otherwise hash equal on both sides and print "identical".
 manifest() {
-  docker run --rm -v "$1:/v:ro" -e DEEP="$deep" "$image" sh -c '
+  out=$(docker run --rm -v "$1:/v:ro" -e DEEP="$deep" "$image" sh -ec '
     cd /v
-    find . ! -type f -exec stat -c "%n|%F|%a|%u:%g" {} + | LC_ALL=C sort
-    find . -type f -exec stat -c "%n|%s|%a|%u:%g" {} + | LC_ALL=C sort
-    if [ "$DEEP" = 1 ]; then find . -type f -exec sha256sum {} + | LC_ALL=C sort; fi
-  ' </dev/null | sha256sum | cut -d" " -f1
+    find . ! -type f -exec stat -c "%n|%F|%a|%u:%g" {} + > /tmp/a
+    find . -type f -exec stat -c "%n|%s|%a|%u:%g" {} + > /tmp/b
+    if [ "$DEEP" = 1 ]; then find . -type f -exec sha256sum {} + > /tmp/c; else : > /tmp/c; fi
+    cat /tmp/a /tmp/b /tmp/c | LC_ALL=C sort
+  ' </dev/null) || die "could not read volume $1 (is $image available locally?)"
+  [ -n "$out" ] || die "empty manifest for $1"
+  printf '%s\n' "$out" | sha256sum | cut -d" " -f1
 }
+
+docker image inspect "$image" >/dev/null 2>&1 </dev/null || die "image $image is not present locally; 'docker pull $image' (or set COPY_IMAGE) BEFORE stopping the stack"
 
 names=""
 for n in $required; do
@@ -69,7 +76,7 @@ for n in $names; do
   if [ "$mode" = copy ]; then
     vol_exists "$dst" || docker volume create --label "com.docker.compose.project=$project" --label "com.docker.compose.volume=$n" "$dst" >/dev/null
     echo "copy $src -> $dst"
-    docker run --rm -v "$src:/from:ro" -v "$dst:/to" "$image" sh -c 'cp -a /from/. /to/' </dev/null
+    docker run --rm -v "$src:/from:ro" -v "$dst:/to" "$image" sh -c 'cp -a /from/. /to/ && sync' </dev/null
   fi
   vol_exists "$dst" || die "destination volume $dst does not exist"
   a=$(manifest "$src"); b=$(manifest "$dst")
