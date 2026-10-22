@@ -8,8 +8,8 @@
 #
 # INFRA RENAME (wardenx -> chartwarden), see INFRA_RENAME_RUNBOOK.md. The project name drives the container
 # (`<project>-<service>-1`) and network (`<project>_default`, `<project>_scan`) names and defaults to `chartwarden`.
-# The live host was cut over first (Step C) and keeps CHARTWARDEN_VOLUME_PREFIX=wardenx in .env.production, so its
-# data volumes (named at the bottom) keep their old names. preflight.sh refuses to deploy to a host whose configured
+# The live host was cut over first (Step C) and keeps CHARTWARDEN_VOLUME_PREFIX=wardenx in .env.production until the
+# volume copy (Runbook, Window 2), so its data volumes (named at the bottom) keep their old names until then. preflight.sh refuses to deploy to a host whose configured
 # volumes/database are missing while old-named ones exist, so a stale host fails safe instead of starting empty state.
 name: ${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}
 
@@ -56,9 +56,9 @@ services:
       # `tenant-*` buckets); the api keeps only successful GetObject calls on tenant buckets and records them as
       # `signed_url_consumed` in document_access_log. Delivery is best-effort (an audit gap is accepted for this
       # stream); the endpoint answers 503 until MINIO_ACCESS_LOG_WEBHOOK_TOKEN is set (deploy.sh generates it).
-      MINIO_AUDIT_WEBHOOK_ENABLE_wardenx: "on"
-      MINIO_AUDIT_WEBHOOK_ENDPOINT_wardenx: http://api:3000/api/v1/webhooks/minio/access-log
-      MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_wardenx: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
+      MINIO_AUDIT_WEBHOOK_ENABLE_chartwarden: "on"
+      MINIO_AUDIT_WEBHOOK_ENDPOINT_chartwarden: http://api:3000/api/v1/webhooks/minio/access-log
+      MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_chartwarden: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
     volumes:
       - minio-data:/data
     # Port 9000 is reachable only by host Nginx. Do not publish 9001: the admin console is not
@@ -432,7 +432,7 @@ networks:
 # Volume names are explicit (not derived from `name:` above) so the project rename keeps the live data. The prefix
 # defaults to the project name, which on a fresh install gives `<project>_postgres-data` etc.; the production
 # host keeps CHARTWARDEN_VOLUME_PREFIX=wardenx in .env.production so it keeps its existing `wardenx_*` volumes
-# under the renamed `chartwarden` project (no copy).
+# under the renamed `chartwarden` project until Window 2 copies them (volumes-copy.sh) and drops the pin.
 volumes:
   postgres-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data

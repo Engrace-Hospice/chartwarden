@@ -17,7 +17,7 @@ and these secrets:
 | `DEPLOY_KNOWN_HOSTS` | Exact `known_hosts` line(s) for the VPS SSH host key |
 
 The matching public key belongs in the deploy account's `~/.ssh/authorized_keys`. The account needs
-access to the deploy directory (`/opt/wardenx` on the live host until the infra-rename cutover, `/opt/chartwarden` after; see `INFRA_RENAME_RUNBOOK.md`) and permission to run the narrowly required Docker Compose commands; do not
+access to the deploy directory (`/opt/chartwarden`; a legacy `/opt/wardenx` symlink may remain until the late cleanup, see `INFRA_RENAME_RUNBOOK.md`) and permission to run the narrowly required Docker Compose commands; do not
 use a root SSH account or disable host-key checking.
 
 The server must already contain a mode-`0600` `.env.production` copied from the production template.
@@ -29,7 +29,7 @@ sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 ```
 
 An install lives in `/opt/chartwarden`, which is the fallback of `deploy.yml` and `reseed-production.yml` (override with the repository variable
-`DEPLOY_DIR`). `preflight.sh` (piped by the workflows before any upload, and run by `deploy.sh`) is read-only and refuses (exit 67) on a host that still holds the old `wardenx` names; see
+`DEPLOY_DIR`). `preflight.sh` (piped by the workflows before any upload, and run by `deploy.sh`) is read-only and refuses (exit 67) when the configured volumes, database or layout do not match the host (it accepts every intermediate state of the infra-rename windows); see
 `INFRA_RENAME_RUNBOOK.md`, "Merge order". The env template already carries `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, which bootstrap rewrites with the domains.
 
 Override domains when needed:

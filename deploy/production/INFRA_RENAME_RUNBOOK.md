@@ -81,7 +81,7 @@ to `.env.production`, so after the merge the host env must name its database its
 5. Run the preflight by hand, from the host: `cd /opt/chartwarden && sh -s < preflight.sh` (or copy `deploy/production/preflight.sh` there first). It must print `preflight ok`.
 
 Not in this PR (unchanged): repo-name strings,
-Postgres roles, the legacy-redirect nginx file, the `wardenx-app` MinIO account and the legacy volumes (Step F).
+the legacy-redirect nginx file (the Postgres roles are already `chartwarden_*` since migration 1139), the `wardenx-app` MinIO account and the legacy volumes (Step F).
 
 Env file format: the preflight and the deploy scripts read `.env.production` as plain `KEY=value` lines (an optional leading CR, surrounding quotes and a trailing ` # comment` are tolerated). Do not use `export KEY=`, leading whitespace or `KEY = value`, and do not put ` #` inside a quoted value: Compose accepts those but the scripts would read a different value.
 
@@ -130,7 +130,7 @@ Execute only with the user's go-ahead. Facts observed read-only on 2.25.109.137 
 | DB name default (compose, `deploy.sh`, `reseed-demo.sh`) | (a) | default is `chartwarden`; the former auto-pin of `wardenx` is REMOVED (host: key was ABSENT and the cluster holds database `wardenx`) | add `CHARTWARDEN_DB_NAME=wardenx` by hand before the merge (Merge order step 2); the DB-rename window then replaces that line. The preflight refuses an existing stack without the key |
 | nginx vhosts, log format, bootstrap, env template | (a) | files renamed `chartwarden-*`, hostnames `app./api./storage.chartwarden.cloud`; NOT auto-deployed (only `bootstrap-vps.sh` or the operator installs them) | Step D |
 | `smoke.sh` probe URLs | (b) | `.env.production` keys `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, default `https://app.`/`api.chartwarden.cloud`; the preflight requires both keys on an existing stack | set both (legacy hosts are fine) before the merge, flip them in Step D |
-| MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_wardenx`), `wardenx-minio-admin` root user | kept | internal ids, never user-visible; changing the env KEY recreates MinIO | leave; optional rename later, which only takes effect on a MinIO recreate |
+| MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_chartwarden`), `chartwarden-minio-admin` root user | webhook id renamed in the Phase 2 PR; root user is a host env value | internal ids, never user-visible; the webhook change recreates MinIO once | see "Phase 2 operator windows" (Window 0 / Window 2) |
 | `wardenx-*` bucket ARNs in the policy, old buckets, `wardenx-app` policy/account | held | additive policy still allows both prefixes | Step F, only after the rollback window |
 | Repo-name strings (`CLAUDE.md`/`AGENTS.md`, issue-template link, README clone URLs) | follow-up | unchanged text (the repository is already renamed to `chartwarden`; only docs still say `wardenx`) | Step G (remaining part), a docs-only commit |
 | cron / systemd / logrotate / pgbackrest / sudoers | n/a | none exist for `wardenx` on the host (host) and none are in the repo | none |
@@ -477,7 +477,7 @@ records and certificate were never removed.
 
 ## Explicitly NOT renamed (by design)
 
-- Postgres database name `wardenx` (parameterized by `CHARTWARDEN_DB_NAME`; the compose/script default is now `chartwarden`, and the host's `.env.production` carries the explicit value; the former pin code in `deploy.sh`/`reseed-demo.sh` is gone, replaced by the PREFLIGHT in "Merge order"), applied migration SQL, legacy function names
+- Postgres database name `wardenx` (renamed in "Phase 2 operator windows", Window 2; parameterized by `CHARTWARDEN_DB_NAME`; the compose/script default is now `chartwarden`, and the host's `.env.production` carries the explicit value; the former pin code in `deploy.sh`/`reseed-demo.sh` is gone, replaced by the PREFLIGHT in "Merge order"), applied migration SQL, legacy function names
   (renaming a database requires dropping connections and updating every `DATABASE_*_URL`; applied-migration
   checksums forbid editing SQL). The `wardenx_destruction` role alias was dropped by migration 1142.
 - The `_wardenx_migration` ledger IS renamed to `_chartwarden_migration` (by `scripts/db/migrate.ts`
@@ -488,7 +488,7 @@ records and certificate were never removed.
   drop the empty `_wardenx_migration` table it created before running the new runner again (otherwise the new
   runner throws "both are tables"). Migrations 1139/1142/1143 already make app-level rollback of that age
   unsupported.
-- The `wardenx_*` data VOLUME names: the project/containers/networks are renamed (Step C), the volumes keep their names via `CHARTWARDEN_VOLUME_PREFIX=wardenx` (a copy would add downtime for no benefit; internal names only).
+- The `wardenx_*` data VOLUME names: the project/containers/networks are renamed (Step C); the volumes kept their names via `CHARTWARDEN_VOLUME_PREFIX=wardenx` until the copy in "Phase 2 operator windows", Window 2 (Docker cannot rename volumes).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
 - The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.
 
@@ -582,3 +582,201 @@ Verification after step 6: `psql -U postgres -d postgres -c '\l'` lists `chartwa
 `SELECT count(*) FROM _chartwarden_migration;` equals the pre-window count; `/api/health` and `/api/ready` green;
 one demo sign-in.
 <!-- END DB-RENAME ADDENDUM -->
+
+## Phase 2 operator windows (remaining live `wardenx` names) - DO NOT RUN before the PR `chore/infra-rename-phase-2` is merged
+
+Authoritative for the windows below; where an older section disagrees (Step D/E/F, "Explicitly NOT renamed", the DB-rename addendum), this one
+wins. Observed on the host after the `/opt/chartwarden` cutover (2026-10-21): containers, project and network are already `chartwarden`,
+`/opt/wardenx` is a symlink, and `.env.production` pins `CHARTWARDEN_VOLUME_PREFIX=wardenx` and `CHARTWARDEN_DB_NAME=wardenx`. Nothing here is
+automated; every step names its read-only check and its rollback. Execute only with the user's go-ahead.
+
+### Inventory: what is left, what code does, what only the operator can do
+
+| # | Item (live value -> target) | In the PR | Operator only |
+| --- | --- | --- | --- |
+| 1 | Volumes `wardenx_{postgres,valkey,minio,clamav}-data` -> `chartwarden_*` | `volumes-copy.sh` (copy + verify, never deletes); preflight accepts every intermediate state and refuses a half-copied set (postgres moved, minio not) | Window 2 |
+| 2 | Database `wardenx` -> `chartwarden` | order fixed so the rename runs on the COPIED volume (the old volume keeps `wardenx`: rollback needs no ALTER); preflight already checks `pg_database` | Window 2 |
+| 3 | `/opt/wardenx` symlink | preflight accepts "no `/opt/wardenx`" (covered by the layout rule, unchanged) | Window 3 (`sudo rm /opt/wardenx`) |
+| 4 | Hostnames `wardenx.` / `be082026.wardenx.` / `storage.wardenx.chartwarden.cloud` -> `app.` / `api.` / `storage.chartwarden.cloud` | nothing new needed: nginx vhosts, `.env.production.example`, `bootstrap-vps.sh`, `smoke.sh` fallbacks and the legacy 308 file ALREADY name these targets (the storage target was already `storage.chartwarden.cloud`) | DNS, TLS certificate, nginx install, env flip, passkey re-enrolment (Window 1) |
+| 5 | nginx site names `wardenx-{frontend,backend,storage}` -> `chartwarden-*` | repo files already named `chartwarden-*` | Window 1 (install new, swap old for redirects) and Window 3 (delete old) |
+| 6 | MinIO `wardenx-app` account/policy; `wardenx-minio-admin` root user; webhook target id | the new account `chartwarden-app` + policy already exist on the host; the compose webhook target id is now `chartwarden`; the template root user is `chartwarden-minio-admin` | Window 2 (root user, optional) and Window 3 (remove legacy account/policy) |
+| 7 | Postgres roles `wardenx_app`, `wardenx_destruction`, ... | NOTHING TO DO: already renamed by migration `1139` (ten roles, SCRAM-safe, idempotent, MD5-guarded); the `wardenx_destruction` alias was dropped by `1142`, the functions renamed by `1143`; `compose.yml` already connects as `chartwarden_app` / `chartwarden_platform_login` / `chartwarden_destruction_login`. No second migration was written (it would be a no-op). | read-only check below |
+
+Read-only check for item 7 on the host (if the first query prints a row, STOP and report; do not rename by hand):
+```sh
+cd /opt/chartwarden
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -tAc \
+  "SELECT rolname FROM pg_roles WHERE rolname ~ '^wardenx' ORDER BY 1"          # expect: no rows
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -tAc \
+  "SELECT rolname FROM pg_roles WHERE rolname ~ '^chartwarden' ORDER BY 1"      # expect chartwarden_app, chartwarden_*_login, ...
+```
+`ALTER ROLE ... RENAME` and passwords (PostgreSQL docs, ALTER ROLE): the rename clears an MD5 verifier (the role name is the MD5 salt) and leaves a
+SCRAM-SHA-256 verifier intact. 1139 refuses to run if a `wardenx_*` role still has an MD5 verifier. The private-container rehearsal confirms the
+migrated `chartwarden_app` and the provisioned `*_login` roles hold SCRAM verifiers and still log in after a database rename.
+
+### Recommended order and downtime
+
+| Window | Content | Downtime | Earliest |
+| --- | --- | --- | --- |
+| 0 | Merge this PR (CI deploy runs normally). Its only runtime effect is the MinIO audit-webhook target id (`..._wardenx` -> `..._chartwarden`), which makes compose recreate `minio` once | MinIO restarts, about 10-30 s | any quiet hour, before Window 2 |
+| 1 | Hostnames: DNS, certificate, new vhosts, env flip, soak, then 308 swap | none for the app; at the env flip ALL users are signed out and ALL passkeys must be re-enrolled (Step D.3) | after Window 0 |
+| 2 | Volumes + database (+ MinIO root user, optional) in one stop of the stack | about 10-20 min (backup + copy; copy time scales with `docker system df -v` size of the four volumes, measure first) | after Window 1 has soaked; do not combine with the passkey flip |
+| 3 | Cleanup | none | 14 days after Window 2 (volumes, MinIO account, symlink); 30 days after the 308 swap (hostnames, certificate) |
+
+Why this order: hostnames are independent and reversible by DNS/env. The volume copy and the database rename share one downtime window because the copy
+needs the stack stopped anyway and the rename needs zero connections. Both run on the COPY, so the old volumes stay pristine as the rollback.
+
+### Window 0 - merge
+
+1. Local gates green (`bun run build`, `typecheck`, `arch:fitness`, non-live tests, `check:boot:platform`).
+2. Merge. The auto-deploy runs `preflight.sh` (now with the object-store volume check) and recreates `minio` for the renamed webhook id.
+3. Verify (read-only): `docker ps` all healthy, `./smoke.sh`, MinIO logs / `mc admin config get local audit_webhook` show target `chartwarden` and exactly ONE audit_webhook target (a stale `wardenx` target set via `mc admin config set` would double-deliver events).
+4. Copy the helper to the host once (the deploy workflow does not upload it): `scp deploy/production/volumes-copy.sh deploy@2.25.109.137:/opt/chartwarden/`, and make sure its helper image is cached (it refuses otherwise): `docker pull alpine:3` on the host.
+
+Rollback: revert the PR; the next deploy restores the old target id (`minio` restarts once more).
+Note: `compose.yml` pins `image: minio/minio:latest` for `minio` and `minio-provision`, and `docker pull minio/minio` is denied from at least some networks
+today (checked from a workstation, 2026-10-21). The host runs from its cached image: do not `docker image prune -a` / `docker rmi` it, and treat a
+move to a pinned, mirrored image as a separate change.
+
+### Window 1 - hostnames (no downtime)
+
+Targets: `app.chartwarden.cloud` (web), `api.chartwarden.cloud` (api), `storage.chartwarden.cloud` (S3).
+Verified by grep: no application code hardcodes these hosts (`apps/` and `packages/` carry them only as test fixtures). Runtime hosts come from
+`BETTER_AUTH_URL`, `TRUSTED_ORIGINS` (also the CORS allow-list, `resolveWebTrustedOrigins`), `STORAGE_PUBLIC_ORIGIN` (also `MINIO_PUBLIC_ENDPOINT`,
+derived in compose), `M34_INVITATION_ACCEPT_URL`, `FHIR_TOKEN_ENDPOINT_URL`, `PASSKEY_RP_ID` / `WEBAUTHN_RP_ID`, and optionally `WEB_APP_URL` (falls back
+to `BETTER_AUTH_URL` when unset: check `grep WEB_APP_URL .env.production`). Session cookies are host-only (no cross-subdomain cookies), the SPA CSP is
+`connect-src 'self'`, and the demo has `TENANT_BASE_DOMAIN` unset (ADR-0088), so ADR-0049 tenant-subdomain parsing is inactive and `app.`/`api.`/`storage.`
+are not read as tenant slugs. If `TENANT_BASE_DOMAIN` is ever set to `chartwarden.cloud`, those three labels would first have to be reserved.
+
+Only the operator can do:
+- DNS: `A 2.25.109.137` (plus `AAAA` if `dig +short AAAA wardenx.chartwarden.cloud` returns one) for `app.`, `api.`, `storage.chartwarden.cloud`, TTL 300. Keep the legacy records.
+- TLS: certbot HTTP-01 needs the names to resolve to this host first; one new lineage with three SANs (below). The legacy lineage stays.
+- Notify FHIR/HL7 partners and any mobile build holding the old base URL; plan passkey re-enrolment (Step D.3 pre-flip check is mandatory).
+
+Sequence (as root on the host):
+```sh
+# workstation first: scp -r deploy/production/nginx root@2.25.109.137:/root/nginx-chartwarden
+getent hosts app.chartwarden.cloud api.chartwarden.cloud storage.chartwarden.cloud    # all three must resolve to this host
+mkdir -p /root/nginx-legacy-vhosts && cp -a /etc/nginx/sites-available /root/nginx-sites-available.pre-phase2
+cd /root/nginx-chartwarden
+install -m 0644 chartwarden-log-format.conf /etc/nginx/conf.d/chartwarden-log-format.conf
+for n in frontend backend storage; do
+  install -m 0644 chartwarden-$n.conf /etc/nginx/sites-available/chartwarden-$n.conf
+  ln -sfn /etc/nginx/sites-available/chartwarden-$n.conf /etc/nginx/sites-enabled/chartwarden-$n.conf
+done
+nginx -t && systemctl reload nginx          # legacy vhosts keep serving; the new ones answer on port 80
+certbot --nginx -d app.chartwarden.cloud -d api.chartwarden.cloud -d storage.chartwarden.cloud --cert-name chartwarden.cloud
+nginx -t && systemctl reload nginx && certbot renew --dry-run
+```
+Read-only verification before any env change: `curl -sI https://app.chartwarden.cloud/`, `curl -s https://api.chartwarden.cloud/api/health`,
+`curl -sI https://storage.chartwarden.cloud/minio/health/live`,
+`openssl s_client -connect app.chartwarden.cloud:443 -servername app.chartwarden.cloud </dev/null | openssl x509 -noout -subject -dates`,
+and the PHI-safe log check from Step D.2.
+
+Env flip (one edit session, no duplicate keys): the keys listed above plus `CHARTWARDEN_SMOKE_APP_URL` and `CHARTWARDEN_SMOKE_API_URL`; keep the old
+origin as a second `TRUSTED_ORIGINS` entry during the soak. Afterwards `grep -n 'wardenx.chartwarden.cloud' .env.production` must print nothing but that
+transition entry, then `docker compose ... up -d --no-deps --force-recreate api worker web` and `./smoke.sh`, one sign-in, one upload + download.
+
+Redirect swap (after a soak of at least a few days; this also retires the live `wardenx-*` vhost names, item 5):
+```sh
+ls -l /etc/nginx/sites-enabled/ | grep wardenx          # expect wardenx-frontend, wardenx-backend, wardenx-storage
+for n in frontend backend storage; do mv /etc/nginx/sites-enabled/wardenx-$n /root/nginx-legacy-vhosts/enabled-wardenx-$n; done   # files and symlinks alike
+install -m 0644 /root/nginx-chartwarden/chartwarden-legacy-redirects.conf /etc/nginx/sites-available/chartwarden-legacy-redirects.conf
+ln -sfn /etc/nginx/sites-available/chartwarden-legacy-redirects.conf /etc/nginx/sites-enabled/chartwarden-legacy-redirects.conf
+nginx -t && systemctl reload nginx                      # if -t fails, do the rollback below BEFORE any reload
+curl -sI https://wardenx.chartwarden.cloud/ | head -3   # expect 308 -> https://app.chartwarden.cloud/
+certbot renew --dry-run
+```
+Immediately after the swap: remove the transition old origin from `TRUSTED_ORIGINS` (it is a CORS/CSRF allow-list entry; it must not outlive the old DNS), `up -d --no-deps --force-recreate api worker web`, and confirm `grep -c 'wardenx.chartwarden.cloud' .env.production` prints 0. This is a hard precondition for deleting any legacy DNS record. During the soak the live `wardenx-*` vhosts still log full request URIs (they lack the PHI-safe format): keep the soak short and rotate/scrub their `/var/log/nginx` logs after the swap.
+The redirect is a 308 (not 301) on purpose: it keeps the method and body of redirected POST/PUT calls (API clients, FHIR/HL7), which a 301 does not
+guarantee; browsers treat both as permanent. Presigned storage URLs minted for the old host cannot follow a redirect (the host is signed) and expire in minutes.
+
+Rollback: before the swap, put the env keys back and `up -d --force-recreate api worker web`. After the swap:
+`rm /etc/nginx/sites-enabled/chartwarden-legacy-redirects.conf; for n in frontend backend storage; do mv /root/nginx-legacy-vhosts/enabled-wardenx-$n /etc/nginx/sites-enabled/wardenx-$n; done; nginx -t && systemctl reload nginx`.
+Old DNS and the old certificate are never touched here. The legacy lineage `wardenx.chartwarden.cloud` renews only while the old names resolve to this
+host and port 80 answers: do not retire the old DNS before the redirects.
+
+### Window 2 - volumes + database (stack stopped, about 10-20 min)
+
+Preconditions: Window 0 merged and the helper on the host; free space on `/var/lib/docker` at least the total of the four volumes (`docker system df -v | grep wardenx_`);
+`deploy.yml` and `reseed-production.yml` disabled in the Actions UI; no merges to `main`.
+```sh
+cd /opt/chartwarden
+umask 077   # dumps hold PHI and role verifiers: owner-only; keep them on encrypted storage and delete them after Window 3
+# 1. Safety net (run Step 0 in full: pg_dump -d wardenx, pg_dumpall --globals-only, MinIO mirror), then the env backup the rollback needs:
+cp .env.production ~/.env.production.pre-phase2-window2 && chmod 600 ~/.env.production.pre-phase2-window2 && test -s ~/.env.production.pre-phase2-window2
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d wardenx -tAc "SELECT count(*) FROM _chartwarden_migration"   # record N
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -tAc "SELECT rolname FROM pg_roles WHERE rolname ~ '^wardenx'"   # expect no rows
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -Atc "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate"   # expect exactly: postgres, wardenx (migration 1142 is cluster-global)
+# 2. Stop everything (NEVER -v) with a long grace so postgres can checkpoint (the default 10 s can end in SIGKILL). Downtime starts here.
+docker compose --env-file .env.production -f compose.yml down -t 120
+docker run --rm -u postgres -v wardenx_postgres-data:/var/lib/postgresql:ro --entrypoint pg_controldata pgvector/pgvector:pg18 /var/lib/postgresql/18/docker | grep 'Database cluster state'   # must say: shut down
+# 3. Copy + verify. Refuses if a container still uses a source volume or a destination already holds data; never writes to the source.
+sh volumes-copy.sh copy wardenx chartwarden        # one "identical" digest line per volume; any non-zero exit: STOP (Rollback)
+sh volumes-copy.sh verify wardenx chartwarden      # REQUIRED green before step 4 (re-reads both sides; read-only)
+# 4. Flip the prefix: delete the line (default = project = chartwarden). Keep CHARTWARDEN_DB_NAME=wardenx for now.
+sed -i '/^CHARTWARDEN_VOLUME_PREFIX=/d' .env.production
+docker compose --env-file .env.production -f compose.yml config | grep -E '^name:|    name:'   # volumes chartwarden_*-data
+sh preflight.sh                                      # "preflight ok ... volume=chartwarden_postgres-data db=wardenx"
+# 5. Start ONLY postgres on the copied volume and rename the database there (zero other connections)
+docker compose --env-file .env.production -f compose.yml up -d postgres
+docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  -c "ALTER DATABASE wardenx ALLOW_CONNECTIONS false" \
+  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wardenx' AND pid <> pg_backend_pid();" \
+  -c "ALTER DATABASE wardenx RENAME TO chartwarden;" \
+  -c "ALTER DATABASE chartwarden ALLOW_CONNECTIONS true"
+# 6. Env: replace the single CHARTWARDEN_DB_NAME line; change /wardenx -> /chartwarden in any whole DATABASE_*_URL / PROVISION_DATABASE_URL
+sed -i 's/^CHARTWARDEN_DB_NAME=.*/CHARTWARDEN_DB_NAME=chartwarden/' .env.production
+grep -c '^CHARTWARDEN_DB_NAME=' .env.production      # exactly 1
+docker compose --env-file .env.production -f compose.yml config | grep -E '/(wardenx|chartwarden)$'   # only chartwarden
+# 7. Optional, same window: MINIO_ROOT_USER=wardenx-minio-admin -> chartwarden-minio-admin in .env.production. Root credentials are read from the
+#    environment on every start and the app account (chartwarden-app) is a separate IAM user, but this was NOT rehearsed (see Open items):
+#    record `mc admin user list` before and after; if the list or the buckets differ, put the old value back.
+# 8. Everything up, re-apply the MinIO policy/account (idempotent), smoke
+docker compose --env-file .env.production -f compose.yml up -d     # postgres restarts once more (POSTGRES_DB changed in the config); expected
+docker compose --env-file .env.production -f compose.yml run --rm minio-provision
+./smoke.sh
+```
+Verification (read-only): `docker inspect chartwarden-postgres-1 chartwarden-minio-1 --format '{{range .Mounts}}{{.Name}} {{end}}'` shows `chartwarden_*-data`;
+`psql -U postgres -d postgres -c '\l'` lists `chartwarden`, not `wardenx`; `SELECT count(*) FROM _chartwarden_migration` equals N; `/api/health` and
+`/api/ready` green; one demo sign-in; one document download through `https://storage.chartwarden.cloud` (the object store came across);
+`docker volume ls | grep -E 'wardenx_|chartwarden_'` lists BOTH sets (the old set is your rollback, untouched). Re-enable the workflows only after smoke is green.
+Then take a fresh pgBackRest full backup and update external monitors that name the database (postgres_exporter DSN, Grafana): not in this repo.
+Do not create or migrate any additional database in this cluster afterwards: roles are cluster-global and a second freshly migrated database fails at
+migration 1142 by design (its header explains the multi-database caveat).
+
+Rollback (any point; the old volumes were never written): `docker compose ... down`; restore `~/.env.production.pre-phase2-window2` over `.env.production`
+(prefix `wardenx`, DB `wardenx`); `up -d`; `./smoke.sh`. The old volume still holds database `wardenx` because the rename ran only on the copy. Data written
+after step 8 exists only in the new volumes: after real traffic, a rollback loses it unless you dump and restore it. A failed `copy` deliberately leaves the
+partial destination: inspect it, `docker volume rm chartwarden_<name>-data`, rerun.
+
+### Window 3 - cleanup (after the rollback windows close)
+
+Volumes and MinIO, no earlier than 14 days after Window 2 and after a restore drill from a post-window backup. Gates first (run the removal only if all pass):
+```sh
+grep -E '^(MINIO_APP_ACCESS_KEY|CHARTWARDEN_MINIO_POLICY)=' .env.production      # expect chartwarden-app (policy key absent or chartwarden-app)
+docker compose --env-file .env.production -f compose.yml exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null; mc admin user info local chartwarden-app'   # must succeed
+docker volume rm wardenx_postgres-data wardenx_valkey-data wardenx_minio-data wardenx_clamav-data      # irreversible; refuses while a container uses one
+docker compose --env-file .env.production -f compose.yml exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null; mc admin policy detach local wardenx-app --user wardenx-app; mc admin user rm local wardenx-app; mc admin policy rm local wardenx-app'
+docker compose --env-file .env.production -f compose.yml exec minio sh -c 'mc admin user list local; mc admin policy list local'   # read-only: only chartwarden-app remains
+./smoke.sh      # plus one upload and one download
+```
+(`mc` is in the `minio/minio` image per the `minio-provision` comment; if your image has none, run the commands via a one-off `minio-provision`-style container with the root env.)
+Rollback: none for removed volumes (restore from backup). Do this last.
+
+Symlink (item 3), after one deploy AND one reseed have run on `/opt/chartwarden` (both done) and nothing on the host still names the old path
+(`grep -rl /opt/wardenx /etc/sudoers.d /etc/cron* /etc/systemd/system 2>/dev/null` prints nothing):
+```sh
+test -L /opt/wardenx && sudo rm /opt/wardenx        # removes the symlink only; never rm -r
+sh /opt/chartwarden/preflight.sh                      # still "preflight ok": the layout rule accepts no /opt/wardenx
+```
+Rollback: `sudo ln -s /opt/chartwarden /opt/wardenx`.
+
+Hostnames and vhosts, no earlier than 30 days after the redirect swap: remove `chartwarden-legacy-redirects.conf` from `sites-enabled`, delete
+`/etc/nginx/sites-available/wardenx-*` and `/root/nginx-legacy-vhosts`, `nginx -t && systemctl reload nginx`, delete the legacy DNS records,
+`certbot delete --cert-name wardenx.chartwarden.cloud`. Other owners: the `wardenx-*` GHCR packages, then the `wardenx` entries in the `deploy.sh` image allow-list.
+
+### Open items
+
+- MinIO root-user rename (Window 2 step 7) was not rehearsed: the `minio/minio` image cannot be pulled from here. It is optional; skipping it leaves one internal, never user-visible name.
+- The PR is DO NOT MERGE before the operator window only in the sense of Window 0 timing: nothing in it changes behaviour on the host except the one MinIO recreate.
