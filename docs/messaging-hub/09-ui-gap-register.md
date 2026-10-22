@@ -13,7 +13,7 @@
 | Members/Presence column | Absent | 2.12 (presence), 2.11 |
 | `Ctrl/⌘+F` in-conversation search, `Ctrl/⌘+K` global jump | Absent | 2.7a, 2.7b |
 | Schedule send | Absent | 2.6 |
-| Draft status indicator ("Saved" / "Saved on this device only") | Absent | 2.5 |
+| Draft status indicator ("Saved" / "Not saved to the server; kept in this tab only") | Absent | 2.5 |
 | Template menu | Absent | 2.8 |
 | Urgency toggle, `#`/`+` clinical link picker, camera on mobile | Absent | 3.2, 3.3, 3.10 |
 | AckCard, HandoffSheet, TaskDrawer, PatientContextPanel, urgent badge | Absent | 3.1, 3.4, 3.5, 3.10 |
