@@ -346,6 +346,16 @@ export interface PatientIntakeResolver {
     readonly patientId: string;
     readonly medicareNumber: string;
   }): Promise<"added" | "already_on_chart" | "different_on_chart">;
+  /**
+   * Puts the clinician who just started an admission on the patient's caseload (the system-issued
+   * `admitting_staff` access grant) so they can open the chart they are admitting. Idempotent; it ends with
+   * the same lifecycle as the creator's grant (activation, discharge, a closed referral, 14 days).
+   */
+  grantAdmittingAccess(input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    readonly userId: string;
+  }): Promise<void>;
 }
 
 export type PatientAdmissionClearanceReason =

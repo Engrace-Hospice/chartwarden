@@ -83,7 +83,7 @@ function isPrimaryRnViolation(err: unknown): boolean {
  */
 export async function ensureAdmittingAssignment(
   tx: DbClient,
-  grant: { organizationId: string; patientId: string; userId: string },
+  grant: { organizationId: string; patientId: string; userId: string; reason?: string },
 ): Promise<void> {
   const existing = await tx
     .select({ id: PA.id })
@@ -104,7 +104,7 @@ export async function ensureAdmittingAssignment(
     clinicianUserId: grant.userId,
     role: ADMITTING_STAFF_ASSIGNMENT_ROLE,
     assignedAt: todayIso(),
-    reason: "Created the patient from a referral",
+    reason: grant.reason ?? "Created the patient from a referral",
   });
 }
 
