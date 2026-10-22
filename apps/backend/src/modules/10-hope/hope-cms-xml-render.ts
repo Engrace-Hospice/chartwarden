@@ -19,6 +19,7 @@ const XML_ENTITIES: Readonly<Record<string, string>> = {
   "'": "&apos;",
 };
 
+const ITEM_CODE = /^[A-Z][A-Z0-9_]*$/;
 const NON_PRINTABLE_ASCII = /[^\x20-\x7E]/;
 
 /**
@@ -49,11 +50,18 @@ export function renderCmsAssessmentXml(
   return [
     XML_DECLARATION,
     "<ASSESSMENT>",
-    // The tag is an item code from the frozen spec, never user input; only the value is escaped.
-    ...items.map(
-      ({ itemCode, value }) =>
-        `<${itemCode}>${xmlEscape(toCmsAsciiText(itemCode, value))}</${itemCode}>`,
-    ),
+    // The tag is an item code from the frozen spec; it is checked rather than trusted so a bad spec row cannot
+    // inject markup. Only the value is escaped.
+    ...items.map(({ itemCode, value }) => {
+      if (!ITEM_CODE.test(itemCode)) {
+        throw new HopeSubmissionPayloadError(
+          "HOPE item code is not a valid element name",
+          "WX-HOPE-SUBMISSION-ITEM-CODE",
+          {},
+        );
+      }
+      return `<${itemCode}>${xmlEscape(toCmsAsciiText(itemCode, value))}</${itemCode}>`;
+    }),
     "</ASSESSMENT>",
     "",
   ].join("\n");

@@ -21,7 +21,7 @@ import {
 // it in the iQIES portal, mark it uploaded. `assemble` builds that package and answers `packaged`. Retry
 // is still absent: it requeues into a stage that cannot reach iQIES. The server enforces
 // `hope.submission.manage`; the button is hidden without it so a reader is not offered a 403.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
@@ -84,16 +84,27 @@ export function SubmissionWorklist(): JSX.Element {
     };
   }, [canGenerate, client]);
 
+  // Synchronous guard: `disabled={generating}` only takes effect after the next render, so a fast second click
+  // (or a key-repeat) could otherwise start a second batch.
+  const generatingRef = useRef(false);
   const generatePackage = async (): Promise<void> => {
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setGenerating(true);
     setError(null);
-    const result = await assembleSubmission(client, providerEntityId);
-    setGenerating(false);
-    if (!result.ok) {
-      setError(result.message);
-      return;
+    try {
+      const result = await assembleSubmission(client, providerEntityId);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      navigate(`/hope/submissions/${encodeURIComponent(result.value.id)}`);
+    } catch {
+      setError("Could not generate the iQIES package. Check your connection and try again.");
+    } finally {
+      generatingRef.current = false;
+      setGenerating(false);
     }
-    navigate(`/hope/submissions/${result.value.id}`);
   };
 
   const load = useCallback(async () => {

@@ -117,8 +117,8 @@ ownedTables (12): administration_offline_queue, administration_policy, administr
    `HopeTimepointProvider`/`HopeSubmissionProvider`/`HopeJ2051Provider` (M10); `OrderSignatureProvider`/
    `OrderProvider` (M11); `MedicationOrderProvider` (M12); `MedicationAdministrationProvider`/
    `ReconciliationProvider` (M13).
-3. **HOPE produces an iQIES upload package** that passes the CMS Validation Utility Tool (iQIES has no
-   API or test endpoint) and **capture stays functional when iQIES is unavailable** (M10 §7.9/§7.10).
+3. **HOPE submits to iQIES** against the test endpoint and **capture stays functional when iQIES is
+   unavailable** (M10 §7.9/§7.10).
 4. The clinical scenario extends: admit → care plan → **assessment (M9) → HOPE timepoint (M10) → order
    (M11) → DoseSpot transmit (M12) → eMAR administration (M13)** passes in integration.
 5. **Phase-1 discipline holds:** `dosespot.epcs` OFF; M11→M21/M29, M12→M22/M28, M13→M21/M22/M28/M37/M31

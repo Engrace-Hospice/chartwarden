@@ -22,6 +22,7 @@ let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let providerEntities: Array<{ id: string; legalName: string; ccn: string }> = [];
 let assembleFailure: { status: number; body: unknown } | null = null;
+let assembleThrows = false;
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const request = input instanceof Request ? input : null;
@@ -36,6 +37,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     });
 
   if (method === "POST" && path === "/api/v1/hope/submissions/assemble") {
+    if (assembleThrows) throw new TypeError("network down");
     const raw = request ? await request.clone().text() : String(init?.body ?? "");
     bodies.push(JSON.parse(raw) as Record<string, unknown>);
     if (assembleFailure) return json(assembleFailure.status, assembleFailure.body);
@@ -84,6 +86,7 @@ beforeEach(() => {
   calls = [];
   bodies = [];
   assembleFailure = null;
+  assembleThrows = false;
   providerEntities = [{ id: PROVIDER_ENTITY, legalName: "Engrace Hospice", ccn: "123456" }];
 });
 afterEach(() => {
@@ -132,6 +135,33 @@ describe("HOPE Submissions — generate the iQIES upload package", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(
       "No signed HOPE assessments are eligible",
     );
+    expect(screen.queryByText("Submission detail page")).toBeNull();
+  });
+
+  it("sends one request when the button is clicked twice before the first renders", async () => {
+    mount(["hope.submission.manage"]);
+    const button = await screen.findByRole("button", { name: generateLabel });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await screen.findByText("Submission detail page");
+    expect(writes()).toEqual(["POST /api/v1/hope/submissions/assemble"]);
+  });
+
+  it("shows an error and re-enables the button when the request itself fails", async () => {
+    assembleThrows = true;
+    mount(["hope.submission.manage"]);
+    const button = await screen.findByRole("button", { name: generateLabel });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(button);
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not generate the iQIES package",
+    );
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByText("Submission detail page")).toBeNull();
   });
 

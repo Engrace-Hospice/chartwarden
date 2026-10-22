@@ -61,6 +61,14 @@ describe("renderCmsAssessmentXml", () => {
   });
 });
 
+describe("renderCmsAssessmentXml item codes", () => {
+  it("refuses an item code that is not a plain element name", () => {
+    expect(() => renderCmsAssessmentXml([{ itemCode: "A0500C><X", value: "v" }])).toThrowError(
+      HopeSubmissionPayloadError,
+    );
+  });
+});
+
 describe("toCmsAsciiText", () => {
   it("rejects characters that cannot be folded to ASCII, naming the item", () => {
     expect(() => toCmsAsciiText("A0500C", "李")).toThrowError(HopeSubmissionPayloadError);
