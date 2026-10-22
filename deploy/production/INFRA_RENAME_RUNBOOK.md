@@ -489,7 +489,7 @@ records and certificate were never removed.
   runner throws "both are tables"). Migrations 1139/1142/1143 already make app-level rollback of that age
   unsupported.
 - The `wardenx_*` data VOLUME names: the project/containers/networks are renamed (Step C); the volumes kept their names via `CHARTWARDEN_VOLUME_PREFIX=wardenx` until the copy in "Phase 2 operator windows", Window 2 (Docker cannot rename volumes).
-- Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
+- Wire names (metrics, cookies, HL7, `wardenx://`, `/_wardenx-internal/*`): other owner.
 - The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Done: the production reseed (`reseed-production.yml`) of 2026-10-22 removed the legacy org and its identities.
 
 ## Database rename downtime window (`wardenx` -> `chartwarden`)
