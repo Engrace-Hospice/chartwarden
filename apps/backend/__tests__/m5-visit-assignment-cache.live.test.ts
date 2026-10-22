@@ -314,7 +314,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       );
     });
 
-    it("release A dual-writes both caseload hashes (same TTL) and removes the visit from both", async () => {
+    it("release C writes and removes only the chartwarden hash (24 h TTL), never the legacy one", async () => {
       const visitId = "aaaaaaaa-5000-4000-8000-0000000000d1";
       const patientId = "aaaaaaaa-5000-4000-8000-0000000000d2";
       const legacy = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
@@ -327,61 +327,32 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         patientId,
         new Date(Date.now() + 3_600_000).toISOString(),
       );
-      expect(await redis.hget(renamed, visitId)).toBe(await redis.hget(legacy, visitId));
-      expect(await redis.hget(legacy, visitId)).not.toBeNull();
-      for (const key of [legacy, renamed]) {
-        expect(await redis.ttl(key)).toBeGreaterThan(86_400 - 60);
-      }
+      expect(await redis.hget(renamed, visitId)).not.toBeNull();
+      expect(await redis.exists(legacy)).toBe(0);
+      expect(await redis.ttl(renamed)).toBeGreaterThan(86_400 - 60);
       await removeShiftAssignment(redis, ORG_A, userClinicianA, visitId);
-      expect(await redis.hget(legacy, visitId)).toBeNull();
       expect(await redis.hget(renamed, visitId)).toBeNull();
     });
 
-    it("release B reads the union of both hashes: a legacy-only (pre-A) visit stays visible next to a post-A visit", async () => {
-      const preA = "aaaaaaaa-5000-4000-8000-0000000000e1";
-      const preAPatient = "aaaaaaaa-5000-4000-8000-0000000000e2";
-      const postA = "aaaaaaaa-5000-4000-8000-0000000000e3";
-      const postAPatient = "aaaaaaaa-5000-4000-8000-0000000000e4";
+    it("release C ignores a legacy-only hash and leaves it untouched on unassign", async () => {
+      const legacyVisit = "aaaaaaaa-5000-4000-8000-0000000000e1";
+      const legacyPatient = "aaaaaaaa-5000-4000-8000-0000000000e2";
       const legacy = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
-      const renamed = `chartwarden:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
       const future = new Date(Date.now() + 3_600_000).toISOString();
       await redis.hset(
         legacy,
-        preA,
-        JSON.stringify({ patientId: preAPatient, expiresAt: future }),
+        legacyVisit,
+        JSON.stringify({ patientId: legacyPatient, expiresAt: future }),
       );
-      await writeShiftAssignment(
-        redis,
-        ORG_A,
-        userClinicianA,
-        postA,
-        postAPatient,
-        future,
+      expect(await readShiftAssignedPatientIds(redis, ORG_A, userClinicianA)).not.toContain(
+        legacyPatient,
       );
-      expect(await redis.hget(renamed, preA)).toBeNull(); // new hash is NOT a superset of legacy
-
-      const ids = await readShiftAssignedPatientIds(
-        redis,
-        ORG_A,
-        userClinicianA,
-      );
-      expect(ids).toContain(preAPatient);
-      expect(ids).toContain(postAPatient);
-
-      // An unassign removes from both, so neither source resurrects it.
-      await removeShiftAssignment(redis, ORG_A, userClinicianA, preA);
-      await removeShiftAssignment(redis, ORG_A, userClinicianA, postA);
-      const after = await readShiftAssignedPatientIds(
-        redis,
-        ORG_A,
-        userClinicianA,
-      );
-      expect(after).not.toContain(preAPatient);
-      expect(after).not.toContain(postAPatient);
+      await removeShiftAssignment(redis, ORG_A, userClinicianA, legacyVisit);
+      expect(await redis.hget(legacy, legacyVisit)).not.toBeNull();
     });
 
     it("a malformed cache entry is skipped rather than thrown on the ABAC hot read path", async () => {
-      const key = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
+      const key = `chartwarden:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
       await redis.hset(key, "not-json-visit", "{this is not json");
 
       await expect(

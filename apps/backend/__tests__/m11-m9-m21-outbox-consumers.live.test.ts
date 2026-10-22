@@ -4,7 +4,7 @@
  *
  *   - `buildM11AssessmentSuggestionConsumer` (`outbox-consumers/m9-assessment-significant-change.ts`) —
  *     the §2.7 D7 order-suggestion banner: `m9.assessment.significant_change` projects into Valkey under
- *     `wardenx:m11:orders:suggestion:<patientId>` and emits `m11.order.suggestion_state_changed`.
+ *     `chartwarden:m11:orders:suggestion:<patientId>` and emits `m11.order.suggestion_state_changed`.
  *   - `buildM11FulfillmentStatusConsumer` (`outbox-consumers/m21-fulfillment-status.ts`) — the D8
  *     one-shot auto-complete: `m21.supply_request.status_changed` with `toStatus='delivered'` completes
  *     the M11 order when its kind is `supply`/`comfort_kit`, and explicitly does NOT for `dme`.
@@ -202,15 +202,12 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           payload: { patientId, assessmentId, ruleId: "esas_symptom_ge_7" },
         });
 
-        const raw = await redis.get(`wardenx:m11:orders:suggestion:${patientId}`);
-        // Release A dual-write: the chartwarden: copy is byte-identical and carries the same 7-day TTL.
-        expect(await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`)).toBe(raw);
-        for (const key of [
-          `wardenx:m11:orders:suggestion:${patientId}`,
-          `chartwarden:m11:orders:suggestion:${patientId}`,
-        ]) {
-          expect(await redis.ttl(key)).toBeGreaterThan(7 * 86_400 - 60);
-        }
+        const raw = await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`);
+        // Release C: only the chartwarden key is written, with the 7-day TTL.
+        expect(await redis.exists(`wardenx:m11:orders:suggestion:${patientId}`)).toBe(0);
+        expect(await redis.ttl(`chartwarden:m11:orders:suggestion:${patientId}`)).toBeGreaterThan(
+          7 * 86_400 - 60,
+        );
         const banner = JSON.parse(raw as string);
         expect(banner).toHaveLength(1);
         expect(banner[0]).toMatchObject({
@@ -238,45 +235,29 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         await suggestionConsumer.handle(event);
         await suggestionConsumer.handle(event);
 
-        const raw = await redis.get(`wardenx:m11:orders:suggestion:${patientId}`);
+        const raw = await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`);
         expect(JSON.parse(raw as string)).toHaveLength(1);
         expect(await outboxRows(ORG_A, "m11.order.suggestion_state_changed")).toEqual(
           expect.arrayContaining([expect.objectContaining({ payload: expect.anything() })]),
         );
       });
 
-      it("release B: a legacy-only banner (written before release A) still dedups a redelivery and is migrated forward", async () => {
+      it("release C: a legacy-only banner is ignored (not read, not rewritten)", async () => {
         const patientId = "aaaaaaaa-1000-4000-8000-0000000000f1";
         const assessmentId = "aaaaaaaa-1000-4000-8000-0000000000f2";
         const legacyKey = `wardenx:m11:orders:suggestion:${patientId}`;
         const newKey = `chartwarden:m11:orders:suggestion:${patientId}`;
-        const seeded = [
-          { triggeringId: assessmentId, suggestedKind: "comfort_kit" },
-        ];
-        await redis.set(legacyKey, JSON.stringify(seeded), "EX", 1_000);
+        const legacySeed = JSON.stringify([{ triggeringId: assessmentId, suggestedKind: "comfort_kit" }]);
+        await redis.set(legacyKey, legacySeed, "EX", 1_000);
 
-        // Redelivery of the SAME assessment: the legacy hit short-circuits, nothing is re-raised.
         await suggestionConsumer.handle({
           organizationId: ORG_A,
           payload: { patientId, assessmentId, ruleId: "painad_ge_4" },
         });
-        expect(JSON.parse((await redis.get(legacyKey)) as string)).toEqual(
-          seeded,
-        );
 
-        // A NEW assessment appends to the pre-A list and writes it to BOTH keys.
-        const second = "aaaaaaaa-1000-4000-8000-0000000000f3";
-        await suggestionConsumer.handle({
-          organizationId: ORG_A,
-          payload: { patientId, assessmentId: second, ruleId: "painad_ge_4" },
-        });
-        for (const key of [legacyKey, newKey]) {
-          const banner = JSON.parse((await redis.get(key)) as string);
-          expect(
-            banner.map((e: { triggeringId: string }) => e.triggeringId),
-          ).toEqual([assessmentId, second]);
-          expect(await redis.ttl(key)).toBeGreaterThan(7 * 86_400 - 60);
-        }
+        const banner = JSON.parse((await redis.get(newKey)) as string);
+        expect(banner.map((e: { triggeringId: string }) => e.triggeringId)).toEqual([assessmentId]);
+        expect(await redis.get(legacyKey)).toBe(legacySeed);
       });
 
       it("skips a non-qualifying rule id (below threshold)", async () => {
@@ -289,7 +270,6 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             ruleId: "unrelated_rule",
           },
         });
-        expect(await redis.get(`wardenx:m11:orders:suggestion:${patientId}`)).toBeNull();
         expect(await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`)).toBeNull();
       });
 
@@ -309,7 +289,6 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           payload: { patientId, assessmentId, ruleId: "esas_symptom_ge_7" },
         });
 
-        expect(await redis.get(`wardenx:m11:orders:suggestion:${patientId}`)).toBeNull();
         expect(await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`)).toBeNull();
       });
 
@@ -329,7 +308,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           payload: { patientId, assessmentId, ruleId: "esas_symptom_ge_7" },
         });
 
-        const raw = await redis.get(`wardenx:m11:orders:suggestion:${patientId}`);
+        const raw = await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`);
         expect(JSON.parse(raw as string)).toHaveLength(1); // org B's order never seen from org A's delivery
       });
     });

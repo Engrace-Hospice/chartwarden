@@ -1,9 +1,9 @@
-// wardenx -> chartwarden Valkey rename, release B: read the new key, fall back to the legacy key on a miss.
+// wardenx -> chartwarden Valkey rename, release C: the banner is read from the chartwarden key only.
 import type Redis from "ioredis";
 import { describe, expect, it } from "vitest";
-import { bannerKeys, readBanner } from "./m9-assessment-significant-change";
+import { bannerKey, readBanner } from "./m9-assessment-significant-change";
 
-const NEW = "chartwarden:m11:orders:suggestion:p1";
+const KEY = "chartwarden:m11:orders:suggestion:p1";
 const LEGACY = "wardenx:m11:orders:suggestion:p1";
 const entries = (id: string) => JSON.stringify([{ triggeringId: id }]);
 const fake = (seed: Record<string, string>) =>
@@ -13,26 +13,19 @@ const fake = (seed: Record<string, string>) =>
     },
   }) as unknown as Redis;
 
-describe("m11 suggestion banner keys", () => {
-  it("yields the legacy and new key for a patient", () => {
-    expect(bannerKeys("p1")).toEqual({ legacyKey: LEGACY, newKey: NEW });
+describe("m11 suggestion banner key", () => {
+  it("is the chartwarden key", () => {
+    expect(bannerKey("p1")).toBe(KEY);
   });
-});
-
-describe("m11 suggestion banner read (release B)", () => {
-  it("reads the new key when only it is present", async () => {
-    expect(await readBanner(fake({ [NEW]: entries("a") }), "p1")).toEqual([{ triggeringId: "a" }]);
+  it("reads the chartwarden key", async () => {
+    expect(await readBanner(fake({ [KEY]: entries("a") }), "p1")).toEqual([{ triggeringId: "a" }]);
   });
-  it("falls back to the legacy key when the new key misses (pre-release-A banner)", async () => {
-    expect(await readBanner(fake({ [LEGACY]: entries("old") }), "p1")).toEqual([
-      { triggeringId: "old" },
-    ]);
+  it("ignores a legacy-only banner", async () => {
+    expect(await readBanner(fake({ [LEGACY]: entries("old") }), "p1")).toEqual([]);
   });
-  it("returns an empty banner when both miss", async () => {
+  it("returns an empty banner on a miss and prefers the chartwarden key when both exist", async () => {
     expect(await readBanner(fake({}), "p1")).toEqual([]);
-  });
-  it("prefers the new key when both are present", async () => {
-    const r = fake({ [NEW]: entries("new"), [LEGACY]: entries("old") });
+    const r = fake({ [KEY]: entries("new"), [LEGACY]: entries("old") });
     expect(await readBanner(r, "p1")).toEqual([{ triggeringId: "new" }]);
   });
 });

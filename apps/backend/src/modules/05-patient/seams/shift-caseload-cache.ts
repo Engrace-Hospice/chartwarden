@@ -13,7 +13,7 @@
 // M5 reads" — a push cache, TTLed to the visit's own scheduled window, unioned additively with the
 // standing Phase-1 read.
 //
-// KEY SCHEME: one Valkey HASH per (org, clinician USER id) — `wardenx:m5:caseload-cache:<org>:<userId>`
+// KEY SCHEME: one Valkey HASH per (org, clinician USER id) — `chartwarden:m5:caseload-cache:<org>:<userId>`
 // — field = `visitId`, value = a small JSON `{patientId, expiresAt}`. Keyed on VISIT rather than on
 // patient: `m17.visit.unassigned`'s payload carries `visitId` (not a diff of the whole set), and the same
 // clinician can hold two concurrent shift-assigned visits for the SAME patient (a morning and an evening
@@ -47,26 +47,15 @@
 import type Redis from "ioredis";
 import type { CaseloadStore } from "./caseload-provider";
 
-// LEGACY(wardenx->chartwarden): remove after 1 day (SAFETY_TTL_SEC, 24 h) post release B.
-const LEGACY_KEY_PREFIX = "wardenx:m5:caseload-cache";
-const NEW_KEY_PREFIX = "chartwarden:m5:caseload-cache";
+const KEY_PREFIX = "chartwarden:m5:caseload-cache";
 /** Whole-key safety-net TTL, refreshed on every write — bounds memory even if an `.unassigned` delivery
  *  is lost. Per-entry expiry (below) is what actually governs correctness. */
 const SAFETY_TTL_SEC = 24 * 60 * 60; // 24h
 /** Grace window added past a visit's own `scheduledEndedAt`, for a visit that runs long. */
 const GRACE_MS = 2 * 60 * 60 * 1000; // 2h
 
-/** Release B: write/delete BOTH hashes (dual-write kept for rollback); READ the UNION of both (new field wins). Entries
- *  written before release A exist only in `legacyKey`, and the new hash is not a superset of legacy (A copied only the
- *  visit being written), so a new-only read would drop a still-valid shift assignment (an authorization input). */
-export function cacheKeys(
-  organizationId: string,
-  userId: string,
-): { legacyKey: string; newKey: string } {
-  return {
-    legacyKey: `${LEGACY_KEY_PREFIX}:${organizationId}:${userId}`,
-    newKey: `${NEW_KEY_PREFIX}:${organizationId}:${userId}`,
-  };
+export function cacheKey(organizationId: string, userId: string): string {
+  return `${KEY_PREFIX}:${organizationId}:${userId}`;
 }
 
 interface ShiftEntry {
@@ -90,13 +79,9 @@ export async function writeShiftAssignment(
     (Number.isFinite(parsedEndMs) ? parsedEndMs : Date.now()) + GRACE_MS,
   ).toISOString();
   const entry: ShiftEntry = { patientId, expiresAt };
-  const { legacyKey, newKey } = cacheKeys(organizationId, userId);
-  const serialised = JSON.stringify(entry);
-  // New key first, like every other family: if the second write fails the retry finds the fresher value in the key that wins the merge.
-  for (const key of [newKey, legacyKey]) {
-    await redis.hset(key, visitId, serialised);
-    await redis.expire(key, SAFETY_TTL_SEC);
-  }
+  const key = cacheKey(organizationId, userId);
+  await redis.hset(key, visitId, JSON.stringify(entry));
+  await redis.expire(key, SAFETY_TTL_SEC);
 }
 
 /** Remove one visit's shift-assignment entry (`m17.visit.unassigned`). A visit id absent from the hash —
@@ -107,11 +92,7 @@ export async function removeShiftAssignment(
   userId: string,
   visitId: string,
 ): Promise<void> {
-  const { legacyKey, newKey } = cacheKeys(organizationId, userId);
-  // One MULTI/EXEC: the union read must never see an unassigned visit in the hash that survived a half-done delete.
-  const results = await redis.multi().hdel(legacyKey, visitId).hdel(newKey, visitId).exec();
-  if (results === null) throw new Error("shift caseload unassign was not executed");
-  for (const [err] of results) if (err) throw err;
+  await redis.hdel(cacheKey(organizationId, userId), visitId);
 }
 
 async function readUnexpiredEntries(
@@ -121,9 +102,7 @@ async function readUnexpiredEntries(
 ): Promise<readonly ShiftEntry[]> {
   let raw: Record<string, string>;
   try {
-    const { legacyKey, newKey } = cacheKeys(organizationId, userId);
-    const [legacyRaw, newRaw] = await Promise.all([redis.hgetall(legacyKey), redis.hgetall(newKey)]);
-    raw = { ...legacyRaw, ...newRaw };
+    raw = await redis.hgetall(cacheKey(organizationId, userId));
   } catch {
     return []; // Redis unavailable — degrade to "no shift contribution" (see file header)
   }

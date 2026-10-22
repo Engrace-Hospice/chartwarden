@@ -3567,7 +3567,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     : null;
 
   // F-164 (#248) — M14's §4.5 "since last IDG" per-patient projection cache
-  // (`wardenx:m14:idg:since-last-idg:<patientId>`, 30-day TTL). A dedicated connection, the
+  // (`chartwarden:m14:idg:since-last-idg:<patientId>`, 30-day TTL). A dedicated connection, the
   // `orderSuggestionRedisClient` shape immediately above: low-traffic, non-hot-path, and a distinct
   // concern from every other client on this file's one-connection-per-concern convention.
   const m14SinceLastIdgRedisClient = queueConnection
@@ -3578,7 +3578,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     : null;
 
   // F-165 (#248, m24 group) — M5's `CaseloadStore` shift-assignment cache
-  // (`wardenx:m5:caseload-cache:<org>:<userId>`, per-entry TTL off each visit's own scheduled end). A
+  // (`chartwarden:m5:caseload-cache:<org>:<userId>`, per-entry TTL off each visit's own scheduled end). A
   // dedicated connection, the `orderSuggestionRedisClient`/`m14SinceLastIdgRedisClient` shape
   // immediately above: this one sits on the `CaseloadProvider` ABAC read path (see
   // `05-patient/seams/shift-caseload-cache.ts`'s header for why a read error there degrades rather
