@@ -29,8 +29,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 const PLAIN_CSRF_COOKIE_NAME = "chartwarden_csrf";
 /** ADR-0049 D4 — the host-only name used on per-tenant hosts (the `__Host-` prefix needs Secure + Path=/ + no Domain). */
 const HOST_ONLY_CSRF_COOKIE_NAME = "__Host-chartwarden_csrf";
-/** Pre-rename cookie name. Still accepted (and then expired) so a browser holding it is not locked out on deploy. */
-const LEGACY_CSRF_COOKIE_NAME = "wardenx_csrf";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -125,16 +123,7 @@ export function applyCsrfProtection(app: FastifyInstance, opts: CsrfOptions = {}
   // cookie for the very next, non-exempt mutation.
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     const cookies = parseCookies(request.headers.cookie);
-    const legacyToken = cookies[LEGACY_CSRF_COOKIE_NAME];
-    // Host-only mode never adopts the legacy cookie: a sibling tenant can plant a Domain-scoped one (cookie tossing).
-    let token = hostOnly ? cookies[CSRF_COOKIE_NAME] : (cookies[CSRF_COOKIE_NAME] ?? legacyToken);
-    if (legacyToken !== undefined) {
-      // Transition: stop the browser sending the legacy cookie; the new one carries the same value.
-      appendSetCookie(
-        reply,
-        `${LEGACY_CSRF_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure ? "; Secure" : ""}`,
-      );
-    }
+    let token = cookies[CSRF_COOKIE_NAME];
     if (!cookies[CSRF_COOKIE_NAME]) {
       token = token || randomBytes(32).toString("hex");
       const attrs = [

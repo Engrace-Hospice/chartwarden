@@ -176,14 +176,12 @@ describe("GAP-083 follow-up — BAA failures are distinguishable and operable", 
     if (r.ok) return;
     expect(r.error.status).toBe(401);
     expect(r.error.body.chartwarden_code).toBe("BAA_NOT_IN_FORCE");
-    expect(r.error.body.wardenx_code).toBe("BAA_NOT_IN_FORCE"); // deprecated alias still emitted
     expect(r.error.baaFailure).toMatchObject({ clientId: CLIENT, organizationId: ORG });
     expect(JSON.stringify(r.error)).not.toContain(SECRET);
     const bad = await mintFhirToken(mintDeps(seed()), { ...goodReq, clientSecret: "wrong" });
     expect(bad.ok).toBe(false);
     if (!bad.ok) {
       expect(bad.error.body.chartwarden_code).toBeUndefined();
-      expect(bad.error.body.wardenx_code).toBeUndefined();
       expect(bad.error.baaFailure).toBeUndefined();
     }
   });

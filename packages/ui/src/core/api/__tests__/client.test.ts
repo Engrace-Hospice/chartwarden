@@ -66,17 +66,6 @@ describe("createApiClient — CSRF token middleware (WX-PR-017)", () => {
     expect(requests[0]?.headers.get("X-CSRF-Token")).toBe("abc123");
   });
 
-  it("falls back to the legacy wardenx_csrf cookie until the server swaps it", async () => {
-    vi.stubGlobal("document", { cookie: "wardenx_csrf=old123" });
-    const { fetch, requests } = fetchCapturingRequest();
-    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
-    await client.POST(
-      "/api/v1/billing/claims/{id}/submit" as never,
-      { params: { path: { id: "claim-1" } } } as never,
-    );
-    expect(requests[0]?.headers.get("X-CSRF-Token")).toBe("old123");
-  });
-
   it("does not attach X-CSRF-Token to a GET", async () => {
     vi.stubGlobal("document", { cookie: "chartwarden_csrf=abc123" });
     const { fetch, requests } = fetchCapturingRequest();
