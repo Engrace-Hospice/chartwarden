@@ -35,3 +35,14 @@
   min-width: 0;
   min-height: 0;
 }
+
+/* WP 5.4 / WCAG 2.4.7 + 2.4.11: one visible keyboard focus ring for every interactive control in the workspace. A control own ring, where one exists, is more specific and wins. */
+.wx-messaging-page :is(a[href], button, input, select, textarea, summary, [role="button"], [role="tab"], [role="menuitem"], [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* WCAG 1.4.4 / 1.4.10: long words, ids and URLs wrap instead of forcing a horizontal scrollbar. */
+.wx-messaging-page {
+  overflow-wrap: anywhere;
+}

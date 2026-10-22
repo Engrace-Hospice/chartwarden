@@ -93,8 +93,8 @@
 
 .wx-attachment-chip button,
 .wx-attachment-open {
-  min-height: 2rem;
-  min-width: 2rem;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   border: 0;
   border-radius: var(--radius-lg);
   background: transparent;

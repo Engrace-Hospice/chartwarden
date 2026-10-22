@@ -197,7 +197,7 @@
 
 .wx-poll-dialog input[type="text"] {
   width: 100%;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-lg);

@@ -150,3 +150,22 @@
     white-space: nowrap;
   }
 }
+
+/* WP 5.4 (WCAG 1.4.10 reflow): 320 CSS px, i.e. 1280 px at 400% or 640 px at 200% zoom. Grid children may shrink and rows wrap; nothing scrolls horizontally. */
+@media (max-width: 400px) {
+  .wx-messaging-page {
+    min-height: 0;
+  }
+
+  .wx-messaging-thread-header {
+    flex-wrap: wrap;
+  }
+
+  .wx-message-copy {
+    max-width: 92%;
+  }
+
+  .wx-message-composer {
+    flex-wrap: wrap;
+  }
+}

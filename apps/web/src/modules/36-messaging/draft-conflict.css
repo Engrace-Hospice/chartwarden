@@ -40,7 +40,7 @@
 }
 
 .wx-draft-conflict-actions button {
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: 0 0.75rem;
   border: 1px solid var(--color-card-border);
   border-radius: 0.375rem;

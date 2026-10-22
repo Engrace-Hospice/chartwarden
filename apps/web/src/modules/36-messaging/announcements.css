@@ -90,7 +90,7 @@
 .wx-department-form select,
 .wx-department-form input,
 .wx-channel-members select {
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius-md);

@@ -59,7 +59,7 @@
 
 .wx-msg-search-input {
   flex: 1;
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-md);
@@ -71,8 +71,8 @@
 .wx-msg-search-close {
   display: inline-grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -104,7 +104,7 @@
 
 .wx-msg-search-filters select,
 .wx-msg-search-filters input[type="date"] {
-  min-height: 1.75rem;
+  min-height: 2.75rem;
   padding: 0.1rem 0.4rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-md);

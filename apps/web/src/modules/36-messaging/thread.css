@@ -79,7 +79,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   padding: 0 0.65rem;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-md);
