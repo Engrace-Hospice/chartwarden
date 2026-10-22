@@ -62,9 +62,11 @@ docker compose --env-file .env.production -f compose.yml config > ~/compose.reso
 The PR `chore/infra-final-rename` flips every default to `chartwarden`: `/opt/chartwarden` (`deploy.yml`, `reseed-production.yml`,
 `deploy.sh`, `smoke.sh`, docs), compose project `chartwarden`, volume prefix default `chartwarden`, MinIO policy default
 `chartwarden-app`, `smoke.sh` hosts `app./api.chartwarden.cloud`. It REMOVES the code that appended `CHARTWARDEN_DB_NAME=wardenx`
-to `.env.production`, so after the merge the host env must name its database itself. `main` auto-deploys, so complete these on the
-host first, in this order, then merge:
+to `.env.production`, so after the merge the host env must name its database itself. `main` auto-deploys, so complete these in this order, then merge:
 
+0. PR #568 (`fix/cosign-default-identity`) is merged FIRST. The GitHub repository is already renamed to `Engrace-Hospice/chartwarden`, so every new
+   release is signed with the `.../chartwarden/...` identity; until #568 flips the `deploy.sh` default, `deploy.sh` rejects those signatures after the upload
+   and restores the previous release (safe, but nothing deploys). This PR is rebased on #568 and does not touch the cosign default.
 1. Step C (below) done: `/opt/chartwarden` is the real directory (`/opt/wardenx` may remain as a symlink to it) and holds
    `.env.production` with `CHARTWARDEN_VOLUME_PREFIX=wardenx` and `CHARTWARDEN_COMPOSE_PROJECT=chartwarden`.
 2. The database name is explicit in `/opt/chartwarden/.env.production`. If the DB is still `wardenx` (Step E not yet done), add the pin yourself:
@@ -87,14 +89,18 @@ Read-only, exit 67, fails closed. It runs (a) in the `deploy.yml` and `reseed-pr
 SSH BEFORE any scp, mkdir or chmod, so a refused cutover leaves the host exactly as it was, and (b) from `deploy.sh` for manual deploys and rollbacks.
 Checks, in order:
 - the deploy dir and its `.env.production` exist; `docker info` works (a down daemon is a refusal, not a pass);
-- layout: the real directory must be `/opt/chartwarden`. The reverse (real `/opt/wardenx`, `/opt/chartwarden` a symlink or empty) and a live real
-  `/opt/wardenx` with an env file beside a different deploy dir are refused. Supported: real `/opt/chartwarden`, optional symlink `/opt/wardenx` -> it;
+- layout: refused if a real (non-symlink) `/opt/wardenx` holding a `.env.production` exists while the deploy dir is a different directory, or if the
+  deploy dir itself resolves (`pwd -P`) to `/opt/wardenx`, i.e. `/opt/chartwarden` is only a symlink to it. Supported: real `/opt/chartwarden` with an
+  optional `/opt/wardenx` symlink to it (or no `/opt/wardenx` at all);
 - if any `*_postgres-data` volume exists, `${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data` must exist;
 - if postgres containers of another compose project exist and none of the configured project does, refuse (no second stack);
 - when ANY existing postgres volume or container is found: `CHARTWARDEN_DB_NAME`, `CHARTWARDEN_SMOKE_APP_URL` and `CHARTWARDEN_SMOKE_API_URL` must be set
   explicitly (env or `.env.production`); defaults are only for fresh installs;
 - if the configured project's postgres container is running (found by compose label, so unset `${X:?}` variables cannot hide it), the configured database
-  must be listed in `pg_database`; if it is stopped, the explicit key above is the evidence and the check passes.
+  must be listed in `pg_database`; if it is stopped, only the presence of the explicit key is checked (the database itself cannot be queried), so start
+  postgres before the merge if you want the database verified.
+- Values are read the way Compose reads them: last assignment wins, a trailing CR, surrounding quotes and an inline ` #` comment are stripped; a key with an
+  empty value counts as unset.
 A fresh host (no volumes, no containers) passes. Each refusal names the fix.
 
 Rollback after a merge that went wrong: revert the PR (or set the repository variable `DEPLOY_DIR` back) and keep the host env keys pointing at the live names.
@@ -124,7 +130,7 @@ Execute only with the user's go-ahead. Facts observed read-only on 2.25.109.137 
 | `smoke.sh` probe URLs | (b) | `.env.production` keys `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, default `https://app.`/`api.chartwarden.cloud`; the preflight requires both keys on an existing stack | set both (legacy hosts are fine) before the merge, flip them in Step D |
 | MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_wardenx`), `wardenx-minio-admin` root user | kept | internal ids, never user-visible; changing the env KEY recreates MinIO | leave; optional rename later, which only takes effect on a MinIO recreate |
 | `wardenx-*` bucket ARNs in the policy, old buckets, `wardenx-app` policy/account | held | additive policy still allows both prefixes | Step F, only after the rollback window |
-| Repo-name strings (`CLAUDE.md`/`AGENTS.md`, issue-template link, README clone URLs) | follow-up | unchanged (the new repo name does not exist yet) | Step G (remaining part), a commit AFTER the repo rename |
+| Repo-name strings (`CLAUDE.md`/`AGENTS.md`, issue-template link, README clone URLs) | follow-up | unchanged text (the repository is already renamed to `chartwarden`; only docs still say `wardenx`) | Step G (remaining part), a docs-only commit |
 | cron / systemd / logrotate / pgbackrest / sudoers | n/a | none exist for `wardenx` on the host (host) and none are in the repo | none |
 
 Host facts (host): containers `wardenx-{postgres,valkey,minio,clamav,api,worker,web,docling-worker}-1`; volumes
@@ -146,16 +152,16 @@ Despite the letter, this PR merges after Steps C, D and E-or-the-manual-pin, per
 `docker ps` shows the `chartwarden-*` containers, `docker volume ls` the unchanged `wardenx_*` volumes, `grep -c '^CHARTWARDEN_DB_NAME=' .env.production`
 prints 1. Downtime: the normal deploy recreate only.
 
-### Step B - GitHub repository rename (Phase 2 below)
+### Step B - GitHub repository rename (DONE: now `Engrace-Hospice/chartwarden`)
 
-Independent of the final-rename PR. The cosign identity is the one coupling (see Phase 2): BEFORE renaming, add to `/opt/chartwarden/.env.production` the line
-`CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
-(new name first; the old one is only needed while a pre-rename release may still be rolled back to). Rename, deploy once, then land
-the Step G commit (default flips to the chartwarden identity) and REMOVE the line from `.env.production`. Do not leave it set:
-an identity that is listed is trusted. Security prerequisite: the org must prevent anyone from recreating a repository named
-`wardenx` (or any retired name) after the rename; keep the GitHub redirect in place by never creating a repo with the old
-name, and restrict repository creation to org owners. Rollback: delete the line, rename the repo back.
-Then land the remaining Step G commit.
+The rename has happened. The one coupling is the cosign certificate identity, which embeds `<owner>/<repo>`: releases signed after the rename carry
+`.../Engrace-Hospice/chartwarden/...`, releases signed before it carry `.../Engrace-Hospice/wardenx/...`. PR #568 flips the `deploy.sh` default to the
+`chartwarden` identity and MUST merge before anything else deploys (otherwise cosign verification fails after the upload and `deploy.sh` restores the
+previous release). A rollback to an image signed BEFORE the rename needs a time-boxed opt-in on the host: add to `/opt/chartwarden/.env.production`
+`CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`,
+roll back, then REMOVE the line again: an identity that is listed is trusted. Security prerequisite: the org must prevent anyone from recreating a
+repository named `wardenx` (or any retired name); keep the GitHub redirect in place by never creating a repo with the old name, and restrict repository
+creation to org owners.
 
 ### Step C - Host cutover: project, directory, MinIO names (downtime about 2-4 minutes)
 
@@ -275,16 +281,16 @@ because the last one wins, but keep one).
 - Remove the `/opt/wardenx` symlink, the legacy redirects/DNS/certificate (Step D), the `wardenx-*` GHCR packages,
   `_wardenx_migration` view (other owner).
 
-### Step G - Remaining follow-up commit AFTER Step B (the host-default flips shipped in the final-rename PR)
+### Step G - Remaining docs follow-up commit (Step B is done) (the host-default flips shipped in the final-rename PR)
 
 Already done by the final-rename PR: compose project/volume-prefix/policy defaults, `smoke.sh` host fallbacks, the `/opt/chartwarden` workflow fallbacks.
 Still to do, only once the host and the repository match:
 
-- Repo-name strings after Step B: `CLAUDE.md` and `AGENTS.md` (copy verbatim) line "Issue tracker: ... `Engrace-Hospice/wardenx`", `.github/ISSUE_TEMPLATE/config.yml`
+- Repo-name strings: `CLAUDE.md` and `AGENTS.md` (copy verbatim) line "Issue tracker: ... `Engrace-Hospice/wardenx`", `.github/ISSUE_TEMPLATE/config.yml`
   line 4 (the `blob/develop` link), `deploy/production/README.md` rollback image examples, `docs/START_PROJECT.md` clone URLs,
   `docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` cosign identities. Leave `fabwebdev/wardenx` (a different, pre-migration
-  repository) and dated history/audit documents alone. Flip the `deploy.sh` default identity to `.../chartwarden/...` here, then delete `CHARTWARDEN_COSIGN_IDENTITY` from the host's `.env.production`
-  (a rollback to a pre-rename release needs the old identity re-added as a one-off, then removed).
+  repository) and dated history/audit documents alone. The `deploy.sh` default identity is already `.../chartwarden/...` (#568); make sure `CHARTWARDEN_COSIGN_IDENTITY` is NOT set on the host's `.env.production`
+  except during a rollback to a pre-rename image (Step B).
 - Optionally the MinIO audit-webhook suffix and root user (see table); only together with a planned MinIO recreate.
 
 The numbered Phases below are the detailed reference for each area; where they disagree with the plan above, the plan above wins.
@@ -296,20 +302,21 @@ so do not merge to `main` during the window.
 
 Preconditions: no deploy running; no open release; org-owner rights; `gh auth status` ok.
 
+Status: the rename is DONE (the repository is `Engrace-Hospice/chartwarden`). What follows is the record plus the still-relevant coupling.
+
 Important coupling: the cosign certificate identity embeds `<owner>/<repo>`. Signatures made BEFORE the
 rename carry `.../Engrace-Hospice/wardenx/...`; signatures made AFTER carry `.../chartwarden/...`.
-`deploy.sh` trusts only the identities in `CHARTWARDEN_COSIGN_IDENTITY` (env or `.env.production`), default the current
-`.../wardenx/...` one only, and also checks the certificate's repository claim. So:
+`deploy.sh` trusts only the identities in `CHARTWARDEN_COSIGN_IDENTITY` (env or `.env.production`), default (after #568) the
+`.../chartwarden/...` one only, and also checks the certificate's repository claim. So:
 
-1. BEFORE the rename: set `CHARTWARDEN_COSIGN_IDENTITY` in `.env.production` to both identities (Step B above).
-2. Rename (GitHub keeps web + git redirects, but NOT Actions OIDC claims):
+1. PR #568 (default identity -> `chartwarden`) must be merged before the next deploy. Without it `deploy.sh` rejects the new signatures after the upload
+   and restores the previous release.
+2. Rename (done; GitHub keeps web + git redirects, but NOT Actions OIDC claims):
    `gh api -X PATCH repos/Engrace-Hospice/wardenx -f name=chartwarden`
 3. Update local remotes everywhere: `git remote set-url origin git@github.com:Engrace-Hospice/chartwarden.git`.
-4. The first release after the rename signs with the new identity (accepted through the opt-in above). Merge the Step G
-   commit that flips the default as the FIRST commit after the rename and then delete the env line; the release job's own `cosign verify` uses `${GITHUB_REPOSITORY}`
-   and needs no edit. The VPS `deploy.sh` is re-uploaded on every deploy, so no VPS edit is needed.
-   If you deploy after the rename without the opt-in from step 1, `deploy.sh` rejects the new signatures and restores the
-   previous release (safe, but the release is not deployed).
+4. A rollback to an image signed before the rename needs `CHARTWARDEN_COSIGN_IDENTITY` set to include the old `.../wardenx/...` identity as a
+   time-boxed opt-in (Step B), removed afterwards. The release job's own `cosign verify` uses `${GITHUB_REPOSITORY}` and needs no edit. The VPS
+   `deploy.sh` is re-uploaded on every deploy, so no VPS edit is needed.
 5. Update repo references: `gh` issue-tracker docs (`docs/agents/issue-tracker.md`, another owner),
    `CLAUDE.md`/`AGENTS.md` (verbatim copies), badges, `.archon/workflows`, branch protection / required
    status checks (re-save, check names are unchanged), GitHub Environments `production` (kept on rename),
@@ -324,7 +331,7 @@ Verification: `gh repo view Engrace-Hospice/chartwarden`; push a no-op commit to
 starts; after the first `main` release, `cosign verify ghcr.io/engrace-hospice/chartwarden@<digest>
 --certificate-identity <new identity> --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
 
-Rollback: `gh api -X PATCH repos/Engrace-Hospice/chartwarden -f name=wardenx`, revert the identity
+Rollback of the rename (not planned): `gh api -X PATCH repos/Engrace-Hospice/chartwarden -f name=wardenx`, revert the identity
 commit. Caveat: do NOT create a new repo named `wardenx` in the org after renaming; it would break the
 old-name redirect.
 

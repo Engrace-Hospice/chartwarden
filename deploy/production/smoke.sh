@@ -162,7 +162,7 @@ ok "web serving on 8080"
 echo "tier 3 — public ingress"
 # An exported variable wins, then a key in .env.production (so the hostname flip of the infra-rename cutover is one
 # env edit and the post-deploy smoke follows it), then the chartwarden hosts.
-env_value() { sed -n "s/^$1=//p" .env.production | tail -n 1; }
+env_value() { sed -n "s/^$1=//p" .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//'; }
 app_url=${CHARTWARDEN_SMOKE_APP_URL:-$(env_value CHARTWARDEN_SMOKE_APP_URL)}
 api_url=${CHARTWARDEN_SMOKE_API_URL:-$(env_value CHARTWARDEN_SMOKE_API_URL)}
 app_url=${app_url:-https://app.chartwarden.cloud}

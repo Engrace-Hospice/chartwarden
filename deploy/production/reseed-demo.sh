@@ -29,7 +29,7 @@ fi
 
 dc() { docker compose --env-file .env.production -f compose.yml "$@"; }
 # Same resolution + validation as deploy.sh (exported variable > .env.production > default).
-db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
+db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
 db_name=${db_name:-chartwarden}
 case "$db_name" in
   '' | [!a-z_]* | *[!a-z0-9_]*)

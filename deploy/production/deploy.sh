@@ -51,7 +51,7 @@ fi
 # The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-chartwarden}). It is interpolated into
 # connection URLs and psql/pg_dump arguments, so fail fast unless it is a plain lower-case identifier.
 # An exported variable wins over .env.production, exactly as it does for compose interpolation.
-db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
+db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
 db_name=${db_name:-chartwarden}
 case "$db_name" in
   '' | [!a-z_]* | *[!a-z0-9_]*)
@@ -70,6 +70,7 @@ esac
 # new compose.yml against the restored env file) interpolates cleanly. Existing values are never touched.
 ensure_secret() {
   if ! grep -q "^$1=" .env.production; then
+    [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
     printf '%s=%s\n' "$1" "$2" >> .env.production
     echo "generated $1 in .env.production"
   fi
@@ -173,7 +174,7 @@ restore_previous_release() {
 # one (the GitHub rename, INFRA_RENAME_RUNBOOK.md Step B) is an explicit, time-boxed opt-in: set CHARTWARDEN_COSIGN_IDENTITY
 # (space-separated for several) in the environment or in .env.production, and remove it again afterwards. Never leave an old
 # or future repository name listed: whoever could recreate that repository could then sign images this host accepts.
-cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1)}
+cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
 cosign_identities=${cosign_identities:-https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main}
 cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
 
