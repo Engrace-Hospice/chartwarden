@@ -5,7 +5,7 @@
 // `DoseSpotClient.upsertPatient` payload + the job idempotency key `patient:${patientId}:${updatedAt}` (which
 // coalesces same-state re-syncs, §2.6), and folds an upsert outcome into the retry/escalation decision. No
 // reverse sync: a demographic mismatch raises an M36 alert, never a silent overwrite (§2.6). IO-free; the
-// upstream upsert is keyed on `wardenxPatientId` so repeated calls are no-ops at DoseSpot's side.
+// upstream upsert is keyed on `chartwardenPatientId` so repeated calls are no-ops at DoseSpot's side.
 import type { M12AlertPayload, M12EventName } from "@chartwarden/types";
 import type { DoseSpotPatientPayload } from "../client/contract";
 
@@ -46,12 +46,12 @@ export function patientSyncIdempotencyKey(patientId: string, updatedAt: string):
 
 /**
  * `buildPatientUpsertPayload` — project the M5 snapshot into the {@link DoseSpotPatientPayload} the adapter's
- * `upsertPatient(orgId, payload, idempotencyKey)` consumes. `wardenxPatientId` is the upstream upsert key
+ * `upsertPatient(orgId, payload, idempotencyKey)` consumes. `chartwardenPatientId` is the upstream upsert key
  * (§2.6 — repeated calls are no-ops at DoseSpot). Pure structural map; no IO, no clock.
  */
 export function buildPatientUpsertPayload(snapshot: PatientSyncSnapshot): DoseSpotPatientPayload {
   return {
-    wardenxPatientId: snapshot.patientId,
+    chartwardenPatientId: snapshot.patientId,
     firstName: snapshot.firstName,
     lastName: snapshot.lastName,
     dateOfBirth: snapshot.dateOfBirth,

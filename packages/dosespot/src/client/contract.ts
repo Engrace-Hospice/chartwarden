@@ -8,9 +8,9 @@
 // adapter-internal (mirrors the iqies-client envelope precedent) — the DTOs never cross a seam in this form.
 
 /** §2.6 D4 — the DoseSpot patient upsert payload (a demographic projection of the M5 patient snapshot; the
- * upstream API upserts keyed on `wardenxPatientId`, so repeated calls are no-ops, §2.6). */
+ * upstream API upserts keyed on `chartwardenPatientId`, so repeated calls are no-ops, §2.6). */
 export interface DoseSpotPatientPayload {
-  readonly wardenxPatientId: string;
+  readonly chartwardenPatientId: string;
   /** The DoseSpot-side patient id when one is already recorded (`dosespot_patient_sync`): the adapter then
    * EDITS that patient rather than creating a duplicate. Absent ⇒ the adapter creates. */
   readonly existingDosespotPatientId?: string;

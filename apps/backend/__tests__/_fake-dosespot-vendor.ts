@@ -58,7 +58,7 @@ export class FakeDoseSpotVendor implements DoseSpotClient {
     this.calls.push({ method: "upsertPatient", orgId, payload });
     return {
       dosespotPatientId:
-        this.script.dosespotPatientId ?? `ds-${payload.wardenxPatientId.slice(0, 8)}`,
+        this.script.dosespotPatientId ?? `ds-${payload.chartwardenPatientId.slice(0, 8)}`,
       upsertedAt: new Date().toISOString(),
     };
   }
