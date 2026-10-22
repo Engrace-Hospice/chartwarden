@@ -91,7 +91,10 @@ import {
 } from "../src/modules/36-messaging/messaging-route-service-db";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/global-search-routes";
-import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
+import {
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+  registerMessagingRoutes,
+} from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 // F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
@@ -519,6 +522,12 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       if (!channelId || !ctx.organizationId || !ctx.userId) return false;
       return routeService.canViewChannel(ctx.organizationId, ctx.userId, channelId);
     });
+    // ADR-0087: the history GET (message list) gates on the read variant, membership OR a live break-glass grant.
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return routeService.canReadChannel(ctx.organizationId, ctx.userId, channelId);
+    });
     registerAbacRegistry(registry);
     app = buildApp(true, { history: true });
     appNoLimiter = buildApp(false);
@@ -769,7 +778,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         [ORG_A, ch.id, late],
       );
       await send(ORG_A, ch.id, early, "Prejoinhistoryword three", { at: "2026-02-02T10:00:00Z" });
-      // The history read path = the route guard (channel_visibility -> canViewChannel) + listMessages, exactly as served.
+      // The history read path = the route guard (channel_visibility_read -> canReadChannel) + listMessages, exactly as served.
       const historySet = async (user: string) => {
         const res = await app.inject({
           method: "GET",

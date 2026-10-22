@@ -94,6 +94,7 @@ import { registerGlobalSearchSettingsRoutes } from "../src/modules/36-messaging/
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
   channelMemberAdminPredicate,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
@@ -115,7 +116,15 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROUTES_DIR = join(__dirname, "../src/modules/36-messaging/routes");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+// chartwarden_destruction is cluster-global and created by 0157/1139: a second applyMigrations in the same cluster (the realtime
+// block below) fails at 1142 unless it is dropped between runs, like the other live suites do.
+const ROLES = [
+  "chartwarden_destruction",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = randomBytes(32);
 const ORIGIN = "https://app.chartwarden.test";
 const SECRET_BODY = "WP17-SECRET-BODY-must-never-appear-in-an-error";
@@ -410,6 +419,14 @@ const REGISTRAR_FILES = [
   "session-device-typebox.ts", // schemas only
   "offboarding-routes.ts", // WP 5.9 workforce offboarding (preview and execute; officer bounded to the organisation)
   "offboarding-typebox.ts", // schemas only
+  // Registrars mounted by the composition root (index.ts), not by `registeredRoutes` above: they need a real service graph (flags, step-up,
+  // artefact store), so their route-level cross-tenant proof lives in each feature's own live suite, run as chartwarden_app on real RLS.
+  "retention-governance-routes.ts", // WP 5.6 legal hold: org-wide, officer-only; foreign/unknown hold is one 404 - m36-retention-governance.live "CROSS-TENANT"
+  "retention-governance-typebox.ts", // schemas only
+  "export-routes.ts", // WP 5.7 restricted export: job get/approve/reject/cancel/download are 404 across orgs - m36-export.live "another organisation"
+  "export-typebox.ts", // schemas only
+  "break-glass-routes.ts", // WP 5.8 break-glass: open/end/review/complete are the random-id 404 across orgs - m36-break-glass.live "CROSS-TENANT"
+  "break-glass-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
@@ -804,6 +821,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const channelId = typeof target.id === "string" ? target.id : null;
       if (!channelId || !ctx.organizationId || !ctx.userId) return false;
       return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+    });
+    // ADR-0087: the read GETs (detail, message list, thread) gate on membership OR a live break-glass grant.
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
     // WP 3.2: the attackers HOLD the order permission and pass this scope; only channel visibility / tenancy can stop them.
