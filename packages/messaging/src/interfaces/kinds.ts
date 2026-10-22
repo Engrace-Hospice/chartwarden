@@ -221,6 +221,9 @@ export type NotificationStatus =
 /** Out-of-band channels a user can register a delivery endpoint on (§3.5). */
 export type DeliveryEndpointChannel = "push" | "sms" | "email";
 
+/** Who delivers a push endpoint (WP 5.11): a browser Web Push subscription, an FCM token (Android) or an APNs token (iOS). */
+export type DeliveryEndpointProvider = "web" | "fcm" | "apns";
+
 /** Endpoint verification lifecycle (§3.5). */
 export type DeliveryEndpointVerification = "verified" | "pending" | "expired";
 

@@ -1,16 +1,3 @@
-// apps/backend/src/modules/36-messaging/routes/messaging-typebox.ts — M36-T07 complete TypeBox
-// route schemas for the messaging / notification / alert-rule API surface (M36 spec §4.1–4.2).
-// Named `messaging-typebox` (not `*schema*`) so the table-ownership import heuristic never
-// mistakes a TypeBox-schema import for a Drizzle one.
-//
-// Validation runs through TypeBox's `Value` (not the Fastify ajv pipeline) so a bad request fails
-// with M1's `VALIDATION_FAILED` envelope — the same house style M1/M2/M3/M4/M38 routes use — and
-// query-string scalars are coerced (`limit=50` → 50, `upTo=true` → true) before the shape check.
-// Routing-map / quiet-hours SEMANTICS (unknown category/severity/channel → INVALID_ROUTING_MAP)
-// are validated in the service, not here: the structural schema accepts the record shape and the
-// service maps an unknown key to the §4.2 422 domain error.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { CHANNEL_KINDS } from "@chartwarden/messaging";
 import type {
   AlertInboxItem as ServiceAlertInboxItem,
@@ -24,6 +11,19 @@ import type {
   ResolvedMessage as ServiceResolvedMessage,
 } from "@chartwarden/messaging";
 import { MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
+// apps/backend/src/modules/36-messaging/routes/messaging-typebox.ts — M36-T07 complete TypeBox
+// route schemas for the messaging / notification / alert-rule API surface (M36 spec §4.1–4.2).
+// Named `messaging-typebox` (not `*schema*`) so the table-ownership import heuristic never
+// mistakes a TypeBox-schema import for a Drizzle one.
+//
+// Validation runs through TypeBox's `Value` (not the Fastify ajv pipeline) so a bad request fails
+// with M1's `VALIDATION_FAILED` envelope — the same house style M1/M2/M3/M4/M38 routes use — and
+// query-string scalars are coerced (`limit=50` → 50, `upTo=true` → true) before the shape check.
+// Routing-map / quiet-hours SEMANTICS (unknown category/severity/channel → INVALID_ROUTING_MAP)
+// are validated in the service, not here: the structural schema accepts the record shape and the
+// service maps an unknown key to the §4.2 422 domain error.
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { ClinicalLinkViewSchema } from "./clinical-link-typebox";
 
 // --- shared scalars ---------------------------------------------------------------------------
@@ -218,6 +218,10 @@ export const PreferencesBodySchema = Type.Object({
 export const RegisterEndpointBodySchema = Type.Object({
   channel: Type.Union([Type.Literal("push"), Type.Literal("sms"), Type.Literal("email")]),
   target: Type.String({ minLength: 1, maxLength: 512 }),
+  // WP 5.11: push only. Absent = `web` (a browser subscription). `fcm`/`apns` carry a bare native device token in `target`.
+  provider: Type.Optional(
+    Type.Union([Type.Literal("web"), Type.Literal("fcm"), Type.Literal("apns")]),
+  ),
 });
 
 export const EndpointParamsSchema = Type.Object({ id: Id });

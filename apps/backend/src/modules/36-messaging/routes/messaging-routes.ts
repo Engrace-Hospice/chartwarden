@@ -28,13 +28,15 @@ import {
   requirePermission,
   resolveActorPermissions,
 } from "@chartwarden/auth";
+import { isValidNativePushToken, parseNativeDestination } from "@chartwarden/messaging";
 import type {
   AnnouncementService,
   MemberAdminActor,
   MessagingRouteService,
 } from "@chartwarden/messaging";
-import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
 import { resolveRichWrite } from "../rich-body-codec";
 import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
@@ -110,7 +112,6 @@ import {
   type SnoozeReminderRouteDeps,
   registerSnoozeReminderRoutes,
 } from "./snooze-reminder-routes";
-import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import {
   DISABLED_UNACKNOWLEDGED,
@@ -885,9 +886,29 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const body = parse(RegisterEndpointBodySchema, request.body);
       // WP 5.5: link the endpoint to the session that registers it, so revoking that session expires it. Server-side context only.
       const sessionId = request.context.attributes?.sessionId;
+      const provider = body.provider ?? "web";
+      if (provider === "web" && parseNativeDestination(body.target) !== null)
+        throw new ChartWardenError(
+          "VALIDATION_FAILED",
+          "a native push destination must be registered with its provider",
+          422,
+        );
+      if (provider !== "web") {
+        // A native token is only meaningful on the push channel, must look like that provider's token, and must be linked to the
+        // registering session so a session revoke can expire it (fail closed: an unlinked native token would outlive a lost phone).
+        if (body.channel !== "push" || !isValidNativePushToken(provider, body.target))
+          throw new ChartWardenError("VALIDATION_FAILED", `invalid ${provider} push token`, 422);
+        if (typeof sessionId !== "string" || sessionId === "")
+          throw new ChartWardenError(
+            "VALIDATION_FAILED",
+            "a native push endpoint must be registered from a signed-in session",
+            422,
+          );
+      }
       const result = await service.registerEndpoint(organizationId, userId, {
         channel: body.channel,
         target: body.target,
+        ...(provider !== "web" ? { provider } : {}),
         ...(typeof sessionId === "string" && sessionId !== "" ? { sessionId } : {}),
       });
       return reply.code(201).send(result);

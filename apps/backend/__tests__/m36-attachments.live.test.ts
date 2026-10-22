@@ -65,6 +65,7 @@ import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
+import { CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/routes/messaging-routes";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -495,6 +496,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const channelId = typeof target.id === "string" ? target.id : null;
       if (!channelId || !ctx.organizationId || !ctx.userId) return false;
       return routeService.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+    });
+    // The read routes (message history/thread/etc.) gate on the READ predicate, not the write one.
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return routeService.canReadChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registerAbacRegistry(registry);
     const idempotencyStore: IdempotencyStore = createDbIdempotencyStore(handle.db);

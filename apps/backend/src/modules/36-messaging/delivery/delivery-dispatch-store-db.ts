@@ -21,6 +21,11 @@ import type {
   OutOfBandTransportChannel,
   ResolvedDestination,
 } from "@chartwarden/messaging";
+import {
+  PUSH_TOKEN_UNREGISTERED,
+  encodeNativeDestination,
+  parseNativeDestination,
+} from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { eq, sql } from "drizzle-orm";
 import { type DeliveryOutboxPort, type Tx, applyDeliveryTransition } from "./delivery-settlement";
@@ -84,6 +89,13 @@ export function createDrizzleDeliveryDispatchStore(
       );
     });
 
+  const expireDeadToken = (claim: ClaimedDelivery) =>
+    inOrg(claim.organizationId, async (tx) => {
+      await tx.execute(
+        sql`SELECT delivery_endpoint_expire_dead_token(${claim.organizationId}, ${claim.deliveryId})`,
+      );
+    });
+
   return {
     claimBatch(organizationId, channel, limit, now, leaseMs) {
       const leaseUntil = new Date(now.getTime() + leaseMs);
@@ -123,8 +135,13 @@ export function createDrizzleDeliveryDispatchStore(
 
     resolveDestination(claim) {
       return inOrg(claim.organizationId, async (tx) => {
-        const res = await tx.execute<{ endpoint_id: string; endpoint_value: string }>(sql`
-          SELECT endpoint_id, endpoint_value
+        const res = await tx.execute<{
+          endpoint_id: string;
+          endpoint_value: string;
+          provider: "web" | "fcm" | "apns";
+          alert_id: string;
+        }>(sql`
+          SELECT endpoint_id, endpoint_value, provider, alert_id
             FROM delivery_endpoint_for_delivery(${claim.organizationId}, ${claim.deliveryId})
         `);
         const row = res.rows[0];
@@ -132,7 +149,19 @@ export function createDrizzleDeliveryDispatchStore(
         // Remember which endpoint this attempt targets, so the health bookkeeping (and the webhook's audit
         // trail) can name it.
         await tx.update(ND).set({ endpointId: row.endpoint_id }).where(eq(ND.id, claim.deliveryId));
-        return { endpointId: row.endpoint_id, value: row.endpoint_value };
+        // A native endpoint stores a bare device token; the transport wants the token AND the alert hint, so encode both.
+        // A web row must never route to a native transport (the router sniffs the value): refuse native-looking web values.
+        if (row.provider === "web" && parseNativeDestination(row.endpoint_value) !== null)
+          return null;
+        const value =
+          row.provider === "web"
+            ? row.endpoint_value
+            : encodeNativeDestination({
+                provider: row.provider,
+                token: row.endpoint_value,
+                alertId: row.alert_id,
+              });
+        return { endpointId: row.endpoint_id, value };
       });
     },
 
@@ -172,7 +201,11 @@ export function createDrizzleDeliveryDispatchStore(
           now,
         }),
       );
-      if (endpointId) await recordEndpointResult(claim, false);
+      if (endpointId) {
+        await recordEndpointResult(claim, false);
+        // A dead native token will never work again: expire it (best-effort bookkeeping, like the health counter).
+        if (reason === PUSH_TOKEN_UNREGISTERED) await expireDeadToken(claim);
+      }
     },
   };
 }

@@ -27,7 +27,10 @@ import {
   CHANNEL_VISIBILITY_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/index";
-import { channelMemberAdminPredicate } from "../src/modules/36-messaging/routes/messaging-routes";
+import {
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+  channelMemberAdminPredicate,
+} from "../src/modules/36-messaging/routes/messaging-routes";
 
 /** Test-only auth shim: populate request.context from headers (mirrors terminology-routes.test). */
 function headerAuth(request: FastifyRequest): void {
@@ -179,6 +182,11 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
     const channelId = typeof target.id === "string" ? target.id : null;
     if (!channelId || !ctx.organizationId || !ctx.userId) return false;
     return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+  });
+  registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+    const channelId = typeof target.id === "string" ? target.id : null;
+    if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+    return service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
   });
   registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
   registerAbacRegistry(registry);
@@ -1158,6 +1166,52 @@ describe("M36-T07 messaging route inventory", () => {
       });
       expect(del.statusCode).toBe(204);
       await app.close();
+    });
+  });
+
+  describe("WP 5.11 native push registration", () => {
+    const register = async (payload: Record<string, unknown>) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/notifications/endpoints",
+        headers: RN1,
+        payload,
+      });
+      await app.close();
+      return res;
+    };
+
+    it("rejects a native provider on a non-push channel or with a malformed token", async () => {
+      const smsRes = await register({ channel: "sms", provider: "fcm", target: "+15555550123" });
+      expect(smsRes.statusCode).toBe(422);
+      const badFcm = await register({ channel: "push", provider: "fcm", target: "short" });
+      expect(badFcm.statusCode).toBe(422);
+      const badApns = await register({ channel: "push", provider: "apns", target: "not-hex!" });
+      expect(badApns.statusCode).toBe(422);
+    });
+
+    it("refuses a well-formed native token that is not tied to a signed-in session", async () => {
+      const res = await register({ channel: "push", provider: "apns", target: "ab".repeat(32) });
+      expect(res.statusCode).toBe(422);
+    });
+
+    it("refuses a native-shaped destination registered as a web endpoint", async () => {
+      const target = JSON.stringify({
+        provider: "apns",
+        token: "ab".repeat(32),
+        alertId: "11111111-1111-4111-8111-111111111111",
+      });
+      expect((await register({ channel: "push", target })).statusCode).toBe(422);
+    });
+
+    it("rejects an unknown provider and keeps the default web registration working", async () => {
+      expect(
+        (await register({ channel: "push", provider: "carrier-pigeon", target: "x" })).statusCode,
+      ).toBe(422);
+      expect(
+        (await register({ channel: "push", target: "https://push.example.test/x" })).statusCode,
+      ).toBe(201);
     });
   });
 

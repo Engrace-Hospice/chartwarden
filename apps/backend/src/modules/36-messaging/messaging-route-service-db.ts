@@ -2347,6 +2347,7 @@ export function createDbMessagingRouteService(
           verificationStatus: verified ? "verified" : "pending",
           verifiedAt: verified ? new Date() : null,
           sessionId: input.sessionId ?? null,
+          provider: input.provider ?? "web",
         });
         // WP 5.5: a browser re-subscribing with the same push endpoint after its session was revoked (the row is `expired`) must re-register
         // against the NEW session rather than fail on the unique index. Push only (it is browser-verified); sms/email keep the plain insert.
@@ -2356,6 +2357,7 @@ export function createDbMessagingRouteService(
               set: {
                 verificationStatus: "verified",
                 verifiedAt: new Date(),
+                provider: sql`excluded.provider`,
                 sessionId: sql`excluded.session_id`, // never keep a link to a session that may no longer exist
                 consecutiveFailures: 0,
               },

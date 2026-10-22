@@ -1,7 +1,11 @@
 // GAP-062 / GAP-063 — the env-gated binding of the out-of-band vendor transports and the endpoint-verification
 // sender. Driven with a fake fetch; the real adapters' wire behaviour is covered in packages/messaging.
-import { createECDH } from "node:crypto";
-import { TRANSPORT_NOT_CONFIGURED, sanitizeForOutOfBand } from "@chartwarden/messaging";
+import { createECDH, generateKeyPairSync } from "node:crypto";
+import {
+  TRANSPORT_NOT_CONFIGURED,
+  encodeNativeDestination,
+  sanitizeForOutOfBand,
+} from "@chartwarden/messaging";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { bindOutOfBandTransports } from "../src/modules/36-messaging/delivery/transport-binding";
@@ -190,5 +194,62 @@ describe("registerEndpoint without a verification sender (GAP-063)", () => {
         svc.registerEndpoint("org", "user", { channel, target: "x" }),
       ).rejects.toMatchObject({ code: "ENDPOINT_VERIFICATION_UNAVAILABLE", statusCode: 503 });
     }
+  });
+});
+
+// WP 5.11 / W6 — native push binds independently of Web Push; an unbound provider settles transport_not_configured.
+describe("native push binding", () => {
+  const { privateKey: apnsKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const apnsPem = apnsKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const APNS_ENV = {
+    APNS_KEY_P8: apnsPem.replace(/\n/g, "\\n"), // a one-line secret keeps newlines escaped
+    APNS_KEY_ID: "KEYID12345",
+    APNS_TEAM_ID: "TEAMID1234",
+    APNS_BUNDLE_ID: "com.example.app",
+  };
+  const destination = (provider: "fcm" | "apns") =>
+    encodeNativeDestination({
+      provider,
+      token: provider === "fcm" ? `${"a".repeat(40)}:token` : "ab".repeat(32),
+      alertId: "0b6f1d3e-9c1a-4b0e-8d57-2f6f4c1a7e11",
+    });
+
+  it("binds push on APNs alone and refuses an FCM destination", async () => {
+    const lines: string[] = [];
+    const b = bindOutOfBandTransports({ env: APNS_ENV, log: (l) => lines.push(l) });
+    expect(b.bound.push).toBe(true);
+    expect(b.missing.push).toEqual([]);
+    await denied(
+      b.transports.push.send({ notification: NOTIFICATION, destination: destination("fcm") }),
+    );
+    expect(lines.join("\n")).not.toContain(apnsPem);
+  });
+
+  it("names a partial APNs set without leaking values, and stays unbound", () => {
+    const lines: string[] = [];
+    const b = bindOutOfBandTransports({
+      env: { APNS_KEY_ID: "KEYID12345", APNS_TEAM_ID: "TEAMID1234" },
+      log: (l) => lines.push(l),
+    });
+    expect(b.bound.push).toBe(false);
+    const text = lines.join("\n");
+    expect(text).toContain("APNS_KEY_P8");
+    expect(text).not.toContain("KEYID12345");
+  });
+
+  it("does not bind on a malformed FCM service account", () => {
+    const lines: string[] = [];
+    const b = bindOutOfBandTransports({
+      env: { FCM_SERVICE_ACCOUNT_JSON: '{"private_key":"SECRET"}' },
+      log: (l) => lines.push(l),
+    });
+    expect(b.bound.push).toBe(false);
+    expect(lines.join("\n")).toContain("FCM_SERVICE_ACCOUNT_JSON");
+    expect(lines.join("\n")).not.toContain("SECRET");
+  });
+
+  it("keeps Web Push working when native providers are absent", () => {
+    const b = bindOutOfBandTransports({ env: FULL_ENV, log: () => {} });
+    expect(b.bound.push).toBe(true);
   });
 });

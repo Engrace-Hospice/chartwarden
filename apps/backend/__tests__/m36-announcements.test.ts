@@ -25,6 +25,7 @@ import {
   CHANNEL_VISIBILITY_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/index";
+import { CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/routes/messaging-routes";
 import { channelMemberAdminPredicate } from "../src/modules/36-messaging/routes/messaging-routes";
 
 function headerAuth(request: FastifyRequest): void {
@@ -98,6 +99,11 @@ function makeServer() {
     const channelId = typeof target.id === "string" ? target.id : null;
     if (!channelId || !ctx.organizationId || !ctx.userId) return false;
     return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+  });
+  registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+    const channelId = typeof target.id === "string" ? target.id : null;
+    if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+    return service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
   });
   registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
   registerAbacRegistry(registry);

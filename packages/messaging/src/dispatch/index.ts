@@ -33,6 +33,26 @@ export {
   encryptWebPushPayload,
 } from "./web-push-transport";
 export {
+  type ApnsOptions,
+  type ApnsRequest,
+  type ApnsResponse,
+  type FcmOptions,
+  type FcmServiceAccount,
+  type NativeDestination,
+  type NativePushProvider,
+  NATIVE_PUSH_BODY,
+  NATIVE_PUSH_TITLE,
+  NATIVE_PUSH_TYPE,
+  PUSH_TOKEN_UNREGISTERED,
+  createApnsTransport,
+  createFcmTransport,
+  createPushRouter,
+  encodeNativeDestination,
+  isValidNativePushToken,
+  parseFcmServiceAccount,
+  parseNativeDestination,
+} from "./native-push-transports";
+export {
   DELIVERY_CLAIM_LEASE_MS,
   DELIVERY_SWEEP_BATCH_LIMIT,
   DELIVERY_SWEEP_INTERVAL_MS,

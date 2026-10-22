@@ -11,21 +11,29 @@
 //             (the status-callback origin — without it a call/SMS could never leave `sent`),
 //             SMS: TWILIO_SMS_FROM (E.164) or TWILIO_MESSAGING_SERVICE_SID; VOICE: TWILIO_VOICE_FROM (E.164)
 //   Email   POSTMARK_SERVER_TOKEN, POSTMARK_FROM_ADDRESS, POSTMARK_SENDER_VERIFIED=true (same set as auth email)
-//   Push    VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY (base64url), VAPID_SUBJECT (mailto: or https:)
+//   Push    VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY (base64url), VAPID_SUBJECT (mailto: or https:)   [browser Web Push]
+//           FCM_SERVICE_ACCOUNT_JSON                                                              [Android, FCM v1]
+//           APNS_KEY_P8, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID, optional APNS_ENVIRONMENT=sandbox  [iOS, APNs]
+//           Any one binds `push`; an endpoint whose provider is not bound settles `transport_not_configured`.
 //
 // The same SMS/email adapters carry the §4.2 endpoint-verification code (GAP-063) via
 // {@link OutOfBandBinding.sendEndpointVerificationCode}.
 import {
+  type OutOfBandTransport,
   type OutOfBandTransportChannel,
   type OutOfBandTransports,
   type PostmarkAlertEmailOptions,
   type TwilioSmsOptions,
   type VendorFetch,
+  createApnsTransport,
   createDenyTransport,
+  createFcmTransport,
   createPostmarkAlertEmailTransport,
+  createPushRouter,
   createTwilioSmsTransport,
   createTwilioVoiceTransport,
   createWebPushTransport,
+  parseFcmServiceAccount,
   resolvePostmarkConfig,
   sendPostmarkEmail,
   sendTwilioSms,
@@ -74,6 +82,49 @@ function unavailable(channel: string): ChartWardenError {
     `${channel} verification is not available: the ${channel} delivery provider is not configured`,
     503,
   );
+}
+
+/** FCM v1 binds when FCM_SERVICE_ACCOUNT_JSON holds a usable service account. A set-but-unusable value is logged by NAME only. */
+function bindFcm(
+  env: Env,
+  fetchOpt: { fetch?: VendorFetch },
+  log: (line: string) => void,
+): OutOfBandTransport | undefined {
+  const raw = val(env, "FCM_SERVICE_ACCOUNT_JSON");
+  if (!raw) return undefined;
+  const serviceAccount = parseFcmServiceAccount(raw);
+  if (!serviceAccount) {
+    log(
+      "[m36:delivery] fcm transport NOT bound: FCM_SERVICE_ACCOUNT_JSON (malformed service account)",
+    );
+    return undefined;
+  }
+  return createFcmTransport({ serviceAccount, ...fetchOpt });
+}
+
+/** APNs binds only when the whole set is present and the key parses; a partial set is logged by NAME only. */
+function bindApns(env: Env, log: (line: string) => void): OutOfBandTransport | undefined {
+  const names = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID"] as const;
+  const present = names.filter((k) => val(env, k));
+  if (present.length === 0) return undefined;
+  const absent = need(env, names);
+  if (absent.length > 0) {
+    log(`[m36:delivery] apns transport NOT bound: ${absent.join(", ")}`);
+    return undefined;
+  }
+  try {
+    return createApnsTransport({
+      // A .p8 pasted into a one-line secret keeps its newlines as the two characters \n.
+      keyP8: (val(env, "APNS_KEY_P8") as string).replace(/\\n/g, "\n"),
+      keyId: val(env, "APNS_KEY_ID") as string,
+      teamId: val(env, "APNS_TEAM_ID") as string,
+      bundleId: val(env, "APNS_BUNDLE_ID") as string,
+      sandbox: val(env, "APNS_ENVIRONMENT") === "sandbox",
+    });
+  } catch {
+    log("[m36:delivery] apns transport NOT bound: APNS_KEY_P8 (malformed key)");
+    return undefined;
+  }
 }
 
 export function bindOutOfBandTransports(options: OutOfBandBindingOptions): OutOfBandBinding {
@@ -151,9 +202,10 @@ export function bindOutOfBandTransports(options: OutOfBandBindingOptions): OutOf
     });
   }
   if (emailOptions) transports.email = createPostmarkAlertEmailTransport(emailOptions);
+  let webPush: OutOfBandTransport | undefined;
   if (missing.push.length === 0) {
     try {
-      transports.push = createWebPushTransport({
+      webPush = createWebPushTransport({
         vapidPublicKey: val(env, "VAPID_PUBLIC_KEY") as string,
         vapidPrivateKey: val(env, "VAPID_PRIVATE_KEY") as string,
         subject: subject as string,
@@ -162,6 +214,19 @@ export function bindOutOfBandTransports(options: OutOfBandBindingOptions): OutOf
     } catch {
       missing.push.push("VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY (malformed key pair)");
     }
+  }
+
+  // ── Native push (WP 5.11): FCM v1 for Android, APNs for iOS. Each is optional and independent of Web Push. ──
+  const fcm = bindFcm(env, fetchOpt, options.log);
+  const apns = bindApns(env, options.log);
+  if (webPush || fcm || apns) {
+    // One `push` channel, three providers: an endpoint whose provider has no transport settles transport_not_configured.
+    transports.push = createPushRouter({
+      web: webPush ?? deny,
+      ...(fcm ? { fcm } : {}),
+      ...(apns ? { apns } : {}),
+    });
+    missing.push.length = 0;
   }
 
   const bound = {
