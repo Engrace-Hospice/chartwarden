@@ -7,7 +7,7 @@ Run it: `bun run m36:restore-drill` (needs Docker and the images `pgvector/pgvec
 `WX_DRILL_MINIO_IMAGE` overrides the default `cgr.dev/chainguard/minio:latest`). Reports are written to
 `audit/restore-drill/m36-restore-drill.{json,md}`. Detection proof: `bun run m36:restore-drill:detect`.
 It starts and removes only containers it labels itself (`wx-m36-restore-drill=<runId>`); it never touches the shared
-cluster or the local Docker compose stack, and it is not wired into CI (a live, Docker-in-Docker drill is run by a person, per release).
+cluster or the local Docker compose stack, and it is not wired into CI (a live, Docker-in-Docker drill is run by a person, per release). Containers use free loopback ports chosen at run time, so nothing needs a fixed port.
 
 ## 1. What production actually backs up (findings)
 
@@ -51,7 +51,18 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
      stored checksum header) and etag; destroyed rows have no object; no stored object lacks a row;
    - as `chartwarden_app` on the restored DB: not superuser/BYPASSRLS; no tenant context reads nothing; org A reads its rows;
      org A reads nothing of org B (messages, attachments, channels, audit);
-   - `runHashVerifyForOrg` (the production job body) over every message and `message_revision` row (run last: it writes audit rows).
+   - message <-> attachment <-> audit reconcile, independent of the backup manifest (WP 5.10): every `message`, `message_revision`
+     and `message_attachment` row has its `<table>.insert` audit event (the generic audit trigger writes one per row); no such
+     audit event points at a row that does not exist; every attachment with a `message_id` has a message in the same org (an
+     upload not yet attached has `message_id` NULL by design and is not flagged);
+     **Known limit:** the orphan-audit rule assumes M36 never hard-deletes `message`, `message_revision` or `message_attachment`
+     rows. WP 5.6 retention destruction (branch `feat/m36-wp56-retention-finish`) does, and records the ids in
+     `m36.retention_destruction.batch_completed`; a drill against a database that has had a destruction run will therefore report
+     those audit rows as orphans by design. Not exempted yet (it would couple the drill to code not on this branch); once 5.6
+     merges, exempt audit rows whose id appears in a `batch_completed` record, and add a fault test for it.
+   - `runHashVerifyForOrg` (the production job body) over every message and `message_revision` row (run last: it writes audit rows);
+   - restore wall time against the Tier 1 RTO target (1 h; `WX_DRILL_RTO_TARGET_S` overrides, must be a positive number or the drill refuses to start). This compares a measurement with a
+     TARGET; it is not evidence that any service level is committed.
 
 ## 3. Restore procedure the drill proved
 
@@ -67,11 +78,16 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
 
 ## 4. Reading the numbers
 
-The report labels itself **demo scale**. Three clean runs on the same machine took 9.2 s, 9.6 s and 37.9 s to restore (the slow
-one while other containers were busy), with a data window lost of 1.7 to 2.4 s. They show the procedure works and where the
-time goes (dump load dominates, because the dump is mostly 480 migrations' worth of schema, and roles bootstrap is next),
-not what production would take. RPO here is simply `failure instant - backup instant`: the drill's window is seconds because
-it is told to fail seconds after the backup; with `pg_dump` the real window is the gap between dumps.
+The report labels itself **demo scale**. Measured on this developer machine (Apple laptop, Docker Desktop, 2026-10-22, WP 5.10):
+three runs restored in 11.6 s, 11.8 s and 12.5 s (new Postgres up 1.3 s, roles bootstrap 4.1 to 4.4 s, `pg_dump` load 6.4 to 6.8 s;
+verification 0.5 to 0.6 s) with a data window lost of 1.7 to 1.8 s (3 messages, 1 attachment, 3 receipts and 1 object written
+after the backup). An earlier session on the same class of hardware recorded 9.2 s, 9.6 s and 37.9 s (the slow one under container
+load). Those numbers are not production figures: the backup is 1.0 MB gzip, mostly the schema of ~480 migrations (dump load and roles
+bootstrap dominate, not data), so they show the procedure works and where the time goes, not what a production-sized restore would
+take. RPO here is `failure instant - backup instant`: the drill's window is seconds because it is told to fail seconds after the
+backup; with `pg_dump` the real window is the gap between dumps, which today is "since the last manual pre-reseed dump". So the
+RTO check can pass against the 1 h Tier 1 target at demo scale, while the RPO target (5 min or 15 min) is **not** met by anything
+that runs in production.
 
 ## 5. Detection proof
 
@@ -83,6 +99,12 @@ matching check to be the one that failed:
 | `--fault=missing-object` (one object deleted) | attachment objects present and byte-identical |
 | `--fault=object-bytes` (same-size random bytes) | attachment objects present and byte-identical |
 | `--fault=hash-flip` (one `message.body_sha256` overwritten) | message and message_revision body hashes verify |
+| `--fault=orphan-audit` (a `message.insert` audit event for a message id with no row) | message <-> attachment <-> audit reconcile (the audit count/chain check fails too) |
+| `--fault=missing-audit` (one `message.insert` audit event removed) | message <-> attachment <-> audit reconcile (the audit count/chain check fails too) |
+| `--fault=message-deleted` (a message that owns an attachment removed) | message <-> attachment <-> audit reconcile (the row-count check fails too) |
+
+Faults are injected with `session_replication_role = replica`, i.e. the way corruption or a lossy restore bypasses the
+append-only and immutability triggers. Last run: all six reported `DETECTED`.
 
 ## 6. Open decisions (need a person)
 

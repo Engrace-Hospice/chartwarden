@@ -14,7 +14,12 @@
 // fail-closed (deny-stub) in the M1 registry; its DB-backed implementation lands with the routes
 // and realtime/jobs tasks (M36-T07/T08).
 
-import type { MessageReactionSummary, MessageUrgency, PollView, RichBody } from "@chartwarden/types";
+import type {
+  MessageReactionSummary,
+  MessageUrgency,
+  PollView,
+  RichBody,
+} from "@chartwarden/types";
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
 /** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME
@@ -90,6 +95,16 @@ export interface ResolvedMessage {
   readonly attachments?: readonly MessageAttachmentView[];
   /** Bound files this viewer cannot see (scanning for others, or withheld): a bare count, never ids, names or state. */
   readonly hiddenAttachmentCount?: number;
+  /**
+   * WP 5.6 (ADR-0055 item 7): an APPROVED redaction masks this message. `body` is then empty, there are no attachments, links, poll or
+   * references, and this is when it happened (ISO-8601). The reason and the people are never in a message view.
+   */
+  readonly redactedAt?: string;
+  /**
+   * WP 5.6 (ADR-0086): an active legal hold covers this message. Present (true) ONLY for a viewer who holds `messaging.retention.manage`:
+   * the existence of a hold is itself sensitive, so ordinary readers never see it.
+   */
+  readonly legalHold?: true;
 }
 
 /**

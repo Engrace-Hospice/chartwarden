@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1697,
-    "coveredRoutes": 1697,
+    "routes": 1700,
+    "coveredRoutes": 1700,
     "directRoutesReferenced": 1570
   },
   "modules": [
@@ -36,6 +36,7 @@
         "apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
+        "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
         "apps/backend/__tests__/public-tenant-routes.test.ts",
@@ -512,7 +513,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 152,
+      "routes": 155,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",

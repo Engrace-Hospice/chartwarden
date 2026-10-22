@@ -25,13 +25,14 @@ import type {
   ResolvedMessage,
 } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
+import { loadApprovedRedactions } from "./message-redaction-mask";
 import {
   type MessagingOutboxPort,
   createDbMessagingRouteService,
@@ -174,7 +175,8 @@ export function createDbMessagingProvider(
         { organizationId: orgId, userId: input.authorUserId },
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
-          if (ch.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          if (ch.isArchived)
+            throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
           const sent = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
@@ -259,6 +261,12 @@ export function createDbMessagingProvider(
         const hasMore = rows.length > limit;
         const pageRows = rows.slice(0, limit);
         if (backward) pageRows.reverse();
+        // WP 5.6: an approved redaction masks the body here too (this seam serves other modules).
+        const redactions = await loadApprovedRedactions(
+          tx,
+          orgId,
+          pageRows.map((m) => m.id),
+        );
         const messages = await Promise.all(
           pageRows.map(
             async (m): Promise<ResolvedMessage> => ({
@@ -267,7 +275,7 @@ export function createDbMessagingProvider(
               authorUserId: m.authorUserId,
               authorDisplayName: null,
               body:
-                m.status === "deleted"
+                m.status === "deleted" || redactions.has(m.id)
                   ? ""
                   : decodeStoredBody(
                       m.bodyKind as MessageBodyKind,

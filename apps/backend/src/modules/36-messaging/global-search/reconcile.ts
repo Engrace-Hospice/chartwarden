@@ -29,7 +29,7 @@ import type { Tx } from "../messaging-write-core";
 import { type IndexState, ensureIndexState, saveCheckpoint, setIndexStatus } from "./index-state";
 import type { IndexWriter, IndexWriterDeps } from "./index-writer";
 import { reindexPendingExclusions } from "./name-exclusion";
-import { isEligibleForIndex, neverRedacted } from "./ports";
+import { isEligibleForIndex, redactionMarkedOnRow } from "./ports";
 import { refreshIndexStats } from "./stats";
 import type { TenantSearchSettingStore } from "./tenant-setting-store";
 
@@ -58,6 +58,8 @@ interface ScanRow {
   readonly createdAt: string;
   readonly indexed: boolean;
   readonly hasAny: boolean;
+  /** A redaction (requested or approved) exists for the message: out of the index (ADR-0058 d6/7). */
+  readonly redactionMarked: boolean;
 }
 
 interface Position {
@@ -82,21 +84,24 @@ async function scan(
     created_at: string;
     indexed: boolean;
     has_any: boolean;
+    redaction_marked: boolean;
   }>(sql`
-    SELECT id, status, created_at, indexed, has_any FROM (
+    SELECT id, status, created_at, indexed, has_any, redaction_marked FROM (
       SELECT m.id::text AS id, m.status::text AS status, m.created_at::text AS created_at,
              m.created_at AS created_ts, m.id AS id_raw,
              EXISTS (SELECT 1 FROM message_search_token t
                       WHERE t.organization_id = m.organization_id AND t.message_id = m.id
                         AND t.key_version = ${keyVersion}) AS indexed,
              EXISTS (SELECT 1 FROM message_search_token t
-                      WHERE t.organization_id = m.organization_id AND t.message_id = m.id) AS has_any
+                      WHERE t.organization_id = m.organization_id AND t.message_id = m.id) AS has_any,
+             EXISTS (SELECT 1 FROM message_redaction r
+                      WHERE r.organization_id = m.organization_id AND r.message_id = m.id) AS redaction_marked
         FROM message m
        WHERE m.organization_id = ${organizationId}
          AND (${after?.createdAtText ?? null}::timestamptz IS NULL
               OR (m.created_at, m.id) > (${after?.createdAtText ?? null}::timestamptz, ${after?.messageId ?? null}::uuid))
     ) s
-    WHERE ${driftOnly ? sql`(status <> 'deleted' AND NOT indexed) OR (status = 'deleted' AND has_any)` : sql`true`}
+    WHERE ${driftOnly ? sql`(status <> 'deleted' AND NOT redaction_marked AND NOT indexed) OR ((status = 'deleted' OR redaction_marked) AND has_any)` : sql`true`}
     ORDER BY created_ts, id_raw
     LIMIT ${limit}`);
   return result.rows.map((r) => ({
@@ -105,6 +110,7 @@ async function scan(
     createdAt: r.created_at,
     indexed: r.indexed,
     hasAny: r.has_any,
+    redactionMarked: r.redaction_marked,
   }));
 }
 
@@ -134,7 +140,7 @@ async function findFirstDriftInTx(
   organizationId: string,
   keyVersion: string,
 ): Promise<Position | null> {
-  const isRedactedOrPending = deps.isRedactedOrPending ?? neverRedacted;
+  const isRedactedOrPending = deps.isRedactedOrPending ?? redactionMarkedOnRow;
   let after: Position | null = null;
   for (;;) {
     const page: ScanRow[] = await scan(
@@ -268,7 +274,7 @@ async function reconcileIndex(
 ): Promise<ReconcileSummary> {
   const batchSize = deps.batchSize ?? RECONCILE_BATCH_SIZE;
   const maxBatches = deps.maxBatches ?? RECONCILE_MAX_BATCHES_PER_RUN;
-  const isRedactedOrPending = deps.isRedactedOrPending ?? neverRedacted;
+  const isRedactedOrPending = deps.isRedactedOrPending ?? redactionMarkedOnRow;
 
   // Tenant flag first: it defaults OFF, so an inert tenant costs one small read and never touches the platform row.
   const setting = await deps.settings.read(organizationId);

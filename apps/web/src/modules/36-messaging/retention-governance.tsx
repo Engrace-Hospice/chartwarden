@@ -1,8 +1,13 @@
 // M36 WP 5.6 (ADR-0086, PROPOSED) - "Retention and legal holds" for a compliance officer. Two tabs on the shared kit, flat rows (no card grid):
 // Retention (per message class: period, source, eligible and held counts, capped notice, scan times, certificate state) and Legal holds (list,
-// place, release). The scan is plan-only and approving a destruction certificate destroys nothing yet; the page says so. It shows ids, counts and
-// dates only, never message content. State is a word, never colour alone.
-import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } from "@chartwarden/types";
+// place, release). The destruction executor is off by default and a dry run until the deployment turns it on; the page states which, from the
+// server's `destruction_mode`. It shows ids, counts, dates and the placing staff member's name, never message content. State is a word, never
+// colour alone.
+import type {
+  MessageLegalHoldDto,
+  RetentionClassDto,
+  RetentionOverviewDto,
+} from "@chartwarden/types";
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
@@ -76,7 +81,10 @@ function LoadGate<T>({
   }
 }
 
-function ClassRow({ row }: { readonly row: RetentionClassDto }): JSX.Element {
+function ClassRow({
+  row,
+  mode,
+}: { readonly row: RetentionClassDto; readonly mode: string | null | undefined }): JSX.Element {
   return (
     <li className="wx-retention-row">
       <div className="wx-retention-main">
@@ -98,7 +106,8 @@ function ClassRow({ row }: { readonly row: RetentionClassDto }): JSX.Element {
               glyph="clock"
               label={W.certificateStatusLabel(row.certificate_status)}
             />{" "}
-            {W.certificateText(row.certificate_status)} {W.certificateIdText(row.certificate_id)}
+            {W.certificateText(row.certificate_status, mode)}{" "}
+            {W.certificateIdText(row.certificate_id)}
           </span>
         ) : (
           <span className="wx-retention-detail">{W.CERTIFICATE_NONE}</span>
@@ -111,6 +120,16 @@ function ClassRow({ row }: { readonly row: RetentionClassDto }): JSX.Element {
 function RetentionPanel({ data }: { readonly data: RetentionOverviewDto }): JSX.Element {
   return (
     <>
+      <p
+        className="wx-retention-detail"
+        data-destruction-mode={
+          W.noticeFor(data.destruction_mode) === W.RETENTION_NOTICE_UNKNOWN
+            ? "unknown"
+            : data.destruction_mode
+        }
+      >
+        {W.noticeFor(data.destruction_mode)}
+      </p>
       <p className="wx-retention-detail">
         {data.last_scan_at === null
           ? W.NEVER_SCANNED
@@ -120,18 +139,20 @@ function RetentionPanel({ data }: { readonly data: RetentionOverviewDto }): JSX.
       </p>
       <ul className="wx-retention-rows" aria-label={W.RETENTION_LIST_LABEL}>
         {data.classes.map((row) => (
-          <ClassRow key={row.class} row={row} />
+          <ClassRow key={row.class} row={row} mode={data.destruction_mode} />
         ))}
       </ul>
     </>
   );
 }
 
-// placed_by is the placing user's id; the contract carries no staff name, so show "you" or a labelled short id (full id in a title), never a bare uuid.
+// The server resolves the placing user's display name through the identity directory (`placed_by_name`). Prefer it; when the directory could
+// not resolve it, fall back to "you" or a labelled short id (full id in a title), never a bare uuid.
 function PlacedBy({ hold }: { readonly hold: MessageLegalHoldDto }): JSX.Element {
   const me = useSession()?.userId;
   const by = hold.placed_by;
   const when = formatTime(hold.placed_at);
+  if (hold.placed_by_name) return <>{W.placedText(hold.placed_by_name, when)}</>;
   if (!UUID_RE.test(by)) return <>{W.placedText(by, when)}</>;
   const who = by === me ? W.PLACED_BY_YOU : W.shortUserId(by);
   return <span title={by}>{W.placedText(who, when)}</span>;
@@ -316,7 +337,7 @@ export function RetentionGovernance(): JSX.Element {
   return (
     <>
       <PageHeader title={W.RETENTION_TITLE} breadcrumb={W.RETENTION_BREADCRUMB}>
-        <p className="wx-retention-detail">{W.RETENTION_NOTICE}</p>
+        <p className="wx-retention-detail">{W.RETENTION_INTRO}</p>
       </PageHeader>
       <section className="wx-retention" aria-label={W.RETENTION_TITLE}>
         <div className="wx-subtabs" role="tablist" aria-label={W.TABS_LABEL}>

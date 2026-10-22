@@ -68,6 +68,51 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.retention_destruction.run", // WP 5.6 — one row per org per destruction-executor run (dry run or live)
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "The message destruction executor finished a run for a tenant (runId, mode dry_run|live, per approved certificate: eligible, destroyed, heldRefused, attachmentPending, referenced, drained, certificateExecuted). Ids and counts only; a dry run deletes nothing.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.retention_destruction.batch_started", // WP 5.6 — written (and committed) BEFORE the destructive transaction
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A destruction batch is about to run (runId, batchId, certificateId, dataClass, plannedMessageIds). Committed before the delete so an interrupted batch still leaves the ids it was about to destroy. Ids only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.retention_destruction.batch_completed", // WP 5.6 — written after the destructive transaction committed
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A destruction batch committed (runId, batchId, certificateId, planned, destroyed, refusedAtDelete, destroyedMessageIds). Refused rows were held, referenced or object-bearing when the delete re-checked in its own transaction. Ids and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.retention_destruction.reconciled", // WP 5.6 — reservations stranded by a crash were settled against the message table
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "Destruction batches left reserved by a crash were reconciled (runId, batches: batchId, certificateId, planned, destroyed, refunded). A planned id already gone counts as destroyed; the rest is refunded to the certificate. Ids and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.retention_destruction.certificate_executed", // WP 5.6 — the M4 certificate for the class and month was closed
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "No message past the certificate's window remains for its class, so the approved M4 destruction certificate was marked executed (certificateId, dataClass, runId). Ids only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.dlq_job", // §8.1.2 / §4.4.1 OPS-035 — written for every job landing in any DLQ
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",

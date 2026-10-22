@@ -12,6 +12,7 @@ import type { JSX, KeyboardEvent, MutableRefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
 import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
+import { LegalHoldChip } from "./legal-hold-chip";
 import { MessageRow } from "./message-row";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
@@ -223,6 +224,10 @@ export function ThreadPanel({
           <strong>Thread</strong>
           <span>{status === "ready" ? replyCountLabel(replyCount) : " "}</span>
         </div>
+        {/* WP 5.6: shown only when the server sent `legalHold` (a holder of messaging.retention.manage); words, not colour alone. */}
+        {status === "ready" && (root?.legalHold || replies.some((r) => r.legalHold)) ? (
+          <LegalHoldChip scope="thread" />
+        ) : null}
         {status === "ready" ? (
           <button
             type="button"

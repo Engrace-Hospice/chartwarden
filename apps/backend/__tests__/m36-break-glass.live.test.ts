@@ -1056,6 +1056,77 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
       await cleanup(grant.id);
     });
 
+    it("CROSS-TENANT: another organisation's holder and reviewer get the random-id 404 on open, end, review detail and complete, and see no queue or grants", async () => {
+      stepUpFresh = true;
+      const bAll = await kit.seedUser("bg-org-b", ORG_B, [
+        "messaging.read",
+        "messaging.send",
+        "messaging.break_glass.invoke",
+        "messaging.break_glass.review",
+      ]);
+      const sendB = (method: "GET" | "POST", url: string, payload?: unknown) =>
+        on.inject({
+          method,
+          url,
+          headers: as(bAll, ORG_B),
+          ...(payload === undefined ? {} : { payload: payload as object }),
+        });
+      const grant = (await open(both, groupChannel)).json();
+      const row = (await send(on, "GET", `${API}/reviews?status=pending`, reviewerUser))
+        .json()
+        .reviews.find((r: { grantId: string }) => r.grantId === grant.id);
+      expect(row).toBeDefined();
+
+      const sameAsRandom = async (
+        method: "GET" | "POST",
+        real: string,
+        random: string,
+        payload?: unknown,
+      ) => {
+        const foreign = await sendB(method, real, payload);
+        const missing = await sendB(method, random, payload);
+        expect(foreign.statusCode, real).toBe(404);
+        expect(missing.statusCode, random).toBe(404);
+        expect(Object.keys(foreign.json()).sort()).toEqual(Object.keys(missing.json()).sort());
+        // The 404 may echo the id the caller sent, nothing else: same message once ids are masked, no justification.
+        const masked = (r: typeof foreign) =>
+          String(r.json().error?.message).replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, "<id>");
+        expect(masked(foreign)).toBe(masked(missing));
+        expect(foreign.body).not.toContain(WHY);
+      };
+      await sameAsRandom("POST", `${API}/${grant.id}/end`, `${API}/${randomUUID()}/end`);
+      await sameAsRandom("GET", `${API}/reviews/${row.reviewId}`, `${API}/reviews/${randomUUID()}`);
+      await sameAsRandom(
+        "POST",
+        `${API}/reviews/${row.reviewId}/complete`,
+        `${API}/reviews/${randomUUID()}/complete`,
+        { outcome: "reviewed" },
+      );
+      // Opening against this organisation's channel is the same 404 an unknown channel gets.
+      const body = { reasonCode: "patient_safety", justification: WHY };
+      const foreignOpen = await sendB("POST", API, { ...body, channelId: groupChannel });
+      const unknownOpen = await sendB("POST", API, { ...body, channelId: randomUUID() });
+      expect(foreignOpen.statusCode).toBe(404);
+      expect(unknownOpen.statusCode).toBe(404);
+      const maskIds = (r: typeof foreignOpen) =>
+        String(r.json().error?.message).replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, "<id>");
+      expect(maskIds(foreignOpen)).toBe(maskIds(unknownOpen));
+      // The listings are empty, never this organisation's rows.
+      expect((await sendB("GET", `${API}/mine`)).json().grants).toEqual([]);
+      expect((await sendB("GET", `${API}/reviews?status=pending`)).json().reviews).toEqual([]);
+      // Nothing moved: the grant is still live and its review still pending.
+      expect(
+        await kit.one(
+          "SELECT 1 FROM message_break_glass_grant g JOIN message_break_glass_review r ON r.grant_id=g.id WHERE g.id=$1 AND g.revoked_at IS NULL AND r.reviewed_at IS NULL",
+          [grant.id],
+        ),
+      ).toHaveLength(1);
+      expect(
+        await kit.one("SELECT 1 FROM message_break_glass_grant WHERE organization_id=$1", [ORG_B]),
+      ).toHaveLength(0);
+      await cleanup(grant.id);
+    });
+
     it("S4 the overdue sweep alerts once per open review three days after its grant ended: never earlier, never once reviewed, never while live", async () => {
       const emitted: Array<{
         orgId: string;

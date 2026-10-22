@@ -413,6 +413,7 @@ export async function runDestructionSweepForOrg(
       .limit(MAX_CERTIFICATES_PER_TICK),
   );
   let executed = 0;
+  const failures: Error[] = [];
   for (const cert of approved) {
     if (!cert.dataClass.startsWith(DATA_CLASS_PREFIX)) continue; // another data class: its own eraser path
     const retentionClass = cert.dataClass.slice(DATA_CLASS_PREFIX.length) as RetentionClass;
@@ -451,47 +452,59 @@ export async function runDestructionSweepForOrg(
       const span = spans.get(key);
       if (span) groups.set(key, { ...group, createdAtFrom: span.from, createdAtTo: span.to });
     }
-    await runExecuteDestruction(
-      {
-        certificateId: cert.id,
-        dataClass: cert.dataClass,
-        organizationId,
-        rows: [...groups.values()],
-      },
-      {
-        eraser,
-        emit: (event) =>
-          withOrgContext(deps.db, { organizationId, ...SYSTEM }, (tx) =>
-            audit(
-              tx,
-              { organizationId, userId: null, actorKind: "system", correlationId: cert.id },
-              {
-                eventType: event.action,
-                resourceKind: "destruction_certificate",
-                resourceId: cert.id,
-                outcome: "success",
-                severity: "warn",
-                retentionClass: event.retentionClass,
-                context: event.payload,
-              },
+    try {
+      await runExecuteDestruction(
+        {
+          certificateId: cert.id,
+          dataClass: cert.dataClass,
+          organizationId,
+          rows: [...groups.values()],
+        },
+        {
+          eraser,
+          emit: (event) =>
+            withOrgContext(deps.db, { organizationId, ...SYSTEM }, (tx) =>
+              audit(
+                tx,
+                { organizationId, userId: null, actorKind: "system", correlationId: cert.id },
+                {
+                  eventType: event.action,
+                  resourceKind: "destruction_certificate",
+                  resourceId: cert.id,
+                  outcome: "success",
+                  severity: "warn",
+                  retentionClass: event.retentionClass,
+                  context: event.payload,
+                },
+              ),
             ),
-          ),
-        recordCertificateStatus: (certificateId, status) =>
-          withOrgContext(deps.db, { organizationId, ...SYSTEM }, async (tx) => {
-            await tx
-              .update(CERT)
-              .set({
-                status: certificateStatusWithHeldRows(status, heldRows, groups.size),
-                recordCount: rows.length - heldRows,
-                ...(certificateStatusWithHeldRows(status, heldRows, groups.size) === "held"
-                  ? {}
-                  : { executedAt: now() }),
-              })
-              .where(eq(CERT.id, certificateId));
-          }),
-      },
+          recordCertificateStatus: (certificateId, status) =>
+            withOrgContext(deps.db, { organizationId, ...SYSTEM }, async (tx) => {
+              await tx
+                .update(CERT)
+                .set({
+                  status: certificateStatusWithHeldRows(status, heldRows, groups.size),
+                  recordCount: rows.length - heldRows,
+                  ...(certificateStatusWithHeldRows(status, heldRows, groups.size) === "held"
+                    ? {}
+                    : { executedAt: now() }),
+                })
+                // Only an `approved` certificate may be closed here: the count guard (migration 1159) refuses a changed count on any other.
+                .where(and(eq(CERT.id, certificateId), eq(CERT.status, "approved")));
+            }),
+        },
+      );
+      executed += 1;
+    } catch (error) {
+      // One certificate's failure (for example the count guard refusing a certificate that moved off `approved`) must not starve the others.
+      failures.push(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures,
+      `destruction sweep for org ${organizationId}: ${failures.length} certificate(s) failed after the others ran`,
     );
-    executed += 1;
   }
   return { executed };
 }

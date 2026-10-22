@@ -34,15 +34,20 @@ export function createBodyReader(cipher: Pick<MessageBodyCipher, "open">): BodyR
 export interface IndexableMessageRow {
   readonly id: string;
   readonly status: string;
+  /** WP 5.6: a `message_redaction` row (requested or approved) exists for the message. Absent = false. */
+  readonly redactionMarked?: boolean;
 }
 
 /**
- * ADR-0058 decision 6/7: a redacted message, and one whose redaction is pending, is out of the index. ADR-0055 has not shipped
- * redaction and its marker is undecided, so today this is constant false; WP 5.x replaces it with the real marker read.
+ * ADR-0058 decision 6/7: a redacted message, and one whose redaction is pending, is out of the index. The marker is the existence of
+ * a `message_redaction` row (migration 1156); `redactionMarkedOnRow` reads it. `neverRedacted` stays for tests.
  */
 export type IsRedactedOrPending = (row: IndexableMessageRow) => boolean;
 
 export const neverRedacted: IsRedactedOrPending = () => false;
+
+/** The real marker (WP 5.6): redaction pending or final, read in the same query as the row. */
+export const redactionMarkedOnRow: IsRedactedOrPending = (row) => row.redactionMarked === true;
 
 export function isEligibleForIndex(
   row: IndexableMessageRow,

@@ -35,6 +35,7 @@ import {
   messageHeldByAnyPredicate,
 } from "../jobs/retention-hold-sql";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
+import { isMessageRedacted } from "../message-redaction-mask";
 import { inspectImageMetadata } from "./attachment-metadata";
 import {
   ATTACHMENT_ACCESS_TTL_SECONDS,
@@ -435,6 +436,8 @@ async function denialReason(
     .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, row.messageId)))
     .limit(1);
   if (!message || message.status === "deleted") return "message_deleted";
+  // WP 5.6 (ADR-0055 item 7): an approved redaction masks the message's files as it masks its body; the object itself is retained.
+  if (await isMessageRedacted(tx, orgId, row.messageId)) return "message_redacted";
   return null;
 }
 

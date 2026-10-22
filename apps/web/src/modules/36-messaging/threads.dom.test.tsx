@@ -1362,3 +1362,38 @@ describe("WP 2.2 final round: in-flight sends, polling safeguards", () => {
     await waitFor(() => expect(timeline.scrollTop).toBe(777));
   });
 });
+
+describe("WP 5.6 the thread's Legal hold chip", () => {
+  const openThread = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "Open thread, 2 replies" }));
+    return screen.findByRole("complementary", { name: "Thread" });
+  };
+
+  it("shows a 'Legal hold' chip in the thread header when any message of the thread carries the server's flag", async () => {
+    const world = threadWorld();
+    const held = { ...world.replyA, legalHold: true };
+    mount({
+      GET: (path: string, init: Record<string, any>) =>
+        path === THREAD
+          ? {
+              data: { root: world.root, replies: [held, world.replyB], patientId: null },
+              error: undefined,
+              response: { status: 200 },
+            }
+          : world.handlers.GET(path, init),
+    });
+    const dialog = await openThread();
+    await within(dialog).findByText(/At least one message in this thread is held/);
+    // The held reply carries its own chip as well.
+    expect(within(dialog).getAllByText("Legal hold").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows nothing when no message carries the flag (an ordinary reader never learns of a hold)", async () => {
+    const { handlers } = threadWorld();
+    mount(handlers);
+    const dialog = await openThread();
+    await within(dialog).findByText("body of reply-a");
+    expect(within(dialog).queryByText("Legal hold")).toBeNull();
+    expect(dialog.querySelector(".wx-legal-hold-chip")).toBeNull();
+  });
+});

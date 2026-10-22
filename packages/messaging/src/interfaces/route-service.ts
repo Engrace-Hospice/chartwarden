@@ -213,6 +213,8 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
       direction?: "forward" | "backward";
       /** Bounded page surrounding a specific authorized message (notification deep links). */
       anchorMessageId?: string;
+      /** WP 5.6: the viewer may learn that a message is under legal hold (holds `messaging.retention.manage`). Set by the route, never the client. */
+      showLegalHold?: boolean;
     },
   ): Promise<{
     messages: readonly ResolvedMessage[];
@@ -232,6 +234,8 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
       userId: string;
       cursor?: string;
       limit?: number;
+      /** WP 5.6: as on `listMessages`. */
+      showLegalHold?: boolean;
     },
   ): Promise<{
     root: ResolvedMessage;

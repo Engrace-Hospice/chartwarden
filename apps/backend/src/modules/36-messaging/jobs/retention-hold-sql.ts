@@ -31,7 +31,106 @@ export interface MessageHoldPort {
   ): Promise<{ readonly id: string; readonly created: boolean }>;
 }
 
-const uuidList = (ids: readonly string[]): SQL =>
+/** An approved M4 certificate the destruction executor may act on (ids, class, dates and counts only). */
+export interface ApprovedMessageCertificateRef {
+  readonly id: string;
+  readonly dataClass: string;
+  readonly createdAt: Date;
+  /** What the approver approved (immutable). */
+  readonly recordCount: number;
+  readonly destroyedCount: number;
+  readonly reservedCount: number;
+}
+
+/** The certificate row as the planning transaction sees it, read under a row lock. */
+export interface LockedCertificate {
+  readonly status: string;
+  readonly createdAt: Date;
+  /** record_count - destroyed_count - reserved_count, never below 0. */
+  readonly available: number;
+  /** record_count - destroyed_count: what is not yet really spent (reservations in flight may still be refunded, so this is what "spent" means). */
+  readonly unspent: number;
+}
+
+/**
+ * The destruction executor's extra needs from M4. Every call runs in the caller's tenant tx. The approved count is spent by RESERVE (in the
+ * plan transaction, under the certificate's row lock, so a concurrent executor waits and then sees the reduced remainder), then SETTLE (after the
+ * delete: reserved goes down by the plan, destroyed up by what was really deleted, the difference is refunded). `record_count` never changes.
+ */
+export interface MessageDestructionHoldPort extends MessageHoldPort {
+  /** Approved `message.*` certificates opened at or after `notBefore` (older approvals are stale), oldest first, bounded. */
+  approvedCertificates(
+    tx: DbClient,
+    organizationId: string,
+    limit: number,
+    notBefore: Date,
+  ): Promise<readonly ApprovedMessageCertificateRef[]>;
+  /** Ids of approved `message.*` certificates opened BEFORE `notBefore` (expired approvals, reported and never acted on). */
+  expiredCertificateIds(
+    tx: DbClient,
+    organizationId: string,
+    notBefore: Date,
+    limit: number,
+  ): Promise<readonly string[]>;
+  completeCertificate(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly executedAt: Date;
+    },
+  ): Promise<boolean>;
+  /** Is the certificate still `approved` and opened at or after `notBefore`? A plain read (the destruction credential cannot lock or write it). */
+  certificateIsLive(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly notBefore: Date;
+    },
+  ): Promise<boolean>;
+  /** SELECT ... FOR UPDATE of the certificate: serialises executors on it. null when unknown or not this org's. */
+  lockCertificate(
+    tx: DbClient,
+    input: { readonly organizationId: string; readonly certificateId: string },
+  ): Promise<LockedCertificate | null>;
+  /**
+   * Reserve a batch: creates its `message_destruction_batch` row and reserves its count, in one database function. False (nothing reserved) when the
+   * remainder no longer fits, the certificate is not approved, or another unsettled batch already holds one of the ids.
+   */
+  reserveCertificateCount(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly batchId: string;
+      readonly messageIds: readonly string[];
+    },
+  ): Promise<boolean>;
+  /**
+   * Settle one batch by id: the database takes the reserved amount from the batch itself, requires it to be `reserved` and flips it once;
+   * `destroyed` is what was really deleted (at most the plan). Throws for an unknown, foreign or already settled batch. Returns what is left.
+   */
+  settleCertificateCount(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly batchId: string;
+      readonly destroyed: number;
+      readonly state: "settled" | "reconciled";
+    },
+  ): Promise<number>;
+}
+
+/** An attachment whose stored object has not been destroyed: deleting the message row would orphan the only copy of the bytes. Alias m = message. */
+export const HAS_PENDING_OBJECT: SQL = sql`EXISTS (SELECT 1 FROM message_attachment a
+  WHERE a.organization_id = m.organization_id AND a.message_id = m.id
+    AND a.object_key IS NOT NULL AND a.object_destroyed_at IS NULL)`;
+/** A reply or quote still points at this message: the parent/quote FKs are NO ACTION, so it goes after them. Alias m = message. */
+export const IS_REFERENCED: SQL = sql`EXISTS (SELECT 1 FROM message r
+  WHERE r.organization_id = m.organization_id AND (r.parent_message_id = m.id OR r.quoted_message_id = m.id))`;
+
+export const uuidList = (ids: readonly string[]): SQL =>
   sql.join(
     ids.map((i) => sql`${i}::uuid`),
     sql`, `,
@@ -134,6 +233,24 @@ export async function isMessageHeldNow(
          LIMIT 1`,
   );
   return res.rows.length > 0;
+}
+
+/**
+ * Which of `messageIds` an ACTIVE hold covers right now (live criteria, so messages the overlay has not reached are included). One query;
+ * no lock (a display read: enforcement never relies on it). Org-filtered in addition to RLS.
+ */
+export async function heldMessageIdsAmong(
+  tx: DbClient,
+  organizationId: string,
+  messageIds: readonly string[],
+  holds: readonly ActiveMessageHold[],
+): Promise<ReadonlySet<string>> {
+  if (messageIds.length === 0 || holds.length === 0) return new Set();
+  const res = await tx.execute<{ id: string }>(
+    sql`SELECT m.id FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
+         WHERE m.organization_id = ${organizationId}::uuid AND m.id IN (${uuidList(messageIds)}) AND ${anyHoldPredicate(holds)}`,
+  );
+  return new Set(res.rows.map((r) => r.id));
 }
 
 /** Messages a hold has materialised in the overlay (the count M4's own release route reports for a governance-origin hold). */

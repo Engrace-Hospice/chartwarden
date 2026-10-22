@@ -3,6 +3,7 @@ import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { AckForMessage } from "./ack-request-card";
+import { LegalHoldChip } from "./legal-hold-chip";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import { MessagePromotionButton } from "./message-promotion-button";
@@ -11,11 +12,14 @@ import { MessageTaskButton } from "./message-task-button";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { PollCard } from "./poll-card";
+import { REDACTED_TEXT } from "./retention-wording";
 import { RichBodyView } from "./rich-body-view";
 import { UrgentBadge } from "./urgent-badge";
 import "./announcements.css";
 
 export function MessageText({ message }: { message: Message }): JSX.Element {
+  // WP 5.6: an approved redaction masks the body for every reader; say so rather than "deleted".
+  if (message.redactedAt) return <span className="wx-message-redacted">{REDACTED_TEXT}</span>;
   // An attachment-only message has no text to show; the attachment list below is its content.
   if (
     !message.body &&
@@ -153,9 +157,12 @@ function MessageRowImpl({
   const mine = message.authorUserId === meId;
   const replyCount = message.replyCount ?? 0;
   // A tombstone has no body and no files (live attachment-only messages keep a count): nothing to reply to.
+  // A redacted message is a tombstone whatever it carries: no actions, no files (access is refused server-side too).
+  const redacted = Boolean(message.redactedAt);
   const deleted =
-    !message.body &&
-    (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) === 0;
+    redacted ||
+    (!message.body &&
+      (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) === 0);
   const system = message.authorUserId === null || message.bodyKind === "system";
   const grouped =
     previous &&
@@ -171,7 +178,9 @@ function MessageRowImpl({
         </div>
       ) : null}
       {system ? (
-        <div className="wx-system-message">{message.body || "Message deleted"}</div>
+        <div className="wx-system-message">
+          {redacted ? REDACTED_TEXT : message.body || "Message deleted"}
+        </div>
       ) : (
         <article
           data-message-id={message.messageId}
@@ -222,8 +231,8 @@ function MessageRowImpl({
                   canVote={canAnnotate}
                 />
               ) : null}
-              <MessageAttachments attachments={message.attachments} />
-              {message.hiddenAttachmentCount ? (
+              {redacted ? null : <MessageAttachments attachments={message.attachments} />}
+              {message.hiddenAttachmentCount && !redacted ? (
                 <small className="wx-message-attachment-hidden">
                   {message.hiddenAttachmentCount === 1
                     ? "Attachment not available yet"
@@ -239,6 +248,7 @@ function MessageRowImpl({
                   {clockTime(message.createdAt)}
                 </time>
                 {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
+                {message.legalHold ? <LegalHoldChip /> : null}
               </div>
             </div>
             {!deleted && patientLinked ? (

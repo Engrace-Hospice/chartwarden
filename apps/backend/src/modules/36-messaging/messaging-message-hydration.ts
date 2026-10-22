@@ -9,7 +9,9 @@ import type { MessageBodyKind, ResolvedMessage } from "@chartwarden/messaging";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { loadAttachmentViews } from "./attachments/attachment-service-db";
 import { loadClinicalLinkViews } from "./clinical-link/clinical-link-store-db";
+import { activeLiveHolds, heldMessageIdsAmong } from "./jobs/retention-hold-sql";
 import { loadMessageAnnotations } from "./message-annotations";
+import { loadApprovedRedactions } from "./message-redaction-mask";
 import type { MessageBodyCipher, Tx } from "./messaging-write-core";
 import { loadPollViews } from "./polls/poll-views";
 import { decodeStoredBody } from "./rich-body-codec";
@@ -66,6 +68,11 @@ export interface HydrationContext {
   readonly channelKind: string;
   readonly cipher: MessageBodyCipher;
   readonly warn?: (message: string, context: Record<string, string>) => void;
+  /**
+   * WP 5.6 (ADR-0086): the viewer holds `messaging.retention.manage`, so a message under an active legal hold carries `legalHold: true`.
+   * Absent/false for everyone else: that a hold exists is not for ordinary readers to learn.
+   */
+  readonly showLegalHold?: boolean;
 }
 
 export interface ReplyStats {
@@ -122,6 +129,11 @@ export async function hydrateMessages(
 ): Promise<ResolvedMessage[]> {
   const { orgId } = ctx;
   const messageIds = rows.map((row) => row.id);
+  // WP 5.6: an approved redaction masks the body, the attachments, the links, the poll and the mentions of that message.
+  const redactions = await loadApprovedRedactions(tx, orgId, messageIds);
+  const heldIds = ctx.showLegalHold
+    ? await heldMessageIdsAmong(tx, orgId, messageIds, await activeLiveHolds(tx, orgId))
+    : new Set<string>();
   const referenceRows =
     messageIds.length === 0
       ? []
@@ -147,12 +159,10 @@ export async function hydrateMessages(
   // WP 1.5: scan-gated attachment metadata. A tombstoned message shows none; the loader hides quarantined
   // files from everyone and pending ones from everyone but their uploader.
   // WP 3.2: clinical links as ids and kind only; the viewer's access is decided per chip by `resolve`.
-  const clinicalLinks = await loadClinicalLinkViews(
-    tx,
-    orgId,
-    rows.filter((row) => row.status !== "deleted").map((row) => row.id),
-  );
-  const liveIds = rows.filter((row) => row.status !== "deleted").map((row) => row.id);
+  const liveIds = rows
+    .filter((row) => row.status !== "deleted" && !redactions.has(row.id))
+    .map((row) => row.id);
+  const clinicalLinks = await loadClinicalLinkViews(tx, orgId, liveIds);
   const attachmentsByMessage = await loadAttachmentViews(tx, {
     orgId,
     viewerUserId: ctx.viewerUserId,
@@ -189,8 +199,9 @@ export async function hydrateMessages(
   });
   return Promise.all(
     rows.map(async (m): Promise<ResolvedMessage> => {
+      const redactedAt = redactions.get(m.id);
       const decoded: ReturnType<typeof decodeStoredBody> =
-        m.status === "deleted"
+        m.status === "deleted" || redactedAt !== undefined
           ? { body: "" }
           : decodeStoredBody(
               m.bodyKind as MessageBodyKind,
@@ -215,7 +226,9 @@ export async function hydrateMessages(
         ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
         ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
         createdAt: m.createdAt.toISOString(),
-        editedAt: visibleEditedAt(m),
+        editedAt: redactedAt === undefined ? visibleEditedAt(m) : null,
+        ...(redactedAt === undefined ? {} : { redactedAt }),
+        ...(heldIds.has(m.id) ? { legalHold: true as const } : {}),
         parentMessageId: m.parentMessageId,
         // WP 4.1: display only; a tombstone shows nothing, and routine is simply absent.
         ...(m.urgency === "urgent" && m.status !== "deleted" ? { urgency: "urgent" as const } : {}),
@@ -230,15 +243,19 @@ export async function hydrateMessages(
           (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
         ),
         ...(clinicalLinks.has(m.id) ? { clinicalLinks: clinicalLinks.get(m.id) } : {}),
-        references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
-          kind: reference.kind as "staff" | "patient",
-          entityId: reference.entityId,
-          start: reference.start,
-          end: reference.end,
-          displayLabel:
-            reference.kind === "staff" ? reference.staffName?.trim() || "Staff member" : "Patient",
-          navigable: reference.kind === "patient" && ctx.channelKind === "care_team",
-        })),
+        references: (redactedAt === undefined ? (referencesByMessage.get(m.id) ?? []) : []).map(
+          (reference) => ({
+            kind: reference.kind as "staff" | "patient",
+            entityId: reference.entityId,
+            start: reference.start,
+            end: reference.end,
+            displayLabel:
+              reference.kind === "staff"
+                ? reference.staffName?.trim() || "Staff member"
+                : "Patient",
+            navigable: reference.kind === "patient" && ctx.channelKind === "care_team",
+          }),
+        ),
       };
     }),
   );

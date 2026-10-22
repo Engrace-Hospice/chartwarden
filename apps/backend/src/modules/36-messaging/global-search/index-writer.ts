@@ -14,7 +14,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { type SearchKeyProvider, buildMessageTags, deriveChannelKey } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { deleteSearchTokens } from "../message-search-tokens";
 import { ensureIndexState } from "./index-state";
 import type { NameExclusions } from "./name-exclusion";
@@ -24,7 +24,7 @@ import {
   type IndexOutcome,
   type IsRedactedOrPending,
   isEligibleForIndex,
-  neverRedacted,
+  redactionMarkedOnRow,
 } from "./ports";
 import { readTenantSearchSettingInTx } from "./tenant-setting-store";
 
@@ -60,7 +60,7 @@ export interface IndexWriter {
 }
 
 export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
-  const isRedactedOrPending = deps.isRedactedOrPending ?? neverRedacted;
+  const isRedactedOrPending = deps.isRedactedOrPending ?? redactionMarkedOnRow;
   return {
     async indexMessage(organizationId, messageId) {
       if (!(await deps.platformFlag.read(organizationId)).enabled) return "skipped_off";
@@ -80,6 +80,9 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
             bodyKind: MESSAGE.bodyKind,
             bodyCipher: MESSAGE.bodyCipher,
             bodySha256: MESSAGE.bodySha256,
+            // WP 5.6: a redaction (requested or approved) takes the message out of the index (ADR-0058 d6/7).
+            redactionMarked: sql<boolean>`EXISTS (SELECT 1 FROM message_redaction r
+              WHERE r.organization_id = ${MESSAGE.organizationId} AND r.message_id = ${MESSAGE.id})`,
           })
           .from(MESSAGE)
           .where(and(eq(MESSAGE.organizationId, organizationId), eq(MESSAGE.id, messageId)))

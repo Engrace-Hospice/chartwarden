@@ -213,13 +213,24 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
 const PLATFORM_PROVISION_UPDATE_TABLES = [
   "tenant_account",
   "tenant_key_ring",
-  "destruction_certificate",
   "tenant_signup_intent",
   "tenant_invitation",
   // GAP-164: the platform-ops onboarding skip. GAP-163: the support-session close sweep closes the session.
   "onboarding_task",
   "support_session",
   "feature_flag",
+] as const;
+
+/** The destruction_certificate columns the platform carrier may update: the same set as the app role (migration 1159), never the spend columns or data_class. */
+const DESTRUCTION_CERTIFICATE_PLATFORM_UPDATE_COLUMNS = [
+  "status",
+  "approved_by",
+  "executed_at",
+  "record_count",
+  "refusal_reason",
+  "refused_rows_by_module",
+  "dek_destroyed_at",
+  "certificate_pdf_ref",
 ] as const;
 
 /** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods). */
@@ -286,6 +297,12 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
         await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
+      // destruction_certificate (M34 offboarding files/refuses certificates): COLUMN grant only. Migration 1159 keeps the spend columns
+      // (reserved_count, destroyed_count) and data_class out of every login's reach; the definer functions write the spend.
+      await run('REVOKE UPDATE ON "destruction_certificate" FROM chartwarden_platform;');
+      await run(
+        `GRANT UPDATE (${DESTRUCTION_CERTIFICATE_PLATFORM_UPDATE_COLUMNS.map((c) => `"${c}"`).join(", ")}) ON "destruction_certificate" TO chartwarden_platform;`,
+      );
       await run(
         "GRANT EXECUTE ON FUNCTION m34_provision_tenant_key_ring(uuid) TO chartwarden_platform;",
       );
@@ -336,7 +353,9 @@ async function main(): Promise<void> {
         `ALTER ROLE chartwarden_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
       );
       await run("GRANT chartwarden_platform TO chartwarden_platform_login;");
-      console.log("✓ chartwarden_platform_login provisioned (carrier chartwarden_platform + BYPASSRLS)");
+      console.log(
+        "✓ chartwarden_platform_login provisioned (carrier chartwarden_platform + BYPASSRLS)",
+      );
       console.log(
         "  → set DATABASE_PLATFORM_URL=postgres://chartwarden_platform_login:<pw>@<host>/<db>",
       );
@@ -369,7 +388,9 @@ async function main(): Promise<void> {
       );
     }
     if (bodyBackfillPassword) {
-      const carrier = await db.query(`SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_m36_reseal'`);
+      const carrier = await db.query(
+        `SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_m36_reseal'`,
+      );
       if (carrier.rowCount === 0) {
         throw new Error(
           "the chartwarden_m36_reseal carrier does not exist — run migrations through 1090 first",

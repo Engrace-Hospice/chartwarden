@@ -113,6 +113,72 @@ export function compareObjects(
   ];
 }
 
+/** Ids from the intrinsic message <-> attachment <-> audit reconcile over the restored DB. */
+export interface ReconcileFindings {
+  readonly messagesWithoutAudit: readonly string[];
+  readonly revisionsWithoutAudit: readonly string[];
+  readonly attachmentsWithoutAudit: readonly string[];
+  readonly attachmentsWithoutMessage: readonly string[];
+  readonly attachmentsCrossOrg: readonly string[];
+  readonly orphanAudit: readonly string[];
+}
+
+const SAMPLE = 3;
+const show = (ids: readonly string[]): string =>
+  `${ids.length} (${ids.slice(0, SAMPLE).join(", ")}${ids.length > SAMPLE ? ", ..." : ""})`;
+
+/** Reconcile verdict, independent of the backup manifest: the restored DB must agree with itself. */
+export function reconcileCheck(f: ReconcileFindings): Check {
+  const problems = (
+    [
+      ["messages with no message.insert audit event", f.messagesWithoutAudit],
+      ["message_revisions with no audit event", f.revisionsWithoutAudit],
+      ["attachments with no message_attachment.insert audit event", f.attachmentsWithoutAudit],
+      ["attachments whose message row is missing", f.attachmentsWithoutMessage],
+      ["attachments in a different org than their message", f.attachmentsCrossOrg],
+      ["orphan audit events (message/attachment/revision id with no row)", f.orphanAudit],
+    ] as const
+  ).filter(([, ids]) => ids.length > 0);
+  return {
+    name: "message <-> attachment <-> audit reconcile (restored DB agrees with itself)",
+    ok: problems.length === 0,
+    detail:
+      problems.length === 0
+        ? "every message, revision and attachment has its audit event; no orphan audit; attachments belong to a message in the same org"
+        : problems.map(([label, ids]) => `${label}: ${show(ids)}`).join("; "),
+  };
+}
+
+/** The documented RTO target is a TARGET (DR/BCP section 3), not a built service level; this only compares a measurement. */
+export function rtoCheck(restoreWallMs: number, targetMs: number): Check {
+  return {
+    name: "restore wall time within the documented RTO target (demo scale)",
+    ok: restoreWallMs <= targetMs,
+    detail: `${(restoreWallMs / 1000).toFixed(1)} s measured vs ${(targetMs / 1000).toFixed(0)} s target`,
+  };
+}
+
+/** A fault that touched nothing would make the detection proof vacuous: fail loudly instead of reporting a clean run. */
+export function requireApplied(rowCount: number | null | undefined, fault: string): void {
+  if (!rowCount || rowCount < 1) {
+    throw new Error(
+      `fault did not apply: ${fault} changed 0 rows (does the seed contain a row to corrupt?)`,
+    );
+  }
+}
+
+const DEFAULT_RTO_TARGET_S = 3600;
+
+/** WX_DRILL_RTO_TARGET_S -> milliseconds; unset means the default, anything else must be a positive finite number. */
+export function parseRtoTargetMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_RTO_TARGET_S * 1000;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error(`WX_DRILL_RTO_TARGET_S must be a positive number of seconds, got "${raw}"`);
+  }
+  return seconds * 1000;
+}
+
 export interface DrillReport {
   readonly runId: string;
   readonly startedAt: string;

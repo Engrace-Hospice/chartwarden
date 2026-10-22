@@ -1,0 +1,10 @@
+/* WP 5.6: the "Legal hold" chip sits inline beside the time (message) or beside the thread title; the redacted tombstone reads as a note. */
+.wx-legal-hold-chip {
+  display: inline-flex;
+  align-items: center;
+  /* spacing comes from the parent's gap (message meta row, thread header): no margin of its own */
+}
+
+.wx-message-redacted {
+  font-style: italic;
+}

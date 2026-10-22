@@ -183,7 +183,7 @@ export interface AckEventDto {
   readonly previous_assigned_user_id: string | null;
   readonly tier: number;
   /** ADR-0078: why a SUPERVISOR moved the request (a fixed non-clinical code); null for every other event. */
-  readonly reason_code: AckSupervisorReasonCode | null;
+  readonly reason_code: AckReasonCode | null;
   readonly created_at: string;
 }
 
@@ -300,6 +300,16 @@ export const ACK_SUPERVISOR_REASON_CODES = [
   "other_operational",
 ] as const;
 export type AckSupervisorReasonCode = (typeof ACK_SUPERVISOR_REASON_CODES)[number];
+
+/**
+ * Every reason the history can hold (the DB CHECK, migration 1158): the supervisor's choices plus `assignee_left_organisation`, which only
+ * the offboarding run writes (ADR-0084). A supervisor cannot pick it: it states a fact (the person left) that only offboarding establishes.
+ */
+export const ACK_REASON_CODES = [
+  ...ACK_SUPERVISOR_REASON_CODES,
+  "assignee_left_organisation",
+] as const;
+export type AckReasonCode = (typeof ACK_REASON_CODES)[number];
 
 /** The most colleagues a picker lists (the care team is bounded long before this). */
 export const ACK_REASSIGN_CANDIDATE_CAP = 50;

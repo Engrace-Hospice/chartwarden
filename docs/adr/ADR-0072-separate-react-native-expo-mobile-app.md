@@ -3,9 +3,10 @@
 - **Status:** **Proposed for formal architecture ratification.** The product direction was fixed on
   2026-10-16 for Mobile PR B, but the Frontend/Architecture Owner ratification required by ADR-0030 and
   ADR-0035 is not recorded here.
-- **Date:** 2026-10-16
+- **Date:** 2026-10-16 (reconciled with the shipped messaging push work, WP 5.11 server side, 2026-10-21)
 - **Supersedes on ratification:** [ADR-0035](ADR-0035-capacitor-mobile-wrap-and-ui-core-split.md), and
   ADR-0030's clause that mobile wraps `apps/web`. ADR-0035 remains immutable history.
+- **Reconciled with:** [Messaging hub phases 4 to 6, WP 5.11](../messaging-hub/04-phases-4-to-6.md) and [ADR-0083](ADR-0083-messaging-session-device-controls.md) (session-linked endpoints). The mobile repository's own note is `docs/pr-l-push-architecture.md` in `Engrace-Hospice/chartwarden-mobile`.
 - **Extends:** [ADR-0026](ADR-0026-m19-vendor-operator-auth-via-better-auth.md) (one Better Auth
   surface), [ADR-0032](ADR-0032-frontend-api-transport-and-client.md) (OpenAPI is the client contract),
   [ADR-0054](ADR-0054-realtime-transport-socketio-valkey.md) (Socket.IO hints are not state).
@@ -15,7 +16,7 @@
 ## Context
 
 ADR-0035 chose a Capacitor WebView around `apps/web` to avoid maintaining a second renderer. Product
-direction now requires a native field experience in the separate `wardenx-mobile` repository, already
+direction now requires a native field experience in the separate mobile repository (written `wardenx-mobile` here; it is now `Engrace-Hospice/chartwarden-mobile`), already
 initialized with Expo SDK 57, React Native, Expo Router and NativeWind. The operational reasons are
 native navigation and accessibility behavior, predictable foreground/background lifecycle, native
 device capabilities and a UI that can be shaped for intermittent field work without carrying the DOM
@@ -54,7 +55,12 @@ transitions, validation, session state and auditing remain ChartWarden server re
 7. Passkeys remain the existing browser WebAuthn ceremony until native enrollment/assertion is proven
    on iOS and Android with associated domains. Native PR C must support the server's TOTP and backup-code
    fallback and must not report native passkeys as available from backend tests alone.
-8. Socket.IO accepts a native handshake with an absent Origin only after validating the same Better
+8. Native push uses **native provider tokens, not Expo push tokens.** The app uses `expo-notifications` only as the client OS API and registers the **FCM token on Android and the APNs token on iOS** (`getDevicePushTokenAsync()`); it never sends `getExpoPushTokenAsync()` output and there is no Expo Push Service hop. The server (shipped, WP 5.11 W6, migration 1153) sends **direct** FCM v1 and **direct** APNs; this repository carries no vendor SDK. Registration is `POST /api/v1/notifications/endpoints` with `provider` (`web` | `fcm` | `apns`, default `web`): a native token must match its provider's shape and must come from a signed-in session, otherwise 422.
+9. **Tokens are session-linked.** A native endpoint is stamped with the Better Auth session that registered it (ADR-0083), so a session revoke (device list, officer revoke, offboarding) expires it. A token the vendor reports dead settles the delivery terminally with `push_token_unregistered` and the endpoint is expired. The app re-registers on token rotation and after sign-in.
+10. **The push payload is generic and PHI-free.** The title and body are fixed text and the data is the opaque `{type: 'wardenx.alert', alertId}` (the `type` stays the legacy value the mobile parser checks). No message text, patient, deep link, signed URL or clinical summary. A received push is an index: the app re-fetches the authenticated self inbox and the target under ABAC, then navigates through the explicit mobile target registry. Silent and background push are not part of this decision.
+11. **Offline messaging is encrypted on the device.** The web outbox is memory-only because bodies are PHI; the durable outbox (queued sends, catch-up cache, camera drafts) is the native app's job, as an **SQLCipher-encrypted store** with the key in SecureStore/Keychain, user+org binding, TTL, purge on logout or revocation, backup exclusion, and no PHI in AsyncStorage. An urgent message is never queued offline; it is refused with a visible reason.
+12. **App lock** is a local biometric/device-credential gate on foreground (Expo local-authentication or a reviewed module). It is a convenience layer over the server session: the backend session timeout and a revoke stay authoritative, and a revoked device is locked out by the 401, not by the lock.
+13. Socket.IO accepts a native handshake with an absent Origin only after validating the same Better
    Auth session. User, organization and rooms remain server derived. Reconnect reloads session/context
    and REST state; events remain PHI-free invalidation hints.
 
@@ -66,14 +72,14 @@ device evidence; PR B provides backend contracts and marks the rest accurately.
 | Prior Capacitor control | Expo/RN disposition | PR B status |
 |---|---|---|
 | Better Auth session in platform secure storage | `@better-auth/expo/client` with Expo SecureStore; purge on logout/revocation | Server contract built; device proof in PR C |
-| App foreground lock and biometric unlock | Expo local-authentication or reviewed native module; backend timeout remains authoritative | Deferred to PR C/device tests |
+| App foreground lock and biometric unlock | Decision 12; backend timeout remains authoritative | Deferred to PR C/device tests (WP 5.11 client half) |
 | Android screenshot blocking / iOS capture response | Reviewed native configuration/plugin per PHI screen | Deferred; no claim of implementation |
 | Root/jailbreak and emulator posture | Managed native attestation/integrity adapter with a documented failure policy | Deferred; server flag remains off |
 | Device attestation | Existing ChartWarden challenge/verification routes plus a supported iOS/Android provider | Deferred to dedicated lot |
 | Certificate pinning | Native network-security configuration with a rotation and emergency-unpin runbook | Decision and device proof required |
-| Encrypted offline drafts/cache | Reviewed encrypted SQLite/file store, user+org binding, TTL, backup exclusion and purge | Deferred; PHI in AsyncStorage forbidden |
+| Encrypted offline drafts/cache and outbox | SQLCipher store (decision 11), user+org binding, TTL, backup exclusion and purge | Deferred to the mobile repository; PHI in AsyncStorage forbidden |
 | MDM distribution/configuration | EAS/native builds distributed by the selected MDM with managed config | Operational lot |
-| Native push | FCM/APNs installation-token lifecycle with PHI-free payloads | Dedicated later lot |
+| Native push | Native FCM/APNs tokens, session-linked, generic PHI-free payload (decisions 8-10) | Server side shipped (WP 5.11 W6): provider field, FCM v1 and APNs transports, tested with fake vendors; nothing sent to a real vendor; client registration, permission prompt, listeners, cold-start and rotation are the mobile repository's PR L-C |
 
 ## Consequences
 
@@ -91,3 +97,11 @@ device evidence; PR B provides backend contracts and marks the rest accurately.
 The Frontend/Architecture Owner must ratify this supersession. Product/security owners must also choose
 the production scheme and associated domains, decide the native passkey posture, and approve the
 pinning/root-jailbreak/MDM implementations before claiming those controls are live.
+
+**Still unsigned after this reconciliation** (the status stays **Proposed**; nothing here ratifies it):
+
+- The Frontend/Architecture Owner ratification of the supersession, which is what ADR-0030 and ADR-0035 require.
+- The security owner's sign-off on decisions 8-12 as controls: no real FCM/APNs send has been made (credentials are deploy secrets), and push on a locked device, the SQLCipher store and the app lock have no device evidence.
+- Whether silent/background push, a push badge count or any deep link in the payload is ever allowed (today: no).
+- Provider credentials and bundle/team configuration for production (`FCM_SERVICE_ACCOUNT_JSON`; `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`).
+- The earlier items above: production scheme and associated domains, the native passkey posture, pinning/root-jailbreak/MDM.

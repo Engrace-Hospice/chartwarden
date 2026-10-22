@@ -7,7 +7,7 @@
 //   POST /api/v1/messaging/governance/legal-holds/:id/release            release (fresh step-up messaging.legal_hold.release, reason >= 10,
 //                                                                         confirmed count; stale => 409 RELEASE_PREVIEW_STALE)
 // All behind messaging.retention.manage. Org, officer and session are the server-side request context; an unknown or another tenant's hold is
-// the same 404. Nothing returned is a message, a name or a patient.
+// the same 404. Nothing returned is a message or a patient; the only person shown is the placing STAFF member's display name (`placed_by_name`).
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import {
   MESSAGE_LEGAL_HOLD_APPLY_STEP_UP_KEY,
@@ -95,7 +95,9 @@ export function registerRetentionGovernanceRoutes(
     },
     async (request, reply) => {
       const body = parse(ApplyHoldBodySchema, request.body);
-      return noStore(reply).code(201).send(await service.apply(actorOf(request), body));
+      return noStore(reply)
+        .code(201)
+        .send(await service.apply(actorOf(request), body));
     },
   );
 

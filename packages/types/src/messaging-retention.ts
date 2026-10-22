@@ -15,14 +15,29 @@ export const MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH = 10;
  *  governance seam filters on it, so `messaging.retention.manage` never sees or releases a hold placed under `legalhold.manage`. */
 export const MESSAGING_GOVERNANCE_HOLD_ORIGIN = "messaging_governance";
 
+/**
+ * Tenant ops flag (FeatureFlagReaderPort: tenant row wins, absent = off) that lets the message destruction executor run at all for a
+ * tenant. ON still means DRY RUN unless the platform also sets `M36_RETENTION_DESTRUCTION_EXECUTE=true` (the second, deployment-wide key).
+ */
+export const RETENTION_DESTRUCTION_FLAG_KEY = "messaging.retention_destruction";
+/** Environment key of the second switch: the executor deletes only when it is exactly "true". */
+export const RETENTION_DESTRUCTION_EXECUTE_ENV = "M36_RETENTION_DESTRUCTION_EXECUTE";
+export const RETENTION_DESTRUCTION_MODES = ["off", "dry_run", "live"] as const;
+export type RetentionDestructionMode = (typeof RETENTION_DESTRUCTION_MODES)[number];
+/** flag off => off; flag on, execute key unset => dry_run (deletes nothing); both => live. */
+export const retentionDestructionModeOf = (
+  flagOn: boolean,
+  executeOn: boolean,
+): RetentionDestructionMode => (!flagOn ? "off" : executeOn ? "live" : "dry_run");
+
 /** The message retention classes, and the M4 certificate data class the scan files for each (`message.<class>`). */
 export const MESSAGE_RETENTION_CLASSES = ["care_related", "bereavement", "operational"] as const;
 export type MessageRetentionClass = (typeof MESSAGE_RETENTION_CLASSES)[number];
 export const MESSAGE_RETENTION_DATA_CLASSES: readonly `message.${MessageRetentionClass}`[] =
   MESSAGE_RETENTION_CLASSES.map((c) => `message.${c}` as const);
 
-// ---- HTTP contract of the governance routes (WP 5.6 S4 implements, S5 consumes). Ids, counts and dates only: never a message, a name or a
-// ---- patient. Base path: /api/v1/messaging/governance. Wire keys are snake_case like the offboarding DTOs.
+// ---- HTTP contract of the governance routes (WP 5.6 S4 implements, S5 consumes). Ids, counts, dates and the display name of the STAFF
+// ---- member who placed a hold or handled a redaction: never a message or a patient. Base path: /api/v1/messaging/governance. Wire keys are snake_case like the offboarding DTOs.
 
 export const MESSAGE_LEGAL_HOLD_SCOPE_KINDS = ["channel", "patient", "user"] as const;
 export type MessageLegalHoldScopeKind = (typeof MESSAGE_LEGAL_HOLD_SCOPE_KINDS)[number];
@@ -43,10 +58,11 @@ export interface RetentionClassDto {
 }
 export interface RetentionOverviewDto {
   readonly classes: readonly RetentionClassDto[];
-  /** ISO time of the next scheduled weekly scan; the scan is plan-only until a human approves a certificate, and approval destroys nothing yet. */
+  /** ISO time of the next scheduled weekly scan. The scan only plans; destruction needs an APPROVED M4 certificate and the mode below. */
   readonly next_scan_at: string;
   readonly last_scan_at: string | null;
-  readonly destruction_built: false;
+  /** off: the executor does nothing for this tenant; dry_run: it reports and deletes nothing; live: it destroys under approved certificates. */
+  readonly destruction_mode: RetentionDestructionMode;
 }
 
 /** GET /legal-holds - messaging-relevant M4 holds (channelIds/userIds/patientIds/org-wide) with scope ids and counts. */
@@ -60,7 +76,10 @@ export interface MessageLegalHoldDto {
     readonly patient_ids: readonly string[];
     readonly org_wide: boolean;
   };
+  /** The placing user's id. */
   readonly placed_by: string;
+  /** The placing user's display name, resolved through the identity directory port; null when it cannot be resolved (shown as a labelled id). */
+  readonly placed_by_name: string | null;
   readonly placed_at: string;
   readonly released_at: string | null;
   /**
@@ -107,3 +126,40 @@ export const RELEASE_PREVIEW_STALE_CODE = "RELEASE_PREVIEW_STALE";
  */
 export const messagingHoldLockName = (organizationId: string): string =>
   `m36-legal-hold:${organizationId}`;
+
+// ---- Redaction (ADR-0055 item 7, applied to held and unheld messages alike; migration 1156). A redaction MASKS a message at the access layer;
+// ---- it never destroys the cipher or rewrites a hashed column, so a legal hold neither blocks it nor is weakened by it. Two people: the
+// ---- requester and the approver differ (CHECK in the database and the service).
+
+/** Ask for a message to be redacted (a compliance act: no channel membership is needed, and the requester never sees the body). */
+export const MESSAGING_REDACT_REQUEST_PERMISSION = "messaging.redact.request";
+/** Approve a redaction another person requested; fresh step-up MESSAGE_REDACT_APPROVE_STEP_UP_KEY. */
+export const MESSAGING_REDACT_APPROVE_PERMISSION = "messaging.redact.approve";
+export const MESSAGE_REDACT_APPROVE_STEP_UP_KEY = "messaging.redact.approve";
+export const MESSAGE_REDACTION_REASON_MIN_LENGTH = 10;
+export const MESSAGE_REDACTION_REASON_MAX_LENGTH = 1000;
+
+/** POST /redactions. */
+export interface RequestMessageRedactionRequest {
+  readonly message_id: string;
+  readonly reason: string;
+}
+
+/** One redaction as the governance screen reads it. Ids, names, instants and whether a hold applies: never the message or the reason text. */
+export interface MessageRedactionDto {
+  readonly id: string;
+  readonly message_id: string;
+  /** requested: masked for nobody yet; approved: masked for every reader. */
+  readonly status: "requested" | "approved";
+  readonly requested_by: string;
+  readonly requested_by_name: string | null;
+  readonly requested_at: string;
+  readonly approved_by: string | null;
+  readonly approved_by_name: string | null;
+  readonly approved_at: string | null;
+  /** True when an active legal hold currently covers the message: the cipher is retained either way. */
+  readonly under_legal_hold: boolean;
+}
+export interface MessageRedactionListDto {
+  readonly redactions: readonly MessageRedactionDto[];
+}

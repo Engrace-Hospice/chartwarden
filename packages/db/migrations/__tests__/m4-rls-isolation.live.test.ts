@@ -28,7 +28,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** The `*_by` columns (applied_by / executed_by / requested_by) carry real FKs to `user`. */
@@ -218,18 +223,22 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
   });
 
   it("org B cannot UPDATE org A's destruction certificate (the USING clause covers writes too)", async () => {
+    const before = await db.query("SELECT status FROM destruction_certificate WHERE id=$1", [
+      a.destructionCertificate,
+    ]);
     const res = await withOrg(ORG_B, () =>
-      db.query("UPDATE destruction_certificate SET method='overwrite' WHERE id=$1", [
+      db.query("UPDATE destruction_certificate SET status='held' WHERE id=$1", [
         a.destructionCertificate,
       ]),
     );
     // RLS makes the row invisible, so the UPDATE matches nothing rather than erroring — the row must be
     // untouched either way.
     expect(res.rowCount).toBe(0);
-    const still = await db.query("SELECT method FROM destruction_certificate WHERE id=$1", [
+    const still = await db.query("SELECT status FROM destruction_certificate WHERE id=$1", [
       a.destructionCertificate,
     ]);
-    expect(still.rows[0].method).toBe("crypto_erase");
+    expect(before.rows[0].status).not.toBe("held");
+    expect(still.rows[0].status).toBe(before.rows[0].status);
   });
 
   it.each(PLATFORM_REFERENCE)(

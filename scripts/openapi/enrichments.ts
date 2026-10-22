@@ -48,11 +48,6 @@ import {
   VerifyFactorRequestSchema as M2AuditorVerifyFactorRequestSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/auditor-enrolment";
 import {
-  FindMyOrganizationRequestSchema as M2FindMyOrganizationRequestSchema,
-  FindMyOrganizationResponseSchema as M2FindMyOrganizationResponseSchema,
-  PublicTenantResponseSchema as M2PublicTenantResponseSchema,
-} from "../../apps/backend/src/modules/02-identity/routes/public-tenant-routes";
-import {
   AuditorRedeemRequestSchema as M2AuditorRedeemRequestSchema,
   AuditorRedeemResponseSchema as M2AuditorRedeemResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/auditor-redeem";
@@ -120,6 +115,11 @@ import {
   StepUpOverrideRequestSchema as M2StepUpOverrideRequestSchema,
   StepUpOverrideSchema as M2StepUpOverrideSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/org-admin-typebox";
+import {
+  FindMyOrganizationRequestSchema as M2FindMyOrganizationRequestSchema,
+  FindMyOrganizationResponseSchema as M2FindMyOrganizationResponseSchema,
+  PublicTenantResponseSchema as M2PublicTenantResponseSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/public-tenant-routes";
 // M6 Admission — the §4.2 request bodies/queries the handlers `parse(...)` + the §4.2 response DTOs
 // (pinned to the service read views by compile-time `Conforms` aliases in admission-typebox.ts).
 import {
@@ -1477,8 +1477,11 @@ import {
   ApplyHoldBodySchema as M36ApplyHoldBodySchema,
   HoldListResponseSchema as M36HoldListResponseSchema,
   HoldResponseSchema as M36HoldResponseSchema,
+  RedactionListResponseSchema as M36RedactionListResponseSchema,
+  RedactionResponseSchema as M36RedactionResponseSchema,
   ReleaseHoldBodySchema as M36ReleaseHoldBodySchema,
   ReleasePreviewResponseSchema as M36ReleasePreviewResponseSchema,
+  RequestRedactionBodySchema as M36RequestRedactionBodySchema,
   RetentionOverviewResponseSchema as M36RetentionOverviewResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/retention-governance-typebox";
 // M36 WP 3.8 lifecycle review queue.
@@ -6670,7 +6673,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/public/find-my-organization": {
     summary:
-      "Unauthenticated: always 202 { status: \"sent\" } for a well-formed email; mails the person the sign-in address of each active organization they belong to (one email, only if any). Per-IP and per-email budgets; nothing about membership is returned (ADR-0049 Phase 4)",
+      'Unauthenticated: always 202 { status: "sent" } for a well-formed email; mails the person the sign-in address of each active organization they belong to (one email, only if any). Per-IP and per-email budgets; nothing about membership is returned (ADR-0049 Phase 4)',
     body: M2FindMyOrganizationRequestSchema,
     response: M2FindMyOrganizationResponseSchema,
     status: 202,
@@ -9935,7 +9938,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/escalations/:id/supervisor-reassign": {
     summary:
-      "A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason, including naming the supervisor themselves and a supervisor the Part 2 gate walls off). At most 5 supervisor moves of one request per rolling 24 hours (409 ACK_SUPERVISOR_REASSIGN_LIMIT). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history (`events[].reason_code`) records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false",
+      "A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational; assignee_left_organisation is written only by the offboarding run and is a 422 here); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason, including naming the supervisor themselves and a supervisor the Part 2 gate walls off). At most 5 supervisor moves of one request per rolling 24 hours (409 ACK_SUPERVISOR_REASSIGN_LIMIT). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history (`events[].reason_code`) records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SupervisorReassignBodySchema,
     response: M36AckSupervisorReassignResponseSchema,
@@ -10201,12 +10204,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // message retention and legal hold (WP 5.6, ADR-0086 PROPOSED)
   "GET /api/v1/messaging/governance/retention": {
     summary:
-      "Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_built is false, so an approved certificate destroys nothing yet. Ids, counts and dates only. Not cached",
+      "Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_mode is the executor's state for this tenant: off (the tenant ops flag messaging.retention_destruction is off, the default), dry_run (on, but the deployment has not set M36_RETENTION_DESTRUCTION_EXECUTE: it reports and deletes nothing) or live (it destroys messages under an APPROVED M4 certificate, never a held one). Ids, counts and dates only. Not cached",
     response: M36RetentionOverviewResponseSchema,
   },
   "GET /api/v1/messaging/governance/legal-holds": {
     summary:
-      "Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide) and the number of messages each active hold covers now. Hold names are shown; no message, name or patient. Not cached",
+      "Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide), the placing staff member's id and display name (placed_by_name, null when the directory cannot resolve it) and the number of messages each active hold covers now. Hold names are shown; no message and no patient. Not cached",
     response: M36HoldListResponseSchema,
   },
   "POST /api/v1/messaging/governance/legal-holds": {
@@ -10226,6 +10229,25 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Compliance officer: release a legal hold (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.release`, else 403 STEP_UP_REQUIRED). A reason of at least 10 characters (422) and the eligible count the officer saw in the preview; the server recomputes and a different number is 409 RELEASE_PREVIEW_STALE with nothing changed. 404 unknown or another tenant's hold, 409 ALREADY_RELEASED. Audited as data.legal_hold_released with the reason. No clock extension: messages are eligible again on their original clock",
     body: M36ReleaseHoldBodySchema,
     response: M36HoldResponseSchema,
+  },
+
+  // redaction of a message (WP 5.6, ADR-0055 item 7, ADR-0086 PROPOSED)
+  "POST /api/v1/messaging/governance/redactions": {
+    summary:
+      "Compliance officer: ask for a message to be redacted (messaging.redact.request; message_id and a reason of 10 to 1000 characters, 422). No channel membership is needed and the requester never sees the body. The request already takes the message out of search and blocks edits (409 MESSAGE_REDACTED); nothing is masked until a DIFFERENT person approves. One request per message (409 REDACTION_EXISTS); an unknown or another tenant's message is 404. A legal hold does not block it: a redaction only masks, the cipher is retained. Audited by the table's trigger (the reason text is left out)",
+    body: M36RequestRedactionBodySchema,
+    response: M36RedactionResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/governance/redactions": {
+    summary:
+      "Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached",
+    response: M36RedactionListResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/redactions/:id/approve": {
+    summary:
+      "Compliance officer: approve a redaction (messaging.redact.approve + a fresh step-up for `messaging.redact.approve`, else 403 STEP_UP_REQUIRED). The approver is never the requester (403 REDACTION_SELF_APPROVAL, and the database refuses it too); 409 REDACTION_ALREADY_APPROVED; 404 unknown or another tenant's redaction. From the approval every reader of the message sees an empty body with a redactedAt instant, no attachments, links, poll or mentions, and the message is out of search and exports; the cipher and hash are untouched, so a held message stays retained under the mask",
+    response: M36RedactionResponseSchema,
   },
 
   // break-glass (WP 5.8, ADR-0087 PROPOSED)

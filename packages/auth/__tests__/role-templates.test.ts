@@ -19,6 +19,7 @@ import {
   rolesForPermission,
   satisfiesFloor,
 } from "../src/roles";
+import { FULL_CATALOG_EXCLUDED_KEYS } from "../src/roles/template-materialization";
 
 describe("M3-T02 system_locked role floor (spec §3.4.1)", () => {
   it("enumerates exactly the six CoP-required locked roles", () => {
@@ -193,6 +194,23 @@ describe("WP 5.7 (ADR-0089) export keys reach NEW tenants' compliance officer an
       if (t.key === "compliance_officer") continue;
       for (const k of EXPORT_KEYS) expect(t.grants ?? [], `${t.key} ${k}`).not.toContain(k);
     }
+  });
+});
+
+describe("WP 5.6 (ADR-0055 D9) redaction keys: the compliance officer only, never a full-catalog admin role", () => {
+  const REDACT_KEYS = ["messaging.redact.request", "messaging.redact.approve"];
+
+  it("the compliance_officer template grants both", () => {
+    const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];
+    for (const k of REDACT_KEYS) expect(grants).toContain(k);
+  });
+
+  it("no other template grants either, and the full-catalog admin roles are told to skip them", () => {
+    for (const t of ROLE_TEMPLATES) {
+      if (t.key === "compliance_officer") continue;
+      for (const k of REDACT_KEYS) expect(t.grants ?? [], `${t.key} ${k}`).not.toContain(k);
+    }
+    for (const k of REDACT_KEYS) expect(FULL_CATALOG_EXCLUDED_KEYS.has(k)).toBe(true);
   });
 });
 

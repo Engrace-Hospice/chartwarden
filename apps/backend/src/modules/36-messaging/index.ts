@@ -171,6 +171,7 @@ import {
 } from "./global-search/mount";
 import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
 import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
+import { createMessageRedactionService as _createMessageRedactionService } from "./governance/message-redaction-service";
 import {
   type RetentionGovernanceDeps as _RetentionGovernanceDeps,
   createRetentionGovernanceService as _createRetentionGovernanceService,
@@ -202,6 +203,7 @@ import { registerExportRoutes as _registerExportRoutes } from "./routes/export-r
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
 import type { MedicationQuestionRouteDeps as _MedicationQuestionRouteDeps } from "./routes/medication-question-routes";
+import { registerMessageRedactionRoutes as _registerMessageRedactionRoutes } from "./routes/message-redaction-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
@@ -409,6 +411,16 @@ export function mountMessagingRoutes(
   if (opts.retentionGovernance) {
     _registerRetentionGovernanceRoutes(app, {
       service: _createRetentionGovernanceService({ db, ...opts.retentionGovernance }),
+    });
+    // WP 5.6 (ADR-0055 item 7) - redaction: a two-person mask that never destroys the cipher, so a hold does not block it.
+    _registerMessageRedactionRoutes(app, {
+      service: _createMessageRedactionService({
+        db,
+        activeHolds: opts.retentionGovernance.holds.activeHolds,
+        ...(opts.retentionGovernance.staffNames
+          ? { staffNames: opts.retentionGovernance.staffNames }
+          : {}),
+      }),
     });
   }
   // WP 5.8 (ADR-0087, PROPOSED) - break-glass: open, list, end and review a self-approved, time-limited, read-only grant on one channel.

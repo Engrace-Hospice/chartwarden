@@ -1,6 +1,7 @@
 // apps/backend/src/modules/36-messaging/governance/retention-governance-service.ts - WP 5.6 (ADR-0086, PROPOSED): the retention view and the
-// legal-hold apply / release / preview behind /api/v1/messaging/governance. Ids, counts, dates and the hold name only: never a message body,
-// a user or a patient name. Hold names and reasons are free text and are never logged here.
+// legal-hold apply / release / preview behind /api/v1/messaging/governance. Ids, counts, dates, the hold name and the placing STAFF member's
+// display name (through the injected directory port): never a message body or a patient name. Hold names and reasons are free text and are
+// never logged here.
 //
 // M4 owns `legal_hold`; this module reaches it only through the injected `MessageGovernanceHoldPort` (bound in apps/backend/src/index.ts to
 // the transaction-scoped functions in 04-audit/messaging-hold-workflow.ts), so apply and release write the same row, audit event and
@@ -10,6 +11,7 @@ import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ApplyMessageLegalHoldRequest,
+  ChartWardenError,
   MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
   MESSAGE_RETENTION_CLASSES,
   MESSAGING_GOVERNANCE_HOLD_ORIGIN,
@@ -21,9 +23,9 @@ import {
   RELEASE_PREVIEW_STALE_CODE,
   type ReleaseMessageLegalHoldRequest,
   type RetentionClassDto,
+  type RetentionDestructionMode,
   type RetentionOverviewDto,
   ValidationError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import {
@@ -39,6 +41,7 @@ import {
   pastWindow,
   windowEnd,
 } from "../jobs/retention-scan";
+import { type StaffNamePort, nameOrNull, resolveNames } from "./staff-name-port";
 
 /** The selectors of a hold's criteria that messaging reads (M4's jsonb; extra keys ignored). */
 export interface GovernanceCriteria {
@@ -106,6 +109,10 @@ export interface RetentionGovernanceDeps {
   readonly holds: MessageGovernanceHoldPort;
   /** Reads the last `m36.retention_scan.run` row (audit_event is helper-only: never queried directly). */
   readonly auditQuery: Pick<AuditQuery, "searchEvents">;
+  /** By-id staff names (M2's directory reader, bound at the composition root). Absent => `placed_by_name` is null and the screen shows the id. */
+  readonly staffNames?: StaffNamePort;
+  /** The destruction executor's mode for a tenant (flag + deployment switch). Absent => "off". */
+  readonly destructionMode?: (organizationId: string) => Promise<RetentionDestructionMode>;
   readonly now?: () => Date;
 }
 
@@ -208,12 +215,17 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
     count(tx, sql`m.organization_id = ${orgId}::uuid AND ${holdPredicate(criteria)}`);
 
   /** `heldMessages` is supplied by the caller: the list passes the materialised overlay count, apply the exact live count. */
-  const toDto = (row: GovernanceHoldRow, heldCount: number): MessageLegalHoldDto => ({
+  const toDto = (
+    row: GovernanceHoldRow,
+    heldCount: number,
+    names: ReadonlyMap<string, string>,
+  ): MessageLegalHoldDto => ({
     id: row.id,
     name: row.name,
     status: row.status,
     scope: scopeOf(row.criteria),
     placed_by: row.appliedBy ?? "",
+    placed_by_name: nameOrNull(names, row.appliedBy),
     placed_at: row.appliedAt.toISOString(),
     released_at: row.releasedAt ? row.releasedAt.toISOString() : null,
     held_messages: row.status === "active" ? heldCount : 0,
@@ -274,7 +286,7 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
         classes,
         next_scan_at: nextScanAfter(clock()).toISOString(),
         last_scan_at: last ? last.createdAt : null,
-        destruction_built: false,
+        destruction_mode: (await deps.destructionMode?.(actor.organizationId)) ?? "off",
       };
     },
 
@@ -287,7 +299,13 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
           actor.organizationId,
           rows.filter((r) => r.status === "active").map((r) => r.id),
         );
-        return { holds: rows.map((row) => toDto(row, counts.get(row.id) ?? 0)) };
+        const names = await resolveNames(
+          deps.staffNames,
+          tx,
+          actor.organizationId,
+          rows.map((r) => r.appliedBy),
+        );
+        return { holds: rows.map((row) => toDto(row, counts.get(row.id) ?? 0, names)) };
       });
     },
 
@@ -314,7 +332,11 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
           { id, criteria },
           APPLY_MATERIALISE_MAX_BATCHES,
         );
-        return toDto(await requireHold(tx, actor.organizationId, id), matched);
+        const placed = await requireHold(tx, actor.organizationId, id);
+        const names = await resolveNames(deps.staffNames, tx, actor.organizationId, [
+          placed.appliedBy,
+        ]);
+        return toDto(placed, matched, names);
       });
     },
 
@@ -341,7 +363,11 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
       return inTx(actor, async (tx) => {
         const row = await requireHold(tx, actor.organizationId, id);
         if (row.status === "released") {
-          throw new ChartWardenError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
+          throw new ChartWardenError(
+            "ALREADY_RELEASED",
+            `legal_hold ${id} is already released`,
+            409,
+          );
         }
         const eligible = await eligibleOnRelease(tx, actor.organizationId, row);
         if (eligible !== body.confirmed_eligible_count) {
@@ -358,7 +384,11 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
           reason: body.reason,
           countRestored: () => heldMessages(tx, actor.organizationId, row.criteria),
         });
-        return toDto(await requireHold(tx, actor.organizationId, id), 0);
+        const released = await requireHold(tx, actor.organizationId, id);
+        const names = await resolveNames(deps.staffNames, tx, actor.organizationId, [
+          released.appliedBy,
+        ]);
+        return toDto(released, 0, names);
       });
     },
   };

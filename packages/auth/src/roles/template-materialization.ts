@@ -32,6 +32,9 @@ export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
   // WP 4.1 (ADR-0068, migration 1105): raising / receiving an urgent clinical message is a clinical decision; never an admin default.
   "messaging.urgent.send",
   "messaging.urgent.receive",
+  // WP 5.6 (ADR-0055 D9): org admin has no implicit right to request or approve a message redaction.
+  "messaging.redact.request",
+  "messaging.redact.approve",
 ]);
 
 /** One permission-mirror row the planner needs. */

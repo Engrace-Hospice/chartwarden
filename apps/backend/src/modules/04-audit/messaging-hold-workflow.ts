@@ -8,12 +8,12 @@
 import { type AuditContext, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
+  ChartWardenError,
   MESSAGING_GOVERNANCE_HOLD_ORIGIN,
   NotFoundError,
-  ChartWardenError,
   messagingHoldLockName,
 } from "@chartwarden/types";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
 const HOLD = schema.legalHolds;
@@ -237,6 +237,207 @@ export async function openMessageCertificate(
     .returning({ id: CERT.id });
   if (!row) throw new Error("destruction_certificate insert returned no row");
   return { id: row.id, created: true };
+}
+
+/** An APPROVED message certificate the destruction executor may act on (ids, class and dates only). */
+export interface ApprovedMessageCertificate {
+  readonly id: string;
+  /** `message.<retention class>` */
+  readonly dataClass: string;
+  /** When the scan opened it: the executor's window is measured from here, so only what the approver's count covered is destroyed. */
+  readonly createdAt: Date;
+  readonly recordCount: number;
+  readonly destroyedCount: number;
+  readonly reservedCount: number;
+}
+
+/**
+ * The org's APPROVED, not-yet-executed `message.*` certificates, oldest first, bounded. Approval is M4's (`POST
+ * /destruction-certificates/:id/approve`: permission, step-up, a different person from the scan, the live hold pre-check); the
+ * executor never approves anything. M4's own `execute_destruction` sweep ignores non-`audit.` classes, so these are M36's alone.
+ */
+export async function approvedMessageCertificates(
+  tx: DbClient,
+  organizationId: string,
+  limit: number,
+  notBefore: Date,
+): Promise<readonly ApprovedMessageCertificate[]> {
+  // The freshness filter is in the SQL: an expired approval (which stays `approved` forever) must never fill the LIMIT and starve a fresh one.
+  const rows = await tx
+    .select({
+      id: CERT.id,
+      dataClass: CERT.dataClass,
+      createdAt: CERT.createdAt,
+      recordCount: CERT.recordCount,
+      destroyedCount: CERT.destroyedCount,
+      reservedCount: CERT.reservedCount,
+    })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, organizationId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+        gte(CERT.createdAt, notBefore),
+      ),
+    )
+    .orderBy(asc(CERT.createdAt), asc(CERT.id))
+    .limit(limit);
+  return rows;
+}
+
+/** Ids of approved `message.*` certificates older than their validity (reported in the run row, never acted on). Bounded. */
+export async function expiredMessageCertificateIds(
+  tx: DbClient,
+  organizationId: string,
+  notBefore: Date,
+  limit: number,
+): Promise<readonly string[]> {
+  const rows = await tx
+    .select({ id: CERT.id })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, organizationId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+        lt(CERT.createdAt, notBefore),
+      ),
+    )
+    .orderBy(asc(CERT.createdAt), asc(CERT.id))
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Close an approved message certificate: approved -> executed, once (the WHERE names the source state, so a second call or a
+ * certificate someone moved to `held` meanwhile changes nothing and reports false). Runs in the caller's tenant tx.
+ */
+export async function completeMessageCertificate(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly executedAt: Date;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .update(CERT)
+    .set({ status: "executed", executedAt: input.executedAt })
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .returning({ id: CERT.id });
+  return rows.length > 0;
+}
+
+/** Is the certificate still approved and fresh? A plain SELECT, so the destruction credential (SELECT only) can run it in its delete transaction. */
+export async function messageCertificateIsLive(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly notBefore: Date;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: CERT.id })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        eq(CERT.status, "approved"),
+        gte(CERT.createdAt, input.notBefore),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** The certificate row under a FOR UPDATE lock: executors serialise here, so the remainder they read is the remainder they may reserve. */
+export async function lockMessageCertificate(
+  tx: DbClient,
+  input: { readonly organizationId: string; readonly certificateId: string },
+): Promise<{
+  readonly status: string;
+  readonly createdAt: Date;
+  readonly available: number;
+  readonly unspent: number;
+} | null> {
+  const [row] = await tx
+    .select({
+      status: CERT.status,
+      createdAt: CERT.createdAt,
+      recordCount: CERT.recordCount,
+      destroyedCount: CERT.destroyedCount,
+      reservedCount: CERT.reservedCount,
+    })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!row) return null;
+  return {
+    status: row.status,
+    createdAt: row.createdAt,
+    available: Math.max(row.recordCount - row.destroyedCount - row.reservedCount, 0),
+    unspent: Math.max(row.recordCount - row.destroyedCount, 0),
+  };
+}
+
+/**
+ * Reserve a batch through the definer function (the app role cannot write the spend columns or the batch table itself). It creates the batch row
+ * and reserves its count in one statement, pins the tenant (app.org_id), the `message.*` class and the approved status, refuses to exceed the
+ * approved figure and refuses ids another unsettled batch already holds; false (nothing reserved) then. `record_count` is never written.
+ */
+export async function reserveMessageCertificateCount(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly batchId: string;
+    readonly messageIds: readonly string[];
+  },
+): Promise<boolean> {
+  const res = await tx.execute<{ ok: boolean }>(
+    sql`SELECT destruction_certificate_reserve(${input.organizationId}::uuid, ${input.certificateId}::uuid, ${input.batchId}::uuid,
+         ARRAY[${sql.join(
+           input.messageIds.map((i) => sql`${i}::uuid`),
+           sql`, `,
+         )}]::uuid[]) AS ok`,
+  );
+  return res.rows[0]?.ok === true;
+}
+
+/**
+ * Settle ONE batch through the definer function: it locks the batch row, requires it to be `reserved`, releases the batch's own planned count and
+ * adds what was really deleted (never more than planned), once. Raises for an unknown, foreign or already settled batch. Returns what is left.
+ */
+export async function settleMessageCertificateCount(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly batchId: string;
+    readonly destroyed: number;
+    readonly state: "settled" | "reconciled";
+  },
+): Promise<number> {
+  const res = await tx.execute<{ left: number }>(
+    sql`SELECT destruction_certificate_settle(${input.organizationId}::uuid, ${input.batchId}::uuid, ${input.destroyed}::int, ${input.state}) AS "left"`,
+  );
+  return Number(res.rows[0]?.left ?? 0);
 }
 
 /** One legal hold as the messaging governance screen reads it (the free-text reason stays in the audit row). */

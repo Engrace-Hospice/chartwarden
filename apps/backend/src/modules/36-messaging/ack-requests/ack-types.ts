@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-types.ts - WP 4.2 (ADR-0069): the row shapes and the storage port of the
 // acknowledgment-request aggregate. The service owns the rules; a store only reads and writes rows inside one transaction
 // (the DB trigger is the backstop for the state machine). Ids, enums and instants only.
-import type { AckClass, AckEventType, AckStatus, AckSupervisorReasonCode } from "@chartwarden/types";
+import type { AckClass, AckEventType, AckReasonCode, AckStatus } from "@chartwarden/types";
 
 export interface AckRow {
   readonly id: string;
@@ -70,7 +70,7 @@ export interface NewAckEvent {
   readonly tier: number;
   readonly at: Date;
   /** ADR-0078: set only on a SUPERVISOR's `reassigned` event (a fixed non-clinical code). */
-  readonly reasonCode?: AckSupervisorReasonCode | null;
+  readonly reasonCode?: AckReasonCode | null;
 }
 
 export interface AckEventRow {

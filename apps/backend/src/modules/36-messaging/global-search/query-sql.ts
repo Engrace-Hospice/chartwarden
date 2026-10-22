@@ -198,6 +198,9 @@ export async function reselectSurvivors(
         eq(MSG.organizationId, organizationId),
         inArray(MSG.id, [...messageIds]),
         sql`${MSG.status} <> 'deleted'`,
+        // WP 5.6 (ADR-0058 d6/7): a message with a redaction, requested or approved, is never a search result.
+        sql`NOT EXISTS (SELECT 1 FROM message_redaction r
+              WHERE r.organization_id = ${MSG.organizationId} AND r.message_id = ${MSG.id})`,
         or(sql`${CM.userId} IS NOT NULL`, sql`${CH.channelKind} = 'announcement'`),
       ),
     );

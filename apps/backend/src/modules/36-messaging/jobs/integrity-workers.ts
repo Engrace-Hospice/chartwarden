@@ -15,6 +15,10 @@ import {
   runHashVerifyForOrg,
   runRetentionScanForOrg,
 } from "./integrity-jobs";
+import {
+  type RetentionDestructionDeps,
+  runRetentionDestructionForOrg,
+} from "./retention-destruction";
 
 export interface M36IntegrityWorkerDeps extends M36IntegrityJobDeps {
   readonly connection: ConnectionOptions;
@@ -22,6 +26,11 @@ export interface M36IntegrityWorkerDeps extends M36IntegrityJobDeps {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
   readonly onError?: (context: { organizationId: string; job: string }, error: unknown) => void;
+  /**
+   * WP 5.6 (ADR-0086): the message destruction executor, run after each weekly scan. Absent (no destruction credential) = it never runs.
+   * It is off per tenant unless `messaging.retention_destruction` is on, and a dry run unless `execute` is set.
+   */
+  readonly destruction?: Omit<RetentionDestructionDeps, "db">;
 }
 
 /** Run `perOrg` for every active org; throw one AggregateError after all orgs were attempted. */
@@ -61,10 +70,34 @@ export async function hashVerifyTick(deps: M36IntegrityWorkerDeps): Promise<numb
   });
 }
 
+async function attempt(run: () => Promise<number>): Promise<{ orgs: number; error?: unknown }> {
+  try {
+    return { orgs: await run() };
+  } catch (error) {
+    return { orgs: 0, error };
+  }
+}
+
 export async function retentionScanTick(deps: M36IntegrityWorkerDeps): Promise<number> {
-  return fanOutOrgs(deps, "retention_scan", async (organizationId) => {
-    await runRetentionScanForOrg(deps, organizationId);
-  });
+  const scan = await attempt(() =>
+    fanOutOrgs(deps, "retention_scan", async (organizationId) => {
+      await runRetentionScanForOrg(deps, organizationId);
+    }),
+  );
+  // The executor runs even if the scan failed for some org: it acts only on certificates a human already approved.
+  const destruction = deps.destruction;
+  const destroy = destruction
+    ? await attempt(() =>
+        fanOutOrgs(deps, "retention_destruction", async (organizationId) => {
+          await runRetentionDestructionForOrg({ ...destruction, db: deps.db }, organizationId);
+        }),
+      )
+    : undefined;
+  const errors = [scan.error, destroy?.error].filter((e) => e !== undefined);
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "M36 retention tick failed (scan and/or destruction)");
+  }
+  return scan.orgs;
 }
 
 /** Construct the two Workers (the caller owns lifecycle). Concurrency comes from the §4.4.1 parameter table. */
