@@ -18,7 +18,9 @@ case "$mode" in
   *) echo "usage: $0 inventory|reseed" >&2; exit 64 ;;
 esac
 
-deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-/opt/wardenx}
+# Defaults to the directory this script was uploaded to, so the same file works from /opt/wardenx today and
+# /opt/chartwarden after the infra-rename cutover (INFRA_RENAME_RUNBOOK.md). Override with CHARTWARDEN_DEPLOY_DIR.
+deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-$(cd "$(dirname "$0")" && pwd)}
 cd "$deploy_dir"
 if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   echo "expected .env.production and compose.yml in $deploy_dir" >&2
@@ -26,9 +28,19 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
 fi
 
 dc() { docker compose --env-file .env.production -f compose.yml "$@"; }
+# Installs that predate CHARTWARDEN_DB_NAME run the database `wardenx` and rely on the old compose default. The default is now
+# `chartwarden`, so pin the legacy value in the env file BEFORE anything interpolates it; otherwise the next compose command
+# would point every service at a database that does not exist. Fresh installs get an explicit value from the env template.
+# The operator renames the database later (INFRA_RENAME_RUNBOOK.md) by replacing this line.
+if ! grep -q '^CHARTWARDEN_DB_NAME=' .env.production; then
+  [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
+  printf 'CHARTWARDEN_DB_NAME=wardenx\n' >> .env.production
+  echo "pinned legacy CHARTWARDEN_DB_NAME=wardenx in .env.production"
+fi
+
 # Same resolution + validation as deploy.sh (exported variable > .env.production > default).
 db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
-db_name=${db_name:-wardenx}
+db_name=${db_name:-chartwarden}
 case "$db_name" in
   '' | [!a-z_]* | *[!a-z0-9_]*)
     echo "CHARTWARDEN_DB_NAME must match ^[a-z_][a-z0-9_]*\$ (got: $db_name)" >&2

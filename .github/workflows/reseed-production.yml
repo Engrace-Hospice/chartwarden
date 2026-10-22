@@ -8,7 +8,7 @@ name: Reseed production demo
 #   mode: inventory   read-only listing of organizations/users — run this first
 #   mode: reseed      pg_dump backup on the VPS, then the full seed; needs `confirm` below
 #
-# Generated passwords stay on the VPS (/opt/wardenx/CREDENTIALS.production.md, mode 600) — they are
+# Generated passwords stay on the VPS (<deploy dir>/CREDENTIALS.production.md, mode 600) — they are
 # never printed to the run log. Fetch the file over SSH.
 
 on:
@@ -60,13 +60,15 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           RESEED_MODE: ${{ inputs.mode }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/wardenx' }}
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_DIR"
           port="${DEPLOY_PORT:-22}"
           # compose.yml carries the `seed` profile services the script starts; upload it first.
           scp -P "$port" \
             deploy/production/reseed-demo.sh \
             deploy/production/compose.yml \
-            "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "chmod 700 /opt/wardenx/reseed-demo.sh && /opt/wardenx/reseed-demo.sh '$RESEED_MODE'"
+            "chmod 700 $DEPLOY_DIR/reseed-demo.sh && $DEPLOY_DIR/reseed-demo.sh '$RESEED_MODE'"

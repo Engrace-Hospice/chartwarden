@@ -342,8 +342,12 @@ jobs:
           BACKEND_IMAGE: ${{ needs.release.outputs.backend_image }}
           WEB_IMAGE: ${{ needs.release.outputs.web_image }}
           DOCLING_IMAGE: ${{ needs.release.outputs.docling_image }}
+          # Infra-rename cutover: set the repository variable DEPLOY_DIR=/opt/chartwarden in the same step as the host-side move
+          # (deploy/production/INFRA_RENAME_RUNBOOK.md). Unset, the live /opt/wardenx path is used.
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/wardenx' }}
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_DIR"
           port="${DEPLOY_PORT:-22}"
           # F-038/#98 — compose.yml and smoke.sh ride along with deploy.sh. compose.yml because the
           # worker and web healthchecks the smoke test waits on live in it, and a server still holding
@@ -353,9 +357,9 @@ jobs:
             deploy/production/deploy.sh \
             deploy/production/smoke.sh \
             deploy/production/compose.yml \
-            "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
-          # M36 WP 1.5 — the ClamAV sidecar's config is bind-mounted from /opt/wardenx/clamav/ by compose.yml.
-          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /opt/wardenx/clamav"
-          scp -P "$port" deploy/clamav/clamd.conf "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/clamav/clamd.conf"
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+          # M36 WP 1.5 — the ClamAV sidecar's config is bind-mounted from $DEPLOY_DIR/clamav/ by compose.yml.
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/clamav"
+          scp -P "$port" deploy/clamav/clamd.conf "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/clamav/clamd.conf"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE' '$DOCLING_IMAGE'"
+            "chmod 700 $DEPLOY_DIR/deploy.sh $DEPLOY_DIR/smoke.sh && $DEPLOY_DIR/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE' '$DOCLING_IMAGE'"
