@@ -306,7 +306,7 @@ describe("#115 — reserved placeholder hosts", () => {
   it("leaves real hosts alone — including the loopback a co-located service legitimately uses", () => {
     for (const host of [
       "app.chartwarden.cloud",
-      "storage.wardenx.chartwarden.cloud",
+      "storage.chartwarden.cloud",
       "postgres",
       "valkey",
       // Deliberately NOT reserved: a single-host deployment addressing its own Postgres or object

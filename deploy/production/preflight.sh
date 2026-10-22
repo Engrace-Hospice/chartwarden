@@ -53,7 +53,15 @@ if [ -n "$existing_pg_volumes" ] || [ -n "$pg_projects" ]; then existing_stack=1
 
 # 2. Volumes: the configured postgres volume must exist if any does (a fresh host has none).
 if [ -n "$existing_pg_volumes" ] && ! printf '%s\n' "$existing_pg_volumes" | grep -qx "$pg_volume"; then
-  fail "configured postgres volume '$pg_volume' does not exist but these do: $(echo $existing_pg_volumes). Set CHARTWARDEN_VOLUME_PREFIX in .env.production to the existing prefix"
+  fail "configured postgres volume '$pg_volume' does not exist but these do: $(echo $existing_pg_volumes). Set CHARTWARDEN_VOLUME_PREFIX in .env.production to the existing prefix, or finish the volume copy (Runbook, Window 2)"
+fi
+# A half-finished volume copy: postgres moved but the object store did not, so 'up' would create an EMPTY minio volume
+# and every uploaded document would look lost. Same rule as above for the object store (the one volume whose loss is
+# invisible to the database).
+minio_volume="${volume_prefix}_minio-data"
+existing_minio_volumes=$(docker volume ls -q --filter 'name=_minio-data$' </dev/null 2>/dev/null) || fail "docker volume ls failed"
+if [ -n "$existing_minio_volumes" ] && ! printf '%s\n' "$existing_minio_volumes" | grep -qx "$minio_volume"; then
+  fail "configured object-store volume '$minio_volume' does not exist but these do: $(echo $existing_minio_volumes). The volume copy is incomplete (Runbook, Window 2); do not deploy"
 fi
 
 # 3. Compose project: a differently named project already holds postgres, so 'up' would start a second stack.
