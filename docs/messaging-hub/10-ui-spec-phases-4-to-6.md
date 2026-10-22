@@ -352,8 +352,8 @@ Message the on-call role                                   Step 2 of 2: confirm 
 ### 5.1 Offline drafts and optimistic send (outbox)
 
 ```
-Thread (offline)  ⚠ You are offline. Messages are saved on this device and sent when you reconnect.
- You: Will visit at 3         ◔ Not sent · saved on this device   [Retry] [Delete]
+Thread (offline)  ⚠ You're offline. New messages stay Not sent until you reconnect; closing this tab discards them.
+ You: Will visit at 3         ◔ Not sent                           [Retry] [Delete]
  Composer: [Message…]                       Draft: Saved on this device only
 ```
 - **Rule:** an offline message is **never** shown as sent, delivered or read. States, in order: *Draft → Not sent (queued) → Sending → Sent → Failed (retry)*;
