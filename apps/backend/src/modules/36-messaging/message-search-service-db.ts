@@ -25,7 +25,7 @@ import {
 } from "@chartwarden/messaging";
 import type { MessageBodyKind } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "./body-key-ring";
 import { decodeCursor, encodeCursor } from "./message-cursor";
@@ -124,6 +124,9 @@ function candidateWhere(
     eq(MSG.organizationId, orgId),
     eq(MSG.channelId, channelId),
     sql`${MSG.status} <> 'deleted'`,
+    // WP 5.6 (ADR-0058 d6/7): a message with a redaction, requested or approved, is never matched (its body must not answer a search).
+    sql`NOT EXISTS (SELECT 1 FROM message_redaction r
+          WHERE r.organization_id = ${MSG.organizationId} AND r.message_id = ${MSG.id})`,
   ];
   if (filters.senderUserId) where.push(eq(MSG.authorUserId, filters.senderUserId));
   if (filters.from) where.push(sql`${MSG.createdAt} >= ${filters.from.toISOString()}::timestamptz`);

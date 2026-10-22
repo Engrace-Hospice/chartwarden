@@ -34,7 +34,12 @@ import type {
   MemberAdminActor,
   MessagingRouteService,
 } from "@chartwarden/messaging";
-import { ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ForbiddenError,
+  MESSAGING_RETENTION_MANAGE_PERMISSION,
+  UnauthorizedError,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
@@ -268,6 +273,15 @@ const OWN_ALERTS: PreHandler = async (request) => {
   if (!granted.has("messaging.read") && !granted.has("alert.inbox.self"))
     throw new ForbiddenError("requires permission 'messaging.read' or 'alert.inbox.self'");
 };
+/**
+ * WP 5.6 (ADR-0086): only a holder of `messaging.retention.manage` sees the "Legal hold" chip. That a hold exists is itself sensitive (a
+ * custodian must not learn they are under one), so ordinary readers never get the flag. Decided here from the actor's effective permissions.
+ */
+const canSeeLegalHold = async (request: FastifyRequest): Promise<boolean> => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) return false;
+  return (await resolveActorPermissions(ctx)).has(MESSAGING_RETENTION_MANAGE_PERMISSION);
+};
 const SEND = requirePermission("messaging.send") as PreHandler;
 const DM = requirePermission("messaging.dm") as PreHandler;
 const MANAGE_MEMBERS = requirePermission("messaging.manage_members") as PreHandler;
@@ -365,6 +379,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         limit: q.limit,
         direction: q.direction,
         anchorMessageId: q.anchorMessageId,
+        showLegalHold: await canSeeLegalHold(request),
       });
     },
   );
@@ -394,6 +409,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         userId,
         cursor: q.cursor,
         limit: q.limit,
+        showLegalHold: await canSeeLegalHold(request),
       });
     },
   );

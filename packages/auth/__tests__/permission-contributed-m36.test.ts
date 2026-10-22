@@ -45,6 +45,8 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.sessions.manage",
         "messaging.offboarding.manage",
         "messaging.retention.manage",
+        "messaging.redact.request",
+        "messaging.redact.approve",
         "messaging.break_glass.invoke",
         "messaging.break_glass.review",
         "messaging.export.request",
@@ -82,6 +84,8 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.sessions.manage",
       "messaging.offboarding.manage",
       "messaging.retention.manage",
+      "messaging.redact.request",
+      "messaging.redact.approve",
       "messaging.break_glass.invoke",
       "messaging.break_glass.review",
       "messaging.export.request",
@@ -99,6 +103,16 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       action: "manage",
       category: "compliance",
     });
+  });
+
+  it("the redaction keys are compliance-category on message_redaction", () => {
+    for (const action of ["request", "approve"] as const) {
+      expect(M36_CONTRIBUTED_PERMISSIONS[`messaging.redact.${action}`]).toMatchObject({
+        resource: "message_redaction",
+        action,
+        category: "compliance",
+      });
+    }
   });
 
   it("the break-glass keys are compliance-category on message_break_glass", () => {

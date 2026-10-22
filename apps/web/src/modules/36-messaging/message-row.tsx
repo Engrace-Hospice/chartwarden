@@ -3,6 +3,7 @@ import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { AckForMessage } from "./ack-request-card";
+import { LegalHoldChip } from "./legal-hold-chip";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import { MessagePromotionButton } from "./message-promotion-button";
@@ -11,11 +12,14 @@ import { MessageTaskButton } from "./message-task-button";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { PollCard } from "./poll-card";
+import { REDACTED_TEXT } from "./retention-wording";
 import { RichBodyView } from "./rich-body-view";
 import { UrgentBadge } from "./urgent-badge";
 import "./announcements.css";
 
 export function MessageText({ message }: { message: Message }): JSX.Element {
+  // WP 5.6: an approved redaction masks the body for every reader; say so rather than "deleted".
+  if (message.redactedAt) return <span className="wx-message-redacted">{REDACTED_TEXT}</span>;
   // An attachment-only message has no text to show; the attachment list below is its content.
   if (
     !message.body &&
@@ -239,6 +243,7 @@ function MessageRowImpl({
                   {clockTime(message.createdAt)}
                 </time>
                 {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
+                {message.legalHold ? <LegalHoldChip /> : null}
               </div>
             </div>
             {!deleted && patientLinked ? (

@@ -1,0 +1,784 @@
+/**
+ * M36 WP 5.6 (ADR-0086 / ADR-0055 item 7, PROPOSED) - the message destruction executor, redaction, the legal-hold chip and staff names, LIVE Postgres.
+ * Every tenant write runs as the NOBYPASSRLS `chartwarden_app` role and every delete as a real `chartwarden_destruction` login; the superuser only
+ * seeds and inspects.
+ *
+ *   1. SWITCH      flag off => nothing happens and nothing is audited; flag on alone => a DRY RUN that deletes nothing but reports.
+ *   2. CERTIFICATE only an APPROVED M4 `message.<class>` certificate is acted on (pending and held ones are not); the window is measured from
+ *                  when it was opened, so a message that aged past it later is not destroyed under it; it is closed (executed) only when
+ *                  nothing past its window remains.
+ *   3. HOLD        a held message survives the executor (live criteria, overlay not needed); the delete RE-CHECKS in its own transaction (a hold
+ *                  the plan did not see is still refused: `refusedAtDelete`); releasing the hold restores eligibility on the original clock and
+ *                  the next run destroys it and closes the certificate.
+ *   4. SAFETY      a message with an undestroyed attachment object, and a parent that still has a reply, are kept; replies go first, then
+ *                  the parent in the same run. Idempotent (a second run changes nothing); bounded (batch size and per-run budget).
+ *   5. AUDIT       batch_started (ids, committed BEFORE the delete), batch_completed (ids), certificate_executed, run: ids and counts only.
+ *   6. TENANCY     another organisation's messages and certificates are untouched; as the real roles, org B reads none of org A's redactions or
+ *                  certificates, and the destruction role scoped to org B deletes nothing of org A's.
+ *   7. REDACTION   two people (the same person is 403 in the service and refused by the database CHECK); a request alone masks nothing but
+ *                  blocks edits and search; approval masks the body for every reader; a HELD message can be redacted and its cipher and hash are
+ *                  untouched; another tenant's message is a 404.
+ *   8. CHIP        `legalHold: true` appears on a held message only when the route asks for it (holder of messaging.retention.manage).
+ *   9. NAMES       the identity directory port resolves a name only for a user with a membership in THIS organisation.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-destruction:live
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
+ */
+import { randomUUID } from "node:crypto";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readStaffNames } from "../src/modules/02-identity/staff-names";
+import {
+  activeLegalHolds,
+  approvedMessageCertificates,
+  completeMessageCertificate,
+  openMessageCertificate,
+} from "../src/modules/04-audit/messaging-hold-workflow";
+import { createMessageRedactionService } from "../src/modules/36-messaging/governance/message-redaction-service";
+import type { GovernanceActor } from "../src/modules/36-messaging/governance/retention-governance-service";
+import {
+  DESTRUCTION_BATCH_SIZE,
+  type RetentionDestructionDeps,
+  runRetentionDestructionForOrg,
+} from "../src/modules/36-messaging/jobs/retention-destruction";
+import type { MessageDestructionHoldPort } from "../src/modules/36-messaging/jobs/retention-hold-sql";
+import { type LiveKit, bootLiveKit } from "./_m36-handoff-live-kit";
+
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const ORG_A = "11111111-1111-4111-8111-1111000a5601";
+const ORG_B = "22222222-2222-4222-8222-2222000a5602";
+const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a56a1";
+const BODY_CIPHER_FAKE = "\\x01aa";
+const REASON = "Request to mask the message per privacy review 2026-17";
+
+describe.skipIf(!DB_URL)(
+  "M36 WP 5.6 destruction executor, redaction, chip and names - LIVE Postgres",
+  () => {
+    let kit: LiveKit;
+    let destroyer: ReturnType<typeof createDbClient>;
+    let author: string;
+    let officer1: string;
+    let officer2: string;
+    let outsider: string;
+    let channel: string;
+    let channelB: string;
+    let channel2: string;
+    let channelR: string;
+    let flagOn = true;
+    let execute = true;
+
+    const messageHolds: MessageDestructionHoldPort = {
+      activeHolds: activeLegalHolds,
+      openCertificate: openMessageCertificate,
+      approvedCertificates: (tx, org, limit) => approvedMessageCertificates(tx, org, limit),
+      completeCertificate: completeMessageCertificate,
+    };
+    const deps = (over: Partial<RetentionDestructionDeps> = {}): RetentionDestructionDeps => ({
+      db: kit.handle.db,
+      destructionDb: destroyer.db,
+      messageHolds,
+      isEnabled: async () => flagOn,
+      execute,
+      ...over,
+    });
+    const run = (org = ORG_A, over: Partial<RetentionDestructionDeps> = {}) =>
+      runRetentionDestructionForOrg(deps(over), org);
+
+    /** A past-window message with a fake (never opened) body: the executor never reads a body. */
+    const aged = async (org: string, ch: string, years: number, parent: string | null = null) =>
+      (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, parent_message_id, created_at)
+         VALUES ($1,$2,$3,'user', $4::bytea, repeat('0',64), $5, now() - make_interval(years => $6::int, days => 10)) RETURNING id`,
+          [org, ch, author, BODY_CIPHER_FAKE, parent, years],
+        )
+      )[0].id;
+    const exists = async (id: string) =>
+      (await kit.count("SELECT count(*)::int AS n FROM message WHERE id = $1", [id])) === 1;
+    const certificate = async (org: string, status: string, dataClass = "message.care_related") =>
+      (
+        await kit.one<{ id: string }>(
+          `INSERT INTO destruction_certificate (organization_id, data_class, record_count, date_range_start, date_range_end, method, status, approved_by)
+         VALUES ($1,$2,0, date_trunc('month', now()), date_trunc('month', now()) + interval '1 month', 'secure_delete', $3::destruction_status, $4) RETURNING id`,
+          [org, dataClass, status, status === "approved" ? officer1 : null],
+        )
+      )[0].id;
+    const certStatus = async (id: string) =>
+      (
+        await kit.one<{ status: string }>(
+          "SELECT status::text FROM destruction_certificate WHERE id=$1",
+          [id],
+        )
+      )[0]?.status;
+    const hold = async (criteria: object, status: "active" | "released" = "active") =>
+      (
+        await kit.one<{ id: string }>(
+          `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by, status)
+         VALUES ($1,'wp56-destroy',$2::jsonb,'litigation hold for the destruction suite',$3,$4::legal_hold_status) RETURNING id`,
+          [ORG_A, JSON.stringify(criteria), author, status],
+        )
+      )[0].id;
+    const setHold = (id: string, status: "active" | "released") =>
+      kit.one(
+        "UPDATE legal_hold SET status = $2::legal_hold_status, released_at = CASE WHEN $2::text = 'released' THEN now() END WHERE id = $1",
+        [id, status],
+      );
+    /** The executor's audit rows for ONE run (every row carries its runId in the context), oldest first. */
+    const auditRows = (like: string, runId?: string) =>
+      kit.one<{ event_type: string; context: Record<string, unknown> }>(
+        `SELECT event_type, context FROM audit_event WHERE organization_id=$1 AND event_type LIKE $2
+          AND ($3::text IS NULL OR context->>'runId' = $3) ORDER BY created_at, id`,
+        [ORG_A, like, runId ?? null],
+      );
+
+    const actor = (userId: string, organizationId = ORG_A): GovernanceActor => ({
+      organizationId,
+      userId,
+      auditContext: {
+        organizationId,
+        userId,
+        actorKind: "user",
+        correlationId: randomUUID(),
+      } as never,
+    });
+
+    /** Runs `sql` as a real role in a rolled-back transaction pinned to `org` (the app role, or the destruction login's role). */
+    const asRole = async (
+      role: "app" | "destruction",
+      sql: string,
+      params: unknown[],
+      org: string,
+    ) => {
+      const conn = role === "app" ? kit.appConn : kit.admin;
+      await conn.query("BEGIN");
+      try {
+        if (role === "destruction") await conn.query("SET LOCAL ROLE chartwarden_destruction");
+        await conn.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        const res = await conn.query(sql, params);
+        return res.rows as Record<string, unknown>[];
+      } finally {
+        await conn.query("ROLLBACK");
+      }
+    };
+
+    beforeAll(async () => {
+      kit = await bootLiveKit(DB_URL as string, ORG_A, ORG_B, "wp56d");
+      author = await kit.seedUser("author", ORG_A);
+      officer1 = await kit.seedUser("officer1", ORG_A);
+      officer2 = await kit.seedUser("officer2", ORG_A);
+      outsider = await kit.seedUser("outsider", ORG_B);
+      channel = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+         VALUES ($1,'care_team',$2,'wp56-a','care_related') RETURNING id`,
+          [ORG_A, PATIENT],
+        )
+      )[0].id;
+      channel2 = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+         VALUES ($1,'location','aaaaaaaa-aaaa-4aaa-8aaa-0000000a56a2','wp56-a2','care_related') RETURNING id`,
+          [ORG_A],
+        )
+      )[0].id;
+      channelR = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+         VALUES ($1,'location','aaaaaaaa-aaaa-4aaa-8aaa-0000000a56a4','wp56-r','care_related') RETURNING id`,
+          [ORG_A],
+        )
+      )[0].id;
+      channelB = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+         VALUES ($1,'location','aaaaaaaa-aaaa-4aaa-8aaa-0000000a56a3','wp56-b','care_related') RETURNING id`,
+          [ORG_B],
+        )
+      )[0].id;
+      for (const [ch, user] of [
+        [channel, author],
+        [channel2, author],
+        [channelR, author],
+      ] as const) {
+        await kit.admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source) VALUES ($1,$2,$3,'member','manual')`,
+          [ORG_A, ch, user],
+        );
+      }
+      await kit.admin.query(
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp56_destroyer') THEN
+         CREATE ROLE wp56_destroyer LOGIN PASSWORD 'wp56_destroyer_pw'; END IF; END $$;`,
+      );
+      // Re-granted every run: the live kit drops and recreates chartwarden_destruction, which silently ends an earlier membership.
+      await kit.admin.query("GRANT chartwarden_destruction TO wp56_destroyer");
+      const url = new URL(DB_URL as string);
+      url.username = "wp56_destroyer";
+      url.password = "wp56_destroyer_pw";
+      destroyer = createDbClient({ connectionString: url.toString() });
+    }, 300_000);
+
+    afterAll(async () => {
+      await destroyer?.close();
+      await kit?.close();
+    });
+
+    beforeEach(async () => {
+      flagOn = true;
+      execute = true;
+      // Each test starts from a clean slate: no certificates, holds or messages (the superuser bypasses RLS and the hold guard has no holds left).
+      await kit.admin.query("DELETE FROM destruction_certificate");
+      await kit.admin.query("DELETE FROM legal_hold");
+      await kit.admin.query("DELETE FROM message");
+    });
+
+    // ---------------------------------------------------------------- 1. SWITCH
+
+    it("flag off: nothing is read, destroyed or audited, even with an approved certificate and live execute", async () => {
+      const old = await aged(ORG_A, channel, 8);
+      await certificate(ORG_A, "approved");
+      flagOn = false;
+      const before = (await auditRows("m36.retention_destruction.%")).length;
+      const result = await run();
+      expect(result).toMatchObject({ mode: "off", destroyed: 0, certificates: [] });
+      expect(await exists(old)).toBe(true);
+      expect((await auditRows("m36.retention_destruction.%")).length).toBe(before);
+    });
+
+    it("flag on without the execute key is a DRY RUN: it reports what it would destroy, deletes nothing and does not touch the certificate", async () => {
+      const a = await aged(ORG_A, channel, 8);
+      const b = await aged(ORG_A, channel, 9);
+      const young = await aged(ORG_A, channel, 1);
+      const cert = await certificate(ORG_A, "approved");
+      execute = false;
+      const result = await run();
+      expect(result.mode).toBe("dry_run");
+      expect(result.destroyed).toBe(0);
+      expect(result.certificates[0]).toMatchObject({
+        certificateId: cert,
+        eligible: 2,
+        destroyed: 0,
+        certificateExecuted: false,
+      });
+      for (const id of [a, b, young]) expect(await exists(id)).toBe(true);
+      expect(await certStatus(cert)).toBe("approved");
+      const rows = await auditRows("m36.retention_destruction.%", result.runId);
+      expect(rows.map((r) => r.event_type)).toEqual(["m36.retention_destruction.run"]);
+      expect(rows[0]?.context).toMatchObject({ mode: "dry_run", destroyed: 0 });
+    });
+
+    // ---------------------------------------------------------------- 2. CERTIFICATE
+
+    it("acts only on an APPROVED certificate: pending, held and a non-message class do nothing", async () => {
+      const old = await aged(ORG_A, channel, 8);
+      await certificate(ORG_A, "pending");
+      await certificate(ORG_A, "held");
+      await certificate(ORG_A, "approved", "audit.compliance");
+      const result = await run();
+      expect(result.certificates).toHaveLength(0);
+      expect(await exists(old)).toBe(true);
+    });
+
+    it("destroys the past-window messages under an approved certificate, keeps the young one, writes a certificate close and the audit trail", async () => {
+      const a = await aged(ORG_A, channel, 8);
+      const b = await aged(ORG_A, channel2, 9);
+      const young = await aged(ORG_A, channel, 1);
+      const cert = await certificate(ORG_A, "approved");
+      const result = await run();
+      expect(result.mode).toBe("live");
+      expect(result.destroyed).toBe(2);
+      expect(result.certificates[0]).toMatchObject({
+        destroyed: 2,
+        drained: true,
+        pastWindowRemaining: 0,
+        certificateExecuted: true,
+      });
+      expect(await exists(a)).toBe(false);
+      expect(await exists(b)).toBe(false);
+      expect(await exists(young)).toBe(true);
+      expect(await certStatus(cert)).toBe("executed");
+      expect(
+        (
+          await kit.one<{ executed_at: Date | null }>(
+            "SELECT executed_at FROM destruction_certificate WHERE id=$1",
+            [cert],
+          )
+        )[0]?.executed_at,
+      ).not.toBeNull();
+
+      const rows = await auditRows("m36.retention_destruction.%", result.runId);
+      expect(rows.map((r) => r.event_type)).toEqual([
+        "m36.retention_destruction.batch_started",
+        "m36.retention_destruction.batch_completed",
+        "m36.retention_destruction.certificate_executed",
+        "m36.retention_destruction.run",
+      ]);
+      const started = rows[0]?.context as { plannedMessageIds: string[] };
+      const completed = rows[1]?.context as {
+        destroyedMessageIds: string[];
+        planned: number;
+        destroyed: number;
+      };
+      expect([...started.plannedMessageIds].sort()).toEqual([a, b].sort());
+      expect([...completed.destroyedMessageIds].sort()).toEqual([a, b].sort());
+      expect(completed).toMatchObject({ planned: 2, destroyed: 2 });
+      // The messages' own delete audit (the PHI write trigger) is on record as well: a destroyed message is never silent.
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='message' AND event_type LIKE '%delete%'",
+          [ORG_A],
+        ),
+      ).toBeGreaterThanOrEqual(2);
+    });
+
+    it("is idempotent: a second run on the executed certificate changes nothing", async () => {
+      await aged(ORG_A, channel, 8);
+      await certificate(ORG_A, "approved");
+      await run();
+      const again = await run();
+      expect(again.certificates).toHaveLength(0);
+      expect(again.destroyed).toBe(0);
+    });
+
+    it("measures the window from when the certificate was opened: a message that aged past it afterwards is left for the next certificate", async () => {
+      const cert = await certificate(ORG_A, "approved");
+      // Eligible only if judged at "now" (7 years and 1 day old now, 7 years minus a day old when the certificate was opened).
+      await kit.admin.query(
+        "UPDATE destruction_certificate SET created_at = now() - interval '30 days' WHERE id=$1",
+        [cert],
+      );
+      const later = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         VALUES ($1,$2,$3,'user', $4::bytea, repeat('0',64), now() - interval '7 years' - interval '1 day') RETURNING id`,
+          [ORG_A, channel, author, BODY_CIPHER_FAKE],
+        )
+      )[0].id;
+      const result = await run();
+      expect(result.destroyed).toBe(0);
+      expect(await exists(later)).toBe(true);
+      expect(await certStatus(cert)).toBe("executed");
+    });
+
+    // ---------------------------------------------------------------- 3. HOLD
+
+    it("a held message survives the executor on the live criteria alone (overlay not materialised); release restores eligibility and the next run destroys it and closes the certificate", async () => {
+      const held = await aged(ORG_A, channel, 8);
+      const free = await aged(ORG_A, channel2, 8);
+      const cert = await certificate(ORG_A, "approved");
+      const holdId = await hold({ channelIds: [channel] });
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM legal_hold_message WHERE message_id=$1", [
+          held,
+        ]),
+      ).toBe(0);
+
+      const first = await run();
+      expect(first.destroyed).toBe(1);
+      expect(await exists(held)).toBe(true);
+      expect(await exists(free)).toBe(false);
+      expect(first.certificates[0]).toMatchObject({
+        heldRefused: 1,
+        pastWindowRemaining: 1,
+        certificateExecuted: false,
+      });
+      expect(await certStatus(cert)).toBe("approved");
+
+      await setHold(holdId, "released");
+      const second = await run();
+      expect(second.destroyed).toBe(1);
+      expect(await exists(held)).toBe(false);
+      expect(second.certificates[0]).toMatchObject({
+        pastWindowRemaining: 0,
+        certificateExecuted: true,
+      });
+      expect(await certStatus(cert)).toBe("executed");
+    });
+
+    it("a patient hold and a user hold also protect (the same predicate the scan uses); an org-wide governance hold protects everything", async () => {
+      const byPatient = await aged(ORG_A, channel, 8);
+      const byAuthor = await aged(ORG_A, channel2, 8);
+      await certificate(ORG_A, "approved");
+      await hold({ patientIds: [PATIENT] });
+      await hold({ userIds: [author] });
+      const result = await run();
+      expect(result.destroyed).toBe(0);
+      expect(await exists(byPatient)).toBe(true);
+      expect(await exists(byAuthor)).toBe(true);
+      await kit.admin.query("DELETE FROM legal_hold");
+      await hold({ resourceKinds: ["message"], origin: "messaging_governance" });
+      const orgWide = await run();
+      expect(orgWide.destroyed).toBe(0);
+    });
+
+    it("the delete re-checks the hold in its OWN transaction: a hold the plan did not see is refused, the message survives", async () => {
+      const sneaky = await aged(ORG_A, channel, 8);
+      await certificate(ORG_A, "approved");
+      await hold({ channelIds: [channel] });
+      // The plan (first call) is told there is no hold, as if the hold landed after it; every later read is the truth.
+      let calls = 0;
+      const stalePlan: MessageDestructionHoldPort = {
+        ...messageHolds,
+        activeHolds: async (tx, org) => (++calls === 1 ? [] : activeLegalHolds(tx, org)),
+      };
+      const result = await run(ORG_A, { messageHolds: stalePlan });
+      expect(result.destroyed).toBe(0);
+      expect(result.certificates[0]).toMatchObject({ refusedAtDelete: 1, destroyed: 0 });
+      expect(await exists(sneaky)).toBe(true);
+      const completed = (
+        await auditRows("m36.retention_destruction.batch_completed", result.runId)
+      )[0]?.context as {
+        refusedAtDelete: number;
+      };
+      expect(completed.refusedAtDelete).toBe(1);
+    });
+
+    // ---------------------------------------------------------------- 4. SAFETY
+
+    it("keeps a message whose attachment object is not destroyed; destroys it once the reaper has stamped the object", async () => {
+      const withFile = await aged(ORG_A, channel, 8);
+      await certificate(ORG_A, "approved");
+      const att = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, scan_state, scanned_at, completed_at)
+         VALUES ($1,$2,$3,$4,'text/plain',10,'f.txt','k/f.txt',repeat('a',64),'clean', now(), now()) RETURNING id`,
+          [ORG_A, channel, withFile, author],
+        )
+      )[0].id;
+      const first = await run();
+      expect(first.destroyed).toBe(0);
+      expect(first.certificates[0]).toMatchObject({
+        attachmentPending: 1,
+        certificateExecuted: false,
+      });
+      expect(await exists(withFile)).toBe(true);
+      await kit.admin.query(
+        "UPDATE message_attachment SET object_destroyed_at = now() WHERE id=$1",
+        [att],
+      );
+      const second = await run();
+      expect(second.destroyed).toBe(1);
+      expect(await exists(withFile)).toBe(false);
+    });
+
+    it("takes the message's subtree with it under the destruction credential (receipt, reaction, mention, search tokens) and leaves a sibling's untouched", async () => {
+      const doomed = await aged(ORG_A, channel, 8);
+      const sibling = await aged(ORG_A, channel, 1);
+      await certificate(ORG_A, "approved");
+      for (const id of [doomed, sibling]) {
+        await kit.admin.query(
+          "INSERT INTO message_receipt (organization_id, message_id, user_id) VALUES ($1,$2,$3)",
+          [ORG_A, id, officer1],
+        );
+        await kit.admin.query(
+          "INSERT INTO message_reaction (organization_id, channel_id, message_id, user_id, emoji) VALUES ($1,$2,$3,$4,'heart')",
+          [ORG_A, channel, id, officer1],
+        );
+        await kit.admin.query(
+          "INSERT INTO message_entity_reference (organization_id, message_id, reference_kind, entity_id, start_offset, end_offset) VALUES ($1,$2,'staff',$3,0,3)",
+          [ORG_A, id, officer1],
+        );
+        await kit.admin.query(
+          "INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id) VALUES ($1,'v1',$2,9,$3)",
+          [ORG_A, channel, id],
+        );
+      }
+      const result = await run();
+      expect(result.destroyed).toBe(1);
+      for (const table of [
+        "message_receipt",
+        "message_reaction",
+        "message_entity_reference",
+        "message_search_token",
+      ]) {
+        expect(
+          await kit.count(`SELECT count(*)::int AS n FROM ${table} WHERE message_id=$1`, [doomed]),
+          table,
+        ).toBe(0);
+        expect(
+          await kit.count(`SELECT count(*)::int AS n FROM ${table} WHERE message_id=$1`, [sibling]),
+          table,
+        ).toBe(1);
+      }
+    });
+
+    it("destroys replies before the parent they point at, in one run", async () => {
+      const parent = await aged(ORG_A, channel, 9);
+      const reply = await aged(ORG_A, channel, 8, parent);
+      await certificate(ORG_A, "approved");
+      const result = await run();
+      expect(result.destroyed).toBe(2);
+      expect(await exists(parent)).toBe(false);
+      expect(await exists(reply)).toBe(false);
+    });
+
+    it("a held reply keeps its past-window parent (the parent is still referenced)", async () => {
+      const parent = await aged(ORG_A, channel2, 9);
+      const reply = await aged(ORG_A, channel2, 8, parent);
+      await certificate(ORG_A, "approved");
+      await hold({ channelIds: [channel2] });
+      const result = await run();
+      expect(result.destroyed).toBe(0);
+      expect(await exists(parent)).toBe(true);
+      expect(await exists(reply)).toBe(true);
+    });
+
+    it("is bounded: a batch size and a per-run budget stop a run, and the certificate stays approved until it drains", async () => {
+      const ids = [
+        await aged(ORG_A, channel, 8),
+        await aged(ORG_A, channel, 8),
+        await aged(ORG_A, channel, 8),
+      ];
+      const cert = await certificate(ORG_A, "approved");
+      expect(DESTRUCTION_BATCH_SIZE).toBeGreaterThan(2);
+      const partial = await run(ORG_A, { batchSize: 1, maxBatchesPerCertificate: 2 });
+      expect(partial.destroyed).toBe(2);
+      expect(partial.certificates[0]).toMatchObject({ drained: false, certificateExecuted: false });
+      expect(await certStatus(cert)).toBe("approved");
+      const rest = await run(ORG_A, { batchSize: 1, maxBatchesPerCertificate: 5 });
+      expect(rest.destroyed).toBe(1);
+      expect(rest.certificates[0]?.certificateExecuted).toBe(true);
+      for (const id of ids) expect(await exists(id)).toBe(false);
+    });
+
+    // ---------------------------------------------------------------- 6. TENANCY
+
+    it("another organisation's messages are untouched, and its own approved certificate is judged in its own tenant", async () => {
+      const mineOld = await aged(ORG_A, channel, 8);
+      const theirOld = await aged(ORG_B, channelB, 8);
+      await certificate(ORG_A, "approved");
+      const resultA = await run(ORG_A);
+      expect(resultA.destroyed).toBe(1);
+      expect(await exists(mineOld)).toBe(false);
+      expect(await exists(theirOld)).toBe(true);
+      // Org B has no approved certificate: nothing of B's is destroyed by running B either.
+      const resultB = await run(ORG_B);
+      expect(resultB.certificates).toHaveLength(0);
+      expect(await exists(theirOld)).toBe(true);
+    });
+
+    it("as the real roles: org B sees none of org A's certificates or redactions, and the destruction role pinned to org B deletes nothing of org A's", async () => {
+      const mine = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved");
+      expect(
+        await asRole("app", "SELECT id FROM destruction_certificate WHERE id=$1", [cert], ORG_B),
+      ).toHaveLength(0);
+      expect(await asRole("app", "SELECT id FROM message_redaction", [], ORG_B)).toHaveLength(0);
+      expect(
+        await asRole("destruction", "DELETE FROM message WHERE id=$1 RETURNING id", [mine], ORG_B),
+      ).toHaveLength(0);
+      expect(await exists(mine)).toBe(true);
+    });
+
+    // ---------------------------------------------------------------- 7. REDACTION
+
+    describe("redaction", () => {
+      const redaction = () =>
+        createMessageRedactionService({
+          db: kit.handle.db,
+          staffNames: readStaffNames,
+          activeHolds: activeLegalHolds,
+        });
+      const send = async (body: string) =>
+        (await kit.service.sendMessage(ORG_A, { channelId: channelR, authorUserId: author, body }))
+          .messageId;
+      const read = async (showLegalHold = false) =>
+        (
+          await kit.service.listMessages(ORG_A, {
+            channelId: channelR,
+            userId: author,
+            limit: 200,
+            showLegalHold,
+          })
+        ).messages;
+
+      it("a request masks nothing yet; approval by a DIFFERENT person masks the body for every reader", async () => {
+        const id = await send("patient mentioned a private detail");
+        const svc = redaction();
+        const requested = await svc.request(actor(officer1), { message_id: id, reason: REASON });
+        expect(requested).toMatchObject({
+          status: "requested",
+          requested_by: officer1,
+          approved_by: null,
+          under_legal_hold: false,
+        });
+        expect(requested.requested_by_name).toContain("officer1");
+        expect((await read()).find((m) => m.messageId === id)?.body).toBe(
+          "patient mentioned a private detail",
+        );
+
+        const approved = await svc.approve(actor(officer2), requested.id);
+        expect(approved).toMatchObject({ status: "approved", approved_by: officer2 });
+        expect(approved.approved_by_name).toContain("officer2");
+        const masked = (await read()).find((m) => m.messageId === id);
+        expect(masked?.body).toBe("");
+        expect(masked?.redactedAt).toEqual(approved.approved_at);
+        expect(masked?.attachments).toEqual([]);
+        expect(masked?.references).toEqual([]);
+      });
+
+      it("the same person cannot approve: 403 in the service and refused by the database CHECK; a second approval is 409", async () => {
+        const id = await send("another message to redact");
+        const svc = redaction();
+        const requested = await svc.request(actor(officer1), { message_id: id, reason: REASON });
+        await expect(svc.approve(actor(officer1), requested.id)).rejects.toMatchObject({
+          code: "REDACTION_SELF_APPROVAL",
+          statusCode: 403,
+        });
+        // Straight to the database as the app role: the requester stamping their own approval is refused.
+        await kit.appConn.query("BEGIN");
+        try {
+          await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+          await kit.appConn.query("SELECT set_config('app.user_id', $1, true)", [officer1]);
+          await expect(
+            kit.appConn.query(
+              "UPDATE message_redaction SET approved_by=$1, approved_at=now() WHERE id=$2",
+              [officer1, requested.id],
+            ),
+          ).rejects.toMatchObject({ code: "23514" });
+        } finally {
+          await kit.appConn.query("ROLLBACK");
+        }
+        await svc.approve(actor(officer2), requested.id);
+        await expect(svc.approve(actor(officer2), requested.id)).rejects.toMatchObject({
+          code: "REDACTION_ALREADY_APPROVED",
+          statusCode: 409,
+        });
+        // An approved redaction is final: the app role cannot undo it (the guard refuses any further change).
+        await kit.appConn.query("BEGIN");
+        try {
+          await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+          await kit.appConn.query("SELECT set_config('app.user_id', $1, true)", [officer2]);
+          await expect(
+            kit.appConn.query(
+              "UPDATE message_redaction SET approved_by = NULL, approved_at = NULL WHERE id=$1",
+              [requested.id],
+            ),
+          ).rejects.toMatchObject({ message: expect.stringContaining("message_redaction_final") });
+        } finally {
+          await kit.appConn.query("ROLLBACK");
+        }
+      });
+
+      it("one request per message (409); the reason is bounded (422); another tenant's or an unknown message is a 404", async () => {
+        const id = await send("third message");
+        const svc = redaction();
+        await svc.request(actor(officer1), { message_id: id, reason: REASON });
+        await expect(
+          svc.request(actor(officer2), { message_id: id, reason: REASON }),
+        ).rejects.toMatchObject({ code: "REDACTION_EXISTS", statusCode: 409 });
+        await expect(
+          svc.request(actor(officer1), { message_id: await send("fourth"), reason: "short" }),
+        ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+        const foreign = await aged(ORG_B, channelB, 1);
+        await expect(
+          svc.request(actor(outsider, ORG_A), { message_id: foreign, reason: REASON }),
+        ).rejects.toMatchObject({ code: "NOT_FOUND" });
+        await expect(
+          svc.request(actor(officer1), { message_id: randomUUID(), reason: REASON }),
+        ).rejects.toMatchObject({ code: "NOT_FOUND" });
+        // Org B's officer sees none of org A's redactions.
+        expect((await svc.list(actor(outsider, ORG_B))).redactions).toHaveLength(0);
+      });
+
+      it("a request takes the message out of search tokens and blocks edits", async () => {
+        const id = await send("searchable text about hydration");
+        await kit.admin.query(
+          "INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id) VALUES ($1,'v1',$2,17,$3)",
+          [ORG_A, channelR, id],
+        );
+        expect(
+          await kit.count(
+            "SELECT count(*)::int AS n FROM message_search_token WHERE message_id=$1",
+            [id],
+          ),
+        ).toBe(1);
+        await redaction().request(actor(officer1), { message_id: id, reason: REASON });
+        expect(
+          await kit.count(
+            "SELECT count(*)::int AS n FROM message_search_token WHERE message_id=$1",
+            [id],
+          ),
+        ).toBe(0);
+        await expect(
+          kit.service.editMessage(ORG_A, { messageId: id, userId: author, body: "edited" }),
+        ).rejects.toMatchObject({
+          code: "MESSAGE_REDACTED",
+        });
+      });
+
+      it("a HELD message can be redacted: the cipher and hash are untouched, the executor still keeps it, and a release lets it go", async () => {
+        const id = await send("held and sensitive");
+        await kit.admin.query(
+          "UPDATE message SET created_at = now() - interval '8 years' WHERE id=$1",
+          [id],
+        );
+        const before = (
+          await kit.one<{ c: string; h: string }>(
+            "SELECT encode(body_cipher,'hex') c, body_sha256 h FROM message WHERE id=$1",
+            [id],
+          )
+        )[0];
+        await certificate(ORG_A, "approved");
+        const holdId = await hold({ channelIds: [channelR] });
+        const svc = redaction();
+        const requested = await svc.request(actor(officer1), { message_id: id, reason: REASON });
+        expect(requested.under_legal_hold).toBe(true);
+        const approved = await svc.approve(actor(officer2), requested.id);
+        expect(approved.under_legal_hold).toBe(true);
+        const after = (
+          await kit.one<{ c: string; h: string }>(
+            "SELECT encode(body_cipher,'hex') c, body_sha256 h FROM message WHERE id=$1",
+            [id],
+          )
+        )[0];
+        expect(after).toEqual(before);
+        expect((await read()).find((m) => m.messageId === id)?.body).toBe("");
+
+        await run();
+        expect(await exists(id)).toBe(true);
+        await setHold(holdId, "released");
+        await run();
+        expect(await exists(id)).toBe(false);
+        expect(
+          await kit.count("SELECT count(*)::int AS n FROM message_redaction WHERE message_id=$1", [
+            id,
+          ]),
+        ).toBe(0);
+      });
+
+      // ------------------------------------------------------------ 8. CHIP
+
+      it("the chip flag is present on a held message only when the route asks for it, and never on an unheld one", async () => {
+        const heldId = await send("under hold");
+        await hold({ channelIds: [channelR] });
+        const plain = await read(false);
+        expect(plain.every((m) => m.legalHold === undefined)).toBe(true);
+        const officerView = await read(true);
+        expect(officerView.find((m) => m.messageId === heldId)?.legalHold).toBe(true);
+        await kit.admin.query("DELETE FROM legal_hold");
+        expect((await read(true)).every((m) => m.legalHold === undefined)).toBe(true);
+      });
+    });
+
+    // ---------------------------------------------------------------- 9. NAMES
+
+    it("the identity directory resolves a name only for a user with a membership in THIS organisation", async () => {
+      const names = await withOrgContext(
+        kit.handle.db as DbClient,
+        { organizationId: ORG_A, userId: officer1 },
+        (tx) =>
+          readStaffNames(tx as unknown as DbClient, ORG_A, [
+            officer1,
+            officer2,
+            outsider,
+            randomUUID(),
+          ]),
+      );
+      expect(names.get(officer1)).toContain("officer1");
+      expect(names.get(officer2)).toContain("officer2");
+      expect(names.has(outsider)).toBe(false);
+      expect(names.size).toBe(2);
+    });
+  },
+);

@@ -14936,7 +14936,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide) and the number of messages each active hold covers now. Hold names are shown; no message, name or patient. Not cached */
+        /** Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide), the placing staff member's id and display name (placed_by_name, null when the directory cannot resolve it) and the number of messages each active hold covers now. Hold names are shown; no message and no patient. Not cached */
         get: operations["getApiV1MessagingGovernanceLegalholds"];
         put?: never;
         /** Compliance officer: place a legal hold on messages (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.apply`, else 403 STEP_UP_REQUIRED). Name channels, users and/or patients, or hold the whole organisation (org_wide, alone); a reason of at least 10 characters is required (422). Written through M4's seam in one transaction: the hold, its data.legal_hold_applied audit row with the reason, the m4.legal_hold.applied outbox event and a bounded materialisation of the per-message overlay (the weekly scan covers any remainder; enforcement also reads the live criteria). A held message cannot be edited (409 MESSAGE_UNDER_LEGAL_HOLD) */
@@ -15015,6 +15015,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/governance/redactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached */
+        get: operations["getApiV1MessagingGovernanceRedactions"];
+        put?: never;
+        /** Compliance officer: ask for a message to be redacted (messaging.redact.request; message_id and a reason of 10 to 1000 characters, 422). No channel membership is needed and the requester never sees the body. The request already takes the message out of search and blocks edits (409 MESSAGE_REDACTED); nothing is masked until a DIFFERENT person approves. One request per message (409 REDACTION_EXISTS); an unknown or another tenant's message is 404. A legal hold does not block it: a redaction only masks, the cipher is retained. Audited by the table's trigger (the reason text is left out) */
+        post: operations["postApiV1MessagingGovernanceRedactions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/redactions/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compliance officer: approve a redaction (messaging.redact.approve + a fresh step-up for `messaging.redact.approve`, else 403 STEP_UP_REQUIRED). The approver is never the requester (403 REDACTION_SELF_APPROVAL, and the database refuses it too); 409 REDACTION_ALREADY_APPROVED; 404 unknown or another tenant's redaction. From the approval every reader of the message sees an empty body with a redactedAt instant, no attachments, links, poll or mentions, and the message is out of search and exports; the cipher and hash are untouched, so a held message stays retained under the mask */
+        post: operations["postApiV1MessagingGovernanceRedactionsByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/governance/retention": {
         parameters: {
             query?: never;
@@ -15022,7 +15057,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_built is false, so an approved certificate destroys nothing yet. Ids, counts and dates only. Not cached */
+        /** Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_mode is the executor's state for this tenant: off (the tenant ops flag messaging.retention_destruction is off, the default), dry_run (on, but the deployment has not set M36_RETENTION_DESTRUCTION_EXECUTE: it reports and deletes nothing) or live (it destroys messages under an APPROVED M4 certificate, never a held one). Ids, counts and dates only. Not cached */
         get: operations["getApiV1MessagingGovernanceRetention"];
         put?: never;
         post?: never;
@@ -66512,6 +66547,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         }[];
                         patientId: string | null;
                     };
@@ -66874,6 +66912,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         }[];
                         nextCursor?: string;
                         patientId: string | null;
@@ -67454,6 +67495,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         };
                         replies: {
                             messageId: string;
@@ -67521,6 +67565,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         }[];
                         nextCursor?: string;
                         patientId: string | null;
@@ -67615,6 +67662,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         }[];
                         patientId: string | null;
                     };
@@ -67966,6 +68016,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         }[];
                         nextCursor?: string;
                         scanned: number;
@@ -69547,6 +69600,7 @@ export interface operations {
                                 org_wide: boolean;
                             };
                             placed_by: string;
+                            placed_by_name: string | null;
                             placed_at: string;
                             released_at: string | null;
                             held_messages: number;
@@ -69595,6 +69649,7 @@ export interface operations {
                             org_wide: boolean;
                         };
                         placed_by: string;
+                        placed_by_name: string | null;
                         placed_at: string;
                         released_at: string | null;
                         held_messages: number;
@@ -69640,6 +69695,7 @@ export interface operations {
                             org_wide: boolean;
                         };
                         placed_by: string;
+                        placed_by_name: string | null;
                         placed_at: string;
                         released_at: string | null;
                         held_messages: number;
@@ -69752,6 +69808,116 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingGovernanceRedactions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        redactions: {
+                            id: string;
+                            message_id: string;
+                            status: "requested" | "approved";
+                            requested_by: string;
+                            requested_by_name: string | null;
+                            requested_at: string;
+                            approved_by: string | null;
+                            approved_by_name: string | null;
+                            approved_at: string | null;
+                            under_legal_hold: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceRedactions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    message_id: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        message_id: string;
+                        status: "requested" | "approved";
+                        requested_by: string;
+                        requested_by_name: string | null;
+                        requested_at: string;
+                        approved_by: string | null;
+                        approved_by_name: string | null;
+                        approved_at: string | null;
+                        under_legal_hold: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceRedactionsByIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        message_id: string;
+                        status: "requested" | "approved";
+                        requested_by: string;
+                        requested_by_name: string | null;
+                        requested_at: string;
+                        approved_by: string | null;
+                        approved_by_name: string | null;
+                        approved_at: string | null;
+                        under_legal_hold: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingGovernanceRetention: {
         parameters: {
             query?: never;
@@ -69781,8 +69947,7 @@ export interface operations {
                         }[];
                         next_scan_at: string;
                         last_scan_at: string | null;
-                        /** @constant */
-                        destruction_built: false;
+                        destruction_mode: "off" | "dry_run" | "live";
                     };
                 };
             };
@@ -71214,6 +71379,9 @@ export interface operations {
                                 availability: "available" | "scanning";
                             }[];
                             hiddenAttachmentCount?: number;
+                            redactedAt?: string;
+                            /** @constant */
+                            legalHold?: true;
                         } & {
                             archived: boolean;
                         })[];

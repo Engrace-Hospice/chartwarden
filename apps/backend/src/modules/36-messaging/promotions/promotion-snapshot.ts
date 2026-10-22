@@ -9,6 +9,7 @@ import { messageBodySha256 } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { storedBodyToPlainText } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
+import { isMessageRedacted } from "../message-redaction-mask";
 import type { MessageBodyCipher } from "../messaging-write-core";
 
 const MSG = schema.messages;
@@ -84,6 +85,8 @@ export function createDbPromotionBodyPorts(
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, messageId)))
           .limit(1);
         if (!row || row.status === "deleted") return null;
+        // WP 5.6: a redacted message cannot be promoted to the chart (its body is masked for everyone).
+        if (await isMessageRedacted(tx, orgId, messageId)) return null;
         return { bodyCipher: row.bodyCipher, bodyKind: row.bodyKind, bodySha256: row.bodySha256 };
       }),
     revisionBySha: (orgId, messageId, sha256) =>

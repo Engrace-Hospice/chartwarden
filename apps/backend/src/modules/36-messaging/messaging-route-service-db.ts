@@ -104,6 +104,7 @@ import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-cat
 import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
+import { hasRedactionMark, loadApprovedRedactions } from "./message-redaction-mask";
 import { createDbMessageSearchService } from "./message-search-service-db";
 import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "./messaging-message-hydration";
 import {
@@ -678,12 +679,18 @@ export function createDbMessagingRouteService(
     warn: opts.warn,
   });
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
-  const hydrationContext = (orgId: string, viewerUserId: string, channelKind: string) => ({
+  const hydrationContext = (
+    orgId: string,
+    viewerUserId: string,
+    channelKind: string,
+    showLegalHold = false,
+  ) => ({
     orgId,
     viewerUserId,
     channelKind,
     cipher,
     warn: opts.warn,
+    showLegalHold,
   });
   const resolvePatientId =
     opts.resolvePatientId ??
@@ -1056,8 +1063,14 @@ export function createDbMessagingRouteService(
         const latest = new Map(latestRows.map((row) => [row.channelId, row]));
         // A text-less latest message (attachment-only) previews as its attachments, viewer-scoped.
         const previewTextByMessage = new Map<string, string>();
+        // WP 5.6: an approved redaction hides the preview as a tombstone does.
+        const redactedLatest = await loadApprovedRedactions(
+          tx,
+          orgId,
+          latestRows.map((row) => row.messageId),
+        );
         for (const row of latestRows) {
-          if (row.status !== "deleted") {
+          if (row.status !== "deleted" && !redactedLatest.has(row.messageId)) {
             previewTextByMessage.set(
               row.messageId,
               // WP 2.1: a rich body previews as its plain-text projection, never as JSON or a link target.
@@ -1347,7 +1360,7 @@ export function createDbMessagingRouteService(
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = await hydrateMessages(
           tx,
-          hydrationContext(orgId, input.userId, ch[0].kind),
+          hydrationContext(orgId, input.userId, ch[0].kind, input.showLegalHold === true),
           chronologicalRows,
           input.channelId,
         );
@@ -1417,7 +1430,7 @@ export function createDbMessagingRouteService(
         const pageRows = replyRows.slice(0, limit);
         const [root, ...replies] = await hydrateMessages(
           tx,
-          hydrationContext(orgId, input.userId, ch[0].kind),
+          hydrationContext(orgId, input.userId, ch[0].kind, input.showLegalHold === true),
           [rootRow, ...pageRows],
           input.channelId,
         );
@@ -1651,6 +1664,14 @@ export function createDbMessagingRouteService(
         if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
         if (m.authorUserId !== input.userId) {
           throw new ForbiddenError("only the author may edit a message");
+        }
+        // WP 5.6 (ADR-0055 item 7): a message with a redaction, requested or approved, is no longer editable.
+        if (await hasRedactionMark(tx, orgId, input.messageId)) {
+          throw new ChartWardenError(
+            "MESSAGE_REDACTED",
+            "This message has a redaction and cannot be edited.",
+            409,
+          );
         }
         // ADR-0086: a message an active hold covers cannot be rewritten. The migration 1138 trigger only knows materialised
         // overlay rows; this judges the live criteria so a message posted after the hold (not yet scanned) is refused too.

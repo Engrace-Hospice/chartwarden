@@ -31,7 +31,32 @@ export interface MessageHoldPort {
   ): Promise<{ readonly id: string; readonly created: boolean }>;
 }
 
-const uuidList = (ids: readonly string[]): SQL =>
+/** An approved M4 certificate the destruction executor may act on (ids, class and dates only). */
+export interface ApprovedMessageCertificateRef {
+  readonly id: string;
+  readonly dataClass: string;
+  readonly createdAt: Date;
+  readonly recordCount: number;
+}
+
+/** The destruction executor's extra needs from M4: approved certificates to act on, and closing one. Same tenant-tx rule as above. */
+export interface MessageDestructionHoldPort extends MessageHoldPort {
+  approvedCertificates(
+    tx: DbClient,
+    organizationId: string,
+    limit: number,
+  ): Promise<readonly ApprovedMessageCertificateRef[]>;
+  completeCertificate(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly executedAt: Date;
+    },
+  ): Promise<boolean>;
+}
+
+export const uuidList = (ids: readonly string[]): SQL =>
   sql.join(
     ids.map((i) => sql`${i}::uuid`),
     sql`, `,
@@ -134,6 +159,24 @@ export async function isMessageHeldNow(
          LIMIT 1`,
   );
   return res.rows.length > 0;
+}
+
+/**
+ * Which of `messageIds` an ACTIVE hold covers right now (live criteria, so messages the overlay has not reached are included). One query;
+ * no lock (a display read: enforcement never relies on it). Org-filtered in addition to RLS.
+ */
+export async function heldMessageIdsAmong(
+  tx: DbClient,
+  organizationId: string,
+  messageIds: readonly string[],
+  holds: readonly ActiveMessageHold[],
+): Promise<ReadonlySet<string>> {
+  if (messageIds.length === 0 || holds.length === 0) return new Set();
+  const res = await tx.execute<{ id: string }>(
+    sql`SELECT m.id FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
+         WHERE m.organization_id = ${organizationId}::uuid AND m.id IN (${uuidList(messageIds)}) AND ${anyHoldPredicate(holds)}`,
+  );
+  return new Set(res.rows.map((r) => r.id));
 }
 
 /** Messages a hold has materialised in the overlay (the count M4's own release route reports for a governance-origin hold). */

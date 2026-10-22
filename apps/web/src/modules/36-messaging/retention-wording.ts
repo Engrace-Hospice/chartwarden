@@ -1,11 +1,22 @@
 // M36 WP 5.6 (ADR-0086, PROPOSED) - every word the retention and legal-hold screen shows. PROVISIONAL pending compliance sign-off. The page shows
 // ids, counts and dates only: never message text. Hold names and reasons are free text written by staff and are rendered as text, never as markup.
-import type { MessageLegalHoldDto, MessageRetentionClass } from "@chartwarden/types";
+import type {
+  MessageLegalHoldDto,
+  MessageRetentionClass,
+  RetentionDestructionMode,
+} from "@chartwarden/types";
 
 export const RETENTION_TITLE = "Retention and legal holds";
 export const RETENTION_BREADCRUMB = "Admin / Messaging";
-export const RETENTION_NOTICE =
-  "The retention scan only plans. It never deletes a message, and approving a destruction certificate destroys nothing yet: message destruction is not built.";
+// What the destruction executor does for this organization (ADR-0086): the words follow the server's `destruction_mode`.
+export const RETENTION_NOTICE: Readonly<Record<RetentionDestructionMode, string>> = {
+  off: "Message destruction is switched off for this organization. The weekly scan only plans; approving a destruction certificate destroys nothing.",
+  dry_run:
+    "Message destruction is in dry-run mode. The weekly run reports what an approved certificate would destroy and deletes nothing.",
+  live: "Message destruction is on. Messages are destroyed only under an approved destruction certificate, and never while a legal hold covers them.",
+};
+export const RETENTION_INTRO =
+  "A legal hold always outranks retention: a held message is never destroyed, and releasing the hold does not extend its clock.";
 export const TAB_RETENTION = "Retention";
 export const TAB_HOLDS = "Legal holds";
 export const TABS_LABEL = "Retention sections";
@@ -47,8 +58,13 @@ const CERTIFICATE_STATUS_WORDING: Readonly<Record<string, string>> = {
 export const CERTIFICATE_STATUS_UNKNOWN = "Status not recognised";
 export const certificateStatusLabel = (status: string): string =>
   CERTIFICATE_STATUS_WORDING[status] ?? CERTIFICATE_STATUS_UNKNOWN;
-export const certificateText = (status: string): string =>
-  `Destruction certificate: ${certificateStatusLabel(status).toLowerCase()}. Approving it destroys nothing yet.`;
+const CERTIFICATE_TAIL: Readonly<Record<RetentionDestructionMode, string>> = {
+  off: "Approving it destroys nothing: message destruction is switched off.",
+  dry_run: "Approving it destroys nothing yet: message destruction is in dry-run mode.",
+  live: "Once approved, the next weekly run destroys the eligible messages it covers and then closes it.",
+};
+export const certificateText = (status: string, mode: RetentionDestructionMode): string =>
+  `Destruction certificate: ${certificateStatusLabel(status).toLowerCase()}. ${CERTIFICATE_TAIL[mode]}`;
 export const certificateIdText = (id: string): string => `Certificate ${id}`;
 export const NEVER_SCANNED = "No scan has run yet. Counts appear after the first scan.";
 export const lastScanText = (when: string): string => `Last scan ${when}`;
@@ -67,6 +83,13 @@ export const HOLD_STATUS = {
 export const heldMessagesText = (n: number): string =>
   n === 1 ? "1 message held" : `${n} messages held`;
 export const placedText = (by: string, at: string): string => `Placed by ${by} on ${at}`;
+// WP 5.6: the message / thread chip. The words carry the meaning (colour is never the only signal).
+export const LEGAL_HOLD_CHIP_TEXT = "Legal hold";
+export const LEGAL_HOLD_MESSAGE_ARIA =
+  "This message is under a legal hold. It cannot be edited or destroyed while the hold is active.";
+export const LEGAL_HOLD_THREAD_ARIA =
+  "At least one message in this thread is under a legal hold. A held message cannot be edited or destroyed while the hold is active.";
+export const REDACTED_TEXT = "Message redacted";
 export const PLACED_BY_YOU = "you";
 export const shortUserId = (id: string): string => `user ${id.slice(0, 8)}`;
 export const releasedText = (at: string): string => `Released ${at}`;
@@ -120,7 +143,7 @@ export const RELEASE_REASON_LABEL = "Reason for release";
 export const CONTINUE_LABEL = "Continue";
 export const CONFIRM_TITLE = "Confirm release";
 export const confirmText = (name: string, n: number): string =>
-  `Release hold ${name}? ${previewText(n)} The scan is plan-only: nothing is destroyed until a certificate is approved, and approval destroys nothing yet.`;
+  `Release hold ${name}? ${previewText(n)} Released messages are destroyed only under an approved destruction certificate, and only when message destruction is on.`;
 export const confirmActionLabel = (name: string): string => `Release hold ${name} now`;
 export const staleText = (n: number): string =>
   `The count changed while you were deciding. ${previewText(n)} Confirm again to release.`;

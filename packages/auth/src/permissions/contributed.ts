@@ -374,6 +374,21 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 5.6 (ADR-0055 item 7, ADR-0086, PROPOSED): redaction of a message. REQUEST asks for one, APPROVE decides it (never the requester's own;
+  //     a fresh step-up is demanded). Org admin has NO implicit right to either (ADR-0055 D9), so the full-catalog roles skip both
+  //     (FULL_CATALOG_EXCLUDED_KEYS) and migration 1156 / the compliance_officer template are the only default grants. ---
+  "messaging.redact.request": {
+    resource: "message_redaction",
+    action: "request",
+    category: "compliance",
+    abac: "none",
+  },
+  "messaging.redact.approve": {
+    resource: "message_redaction",
+    action: "approve",
+    category: "compliance",
+    abac: "none",
+  },
   // --- WP 5.8 (ADR-0087, PROPOSED): break-glass. INVOKE opens a self-approved, time-limited, read-only grant on one channel (a fresh step-up and
   //     a written justification are demanded in the route); REVIEW completes the mandatory post-review and is never the grantee's own. Migration
   //     1140 grants invoke to administrator, org_admin and the qualified clinical roles, and review to compliance_officer, administrator, org_admin. ---

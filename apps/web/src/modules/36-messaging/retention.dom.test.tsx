@@ -1,3 +1,9 @@
+import type {
+  MessageLegalHoldDto,
+  RetentionClassDto,
+  RetentionOverviewDto,
+} from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 5.6 (ADR-0086, PROPOSED) - the retention and legal-hold screen against a mocked network boundary: the per-class view (plan-only wording, never
 // scanned, capped, certificate), the hold list, place (validation, step-up with stashed input), release (preview then a second confirmation that
 // sends the count seen, a stale count re-shown, step-up), the 403 / error states, free text rendered as text, keyboard and axe.
@@ -12,8 +18,6 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,7 +60,7 @@ const OVERVIEW: RetentionOverviewDto = {
   ],
   next_scan_at: "2026-11-01T03:00:00.000Z",
   last_scan_at: "2026-10-25T03:00:00.000Z",
-  destruction_built: false,
+  destruction_mode: "off",
 };
 const hold = (over: Partial<MessageLegalHoldDto> = {}): MessageLegalHoldDto => ({
   id: HOLD,
@@ -64,6 +68,7 @@ const hold = (over: Partial<MessageLegalHoldDto> = {}): MessageLegalHoldDto => (
   status: "active",
   scope: { channel_ids: [CH], user_ids: [], patient_ids: [], org_wide: false },
   placed_by: "Pat Officer",
+  placed_by_name: null,
   placed_at: "2026-10-01T10:00:00.000Z",
   released_at: null,
   held_messages: 41,
@@ -138,15 +143,32 @@ describe("Retention tab", () => {
     expect(within(care).getByText("3 messages held by a legal hold")).toBeTruthy();
     expect(care.textContent).toContain("Kept 7 years");
     expect(care.textContent).toContain("Platform default");
-    expect(care.textContent).toContain("Approving it destroys nothing yet");
+    expect(care.textContent).toContain(
+      "Approving it destroys nothing: message destruction is switched off",
+    );
     expect(care.textContent).toContain(`Certificate ${CH}`);
     expect(within(rows[2] as HTMLElement).getByText(/Counts stop at the scan limit/)).toBeTruthy();
     expect(
-      screen.getByText(/approving a destruction certificate destroys nothing yet/),
+      screen.getByText(/Message destruction is switched off for this organization/),
     ).toBeTruthy();
     expect(screen.getByText(/Last scan/)).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull(); // periods are read-only
     expect(GET).toHaveBeenCalledWith("/api/v1/messaging/governance/retention");
+  });
+
+  it("words the executor's state from the server: dry run reports and deletes nothing, live names the certificate and the hold rule", async () => {
+    mount({ retention: () => ok({ ...OVERVIEW, destruction_mode: "dry_run" }) });
+    expect(await screen.findByText(/^Message destruction is in dry-run mode/)).toBeTruthy();
+    const list = await screen.findByRole("list", { name: "Retention by message class" });
+    expect(list.textContent).toContain("message destruction is in dry-run mode");
+    cleanup();
+    mount({ retention: () => ok({ ...OVERVIEW, destruction_mode: "live" }) });
+    expect(
+      await screen.findByText(
+        /destroyed only under an approved destruction certificate, and never while a legal hold covers them/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/switched off/)).toBeNull();
   });
 
   it("says so before the first scan", async () => {
@@ -323,7 +345,9 @@ describe("Legal holds tab", () => {
     });
     fireEvent.click(within(first).getByRole("button", { name: "Continue" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm release" });
-    expect(confirm.textContent).toContain("nothing is destroyed");
+    expect(confirm.textContent).toContain(
+      "destroyed only under an approved destruction certificate",
+    );
     expect(POST).not.toHaveBeenCalled();
     fireEvent.click(
       within(confirm).getByRole("button", { name: "Release hold <b>Smith</b> litigation now" }),
@@ -420,6 +444,22 @@ describe("Legal holds tab", () => {
 
 describe("Who placed a hold, and returning after step-up", () => {
   const OTHER = "ab12cd34-0000-4000-8000-000000000000";
+
+  it("shows the resolved staff name when the server sends one, and keeps the id fallback otherwise", async () => {
+    mount({
+      holds: () =>
+        ok({
+          holds: [
+            hold({ id: HOLD, placed_by: OTHER, placed_by_name: "Dana Compliance" }),
+            hold({ id: CH, name: "Fallback", placed_by: OTHER, placed_by_name: null }),
+          ],
+        }),
+    });
+    await openHolds();
+    const list = await screen.findByRole("list", { name: "Legal holds" });
+    expect(list.textContent).toContain("Placed by Dana Compliance on");
+    expect(list.textContent).toContain("Placed by user ab12cd34 on");
+  });
 
   it("shows You for the signed-in user and a labelled short id (never a bare uuid) for others", async () => {
     mount({

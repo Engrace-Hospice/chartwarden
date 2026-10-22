@@ -90,7 +90,7 @@
 | SG-03 | Audit logging | P0 | 1 | GOV | 1.8 | have; every table audited; read audit live-proven for the six listed content reads (WP 1.8); the care-team-channel POST read audit and admin/alert-deliveries are not live-proven |
 | SG-04 | Encryption in transit & at rest | P0 | 1 | GOV | 1.8 | have (DEK envelope); parity audited (WP 1.8; plaintext endpoint/title exceptions recorded in 03) |
 | SG-05 | Attachment malware scanning | P0 | 1 | GOV | 1.5 | new |
-| SG-06 | Retention & legal hold | P0 | 5 | GOV | 5.6 | part (built (holds, overlay, scan, routes, screen); NOT built: destruction executor, redaction of held messages, thread chip, real staff names in 'placed by' (ADR-0086, proposed); the scan stays plan-only) |
+| SG-06 | Retention & legal hold | P0 | 5 | GOV | 5.6 | part (built (holds, overlay, scan, routes, screen, the destruction executor (off per tenant, dry run by default, never a held message), redaction (two-person mask), the thread and message legal-hold chip, staff names in 'placed by'); NOT built: attachment-object destruction on retention, the single-officer redaction fallback, a redaction web screen, compliance sign-off (ADR-0086, proposed); the scan stays plan-only) |
 | SG-07 | Workforce offboarding | P0 | 1/5 | GOV | 1.4, 5.9 | built (WP 1.4 event-driven access cut and task/handoff sweeps; ADR-0084, proposed: officer preview and execute; on-call is advisory, second approver and auto-trigger open) |
 | SG-08 | Break-glass access | P1 | 5 | GOV | 5.8 | part (platform pattern) |
 | SG-09 | Secure file access & expiry | P0 | 1 | GOV | 1.5 | new |

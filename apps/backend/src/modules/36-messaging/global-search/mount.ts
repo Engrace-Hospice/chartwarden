@@ -20,7 +20,7 @@ import {
   type BodyReader,
   type IsRedactedOrPending,
   createBodyReader,
-  neverRedacted,
+  redactionMarkedOnRow,
 } from "./ports";
 import { type ChannelAuthority, createGlobalSearchService } from "./query-service";
 import { createRoleGate } from "./role-gate";
@@ -64,7 +64,7 @@ export function mountGlobalSearchRoutes(
       part2Gate: opts.part2Gate ?? createSeamPart2ChannelGate(db),
       cipher,
       ...(opts.authority ? { authority: opts.authority } : {}),
-      isRedactedOrPending: opts.isRedactedOrPending ?? neverRedacted,
+      isRedactedOrPending: opts.isRedactedOrPending ?? redactionMarkedOnRow,
       warn,
     }),
     gates: createServeGates({

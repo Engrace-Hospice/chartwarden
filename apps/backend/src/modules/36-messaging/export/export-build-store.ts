@@ -40,6 +40,8 @@ function scope(organizationId: string, query: ExportMessageQuery): SQL {
     AND m.channel_id IN (${uuidList(query.channelIds)})
     AND octet_length(m.body_cipher) > 0
     AND m.status <> 'deleted'
+    AND NOT EXISTS (SELECT 1 FROM message_redaction rd
+                     WHERE rd.organization_id = m.organization_id AND rd.message_id = m.id)
     AND m.created_at <= ${query.until}::timestamptz
     AND coalesce(m.edited_at, m.created_at) <= ${query.until}::timestamptz
     ${query.from ? sql`AND m.created_at >= ${query.from.toISOString()}::timestamptz` : sql``}

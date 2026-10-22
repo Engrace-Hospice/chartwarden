@@ -71,6 +71,9 @@ import {
   ChartWardenError,
   DegradedError,
   type Npi,
+  RETENTION_DESTRUCTION_EXECUTE_ENV,
+  RETENTION_DESTRUCTION_FLAG_KEY,
+  retentionDestructionModeOf,
 } from "@chartwarden/types";
 import type {
   AdmissionStatusReader,
@@ -374,9 +377,12 @@ import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope"
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   activeLegalHolds,
+  approvedMessageCertificates,
+  completeMessageCertificate,
   createMessagingGovernanceHoldPort,
   openMessageCertificate,
 } from "./modules/04-audit/messaging-hold-workflow";
+import { readStaffNames } from "./modules/02-identity/staff-names";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
@@ -5093,6 +5099,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             retentionGovernance: {
               holds: createMessagingGovernanceHoldPort({ outbox: m4OutboxPublisher }),
               auditQuery: createDbAuditQuery(dbHandle.db),
+              // "placed by" / redaction people: M2's by-id directory reader (M36 reads no identity table).
+              staffNames: readStaffNames,
+              // The destruction executor's mode for the screen: the tenant ops flag, then the deployment's execute switch.
+              destructionMode: async (organizationId) =>
+                retentionDestructionModeOf(
+                  (await featureFlagReader?.forOrg(organizationId))?.[
+                    RETENTION_DESTRUCTION_FLAG_KEY
+                  ] === true,
+                  process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true",
+                ),
             },
             globalSearch: {
               keys: m36SearchKeys,
@@ -9495,6 +9511,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
         messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
+        // WP 5.6 (ADR-0086): the message destruction executor, after the weekly scan. Needs the destruction credential; off per tenant unless
+        // `messaging.retention_destruction` is on, and a DRY RUN unless M36_RETENTION_DESTRUCTION_EXECUTE=true.
+        ...(destructionDbHandle
+          ? {
+              destruction: {
+                destructionDb: destructionDbHandle.db,
+                messageHolds: {
+                  activeHolds: activeLegalHolds,
+                  openCertificate: openMessageCertificate,
+                  approvedCertificates: approvedMessageCertificates,
+                  completeCertificate: completeMessageCertificate,
+                },
+                isEnabled: async (organizationId: string) =>
+                  (await featureFlagReader?.forOrg(organizationId))?.[
+                    RETENTION_DESTRUCTION_FLAG_KEY
+                  ] === true,
+                execute: process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true",
+              },
+            }
+          : {}),
         activeOrgs: m36IntegrityOrgs,
         onError: (context, err) => app.log.error({ ...context, err }, "M36 integrity job error"),
       });

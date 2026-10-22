@@ -132,6 +132,7 @@ export * from "./messaging/message-thread-access-grants";
 export * from "./messaging/message-break-glass";
 export * from "./messaging/message-export";
 export * from "./messaging/legal-hold-messages";
+export * from "./messaging/message-redactions";
 export * from "./messaging/review-items";
 export * from "./messaging/chart-promotion-requests";
 export * from "./messaging/message-revisions";

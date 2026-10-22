@@ -412,6 +412,9 @@ export const ResolvedMessageSchema = Type.Object({
   ),
   attachments: Type.Optional(Type.Array(MessageAttachmentViewSchema)),
   hiddenAttachmentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  // WP 5.6: an approved redaction masks the message (body empty); ISO instant. A legal-hold flag only for `messaging.retention.manage` holders.
+  redactedAt: Type.Optional(Type.String()),
+  legalHold: Type.Optional(Type.Literal(true)),
 });
 export const MessageListResponseSchema = Type.Object({
   messages: Type.Array(ResolvedMessageSchema),

@@ -1,6 +1,6 @@
 # ADR-0086 — Message retention and legal hold: an M4-owned hold applied to messages through an overlay
 
-- **Status:** **Proposed** (2026-10-20). **Built:** the hold overlay (`legal_hold_message`, migration 1138) and its trigger backstop, the M4 seam, the retention scan (still plan-only), the governance routes under `/api/v1/messaging/governance` and the web retention and legal-holds screen. **NOT built:** the message destruction executor, redaction of held messages, the thread "Legal hold" chip and real staff names in the "placed by" column (the id is shown). Every default below is a build-team proposal accepted by the product owner for planning (decisions D1-D7); compliance sign-off and confirmation of the retention periods are NOT recorded.
+- **Status:** **Proposed** (2026-10-20). **Built:** the hold overlay (`legal_hold_message`, migration 1138) and its trigger backstop, the M4 seam, the retention scan (plan-only, as before), the governance routes under `/api/v1/messaging/governance` and the web retention and legal-holds screen; and, in the WP 5.6 finish (see "Implementation status" below), the message destruction executor (off per tenant, a dry run by default, never a held message), redaction of messages (a two-person mask, held messages included), the "Legal hold" chip and real staff names in the "placed by" column. **NOT built:** destruction of attachment objects on the retention path, the single-officer redaction fallback and a redaction request/approve web screen. The executor ships OFF and deletes nothing until an operator turns on two switches. Every default below is a build-team proposal accepted by the product owner for planning (decisions D1-D7); compliance sign-off and confirmation of the retention periods are NOT recorded.
 - **Date:** 2026-10-20
 - **Phase:** Messaging Hub Phase 5, WP 5.6 (capability SG-06).
 - **Resolves (once accepted):** the open "full messaging hold/retention design" in [ADR-0055](ADR-0055-message-revisions-and-redaction.md) item 9.
@@ -20,10 +20,10 @@ Four defects in the current seam must be fixed for that to be true:
 
 ## Decision (proposed)
 
-1. **D1: status and scope.** This ADR stays Proposed. Hold features are built; destruction of messages stays plan-only.
+1. **D1: status and scope.** This ADR stays Proposed. Hold features are built; destruction of messages was plan-only when this was written and is now implemented but OFF (see "Implementation status": two switches, dry run first).
 2. **D2: periods unchanged.** care_related 7y, bereavement 7y, operational 1y, from `message.created_at`. Read-only in the UI: no PUT, no tenant shortening.
 3. **D3: permission and step-up.** New permission `messaging.retention.manage` (category compliance, resource `message_retention`) granted to `compliance_officer`, `administrator`, `org_admin`. Apply and release need step-up (keys `messaging.legal_hold.apply`, `messaging.legal_hold.release`) and a reason of at least 10 characters. The same step-up is added to M4's own create and release routes (defect 4). Release is a second confirmation, not a second person.
-4. **D4: scan stays plan-only.** It opens pending M4 destruction certificates (data class `message.<class>`, one per class per month, ids and counts only). There is no message executor, so an approved certificate destroys nothing yet and the UI says so.
+4. **D4: scan stays plan-only.** (The scan still only plans; the destruction executor is a separate step that runs after it and acts only on an APPROVED certificate.) It opens pending M4 destruction certificates (data class `message.<class>`, one per class per month, ids and counts only). There is no message executor, so an approved certificate destroys nothing yet and the UI says so.
 5. **D5: scopes.**
    - patient: a care_team channel whose subject is the patient, OR any message with a `message_entity_reference` of `reference_kind = 'patient'` for the patient, OR every bereavement channel (deliberately conservative; fixes defect 1);
    - channel: that channel;
@@ -31,7 +31,7 @@ Four defects in the current seam must be fixed for that to be true:
    - `dateRange` applies to `created_at`; `resourceKinds` is ignored for messages;
    - a messaging-only hold does not hold `audit_event` rows.
 6. **D6: no clock extension on release.** Release makes a message eligible again on its original clock.
-7. **D7: out of scope.** Redaction of held messages (ADR-0055 governs) and the thread "Legal hold" chip.
+7. **D7: out of scope when written.** Redaction of held messages (ADR-0055 governs) and the thread "Legal hold" chip. Both are now built, see "Implementation status".
 
 ### The overlay (migration 1138, same shape as ADR-0051)
 
@@ -54,7 +54,7 @@ Each run checks hold criteria live against messages (so supremacy never depends 
 
 ## What is NOT built
 
-The message destruction executor; redaction of held messages; the thread "Legal hold" chip; real staff names in the "placed by" column; audit-event holding by messaging holds; any tenant-configurable period.
+Destruction of attachment objects on the retention path (a message that still bears an undestroyed object is kept); the single-officer redaction fallback (self-approval plus a countersign within an undecided period); a redaction request/approve web screen; the `messaging.history.read` revision reader; audit-event holding by messaging holds; any tenant-configurable period.
 
 ## Known limits
 
@@ -65,7 +65,7 @@ The message destruction executor; redaction of held messages; the thread "Legal 
 - (d) `openMessageCertificate` is select-then-insert with no unique index, because `destruction_certificates` is M4's table and this work adds no index there. It assumes one scan worker per org; two concurrent scans could open two pending certificates for the same class and month.
 - (e) Separation of duties (accepted by the product owner): `messaging.retention.manage` is granted to `administrator` and `org_admin` as well as `compliance_officer` (product-owner decision D3), so a tenant admin who cannot touch M4 holds can place or release a messaging hold. Conversely, an M4 `legalhold.manage` holder can release a governance hold through M4's own release route (step-up, but no preview confirmation).
 - (f) Scope of org-wide and patient holds: an org-wide governance hold (`{resourceKinds:["message"], origin}`) is messaging-only. It blocks M34 tenant-key destruction through `legalHoldClear` (`messagingHeld`) but does NOT freeze other modules' retention (M10 HOPE) and holds no audit class. A governance hold WITH `patientIds` stays patient-scoped: it also holds that patient's other records in modules that read `legalHoldScopeOf`.
-- (g) A future message destruction job must re-check holds inside its own destructive transaction. The tenant eraser does: it takes the per-org hold lock (`messagingHoldLockName`) SHARED and reads the active holds in the same transaction as its UPDATE/DELETE, and `applyLegalHoldInTx` takes the same lock EXCLUSIVE, so apply and erase serialise. Attachment object destruction re-looks immediately before each destroy batch; the window between that look and the batch's network calls is not closed (object bytes cannot be rolled back). The retention reaper (`purgeRetainedObjects`: quarantined files and files on tombstoned messages past the window) now respects holds the same way: held messages are excluded from its candidates (live criteria, so unmaterialised messages too) and it re-checks under the shared hold lock right before each destroy, counting `skippedLegalHold`; the residual window is the same (up to the storage destroy deadline, `REAP_DESTROY_DEADLINE_MS` plus abort grace).
+- (g) [The message destruction executor now does this: see "Implementation status".] A message destruction job must re-check holds inside its own destructive transaction. The tenant eraser does: it takes the per-org hold lock (`messagingHoldLockName`) SHARED and reads the active holds in the same transaction as its UPDATE/DELETE, and `applyLegalHoldInTx` takes the same lock EXCLUSIVE, so apply and erase serialise. Attachment object destruction re-looks immediately before each destroy batch; the window between that look and the batch's network calls is not closed (object bytes cannot be rolled back). The retention reaper (`purgeRetainedObjects`: quarantined files and files on tombstoned messages past the window) now respects holds the same way: held messages are excluded from its candidates (live criteria, so unmaterialised messages too) and it re-checks under the shared hold lock right before each destroy, counting `skippedLegalHold`; the residual window is the same (up to the storage destroy deadline, `REAP_DESTROY_DEADLINE_MS` plus abort grace).
 - (h) Date-only M4 holds (a `dateRange` with no patient, channel or user selector) now protect only messages created inside the range. Accepted by the product owner.
 - (i) A hold's free-text name and reason appear in the M4 audit row and in the `m4.legal_hold.applied` / `released` outbox payloads, so they reach every consumer of `m4.legal_hold.released` (bereavement, portal). Reasons must not contain patient identifiers; the web dialog should say so.
 - (j) The M36 body backfill skips a message under an active hold (the 1138 guard raises 23001; each row runs in a savepoint), counts it as `skippedLegalHold` and leaves it on the legacy envelope, so the run's `complete` stays false until the hold is released and the backfill is re-run. Held legacy rows are re-examined on every backfill run and count toward the run budget, so many low-id held rows can starve a run until release; and applying a hold during a tenant erase waits for the erase transaction (the hold lock queues), so the apply route can appear slow.
@@ -79,4 +79,38 @@ The message destruction executor; redaction of held messages; the thread "Legal 
 
 ## Slices
 
-Built: S0 this ADR. S1 M4 seam (apply/release in a transaction, criteria, `holdCoversDataClass`, step-up, `openMessageCertificate`). S2 migration 1138, trigger, drizzle schema, manifest, permission, eraser pre-check. S3 scan. S4 routes. S5 web. S6 docs. Not built: the destruction executor, redaction of held messages, the thread chip, staff names in "placed by".
+Built: S0 this ADR. S1 M4 seam (apply/release in a transaction, criteria, `holdCoversDataClass`, step-up, `openMessageCertificate`). S2 migration 1138, trigger, drizzle schema, manifest, permission, eraser pre-check. S3 scan. S4 routes. S5 web. S6 docs. S7 (WP 5.6 finish): the destruction executor, migration 1156 redaction, the chip, staff names. Not built: see "What is NOT built".
+
+## Implementation status (WP 5.6 finish, 2026-10-22)
+
+This ADR stays **Proposed**. What was built after the first slices, and how each part fails closed.
+
+### The destruction executor (`36-messaging/jobs/retention-destruction.ts`)
+
+It runs inside the weekly `messaging.retention_scan` tick, after the scan, once per org. A worker is not a request, so every transaction is `withOrgContext(systemOrgContext(org))`. It destroys PHI, so:
+
+- **Two switches, both off by default.** The tenant ops flag `messaging.retention_destruction` (tenant row wins, absent = off) lets it run at all for a tenant. With the flag on and nothing else, a run is a **dry run**: it reports what it would destroy, deletes nothing and writes one `m36.retention_destruction.run` audit row. It deletes only when the deployment also sets `M36_RETENTION_DESTRUCTION_EXECUTE=true`. It needs the destruction credential (`DATABASE_DESTRUCTION_URL`); without it the executor is not bound. The retention screen states the mode (`destruction_mode`: off, dry_run, live).
+- **Only under an APPROVED M4 certificate** (`message.<class>`, approved through M4's route: permission, step-up, a person other than the scan). The window is measured from when the scan opened the certificate, so it never destroys more than the approver's count covered; a message that aged past the window later waits for the next month's certificate. The certificate is closed (`executed`, `executed_at`) only when no message past its window remains for the class. Held, object-bearing or referenced messages keep it `approved`, so a release lets the next run finish it ("release restores eligibility"). M4's own execute sweep ignores `message.*` classes.
+- **A held message is never touched.** One batch is: (A) planned in the app role's tenant transaction (shared per-org hold lock, active holds read, candidates selected with the hold excluded by the overlay OR the live criteria, then an audit row `batch_started` naming the ids, COMMITTED before the delete); (B) removed in the destruction credential's own tenant transaction, which takes the shared lock again, **re-reads the holds** and **re-evaluates the whole predicate inside the DELETE** (the id list is a request, never an authority); (C) audited (`batch_completed`: planned, destroyed, refused at delete, the ids). The migration 1138 trigger stays the backstop. An apply takes the lock exclusive, so apply and destroy serialise. A hold that lands between plan and delete is refused (`refusedAtDelete`); a live test blinds the plan to prove it.
+- **Kept, not destroyed:** a message with an attachment whose object is not yet destroyed (the bytes cannot be rolled back, and object destruction on this path is NOT built), and a parent or quote target that a message still points at (replies go first, the parent follows in the same run).
+- **Idempotent and bounded.** Removing a gone row is a no-op and an executed certificate is not picked up again. Limits: 500 messages per transaction pair, 40 batches per certificate per run, 6 certificates per org per run; the rest resumes next week.
+- **Audit.** Ids and counts only (`m36.retention_destruction.run|batch_started|batch_completed|certificate_executed`), plus the existing per-row PHI audit of each removed message. If a crash lands between B and C, the `batch_started` row still names the ids that were about to go.
+
+### Redaction (migration 1156, ADR-0055 item 7)
+
+`message_redaction` has one row per message: a request (reason 10 to 1000 characters), then an approval by a **different** person (CHECK, a guard trigger bound to `app.user_id`, a 403 in the service, and a fresh step-up `messaging.redact.approve`). New permissions `messaging.redact.request` and `messaging.redact.approve` go to the compliance officer only, and the full-catalog admin roles skip them (ADR-0055 D9: org admin has no implicit right). Routes live under `/api/v1/messaging/governance/redactions`.
+
+A redaction **masks, it never destroys**: the cipher, hash and status are untouched. It is therefore neither blocked by an active hold nor does it weaken one: a held message can be redacted and stays retained. A request already blocks edits (409 `MESSAGE_REDACTED`) and takes the message out of the search index (tokens deleted in the same transaction; the writer, the reconcile sweep and the query all honour it, ADR-0058 d6/7). An approval masks the body, mentions, attachments, links and poll for every reader (`redactedAt` on the message view; hydration, inbox preview, the provider seam, attachment access, chart promotion, in-channel search and exports all honour it). Physical destruction stays on the retention path, which removes a redacted message together with its redaction row (FK cascade) once it is eligible and unheld.
+
+### The chip and staff names
+
+`legalHold: true` is on a message view only when the viewer holds `messaging.retention.manage`: that a hold exists is itself sensitive, and a custodian must not learn they are under one. The web shows a shared-kit "Legal hold" pill (lock glyph and the words) on the message and on the thread header. `placed_by_name`, and the redaction requester and approver names, come through an injected by-id directory port bound at the composition root to M2's reader (`02-identity/staff-names.ts`). A name resolves only for a user with a membership in this organisation.
+
+### Known limits of this slice
+
+- The single-officer fallback is not built: a tenant with one compliance officer cannot redact yet.
+- The redaction tombstone shows when, not who or why (the people are in the governance list and the audit trail); ADR-0055 asks for who, when and why.
+- There is no redaction web screen and no realtime hint on approval: a reader sees the mask on the next fetch.
+- A redacted message's attachment OBJECT is retained (access is refused). No route reads revisions yet.
+- The certificate's `record_count` stays the approved plan (an upper bound); the destroyed counts per run are in the audit rows.
+- Until an object-destruction step exists, a message with a retained clean attachment is never destroyed by this executor.

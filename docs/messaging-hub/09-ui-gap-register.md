@@ -59,7 +59,7 @@
 | Admin alert-delivery view | `GET /admin/messaging/alert-deliveries` | none | new `apps/admin` 36-messaging module |
 | Attachment quarantine review/release | user-side only | none | route + screen (unscheduled; SG-05) |
 | Tenant erase | eraser + `messaging_erase_block`, no route | none | platform admin (M34), unscheduled |
-| Retention / legal hold | weekly plan-only job | none | WP 5.6 (built (holds, overlay, scan, routes, screen); NOT built: destruction executor, redaction of held messages, thread chip, real staff names in 'placed by' (ADR-0086, proposed)) |
+| Retention / legal hold | weekly plan-only job | none | WP 5.6 (built (holds, overlay, scan, routes, screen, the destruction executor (off per tenant, dry run by default, never a held message), redaction (two-person mask), the thread and message legal-hold chip, staff names in 'placed by'); NOT built: attachment-object destruction on retention, the single-officer redaction fallback, a redaction web screen, compliance sign-off (ADR-0086, proposed)) |
 | Key custody / rotation | none | none | platform concern (M34), unscheduled |
 | DR / restore status | CLI drill + runbook | none | runbook only; screen probably not needed |
 

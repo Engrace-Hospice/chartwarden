@@ -12,8 +12,13 @@
  *   5. PREVIEW   eligible_on_release = past the window AND held by no other active hold.
  *   6. RELEASE   stale confirmed count => 409 RELEASE_PREVIEW_STALE (nothing changes); right count => released + audited with the reason;
  *                a second release => 409 ALREADY_RELEASED.
- *   7. OVERVIEW  periods read-only, next scan is Sunday 02:00 UTC, the last scan's counts and pending certificate; destruction_built false.
- *   8. NO PII    every response carries only the contract's keys: no body, no name, no email.
+ *   7. OVERVIEW  periods read-only, next scan is Sunday 02:00 UTC, the last scan's counts and pending certificate; destruction_mode off
+ *                (the tenant ops flag is absent), then dry_run with the flag on, then live with the deployment key too.
+ *   8. NO PII    every response carries only the contract's keys: no body, no email, no patient. The only person name is the placing staff
+ *                member's display name (`placed_by_name`, through the identity directory port: this tenant's members only).
+ *   9. REDACTION the routes: 401 / 403 without the key, 403 STEP_UP_REQUIRED on approve, the requester cannot approve (403), a second person
+ *                can, the message is then masked for the author's own read, a HELD message can be redacted (cipher kept), org B is a 404.
+ *  10. CHIP      the message list carries `legalHold: true` for the officer only, never for the author.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
@@ -38,12 +43,15 @@ import {
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { RETENTION_DESTRUCTION_FLAG_KEY, retentionDestructionModeOf } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
+import { readStaffNames } from "../src/modules/02-identity/staff-names";
 import { M4_OUTBOX_EVENTS } from "../src/modules/04-audit/events-by-m4";
 import {
   activeLegalHolds,
@@ -95,7 +103,8 @@ const ALLOWED_KEYS = new Set([
   "certificate_status",
   "next_scan_at",
   "last_scan_at",
-  "destruction_built",
+  "destruction_mode",
+  "placed_by_name",
   "holds",
   "id",
   "name",
@@ -111,6 +120,15 @@ const ALLOWED_KEYS = new Set([
   "held_messages",
   "hold_id",
   "eligible_on_release",
+  "redactions",
+  "message_id",
+  "requested_by",
+  "requested_by_name",
+  "requested_at",
+  "approved_by",
+  "approved_by_name",
+  "approved_at",
+  "under_legal_hold",
 ]);
 
 interface Login {
@@ -155,6 +173,10 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
   let holdA = "";
   let holdA2 = "";
   const seenKeys = new Set<string>();
+  // The executor's mode, as the composition root derives it: the tenant ops flag (a real feature_flag row, read by the real reader), then the
+  // deployment's execute key (a plain variable here).
+  let executeKey = false;
+  let flagReader: ReturnType<typeof createDrizzleFeatureFlagReader>;
 
   async function seedPerson(label: string, org: string, keys: readonly string[]): Promise<Person> {
     const email = `${label}-${randomUUID().slice(0, 8)}@wp56.test`;
@@ -300,6 +322,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
     auth = createIdentityAuth(handle.db as never);
+    flagReader = createDrizzleFeatureFlagReader(handle.db);
     resetAuthorizationContract();
     resetRbacEngine();
     resetAbacRegistry();
@@ -338,6 +361,13 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
           },
         }),
         auditQuery: createDbAuditQuery(handle.db as never),
+        // The identity directory port and the executor's mode, bound as the composition root binds them.
+        staffNames: readStaffNames,
+        destructionMode: async (organizationId) =>
+          retentionDestructionModeOf(
+            (await flagReader.forOrg(organizationId))[RETENTION_DESTRUCTION_FLAG_KEY] === true,
+            executeKey,
+          ),
       },
     });
     await app.ready();
@@ -564,7 +594,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       classes: { class: string; period_years: number; eligible: number | null; source: string }[];
       next_scan_at: string;
       last_scan_at: string | null;
-      destruction_built: boolean;
+      destruction_mode: string;
     };
     expect(first.classes.map((c) => [c.class, c.period_years])).toEqual([
       ["care_related", 7],
@@ -575,7 +605,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       true,
     );
     expect(first.last_scan_at).toBeNull();
-    expect(first.destruction_built).toBe(false);
+    expect(first.destruction_mode).toBe("off");
     const next = new Date(first.next_scan_at);
     expect([next.getUTCDay(), next.getUTCHours(), next.getUTCMinutes()]).toEqual([0, 2, 0]);
     expect(next.getTime()).toBeGreaterThan(Date.now());
@@ -887,6 +917,217 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
         .eligible_on_release,
     });
     expect(released.statusCode, released.body).toBe(200);
+  });
+
+  it("NAMES: the list names the placing staff member (this tenant's directory), the other tenant's officer sees no hold, an unknown name stays null", async () => {
+    const list = (await gov("GET", "/legal-holds", officerLogin)).json() as {
+      holds: { placed_by: string; placed_by_name: string | null }[];
+    };
+    // Holds seeded straight into the table by other tests have no placing user (placed_by is empty); every route-placed one names the officer.
+    const placed = list.holds.filter((h) => h.placed_by !== "");
+    expect(placed.length).toBeGreaterThan(0);
+    for (const h of placed) {
+      expect(h.placed_by).toBe(officer.userId);
+      expect(h.placed_by_name).toBe("officer");
+    }
+    // A hold whose placing user has no membership in this organisation resolves no name (never another tenant's directory).
+    const stranger = await seedPerson("stranger", ORG_2, STAFF);
+    await admin.query(
+      `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+       VALUES ($1,'placed by a stranger',$2::jsonb,'placed by a user outside this organisation',$3)`,
+      [
+        ORG,
+        JSON.stringify({ origin: "messaging_governance", channelIds: [chOps] }),
+        stranger.userId,
+      ],
+    );
+    const again = (await gov("GET", "/legal-holds", officerLogin)).json() as {
+      holds: { name: string; placed_by: string; placed_by_name: string | null }[];
+    };
+    const strangerHold = again.holds.find((h) => h.name === "placed by a stranger");
+    expect(strangerHold).toMatchObject({ placed_by: stranger.userId, placed_by_name: null });
+    await admin.query("DELETE FROM legal_hold WHERE name='placed by a stranger'");
+    expect((await gov("GET", "/legal-holds", outsiderLogin)).json()).toEqual({ holds: [] });
+  });
+
+  it("MODE: destruction_mode is off without the tenant flag, dry_run with it, live only with the deployment key too; another tenant's flag does not leak", async () => {
+    const mode = async () =>
+      ((await gov("GET", "/retention", officerLogin)).json() as { destruction_mode: string })
+        .destruction_mode;
+    expect(await mode()).toBe("off");
+    executeKey = true;
+    expect(await mode()).toBe("off"); // the deployment key alone does nothing
+    executeKey = false;
+    await admin.query(
+      `INSERT INTO feature_flag (organization_id,flag_key,value_type,value) VALUES ($1,'messaging.retention_destruction','bool','true'::jsonb)`,
+      [ORG_2],
+    );
+    expect(await mode()).toBe("off"); // org 2's flag is org 2's
+    await admin.query(
+      "UPDATE feature_flag SET organization_id=$1 WHERE flag_key='messaging.retention_destruction'",
+      [ORG],
+    );
+    expect(await mode()).toBe("dry_run");
+    executeKey = true;
+    expect(await mode()).toBe("live");
+    executeKey = false;
+    await admin.query("DELETE FROM feature_flag WHERE flag_key='messaging.retention_destruction'");
+    expect(await mode()).toBe("off");
+  });
+
+  it("REDACTION + CHIP: keys and a fresh step-up gate it; the requester cannot approve; a second person can; the message is then masked on read; a HELD message keeps its cipher; the chip is the officer's only", async () => {
+    const redactKeys = [...STAFF, "messaging.redact.request", "messaging.redact.approve"];
+    const r1 = await seedPerson("redactor1", ORG, redactKeys);
+    const r2 = await seedPerson("redactor2", ORG, redactKeys);
+    const r3 = await seedPerson("redactor3", ORG, redactKeys);
+    const r4 = await seedPerson("redactor4", ORG_2, redactKeys);
+    const r1Login = await login(r1, ORG, true);
+    const r2Login = await login(r2, ORG, true);
+    const staleLogin = await login(r3, ORG, false);
+    const outsiderRedactorLogin = await login(r4, ORG_2, true);
+    const plainLogin = await login(plain, ORG, true);
+    // A channel of its own: the seeded channels carry fake ciphertext that could never be opened for a read.
+    const chR = await channel("location", "aaaaaaaa-aaaa-4aaa-8aaa-0000000a96a4");
+    await member(chR, author.userId);
+    await member(chR, officer.userId);
+
+    const sent = await call("POST", `/api/v1/messaging/channels/${chR}/messages`, authorLogin, {
+      body: "sensitive detail that must be masked",
+    });
+    expect(sent.statusCode, sent.body).toBe(201);
+    const messageId = sent.json().messageId as string;
+    const hold = await gov("POST", "/legal-holds", officerLogin, {
+      name: "Redaction under hold",
+      reason: REASON,
+      channel_ids: [chR],
+    });
+    expect(hold.statusCode, hold.body).toBe(201);
+    const holdId = (hold.json() as { id: string }).id;
+    const cipherOf = async () =>
+      (
+        await rows<{ c: string; h: string }>(
+          "SELECT encode(body_cipher,'hex') c, body_sha256 h FROM message WHERE id=$1",
+          [messageId],
+        )
+      )[0];
+    const before = await cipherOf();
+    const readAs = async (who: Login) => {
+      const res = await call("GET", `/api/v1/messaging/channels/${chR}/messages`, who);
+      expect(res.statusCode, res.body).toBe(200);
+      return res.json() as {
+        messages: { messageId: string; body: string; redactedAt?: string; legalHold?: boolean }[];
+      };
+    };
+
+    // ACCESS
+    expect(
+      (await gov("POST", "/redactions", null, { message_id: messageId, reason: REASON }))
+        .statusCode,
+    ).toBe(401);
+    expect(
+      (await gov("POST", "/redactions", plainLogin, { message_id: messageId, reason: REASON }))
+        .statusCode,
+    ).toBe(403);
+    expect((await gov("GET", "/redactions", plainLogin)).statusCode).toBe(403);
+    expect(
+      (await gov("POST", "/redactions", r1Login, { message_id: messageId, reason: "short" }))
+        .statusCode,
+    ).toBe(422);
+
+    // REQUEST: masks nothing yet
+    const requested = await gov("POST", "/redactions", r1Login, {
+      message_id: messageId,
+      reason: REASON,
+    });
+    expect(requested.statusCode, requested.body).toBe(201);
+    const dto = requested.json() as {
+      id: string;
+      status: string;
+      requested_by_name: string;
+      under_legal_hold: boolean;
+    };
+    expect(dto).toMatchObject({
+      status: "requested",
+      requested_by_name: "redactor1",
+      under_legal_hold: true,
+    });
+    expect(
+      (await gov("POST", "/redactions", r2Login, { message_id: messageId, reason: REASON }))
+        .statusCode,
+    ).toBe(409);
+    expect((await readAs(authorLogin)).messages.find((m) => m.messageId === messageId)?.body).toBe(
+      "sensitive detail that must be masked",
+    );
+
+    // APPROVE: not the requester, not without a fresh step-up
+    const selfApprove = await gov("POST", `/redactions/${dto.id}/approve`, r1Login);
+    expect(selfApprove.statusCode).toBe(403);
+    expect(selfApprove.body).toContain("REDACTION_SELF_APPROVAL");
+    const stale = await gov("POST", `/redactions/${dto.id}/approve`, staleLogin);
+    expect(stale.statusCode).toBe(403);
+    expect(stale.body).toContain("STEP_UP_REQUIRED");
+    expect((await gov("POST", `/redactions/${dto.id}/approve`, plainLogin)).statusCode).toBe(403);
+    const approved = await gov("POST", `/redactions/${dto.id}/approve`, r2Login);
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json()).toMatchObject({
+      status: "approved",
+      approved_by_name: "redactor2",
+      under_legal_hold: true,
+    });
+    expect((await gov("POST", `/redactions/${dto.id}/approve`, r2Login)).statusCode).toBe(409);
+
+    // MASKED on read for the author; the held message's cipher and hash are untouched; edits are refused
+    const masked = (await readAs(authorLogin)).messages.find((m) => m.messageId === messageId);
+    expect(masked?.body).toBe("");
+    expect(masked?.redactedAt).toBeTruthy();
+    expect(masked?.legalHold).toBeUndefined(); // an ordinary reader never learns of the hold
+    expect(await cipherOf()).toEqual(before);
+    expect(
+      (
+        await call("PATCH", `/api/v1/messaging/messages/${messageId}`, authorLogin, {
+          body: "rewritten",
+        })
+      ).statusCode,
+    ).toBe(409);
+
+    // CHIP: the officer (messaging.retention.manage) sees the flag on the held message
+    const officerView = (await readAs(officerLogin)).messages.find(
+      (m) => m.messageId === messageId,
+    );
+    expect(officerView?.legalHold).toBe(true);
+    expect(officerView?.redactedAt).toBeTruthy();
+
+    // LIST: either key reads it; another tenant sees none of it and cannot redact this message
+    const listed = (await gov("GET", "/redactions", r1Login)).json() as {
+      redactions: { id: string }[];
+    };
+    expect(listed.redactions.map((r) => r.id)).toContain(dto.id);
+    expect((await gov("GET", "/redactions", outsiderRedactorLogin)).json()).toEqual({
+      redactions: [],
+    });
+    expect(
+      (
+        await gov("POST", "/redactions", outsiderRedactorLogin, {
+          message_id: messageId,
+          reason: REASON,
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    // Release the hold so the rest of the suite is unaffected; the chip goes with it.
+    const preview = (
+      await gov("GET", `/legal-holds/${holdId}/release-preview`, officerLogin)
+    ).json() as {
+      eligible_on_release: number;
+    };
+    const released = await gov("POST", `/legal-holds/${holdId}/release`, officerLogin, {
+      reason: REASON,
+      confirmed_eligible_count: preview.eligible_on_release,
+    });
+    expect(released.statusCode, released.body).toBe(200);
+    expect(
+      (await readAs(officerLogin)).messages.find((m) => m.messageId === messageId)?.legalHold,
+    ).toBeUndefined();
   });
 
   it("NO PII: every response carried only contract keys (no body, no name, no email)", () => {

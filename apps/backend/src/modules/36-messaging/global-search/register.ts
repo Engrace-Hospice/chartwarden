@@ -19,7 +19,7 @@ import {
 } from "./maintenance-worker";
 import type { NameExclusions } from "./name-exclusion";
 import { createPlatformSearchFlag } from "./platform-flag";
-import { type IsRedactedOrPending, createBodyReader, neverRedacted } from "./ports";
+import { type IsRedactedOrPending, createBodyReader, redactionMarkedOnRow } from "./ports";
 import type { ReconcileDeps } from "./reconcile";
 import { createTenantSearchSettingStore } from "./tenant-setting-store";
 
@@ -59,7 +59,7 @@ export async function registerM36GlobalSearch(
     keys: deps.keys,
     exclusions: deps.exclusions,
     platformFlag,
-    isRedactedOrPending: deps.isRedactedOrPending ?? neverRedacted,
+    isRedactedOrPending: deps.isRedactedOrPending ?? redactionMarkedOnRow,
     ...(deps.onIndexError ? { onError: deps.onIndexError } : {}),
   };
   const writer = createIndexWriter(writerDeps);

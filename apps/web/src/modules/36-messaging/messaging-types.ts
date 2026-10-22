@@ -1,4 +1,9 @@
-import type { ClinicalLinkKind, MessageReactionSummary, PollView, RichBody } from "@chartwarden/types";
+import type {
+  ClinicalLinkKind,
+  MessageReactionSummary,
+  PollView,
+  RichBody,
+} from "@chartwarden/types";
 
 export type ChannelKind =
   | "care_team"
@@ -62,6 +67,10 @@ export interface Message {
   clinicalLinks?: { link_id: string; kind: ClinicalLinkKind; entity_id: string }[];
   /** Files this viewer cannot see yet (scanning for others, or withheld): a bare count, no detail. */
   hiddenAttachmentCount?: number;
+  /** WP 5.6 (ADR-0055 item 7): an approved redaction masks this message; the body is empty and this is when it happened. */
+  redactedAt?: string;
+  /** WP 5.6 (ADR-0086): under an active legal hold. The server sends it only to a holder of `messaging.retention.manage`. */
+  legalHold?: true;
 }
 
 export interface MessageAttachment {

@@ -8,12 +8,12 @@
 import { type AuditContext, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
+  ChartWardenError,
   MESSAGING_GOVERNANCE_HOLD_ORIGIN,
   NotFoundError,
-  ChartWardenError,
   messagingHoldLockName,
 } from "@chartwarden/types";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
 const HOLD = schema.legalHolds;
@@ -237,6 +237,73 @@ export async function openMessageCertificate(
     .returning({ id: CERT.id });
   if (!row) throw new Error("destruction_certificate insert returned no row");
   return { id: row.id, created: true };
+}
+
+/** An APPROVED message certificate the destruction executor may act on (ids, class and dates only). */
+export interface ApprovedMessageCertificate {
+  readonly id: string;
+  /** `message.<retention class>` */
+  readonly dataClass: string;
+  /** When the scan opened it: the executor's window is measured from here, so only what the approver's count covered is destroyed. */
+  readonly createdAt: Date;
+  readonly recordCount: number;
+}
+
+/**
+ * The org's APPROVED, not-yet-executed `message.*` certificates, oldest first, bounded. Approval is M4's (`POST
+ * /destruction-certificates/:id/approve`: permission, step-up, a different person from the scan, the live hold pre-check); the
+ * executor never approves anything. M4's own `execute_destruction` sweep ignores non-`audit.` classes, so these are M36's alone.
+ */
+export async function approvedMessageCertificates(
+  tx: DbClient,
+  organizationId: string,
+  limit: number,
+): Promise<readonly ApprovedMessageCertificate[]> {
+  const rows = await tx
+    .select({
+      id: CERT.id,
+      dataClass: CERT.dataClass,
+      createdAt: CERT.createdAt,
+      recordCount: CERT.recordCount,
+    })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, organizationId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .orderBy(asc(CERT.createdAt), asc(CERT.id))
+    .limit(limit);
+  return rows;
+}
+
+/**
+ * Close an approved message certificate: approved -> executed, once (the WHERE names the source state, so a second call or a
+ * certificate someone moved to `held` meanwhile changes nothing and reports false). Runs in the caller's tenant tx.
+ */
+export async function completeMessageCertificate(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly executedAt: Date;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .update(CERT)
+    .set({ status: "executed", executedAt: input.executedAt })
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .returning({ id: CERT.id });
+  return rows.length > 0;
 }
 
 /** One legal hold as the messaging governance screen reads it (the free-text reason stays in the audit row). */

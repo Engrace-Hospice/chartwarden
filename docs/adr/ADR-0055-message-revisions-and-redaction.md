@@ -197,3 +197,7 @@ for patient-linked channels" is superseded by D8's narrower lock.
   and where they differ the architecture wins and the scan changes then.
 - A reply's `parentMessageId` must be in the same channel (422 `PARENT_MESSAGE_NOT_IN_CHANNEL`), checked in the one insert helper both
   the route service and the provider seam use.
+
+## Implementation note (WP 5.6 finish, 2026-10-22)
+
+Item 7 (redaction) is built in part: the `message_redaction` table (migration 1156), `messaging.redact.request` and `messaging.redact.approve` (compliance officer only), a different-person approval with a fresh step-up, masking where a body is read, and removal from search and exports. A held message can be redacted and its cipher stays retained (item 9). NOT built: the single-officer fallback with a countersign (the period is still undecided), the tombstone naming who and why, the `messaging.history.read` revision reader (item 5) and a web screen. Details and limits: [ADR-0086](ADR-0086-messaging-retention-and-legal-hold.md) "Implementation status".
