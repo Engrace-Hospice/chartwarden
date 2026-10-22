@@ -1,5 +1,7 @@
 # ChartWarden — Operations Runbook
 
+> **Legacy infrastructure names (pending rename).** Production still runs the Postgres database `wardenx` (and the `wardenx-*` volumes and nginx sites, `wardenx.chartwarden.cloud` hosts). Where this document says `wardenx` for such a resource it is the live legacy name, not the product name; it is renamed in the infra windows of `deploy/production/INFRA_RENAME_RUNBOOK.md`.
+
 **Document ID:** CHARTWARDEN_OPS_RUNBOOK
 **Status:** v0.1
 **Owner:** Fabrice V. Adjam (Engineering)

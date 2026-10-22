@@ -1494,7 +1494,7 @@ The bucket-level strategy entry for `tenants/<org>/iqies-envelopes/` is:
 
 | Bucket prefix | Versioning | Object Lock | Replication |
 |---|---|---|---|
-| `tenants/<org_id>/iqies-envelopes/` | Enabled | Compliance, 10 years | wardenx-backup-01 (real-time) + off-site daily |
+| `tenants/<org_id>/iqies-envelopes/` | Enabled | Compliance, 10 years | chartwarden-backup-01 (real-time) + off-site daily |
 
 -----
 
