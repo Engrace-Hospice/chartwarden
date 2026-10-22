@@ -1019,7 +1019,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         ...payload,
       ];
       const ascii = (s: string) => Array.from(new TextEncoder().encode(s));
-      const jfif = seg(0xe0, ascii("JFIF\0\x01\x01\0"));
+      const jfif = seg(0xe0, [...ascii("JFIF\0"), 1, 1, 0, 0, 1, 0, 1, 0, 0]);
       const exif = seg(0xe1, [...ascii("Exif\0\0"), ...ascii("MM\0*GPS 48.85N 2.35E")]);
       const tail = [...seg(0xda, [0, 0]), 1, 2, 3, 0xff, 0xd9];
       const withGps = new Uint8Array([0xff, 0xd8, ...jfif, ...exif, ...tail]);
@@ -1052,7 +1052,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         ...payload,
       ];
       const ascii = (s: string) => Array.from(new TextEncoder().encode(s));
-      const jfif = seg(0xe0, ascii("JFIF\0\x01\x01\0"));
+      const jfif = seg(0xe0, [...ascii("JFIF\0"), 1, 1, 0, 0, 1, 0, 1, 0, 0]);
       const exif = seg(0xe1, [...ascii("Exif\0\0"), ...ascii("MM\0*GPS 48.85N 2.35E")]);
       const tail = [...seg(0xda, [0, 0]), 1, 2, 3, 0xff, 0xd9];
       const signatureOf = async (id: string) =>

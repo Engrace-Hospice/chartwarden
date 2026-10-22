@@ -9,12 +9,12 @@ const segment = (code: number, payload: number[]) => [
   (payload.length + 2) & 0xff,
   ...payload,
 ];
-const SOS = segment(0xda, [0, 0]);
+const SOS = segment(0xda, [1, 1, 0, 0, 63, 0]);
 const ENTROPY = [1, 2, 0xff, 0x00, 3, 0xff, 0xd0, 4];
 const EOI = [0xff, 0xd9];
 const jpegOf = (...parts: number[][]) => new Uint8Array([0xff, 0xd8, ...parts.flat()]);
 const jpeg = (...segments: number[][]) => jpegOf(...segments, SOS, ENTROPY, EOI);
-const JFIF = segment(0xe0, enc("JFIF\0\x01\x01\0"));
+const JFIF = segment(0xe0, [...enc("JFIF\0"), 1, 1, 0, 0, 1, 0, 1, 0, 0]);
 const ICC = segment(0xe2, [...enc("ICC_PROFILE\0"), 1, 1, 9, 9]);
 const MPF = segment(0xe2, enc("MPF\0\x01\x02"));
 const DQT = segment(0xdb, new Array(65).fill(1));
@@ -63,6 +63,8 @@ const tiff = (tags: number[], opts: { bigEndian?: boolean } = {}) => {
   ]);
 };
 
+const le32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, v >>> 24];
+
 describe("inspectImageMetadata: JPEG", () => {
   it("passes a clean JPEG with JFIF + ICC + DQT/DHT/SOF", () => {
     expect(inspectImageMetadata(jpeg(...CLEAN_PARTS))).toBe("clean");
@@ -95,7 +97,7 @@ describe("inspectImageMetadata: JPEG", () => {
     expect(inspectImageMetadata(new Uint8Array([...jpeg(...CLEAN_PARTS), 0, 7]))).toBe("metadata");
   });
   it("sees Exif behind 5000 empty APP segments", () => {
-    const filler = new Array(5000).fill(0).flatMap(() => segment(0xe0, enc("JFIF\0")));
+    const filler = new Array(5000).fill(0).flatMap(() => JFIF);
     expect(inspectImageMetadata(jpegOf(filler, gpsExif, SOS, ENTROPY, EOI))).toBe("metadata");
   });
   it("sees an APP1 after a junk byte (libjpeg skips to the next FF xx)", () => {
@@ -103,10 +105,58 @@ describe("inspectImageMetadata: JPEG", () => {
       "metadata",
     );
   });
-  it("tolerates junk and fill bytes between clean segments", () => {
+  it("tolerates 0xFF fill bytes between header segments but flags junk between them", () => {
+    expect(inspectImageMetadata(jpegOf(JFIF, [0xff, 0xff], DQT, SOF, SOS, ENTROPY, EOI))).toBe(
+      "clean",
+    );
+    expect(inspectImageMetadata(jpegOf(DQT, enc("secret text"), DQT, SOF, SOS, ENTROPY, EOI))).toBe(
+      "metadata",
+    );
+  });
+  it("flags a JFIF with a thumbnail or a wrong length, and a malformed Adobe/DRI/DQT/SOF", () => {
+    const thumb = segment(0xe0, [
+      ...enc("JFIF\0"),
+      1,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      2,
+      2,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+      9,
+    ]);
+    expect(inspectImageMetadata(jpeg(thumb, SOF))).toBe("metadata");
+    expect(inspectImageMetadata(jpeg(segment(0xe0, enc("JFIF\0\x01\x01\0")), SOF))).toBe(
+      "metadata",
+    );
     expect(
-      inspectImageMetadata(jpegOf(JFIF, [0x00, 0xff, 0xff], DQT, SOF, SOS, ENTROPY, EOI)),
+      inspectImageMetadata(
+        jpeg(JFIF, segment(0xee, [...enc("Adobe"), 0, 100, 0, 0, 0, 0, 1, 7, 7])),
+      ),
+    ).toBe("metadata");
+    expect(
+      inspectImageMetadata(jpeg(JFIF, segment(0xee, [...enc("Adobe"), 0, 100, 0, 0, 0, 0, 1]))),
     ).toBe("clean");
+    expect(inspectImageMetadata(jpeg(JFIF, segment(0xdd, [0, 4, 9])))).toBe("metadata");
+    expect(inspectImageMetadata(jpeg(JFIF, segment(0xdd, [0, 4])))).toBe("clean");
+    expect(inspectImageMetadata(jpeg(JFIF, segment(0xdb, [1, 2, 3])))).toBe("metadata");
+    expect(inspectImageMetadata(jpeg(JFIF, segment(0xc0, [8, 0, 1])))).toBe("metadata");
+  });
+  it("does not over-read on an empty APP segment", () => {
+    expect(inspectImageMetadata(jpeg(segment(0xe0, []), segment(0xe2, [])))).toBe("metadata");
   });
   it("is unparseable without a scan, without EOI, or with a bad length", () => {
     expect(inspectImageMetadata(jpegOf(JFIF, EOI))).toBe("unparseable");
@@ -117,9 +167,7 @@ describe("inspectImageMetadata: JPEG", () => {
     const many = new Uint8Array([
       0xff,
       0xd8,
-      0xff,
-      0xdb,
-      ...new Array(200000).fill(0).flatMap(() => [0xff, 0xdb, 0, 2]),
+      ...new Array(200000).fill(0).flatMap(() => [0xff, 0xcc, 0, 2]),
     ]);
     expect(inspectImageMetadata(many)).toBe("unparseable");
   });
@@ -147,6 +195,18 @@ describe("inspectImageMetadata: PNG", () => {
   it("flags trailing bytes after IEND, allows zero padding", () => {
     expect(inspectImageMetadata(new Uint8Array([...png(), 1]))).toBe("metadata");
     expect(inspectImageMetadata(new Uint8Array([...png(), 0, 0]))).toBe("clean");
+  });
+  it("flags wrong fixed chunk lengths and a second iCCP", () => {
+    expect(inspectImageMetadata(png(chunk("sRGB", [0, 1, 2])))).toBe("metadata");
+    expect(inspectImageMetadata(png(chunk("pHYs", new Array(12).fill(0))))).toBe("metadata");
+    expect(inspectImageMetadata(png(chunk("PLTE", [1, 2, 3, 4])))).toBe("metadata");
+    expect(inspectImageMetadata(png(chunk("PLTE", [1, 2, 3])))).toBe("clean");
+    expect(inspectImageMetadata(pngOf(chunk("IHDR", new Array(14).fill(0)), IDAT, IEND))).toBe(
+      "metadata",
+    );
+    const icc = chunk("iCCP", [65, 0, 0, 1]);
+    expect(inspectImageMetadata(png(icc))).toBe("clean");
+    expect(inspectImageMetadata(png(icc, icc))).toBe("metadata");
   });
   it("is unparseable without IEND or with a huge declared length", () => {
     expect(inspectImageMetadata(pngOf(IHDR, IDAT))).toBe("unparseable");
@@ -189,6 +249,32 @@ describe("inspectImageMetadata: sniffing and TIFF", () => {
     expect(inspectImageMetadata(new Uint8Array([0x49, 0x49, 0x2b, 0, 8, 0, 0, 0]))).toBe(
       "unparseable",
     );
+  });
+  it("bounds a chain of overlapping 65535-entry IFDs quickly (no quadratic walk)", () => {
+    // Offsets are (H << 16 | L) with H and L both allowed tag values and offset % 12 === 0, so every 12-byte tag slot of
+    // every overlapping IFD reads an allowed tag (0x0101) or a pointer half that is itself an allowed tag. Without a
+    // total budget this chain walks to the end and returns "clean"; with it the walk gives up as "unparseable".
+    const allowed = [
+      0xfe, 0xff, 0x100, 0x101, 0x102, 0x103, 0x106, 0x107, 0x10a, 0x111, 0x112, 0x115, 0x116,
+      0x117, 0x11a, 0x11b, 0x11c, 0x128, 0x13d, 0x140, 0x142, 0x143, 0x144, 0x145, 0x152, 0x153,
+      0x15b,
+    ];
+    const count = 65535;
+    const nextAt = (off: number) => off + 2 + count * 12;
+    const offsets = allowed
+      .flatMap((h) => allowed.map((l) => h * 65536 + l))
+      .filter((o) => o % 12 === 0)
+      .sort((x, y) => x - y);
+    expect(offsets.length).toBeGreaterThan(35);
+    const buf = new Uint8Array(nextAt(offsets[offsets.length - 1] as number) + 4).fill(1);
+    buf.set([0x49, 0x49, 0x2a, 0, ...le32(offsets[0] as number)]);
+    for (const [i, off] of offsets.entries()) {
+      buf.set([0xff, 0xff], off);
+      buf.set(le32(offsets[i + 1] ?? 0), nextAt(off));
+    }
+    const t0 = performance.now();
+    expect(inspectImageMetadata(buf)).toBe("unparseable");
+    expect(performance.now() - t0).toBeLessThan(500);
   });
   it("treats non-image bytes as clean", () => {
     expect(inspectImageMetadata(new Uint8Array(enc("%PDF-1.7 hello")))).toBe("clean");
