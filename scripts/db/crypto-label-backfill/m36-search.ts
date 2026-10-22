@@ -1,24 +1,15 @@
 // M36 global search index. The blind tags are DERIVED data (HMAC under a key derived with the search label), so they are not
-// "decrypted": a message's stored tags are classified by recomputing its tags from the decrypted body under each label set and
-// asking which set the stored tags contain (every whole-word tag of the body). They are rewritten with the index writer that
-// the rest of M36 uses (`indexMessage`: re-checks eligibility and the body digest, drops excluded names, delete-then-insert in
-// one transaction), so a rewrite is atomic per message and a reader that probes both label sets never sees a gap.
-//
-// NAME-EXCLUSION DIGESTS. They are HMACs under the search key, so the label flip changes them. Before the first rewrite of a
-// tenant the scan runs `exclusions.sync`, which adds the new-label digest of every patient / contact name token (grow-only) and
-// marks them pending; the writer's exclusion set recognises a name under EITHER label's digest, so no name is ever indexed in the
-// clear while this runs. When the rewrite reaches the end without a failure the digests that were pending at its start are
-// cleared: every message has been re-indexed with those names excluded, which is exactly what the pending reindex is for.
+// "decrypted": a message's stored tags are classified by recomputing its tags from the decrypted body under the one remaining
+// label and asking whether the stored tags contain every one of them (and none of an excluded name). READ-ONLY: a message whose
+// tags were derived under the removed legacy label reports as "unreadable" (not searchable) until the index is rebuilt.
 import type { DbClient } from "@chartwarden/db";
 import {
-  SEARCH_LABELS_CURRENT,
   type SearchKeyProvider,
   deriveChannelKey,
   tagForWord,
   tokenizeForSearch,
 } from "@chartwarden/messaging";
 import { sql } from "drizzle-orm";
-import type { IndexWriter } from "../../../apps/backend/src/modules/36-messaging/global-search/index-writer";
 import {
   NameExclusionNotSyncedError,
   type NameExclusions,
@@ -28,15 +19,7 @@ import {
   isEligibleForIndex,
   neverRedacted,
 } from "../../../apps/backend/src/modules/36-messaging/global-search/ports";
-import {
-  type RowClass,
-  type Scan,
-  type TableReport,
-  type WriteResult,
-  inOrg,
-  rowsOf,
-  tryOpen,
-} from "./core";
+import { type RowClass, type Scan, inOrg, rowsOf, tryOpen } from "./core";
 
 interface IndexedMessage {
   readonly id: string;
@@ -53,7 +36,6 @@ export interface M36SearchDeps {
   readonly keys: SearchKeyProvider;
   readonly bodies: BodyReader;
   readonly exclusions: NameExclusions;
-  readonly writer: IndexWriter;
 }
 
 async function readTagBits(
@@ -79,9 +61,9 @@ export function m36SearchScan(
   keyVersion: string,
   tagBits: number | undefined,
 ): Scan<IndexedMessage> {
-  const { db, keys, bodies, exclusions, writer } = deps;
+  const { db, keys, bodies, exclusions } = deps;
 
-  /** "current" | "legacy" for one message, or "ignore" when nothing is indexed / nothing is searchable. */
+  /** "current" or "unreadable" for one message, or "ignore" when nothing is indexed / nothing is searchable. */
   async function classifyMessage(row: IndexedMessage): Promise<RowClass> {
     if (row.storedTags.size === 0 || tagBits === undefined) return "ignore";
     if (!isEligibleForIndex(row, neverRedacted)) return "ignore"; // drift of another kind: the reconcile job owns it
@@ -102,28 +84,19 @@ export function m36SearchScan(
     // Tokens the index must NOT carry: the body's non-stop-word tokens that the exclusion set removed (patient / contact names).
     const everyToken = tokenizeForSearch(body.text);
     const excludedTokens = everyToken.filter((t) => !tokens.includes(t));
-    const sets = await keys.tagKeysForRead(organizationId, keyVersion);
-    const channelKeyOf = (set: (typeof sets)[number]) =>
-      deriveChannelKey(set.key, keyVersion, tagBits, row.channelId, set.labels);
-    const containsAll = (set: (typeof sets)[number]) => {
-      const channelKey = channelKeyOf(set);
-      return tokens.every((token) => row.storedTags.has(tagForWord(channelKey, token, tagBits)));
-    };
-    const carriesExcludedName = sets.some((set) => {
-      const channelKey = channelKeyOf(set);
-      return excludedTokens.some((token) =>
-        row.storedTags.has(tagForWord(channelKey, token, tagBits)),
-      );
-    });
-    // Work, never "current", when: the tags are not the NEW set's (legacy, or a stale index the reconcile job has not caught up
-    // with); or they ALSO contain every legacy tag (a short message can hold the new tags by chance; a rewrite draws fresh dummies
-    // and settles it); or a name that is now excluded is still indexed.
-    const current = sets.find((s) => s.labels === SEARCH_LABELS_CURRENT);
-    const legacy = sets.filter((s) => s !== current);
-    const ambiguous = legacy.some(containsAll);
-    return current && containsAll(current) && !ambiguous && !carriesExcludedName
-      ? "current"
-      : "legacy";
+    const channelKey = deriveChannelKey(
+      await keys.tagKey(organizationId, keyVersion),
+      keyVersion,
+      tagBits,
+      row.channelId,
+    );
+    const containsAll = tokens.every((token) =>
+      row.storedTags.has(tagForWord(channelKey, token, tagBits)),
+    );
+    const carriesExcludedName = excludedTokens.some((token) =>
+      row.storedTags.has(tagForWord(channelKey, token, tagBits)),
+    );
+    return containsAll && !carriesExcludedName ? "current" : "unreadable";
   }
 
   return {
@@ -170,80 +143,22 @@ export function m36SearchScan(
       });
     },
     classify: classifyMessage,
-    async reseal(row): Promise<WriteResult> {
-      try {
-        const outcome = await writer.indexMessage(organizationId, row.id);
-        if (outcome === "skipped_off") return "skipped";
-        if (outcome === "skipped_stale") return "failed";
-        if (outcome === "removed") return "resealed";
-        // Verify: re-read this message's tags and prove they are now the NEW set's.
-        return (await verifyOne(row.id)) ? "resealed" : "failed";
-      } catch (error) {
-        // The class only: a driver error message embeds the failed statement's parameters.
-        console.error(
-          `m36-search: re-index of one message failed (${error instanceof Error ? error.name : "unknown"})`,
-        );
-        return "failed";
-      }
-    },
   };
-
-  async function verifyOne(messageId: string): Promise<boolean> {
-    const fresh = await inOrg(db, organizationId, async (tx) => {
-      const m = rowsOf<{
-        id: string;
-        channel_id: string;
-        status: string;
-        body_kind: string;
-        body_cipher: Buffer;
-      }>(
-        await tx.execute(sql`
-          SELECT id::text AS id, channel_id::text AS channel_id, status::text AS status,
-                 body_kind::text AS body_kind, body_cipher
-            FROM message WHERE organization_id = ${organizationId} AND id = ${messageId}::uuid`),
-      )[0];
-      if (!m) return undefined;
-      const tags = rowsOf<{ tag: number }>(
-        await tx.execute(sql`
-          SELECT tag FROM message_search_token
-           WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}
-             AND message_id = ${messageId}::uuid`),
-      );
-      return {
-        id: m.id,
-        channelId: m.channel_id,
-        status: m.status,
-        bodyKind: m.body_kind,
-        bodyCipher: m.body_cipher,
-        storedTags: new Set(tags.map((t) => t.tag)),
-      } satisfies IndexedMessage;
-    });
-    if (!fresh) return true; // deleted meanwhile
-    const klass = await classifyMessage(fresh);
-    return klass === "current" || klass === "ignore";
-  }
-}
-
-/** The tag width of the tenant's active index, or undefined when nothing was ever indexed (nothing to do). */
-export async function m36SearchState(
-  deps: Pick<M36SearchDeps, "db" | "keys">,
-  organizationId: string,
-): Promise<{ keyVersion: string; tagBits: number | undefined }> {
-  const keyVersion = await deps.keys.activeVersion(organizationId);
-  return { keyVersion, tagBits: await readTagBits(deps.db, organizationId, keyVersion) };
 }
 
 /**
- * Apply only, before the first rewrite: add the new-label name digests (grow-only). They are left PENDING on purpose: only the
- * reconcile tick's targeted reindex (`reindexPendingExclusions`) may clear them, because only it looks for messages that still carry
- * an excluded name's tag. This pass re-indexes every message with the names excluded, and its classification flags any message
- * that still carries one, but it does not assert that every pending name has been looked for.
+ * Every LIVE key version of the tenant's index (active first) with its tag width (undefined when nothing was ever indexed under
+ * it). A rotation overlap leaves tags under more than one version; each is verified under its own key.
  */
-export async function m36SearchPrepare(
-  deps: M36SearchDeps,
+export async function m36SearchState(
+  deps: Pick<M36SearchDeps, "db" | "keys">,
   organizationId: string,
-  keyVersion: string,
-): Promise<void> {
-  await deps.exclusions.sync(organizationId, keyVersion);
-  deps.exclusions.invalidate(organizationId, keyVersion);
+): Promise<Array<{ keyVersion: string; tagBits: number | undefined }>> {
+  const versions = await deps.keys.liveVersions(organizationId);
+  return Promise.all(
+    versions.map(async (keyVersion) => ({
+      keyVersion,
+      tagBits: await readTagBits(deps.db, organizationId, keyVersion),
+    })),
+  );
 }

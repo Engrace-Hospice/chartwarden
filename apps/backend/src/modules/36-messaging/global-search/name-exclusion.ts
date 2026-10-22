@@ -193,16 +193,10 @@ export function createNameExclusions(deps: NameExclusionDeps): NameExclusions {
         row = await inTenantTx(organizationId, readRow);
         if (!row?.syncedAt) throw new NameExclusionNotSyncedError(); // over the enumeration budget: still not complete
       }
-      // A stored digest is an HMAC under the search key of the label set that was the WRITER's when it was added, so after the
-      // label flip the digests written before it only match under the legacy key. Test a token against the digest set under
-      // EVERY accepted label set: until `sync` has added the new-label digests (and after a rebuild has re-indexed under
-      // them), a name must stay excluded rather than be indexed in the clear.
-      // LEGACY(wardenx->chartwarden): with the legacy label gone (release 3) this is the single write-label key again.
-      const digestSet = new Set(row.digests ?? []);
-      const readKeys = await deps.keys.tagKeysForRead(organizationId, keyVersion);
-      if (readKeys.length === 0) throw new NameExclusionNotSyncedError(); // no key: fail closed, never "exclude nothing"
-      const exclusions = readKeys.map((k) => digestExclusion(k.key, digestSet));
-      const exclusion: ExcludedTokens = { has: (token) => exclusions.some((e) => e.has(token)) };
+      const exclusion = digestExclusion(
+        await deps.keys.tagKey(organizationId, keyVersion),
+        new Set(row.digests ?? []),
+      );
       cache.set(id, { expiresAt: now() + EXCLUSION_CACHE_TTL_MS, exclusion });
       return exclusion;
     };
@@ -274,15 +268,10 @@ export function createNameExclusions(deps: NameExclusionDeps): NameExclusions {
       if (pendingDigests.length === 0 || state?.due !== true) {
         return { tokens: [], pendingDigests, due: false, complete: true };
       }
-      // A pending digest was computed under the search key of whichever label set was the writer's when it was added, so test the
-      // tokens against EVERY accepted label set's key: after the flip a legacy-key digest is not an orphan.
-      // LEGACY(wardenx->chartwarden): one key again after release 3.
-      const keys = (await deps.keys.tagKeysForRead(organizationId, keyVersion)).map((k) => k.key);
+      const key = await deps.keys.tagKey(organizationId, keyVersion);
       const wanted = new Set(pendingDigests);
       const read = await readNameTokens(source(), organizationId, now);
-      const tokens = [...read.tokens].filter((token) =>
-        keys.some((key) => wanted.has(nameTokenDigest(key, token))),
-      );
+      const tokens = [...read.tokens].filter((token) => wanted.has(nameTokenDigest(key, token)));
       return { tokens, pendingDigests, due: true, complete: read.complete };
     },
 
@@ -371,25 +360,20 @@ export async function reindexPendingExclusions(
   if (pending.pendingDigests.length === 0 || !pending.due) return 0;
 
   deps.exclusions.invalidate(organizationId, keyVersion);
-  // Every accepted label set: a message indexed under the legacy tags still carries the name's legacy tag, and a digest added under
-  // the legacy key is cleared only once a lookup under that set's keys has run. LEGACY(wardenx->chartwarden): one set after release 3.
-  const sets = await deps.keys.tagKeysForRead(organizationId, keyVersion);
-  const digestsOf = (token: string) => sets.map((set) => nameTokenDigest(set.key, token));
+  const searchKey = await deps.keys.tagKey(organizationId, keyVersion);
+  const digestOf = (token: string) => nameTokenDigest(searchKey, token);
   const channels = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
     channelsOfIndex(tx, organizationId, keyVersion),
   );
-  const channelKeys = sets.map(
-    (set) =>
-      new Map(
-        channels.map((channelId) => [
-          channelId,
-          deriveChannelKey(set.key, keyVersion, tagBits, channelId, set.labels),
-        ]),
-      ),
+  const channelKeys = new Map(
+    channels.map((channelId) => [
+      channelId,
+      deriveChannelKey(searchKey, keyVersion, tagBits, channelId),
+    ]),
   );
   const batchSize = Math.max(
     1,
-    Math.floor(REINDEX_PAIRS_PER_STATEMENT / Math.max(1, channels.length * sets.length)),
+    Math.floor(REINDEX_PAIRS_PER_STATEMENT / Math.max(1, channels.length)),
   );
   const deadline = now() + REINDEX_BUDGET_MS;
   const done = new Set<string>();
@@ -397,12 +381,10 @@ export async function reindexPendingExclusions(
   for (let i = 0; i < pending.tokens.length && now() < deadline; i += batchSize) {
     const batch = pending.tokens.slice(i, i + batchSize);
     const pairs = batch.flatMap((token) =>
-      channelKeys.flatMap((keysOfSet) =>
-        channels.map((channelId) => ({
-          channelId,
-          tag: tagForWord(keysOfSet.get(channelId) as Buffer, token, tagBits),
-        })),
-      ),
+      channels.map((channelId) => ({
+        channelId,
+        tag: tagForWord(channelKeys.get(channelId) as Buffer, token, tagBits),
+      })),
     );
     const messageIds = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
       messagesWithTags(tx, organizationId, keyVersion, pairs),
@@ -414,10 +396,10 @@ export async function reindexPendingExclusions(
       reindexed += 1;
     }
     // A message that was not rewritten may still carry the name: leave the whole batch pending for the next pass.
-    if (clean) for (const token of batch) for (const d of digestsOf(token)) done.add(d);
+    if (clean) for (const token of batch) done.add(digestOf(token));
   }
   // Digests whose token no longer appears in the source (a deleted patient) have nothing to reindex: clear them too.
-  const known = new Set(pending.tokens.flatMap(digestsOf));
+  const known = new Set(pending.tokens.map(digestOf));
   // Only when the enumeration finished: after a budget cut a missing digest may simply not have been read yet.
   const orphans = pending.complete
     ? pending.pendingDigests.filter((digest) => !known.has(digest))

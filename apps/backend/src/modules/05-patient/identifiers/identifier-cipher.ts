@@ -17,7 +17,7 @@
 // an unknown version, or an envelope that fails GCM authentication all THROW — never return a guess.
 //
 // BLIND INDEX. token = HMAC-SHA256(indexKey, "ssn:" + nineDigits), indexKey = HKDF-SHA256(ikm = tenant DEK at
-// version v, info = INDEX_LABEL_WRITE + orgId; see the label constants below). It is keyed by a secret that is not in the database,
+// version v, info = INDEX_LABEL + orgId; see the label constants below). It is keyed by a secret that is not in the database,
 // so a DB-only compromise or a restored backup yields tokens that cannot be brute-forced over the 10^9 SSN space,
 // and it derives from the DEK, so the M34 cryptographic shred destroys the index together with the ciphertext (a
 // platform-wide index key would survive a shred). Per tenant: equal SSNs in two tenants give different tokens.
@@ -62,23 +62,14 @@ export interface PatientIdentifierCipher {
     identifierId: string,
     kind: SensitiveIdentifierKind,
     ciphertext: Buffer,
-    /** Backfill probe only: open under this label generation alone. Omitted = try both. */
-    onlyGeneration?: LabelGeneration,
   ): Promise<string>;
-  /**
-   * The SSN blind-index token under the current DEK (or under `dekVersion` when given), under the WRITE label unless the
-   * backfill asks for one generation explicitly.
-   */
+  /** The SSN blind-index token under the current DEK (or under `dekVersion` when given). */
   blindIndex(
     organizationId: string,
     ssnDigits: string,
     dekVersion?: string,
-    generation?: LabelGeneration,
   ): Promise<BlindIndexToken>;
-  /**
-   * Every token a stored row could carry, for each listed DEK version (the multi-version matcher probe): one token per
-   * accepted blind-index label (current + legacy), so a duplicate-patient probe finds a row stored under either.
-   */
+  /** Every token a stored row could carry, for each listed DEK version (the multi-version matcher probe). */
   blindIndexesForVersions(
     organizationId: string,
     ssnDigits: string,
@@ -118,33 +109,9 @@ const TAG_BYTES = 16;
 const MAX_VERSION_BYTES = 255;
 const INDEX_KEY_BYTES = 32;
 
-// ChartWarden rename of the cryptographic context labels (release 1 = READ-SIDE). Readers accept both labels, writers
-// emit WRITE_LABEL. LEGACY(wardenx->chartwarden): remove the legacy entries after the backfill (release 3).
-const AAD_LABEL_CURRENT = "chartwarden:m5:patient_identifier:value_encrypted:v1:";
-const AAD_LABEL_LEGACY = "wardenx:m5:patient_identifier:value_encrypted:v1:";
-const INDEX_LABEL_CURRENT = "chartwarden:m5:ssn-blind-index:v1:";
-const INDEX_LABEL_LEGACY = "wardenx:m5:ssn-blind-index:v1:";
-// Release 2 (write-side flip done): writers emit the CURRENT labels; scripts/db/backfill-crypto-labels.ts re-seals and
-// re-indexes every older row. Readers still accept both (release 3 removes the legacy ones).
-const AAD_LABEL_WRITE = AAD_LABEL_CURRENT;
-const INDEX_LABEL_WRITE = INDEX_LABEL_CURRENT;
-/** Read order: current first, legacy second. */
-const AAD_LABELS_READ = [AAD_LABEL_CURRENT, AAD_LABEL_LEGACY] as const;
-const INDEX_LABELS_READ = [INDEX_LABEL_CURRENT, INDEX_LABEL_LEGACY] as const;
-
-/**
- * Which label generation to use. Only the backfill's decrypt probe passes one (to find rows that open ONLY under the
- * legacy label); every runtime caller leaves it out and gets "try both".
- */
-export type LabelGeneration = "current" | "legacy";
-const AAD_BY_GENERATION: Record<LabelGeneration, string> = {
-  current: AAD_LABEL_CURRENT,
-  legacy: AAD_LABEL_LEGACY,
-};
-const INDEX_BY_GENERATION: Record<LabelGeneration, string> = {
-  current: INDEX_LABEL_CURRENT,
-  legacy: INDEX_LABEL_LEGACY,
-};
+// Cryptographic context labels (the ChartWarden rename is complete: the legacy `wardenx:` labels are no longer readable).
+const AAD_LABEL = "chartwarden:m5:patient_identifier:value_encrypted:v1:";
+const INDEX_LABEL = "chartwarden:m5:ssn-blind-index:v1:";
 
 const aadFor = (
   label: string,
@@ -246,7 +213,7 @@ export function createPatientIdentifierCipher(
       assertDek(key);
       const nonce = randomBytes(NONCE_BYTES);
       const cipher = createCipheriv("aes-256-gcm", key, nonce, { authTagLength: TAG_BYTES });
-      cipher.setAAD(aadFor(AAD_LABEL_WRITE, organizationId, identifierId, kind));
+      cipher.setAAD(aadFor(AAD_LABEL, organizationId, identifierId, kind));
       const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
       return {
         ciphertext: packEnvelope(version, nonce, cipher.getAuthTag(), ct),
@@ -254,40 +221,30 @@ export function createPatientIdentifierCipher(
       };
     },
 
-    async open(organizationId, identifierId, kind, ciphertext, onlyGeneration) {
+    async open(organizationId, identifierId, kind, ciphertext) {
       const parsed = parseEnvelope(ciphertext);
       const { key } = await dekAtVersion(keys, organizationId, parsed.version, "open");
       assertDek(key);
-      // Try the current label, then the legacy one. A failure under both is the same generic integrity error: it does not
-      // say which label (if any) was close, so the retry adds no oracle.
-      const labels = onlyGeneration ? [AAD_BY_GENERATION[onlyGeneration]] : AAD_LABELS_READ;
-      for (const label of labels) {
-        const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
-          authTagLength: TAG_BYTES,
-        });
-        decipher.setAAD(aadFor(label, organizationId, identifierId, kind));
-        decipher.setAuthTag(parsed.tag);
-        try {
-          return Buffer.concat([decipher.update(parsed.ct), decipher.final()]).toString("utf8");
-        } catch {
-          // authentication failed under this label; try the next
-        }
+      // A failure is one generic integrity error that names no label.
+      const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
+        authTagLength: TAG_BYTES,
+      });
+      decipher.setAAD(aadFor(AAD_LABEL, organizationId, identifierId, kind));
+      decipher.setAuthTag(parsed.tag);
+      try {
+        return Buffer.concat([decipher.update(parsed.ct), decipher.final()]).toString("utf8");
+      } catch {
+        throw new IdentifierCipherIntegrityError();
       }
-      throw new IdentifierCipherIntegrityError();
     },
 
-    async blindIndex(organizationId, ssnDigits, dekVersion, generation) {
+    async blindIndex(organizationId, ssnDigits, dekVersion) {
       const { version, key } =
         dekVersion === undefined
           ? await currentDek(keys, organizationId, "index")
           : await dekAtVersion(keys, organizationId, dekVersion, "index");
       return {
-        token: tokenFor(
-          key,
-          organizationId,
-          ssnDigits,
-          generation ? INDEX_BY_GENERATION[generation] : INDEX_LABEL_WRITE,
-        ),
+        token: tokenFor(key, organizationId, ssnDigits, INDEX_LABEL),
         dekVersion: version,
       };
     },
@@ -296,10 +253,7 @@ export function createPatientIdentifierCipher(
       const tokens = new Map<string, readonly Buffer[]>();
       for (const version of new Set(versions)) {
         const { key } = await dekAtVersion(keys, organizationId, version, "index");
-        tokens.set(
-          version,
-          INDEX_LABELS_READ.map((label) => tokenFor(key, organizationId, ssnDigits, label)),
-        );
+        tokens.set(version, [tokenFor(key, organizationId, ssnDigits, INDEX_LABEL)]);
       }
       return tokens;
     },

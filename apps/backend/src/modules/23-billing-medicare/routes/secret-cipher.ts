@@ -8,9 +8,9 @@
 //   KEK    the SAME `M24_CREDENTIAL_ENCRYPTION_KEY` (32 bytes base64) the Medicaid credential cipher uses. It is already
 //          required and shape-checked by `bootstrap/env.ts` in production, so no new deploy secret is introduced. M23 may
 //          not import M24 (module boundary), hence this small independent implementation.
-//   DEK    HKDF-SHA256(KEK, info = WRITE_LABELS.dekInfoPrefix + orgId; "chartwarden-m23-..." since release 2, "wardenx-m23-..." before). The label is M23-specific, so an M23
+//   DEK    HKDF-SHA256(KEK, info = LABELS.dekInfoPrefix + orgId). The label is M23-specific, so an M23
 //          envelope can never be opened with an M24 or M36 key even though the KEK is shared (domain separation).
-//   AAD    WRITE_LABELS.aadPrefix + version + orgId + providerEntityId + macJurisdiction. It binds the envelope to the
+//   AAD    LABELS.aadPrefix + version + orgId + providerEntityId + macJurisdiction. It binds the envelope to the
 //          ROW it was sealed for: a ciphertext copied to another tenant, another provider entity or another MAC jurisdiction
 //          of the same org fails authentication, and the version byte is itself authenticated (it cannot be flipped).
 //   FORMAT base64( version(1) ‖ nonce(12) ‖ ciphertext ‖ tag(16) ) in the `text` cipher column. The version byte is the
@@ -28,30 +28,15 @@ const NONCE_LEN = 12;
 const TAG_LEN = 16;
 const KEY_LEN = 32;
 const MIN_ENVELOPE_LEN = 1 + NONCE_LEN + TAG_LEN;
-// ChartWarden rename of the cryptographic labels (release 1 = READ-SIDE). A label SET is the HKDF info + the AAD prefix
-// that were used together. Readers try every set (current first); the writer emits WRITE_LABELS.
-// LEGACY(wardenx->chartwarden): remove LEGACY_LABELS after the backfill (release 3).
+// Cryptographic labels: the HKDF info + the AAD prefix used together. The ChartWarden rename is complete; the legacy
+// `wardenx-m23-...` set is no longer readable.
 interface Labels {
   readonly dekInfoPrefix: string;
   readonly aadPrefix: string;
 }
-const CURRENT_LABELS: Labels = {
+const LABELS: Labels = {
   dekInfoPrefix: "chartwarden-m23-mac-credential-dek:",
   aadPrefix: "chartwarden-m23-mac-credential:v",
-};
-const LEGACY_LABELS: Labels = {
-  dekInfoPrefix: "wardenx-m23-mac-credential-dek:",
-  aadPrefix: "wardenx-m23-mac-credential:v",
-};
-// Release 2 (write-side flip done): new secrets are sealed under CURRENT_LABELS; scripts/db/backfill-crypto-labels.ts re-seals
-// the older ones. Readers still accept both (release 3 removes the legacy set).
-const WRITE_LABELS: Labels = CURRENT_LABELS;
-const READ_LABELS: readonly Labels[] = [CURRENT_LABELS, LEGACY_LABELS];
-/** Which label generation to use; only the backfill's decrypt probe passes one (omitted = try both). */
-export type LabelGeneration = "current" | "legacy";
-const LABELS_BY_GENERATION: Record<LabelGeneration, Labels> = {
-  current: CURRENT_LABELS,
-  legacy: LEGACY_LABELS,
 };
 /** The env var carrying the master KEK (shared with M24; required in production by `bootstrap/env.ts`). */
 export const MAC_SECRET_KEK_ENV = "M24_CREDENTIAL_ENCRYPTION_KEY";
@@ -62,13 +47,7 @@ export const MAC_SECRET_KEK_ENV = "M24_CREDENTIAL_ENCRYPTION_KEY";
  * response, an event or an audit payload (the future worker that calls this logs a fixed code, never the ciphertext).
  */
 export interface MacSecretCipher extends SecretCipherPort {
-  decrypt(
-    organizationId: string,
-    context: MacSecretContext,
-    cipher: string,
-    /** Backfill probe only: open under this label generation alone. */
-    onlyGeneration?: LabelGeneration,
-  ): Promise<string>;
+  decrypt(organizationId: string, context: MacSecretContext, cipher: string): Promise<string>;
 }
 
 /** Parse the base64 KEK. Fail-closed: absent or not exactly 32 bytes throws (never a zero or truncated key). */
@@ -119,12 +98,8 @@ export function buildMacSecretCipher(kek: Buffer): MacSecretCipher {
   return {
     async encrypt(organizationId, plaintext, context) {
       const nonce = randomBytes(NONCE_LEN);
-      const cipher = createCipheriv(
-        "aes-256-gcm",
-        deriveDek(root, organizationId, WRITE_LABELS),
-        nonce,
-      );
-      cipher.setAAD(aadFor(WRITE_LABELS, MAC_SECRET_CIPHER_VERSION, organizationId, context));
+      const cipher = createCipheriv("aes-256-gcm", deriveDek(root, organizationId, LABELS), nonce);
+      cipher.setAAD(aadFor(LABELS, MAC_SECRET_CIPHER_VERSION, organizationId, context));
       const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
       const envelope = Buffer.concat([
         Buffer.from([MAC_SECRET_CIPHER_VERSION]),
@@ -134,29 +109,27 @@ export function buildMacSecretCipher(kek: Buffer): MacSecretCipher {
       ]);
       return { cipher: envelope.toString("base64"), dekVersion: MAC_SECRET_CIPHER_VERSION };
     },
-    async decrypt(organizationId, context, sealed, onlyGeneration) {
+    async decrypt(organizationId, context, sealed) {
       const raw = Buffer.from(sealed, "base64");
       if (raw.length < MIN_ENVELOPE_LEN) throw new Error("MAC secret cipher: malformed ciphertext");
       if (raw[0] !== MAC_SECRET_CIPHER_VERSION) {
         throw new Error(`MAC secret cipher: unsupported version ${raw[0]}`);
       }
-      // Try each label set (current, then legacy). Every failure is the same generic error: no label is named.
-      for (const labels of onlyGeneration ? [LABELS_BY_GENERATION[onlyGeneration]] : READ_LABELS) {
-        const decipher = createDecipheriv(
-          "aes-256-gcm",
-          deriveDek(root, organizationId, labels),
-          raw.subarray(1, 1 + NONCE_LEN),
-        );
-        decipher.setAAD(aadFor(labels, MAC_SECRET_CIPHER_VERSION, organizationId, context));
-        decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
-        try {
-          return Buffer.concat([
-            decipher.update(raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN)),
-            decipher.final(),
-          ]).toString("utf8");
-        } catch {
-          // authentication failed under this label set; try the next
-        }
+      // Every failure is the same generic error: no label is named.
+      const decipher = createDecipheriv(
+        "aes-256-gcm",
+        deriveDek(root, organizationId, LABELS),
+        raw.subarray(1, 1 + NONCE_LEN),
+      );
+      decipher.setAAD(aadFor(LABELS, MAC_SECRET_CIPHER_VERSION, organizationId, context));
+      decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
+      try {
+        return Buffer.concat([
+          decipher.update(raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN)),
+          decipher.final(),
+        ]).toString("utf8");
+      } catch {
+        // fall through to the one generic refusal
       }
       // The node error text is not interesting and must not become an oracle; say only that it did not open.
       throw new Error("MAC secret cipher: ciphertext failed authentication");

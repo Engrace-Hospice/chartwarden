@@ -1,12 +1,11 @@
 // WP 2.7b / ADR-0058 - tag derivation, padding, cursor codec and the T arithmetic.
+import { hkdfSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { deriveOrgDek } from "../src/crypto/body-crypto";
 import {
   CANDIDATE_CAP,
   DEFAULT_TAG_BITS,
   MAX_PAGES_PER_QUERY,
-  SEARCH_LABELS_LEGACY,
-  SEARCH_LABELS_WRITE,
   type SearchKeyProvider,
   buildMessageTags,
   decodeSearchCursor,
@@ -37,30 +36,32 @@ const stubProvider: SearchKeyProvider = {
   activeVersion: async () => "legacy",
   liveVersions: async () => ["legacy"],
   tagKey: async (orgId, version) => deriveSearchKey(deriveOrgDek(KEK, orgId), orgId, version),
-  tagKeysForRead: async (orgId, version) => [
-    { labels: SEARCH_LABELS_WRITE, key: deriveSearchKey(deriveOrgDek(KEK, orgId), orgId, version) },
-  ],
 };
 
 describe("known-answer vectors (independent HKDF/HMAC reference, fixed inputs)", () => {
   const dek = Buffer.alloc(32, 0x42);
-  // The vectors below are for the LEGACY label (explicit); the default (writer) label is the chartwarden one since release 2.
-  const keyA = deriveSearchKey(dek, ORG_A, "v1", SEARCH_LABELS_LEGACY);
+  // An independent reference derivation under the REMOVED legacy label: these vectors pin the tag arithmetic (the encodings), and
+  // prove the module no longer derives under that label.
+  const legacy = (org: string, version: string): Buffer =>
+    Buffer.from(
+      hkdfSync("sha256", dek, Buffer.alloc(0), `wardenx-message-search:${org}:${version}`, 32),
+    );
+  const keyA = legacy(ORG_A, "v1");
 
-  it("deriveSearchKey: HKDF-SHA256, empty salt, info wardenx-message-search:<org>:<label> (legacy label)", () => {
+  it("deriveSearchKey: HKDF-SHA256, empty salt, info chartwarden-message-search:<org>:<label>; the legacy label is no longer derived", () => {
     expect(keyA.toString("hex")).toBe(
       "478d04a66604da7c9697c06edcfabe1069097599c1757c0fbb9bc73691f70d03",
     );
-    // the SAME DEK with another org, or another label, must give another key
-    expect(deriveSearchKey(dek, ORG_B, "v1", SEARCH_LABELS_LEGACY).toString("hex")).toBe(
+    expect(legacy(ORG_B, "v1").toString("hex")).toBe(
       "06680fa9f0947e984273f4630cedac1af8680f4b98470da3e2c732808307d636",
     );
-    expect(deriveSearchKey(dek, ORG_A, "v2", SEARCH_LABELS_LEGACY).toString("hex")).toBe(
-      "42889e49d4e317549140dc2702d89f200fc9d21005edccad6d03aeb7d239126f",
-    );
+    // the SAME DEK with another org, or another label, must give another key
+    expect(deriveSearchKey(dek, ORG_A, "v1").equals(keyA)).toBe(false);
+    expect(deriveSearchKey(dek, ORG_B, "v1").equals(deriveSearchKey(dek, ORG_A, "v1"))).toBe(false);
+    expect(deriveSearchKey(dek, ORG_A, "v2").equals(deriveSearchKey(dek, ORG_A, "v1"))).toBe(false);
   });
 
-  it("the writer's default is the chartwarden label: a literal key (independent Node HKDF) and literal tags", () => {
+  it("the writer's key is the chartwarden label: a literal key (independent Node HKDF) and literal tags", () => {
     const keyW = deriveSearchKey(dek, ORG_A, "v1");
     expect(keyW.toString("hex")).toBe(
       "6ceb092d6799ec6ad124bd0c8f93261fa039860c52b3b68125093056b347cb99",
@@ -71,7 +72,7 @@ describe("known-answer vectors (independent HKDF/HMAC reference, fixed inputs)",
     expect(tagForPrefix(keyW, "mor", 19)).toBe(233133);
   });
 
-  it("tags at T=19 are literal integers over the w\\0 / p\\0 len \\0 encodings (legacy key)", () => {
+  it("tags at T=19 are literal integers over the w\\0 / p\\0 len \\0 encodings (independent reference key)", () => {
     expect(tagForWord(keyA, "morphine", 19)).toBe(427393);
     expect(tagForPrefix(keyA, "morp", 19)).toBe(264399);
     expect(tagForPrefix(keyA, "mor", 19)).toBe(291042);

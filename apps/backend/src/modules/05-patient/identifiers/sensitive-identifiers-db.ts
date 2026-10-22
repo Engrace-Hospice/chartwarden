@@ -167,8 +167,8 @@ export async function findSsnHitPatientIds(
     )) as Array<{ version: string | null }>;
   const versions = versionRows.flatMap((r) => (r.version ? [r.version] : []));
   if (versions.length === 0) return new Set();
-  // Every accepted blind-index label per version: a patient stored under the legacy OR the current label must be found,
-  // or the matcher would miss them and let a duplicate chart be created.
+  // One token per stored DEK version: a patient sealed under an older DEK must still be found, or the matcher would miss
+  // them and let a duplicate chart be created.
   const tokens = [
     ...(await cipher.blindIndexesForVersions(organizationId, ssnDigits, versions)).values(),
   ].flat();

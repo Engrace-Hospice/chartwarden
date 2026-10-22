@@ -25,6 +25,7 @@
  *                 CHARTWARDEN_TEST_PG_CONTAINER=<name> lets the logging-hygiene test also scan `docker logs <name>`.
  */
 import { execFileSync } from "node:child_process";
+import { hkdfSync } from "node:crypto";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import fs, { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -43,13 +44,10 @@ import {
   DECRYPT_BUDGET,
   MAX_PAGES_PER_QUERY,
   MAX_QUERY_CHANNELS,
-  SEARCH_LABELS_CURRENT,
-  SEARCH_LABELS_LEGACY,
   buildMessageTags,
   decodeSearchCursor,
   deriveChannelKey,
   deriveOrgDek,
-  deriveOrgReadDeks,
   deriveSearchKey,
   eraseTenantMessaging,
   indexTagStrings,
@@ -102,7 +100,12 @@ process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0279";
 const ORG_B = "22222222-2222-4222-8222-2222000f0279";
@@ -1162,8 +1165,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const destroyed = async (): Promise<never> => {
         throw new Error("ring destroyed");
       };
-      // `tagKeysForRead` is the query path's key source (ChartWarden label rename); a destroyed ring fails both.
-      const failing = { ...keys, tagKey: destroyed, tagKeysForRead: destroyed };
+      const failing = { ...keys, tagKey: destroyed };
       const s = buildServer({
         db: handle.db,
         authenticate: headerAuth,
@@ -1945,7 +1947,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   describe("fix-round hardening", () => {
     it("MED-3 key-rotation overlap: >500 raw rows across two live versions drop no match (dedupe happens before the LIMIT)", async () => {
       const keys2 = {
-        ...keys, // tagKeysForRead derives for any version label
+        ...keys,
         activeVersion: async () => VERSION,
         liveVersions: async () => [VERSION, "v2"],
         tagKey: async (org: string, version: string) =>
@@ -2021,22 +2023,20 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await q(`DELETE FROM message_search_index_state WHERE key_version='v2'`);
     }, 180_000);
 
-    it("ChartWarden label rename (releases 1-2): a message indexed under either search label set is found; a mix of two label sets is not a match", async () => {
-      // LEGACY(wardenx->chartwarden): since release 2 `send` indexes under the NEW writer labels; these rows are planted by hand
-      // under BOTH label sets (the legacy one is what production holds until the backfill), exactly as the MED-3 case plants a
-      // second key version.
-      const [newDek, legacyDek] = deriveOrgReadDeks(KEK, ORG_A);
-      const channelKeyFor = (set: 0 | 1, channelId: string) => {
-        const labels = set === 0 ? SEARCH_LABELS_CURRENT : SEARCH_LABELS_LEGACY;
-        const dek = set === 0 ? (newDek as Buffer) : (legacyDek as Buffer);
-        return deriveChannelKey(
-          deriveSearchKey(dek, ORG_A, VERSION, labels),
-          VERSION,
-          TAG_BITS,
-          channelId,
-          labels,
+    it("ChartWarden label rename (release 3): a message indexed under the chartwarden labels is found; one whose tags were derived under the removed legacy labels is not", async () => {
+      // Tags are derived data. Since release 3 a query probes the chartwarden key only, so an index row still derived under the
+      // legacy labels is simply not matched (under-recall, the safe direction) until the index is rebuilt. Planted by hand, exactly
+      // as the MED-3 case plants a second key version; the legacy key is derived by an independent HKDF over the literal label.
+      const dek = deriveOrgDek(KEK, ORG_A);
+      const hk = (ikm: Buffer, info: string) =>
+        Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32));
+      const legacyChannelKey = (channelId: string) =>
+        hk(
+          hk(dek, `wardenx-message-search:${ORG_A}:${VERSION}`),
+          `wardenx-message-search-channel:${VERSION}:t${TAG_BITS}:${channelId}`,
         );
-      };
+      const channelKey = (channelId: string) =>
+        deriveChannelKey(deriveSearchKey(dek, ORG_A, VERSION), VERSION, TAG_BITS, channelId);
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       const insertMessage = async (text: string): Promise<string> => {
@@ -2054,18 +2054,13 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
           `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id) VALUES ($1,$2,$3,$4,$5)`,
           [ORG_A, VERSION, ch.id, tag, messageId],
         );
-      const single = await insertMessage("labelflipword is only indexed under the new labels");
-      await plant(single, tagForPrefix(channelKeyFor(0, ch.id), "labelflipwor", TAG_BITS));
-      expect(idsOf(await search(u, "labelflipword"))).toEqual([single]);
+      const current = await insertMessage("labelflipword is indexed under the chartwarden labels");
+      await plant(current, tagForPrefix(channelKey(ch.id), "labelflipwor", TAG_BITS));
+      expect(idsOf(await search(u, "labelflipword"))).toEqual([current]);
 
-      const bothNew = await insertMessage("mixedaaaa mixedbbbb");
-      await plant(bothNew, tagForWord(channelKeyFor(0, ch.id), "mixedaaaa", TAG_BITS));
-      await plant(bothNew, tagForPrefix(channelKeyFor(0, ch.id), "mixedbbb", TAG_BITS));
-      const mixed = await insertMessage("mixedaaaa mixedbbbb mixedcccc");
-      await plant(mixed, tagForWord(channelKeyFor(1, ch.id), "mixedaaaa", TAG_BITS));
-      await plant(mixed, tagForPrefix(channelKeyFor(0, ch.id), "mixedbbb", TAG_BITS));
-      // the body of `mixed` matches the query too, so only the SQL conjunction (ALL tags of ONE set) keeps it out
-      expect(idsOf(await search(u, "mixedaaaa mixedbbbb"))).toEqual([bothNew]);
+      const legacy = await insertMessage("legacyflipword is indexed under the removed labels");
+      await plant(legacy, tagForPrefix(legacyChannelKey(ch.id), "legacyflipwo", TAG_BITS));
+      expect(idsOf(await search(u, "legacyflipword"))).toEqual([]);
     });
 
     it("MED-5 removal race: a member removed between the prefilter and the re-select gets zero results", async () => {

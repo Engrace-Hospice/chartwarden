@@ -1,16 +1,12 @@
-// ChartWarden rename, releases 1-2, for the HKDF / AAD labels of M23, M24, M34, M35 and M36 (body + search tags).
+// ChartWarden rename, release 3 (the legacy labels are gone), for the HKDF / AAD labels of M23, M24, M34, M35 and M36 (body + search).
 // Every fixture is built here from LITERAL label strings (an oracle independent of the modules' constants):
-//   "wardenx..."      = what production holds until the release-2 backfill has run (the legacy label);
-//   "chartwarden..."  = what every writer emits since release 2 (the flip), and what the backfill re-seals to.
-// Both must be readable (that is what makes the flip, the backfill and a rollback to release 1 safe); anything else (wrong key /
-// tampered / other tenant) must still fail closed with a generic error. The single-generation probes (`onlyGeneration`) are what
-// the backfill's --verify uses to find rows that open ONLY under the legacy label.
-// LEGACY(wardenx->chartwarden): delete the legacy cases after the backfill.
+//   "chartwarden..."  = what every writer has emitted since release 2: it must open, and the writers must still emit it;
+//   "wardenx..."      = the legacy label: since release 3 a value sealed under it must FAIL CLOSED, with the same generic error as
+//                       any other value that does not authenticate (tamper, wrong key, other tenant), and no error names a label.
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import {
   deriveChannelKey,
   deriveOrgDek,
-  deriveOrgDekForGeneration,
   deriveSearchKey,
   openMessageBody,
   openMessageBodyRing,
@@ -28,11 +24,9 @@ import { buildMacSecretCipher } from "../src/modules/23-billing-medicare/routes/
 import {
   buildCredentialCipherPort,
   deriveOrgCredentialDek,
-  deriveOrgCredentialDekForGeneration,
   openCredentialSecret,
 } from "../src/modules/24-billing-medicaid/credential-crypto";
 import {
-  type ChannelQuery,
   buildVersionQueries,
   tagsForTerms,
 } from "../src/modules/36-messaging/global-search/query-terms";
@@ -43,7 +37,7 @@ const OTHER_ORG = "00000000-0000-4000-8000-00000000000b";
 const KEK = randomBytes(32);
 const hkdf = (ikm: Buffer, info: string): Buffer =>
   Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32));
-const PREFIXES = ["wardenx", "chartwarden"] as const;
+const NO_LABEL_NAMED = /wardenx|chartwarden|label/i;
 
 /** AES-256-GCM seal with an explicit AAD, returning nonce | ct | tag pieces. */
 function gcm(key: Buffer, plaintext: Buffer, aad?: string) {
@@ -62,6 +56,7 @@ const flipLastByte = (b: Buffer): Buffer => {
 describe("M23 MAC secret cipher labels", () => {
   const cipher = buildMacSecretCipher(KEK);
   const ctx = { providerEntityId: "AAAAAAAA-0000-4000-8000-000000000001", macJurisdiction: "JF" };
+  const GENERIC = "MAC secret cipher: ciphertext failed authentication";
   const sealFixture = (prefix: string, secret: string): string => {
     const dek = hkdf(KEK, `${prefix}-m23-mac-credential-dek:${ORG}`);
     const aad = [
@@ -74,17 +69,18 @@ describe("M23 MAC secret cipher labels", () => {
     return Buffer.concat([Buffer.from([2]), nonce, ct, tag]).toString("base64");
   };
 
-  it.each(PREFIXES)("opens a secret sealed under the %s label", async (prefix) => {
-    expect(await cipher.decrypt(ORG, ctx, sealFixture(prefix, "s3cret"))).toBe("s3cret");
+  it("opens a secret sealed under the chartwarden label", async () => {
+    expect(await cipher.decrypt(ORG, ctx, sealFixture("chartwarden", "s3cret"))).toBe("s3cret");
   });
 
-  it("seals under the NEW label (flipped in release 2) and not the legacy one", async () => {
+  it("seals under the chartwarden label (oracle check)", async () => {
     const { cipher: sealed } = await cipher.encrypt(ORG, "s3cret", ctx);
-    await expect(cipher.decrypt(ORG, ctx, sealed, "legacy")).rejects.toThrow();
-    expect(await cipher.decrypt(ORG, ctx, sealed, "current")).toBe("s3cret");
     const raw = Buffer.from(sealed, "base64");
-    const dek = hkdf(KEK, `chartwarden-m23-mac-credential-dek:${ORG}`);
-    const d = createDecipheriv("aes-256-gcm", dek, raw.subarray(1, 13));
+    const d = createDecipheriv(
+      "aes-256-gcm",
+      hkdf(KEK, `chartwarden-m23-mac-credential-dek:${ORG}`),
+      raw.subarray(1, 13),
+    );
     d.setAAD(
       Buffer.from(
         ["chartwarden-m23-mac-credential:v2", ORG, ctx.providerEntityId.toLowerCase(), "JF"].join(
@@ -98,34 +94,26 @@ describe("M23 MAC secret cipher labels", () => {
     );
   });
 
-  it.each([
-    ["wardenx", "legacy", "current"],
-    ["chartwarden", "current", "legacy"],
-  ] as const)(
-    "a %s-sealed secret opens under the %s probe and not the %s one",
-    async (prefix, yes, no) => {
-      const sealed = sealFixture(prefix, "s3cret");
-      expect(await cipher.decrypt(ORG, ctx, sealed, yes)).toBe("s3cret");
-      await expect(cipher.decrypt(ORG, ctx, sealed, no)).rejects.toThrow();
-    },
-  );
+  it("FAILS CLOSED on a legacy (wardenx) secret, with the generic error", async () => {
+    const err = await cipher
+      .decrypt(ORG, ctx, sealFixture("wardenx", "s3cret"))
+      .catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe(GENERIC);
+  });
 
-  it.each(PREFIXES)(
-    "fails closed (generic error) for %s data: tamper, other tenant, other row",
-    async (prefix) => {
-      const sealed = sealFixture(prefix, "s3cret");
-      const bad = [
-        cipher.decrypt(ORG, ctx, flipLastByte(Buffer.from(sealed, "base64")).toString("base64")),
-        cipher.decrypt(OTHER_ORG, ctx, sealed),
-        cipher.decrypt(ORG, { ...ctx, macJurisdiction: "JE" }, sealed),
-      ];
-      for (const p of bad) {
-        const err = await p.catch((e: Error) => e);
-        expect(err).toBeInstanceOf(Error);
-        expect((err as Error).message).toBe("MAC secret cipher: ciphertext failed authentication");
-      }
-    },
-  );
+  it("fails closed with the generic error: tamper, other tenant, other row", async () => {
+    const sealed = sealFixture("chartwarden", "s3cret");
+    const bad = [
+      cipher.decrypt(ORG, ctx, flipLastByte(Buffer.from(sealed, "base64")).toString("base64")),
+      cipher.decrypt(OTHER_ORG, ctx, sealed),
+      cipher.decrypt(ORG, { ...ctx, macJurisdiction: "JE" }, sealed),
+    ];
+    for (const p of bad) {
+      const err = await p.catch((e: Error) => e);
+      expect((err as Error).message).toBe(GENERIC);
+    }
+  });
 });
 
 describe("M24 trading-partner credential labels", () => {
@@ -138,18 +126,15 @@ describe("M24 trading-partner credential labels", () => {
     return Buffer.concat([Buffer.from([1]), nonce, ct, tag]).toString("base64");
   };
 
-  it.each(PREFIXES)("opens a credential sealed under the %s label", (prefix) => {
-    expect(port.open(ORG, fixture(prefix, "pw"))).toBe("pw");
+  it("opens a credential sealed under the chartwarden label", () => {
+    expect(port.open(ORG, fixture("chartwarden", "pw"))).toBe("pw");
   });
 
-  it("seals under the NEW label (flipped in release 2) and not the legacy one", () => {
+  it("seals under the chartwarden label (oracle check)", () => {
     const sealed = port.seal(ORG, "pw");
     expect(
       openCredentialSecret(sealed, hkdf(KEK, `chartwarden-m24-trading-partner-dek:${ORG}`)),
     ).toBe("pw");
-    expect(() =>
-      openCredentialSecret(sealed, hkdf(KEK, `wardenx-m24-trading-partner-dek:${ORG}`)),
-    ).toThrow();
     expect(
       deriveOrgCredentialDek(KEK, ORG).equals(
         hkdf(KEK, `chartwarden-m24-trading-partner-dek:${ORG}`),
@@ -157,24 +142,12 @@ describe("M24 trading-partner credential labels", () => {
     ).toBe(true);
   });
 
-  it.each([
-    ["wardenx", "legacy", "current"],
-    ["chartwarden", "current", "legacy"],
-  ] as const)(
-    "a %s-sealed credential opens under the %s DEK and not the %s one",
-    (prefix, yes, no) => {
-      const sealed = fixture(prefix, "pw");
-      expect(openCredentialSecret(sealed, deriveOrgCredentialDekForGeneration(KEK, ORG, yes))).toBe(
-        "pw",
-      );
-      expect(() =>
-        openCredentialSecret(sealed, deriveOrgCredentialDekForGeneration(KEK, ORG, no)),
-      ).toThrow();
-    },
-  );
+  it("FAILS CLOSED on a legacy (wardenx) credential", () => {
+    expect(() => port.open(ORG, fixture("wardenx", "pw"))).toThrow();
+  });
 
-  it.each(PREFIXES)("fails closed for %s data: tamper and other tenant", (prefix) => {
-    const sealed = fixture(prefix, "pw");
+  it("fails closed: tamper and other tenant", () => {
+    const sealed = fixture("chartwarden", "pw");
     expect(() =>
       port.open(ORG, flipLastByte(Buffer.from(sealed, "base64")).toString("base64")),
     ).toThrow();
@@ -193,104 +166,46 @@ describe("M34 tenant key-ring wrap label (highest risk)", () => {
     const { nonce, ct, tag } = gcm(KEK, DEK, `${prefix}-m34-tenant-dek:v1:${KEK_ID}:${org}`);
     return Buffer.concat([Buffer.from([1]), nonce, ct, tag]);
   };
+  const unwrap = (wrapped: Buffer, org = ORG) =>
+    adapter.unwrap({ organizationId: org, kekWrappedCiphertext: wrapped, kekId: KEK_ID });
 
-  it.each(PREFIXES)("unwraps a DEK wrapped under the %s label", async (prefix) => {
-    const out = await adapter.unwrap({
-      organizationId: ORG,
-      kekWrappedCiphertext: wrapFixture(prefix),
-      kekId: KEK_ID,
-    });
-    expect(out.equals(DEK)).toBe(true);
+  it("unwraps a DEK wrapped under the chartwarden label", async () => {
+    expect((await unwrap(wrapFixture("chartwarden"))).equals(DEK)).toBe(true);
   });
 
-  it("wraps under the NEW label (flipped in release 2): round trip + oracle check, legacy probe refuses", async () => {
+  it("wraps under the chartwarden label (oracle check) and round-trips", async () => {
     const { wrappedCiphertextB64 } = await adapter.mintAndWrapDek({ organizationId: ORG });
     const wrapped = Buffer.from(wrappedCiphertextB64, "base64");
     const d = createDecipheriv("aes-256-gcm", KEK, wrapped.subarray(1, 13));
     d.setAAD(Buffer.from(`chartwarden-m34-tenant-dek:v1:${KEK_ID}:${ORG}`));
     d.setAuthTag(wrapped.subarray(13 + 32));
     expect(Buffer.concat([d.update(wrapped.subarray(13, 13 + 32)), d.final()]).length).toBe(32);
-    await expect(
-      adapter.unwrap({
-        organizationId: ORG,
-        kekWrappedCiphertext: wrapped,
-        kekId: KEK_ID,
-        onlyGeneration: "legacy",
-      }),
-    ).rejects.toThrow(PlatformKekError);
-    const back = await adapter.unwrap({
-      organizationId: ORG,
-      kekWrappedCiphertext: wrapped,
-      kekId: KEK_ID,
-    });
-    expect(back.length).toBe(32);
+    expect((await unwrap(wrapped)).length).toBe(32);
   });
 
-  it.each([
-    ["wardenx", "legacy", "current"],
-    ["chartwarden", "current", "legacy"],
-  ] as const)(
-    "a %s-wrapped DEK unwraps under the %s probe and not the %s one",
-    async (prefix, yes, no) => {
-      const input = {
-        organizationId: ORG,
-        kekWrappedCiphertext: wrapFixture(prefix),
-        kekId: KEK_ID,
-      };
-      expect((await adapter.unwrap({ ...input, onlyGeneration: yes })).equals(DEK)).toBe(true);
-      await expect(adapter.unwrap({ ...input, onlyGeneration: no })).rejects.toThrow(
-        PlatformKekError,
-      );
-    },
-  );
-
-  it("rewrapDek moves a legacy wrap to the new label with the same KEK and the same DEK", async () => {
-    const legacy = wrapFixture("wardenx");
-    const out = await adapter.rewrapDek({
-      organizationId: ORG,
-      kekWrappedCiphertext: legacy,
-      kekId: KEK_ID,
-    });
-    expect(out.kekId).toBe(KEK_ID);
-    const input = {
-      organizationId: ORG,
-      kekWrappedCiphertext: Buffer.from(out.wrappedCiphertextB64, "base64"),
-      kekId: KEK_ID,
-    };
-    expect((await adapter.unwrap({ ...input, onlyGeneration: "current" })).equals(DEK)).toBe(true);
-    await expect(adapter.unwrap({ ...input, onlyGeneration: "legacy" })).rejects.toThrow();
+  it("FAILS CLOSED on a legacy (wardenx) wrap, with the one generic error that names no label", async () => {
+    const err = await unwrap(wrapFixture("wardenx")).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(PlatformKekError);
+    expect((err as Error).message).toBe(
+      `wrapped DEK for org ${ORG} failed authentication under KEK '${KEK_ID}'`,
+    );
+    expect((err as Error).message).not.toMatch(/wardenx|label/i);
   });
 
-  it.each(PREFIXES)(
+  it.each(["chartwarden", "wardenx"])(
     "refuses a %s-wrapped DEK lifted into another tenant, with one generic error",
     async (prefix) => {
-      const err = await adapter
-        .unwrap({
-          organizationId: OTHER_ORG,
-          kekWrappedCiphertext: wrapFixture(prefix),
-          kekId: KEK_ID,
-        })
-        .catch((e: Error) => e);
+      const err = await unwrap(wrapFixture(prefix), OTHER_ORG).catch((e: Error) => e);
       expect(err).toBeInstanceOf(PlatformKekError);
-      expect((err as Error).message).not.toMatch(/wardenx|chartwarden|label/i);
+      expect((err as Error).message).not.toMatch(NO_LABEL_NAMED);
     },
   );
 
   it("refuses a tampered wrap and an unknown label", async () => {
-    await expect(
-      adapter.unwrap({
-        organizationId: ORG,
-        kekWrappedCiphertext: flipLastByte(wrapFixture("wardenx")),
-        kekId: KEK_ID,
-      }),
-    ).rejects.toThrow(PlatformKekError);
-    await expect(
-      adapter.unwrap({
-        organizationId: ORG,
-        kekWrappedCiphertext: wrapFixture("otherapp"),
-        kekId: KEK_ID,
-      }),
-    ).rejects.toThrow(PlatformKekError);
+    await expect(unwrap(flipLastByte(wrapFixture("chartwarden")))).rejects.toThrow(
+      PlatformKekError,
+    );
+    await expect(unwrap(wrapFixture("otherapp"))).rejects.toThrow(PlatformKekError);
   });
 });
 
@@ -303,18 +218,15 @@ describe("M35 pseudonym key-material labels", () => {
     return Buffer.concat([Buffer.from([1]), nonce, ct, tag]).toString("base64");
   };
 
-  it.each(PREFIXES)("opens key material sealed under the %s label", (prefix) => {
-    expect(openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", fixture(prefix)).equals(KEY)).toBe(
-      true,
-    );
+  it("opens key material sealed under the chartwarden label", () => {
+    expect(
+      openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", fixture("chartwarden")).equals(KEY),
+    ).toBe(true);
   });
 
-  it("seals under the NEW label (flipped in release 2) and round-trips", () => {
+  it("seals under the chartwarden label (oracle check) and round-trips", () => {
     const { ciphertextB64 } = sealPseudonymKeyMaterial(ring, "epoch-1", KEY);
     expect(openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", ciphertextB64).equals(KEY)).toBe(true);
-    expect(() =>
-      openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", ciphertextB64, "legacy"),
-    ).toThrow(PseudonymKekError);
     const wrapped = Buffer.from(ciphertextB64, "base64");
     const d = createDecipheriv("aes-256-gcm", KEK, wrapped.subarray(1, 13));
     d.setAAD(Buffer.from(`chartwarden-m35-pseudonym-key:v1:${KEK_ID}:epoch-1`));
@@ -322,60 +234,46 @@ describe("M35 pseudonym key-material labels", () => {
     expect(Buffer.concat([d.update(wrapped.subarray(13, 45)), d.final()]).equals(KEY)).toBe(true);
   });
 
-  it.each([
-    ["wardenx", "legacy", "current"],
-    ["chartwarden", "current", "legacy"],
-  ] as const)("%s key material opens under the %s probe and not the %s one", (prefix, yes, no) => {
-    expect(
-      openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", fixture(prefix), yes).equals(KEY),
-    ).toBe(true);
-    expect(() => openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", fixture(prefix), no)).toThrow(
+  it("FAILS CLOSED on legacy (wardenx) key material, with the same error as any other failure", () => {
+    expect(() => openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", fixture("wardenx"))).toThrow(
       PseudonymKekError,
     );
+    try {
+      openPseudonymKeyMaterial(ring, KEK_ID, "epoch-1", fixture("wardenx"));
+    } catch (error) {
+      expect((error as Error).message).not.toMatch(/wardenx|label/i);
+    }
   });
 
-  it.each(PREFIXES)("fails closed for %s data on another epoch", (prefix) => {
-    expect(() => openPseudonymKeyMaterial(ring, KEK_ID, "epoch-2", fixture(prefix))).toThrow(
+  it("fails closed on another epoch", () => {
+    expect(() => openPseudonymKeyMaterial(ring, KEK_ID, "epoch-2", fixture("chartwarden"))).toThrow(
       PseudonymKekError,
     );
   });
 });
 
 describe("M36 message body labels", () => {
-  it.each(PREFIXES)("opens a v1 (HKDF) body whose DEK was derived under the %s label", (prefix) => {
-    const dek = hkdf(KEK, `${prefix}-message-dek:${ORG}`);
-    const { nonce, ct, tag } = gcm(dek, Buffer.from("hello"));
-    const envelope = Buffer.concat([Buffer.from([1]), nonce, ct, tag]);
-    expect(
-      openMessageBody(envelope, [
-        hkdf(KEK, `chartwarden-message-dek:${ORG}`),
-        hkdf(KEK, `wardenx-message-dek:${ORG}`),
-      ]),
-    ).toBe("hello");
+  const v1 = (prefix: string): Buffer => {
+    const { nonce, ct, tag } = gcm(hkdf(KEK, `${prefix}-message-dek:${ORG}`), Buffer.from("hello"));
+    return Buffer.concat([Buffer.from([1]), nonce, ct, tag]);
+  };
+
+  it("opens a v1 (HKDF) body sealed under the chartwarden label", () => {
+    expect(openMessageBody(v1("chartwarden"), deriveOrgDek(KEK, ORG))).toBe("hello");
   });
 
-  it("derives the NEW-label DEK for sealing (release 2), and a wrong key fails", () => {
+  it("derives the chartwarden DEK for sealing, and a wrong key fails", () => {
     expect(deriveOrgDek(KEK, ORG).equals(hkdf(KEK, `chartwarden-message-dek:${ORG}`))).toBe(true);
     const sealed = sealMessageBody("hello", deriveOrgDek(KEK, ORG));
     expect(() => openMessageBody(sealed, hkdf(KEK, `wardenx-message-dek:${ORG}`))).toThrow();
-    expect(() => openMessageBody(sealed, [randomBytes(32), randomBytes(32)])).toThrow();
+    expect(() => openMessageBody(sealed, randomBytes(32))).toThrow();
   });
 
-  it.each([
-    ["wardenx", "legacy", "current"],
-    ["chartwarden", "current", "legacy"],
-  ] as const)(
-    "a v1 body sealed under the %s label opens with the %s DEK and not the %s one",
-    (prefix, yes, no) => {
-      const { nonce, ct, tag } = gcm(
-        hkdf(KEK, `${prefix}-message-dek:${ORG}`),
-        Buffer.from("hello"),
-      );
-      const envelope = Buffer.concat([Buffer.from([1]), nonce, ct, tag]);
-      expect(openMessageBody(envelope, deriveOrgDekForGeneration(KEK, ORG, yes))).toBe("hello");
-      expect(() => openMessageBody(envelope, deriveOrgDekForGeneration(KEK, ORG, no))).toThrow();
-    },
-  );
+  it("FAILS CLOSED on a legacy (wardenx) v1 body", () => {
+    expect(() => openMessageBody(v1("wardenx"), deriveOrgDek(KEK, ORG))).toThrow(
+      /unable to authenticate/i,
+    );
+  });
 
   const RING_KEY = randomBytes(32);
   const ringFixture = (prefix: string, org = ORG): Buffer => {
@@ -387,25 +285,19 @@ describe("M36 message body labels", () => {
     return Buffer.concat([Buffer.from([2, 2]), Buffer.from("v1"), nonce, ct, tag]);
   };
 
-  it.each(PREFIXES)("opens a ring (v2) body sealed under the %s AAD label", (prefix) => {
-    expect(openMessageBodyRing(ringFixture(prefix), RING_KEY, ORG)).toBe("hi ring");
+  it("opens a ring (v2) body sealed under the chartwarden AAD label", () => {
+    expect(openMessageBodyRing(ringFixture("chartwarden"), RING_KEY, ORG)).toBe("hi ring");
   });
 
-  it.each([
-    ["wardenx", "legacy", "current"],
-    ["chartwarden", "current", "legacy"],
-  ] as const)(
-    "a ring body sealed under the %s AAD label opens with the %s probe and not the %s one",
-    (prefix, yes, no) => {
-      expect(openMessageBodyRing(ringFixture(prefix), RING_KEY, ORG, yes)).toBe("hi ring");
-      expect(() => openMessageBodyRing(ringFixture(prefix), RING_KEY, ORG, no)).toThrow();
-    },
-  );
+  it("FAILS CLOSED on a legacy (wardenx) ring body", () => {
+    expect(() => openMessageBodyRing(ringFixture("wardenx"), RING_KEY, ORG)).toThrow(
+      /unable to authenticate/i,
+    );
+  });
 
-  it("seals the ring body under the NEW AAD label (release 2)", () => {
+  it("seals the ring body under the chartwarden AAD label (oracle check)", () => {
     const sealed = sealMessageBodyRing("x", { version: "v1", key: RING_KEY }, ORG);
     expect(openMessageBodyRing(sealed, RING_KEY, ORG)).toBe("x");
-    expect(() => openMessageBodyRing(sealed, RING_KEY, ORG, "legacy")).toThrow();
     const d = createDecipheriv("aes-256-gcm", RING_KEY, sealed.subarray(4, 16));
     d.setAAD(Buffer.from(`chartwarden-message-body:v2:${ORG}:v1`));
     d.setAuthTag(sealed.subarray(sealed.length - 16));
@@ -414,26 +306,26 @@ describe("M36 message body labels", () => {
     ).toBe("x");
   });
 
-  it.each(PREFIXES)("fails closed for %s ring data under another tenant or tampered", (prefix) => {
-    expect(() => openMessageBodyRing(ringFixture(prefix), RING_KEY, OTHER_ORG)).toThrow();
-    expect(() => openMessageBodyRing(flipLastByte(ringFixture(prefix)), RING_KEY, ORG)).toThrow();
+  it("fails closed under another tenant or tampered", () => {
+    const sealed = ringFixture("chartwarden");
+    expect(() => openMessageBodyRing(sealed, RING_KEY, OTHER_ORG)).toThrow();
+    expect(() => openMessageBodyRing(flipLastByte(sealed), RING_KEY, ORG)).toThrow();
   });
 });
 
-describe("M36 global-search tag labels (query side dual probe)", () => {
+describe("M36 global-search tag labels (one label set)", () => {
   const keys = createLegacyTestSearchKeyProvider(KEK);
   const VERSION = "legacy";
   const BITS = 16;
   const CHANNEL = "cccccccc-0000-4000-8000-000000000001";
   const TERM = "hospice";
-  const oracleTags = (prefix: string, kekPrefix: string): number[] => {
-    const dek = hkdf(KEK, `${kekPrefix}-message-dek:${ORG}`);
+  const oracleTags = (prefix: string): number[] => {
+    const dek = hkdf(KEK, `chartwarden-message-dek:${ORG}`);
     const search = hkdf(dek, `${prefix}-message-search:${ORG}:${VERSION}`);
     const channel = hkdf(search, `${prefix}-message-search-channel:${VERSION}:t${BITS}:${CHANNEL}`);
     return tagsForTerms(channel, [TERM], BITS);
   };
-
-  it("probes the tags of rows indexed under the legacy label AND under the new label", async () => {
+  const queryTags = async (): Promise<number[]> => {
     const built = await buildVersionQueries(
       keys,
       ORG,
@@ -441,16 +333,18 @@ describe("M36 global-search tag labels (query side dual probe)", () => {
       [TERM],
       [CHANNEL],
     );
-    const channel = built.queries[0]?.channels[0] as ChannelQuery;
-    // two INDEPENDENT conjunctions (never one merged list: the SQL requires ALL tags of ONE set on a message):
-    // the writer's (new-label, since release 2) set first, then the legacy set.
-    expect([...channel.tags]).toEqual([...new Set(oracleTags("chartwarden", "chartwarden"))]);
-    expect(channel.alternateTagSets?.map((set) => [...set])).toEqual([
-      [...new Set(oracleTags("wardenx", "wardenx"))],
-    ]);
+    return [...(built.queries[0]?.channels[0]?.tags ?? [])];
+  };
+
+  it("a query probes exactly the chartwarden tags and never the legacy ones", async () => {
+    const got = await queryTags();
+    expect(got).toEqual([...new Set(oracleTags("chartwarden"))]);
+    const legacy = oracleTags("wardenx");
+    // tags are 16-bit: assert the legacy derivation differs as a whole, not tag by tag
+    expect(got).not.toEqual([...new Set(legacy)]);
   });
 
-  it("the writer's key derivation uses the NEW labels (release 2)", () => {
+  it("the writer's key derivation uses the chartwarden labels", () => {
     const dek = deriveOrgDek(KEK, ORG);
     const search = deriveSearchKey(dek, ORG, VERSION);
     expect(search.equals(hkdf(dek, `chartwarden-message-search:${ORG}:${VERSION}`))).toBe(true);

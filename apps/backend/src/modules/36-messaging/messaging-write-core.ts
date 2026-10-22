@@ -11,7 +11,6 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   bodyEnvelopeScheme,
   deriveOrgDek,
-  deriveOrgReadDeks,
   loadMessagingKek,
   messageBodySha256,
   openMessageBody,
@@ -23,11 +22,11 @@ import {
 import type { RingBodyDek } from "@chartwarden/messaging";
 import type { MessageBodyKind } from "@chartwarden/messaging";
 import {
+  ChartWardenError,
   IdempotencyConflictError,
   NotFoundError,
   type RichBody,
   ValidationError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { recordAnnouncementReads } from "./announcement-receipts";
@@ -117,16 +116,6 @@ export function createMessageBodyCipher(
     }
     return dek;
   };
-  // Every DEK a v1 body may have been sealed under (current + legacy HKDF label), for OPEN only.
-  const legacyReadDeks = new Map<string, readonly Buffer[]>();
-  const legacyReadDeksFor = (orgId: string): readonly Buffer[] => {
-    let deks = legacyReadDeks.get(orgId);
-    if (!deks) {
-      deks = deriveOrgReadDeks(getKek(), orgId);
-      legacyReadDeks.set(orgId, deks);
-    }
-    return deks;
-  };
   const ownCache = opts.keys ? createRingDekCache(opts.keys) : undefined;
   const ring = (): RingDekCache => {
     const cache = opts.ringCache ?? ownCache ?? sharedRingDekCache();
@@ -163,13 +152,13 @@ export function createMessageBodyCipher(
       const scheme = bodyEnvelopeScheme(cipher);
       // Key lookup failures are infrastructure (BodyKeyUnavailableError); only the GCM open below is a statement about the bytes.
       if (scheme === "legacy") {
-        let deks: readonly Buffer[];
+        let dek: Buffer;
         try {
-          deks = legacyReadDeksFor(orgId);
+          dek = legacyDek(orgId);
         } catch (err) {
           throw new BodyKeyUnavailableError(err);
         }
-        return openMessageBody(cipher, deks);
+        return openMessageBody(cipher, dek);
       }
       if (scheme === "ring") {
         let dek: RingBodyDek;

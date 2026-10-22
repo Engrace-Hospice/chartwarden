@@ -110,45 +110,16 @@ describe("ring-backed SearchKeyProvider", () => {
     expect((err as Error).message).not.toContain("no ring");
   });
 
-  it("tagKeysForRead: [current, legacy] label order, keys equal an independent literal-label HKDF derivation", async () => {
+  it("tagKey equals an independent literal-label HKDF derivation (chartwarden only; no legacy key is derivable)", async () => {
     const r = fakeRing();
     const keys = createRingSearchKeyProvider(() => r.cache);
-    const got = await keys.tagKeysForRead(ORG_A, "v1");
     const ring = r.dek(ORG_A, "v1").key;
     const hk = (ikm: Buffer, info: string) =>
       Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32));
-    expect(got).toHaveLength(2);
-    expect(got[0]?.labels.searchInfoPrefix).toBe("chartwarden-message-search:");
-    expect(got[1]?.labels.searchInfoPrefix).toBe("wardenx-message-search:");
-    expect(got[0]?.key.equals(hk(ring, `chartwarden-message-search:${ORG_A}:v1`))).toBe(true);
-    expect(got[1]?.key.equals(hk(ring, `wardenx-message-search:${ORG_A}:v1`))).toBe(true);
-    for (const entry of got) {
-      expect(entry.key.equals(deriveSearchKey(ring, ORG_A, "v1", entry.labels))).toBe(true);
-    }
-  });
-
-  it("tagKeysForRead fails closed: version mismatch, destroyed ring, outage, unbound", async () => {
-    const r = fakeRing({ [ORG_A]: "v1" });
-    const lying: RingDekCache = {
-      ...r.cache,
-      byVersion: async () => ({ version: "v9", key: randomBytes(32) }),
-    };
-    await expect(
-      createRingSearchKeyProvider(() => lying).tagKeysForRead(ORG_A, "v1"),
-    ).rejects.toBeInstanceOf(SearchKeyUnavailableError);
-    const keys = createRingSearchKeyProvider(() => r.cache);
-    r.fail.destroyed.add(ORG_A);
-    await expect(keys.tagKeysForRead(ORG_A, "v1")).rejects.toBeInstanceOf(
-      SearchKeyUnavailableError,
-    );
-    r.fail.destroyed.clear();
-    r.fail.error = new Error("kek vault down");
-    await expect(keys.tagKeysForRead(ORG_A, "v1")).rejects.toBeInstanceOf(
-      SearchKeyUnavailableError,
-    );
-    await expect(
-      createRingSearchKeyProvider(() => undefined).tagKeysForRead(ORG_A, "v1"),
-    ).rejects.toBeInstanceOf(SearchKeyUnavailableError);
+    const key = await keys.tagKey(ORG_A, "v1");
+    expect(key.equals(hk(ring, `chartwarden-message-search:${ORG_A}:v1`))).toBe(true);
+    expect(key.equals(hk(ring, `wardenx-message-search:${ORG_A}:v1`))).toBe(false);
+    expect("tagKeysForRead" in keys).toBe(false);
   });
 
   it("resolves the cache lazily: constructing the provider calls nothing", async () => {

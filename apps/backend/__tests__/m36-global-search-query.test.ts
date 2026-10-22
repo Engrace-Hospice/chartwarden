@@ -18,10 +18,7 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import {
-  SEARCH_LABELS_READ,
-  SEARCH_LABELS_WRITE,
   type SearchKeyProvider,
-  type SearchLabels,
   deriveChannelKey,
   digestExclusion,
   nameTokenDigest,
@@ -220,7 +217,6 @@ describe("query terms", () => {
       activeVersion: async () => "v1",
       liveVersions: async () => ["v1"],
       tagKey: async () => searchKey,
-      tagKeysForRead: async () => [{ labels: SEARCH_LABELS_WRITE, key: searchKey }],
     };
     const terms = ["morphine"];
     const tagA = tagsForTerms(
@@ -250,66 +246,58 @@ describe("query terms", () => {
   });
 });
 
-describe("label-set handling in buildVersionQueries (ChartWarden label rename, release 1)", () => {
-  const writerKey = Buffer.alloc(32, 3);
-  const otherKey = Buffer.alloc(32, 4);
-  const OTHER_LABELS = SEARCH_LABELS_READ.find((l) => l !== SEARCH_LABELS_WRITE) as SearchLabels;
-  const provider = (sets: { labels: SearchLabels; key: Buffer }[]): SearchKeyProvider => ({
+describe("single label set in buildVersionQueries (ChartWarden label rename, release 3)", () => {
+  const key = Buffer.alloc(32, 3);
+  const provider = (fail?: Error): SearchKeyProvider => ({
     activeVersion: async () => "v1",
     liveVersions: async () => ["v1"],
-    tagKey: async () => writerKey,
-    tagKeysForRead: async () => sets,
+    tagKey: async () => {
+      if (fail) throw fail;
+      return key;
+    },
   });
   const version = (headBuckets: ReadonlySet<string>) => [
     { keyVersion: "v1", tagBits: 19, headBuckets },
   ];
-  const tagFor = (key: Buffer, labels: SearchLabels, channelId: string) =>
-    tagsForTerms(deriveChannelKey(key, "v1", 19, channelId, labels), ["morphine"], 19)[0] as number;
+  const tagFor = (channelId: string) =>
+    tagsForTerms(deriveChannelKey(key, "v1", 19, channelId), ["morphine"], 19)[0] as number;
 
-  it("drops only the all-head SET: a non-stored label set colliding with head buckets does not hide the stored set's hits", async () => {
-    const keys = provider([
-      { labels: SEARCH_LABELS_WRITE, key: writerKey },
-      { labels: OTHER_LABELS, key: otherKey },
-    ]);
-    // the OTHER set's tag is a head bucket of the channel; the stored (writer) set's tag is an ordinary bucket
-    const heads = new Set([headPairKey(CH_A, tagFor(otherKey, OTHER_LABELS, CH_A))]);
-    const built = await buildVersionQueries(keys, "org", version(heads), ["morphine"], [CH_A]);
+  it("builds exactly one tag conjunction per channel (no alternate sets exist any more)", async () => {
+    const built = await buildVersionQueries(
+      provider(),
+      "org",
+      version(new Set()),
+      ["morphine"],
+      [CH_A],
+    );
     expect(built.headSkipped).toBe(0);
     const channel = built.queries[0]?.channels[0];
-    expect(channel?.channelId).toBe(CH_A);
-    expect(channel?.tags).toEqual([tagFor(writerKey, SEARCH_LABELS_WRITE, CH_A)]);
-    expect(channel?.alternateTagSets ?? []).toEqual([]); // the all-head set was dropped
+    expect(channel).toEqual({ channelId: CH_A, tags: [tagFor(CH_A)] });
+    expect(channel && "alternateTagSets" in channel).toBe(false);
   });
 
-  it("skips (and counts) the channel when the STORED set is all-head, whatever the other sets say (the stats describe only the stored index)", async () => {
-    const keys = provider([
-      { labels: SEARCH_LABELS_WRITE, key: writerKey },
-      { labels: OTHER_LABELS, key: otherKey },
-    ]);
-    const heads = new Set([
-      headPairKey(CH_A, tagFor(writerKey, SEARCH_LABELS_WRITE, CH_A)),
-      headPairKey(CH_A, tagFor(otherKey, OTHER_LABELS, CH_A)),
-    ]);
-    const built = await buildVersionQueries(keys, "org", version(heads), ["morphine"], [CH_A]);
+  it("skips (and counts) the channel when its only tag set is all-head", async () => {
+    const heads = new Set([headPairKey(CH_A, tagFor(CH_A))]);
+    const built = await buildVersionQueries(
+      provider(),
+      "org",
+      version(heads),
+      ["morphine"],
+      [CH_A],
+    );
     expect(built.headSkipped).toBe(1);
     expect(built.queries[0]?.channels).toEqual([]);
-    const storedOnly = new Set([headPairKey(CH_A, tagFor(writerKey, SEARCH_LABELS_WRITE, CH_A))]);
-    const again = await buildVersionQueries(keys, "org", version(storedOnly), ["morphine"], [CH_A]);
-    expect(again.headSkipped).toBe(1);
   });
 
-  it("fails closed (SearchKeyUnavailableError) when the provider returns zero keys, and when the ring is destroyed", async () => {
+  it("fails closed (SearchKeyUnavailableError) when the ring is destroyed", async () => {
     await expect(
-      buildVersionQueries(provider([]), "org", version(new Set()), ["morphine"], [CH_A]),
-    ).rejects.toBeInstanceOf(SearchKeyUnavailableError);
-    const destroyed: SearchKeyProvider = {
-      ...provider([]),
-      tagKeysForRead: async () => {
-        throw new SearchKeyUnavailableError();
-      },
-    };
-    await expect(
-      buildVersionQueries(destroyed, "org", version(new Set()), ["morphine"], [CH_A]),
+      buildVersionQueries(
+        provider(new SearchKeyUnavailableError()),
+        "org",
+        version(new Set()),
+        ["morphine"],
+        [CH_A],
+      ),
     ).rejects.toBeInstanceOf(SearchKeyUnavailableError);
   });
 });

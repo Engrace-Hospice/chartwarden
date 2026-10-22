@@ -1,4 +1,4 @@
-// ChartWarden - crypto context-label rename, RELEASE 2: the module registry and the per-tenant driver of the label backfill.
+// ChartWarden - crypto context-label rename, RELEASE 3: the module registry and the per-tenant driver of the READ-ONLY label verifier.
 // The CLI (scripts/db/backfill-crypto-labels.ts) builds the dependencies; the live suite builds them over private containers.
 import type { Buffer } from "node:buffer";
 import type { DbClient } from "@chartwarden/db";
@@ -8,7 +8,6 @@ import type { PatientIdentifierCipher } from "../../../apps/backend/src/modules/
 import type { MacSecretCipher } from "../../../apps/backend/src/modules/23-billing-medicare/routes/secret-cipher";
 import {
   type Counts,
-  type Mode,
   type RunOptions,
   type Scan,
   type TableReport,
@@ -19,18 +18,13 @@ import {
 import { m5IdentifierScan } from "./m5";
 import { m23MacCredentialScan } from "./m23";
 import { m24TradingPartnerScan } from "./m24";
-import { type M34Hooks, m34KeyRingScan } from "./m34";
+import { m34KeyRingScan } from "./m34";
 import { m35PseudonymKeyScan } from "./m35";
-import {
-  type M36BodyKit,
-  M36_VIA_FUNCTION_TABLES,
-  MissingResealCredentialError,
-  m36BodyScan,
-} from "./m36-body";
+import { type M36BodyKit, m36BodyScan } from "./m36-body";
 import { m36ExportJobScan } from "./m36-export";
-import { type M36SearchDeps, m36SearchPrepare, m36SearchScan, m36SearchState } from "./m36-search";
+import { type M36SearchDeps, m36SearchScan, m36SearchState } from "./m36-search";
 
-/** Lowest-risk first; the tenant key ring (every tenant's PHI depends on it) last. */
+/** The tenant key ring (every tenant's PHI depends on it) last. */
 export const ALL_MODULES = [
   "m24",
   "m23",
@@ -56,13 +50,11 @@ export class MissingDependencyError extends Error {
   }
 }
 
-export interface BackfillDeps {
+export interface VerifyDeps {
   /** The tenant pool (chartwarden_app, RLS enforced). */
   readonly db: DbClient;
   /** The platform pool: key ring and pseudonym keys. */
   readonly platformDb: DbClient;
-  /** A member of chartwarden_m36_reseal (M36 revision / poll / draft / scheduled tables). */
-  readonly resealDb?: DbClient | undefined;
   readonly identifierCipher?: PatientIdentifierCipher | undefined;
   readonly macCipher?: MacSecretCipher | undefined;
   /** M24_CREDENTIAL_ENCRYPTION_KEY. */
@@ -71,12 +63,9 @@ export interface BackfillDeps {
   readonly pseudonymRing?: PseudonymKekRing | null | undefined;
   readonly bodyKit?: M36BodyKit | undefined;
   readonly search?: M36SearchDeps | undefined;
-  /** `--i-have-a-backup`. */
-  readonly backupConfirmed: boolean;
-  readonly m34Hooks?: M34Hooks | undefined;
 }
 
-export interface BackfillRequest extends RunOptions {
+export interface VerifyRequest extends RunOptions {
   readonly modules: readonly ModuleId[];
   /** The tenants to process (already resolved by the caller; never empty for a tenant module). */
   readonly organizationIds: readonly string[];
@@ -88,18 +77,23 @@ export interface ModuleReport {
   readonly total: Counts;
 }
 
-export interface BackfillReport {
-  readonly mode: Mode;
+export interface VerifyReport {
   readonly modules: readonly ModuleReport[];
-  /** Rows that still open ONLY under the legacy label, summed (apply: those this run could not fix). */
-  readonly legacyOnlyTotal: number;
-  /** Rows that open under neither label, failed re-seals and unverified M34 writes: each blocks release 3. */
+  /** Rows that do not open under the one remaining label (corrupt, key gone, or still sealed under the removed legacy label). */
   readonly problemTotal: number;
   /**
    * True only when every selected table of every selected tenant was scanned to its end. A run stopped by `--max-rows` or an
-   * interrupt is NOT complete, whatever its counts say, and must never be read as "nothing left".
+   * interrupt is NOT complete, whatever its counts say, and must never be read as "nothing unreadable".
    */
   readonly complete: boolean;
+  /** The modules this run covered. */
+  readonly modulesCovered: readonly ModuleId[];
+  /**
+   * True only when EVERY module was selected. A `--module m5` run covers one module and must never be read as "nothing is
+   * unreadable"; the CLI exits 2 unless this is true. (message_revision / message_poll_option / message_draft /
+   * scheduled_message are never covered by this build; only the release-2 build can check them.)
+   */
+  readonly allModules: boolean;
 }
 
 function need<T>(module: ModuleId, what: string, value: T | null | undefined): T {
@@ -109,7 +103,7 @@ function need<T>(module: ModuleId, what: string, value: T | null | undefined): T
 
 async function runModuleForOrg(
   module: ModuleId,
-  deps: BackfillDeps,
+  deps: VerifyDeps,
   organizationId: string | null,
   options: RunOptions,
 ): Promise<TableReport[]> {
@@ -159,8 +153,6 @@ async function runModuleForOrg(
             {
               platformDb: deps.platformDb,
               kek: need(module, "M34_TENANT_KEK is not set", deps.kekAdapter),
-              backupConfirmed: deps.backupConfirmed,
-              ...(deps.m34Hooks ? { hooks: deps.m34Hooks } : {}),
             },
             org,
           ),
@@ -175,20 +167,15 @@ async function runModuleForOrg(
           }),
         ),
       ];
-    case "m36-body": {
-      const kit = need(module, "no message-body key kit", deps.bodyKit);
-      // Checked BEFORE the first table: a run must not re-seal `message` and then fail on the next table.
-      if (!deps.resealDb) throw new MissingResealCredentialError();
-      const tables = ["message", ...M36_VIA_FUNCTION_TABLES] as const;
-      const reports: TableReport[] = [];
-      for (const table of tables) {
-        if (options.interrupted?.()) break;
-        reports.push(
-          await run(m36BodyScan({ db: deps.db, resealDb: deps.resealDb, kit }, org, table)),
-        );
-      }
-      return reports;
-    }
+    case "m36-body":
+      return [
+        await run(
+          m36BodyScan(
+            { db: deps.db, kit: need(module, "no message-body key kit", deps.bodyKit) },
+            org,
+          ),
+        ),
+      ];
     case "m36-export":
       return [
         await run(
@@ -200,12 +187,12 @@ async function runModuleForOrg(
       ];
     case "m36-search": {
       const search = need(module, "no search key provider", deps.search);
-      const { keyVersion, tagBits } = await m36SearchState(search, org);
-      if (options.interrupted?.()) return []; // no search preparation (it writes) after an interrupt
-      if (options.mode === "apply" && tagBits !== undefined) {
-        await m36SearchPrepare(search, org, keyVersion);
+      const reports: TableReport[] = [];
+      for (const { keyVersion, tagBits } of await m36SearchState(search, org)) {
+        if (options.interrupted?.()) break;
+        reports.push(await run(m36SearchScan(search, org, keyVersion, tagBits)));
       }
-      return [await run(m36SearchScan(search, org, keyVersion, tagBits))];
+      return reports;
     }
   }
 }
@@ -220,7 +207,7 @@ export class EmptyScopeError extends Error {
 
 /** Every selected module's inputs, checked BEFORE any module runs, so a run never half-completes and a missing input is never a zero. */
 export function assertDependencies(
-  deps: BackfillDeps,
+  deps: VerifyDeps,
   modules: readonly ModuleId[],
   organizationIds: readonly string[],
 ): void {
@@ -246,7 +233,6 @@ export function assertDependencies(
         break;
       case "m36-body":
         need(module, "no message-body key kit (M34_TENANT_KEK)", deps.bodyKit);
-        if (!deps.resealDb) throw new MissingResealCredentialError();
         break;
       case "m36-search":
         need(module, "no search key provider (M34_TENANT_KEK)", deps.search);
@@ -255,11 +241,8 @@ export function assertDependencies(
   }
 }
 
-/** Run the selected modules, in the safe order, for every tenant (platform-wide modules once). */
-export async function runBackfill(
-  deps: BackfillDeps,
-  request: BackfillRequest,
-): Promise<BackfillReport> {
+/** Run the selected modules for every tenant (platform-wide modules once). */
+export async function runVerify(deps: VerifyDeps, request: VerifyRequest): Promise<VerifyReport> {
   const selected = ALL_MODULES.filter((m) => request.modules.includes(m));
   assertDependencies(deps, selected, request.organizationIds);
   const reports: ModuleReport[] = [];
@@ -289,11 +272,11 @@ export async function runBackfill(
   const sum = (pick: (c: Counts) => number) => reports.reduce((n, r) => n + pick(r.total), 0);
   const allExhausted = reports.every((r) => r.tables.every((t) => t.stoppedBy === "exhausted"));
   return {
-    mode: request.mode,
     modules: reports,
+    modulesCovered: selected,
+    allModules: ALL_MODULES.every((m) => selected.includes(m)),
     // Only a run that looked at EVERY row of EVERY selected table says anything about "zero left".
     complete: !stoppedEarly && allExhausted && reports.length === selected.length,
-    legacyOnlyTotal: sum((c) => c.legacyOnly),
-    problemTotal: sum((c) => c.unreadable + c.failed + c.unverified),
+    problemTotal: sum((c) => c.unreadable),
   };
 }
