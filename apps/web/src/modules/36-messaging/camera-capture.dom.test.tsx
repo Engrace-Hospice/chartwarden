@@ -98,7 +98,7 @@ describe("WP 5.3 camera capture", () => {
     await capture(image("IMG_0001.jpg", ORIGINAL_BYTES));
 
     const preview = screen.getByRole("region", { name: "Photo preview" });
-    expect(within(preview).getByText("Location data is removed")).toBeTruthy();
+    expect(within(preview).getByText("Location data will be removed before upload")).toBeTruthy();
     expect(within(preview).getByRole("button", { name: "Retake" })).toBeTruthy();
     expect(stripMock).not.toHaveBeenCalled(); // nothing is attached until Use photo
 

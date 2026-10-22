@@ -34,6 +34,8 @@ interface UploadTicket {
 interface Tracked extends AttachmentChip {
   readonly stage: Stage;
   readonly sha256Hex: string | null;
+  /** `file` is already the metadata-stripped re-encode: a retry must not strip (and re-encode) it again. */
+  readonly stripped: boolean;
   readonly ticket: UploadTicket | null;
   readonly authorizeKey: string;
   readonly completeKey: string;
@@ -239,7 +241,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
           if (!digest) {
             // Strip location/device metadata BEFORE hashing: the hash, size and uploaded bytes must all be the
             // stripped file. A failure never falls back to the original.
-            if (needsMetadataStrip(item.contentType)) {
+            if (!item.stripped && needsMetadataStrip(item.contentType)) {
               let stripped: File;
               try {
                 stripped = await stripImageMetadata(item.file, item.contentType);
@@ -252,7 +254,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
                 fail(STRIPPED_TOO_LARGE_MESSAGE);
                 return;
               }
-              patch(localId, { file: stripped, byteSize: stripped.size });
+              patch(localId, { file: stripped, byteSize: stripped.size, stripped: true });
               item = live();
               if (!item) return;
             }
@@ -450,6 +452,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
         attachmentId: null,
         stage: "authorize",
         sha256Hex: null,
+        stripped: false,
         ticket: null,
         authorizeKey: crypto.randomUUID(),
         completeKey: crypto.randomUUID(),

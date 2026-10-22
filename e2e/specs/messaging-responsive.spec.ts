@@ -30,13 +30,15 @@ async function openMessaging(page: Page): Promise<void> {
   await expect(page.locator(".wx-messaging-page")).toBeVisible({ timeout: 15_000 });
 }
 
-/** Opens the first conversation if the list is showing one; on a phone this swaps the list for the thread. */
-async function openFirstConversation(page: Page): Promise<boolean> {
+/**
+ * Opens the first seeded conversation; on a phone this swaps the list for the thread. The seed is a hard precondition: a
+ * missing conversation fails the test loudly instead of skipping it, which would let the thread-level checks go green unrun.
+ */
+async function openFirstConversation(page: Page): Promise<void> {
   const row = page.locator(".wx-messaging-conversation-list li button").first();
-  if ((await row.count()) === 0) return false;
+  await expect(row, "the demo seed must provide at least one conversation").toBeVisible();
   await row.click();
   await expect(page.locator(".wx-messaging-thread")).toBeVisible();
-  return true;
 }
 
 /** Every visible interactive element under the page, as `selector, w x h`, with the ones under the minimum. */
@@ -52,6 +54,9 @@ async function targetTable(page: Page): Promise<TargetRow[]> {
     for (const el of document.querySelectorAll(
       `.wx-messaging-page ${selector.split(", ").join(", .wx-messaging-page ")}`,
     )) {
+      // A link inside a message body is the author's text, not workspace chrome (WCAG 2.5.8 inline exception).
+      if (el instanceof HTMLAnchorElement && el.closest(".wx-rich-body, .wx-message-bubble"))
+        continue;
       // A checkbox/radio is operated through its label: measure the label when there is one.
       const box = el instanceof HTMLInputElement ? (el.closest("label") ?? el) : el;
       const rect = box.getBoundingClientRect();
@@ -89,21 +94,20 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
       test.info().annotations.push({ type: "targets", description: JSON.stringify(listTargets) });
       expect(tooSmall(listTargets), "targets under 44px in the conversation list").toEqual([]);
 
-      if (await openFirstConversation(page)) {
-        await expectNoAxeViolations(page);
-        expect(tooSmall(await targetTable(page)), "targets under 44px in the open thread").toEqual(
-          [],
-        );
-      }
+      await openFirstConversation(page);
+      await expectNoAxeViolations(page);
+      expect(tooSmall(await targetTable(page)), "targets under 44px in the open thread").toEqual(
+        [],
+      );
     });
   }
 
-  test("1280px: the patient-context slide-over opens, closes on Escape and returns focus", async ({
+  test("1024px: the patient-context slide-over opens, closes on Escape and returns focus", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1024, height: 800 }); // inside the 768-1279 slide-over band
     await openMessaging(page);
-    if (!(await openFirstConversation(page))) test.skip(true, "no seeded conversation");
+    await openFirstConversation(page);
     const toggle = page.getByRole("button", { name: /Patient context/ });
     if ((await toggle.count()) === 0)
       test.skip(true, "first seeded conversation has no patient context");
@@ -123,7 +127,8 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       );
     expect(await overflows(), "conversation list").toBe(false);
-    if (await openFirstConversation(page)) expect(await overflows(), "open thread").toBe(false);
+    await openFirstConversation(page);
+    expect(await overflows(), "open thread").toBe(false);
   });
 
   test("200% zoom: text scales and the layout still has no horizontal scroll (WCAG 1.4.4)", async ({
@@ -140,10 +145,8 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
     expect(overflow, "horizontal scroll at 200% text").toBe(false);
     await openFirstConversation(page);
     const composer = page.getByRole("textbox", { name: "Message" });
-    if ((await composer.count()) > 0) {
-      await composer.scrollIntoViewIfNeeded();
-      await expect(composer).toBeVisible();
-    }
+    await composer.scrollIntoViewIfNeeded();
+    await expect(composer).toBeVisible();
   });
 
   test("offline then online: the banner appears, then clears, with the composer still usable", async ({
@@ -152,9 +155,10 @@ test.describe("Messaging — responsive, touch and accessibility (WP 5.4)", () =
   }) => {
     await page.setViewportSize({ width: 360, height: 740 });
     await openMessaging(page);
-    if (!(await openFirstConversation(page))) test.skip(true, "no seeded conversation");
+    await openFirstConversation(page);
     await context.setOffline(true);
-    await expect(page.getByText(/You're offline/)).toBeVisible();
+    // Axe must not run until the banner (a live region) has rendered, or it audits the pre-offline page.
+    await expect(page.getByRole("status").filter({ hasText: /You're offline/ })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
     await expectNoAxeViolations(page);
     await context.setOffline(false);

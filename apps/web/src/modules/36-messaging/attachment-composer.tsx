@@ -78,6 +78,12 @@ export function CameraButton({ uploads, disabled }: CameraButtonProps): JSX.Elem
   const [enabled] = useState(hasCoarsePointer);
   const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
   const previewUrl = preview?.url;
+  const previewRef = useRef<HTMLElement>(null);
+
+  // A shot just appeared where the Take photo button was: move attention to it so Retake / Use photo are next.
+  useEffect(() => {
+    if (previewUrl) previewRef.current?.focus();
+  }, [previewUrl]);
 
   // Revoke the object URL when it is replaced, discarded or the composer unmounts.
   useEffect(() => {
@@ -118,13 +124,19 @@ export function CameraButton({ uploads, disabled }: CameraButtonProps): JSX.Elem
         }}
       />
       {preview ? (
-        <section className="wx-camera-preview" aria-label="Photo preview">
+        <section
+          ref={previewRef}
+          tabIndex={-1}
+          className="wx-camera-preview"
+          aria-label="Photo preview"
+        >
           <img src={preview.url} alt="Captured shot, ready to attach" />
-          <p>Location data is removed</p>
+          <p>Location data will be removed before upload</p>
           <div className="wx-camera-actions">
             <button
               type="button"
               className="wx-camera-action"
+              disabled={disabled}
               onClick={() => inputRef.current?.click()}
             >
               Retake

@@ -244,5 +244,6 @@ describe("Phase 5 gate: keyboard focus order", () => {
     expect(seen.at(-1)).toBe(2);
     expect(seen).toEqual([...seen].sort((a, b) => a - b));
     expect(seen).toContain(0);
+    expect(seen, "the timeline zone must really be visited, not skipped over").toContain(1);
   });
 });
