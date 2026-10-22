@@ -220,7 +220,7 @@ What is actually checked is the **workflow identity**, not a key:
 
 | Variable | Default |
 | --- | --- |
-| `CHARTWARDEN_COSIGN_IDENTITY` | unset = accept EITHER `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` OR the same path under `.../chartwarden/...` (repo rename in progress; set one value to pin) |
+| `CHARTWARDEN_COSIGN_IDENTITY` | env or `.env.production` value (space-separated for several), else `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` only. Listing a second repository name is a time-boxed opt-in for the repo rename (see `INFRA_RENAME_RUNBOOK.md`); the certificate's repository claim is verified too |
 | `CHARTWARDEN_COSIGN_ISSUER` | `https://token.actions.githubusercontent.com` |
 
 A signature produced by any other workflow, repository, branch or actor fails. That property is worth

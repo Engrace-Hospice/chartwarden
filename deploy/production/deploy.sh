@@ -174,17 +174,23 @@ restore_previous_release() {
 # It also closes the gap between "verify" and "pull": cosign reports the digest it verified, and that
 # digest is written back into `.env.production`, so Compose pulls THAT artefact rather than re-resolving
 # the tag a moment later and possibly getting a different one.
-# The certificate identity embeds `<owner>/<repo>`. Until the GitHub repository rename (INFRA_RENAME_RUNBOOK.md, Phase 2) is
-# done, and for rollbacks to releases signed before it, BOTH repository names are accepted; each identity must still name
-# this workflow file on `main` and GitHub's OIDC issuer. Set CHARTWARDEN_COSIGN_IDENTITY (one value) to pin exactly one.
-cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-"https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main"}
+# The certificate identity embeds `<owner>/<repo>`. The default is the CURRENT repository's identity ONLY. Accepting a second
+# one (the GitHub rename, INFRA_RENAME_RUNBOOK.md Step B) is an explicit, time-boxed opt-in: set CHARTWARDEN_COSIGN_IDENTITY
+# (space-separated for several) in the environment or in .env.production, and remove it again afterwards. Never leave an old
+# or future repository name listed: whoever could recreate that repository could then sign images this host accepts.
+cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1)}
+cosign_identities=${cosign_identities:-https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main}
 cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
+
+# `https://github.com/<owner>/<repo>/.github/...` -> `<owner>/<repo>`, so the certificate's repository claim is checked as well.
+identity_repo() { r=${1#https://github.com/}; printf '%s\n' "${r%%/.github/*}"; }
 
 # Prints the verified digest on success; anything else (empty output) is a failure the caller must treat as fatal.
 verify_image_digest() {
   for identity in $cosign_identities; do
     digest=$(cosign verify "$1" \
       --certificate-identity "$identity" \
+      --certificate-github-workflow-repository "$(identity_repo "$identity")" \
       --certificate-oidc-issuer "$cosign_issuer" \
       --output json 2>/dev/null \
       | sed -n 's/.*"docker-manifest-digest":"\(sha256:[a-f0-9]\{64\}\)".*/\1/p' \

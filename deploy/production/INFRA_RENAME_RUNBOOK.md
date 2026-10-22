@@ -76,7 +76,7 @@ Execute only with the user's go-ahead. Facts observed read-only on 2.25.109.137 
 | MinIO app account `MINIO_APP_ACCESS_KEY` | (b) | env value (host: key present) | set `chartwarden-app` in Step C (the secret value is unchanged; `minio-provision` creates the new account) |
 | `deploy.sh` `ensure_secret MINIO_APP_ACCESS_KEY` default, `.env.production.example` account names | (a) | `chartwarden-app` / `chartwarden-minio-admin`; only affect hosts where the key is absent | none |
 | DB name default (compose, `deploy.sh`, `reseed-demo.sh`) | (a) | default is now `chartwarden`; `deploy.sh`/`reseed-demo.sh` first append `CHARTWARDEN_DB_NAME=wardenx` to an env file that lacks the key (host: key is ABSENT and the cluster holds database `wardenx`) | none until the DB-rename window below, which replaces that line |
-| cosign identity | (a) | `deploy.sh` accepts the `.../wardenx/...` OR `.../chartwarden/...` workflow identity | none; makes Step B safe |
+| cosign identity | (b) | default = the CURRENT repository identity (`.../wardenx/...`) only; `deploy.sh` also checks the certificate's repository claim (`--certificate-github-workflow-repository`); a second identity is an explicit opt-in via `CHARTWARDEN_COSIGN_IDENTITY` (env or `.env.production`) | Step B sets it before the repo rename and removes it afterwards |
 | nginx vhosts, log format, bootstrap, env template | (a) | files renamed `chartwarden-*`, hostnames `app./api./storage.chartwarden.cloud`; NOT auto-deployed (only `bootstrap-vps.sh` or the operator installs them) | Step D |
 | `smoke.sh` probe URLs | (b) | `.env.production` keys `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, default the legacy hosts | set both in Step D |
 | MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_wardenx`), `wardenx-minio-admin` root user | kept | internal ids, never user-visible; changing the env KEY recreates MinIO | leave; optional rename in the follow-up commit, which only takes effect on a MinIO recreate |
@@ -105,7 +105,14 @@ Downtime: the normal deploy recreate only.
 
 ### Step B - GitHub repository rename (Phase 2 below)
 
-Safe at any time after Step A (dual cosign identity). Then land the Step G follow-up commit.
+After Step A. The cosign identity is the one coupling (see Phase 2): BEFORE renaming, add to `/opt/wardenx/.env.production` the line
+`CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
+(new name first; the old one is only needed while a pre-rename release may still be rolled back to). Rename, deploy once, then land
+the Step G commit (default flips to the chartwarden identity) and REMOVE the line from `.env.production`. Do not leave it set:
+an identity that is listed is trusted. Security prerequisite: the org must prevent anyone from recreating a repository named
+`wardenx` (or any retired name) after the rename; keep the GitHub redirect in place by never creating a repo with the old
+name, and restrict repository creation to org owners. Rollback: delete the line, rename the repo back.
+Then land the Step G follow-up commit.
 
 ### Step C - Host cutover: project, directory, MinIO names (downtime about 2-4 minutes)
 
@@ -211,8 +218,8 @@ Each edit flips a default that is only safe once the host matches. All are mecha
 - Repo-name strings after Step B: `CLAUDE.md` and `AGENTS.md` (copy verbatim) line "Issue tracker: ... `Engrace-Hospice/wardenx`", `.github/ISSUE_TEMPLATE/config.yml`
   line 4 (the `blob/develop` link), `deploy/production/README.md` rollback image examples, `docs/START_PROJECT.md` clone URLs,
   `docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` cosign identities. Leave `fabwebdev/wardenx` (a different, pre-migration
-  repository) and dated history/audit documents alone. `deploy.sh` keeps the dual identity until the last pre-rename release
-  is outside the rollback window.
+  repository) and dated history/audit documents alone. Flip the `deploy.sh` default identity to `.../chartwarden/...` here, then delete `CHARTWARDEN_COSIGN_IDENTITY` from the host's `.env.production`
+  (a rollback to a pre-rename release needs the old identity re-added as a one-off, then removed).
 - Optionally the MinIO audit-webhook suffix and root user (see table); only together with a planned MinIO recreate.
 
 The numbered Phases below are the detailed reference for each area; where they disagree with the plan above, the plan above wins.
@@ -226,19 +233,15 @@ Preconditions: no deploy running; no open release; org-owner rights; `gh auth st
 
 Important coupling: the cosign certificate identity embeds `<owner>/<repo>`. Signatures made BEFORE the
 rename carry `.../Engrace-Hospice/wardenx/...`; signatures made AFTER carry `.../chartwarden/...`.
-`deploy.sh` pins ONE identity (`CHARTWARDEN_COSIGN_IDENTITY`, default in `deploy.sh`). So:
+`deploy.sh` trusts only the identities in `CHARTWARDEN_COSIGN_IDENTITY` (env or `.env.production`), default the current
+`.../wardenx/...` one only, and also checks the certificate's repository claim. So:
 
-1. Rename (GitHub keeps web + git redirects, but NOT Actions OIDC claims):
+1. BEFORE the rename: set `CHARTWARDEN_COSIGN_IDENTITY` in `.env.production` to both identities (Step B above).
+2. Rename (GitHub keeps web + git redirects, but NOT Actions OIDC claims):
    `gh api -X PATCH repos/Engrace-Hospice/wardenx -f name=chartwarden`
-2. Update local remotes everywhere: `git remote set-url origin git@github.com:Engrace-Hospice/chartwarden.git`.
-3. DONE IN CODE (no edit needed at rename time): `deploy.sh` accepts BOTH the `.../wardenx/...` and the
-   `.../chartwarden/...` workflow identity (`cosign_identities`), so no main push in the window between the rename and
-   any later change can fail a deploy, and pre-rename signed images still roll back. Pin exactly one by exporting
-   `CHARTWARDEN_COSIGN_IDENTITY`. The old note follows for reference. The alternative for a one-off rollback is to export `CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
-   before running `deploy.sh` (the env override already exists). Pre-rename images were signed
-   under the OLD identity and will fail verification against the new default.
-4. The first release after the rename signs with the new identity. Merge the identity change as the
-   FIRST commit after the rename; the release job's own `cosign verify` uses `${GITHUB_REPOSITORY}`
+3. Update local remotes everywhere: `git remote set-url origin git@github.com:Engrace-Hospice/chartwarden.git`.
+4. The first release after the rename signs with the new identity (accepted through the opt-in above). Merge the Step G
+   commit that flips the default as the FIRST commit after the rename and then delete the env line; the release job's own `cosign verify` uses `${GITHUB_REPOSITORY}`
    and needs no edit. The VPS `deploy.sh` is re-uploaded on every deploy, so no VPS edit is needed.
    If you deploy before step 3 is merged, `deploy.sh` rejects the new signatures and restores the
    previous release (safe, but the release is not deployed).
