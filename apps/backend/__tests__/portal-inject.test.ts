@@ -2444,6 +2444,18 @@ describe("M31 telehealth — staff join/leave/record/end authorization (caseload
     await app.close();
   });
 
+  it.each(["org_admin", "administrator"])(
+    "ADR-0090: %s is NOT org-wide for a live video visit — join and end are a 404",
+    async (role) => {
+      const { app, backend } = makeServer({ staffCaseload: {} });
+      seedOtherPatientVisit(backend);
+      const headers = { ...STAFF, "x-test-roles": role };
+      expect((await post(app, "join", OTHER_VISIT, `k-admin-j-${role}`, headers)).statusCode).toBe(404);
+      expect((await post(app, "end", OTHER_VISIT, `k-admin-e-${role}`, headers)).statusCode).toBe(404);
+      await app.close();
+    },
+  );
+
   it("lets the visit's ASSIGNED clinician in without a caseload row", async () => {
     const { app, backend } = makeServer({ staffCaseload: {} });
     seedOtherPatientVisit(backend);

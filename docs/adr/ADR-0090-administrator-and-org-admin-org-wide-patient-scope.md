@@ -30,7 +30,7 @@ Both roles now read **every patient in the org, in every module that asks this q
 The owner chose to keep one shared rule for reads and writes. Known consequences, beyond the above:
 
 - A user holding `administrator`/`org_admin` plus a clinical or physician role (common in small hospices) can chart, draft, administer or prescribe on any patient; a pure admin is still stopped by the separate discipline gates.
-- Staff telehealth join, record and end (`staff-visit-scope.ts`) reach any live visit for these roles.
+- Staff telehealth join, record and end (`staff-visit-scope.ts`) are the one exception: that guard ignores these two roles' org-wide scope, so they reach a live video visit only as its assigned clinician or on caseload.
 - IDG meeting scoping by location, and HOPE provider-entity scoping, no longer narrow these roles.
 - Break-glass is never invoked for these roles, because the predicate passes first; read-audit rows do not record that org-wide scope admitted the read.
 - Mitigation built here: a tenant cannot create a role under any org-wide-scope key (`POST /api/v1/roles` returns 422 `RESERVED_ROLE`), so deleting and recreating `org_admin` with zero permissions cannot self-grant the scope.

@@ -5,7 +5,7 @@
 // token (and lazily mint a room) for any in-org visit — i.e. join any patient's live video visit. The rule
 // is the platform's `caseload_or_scope` idiom (the M29 `lab_observation_patient_caseload_or_scope` shape):
 //
-//   allow  ⇐  the actor holds an org-wide role (`hasOrgWideScope(roles)`, no seam read), OR
+//   allow  ⇐  the actor holds an org-wide role other than the tenant-admin pair (ADR-0090; no seam read), OR
 //             the actor IS the visit's assigned clinician (`assignedMembershipId === actor.membershipId`), OR
 //             the visit's patient is on the actor's M5 caseload (`getSeam("CaseloadProvider").isInCaseload`).
 //   deny   ⇐  everything else — absent visit, another org's visit, not-yours, an unreadable store/seam. ALL of
@@ -55,8 +55,12 @@ async function loadVisitFacts(
   return { patientId: m17.patientId, assignedMembershipId: m17.assignedMembershipId };
 }
 
+// ADR-0090: the tenant-admin roles read every chart but do NOT get into a live video visit by that route — joining
+// mints a vendor token and recording mutates the visit. They reach a visit only as its assigned clinician or on caseload.
+const TENANT_ADMIN_ROLES: readonly string[] = ["administrator", "org_admin"];
+
 async function actorMayAccess(actor: M31Actor, facts: StaffVisitFacts): Promise<boolean> {
-  if (hasOrgWideScope(actor.roles)) return true;
+  if (hasOrgWideScope(actor.roles.filter((role) => !TENANT_ADMIN_ROLES.includes(role)))) return true;
   if (actor.membershipId !== null && actor.membershipId === facts.assignedMembershipId) return true;
   const onCaseload = await getSeam("CaseloadProvider").isInCaseload({
     organizationId: actor.organizationId,
