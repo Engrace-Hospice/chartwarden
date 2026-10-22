@@ -8,7 +8,7 @@
 //   KEK    the SAME `M24_CREDENTIAL_ENCRYPTION_KEY` (32 bytes base64) the Medicaid credential cipher uses. It is already
 //          required and shape-checked by `bootstrap/env.ts` in production, so no new deploy secret is introduced. M23 may
 //          not import M24 (module boundary), hence this small independent implementation.
-//   DEK    HKDF-SHA256(KEK, info = WRITE_LABELS.dekInfoPrefix + orgId; "wardenx-m23-..." until the ChartWarden label flip). The label is M23-specific, so an M23
+//   DEK    HKDF-SHA256(KEK, info = WRITE_LABELS.dekInfoPrefix + orgId; "chartwarden-m23-..." since release 2, "wardenx-m23-..." before). The label is M23-specific, so an M23
 //          envelope can never be opened with an M24 or M36 key even though the KEK is shared (domain separation).
 //   AAD    WRITE_LABELS.aadPrefix + version + orgId + providerEntityId + macJurisdiction. It binds the envelope to the
 //          ROW it was sealed for: a ciphertext copied to another tenant, another provider entity or another MAC jurisdiction
@@ -43,9 +43,16 @@ const LEGACY_LABELS: Labels = {
   dekInfoPrefix: "wardenx-m23-mac-credential-dek:",
   aadPrefix: "wardenx-m23-mac-credential:v",
 };
-// Release 2 (write-side flip): set this to CURRENT_LABELS, then re-seal every stored secret.
-const WRITE_LABELS: Labels = LEGACY_LABELS;
+// Release 2 (write-side flip done): new secrets are sealed under CURRENT_LABELS; scripts/db/backfill-crypto-labels.ts re-seals
+// the older ones. Readers still accept both (release 3 removes the legacy set).
+const WRITE_LABELS: Labels = CURRENT_LABELS;
 const READ_LABELS: readonly Labels[] = [CURRENT_LABELS, LEGACY_LABELS];
+/** Which label generation to use; only the backfill's decrypt probe passes one (omitted = try both). */
+export type LabelGeneration = "current" | "legacy";
+const LABELS_BY_GENERATION: Record<LabelGeneration, Labels> = {
+  current: CURRENT_LABELS,
+  legacy: LEGACY_LABELS,
+};
 /** The env var carrying the master KEK (shared with M24; required in production by `bootstrap/env.ts`). */
 export const MAC_SECRET_KEK_ENV = "M24_CREDENTIAL_ENCRYPTION_KEY";
 
@@ -55,7 +62,13 @@ export const MAC_SECRET_KEK_ENV = "M24_CREDENTIAL_ENCRYPTION_KEY";
  * response, an event or an audit payload (the future worker that calls this logs a fixed code, never the ciphertext).
  */
 export interface MacSecretCipher extends SecretCipherPort {
-  decrypt(organizationId: string, context: MacSecretContext, cipher: string): Promise<string>;
+  decrypt(
+    organizationId: string,
+    context: MacSecretContext,
+    cipher: string,
+    /** Backfill probe only: open under this label generation alone. */
+    onlyGeneration?: LabelGeneration,
+  ): Promise<string>;
 }
 
 /** Parse the base64 KEK. Fail-closed: absent or not exactly 32 bytes throws (never a zero or truncated key). */
@@ -121,14 +134,14 @@ export function buildMacSecretCipher(kek: Buffer): MacSecretCipher {
       ]);
       return { cipher: envelope.toString("base64"), dekVersion: MAC_SECRET_CIPHER_VERSION };
     },
-    async decrypt(organizationId, context, sealed) {
+    async decrypt(organizationId, context, sealed, onlyGeneration) {
       const raw = Buffer.from(sealed, "base64");
       if (raw.length < MIN_ENVELOPE_LEN) throw new Error("MAC secret cipher: malformed ciphertext");
       if (raw[0] !== MAC_SECRET_CIPHER_VERSION) {
         throw new Error(`MAC secret cipher: unsupported version ${raw[0]}`);
       }
       // Try each label set (current, then legacy). Every failure is the same generic error: no label is named.
-      for (const labels of READ_LABELS) {
+      for (const labels of onlyGeneration ? [LABELS_BY_GENERATION[onlyGeneration]] : READ_LABELS) {
         const decipher = createDecipheriv(
           "aes-256-gcm",
           deriveDek(root, organizationId, labels),

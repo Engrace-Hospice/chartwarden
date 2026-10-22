@@ -1,5 +1,5 @@
 // ADR-0058 decisions 2 and 3 - the per-tenant search key and the truncated HMAC tags.
-//   K_search = HKDF-SHA256(ikm = DEK, salt = "", info = SEARCH_LABELS_WRITE.searchInfoPrefix ("wardenx-message-search:" until the flip) || orgId || ":" || ringVersionLabel)
+//   K_search = HKDF-SHA256(ikm = DEK, salt = "", info = SEARCH_LABELS_WRITE.searchInfoPrefix ("chartwarden-message-search:" since release 2; "wardenx-message-search:" before) || orgId || ":" || ringVersionLabel)
 // The version part is the key ring's TEXT label (for example "v1"), appended verbatim: the ADR's `":v" || v` would produce
 // "vv1" for a label that is already "v1". The info label is distinct from the body-encryption label, so the keys are
 // domain-separated. Tag = first 32 bits of HMAC-SHA256(K_search, input), kept to the top T bits.
@@ -30,8 +30,9 @@ export const SEARCH_LABELS_LEGACY: SearchLabels = {
   searchInfoPrefix: "wardenx-message-search:",
   channelInfoPrefix: "wardenx-message-search-channel:",
 };
-// Release 2 (write-side flip): set to SEARCH_LABELS_CURRENT, then rebuild the whole index (tags are derived data).
-export const SEARCH_LABELS_WRITE: SearchLabels = SEARCH_LABELS_LEGACY;
+// Release 2 (write-side flip done): new tags use SEARCH_LABELS_CURRENT; scripts/db/backfill-crypto-labels.ts rewrites the
+// index (tags are derived data). Queries still probe both sets (release 3 removes the legacy one).
+export const SEARCH_LABELS_WRITE: SearchLabels = SEARCH_LABELS_CURRENT;
 export const SEARCH_LABELS_READ: readonly SearchLabels[] = [
   SEARCH_LABELS_CURRENT,
   SEARCH_LABELS_LEGACY,
@@ -58,7 +59,7 @@ export function deriveSearchKey(
 }
 
 /**
- * ADR-0058 per-channel keys: K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = SEARCH_LABELS_WRITE.channelInfoPrefix ("wardenx-message-search-channel:" until the flip) || version || ":t" ||
+ * ADR-0058 per-channel keys: K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = SEARCH_LABELS_WRITE.channelInfoPrefix ("chartwarden-message-search-channel:" since release 2; "wardenx-message-search-channel:" before) || version || ":t" ||
  * tagBits || ":" || channelId). The version label and T are bound into the info (security review L3), so a rebuild at another T or
  * under another ring version produces unrelated tags and a tag in one channel says nothing about the same word in another.
  */
