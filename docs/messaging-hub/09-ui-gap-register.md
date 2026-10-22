@@ -86,7 +86,7 @@ states, accessibility, PHI rules and acceptance for WP 4.5–4.11, 5.1–5.10, 6
 | Notification policy, quiet-hours safety floor (tenant, web) | Backend floor built (ADR-0073); admin preferences/quiet-hours exist; no web policy or preferences screen | 4.6 |
 | On-call "who is covering now" directory, role-based send | Backend built flag-off (ADR-0080 and ADR-0081, Accepted by the product owner 2026-10-19); web screen absent; M19 router not bound | 4.12 (built flag-off) |
 | Snooze, fallback card, drill log, deep-link landing | Deep-link landing (ADR-0075) and snooze/reminders (ADR-0077) built; fallback card and drill-log screens absent (runbook only) | 4.8, 4.10, 4.11 |
-| Offline outbox states, reconnect chip, camera capture | `use-outbox` exists; no IndexedDB queue, chip or camera | 5.1–5.3 |
+| Offline outbox states, reconnect chip, camera capture | built on web (memory-only outbox by design, chip, camera); persistent encrypted queue is the native app's (5.11) | 5.1–5.3 |
 | Device/session manager | Built (ADR-0083, proposed): `/messaging/devices` and `/messaging/governance/sessions`; no app lock, no bulk "sign out everywhere", the officer page takes a user id (no user picker) | 5.5 |
 | Retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.6 (built (holds, overlay, scan, routes, screen); NOT built: destruction executor, redaction of held messages, thread chip, real staff names in 'placed by' (ADR-0086, proposed)) |
 | Export approval, break-glass review | Absent | 5.7, 5.8 |
