@@ -1,7 +1,7 @@
 name: Reseed production demo
 
 # MANUAL ONLY. Never add a push/schedule trigger here: `mode: reseed` deletes the `chartwarden-demo`
-# organization (and the legacy `wardenx-demo` one if still present) on the production VPS and every identity whose only membership is that tenant, then
+# organization on the production VPS and every identity whose only membership is that tenant, then
 # rebuilds the Engrace Hospice synthetic dataset (deploy/production/reseed-demo.sh). The deploy
 # workflow does not seed; this is the only path that does.
 #
