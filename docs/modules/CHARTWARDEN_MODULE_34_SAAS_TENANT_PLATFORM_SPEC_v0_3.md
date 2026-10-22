@@ -2434,7 +2434,7 @@ The RLS test suite must cover **every tenant-scoped M34 table** and every `withP
 - `baa-record-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's BAA records.
 
 **`tenant_signup_intent` / `tenant_signup_token`**
-- `signup-intent-wardenx-app-deny.test.ts` — `chartwarden_app` cannot SELECT signup intents regardless of `app.org_id` setting. These are platform-only (`tenant_platform_writer`). Assert zero rows under both `actorA` and `actorB` roles.
+- `signup-intent-chartwarden-app-deny.test.ts` — `chartwarden_app` cannot SELECT signup intents regardless of `app.org_id` setting. These are platform-only (`tenant_platform_writer`). Assert zero rows under both `actorA` and `actorB` roles.
 - `signup-token-hash-not-selectable.test.ts` — the `token_hash` column is in the `valueCaptureDenylist` for audit purposes; assert the audit trigger does not capture `token_hash` in before/after JSONB by inspecting the M4 audit event row after a token INSERT.
 
 #### 9.3.2 `withPlatformContext` Bypass Path Tests

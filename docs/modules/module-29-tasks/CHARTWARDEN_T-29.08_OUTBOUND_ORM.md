@@ -744,7 +744,7 @@ const outbox = mkOutbox(db, logger)
 const envelope = mkKmsEnvelope()
 const mdm = mkMdmClient()
 const sidecar = createSidecarClient({
-  udsPath: process.env.CHARTWARDEN_HL7_UDS_PATH ?? '/var/run/wardenx/hapi.sock',
+  udsPath: process.env.CHARTWARDEN_HL7_UDS_PATH ?? '/var/run/chartwarden/hapi.sock',
   healthIntervalMs: 30_000,
   parseTimeoutMs: 2_000,
   buildTimeoutMs: 2_000,

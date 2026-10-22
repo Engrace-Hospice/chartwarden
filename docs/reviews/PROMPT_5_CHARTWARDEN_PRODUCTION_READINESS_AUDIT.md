@@ -5,7 +5,7 @@ ChartWarden repository (multi-tenant hospice EHR SaaS, 40 modules, ~460 tables, 
 
 ## 0. Operating mode
 
-- **Repository: `Engrace-Hospice/wardenx`.** This is the active repo (created 2026-08-20). The
+- **Repository: `Engrace-Hospice/chartwarden`.** This is the active repo (created 2026-08-20). The
   earlier `fabwebdev/wardenx` is the **pre-migration** repo — its history stops 2026-08-20, but its
   issue backlog was never carried over. Read it, port from it (§4), never push to it.
 - **Delivery is `github`.** Work ships as: **GitHub issue → branch → PR into `develop` → merge after
@@ -19,7 +19,7 @@ ChartWarden repository (multi-tenant hospice EHR SaaS, 40 modules, ~460 tables, 
 - `LIVE_INFRA`: you may start local Postgres/Valkey/MinIO and an app instance for live/E2E suites.
   **Default: yes.** `docs/START_PROJECT.md` is the startup runbook.
 - Use the `gh` CLI for all GitHub work. Confirm the target before the first write:
-  `gh repo view --json nameWithOwner` must print `Engrace-Hospice/wardenx`.
+  `gh repo view --json nameWithOwner` must print `Engrace-Hospice/chartwarden`.
 
 ## 1. Ground truth and authority
 
@@ -135,7 +135,7 @@ and report the **full** red set, not the first link that broke.
 
 ## 4. Phase 1 — Reconcile and port the backlog FIRST (no new discovery)
 
-`Engrace-Hospice/wardenx` has **no issues** — the project moved repos on 2026-08-20 and the backlog
+`Engrace-Hospice/chartwarden` has **no issues** — the project moved repos on 2026-08-20 and the backlog
 stayed behind. `fabwebdev/wardenx` still holds **16 open issues**: the triaged HIPAA set
 **HIP-01…HIP-14** (`#135`–`#148`, several P0), **`#150`** (M30 `hci_composite`), and **`#76`**
 (M22 deferred render sub-workflows).
@@ -143,13 +143,13 @@ stayed behind. `fabwebdev/wardenx` still holds **16 open issues**: the triaged H
 Before discovering anything new:
 
 1. List both sides: `gh issue list -R fabwebdev/wardenx --state open --limit 100` and
-   `gh issue list -R Engrace-Hospice/wardenx --state all --limit 100`. Also list recent PRs and
+   `gh issue list -R Engrace-Hospice/chartwarden --state all --limit 100`. Also list recent PRs and
    `audit/` reports on this repo — with no issue history, merged PRs (`#1`–`#13`) and the generated
    matrices are the only prior art.
 2. **Verify each ported issue's claim against `HEAD` of this repo.** The two repos' code has diverged;
    an issue written against `fabwebdev` may not describe this tree. Classify: `STILL-TRUE` /
    `ALREADY-FIXED` (cite the commit) / `PARTIALLY-FIXED` / `MISSTATED`.
-3. **File only the `STILL-TRUE` and `PARTIALLY-FIXED` ones** into `Engrace-Hospice/wardenx`, using the
+3. **File only the `STILL-TRUE` and `PARTIALLY-FIXED` ones** into `Engrace-Hospice/chartwarden`, using the
    §8 issue schema. Preserve the original identifier in the title (`HIP-07 · …`) and link the source
    (`Ported from fabwebdev/wardenx#141`). Re-state the evidence against *this* tree — do not
    copy-paste the old body as if it were verified here.
@@ -332,8 +332,8 @@ One entry per finding:
 Severity:      P0|P1|P2|… + why
 Status:        CONFIRMED | REFUTED | BLOCKED | ACCEPTED-RISK | FIXED
 Area:          frontend|ui|ux|backend|db|api|integration|infra|security|test
-Issue:         Engrace-Hospice/wardenx#NNN  (or "none — REFUTED")
-PR:            Engrace-Hospice/wardenx#NNN  (or "none")
+Issue:         Engrace-Hospice/chartwarden#NNN  (or "none — REFUTED")
+PR:            Engrace-Hospice/chartwarden#NNN  (or "none")
 Owner:         @me | @Jacobson-svg | unclaimed
 Evidence:      file:line, command output, query result, or runtime trace
 Reproduction:  the exact command/test showing the bad behavior

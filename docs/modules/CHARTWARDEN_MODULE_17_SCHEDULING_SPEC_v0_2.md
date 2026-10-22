@@ -1132,7 +1132,7 @@ import { sha256 } from '@chartwarden/foundation/crypto'
 
 export class OsrmRoutingProvider implements RoutingProvider {
   constructor(
-    private endpoint: string,             // 'http://osrm.internal.wardenx:5000' — never PHI in URL
+    private endpoint: string,             // 'http://osrm.internal.chartwarden:5000' — never PHI in URL
     private cache: ValkeyClient,
     private breaker = new CircuitBreaker({ timeout: 3000, threshold: 5, resetMs: 60_000 }),
   ) {}

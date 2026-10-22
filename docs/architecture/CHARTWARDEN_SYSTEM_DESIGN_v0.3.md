@@ -391,56 +391,56 @@ Single-host Docker Compose. All services run as containers. Services exposed on 
 ```yaml
 # infra/docker/dev.compose.yaml
 networks:
-  wardenx: { driver: bridge }
+  chartwarden: { driver: bridge }
 services:
   postgres:
     image: pgvector/pgvector:pg18
     ports: ["5432:5432"]
     volumes: [./data/pg:/var/lib/postgresql/data]
-    networks: [wardenx]
+    networks: [chartwarden]
   valkey:
     image: valkey/valkey:8
     ports: ["6379:6379"]
     volumes: [./data/valkey:/data]
-    networks: [wardenx]
+    networks: [chartwarden]
   minio:
     image: minio/minio
     ports: ["9000:9000", "9001:9001"]
     volumes: [./data/minio:/data]
     command: server /data --console-address ":9001"
-    networks: [wardenx]
+    networks: [chartwarden]
   mailpit:
     image: axllent/mailpit
     ports: ["1025:1025", "8025:8025"]
-    networks: [wardenx]
+    networks: [chartwarden]
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     ports: ["5000:5000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   docling-worker:
     build: ./services/docling-worker
     ports: ["8001:8000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   langextract-worker:
     build: ./services/langextract-worker
     ports: ["8002:8000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   x12-worker:
     build: ./services/x12-worker
     ports: ["8003:8000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   ecr-worker:
     build: ./services/ecr-worker
     ports: ["8004:8000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   ml-worker:
     build: ./services/ml-worker
     ports: ["8005:8000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   embeddings-worker:
     build: ./services/embeddings-worker
     ports: ["8006:8000"]
-    networks: [wardenx]
+    networks: [chartwarden]
   # Optional observability stack (profile: observe)
   prometheus:
     profiles: [observe]
@@ -491,17 +491,17 @@ Initial production: Proxmox cluster on user's hardware. VM allocation:
 
 | VM | vCPUs | RAM | Disk | Role |
 |---|---|---|---|---|
-| wardenx-edge-01 | 4 | 4 GB | 40 GB | Pangolin reverse proxy + WAF |
-| wardenx-app-01 | 8 | 16 GB | 80 GB | Backend instance #1 + admin + portal |
-| wardenx-app-02 | 8 | 16 GB | 80 GB | Backend instance #2 (hot standby; load-balanced) |
-| wardenx-workers-01 | 8 | 16 GB | 100 GB | Python sidecars (docling, langextract, x12, ecr) |
-| wardenx-workers-02 | 16 | 32 GB | 200 GB + optional GPU passthrough | ml-worker, embeddings-worker (Phase 1 default: CPU-only with q4 quantized 8B local models; Phase 2 recommended: NVIDIA RTX 4090 24GB VRAM for higher-quality 8B and lightweight 70B; Production-scale: NVIDIA A100/H100 with vLLM serving) |
-| wardenx-db-01 | 8 | 32 GB | 500 GB | PostgreSQL primary + pgBouncer |
-| wardenx-db-02 | 8 | 32 GB | 500 GB | PostgreSQL streaming replica |
-| wardenx-data-01 | 4 | 8 GB | 200 GB | Valkey + MLflow |
-| wardenx-storage-01 | 4 | 8 GB | 4 TB | MinIO (S3-compatible object storage) |
-| wardenx-obs-01 | 4 | 16 GB | 500 GB | Grafana + Loki + Prometheus + Tempo + Sentry |
-| wardenx-backup-01 | 2 | 4 GB | 8 TB | pgBackRest + MinIO replication target |
+| chartwarden-edge-01 | 4 | 4 GB | 40 GB | Pangolin reverse proxy + WAF |
+| chartwarden-app-01 | 8 | 16 GB | 80 GB | Backend instance #1 + admin + portal |
+| chartwarden-app-02 | 8 | 16 GB | 80 GB | Backend instance #2 (hot standby; load-balanced) |
+| chartwarden-workers-01 | 8 | 16 GB | 100 GB | Python sidecars (docling, langextract, x12, ecr) |
+| chartwarden-workers-02 | 16 | 32 GB | 200 GB + optional GPU passthrough | ml-worker, embeddings-worker (Phase 1 default: CPU-only with q4 quantized 8B local models; Phase 2 recommended: NVIDIA RTX 4090 24GB VRAM for higher-quality 8B and lightweight 70B; Production-scale: NVIDIA A100/H100 with vLLM serving) |
+| chartwarden-db-01 | 8 | 32 GB | 500 GB | PostgreSQL primary + pgBouncer |
+| chartwarden-db-02 | 8 | 32 GB | 500 GB | PostgreSQL streaming replica |
+| chartwarden-data-01 | 4 | 8 GB | 200 GB | Valkey + MLflow |
+| chartwarden-storage-01 | 4 | 8 GB | 4 TB | MinIO (S3-compatible object storage) |
+| chartwarden-obs-01 | 4 | 16 GB | 500 GB | Grafana + Loki + Prometheus + Tempo + Sentry |
+| chartwarden-backup-01 | 2 | 4 GB | 8 TB | pgBackRest + MinIO replication target |
 
 **Total:** ~78 vCPUs, ~200 GB RAM, ~14 TB storage across 11 VMs. Fits in a single Proxmox host with 32 cores / 256 GB RAM, or split across 2-3 hosts for HA.
 
@@ -849,7 +849,7 @@ When any flag with `kill_switch_active = true` exists for a tenant, the cache is
 
 ### 4.8 Local AI Inference Data Flow
 
-Local AI capabilities (Architecture §10.7) run on `wardenx-workers-02` (ml-worker VM). The data flow differs from cloud AI in that PHI never leaves ChartWarden:
+Local AI capabilities (Architecture §10.7) run on `chartwarden-workers-02` (ml-worker VM). The data flow differs from cloud AI in that PHI never leaves ChartWarden:
 
 ```mermaid
 sequenceDiagram
@@ -1062,7 +1062,7 @@ Every error returns:
       { "field": "patient.dob", "code": "INVALID_FORMAT", "message": "..." }
     ],
     "correlationId": "<uuid>",
-    "documentationUrl": "https://docs.wardenx.app/errors/VALIDATION_FAILED"
+    "documentationUrl": "https://docs.chartwarden.app/errors/VALIDATION_FAILED"
   }
 }
 ```
@@ -1413,8 +1413,8 @@ In failure modes, degraded operation continues for many flows (see §10).
 
 **Backups:**
 
-- PostgreSQL: pgBackRest with continuous WAL archiving to wardenx-backup-01 VM; full backup nightly, incremental every 2 hours
-- MinIO: MinIO mirror replication to wardenx-backup-01 VM; per-bucket policies
+- PostgreSQL: pgBackRest with continuous WAL archiving to chartwarden-backup-01 VM; full backup nightly, incremental every 2 hours
+- MinIO: MinIO mirror replication to chartwarden-backup-01 VM; per-bucket policies
 - Valkey: AOF persistence; snapshot every 15 min to backup VM (sessions and cache are recoverable; queue jobs are best-effort)
 - Application config: SOPS-encrypted in Git
 - VM disk images: weekly Proxmox VM backups to backup VM
@@ -1462,7 +1462,7 @@ Every span includes:
 - `tenant.location_id` (if applicable)
 - `user.id` (the actor; if request is system, `system`)
 - `user.role` (primary role for the action)
-- `wardenx.module` (which module the span belongs to)
+- `chartwarden.module` (which module the span belongs to)
 - `correlation.id`
 
 PHI never goes into span attributes or names.
@@ -1496,7 +1496,7 @@ Every log line includes:
 
 ### 11.4 Sentry Configuration
 
-- Sentry self-hosted on wardenx-obs-01
+- Sentry self-hosted on chartwarden-obs-01
 - `beforeSend` hook scrubs PHI before transmit
 - User context: only `userId` and `organizationId` — no email, no name
 - Performance monitoring sampled at 10% in production, 100% in dev
@@ -1616,19 +1616,19 @@ For production (Proxmox VMs):
 | Trigger | Action |
 |---|---|
 | Error rate spike >5% within 10 min of cutover | Auto-rollback to previous |
-| Manual `wardenx-deploy rollback` | Re-weight to previous version |
+| Manual `chartwarden-deploy rollback` | Re-weight to previous version |
 | Database migration cannot be rolled back | Forward-fix only with hotfix release |
 
 ### 12.6 Local Development Workflow
 
 ```bash
 # First time
-git clone wardenx
-cd wardenx
+git clone chartwarden
+cd chartwarden
 bun install
 # STATUS: TARGET — NOT BUILT. `infra/` does not exist and there is no compose file at that path.
 # Real local dev: a bare `docker run` of Postgres, then migrate + seed. See docs/DEVELOPMENT.md.
-docker run -d --name wardenx-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx \
+docker run -d --name chartwarden-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx \
   -p 5440:5432 pgvector/pgvector:pg18
 bun db:migrate
 bun db:seed

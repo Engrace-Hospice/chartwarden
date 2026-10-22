@@ -1195,7 +1195,7 @@ per-tenant DEK):
 - **No IndexedDB fallback:** The web PWA variant of M9 (non-Capacitor) does not support offline
   draft persistence — it requires connectivity to submit. The offline-draft UX is Capacitor-only.
   Attempting to use IndexedDB for PHI drafts in any context is a lint violation
-  (`eslint-plugin-wardenx/no-phi-indexeddb`).
+  (`eslint-plugin-chartwarden/no-phi-indexeddb`).
 
 ### 5.4 Portal (Module 31, future)
 

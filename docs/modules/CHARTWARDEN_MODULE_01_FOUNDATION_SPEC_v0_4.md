@@ -60,7 +60,7 @@ as ADR-000N live in `docs/adr/`.
 | M01-F10 | MAJOR | **Security middleware baseline wired** (§4.6.1): helmet/CSP/HSTS, `@fastify/rate-limit` SD-055 tiers (30/600 per min), 10 MB bodyLimit, CORS, CSRF plumbing. |
 | M01-F11 | MINOR | `outbox.cleanup` (30 d post-dispatch) added to §4.8; `feature_flag_evaluation` to be monthly-partitioned + retention-classed (register in `partition.rotate`). |
 | M01-F12 | MINOR | Outbox publisher must compare `callerModule` to `entry.moduleOwner` and constrain `sud.*` to a registered emitter list; tx threaded through the API (noted for §3.17.3 impl). |
-| M01-F13 | MINOR | OTel span attrs use the SD-077 names (`tenant.provider_entity_id`, `tenant.location_id`, `user.role`, `wardenx.module`, `correlation.id`); Pino redact paths recursive; idempotency keys hashed SHA-256 of (org_id, key, body) per SEC-025. |
+| M01-F13 | MINOR | OTel span attrs use the SD-077 names (`tenant.provider_entity_id`, `tenant.location_id`, `user.role`, `chartwarden.module`, `correlation.id`); Pino redact paths recursive; idempotency keys hashed SHA-256 of (org_id, key, body) per SEC-025. |
 | M01-F14 | MINOR | RLS generator home resolved to `packages/tenancy` (ADR-0005/§7.9, M1-owned); stale v0.8/v0.9 doc refs refreshed to v0.12; D1 key-management restated per SEC §4.5/4.6 (no KMS — SOPS/age). |
 | M01-F15 | MINOR | STRIDE threat-model section + migration snapshot tests to be added; idempotency middleware gains a pending/lock state (concurrent-duplicate race); `audit()` helper parameterizes `actorKind`. |
 
@@ -2392,7 +2392,7 @@ export default fp(async (fastify) => {
           message: err.message,
           details: err.details,
           correlationId,
-          documentationUrl: `https://docs.wardenx.app/errors/${err.code}`,
+          documentationUrl: `https://docs.chartwarden.app/errors/${err.code}`,
         },
       })
     }
@@ -2404,7 +2404,7 @@ export default fp(async (fastify) => {
         code: 'INTERNAL_ERROR',
         message: 'An unexpected error occurred',
         correlationId,
-        documentationUrl: 'https://docs.wardenx.app/errors/INTERNAL_ERROR',
+        documentationUrl: 'https://docs.chartwarden.app/errors/INTERNAL_ERROR',
       },
     })
   })

@@ -193,7 +193,7 @@ erDiagram
         uuid id PK
         text backend_key UK "anthropic-claude-opus-4-7|local-llama-3.1-8b-instruct|..."
         text kind "cloud|local"
-        text vendor "anthropic|meta|mistral|microsoft|baai|wardenx|..."
+        text vendor "anthropic|meta|mistral|microsoft|baai|chartwarden|..."
         text model_family "claude|llama|mistral|phi|bge|distilbert|..."
         text model_version_pin "claude-opus-4-7 — never 'latest'"
         jsonb supported_modalities "text|embedding|classification|vision[]"
@@ -436,7 +436,7 @@ The six backends registered at lock time per the architecture §10.7.3 mapping:
 | `local-llama-3.1-8b-instruct` | local | meta | text | 128K | hearthnote_layer2 (default local); doclens_extract (local opt-in); copilot_clinical (local opt-in); copilot_admin (local opt-in) |
 | `local-mistral-7b-instruct` | local | mistral | text | 32K | alternative to Llama for the same set; per-tenant choice |
 | `local-bge-small-en` | local | baai | embedding | 512 | embeddings_clinical (default); semantic_search_chart (default) |
-| `local-distilbert-classifier` | local | wardenx | classification | 512 | doclens_classify (default — local) |
+| `local-distilbert-classifier` | local | chartwarden | classification | 512 | doclens_classify (default — local) |
 
 `local-phi-3.5-mini` is registered with `is_active=false` Phase 1; the row exists for lifecycle continuity. `local-all-minilm-l6-v2` is registered as the alternative embedding model with `is_active=true` but no capability defaults to it Phase 1.
 
@@ -2217,12 +2217,12 @@ Exposed at the platform `/metrics` endpoint per M1 conventions; M32-specific met
 
 Every `aiSdk.invoke()` opens an OpenTelemetry span with attributes:
 
-- `wardenx.module = 32`
-- `wardenx.capability.key`
-- `wardenx.capability.id`
-- `wardenx.invocation.id`
+- `chartwarden.module = 32`
+- `chartwarden.capability.key`
+- `chartwarden.capability.id`
+- `chartwarden.invocation.id`
 - `chartwarden.organization.id`
-- `wardenx.actor.user_id`
+- `chartwarden.actor.user_id`
 - `chartwarden.ai.backend.id`
 - `chartwarden.ai.routing_mode`
 - `chartwarden.ai.zdr_confirmed`

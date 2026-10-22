@@ -56,7 +56,7 @@ Concretely this means: the backend launches *two* Node processes:
 The two processes share:
 - Postgres (separate connection pools — listener pool is bounded at 16 connections).
 - Valkey (separate BullMQ queue connections — listener publishes to `hl7-inbound-parse:*`).
-- The `/var/run/wardenx/hapi.sock` UDS to the T-29.03 sidecar.
+- The `/var/run/chartwarden/hapi.sock` UDS to the T-29.03 sidecar.
 
 They do **not** share:
 - Memory.
@@ -1230,7 +1230,7 @@ const logger = pino({ name: 'hl7-inbound-parse.worker' })
 const envelope = mkKmsEnvelope()
 const outbox = mkOutbox(db, logger)
 const sidecar = createSidecarClient({
-  udsPath: process.env.CHARTWARDEN_HL7_UDS_PATH ?? '/var/run/wardenx/hapi.sock',
+  udsPath: process.env.CHARTWARDEN_HL7_UDS_PATH ?? '/var/run/chartwarden/hapi.sock',
   healthIntervalMs: 30_000,
   parseTimeoutMs: 2_000,
   buildTimeoutMs: 2_000,

@@ -19,7 +19,7 @@ The initial build also needs access to the Bun package registry and Docker image
 From the repository root:
 
 ```bash
-cd wardenx
+cd chartwarden
 bun install
 ```
 
@@ -96,7 +96,7 @@ This applies all migrations and creates/enables the `chartwarden_app` login role
 
 ## 5. Start the backend, worker, and web app
 
-Use three terminals in `wardenx/`:
+Use three terminals in `chartwarden/`:
 
 ```bash
 # Terminal 1 — API: http://localhost:3000
@@ -227,42 +227,42 @@ For development architecture and module-extension guidance, continue with
 
 ```bash
 cd /opt
-git clone https://github.com/Engrace-Hospice/wardenx.git wardenx-src
+git clone https://github.com/Engrace-Hospice/chartwarden.git wardenx-src
 cd /opt/wardenx-src
 git checkout main
 git pull --ff-only origin main
 Pour un dépôt privé, utilisez plutôt SSH :
-git clone git@github.com:Engrace-Hospice/wardenx.git /opt/wardenx-src
+git clone git@github.com:Engrace-Hospice/chartwarden.git /opt/wardenx-src
 Récupérez le SHA et construisez les deux images directement sur le VPS :
 cd /opt/wardenx-src
 
 COMMIT_SHA=$(git rev-parse HEAD)
 
 docker build \
-  -t "wardenx-backend:manual-${COMMIT_SHA}" \
+  -t "chartwarden-backend:manual-${COMMIT_SHA}" \
   .
 
 docker build \
   -f Dockerfile.web \
-  -t "wardenx-web:manual-${COMMIT_SHA}" \
+  -t "chartwarden-web:manual-${COMMIT_SHA}" \
   .
 Copiez ensuite les fichiers de déploiement, sans écraser l’environnement de production :
-cp deploy/production/compose.yml /opt/wardenx/compose.yml
-cp deploy/production/smoke.sh /opt/wardenx/smoke.sh
-chmod +x /opt/wardenx/smoke.sh
+cp deploy/production/compose.yml /opt/chartwarden/compose.yml
+cp deploy/production/smoke.sh /opt/chartwarden/smoke.sh
+chmod +x /opt/chartwarden/smoke.sh
 Mettez à jour les images dans .env.production :
 sed -i \
-  "s|^CHARTWARDEN_IMAGE=.*|CHARTWARDEN_IMAGE=wardenx-backend:manual-${COMMIT_SHA}|" \
-  /opt/wardenx/.env.production
+  "s|^CHARTWARDEN_IMAGE=.*|CHARTWARDEN_IMAGE=chartwarden-backend:manual-${COMMIT_SHA}|" \
+  /opt/chartwarden/.env.production
 
 sed -i \
-  "s|^CHARTWARDEN_WEB_IMAGE=.*|CHARTWARDEN_WEB_IMAGE=wardenx-web:manual-${COMMIT_SHA}|" \
-  /opt/wardenx/.env.production
+  "s|^CHARTWARDEN_WEB_IMAGE=.*|CHARTWARDEN_WEB_IMAGE=chartwarden-web:manual-${COMMIT_SHA}|" \
+  /opt/chartwarden/.env.production
 Vérifiez que MinIO reste configuré :
 grep -E 'CHARTWARDEN_IMAGE|CHARTWARDEN_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT' \
-  /opt/wardenx/.env.production
+  /opt/chartwarden/.env.production
 Puis lancez les migrations, le provisioning et le redémarrage :
-cd /opt/wardenx
+cd /opt/chartwarden
 
 docker compose --env-file .env.production run --rm --no-deps migrate \
   bun run scripts/db/migrate.ts --strict --schema-only

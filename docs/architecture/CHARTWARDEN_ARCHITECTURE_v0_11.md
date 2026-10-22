@@ -309,7 +309,7 @@ Organization (tenant — the ChartWarden customer)
 Turborepo + Bun workspaces.
 
 ```
-wardenx/
+chartwarden/
 ├── apps/
 │   ├── web/                       # Vite + React + react-router (ADR-0030/0032) — hospice tenant web UI
 │   ├── backend/                   # Fastify 5 — main backend

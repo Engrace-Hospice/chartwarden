@@ -13,7 +13,7 @@ import { classifyDatabaseError } from "@chartwarden/db";
 import { ConflictError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
-const DOCS_BASE = "https://docs.wardenx.app/errors";
+const DOCS_BASE = "https://docs.chartwarden.app/errors";
 
 /**
  * A Fastify framework error (malformed JSON, an oversized body, an unsupported content-type) — built

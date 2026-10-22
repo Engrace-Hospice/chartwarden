@@ -1633,7 +1633,7 @@ M10's offline layer uses the **platform `@chartwarden/mobile-offline` shared sql
 - **Evict-PHI-on-logout:** The shared `logout` event handler runs `DELETE FROM hope_assessment_draft` and all other PHI tables before dropping the derived key from Secure Storage (iOS Keychain / Android Keystore). Without the key the DB is opaque ciphertext. This satisfies SEC-075's "no residual PHI on device after session end."
 - **Sync-on-reconnect:** The `@chartwarden/mobile-offline` sync worker reads `synced=0` draft rows in `created_at_iso` order and submits each as `POST /admissions/:admissionId/hope/timepoints` with `draft_id` as the `Idempotency-Key`. On HTTP 200 or 409 (already processed), the row is marked `synced=2`. On 4xx validation failure, the row is marked `synced=3` and a conflict dialog surfaces (per §5.3 sync-conflict behaviour).
 - **Screen-capture posture:** Assessment form screens carrying J2051 PHI set `FLAG_SECURE` (Android) / `allowScreenRecording=false` (iOS) while visible on screen (SEC-075).
-- **No IndexedDB fallback:** The web PWA variant of M10 does not support offline draft persistence — it requires connectivity to submit. Attempting to use IndexedDB for HOPE drafts in any context is a lint violation (`eslint-plugin-wardenx/no-phi-indexeddb`).
+- **No IndexedDB fallback:** The web PWA variant of M10 does not support offline draft persistence — it requires connectivity to submit. Attempting to use IndexedDB for HOPE drafts in any context is a lint violation (`eslint-plugin-chartwarden/no-phi-indexeddb`).
 
 -----
 
