@@ -134,7 +134,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
           status, proposed_by_membership_id, rate_limit_msg_per_sec, lab_destination_facility_id,
           msh_sending_application, msh_sending_facility, msh_receiving_application, msh_receiving_facility)
        VALUES ($1,$2,'orm_outbound',$3,'127.0.0.1',$4,'mllp_plain',NULL,$5,$6,1000,$7,
-               'WARDENX','HOSPICE-A','REFLAB','REFLAB-FAC')`,
+               'CHARTWARDEN','HOSPICE-A','REFLAB','REFLAB-FAC')`,
       [id, ORG_A, `Lab ${port}`, port, status, randomUUID(), facilityId],
     );
     return id;

@@ -192,7 +192,7 @@
               "id": "WjKRU",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -1117,7 +1117,7 @@
               "id": "NtD9A",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -2023,7 +2023,7 @@
               "id": "WRAuo",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -3048,7 +3048,7 @@
               "id": "Pyn5D",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -4085,7 +4085,7 @@
               "id": "FQfDX",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -5148,7 +5148,7 @@
               "id": "fOP0s",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"

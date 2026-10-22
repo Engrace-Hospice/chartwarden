@@ -5214,7 +5214,7 @@ Ordered P0 to P3 (no P0 was reported); within a severity, by gap id. Sweep the Â
       ],
       "verified": false,
       "recommended_fix": "Add the production-relevant ones (scan flag, OPS_ALERT_WEBHOOK_URL, APP URLs, ANTHROPIC_BAA_REFERENCE, TERMINOLOGY_*) to deploy/production/.env.production.example with comments; consider env.ts production validation for DOCUMENT_UPLOAD_SCAN_REQUIRED. M19_/M20_ overrides are optional since CURSOR_SIGNING_KEY is documented (deploy example:51, env.ts:251).",
-      "verification": "Static grep only; some listed names are dev/test-only (WARDENX_SEED_*, BOOT_CHECK_*, CI) and were deliberately not reported.",
+      "verification": "Static grep only; some listed names are dev/test-only (CHARTWARDEN_SEED_*, BOOT_CHECK_*, CI) and were deliberately not reported.",
       "prior_gap_ids": [
         "GAP-068"
       ]

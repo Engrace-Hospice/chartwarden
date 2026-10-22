@@ -146,7 +146,7 @@
               "id": "xiAjP",
               "name": "b",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 22,
               "fontWeight": "600"
@@ -2502,7 +2502,7 @@
               "id": "RpQKr",
               "name": "b",
               "fill": "#aeb4f0",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 18,
               "fontWeight": "600"

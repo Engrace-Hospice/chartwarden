@@ -7,7 +7,7 @@ import { render, waitFor } from "@testing-library/react";
 // client. This is a SMOKE test only: it proves each screen mounts (clears its Suspense fallback)
 // without tripping the top-level ErrorBoundary — not that its data renders correctly. Component
 // rendering was previously untestable at all (vitest.config.ts had no jsdom project) — see
-// docs/audits/wardenx-production-readiness/11-test-and-quality-report.md TEST-004.
+// docs/audits/chartwarden-production-readiness/11-test-and-quality-report.md TEST-004.
 import type { ScreenRegistryModule } from "@chartwarden/types";
 import { createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

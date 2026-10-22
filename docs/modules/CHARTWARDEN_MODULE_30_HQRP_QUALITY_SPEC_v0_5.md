@@ -77,7 +77,7 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
   against a view migration 0067 deliberately made NON-materialized (RLS correctness over
   precomputation — a materialized view cannot re-filter per session), so that statement had failed
   outright since M30 shipped — fixed to a documented no-op. See
-  [`docs/audits/wardenx-production-readiness-2026-08-04/14-task-backlog.md`](../audits/wardenx-production-readiness-2026-08-04/14-task-backlog.md)
+  [`docs/audits/chartwarden-production-readiness-2026-08-04/14-task-backlog.md`](../audits/chartwarden-production-readiness-2026-08-04/14-task-backlog.md)
   WX-PR-014 for full detail, including what stayed explicitly out of scope (M33, the M1 DEK/KMS
   provider, live CAHPS vendor OAuth, `measure_recompute`'s `emitThresholdBreached`).
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.

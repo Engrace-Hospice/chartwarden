@@ -5,7 +5,7 @@ the mounted Better Auth instance + plugins (AUTH-T02/T04/T05) actually read/writ
 designed *for* Better Auth, but a column-level comparison shows real gaps. This doc captures them, the
 field-mapping options, the one **security decision** (2FA at-rest encryption), and the execution order.
 
-> **Why a doc, not code:** the agent has **no Postgres** (`WARDENX_TEST_DATABASE_URL` unset), so none of
+> **Why a doc, not code:** the agent has **no Postgres** (`CHARTWARDEN_TEST_DATABASE_URL` unset), so none of
 > this can be empirically verified here — only in CI's `rls-live` lane or a local pg18. Auth-schema
 > migrations are security-critical; they should be validated against real PG, not merged blind. Governed
 > by **[ADR-0033](../adr/ADR-0033-better-auth-mount-and-prod-db-client.md)** (§5: auth is verified in the
