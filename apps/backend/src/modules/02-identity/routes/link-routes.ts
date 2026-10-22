@@ -127,6 +127,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       try {
         await deps.linkDelivery.deliver({
           kind: input.kind,
+          organizationId: input.organizationId,
           email: recipient,
           token: link.token,
           expiresAt: new Date(link.expiresAt),

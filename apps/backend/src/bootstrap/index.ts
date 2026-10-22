@@ -22,6 +22,7 @@ import { applyReadAuditCoverage } from "./plugins/read-audit";
 import { applyRequestContext } from "./plugins/request-context";
 import { type SecurityOptions, applySecurityBaseline } from "./plugins/security";
 import type { TenantHostGuard } from "./tenant-host";
+import { tenantSessionClassGuard } from "./tenant-session-class";
 import { type ReadinessProbe, defaultReadinessProbe, registerHealthRoutes } from "./routes/health";
 import { registerOpsOutboxRoutes } from "./routes/ops-outbox";
 import {
@@ -324,7 +325,11 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   }
   applySecurityBaseline(app, deps.security); // CORS + rate-limit read the (now-auth'd) context
   // After the rate limiter: an unknown `<x>.<base>` host costs a database lookup, so it must be throttled first.
-  if (deps.tenantHost) app.addHook("onRequest", deps.tenantHost);
+  if (deps.tenantHost) {
+    app.addHook("onRequest", deps.tenantHost);
+    // Phase 4: staff and portal share a cookie on a tenant host; session class keeps their routes apart.
+    app.addHook("onRequest", tenantSessionClassGuard);
+  }
   applyErrorHandler(app);
   applyIdempotency(app, deps.idempotencyStore ?? createInMemoryIdempotencyStore());
   // PHI read-audit (M4 §2.5): coverage gate refuses a GET/HEAD under a covered PHI prefix lacking a
@@ -372,3 +377,6 @@ export * from "./tenant-host";
 export * from "./tenant-host-resolver-db";
 export * from "./env";
 export type * from "./interfaces";
+export * from "./tenant-app-origin";
+export * from "./tenant-app-origin-db";
+export * from "./tenant-session-class";

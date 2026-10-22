@@ -23,7 +23,7 @@ import { passkey } from "@better-auth/passkey";
 import { type DbClient, schema } from "@chartwarden/db";
 import { betterAuth } from "better-auth";
 import { hostOnlyCookieOptions } from "./host-only-cookies";
-import type { TenantOriginMatcher } from "./tenant-origin";
+import { type TenantOriginMatcher, rewriteLinkToRequestOrigin } from "./tenant-origin";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor, username } from "better-auth/plugins";
@@ -90,6 +90,8 @@ export interface IdentityAuthOptions {
    * Omitted in single-host mode, which keeps the static allowlist byte for byte.
    */
   readonly tenantOrigins?: TenantOriginMatcher;
+  /** Does this email hold an active membership in the organization served at this host? Gates the reset / magic-link host rewrite. */
+  readonly userMayUseTenantHost?: (email: string, host: string) => Promise<boolean>;
 }
 
 /** The header the invitee's sign-up carries; its value is the one-time invitation token. */
@@ -322,9 +324,13 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // trusted regardless, so production that serves the SPA same-origin needs no entry here.
     trustedOrigins: options.tenantOrigins
       ? async (request?: Request) => {
-          const origin = request?.headers.get("origin");
           const fixed = resolveTrustedOrigins();
-          if (!origin || !request) return fixed;
+          if (!request) return fixed;
+          // A link opened from a mail client is a plain navigation with no Origin header; its own https host stands
+          // in, so the tenant-host callbackURL the Phase 4 rewrite put in the link still validates.
+          const requestHostHeader = request.headers.get("host")?.toLowerCase();
+          const origin = request.headers.get("origin") ?? (requestHostHeader ? `https://${requestHostHeader}` : null);
+          if (!origin) return fixed;
           // A tenant origin is only valid for its own host (tenant hosts are same-site, so a sibling tenant's page
           // must not pass); the lookup runs only once the host matches.
           const requestHost = request.headers.get("host")?.toLowerCase() ?? new URL(request.url).host;
@@ -381,7 +387,12 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           options.onAuditError?.(err, event);
         }
       },
-      sendResetPassword: async (data: { user: { email: string }; url: string; token: string }) => {
+      sendResetPassword: async (
+        rawData: { user: { email: string }; url: string; token: string },
+        request?: Request,
+      ) => {
+        // Phase 4: on a tenant host the link opens on that host (see rewriteLinkToRequestOrigin for the guards).
+        const data = { ...rawData, url: await rewriteLinkToRequestOrigin(rawData.url, request, options.tenantOrigins, rawData.user.email, options.userMayUseTenantHost) };
         if (options.sendResetPassword) {
           await options.sendResetPassword(data);
           return;
@@ -455,7 +466,11 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated
         // server-side; the link is delivered through M36's transactional email transport, bound to this
         // port at the composition root (FB-T14). Stamping the session CLASS on consume is the §3 follow-up.
-        sendMagicLink: async ({ email, url }: { email: string; url: string }) => {
+        sendMagicLink: async (
+          { email, url: rawUrl }: { email: string; url: string },
+          ctx?: { request?: Request },
+        ) => {
+          const url = await rewriteLinkToRequestOrigin(rawUrl, ctx?.request, options.tenantOrigins, email, options.userMayUseTenantHost);
           await emailTransport.send({
             to: email,
             subject: "Your ChartWarden sign-in link",

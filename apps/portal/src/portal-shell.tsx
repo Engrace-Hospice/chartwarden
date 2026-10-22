@@ -2,6 +2,7 @@ import { Glyph } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { PORTAL_BASE_PATH } from "./base-path";
 import { PORTAL_NAVIGATION, portalNavPath, portalNavTitle } from "./navigation";
 import { PortalPatientContext, usePortalPatient } from "./patient-context";
 
@@ -26,7 +27,7 @@ function Brand({
 }): JSX.Element {
   return (
     <Link className="wx-portal-brand" to={destination} aria-label="ChartWarden Family Portal home">
-      <img className="wx-portal-brand__mark" src="/chartwarden-mark.svg" alt="" />
+      <img className="wx-portal-brand__mark" src={`${PORTAL_BASE_PATH}/chartwarden-mark.svg`} alt="" />
       {!compact ? (
         <span>
           <strong>ChartWarden</strong>

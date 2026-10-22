@@ -6,11 +6,19 @@
 
 import { clearAllDrafts } from "./ceremony-drafts";
 
-export type GlobalResponseSignal = { kind: "session-expired" | "service-unavailable" } | null;
+/** Why a tenant address cannot be used (ADR-0049): the organization left, is suspended, or never existed. */
+export type TenantUnavailableReason = "closed" | "suspended" | "unknown";
+
+export type GlobalResponseSignal =
+  | { kind: "session-expired" | "service-unavailable" }
+  | { kind: "tenant-unavailable"; reason: TenantUnavailableReason }
+  | null;
 
 type Listener = () => void;
 
 let current: GlobalResponseSignal = null;
+// The watcher consumes `current`; the session's "outage" status can land after that, so the reason is kept for RequireChrome.
+let lastTenantReason: TenantUnavailableReason | null = null;
 const listeners = new Set<Listener>();
 
 /**
@@ -38,6 +46,35 @@ export function signalForStatus(status: number, url?: string): GlobalResponseSig
   return null;
 }
 
+const TENANT_ERROR_CODES: Readonly<Record<string, TenantUnavailableReason>> = {
+  TENANT_CLOSED: "closed",
+  TENANT_SUSPENDED: "suspended",
+  TENANT_HOST_UNKNOWN: "unknown",
+};
+const TENANT_REFUSAL_STATUSES: ReadonlySet<number> = new Set([403, 404, 410]);
+/** `/api/v1/public/*` answers 404 TENANT_HOST_UNKNOWN on the demo host and on `app.<base>`; that is not a dead tenant. */
+const PUBLIC_API_PREFIX = "/api/v1/public/";
+
+/** Only these responses are worth reading the body of; an ordinary 403/404 elsewhere is never cloned. */
+export function mayCarryTenantRefusal(status: number, url?: string): boolean {
+  if (!TENANT_REFUSAL_STATUSES.has(status)) return false;
+  const path = pathOf(url);
+  return path !== undefined && path.startsWith("/api/") && !path.startsWith(PUBLIC_API_PREFIX);
+}
+
+/** The tenant-unavailable signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
+export async function tenantSignalFromResponse(response: Response): Promise<GlobalResponseSignal> {
+  try {
+    if (!response.headers.get("content-type")?.includes("json")) return null;
+    const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
+    const code = body?.error?.code;
+    const reason = typeof code === "string" ? TENANT_ERROR_CODES[code] : undefined;
+    return reason ? { kind: "tenant-unavailable", reason } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The pathname of an observed response URL, or undefined when there is nothing parseable. */
 function pathOf(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -48,10 +85,26 @@ function pathOf(url: string | undefined): string | undefined {
   }
 }
 
+/**
+ * The client's `onResponseStatus` hook (wired in main.tsx): feeds every observed response to the global signal. A 401/503
+ * notifies directly; a tenant-host refusal (410/403/404) is told apart from an ordinary one by its body `error.code`.
+ */
+export function handleObservedResponse(status: number, url: string | undefined, response: Response): void {
+  const signal = signalForStatus(status, url);
+  if (signal) {
+    setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx
+  } else if (mayCarryTenantRefusal(status, url)) {
+    void tenantSignalFromResponse(response).then((tenantSignal) => {
+      if (tenantSignal) setGlobalResponseSignal(tenantSignal);
+    });
+  }
+}
+
 export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {
   // A dead session must not leave PHI-bearing ceremony drafts in memory for whoever signs in next on this tab (the
   // /expired route is an SPA navigation, not a reload). An idle LOCK is different and keeps them.
   if (signal?.kind === "session-expired") clearAllDrafts();
+  if (signal?.kind === "tenant-unavailable") lastTenantReason = signal.reason;
   current = signal;
   for (const listener of listeners) listener();
 }
@@ -63,4 +116,9 @@ export function getGlobalResponseSignal(): GlobalResponseSignal {
 export function subscribeGlobalResponseSignal(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** The tenant-unavailable reason most recently observed, or null: a dead tenant host makes the context load fail, which is not an outage. */
+export function getLastTenantUnavailableReason(): TenantUnavailableReason | null {
+  return lastTenantReason;
 }

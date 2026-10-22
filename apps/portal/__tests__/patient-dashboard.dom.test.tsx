@@ -47,7 +47,7 @@ function renderDashboard(
     onUpcoming?: () => Response | Promise<Response>;
   } = {},
 ) {
-  window.history.pushState({}, "", `/p/${PATIENT_ID}`);
+  window.history.pushState({}, "", `/portal/p/${PATIENT_ID}`);
   const client = createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input) => {
@@ -108,12 +108,12 @@ describe("patient dashboard redesign", () => {
     expect(
       screen
         .getAllByRole("link", { name: /Care plan/ })
-        .some((link) => link.getAttribute("href") === `/p/${PATIENT_ID}/care-plan`),
+        .some((link) => link.getAttribute("href") === `/portal/p/${PATIENT_ID}/care-plan`),
     ).toBe(true);
     expect(
       screen
         .getAllByRole("link", { name: /Documents/ })
-        .some((link) => link.getAttribute("href") === `/p/${PATIENT_ID}/documents`),
+        .some((link) => link.getAttribute("href") === `/portal/p/${PATIENT_ID}/documents`),
     ).toBe(true);
   });
 
@@ -163,7 +163,7 @@ describe("patient dashboard redesign", () => {
       },
     });
     await waitFor(() => expect(upcomingCalls).toBe(1));
-    window.history.pushState({}, "", `/p/${otherPatient}`);
+    window.history.pushState({}, "", `/portal/p/${otherPatient}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByText("New patient visit")).toBeTruthy();
     await act(async () => {

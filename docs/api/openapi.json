@@ -225618,6 +225618,63 @@
         }
       }
     },
+    "/api/v1/public/find-my-organization": {
+      "post": {
+        "operationId": "postApiV1PublicFindmyorganization",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Unauthenticated: always 202 { status: \"sent\" } for a well-formed email; mails the person the sign-in address of each active organization they belong to (one email, only if any). Per-IP and per-email budgets; nothing about membership is returned (ADR-0049 Phase 4)",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "sent",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "maxLength": 254,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/signup-intents": {
       "post": {
         "operationId": "postApiV1PublicSignupintents",
@@ -225724,6 +225781,45 @@
                     "verified": {
                       "const": true,
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/public/tenant": {
+      "get": {
+        "operationId": "getApiV1PublicTenant",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Unauthenticated: the organization this tenant host serves ({ status, displayName? } - the name only for an active or created organization); 404 TENANT_HOST_UNKNOWN off a tenant host (ADR-0049 Phase 4)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
                     }
                   }
                 }

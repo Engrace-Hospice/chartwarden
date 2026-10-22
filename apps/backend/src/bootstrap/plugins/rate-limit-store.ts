@@ -72,8 +72,11 @@ export function createBudgetedRateLimiter(
     windowMs: number;
     keyPrefix: string;
     onStoreError?: (err: unknown) => void;
+    /** Opt-in: deny (with `storeError: true`) instead of allowing when the store throws. For routes where the budget IS
+     *  the abuse control (an unauthenticated route that sends email), so an outage must not remove it. */
+    failClosed?: boolean;
   },
-): { consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }> } {
+): { consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number; storeError?: true }> } {
   return {
     async consume(key) {
       let count: number;
@@ -81,7 +84,7 @@ export function createBudgetedRateLimiter(
         count = await store.increment(`${opts.keyPrefix}:${key}`, opts.windowMs);
       } catch (err) {
         opts.onStoreError?.(err);
-        return { allowed: true };
+        return opts.failClosed ? { allowed: false, storeError: true } : { allowed: true };
       }
       if (count <= opts.limit) return { allowed: true };
       return { allowed: false, retryAfterSeconds: Math.ceil(opts.windowMs / 1000) };

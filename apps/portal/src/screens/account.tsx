@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { Link } from "react-router-dom";
+import { PORTAL_BASE_PATH } from "../base-path";
 import { humanize, readError, statusTone } from "./portal-format";
 import { PortalLoadState, PortalPage } from "./portal-page";
 
@@ -115,7 +116,7 @@ export function PortalAccount(): JSX.Element {
         return;
       }
       // Full navigation ensures no patient-scoped React state survives a successful sign-out.
-      window.location.assign("/");
+      window.location.assign(`${PORTAL_BASE_PATH}/`);
     } catch {
       if (active.current) setSignOutError("We couldn't confirm sign-out. Please try again.");
     } finally {

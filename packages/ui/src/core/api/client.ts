@@ -26,8 +26,11 @@ export interface ApiClientOptions {
    * The URL is passed because a status alone is not always enough to decide (F-081): a 401 from the
    * step-up VERIFY route means "that factor did not verify", not "your session is gone", and the shell
    * has to be able to tell those apart.
+   *
+   * The `Response` is passed as a third argument for the rare caller that must read the body (ADR-0049: the
+   * `error.code` of a tenant-host refusal). It is the live response: a reader MUST `clone()` it first.
    */
-  onResponseStatus?: (status: number, url: string) => void;
+  onResponseStatus?: (status: number, url: string, response: Response) => void;
 }
 
 /**
@@ -133,7 +136,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   if (onResponseStatus) {
     client.use({
       onResponse({ response }) {
-        onResponseStatus(response.status, response.url);
+        onResponseStatus(response.status, response.url, response);
         return undefined;
       },
     });

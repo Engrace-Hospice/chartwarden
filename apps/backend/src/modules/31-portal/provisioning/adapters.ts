@@ -69,10 +69,12 @@ export interface PortalEmailTransport {
 export function createPortalInvitationDelivery(input: {
   readonly transport?: PortalEmailTransport;
   readonly baseUrl?: string;
+  /** Per-organization portal base (tenant host + `/portal`); wins over `baseUrl` when it answers. */
+  readonly baseUrlFor?: (organizationId: string) => Promise<string | undefined>;
 }): PortalInvitationDeliveryPort {
   return {
-    async deliver({ email, displayName, token, expiresAt }) {
-      const base = input.baseUrl?.replace(/\/$/, "");
+    async deliver({ organizationId, email, displayName, token, expiresAt }) {
+      const base = ((await input.baseUrlFor?.(organizationId)) ?? input.baseUrl)?.replace(/\/$/, "");
       if (!base) return { inviteUrl: null };
       const inviteUrl = `${base}/accept-invitation?token=${encodeURIComponent(token)}`;
       if (!input.transport) return { inviteUrl };

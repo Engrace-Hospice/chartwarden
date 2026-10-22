@@ -106,7 +106,7 @@ function fillReport(dialog: HTMLElement) {
 
 describe("portal medications redesign", () => {
   beforeEach(() => {
-    window.history.pushState({}, "", `/p/${PATIENT}/medications`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT}/medications`);
     vi.restoreAllMocks();
   });
 
@@ -393,7 +393,7 @@ describe("portal medications redesign", () => {
     );
     await waitFor(() => expect(reads).toBe(1));
     await act(async () => {
-      window.history.pushState({}, "", `/p/${OTHER_PATIENT}/medications`);
+      window.history.pushState({}, "", `/portal/p/${OTHER_PATIENT}/medications`);
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(

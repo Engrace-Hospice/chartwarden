@@ -453,6 +453,7 @@ export function mountIdentityRoutes(
   invite?: {
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
+    appOriginFor?: IdentityRouteDeps["appOriginFor"];
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
     /** GAP-008 — M3's invite-creation anti-escalation guard (same import-boundary reason). */
     proposedRoleGuard?: IdentityRouteDeps["proposedRoleGuard"];
@@ -515,6 +516,7 @@ export function mountIdentityRoutes(
     elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
     ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
+    ...(invite?.appOriginFor ? { appOriginFor: invite.appOriginFor } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
     ...(invite?.proposedRoleGuard ? { proposedRoleGuard: invite.proposedRoleGuard } : {}),
     // GAP-009 — always bound on a db mount: accept refuses without it (fail closed).
@@ -641,3 +643,12 @@ export type { TaxIdCipherPort } from "./routes/org-admin-routes";
 export { createTaxIdCipher } from "./tax-id-cipher";
 export type { TaxIdCipher, TaxIdKeyProvider } from "./tax-id-cipher";
 export { validateOverrideInput } from "./step-up-override-admin";
+// ADR-0049 Phase 4 — the unauthenticated tenant-discovery routes + their database lookups (migration 1148).
+export { createDbPublicTenantLookups, createUserMayUseTenantHost } from "./public-tenant-db";
+export {
+  FindMyOrganizationRequestSchema,
+  FindMyOrganizationResponseSchema,
+  PublicTenantResponseSchema,
+  type PublicTenantRouteDeps,
+  registerPublicTenantRoutes,
+} from "./routes/public-tenant-routes";

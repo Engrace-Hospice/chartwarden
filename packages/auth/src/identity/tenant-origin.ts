@@ -44,3 +44,32 @@ export function createTenantOriginMatcher(deps: {
     },
   };
 }
+
+/**
+ * Phase 4 — Better Auth builds reset / magic-link URLs on its one `baseURL`. On a tenant host the link must open on
+ * the host the person asked from, so swap the origin for the request's own — but only when that origin is a tenant
+ * origin the matcher trusts AND is the very host the request arrived on (a forged `Origin` naming another tenant, or
+ * any look-alike, or a tenant the recipient does not belong to, leaves the link untouched). Never throws: any doubt returns the URL unchanged.
+ */
+export async function rewriteLinkToRequestOrigin(
+  url: string,
+  request: Request | undefined,
+  matcher: TenantOriginMatcher | undefined,
+  email: string,
+  mayUseHost: ((email: string, host: string) => Promise<boolean>) | undefined,
+): Promise<string> {
+  const origin = request?.headers.get("origin");
+  if (!request || !origin || !matcher || !mayUseHost) return url;
+  try {
+    const requestHost = request.headers.get("host")?.toLowerCase();
+    if (!requestHost || new URL(origin).host !== requestHost) return url;
+    if (!(await matcher.isTrusted(origin))) return url;
+    // The link goes to the recipient's own tenant, never to a host the requester merely named: the recipient must
+    // hold an active membership there (a forged Origin for another real tenant cannot steer someone else's link).
+    if (!(await mayUseHost(email, requestHost))) return url;
+    const link = new URL(url);
+    return `${new URL(origin).origin}${link.pathname}${link.search}${link.hash}`;
+  } catch {
+    return url;
+  }
+}

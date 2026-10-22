@@ -14,7 +14,13 @@ import "./index.css"; // Tailwind v4 + the ChartWarden `wx-*` design-system laye
 // (the generated `audit/ui-parity/UI_PARITY.md` is the per-module truth — no count is restated here).
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { CredentialStateGuard, ScreenLock, identityScreens } from "./modules/02-identity";
+import {
+  CredentialStateGuard,
+  ScreenLock,
+  appLandingScreens,
+  identityScreens,
+  isAppLandingHost,
+} from "./modules/02-identity";
 import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
@@ -54,8 +60,7 @@ import { mdmScreens } from "./modules/40-mdm";
 import {
   AppShell,
   createScreenRegistry,
-  setGlobalResponseSignal,
-  signalForStatus,
+  handleObservedResponse,
   systemScreens,
 } from "./shell";
 
@@ -66,15 +71,14 @@ const registry = createScreenRegistry();
 // TASK-033: every response the client observes is fed through the global signal so the shell can
 // react (401 → /expired, 503 → /maintenance) regardless of which screen made the call.
 const client = createApiClient({
-  onResponseStatus: (status, url) => {
-    const signal = signalForStatus(status, url);
-    if (signal) setGlobalResponseSignal(signal); // only 401/503 notify — don't re-render on every 2xx
-  },
+  onResponseStatus: handleObservedResponse,
 });
 
 // Module web-slices register here as they land (Track A/B).
 registry.register(systemScreens); // M1 system/utility pages (403/404/500/offline/… — Track A)
 registry.register(identityScreens); // M2 Identity (Track A)
+// ADR-0049: `app.<base>` is the "find my organization" landing; it claims `/`, so register it only on that host.
+if (isAppLandingHost(window.location.hostname)) registry.register(appLandingScreens);
 registry.register(authorizationScreens); // M3 Authorization (Track A)
 registry.register(auditScreens); // M4 Audit (Track A)
 registry.register(patientScreens); // M5 Patient (Track A)

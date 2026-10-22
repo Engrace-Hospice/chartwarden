@@ -24,12 +24,17 @@ const SUBJECT = {
 
 export function createLinkDelivery(input: {
   readonly transport: LinkEmailTransport;
-  /** The SPA origin that serves the landing page (no trailing slash needed). */
-  readonly baseUrl: string;
+  /** The SPA origin that serves the landing page (no trailing slash needed). Absent when only per-tenant origins exist. */
+  readonly baseUrl?: string;
+  /** Per-organization landing origin (tenant host + `/portal`); wins over `baseUrl` when it answers. */
+  readonly baseUrlFor?: (organizationId: string) => Promise<string | undefined>;
 }): LinkDeliveryPort {
-  const base = input.baseUrl.replace(/\/$/, "");
   return {
-    async deliver({ kind, email, token, expiresAt }) {
+    async deliver({ kind, organizationId, email, token, expiresAt }) {
+      const resolved = (await input.baseUrlFor?.(organizationId)) ?? input.baseUrl;
+      // Better a typed failure (the invite route maps it to its delivery-failed answer) than a link to nowhere.
+      if (!resolved) throw new Error("no landing origin for this organization (no tenant host and no PORTAL_APP_URL / WEB_APP_URL)");
+      const base = resolved.replace(/\/$/, "");
       const url = `${base}${LANDING_PATH[kind]}#token=${encodeURIComponent(token)}`;
       await input.transport.send({
         to: email,

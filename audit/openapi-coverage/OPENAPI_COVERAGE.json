@@ -1,22 +1,22 @@
 {
   "totals": {
-    "routes": 1706,
-    "enriched": 1706,
+    "routes": 1708,
+    "enriched": 1708,
     "deficit": 0,
-    "mutating": 964,
+    "mutating": 965,
     "mutatingNoBody": 1,
-    "gets": 693,
+    "gets": 694,
     "getsNoResponse": 9
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 54,
-      "enriched": 54,
+      "routes": 56,
+      "enriched": 56,
       "deficit": 0,
-      "mutating": 33,
+      "mutating": 34,
       "mutatingNoBody": 0,
-      "gets": 17,
+      "gets": 18,
       "getsNoResponse": 0
     },
     {

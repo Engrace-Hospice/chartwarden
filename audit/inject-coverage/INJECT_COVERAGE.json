@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1695,
-    "coveredRoutes": 1695,
-    "directRoutesReferenced": 1568
+    "routes": 1697,
+    "coveredRoutes": 1697,
+    "directRoutesReferenced": 1570
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 54,
+      "routes": 56,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -25,6 +25,7 @@
         "apps/backend/__tests__/gap-115-m2-org-admin.test.ts",
         "apps/backend/__tests__/gap-115-m2-step-up-overrides.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
+        "apps/backend/__tests__/m1-tenant-host.live.test.ts",
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
@@ -37,10 +38,11 @@
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
+        "apps/backend/__tests__/public-tenant-routes.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
       ],
-      "directRoutesReferenced": 48
+      "directRoutesReferenced": 50
     },
     {
       "module": "03-authorization",

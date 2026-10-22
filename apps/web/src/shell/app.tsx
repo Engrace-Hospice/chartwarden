@@ -28,6 +28,7 @@ import { AlertInboxProvider } from "./alert-inbox";
 import { clearAllDrafts } from "./ceremony-drafts";
 import {
   getGlobalResponseSignal,
+  getLastTenantUnavailableReason,
   setGlobalResponseSignal,
   subscribeGlobalResponseSignal,
 } from "./global-response-signal";
@@ -80,7 +81,10 @@ function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
     // WP 4.8: a notification link opened signed out finishes after sign-in (only its opaque id is kept).
     return <RedirectRememberingLink to="/login" pathname={pathname} />;
   }
-  if (outcome === "outage") return <Navigate to="/offline" replace />;
+  if (outcome === "outage") {
+    const tenantReason = getLastTenantUnavailableReason();
+    return <Navigate to={tenantReason ? `/tenant-unavailable?reason=${tenantReason}` : "/offline"} replace />;
+  }
   return <>{children}</>;
 }
 
@@ -108,6 +112,7 @@ function withSuspense(element: ReactNode): JSX.Element {
  */
 function GlobalResponseWatcher(): null {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { status } = useSessionState();
   const signal = useSyncExternalStore(subscribeGlobalResponseSignal, getGlobalResponseSignal);
   const alreadyExpiredRef = useRef(false);
@@ -123,11 +128,16 @@ function GlobalResponseWatcher(): null {
         alreadyExpiredRef.current = true;
         navigate("/expired");
       }
+    } else if (signal.kind === "tenant-unavailable") {
+      // Already there (the page's own requests may be refused too): re-navigating would only churn history/state.
+      if (pathname !== "/tenant-unavailable") {
+        navigate(`/tenant-unavailable?reason=${signal.reason}`, { replace: true });
+      }
     } else {
       navigate("/maintenance");
     }
     setGlobalResponseSignal(null); // consume — don't re-fire the same signal on every re-render
-  }, [signal, navigate, status]);
+  }, [signal, navigate, status, pathname]);
   return null;
 }
 
@@ -157,6 +167,9 @@ export function AppShell({
     // chromed screens render inside the AppLayout shell and appear in its nav.
     const chromeless = screens.filter((s) => s.chrome === false);
     const chromed = screens.filter((s) => s.chrome !== false);
+    // A chromeless screen may own "/" (ADR-0049: the app.<base> landing); the chromed layout's index child (Role Home)
+    // would otherwise outrank it, so it is left out in that case.
+    const chromelessOwnsRoot = chromeless.some((s) => s.path === "/");
     const routes: RouteObject[] = [
       {
         element: <RootWatcher />,
@@ -179,7 +192,7 @@ export function AppShell({
               </RequireChrome>
             ),
             children: [
-              { index: true, element: <RoleHome screens={chromed} /> },
+              ...(chromelessOwnsRoot ? [] : [{ index: true, element: <RoleHome screens={chromed} /> }]),
               ...chromed.map((s) => ({
                 path: s.path.replace(/^\//, ""),
                 element: withSuspense(createElement(s.screen)),

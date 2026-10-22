@@ -38,7 +38,7 @@ beforeEach(() => {
 
 describe("PR4.2 account and preferences", () => {
   it("shows current relationship, patient return and actual notification destination", async () => {
-    window.history.pushState({}, "", "/account");
+    window.history.pushState({}, "", "/portal/account");
     render(
       <PortalApp
         client={stub((path) =>
@@ -48,18 +48,18 @@ describe("PR4.2 account and preferences", () => {
     );
     expect(await screen.findByText("Family Caregiver")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Back to patient home/ }).getAttribute("href")).toBe(
-      `/p/${PATIENT}`,
+      `/portal/p/${PATIENT}`,
     );
     expect(
       screen.getByRole("link", { name: /View notification preferences/ }).getAttribute("href"),
-    ).toBe(`/p/${PATIENT}/preferences`);
+    ).toBe(`/portal/p/${PATIENT}/preferences`);
     expect(screen.getByRole("heading", { name: "Verify your identity" })).toBeTruthy();
     expect(screen.queryByText(/Change password/)).toBeNull();
   });
 
   it("requires a valid-length code and reports verification errors honestly", async () => {
     const submitted: unknown[] = [];
-    window.history.pushState({}, "", "/account");
+    window.history.pushState({}, "", "/portal/account");
     render(
       <PortalApp
         client={stub((path, method, body) => {
@@ -85,7 +85,7 @@ describe("PR4.2 account and preferences", () => {
   });
 
   it("changes light/dark mode without server requests", async () => {
-    window.history.pushState({}, "", "/account");
+    window.history.pushState({}, "", "/portal/account");
     render(
       <PortalApp
         client={stub((path) =>
@@ -101,7 +101,7 @@ describe("PR4.2 account and preferences", () => {
   });
 
   it("renders notification settings as read-only verified data", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT}/preferences`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT}/preferences`);
     render(
       <PortalApp
         client={stub((path) => {
@@ -126,7 +126,7 @@ describe("PR4.2 account and preferences", () => {
   });
 
   it("distinguishes failed preference loading from an empty channel collection", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT}/preferences`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT}/preferences`);
     render(
       <PortalApp
         client={stub((path) =>
@@ -146,7 +146,7 @@ describe("PR4.2 account and preferences", () => {
 
   it("does not claim sign-out succeeded when the server rejected it", async () => {
     const requests: string[] = [];
-    window.history.pushState({}, "", "/account");
+    window.history.pushState({}, "", "/portal/account");
     render(
       <PortalApp
         client={stub((path) => {
@@ -162,6 +162,6 @@ describe("PR4.2 account and preferences", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(requests).toEqual(["logout"]));
     expect(await screen.findByText("We couldn't confirm sign-out. Please try again.")).toBeTruthy();
-    expect(window.location.pathname).toBe("/account");
+    expect(window.location.pathname).toBe("/portal/account");
   });
 });

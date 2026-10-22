@@ -107,7 +107,7 @@ describe("portal priority screens", () => {
   });
 
   it("presents the next visit as a patient-facing card", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/visits`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/visits`);
     render(<PortalApp client={fixtureClient()} />);
 
     expect(
@@ -122,7 +122,7 @@ describe("portal priority screens", () => {
   });
 
   it("uses the shared, described composer for secure messages", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/messages`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/messages`);
     render(<PortalApp client={fixtureClient()} />);
 
     const composer = await screen.findByRole("textbox", {
@@ -139,7 +139,7 @@ describe("portal priority screens", () => {
   });
 
   it("renders shared documents as a semantic, responsive library", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/documents`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/documents`);
     render(<PortalApp client={fixtureClient()} />);
 
     expect(
@@ -155,7 +155,7 @@ describe("portal priority screens", () => {
   });
 
   it("offers and persists the account theme choice", async () => {
-    window.history.pushState({}, "", "/account");
+    window.history.pushState({}, "", "/portal/account");
     render(<PortalApp client={fixtureClient()} />);
 
     const toggle = await screen.findByRole("button", { name: "Dark" });
@@ -168,7 +168,7 @@ describe("portal priority screens", () => {
   });
 
   it("shows medication details and opens the caregiver report only on request", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/medications`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/medications`);
     render(<PortalApp client={fixtureClient()} />);
 
     expect(
@@ -189,7 +189,7 @@ describe("portal priority screens", () => {
   });
 
   it("keeps amendment requests as a tracked request rather than a direct edit", async () => {
-    window.history.pushState({}, "", `/p/${PATIENT_ID}/amendments`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/amendments`);
     render(<PortalApp client={fixtureClient()} />);
 
     expect(
@@ -213,7 +213,7 @@ describe("portal priority screens", () => {
     window.history.pushState(
       {},
       "",
-      `/p/${PATIENT_ID}/visits/88888888-8888-4888-8888-888888888888/telehealth`,
+      `/portal/p/${PATIENT_ID}/visits/88888888-8888-4888-8888-888888888888/telehealth`,
     );
     render(<PortalApp client={fixtureClient(requests)} />);
 

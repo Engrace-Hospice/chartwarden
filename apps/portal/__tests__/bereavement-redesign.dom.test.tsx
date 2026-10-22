@@ -8,7 +8,7 @@ const P2 = "22222222-2222-4222-8222-222222222222";
 const json = (value: unknown, status = 200): Response => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 type Handler = (path: string, method: string) => Response | Promise<Response>;
 function renderBereavement(handler: Handler) {
-  window.history.pushState({}, "", `/p/${P1}/bereavement`);
+  window.history.pushState({}, "", `/portal/p/${P1}/bereavement`);
   const requests: string[] = [];
   const client = createApiClient({ baseUrl: "http://localhost", fetch: async (input) => {
     const req = input instanceof Request ? input : new Request(input);
@@ -90,7 +90,7 @@ describe("PR4.4 bereavement support", () => {
       return path.endsWith("/resources") ? json({ items: [] }) : json({}, 404);
     });
     await waitFor(() => expect(reads).toBe(1));
-    window.history.pushState({}, "", `/p/${P2}/bereavement`);
+    window.history.pushState({}, "", `/portal/p/${P2}/bereavement`);
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByRole("heading", { name: "New patient support" })).toBeTruthy();
     await act(async () => { resolveOld?.(json({ items: [{ label: "Old patient private program" }] })); });

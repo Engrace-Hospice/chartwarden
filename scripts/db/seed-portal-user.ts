@@ -208,7 +208,7 @@ async function main(): Promise<void> {
     "|---|---|---|---|",
     `| Demo patient | \`${EMAIL}\` | \`${password}\` | patient_portal |`,
     "",
-    "> Sign in at http://localhost:5174 using **Use a password instead**.",
+    "> Sign in at http://localhost:5174/portal/ using **Use a password instead**.",
     "",
   ].join("\n");
   writeSeedCredentials(`${block}${preserved}`);

@@ -9,6 +9,7 @@ import { createElement, useMemo } from "react";
 import type { JSX } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
+import { PORTAL_BASE_PATH } from "./base-path";
 import { PortalAppShell } from "./portal-shell";
 import { createPortalRegistry, portalScreens } from "./screens/registry";
 
@@ -45,7 +46,7 @@ export function PortalApp({
         })),
       },
     ];
-    return createBrowserRouter(routes);
+    return createBrowserRouter(routes, { basename: PORTAL_BASE_PATH || "/" });
   }, []);
 
   return (

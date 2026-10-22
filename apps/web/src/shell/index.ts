@@ -14,7 +14,13 @@ export type {
 } from "./session";
 export { canSeeScreen, guardChromedRoute, toSession } from "./actor-session";
 export type { ActorContextResponse, RouteGuardOutcome } from "./actor-session";
-export { setGlobalResponseSignal, signalForStatus } from "./global-response-signal";
+export {
+  handleObservedResponse,
+  mayCarryTenantRefusal,
+  setGlobalResponseSignal,
+  signalForStatus,
+  tenantSignalFromResponse,
+} from "./global-response-signal";
 export type { GlobalResponseSignal } from "./global-response-signal";
 export {
   systemScreens,
@@ -25,4 +31,5 @@ export {
   Maintenance,
   SessionExpired,
   Suspended,
+  TenantUnavailable,
 } from "./system-pages";

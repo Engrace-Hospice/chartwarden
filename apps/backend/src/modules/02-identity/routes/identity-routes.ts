@@ -163,13 +163,13 @@ function assertOrgMatch(request: FastifyRequest, pathOrgId: string): void {
  */
 async function deliverInvite(
   deps: IdentityRouteDeps,
+  organizationId: string,
   organizationName: string | undefined,
   email: string,
   token: string,
 ): Promise<string | undefined> {
-  const inviteUrl = deps.webAppBaseUrl
-    ? `${deps.webAppBaseUrl.replace(/\/$/, "")}/invite/${token}`
-    : undefined;
+  const origin = (await deps.appOriginFor?.(organizationId)) ?? deps.webAppBaseUrl;
+  const inviteUrl = origin ? `${origin.replace(/\/$/, "")}/invite/${token}` : undefined;
   if (deps.emailTransport && inviteUrl) {
     const orgName = organizationName ?? "your organization";
     try {
@@ -346,7 +346,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       aggregateKind: "organization_invitation",
       aggregateId: created.invitationId,
     });
-    const inviteUrl = await deliverInvite(deps, orgName, email, created.token);
+    const inviteUrl = await deliverInvite(deps, orgId, orgName, email, created.token);
     return reply.code(201).send({
       invitationId: created.invitationId,
       expiresAt: created.expiresAt,
@@ -390,7 +390,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       aggregateId: invId,
     });
     const orgName = await organizationNameFor(deps, actor.userId, orgId);
-    const inviteUrl = await deliverInvite(deps, orgName, target.email, reminted.token);
+    const inviteUrl = await deliverInvite(deps, orgId, orgName, target.email, reminted.token);
     return reply.code(200).send({
       invitationId: reminted.invitationId,
       expiresAt: reminted.expiresAt,

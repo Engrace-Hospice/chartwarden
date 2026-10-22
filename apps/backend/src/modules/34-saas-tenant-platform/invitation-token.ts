@@ -6,6 +6,8 @@ import { createHash, randomBytes } from "node:crypto";
 /** What delivers the invitation email (the provision gateway in prod) and where the accept page lives. */
 export interface InvitationDeliveryPort {
   readonly acceptBaseUrl: string;
+  /** Per-organization accept base (`<tenant origin>/tenant-invite`); wins over `acceptBaseUrl` when it answers. */
+  readonly acceptBaseUrlFor?: (organizationId: string) => Promise<string | undefined>;
   send(input: {
     readonly to: string;
     readonly inviteeFullName: string;
@@ -31,6 +33,14 @@ export interface MintedInvitationToken {
   readonly rawToken: string;
   readonly tokenHash: string;
   readonly invitationUrl: string;
+}
+
+/** The accept-page base for this organization's invitation: its own host when bound, else the global one. */
+export async function acceptBaseUrlForOrg(
+  delivery: Pick<InvitationDeliveryPort, "acceptBaseUrl" | "acceptBaseUrlFor">,
+  organizationId: string,
+): Promise<string> {
+  return (await delivery.acceptBaseUrlFor?.(organizationId)) ?? delivery.acceptBaseUrl;
 }
 
 export function mintInvitationToken(acceptBaseUrl: string): MintedInvitationToken {

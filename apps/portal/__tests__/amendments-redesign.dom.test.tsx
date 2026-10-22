@@ -8,7 +8,7 @@ const P2 = "22222222-2222-4222-8222-222222222222";
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 type Handler = (path: string, method: string, body: Record<string, unknown> | null) => Response | Promise<Response>;
 function renderAmendments(handler: Handler) {
-  window.history.pushState({}, "", `/p/${P1}/amendments`);
+  window.history.pushState({}, "", `/portal/p/${P1}/amendments`);
   const requests: Array<{ path: string; method: string; body: Record<string, unknown> | null }> = [];
   const client = createApiClient({ baseUrl: "http://localhost", fetch: async (input) => {
     const req = input instanceof Request ? input : new Request(input);
@@ -103,7 +103,7 @@ describe("PR4.3 patient correction requests", () => {
         : json({ items: [{ ...amendment, id: "other", requestedChange: "New patient request" }] });
     });
     await waitFor(() => expect(reads).toBe(1));
-    window.history.pushState({}, "", `/p/${P2}/amendments`);
+    window.history.pushState({}, "", `/portal/p/${P2}/amendments`);
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByText("New patient request")).toBeTruthy();
     await act(async () => { resolveOld?.(json({ items: [{ ...amendment, requestedChange: "Old patient private request" }] })); });

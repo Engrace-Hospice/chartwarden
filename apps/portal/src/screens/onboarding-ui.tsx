@@ -1,11 +1,12 @@
 import { Glyph } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
+import { PORTAL_BASE_PATH } from "../base-path";
 
 /** Shared identity and accessible layout for pre-session onboarding. No patient information is shown here. */
 export function PortalOnboardingBrand(): JSX.Element {
   return (
     <div className="wx-portal-auth-brand">
-      <img className="wx-portal-auth-brand__mark" src="/chartwarden-mark.svg" alt="" />
+      <img className="wx-portal-auth-brand__mark" src={`${PORTAL_BASE_PATH}/chartwarden-mark.svg`} alt="" />
       <div><strong>ChartWarden</strong><span>Patient & Family Portal</span></div>
     </div>
   );

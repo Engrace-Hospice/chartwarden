@@ -26,7 +26,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("PR4.1 onboarding", () => {
   it("preserves a chromeless, guided sign-in with a password alternative", () => {
-    window.history.pushState({}, "", "/");
+    window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={stub(() => new Response(null, { status: 404 }))} />);
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Portal navigation" })).toBeNull();
@@ -39,7 +39,7 @@ describe("PR4.1 onboarding", () => {
   it("handles sign-in network failures without leaving the form stuck", async () => {
     const mockFetch = vi.fn().mockRejectedValue(new Error("offline"));
     vi.stubGlobal("fetch", mockFetch);
-    window.history.pushState({}, "", "/");
+    window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={stub(() => new Response(null, { status: 404 }))} />);
     fireEvent.change(screen.getByRole("textbox", { name: "Email address" }), { target: { value: "care@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "Email me a sign-in link" }));
@@ -50,7 +50,7 @@ describe("PR4.1 onboarding", () => {
   it("binds the only eligible organization by explicit account ID even with blocked accounts", async () => {
     const bound: unknown[] = [];
     const patientSelected: unknown[] = [];
-    window.history.pushState({}, "", "/signed-in");
+    window.history.pushState({}, "", "/portal/signed-in");
     render(<PortalApp client={stub((path, method, body) => {
       if (path.endsWith("/sign-in/accounts")) return json({ items: [
         { portalAccountId: "blocked", organizationName: "Inactive", relationship: "caregiver", blockedReason: "SIGN_IN_ACCOUNT_NOT_ACTIVE" },
@@ -64,12 +64,12 @@ describe("PR4.1 onboarding", () => {
     })} />);
     await waitFor(() => expect(bound).toEqual(["eligible"]));
     await waitFor(() => expect(patientSelected).toEqual([P1]));
-    await waitFor(() => expect(window.location.pathname).toBe(`/p/${P1}`));
+    await waitFor(() => expect(window.location.pathname).toBe(`/portal/p/${P1}`));
   });
 
   it("lets the user choose among multiple eligible care teams", async () => {
     const bound: unknown[] = [];
-    window.history.pushState({}, "", "/signed-in");
+    window.history.pushState({}, "", "/portal/signed-in");
     render(<PortalApp client={stub((path, _method, body) => {
       if (path.endsWith("/sign-in/accounts")) return json({ items: [
         { portalAccountId: "a", organizationName: "Hospice A", relationship: "family_caregiver", blockedReason: null },
@@ -86,7 +86,7 @@ describe("PR4.1 onboarding", () => {
   it("requires successful server patient selection and prevents a second selection while pending", async () => {
     let complete: ((value: Response) => void) | undefined;
     const selected: unknown[] = [];
-    window.history.pushState({}, "", "/patient-picker");
+    window.history.pushState({}, "", "/portal/patient-picker");
     render(<PortalApp client={stub((path, method, body) => {
       if (path.endsWith("/sessions/patients")) return json({ items: [patient(P1, "Patient One"), patient(P2, "Patient Two")] });
       if (path.endsWith("/sessions/select-patient") && method === "POST") {
@@ -101,14 +101,14 @@ describe("PR4.1 onboarding", () => {
     await waitFor(() => expect(selected).toEqual([P1]));
     fireEvent.click(screen.getByRole("button", { name: /Patient Two/ }));
     expect(selected).toEqual([P1]);
-    expect(window.location.pathname).toBe("/patient-picker");
+    expect(window.location.pathname).toBe("/portal/patient-picker");
     complete?.(json({ ok: true }));
-    await waitFor(() => expect(window.location.pathname).toBe(`/p/${P1}`));
+    await waitFor(() => expect(window.location.pathname).toBe(`/portal/p/${P1}`));
   });
 
   it("keeps the selection error on the picker and permits retry", async () => {
     let calls = 0;
-    window.history.pushState({}, "", "/patient-picker");
+    window.history.pushState({}, "", "/portal/patient-picker");
     render(<PortalApp client={stub((path) => {
       if (path.endsWith("/sessions/patients")) return json({ items: [patient(P1, "Patient One")] });
       if (path.endsWith("/sessions/select-patient")) {
@@ -120,14 +120,14 @@ describe("PR4.1 onboarding", () => {
     })} />);
     fireEvent.click(await screen.findByRole("button", { name: /Patient One/ }));
     expect(await screen.findByText("This information is not available on your account.")).toBeTruthy();
-    expect(window.location.pathname).toBe("/patient-picker");
+    expect(window.location.pathname).toBe("/portal/patient-picker");
     fireEvent.click(screen.getByRole("button", { name: /Patient One/ }));
-    await waitFor(() => expect(window.location.pathname).toBe(`/p/${P1}`));
+    await waitFor(() => expect(window.location.pathname).toBe(`/portal/p/${P1}`));
   });
 
   it("accepts an invitation without displaying or retaining its URL token", async () => {
     const submitted: unknown[] = [];
-    window.history.pushState({}, "", "/accept-invitation?token=synthetic-secret");
+    window.history.pushState({}, "", "/portal/accept-invitation?token=synthetic-secret");
     render(<PortalApp client={stub((path, _method, body) => {
       if (path.endsWith("/invitations/accept")) { submitted.push(body?.token); return json({ ok: true }); }
       return new Response(null, { status: 404 });

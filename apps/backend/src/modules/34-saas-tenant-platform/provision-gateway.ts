@@ -87,6 +87,7 @@ export interface M34ProvisionGateway
 export function createM34ProvisionGateway(
   config: M34ProvisionGatewayConfig,
   http: M34ProvisionGatewayHttpPort = liveHttp,
+  acceptBaseUrlFor?: (organizationId: string) => Promise<string | undefined>,
 ): M34ProvisionGateway {
   return {
     keyMaterial: {
@@ -141,6 +142,7 @@ export function createM34ProvisionGateway(
     },
     invitation: {
       acceptBaseUrl: config.invitationAcceptBaseUrl,
+      ...(acceptBaseUrlFor ? { acceptBaseUrlFor } : {}),
       async send(input) {
         const body = await call(http, config, "/notifications/tenant-invitation", input);
         if (!record(body) || body.accepted !== true) {

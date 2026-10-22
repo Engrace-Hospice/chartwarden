@@ -19,7 +19,7 @@ function json(data: unknown, status = 200): Response {
 }
 
 function renderAt(path: string, fetcher: (request: Request) => Promise<Response> | Response) {
-  window.history.pushState({}, "", path);
+  window.history.pushState({}, "", `/portal${path}`);
   const client = createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input) => {
@@ -139,7 +139,7 @@ describe("PR5 portal cross-screen regression checks", () => {
     fireEvent.click(screen.getByRole("button", { name: "Join visit" }));
     expect(await screen.findByTitle("Video visit")).toBeTruthy();
     await act(async () => {
-      window.history.pushState({}, "", `/p/${B}/visits/${VISIT_B}/telehealth`);
+      window.history.pushState({}, "", `/portal/p/${B}/visits/${VISIT_B}/telehealth`);
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(screen.queryByTitle("Video visit")).toBeNull();

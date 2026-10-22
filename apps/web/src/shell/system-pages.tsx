@@ -9,7 +9,7 @@ import { CenteredStatusLayout, Glyph, useCorrelationId } from "@chartwarden/ui";
 // M1 (the app shell owns them), registered chromeless (standalone — they must work pre-auth too).
 import type { JSX } from "react";
 import type { ComponentType } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 const GoHome = (): JSX.Element => <Link to="/">Go home</Link>;
 
@@ -94,6 +94,39 @@ export function Suspended(): JSX.Element {
   );
 }
 
+const TENANT_UNAVAILABLE_COPY = {
+  closed: {
+    headline: "This organization is no longer on ChartWarden",
+    explanation:
+      "This address is no longer in use. If you think this is a mistake, contact your administrator.",
+  },
+  suspended: {
+    headline: "This organization is suspended",
+    explanation: "Access to this organization is paused. Contact your administrator.",
+  },
+  unknown: {
+    headline: "No organization at this address",
+    explanation: "Check the address you were given, or ask your administrator for the right link.",
+  },
+} as const;
+
+/** ADR-0049: a closed / suspended / unknown tenant host. Static and PHI-free; `?reason=` picks the copy. */
+export function TenantUnavailable(): JSX.Element {
+  const [params] = useSearchParams();
+  const reason = params.get("reason");
+  const copy =
+    reason === "closed" || reason === "suspended"
+      ? TENANT_UNAVAILABLE_COPY[reason]
+      : TENANT_UNAVAILABLE_COPY.unknown;
+  return (
+    <CenteredStatusLayout
+      icon={<Glyph name="block" size={24} />}
+      headline={copy.headline}
+      explanation={copy.explanation}
+    />
+  );
+}
+
 /** Routable utility pages (chromeless). `*` is the global not-found catch-all. */
 export const systemScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 1,
@@ -116,6 +149,13 @@ export const systemScreens: ScreenRegistryModule<ComponentType> = {
       title: "Session expired",
       chrome: false,
       screen: SessionExpired,
+    },
+    {
+      id: "system.tenant-unavailable",
+      path: "/tenant-unavailable",
+      title: "Organization unavailable",
+      chrome: false,
+      screen: TenantUnavailable,
     },
     {
       id: "system.suspended",

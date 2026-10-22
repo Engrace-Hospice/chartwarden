@@ -51,3 +51,14 @@ export function classifyTenantHost(host: string, baseDomain: string): TenantHost
   if (label.includes(".") || label.startsWith("xn--") || !TENANT_SLUG_PATTERN.test(label)) return { kind: "invalid" };
   return { kind: "tenant", label };
 }
+
+/**
+ * `https://<slug>.<baseDomain>` for a slug that really is a tenant host, else null. A legacy organization row may carry
+ * a slug the 1144 rules would refuse (it is only checked on write); such a slug must never be built into a link.
+ */
+export function tenantOriginForSlug(slug: string, baseDomain: string): string | null {
+  if (!validateTenantSlug(slug).ok) return null;
+  const host = `${slug}.${baseDomain}`;
+  const c = classifyTenantHost(host, baseDomain);
+  return c.kind === "tenant" && c.label === slug ? `https://${host}` : null;
+}

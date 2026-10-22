@@ -52,7 +52,7 @@ describe("TASK-050C — portal registry-driven screen smoke render", () => {
 
   for (const s of portalScreens.screens) {
     it(`renders "${s.id}" (${s.path}) without crashing`, async () => {
-      window.history.pushState({}, "", concretePath(s.path));
+      window.history.pushState({}, "", `/portal${concretePath(s.path)}`);
       const { container } = render(<PortalApp client={stubClient()} />);
       await waitFor(() => settledWithoutCrash(container), { timeout: 5_000 });
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);

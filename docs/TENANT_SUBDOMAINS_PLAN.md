@@ -99,13 +99,121 @@ user's explicit go-ahead.
   attributes in `csrf.ts` and the Better Auth config before changing them); portal gets its own cookie name
   and session class.
 
-### Phase 4 — web (PR B)
-- Tenant host: normal sign-in page with the tenant's name; no org-select. Invite and magic-link emails link
-  to the inviting tenant's host.
-- `app.chartwarden.com` landing (D5): email in, always "check your email", links mailed to the user's tenant
-  hosts, never shown (no user enumeration).
-- Portal served under `/portal/` of the tenant host. Staff cookie never authenticates a portal route and the
-  reverse (401).
+### Phase 4 — web (PR B) — built (backend + web)
+
+PR A merged as #538; its migrations landed as 1144 and 1145 (renumbered on merge). Decisions taken for Phase 4
+(the recommended answers, recorded before building):
+
+- **Link hosts are per organization.** One resolver, `tenantAppOrigin(orgId)`, returns `https://<slug>.<base>` when
+  `TENANT_BASE_DOMAIN` is set and falls back to today's `WEB_APP_URL` / `BETTER_AUTH_URL` otherwise (demo unchanged).
+  It replaces the global `webAppBaseUrl` for staff invitation, auditor redeem, M34 first-admin invite, portal
+  invitation and funeral-home / collaborator links. Better Auth's reset and magic-link `url` is rewritten to the
+  request's origin only when the tenant origin matcher trusts it; otherwise it is left alone.
+- **No second portal cookie.** Staff and portal share the Better Auth cookie on a host. Separation is enforced by
+  session class in one `onRequest` hook beside the tenant-host guard: a portal-class session on a non-portal path,
+  or a staff-class session on `/api/v1/portal/*`, gets 401. Signing in to one replaces the other in that browser;
+  that is acceptable (a person is rarely both) and is stated in the runbook.
+- **Tenant sign-in shows the tenant's name** through `GET /api/v1/public/tenant`: host-derived (no parameter),
+  unauthenticated, rate limited, answers `{ status, displayName }` where `displayName` is present only for an
+  active or created org. Backed by a narrow SECURITY DEFINER function (the `resolve_tenant_host` pattern). The SPA
+  picker is skipped on a tenant host (the pin already makes it a one-org choice).
+- **Closed / suspended / unknown host** renders a static page chosen by the response body `error.code`
+  (`TENANT_CLOSED`, `TENANT_SUSPENDED`, `TENANT_HOST_UNKNOWN`); the response-signal layer learns the codes.
+- **`app.<base>` landing:** `POST /api/v1/public/find-my-organization { email }` always answers 202 "check your
+  email". It mails the user the sign-in link of each active organization they belong to (one email, only when at
+  least one exists), after a per-IP limit and a per-hashed-email limit. A narrow SECURITY DEFINER function maps
+  email to `(slug, display_name)` of active memberships. No link or organization is ever shown in the response.
+- **Portal** is built with `base: "/portal/"` and served under `/portal/` of the tenant host, same origin as `/api`.
+
+**Phase 4 backend build notes** (branch `feat/tenant-subdomains-b`, backend half only; the SPA work is separate).
+`bootstrap/tenant-app-origin.ts` is `tenantAppOrigin(orgId)` (slug read under the org's own `withOrgContext`, no
+extra privileged path; unset base or an unreadable slug falls back to the global origin). It feeds the staff invite
+(`deliverInvite` and the echoed `inviteUrl`), the auditor redeem link, portal invitations and funeral-home /
+collaborator links (landing base `<origin>/portal`; `PORTAL_APP_URL` is honoured only when `TENANT_BASE_DOMAIN` is
+unset) and the M34 first-admin link (`<origin>/tenant-invite/<token>`, via an optional `acceptBaseUrlFor` on the
+invitation port; `M34_INVITATION_ACCEPT_URL` still applies when the base is unset). The link-delivery port gained
+`organizationId`. Better Auth reset / magic-link URLs are rewritten to the request origin by
+`rewriteLinkToRequestOrigin` only when `Origin` is a tenant origin the matcher trusts and equals the request `Host`.
+Migration 1148 adds `resolve_tenant_public(label)` and `tenant_links_for_email(email)` (same SECURITY DEFINER shape
+as 1145; the second returns active memberships in active orgs, capped at 20). `GET /api/v1/public/tenant` and
+`POST /api/v1/public/find-my-organization` live in M2 (`routes/public-tenant-routes.ts`); both 404 unless the base
+domain is set. The find route answers 202 for every well-formed address; the per-IP budget (10 / 15 min) answers 429,
+the per-sha256(email) budget (3 / 15 min) silently suppresses the send, and the lookup and send run after the reply.
+`tenantSessionClassGuard` (registered right after the host guard, acting only where it stamped `tenantHostOrgId`)
+answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1/portal/*` plus session plumbing
+(`/api/auth/`, `/api/v1/auth/`, `/api/v1/public/`, `/health`, `/ready`) and for a staff-class session on
+`/api/v1/portal/*` other than `/api/v1/portal/sign-in/*`. It is off in single-host mode, so the demo is unchanged.
+
+**Phase 4 web build notes** (same branch; SPA half).
+- *Sign-in*: `02-identity/tenant-info.ts` `fetchTenantInfo(client)` calls `GET /api/v1/public/tenant` once; a 200 with
+  `displayName` replaces the subtitle with "Sign in to <name>". A 404, a network error or a throw all return `null`
+  and the page is exactly as before; sign-in is never gated on the call.
+- *Picker skipped on a tenant host*: `OrganizationSelect` binds the sole active membership through
+  `select-organization` without a click only when `fetchTenantInfo` answers (a tenant host) AND there is exactly one
+  active membership; the spinner stays up until the full-page reload. The demo host, and a tenant host with several
+  memberships, keep the picker.
+- *Closed / suspended / unknown*: `api client onResponseStatus` now receives the `Response` as a third argument;
+  `main.tsx` clones and reads the body only for 403/404/410 on `/api/*` outside `/api/v1/public/*`
+  (`mayCarryTenantRefusal`), and `error.code` `TENANT_CLOSED` / `TENANT_SUSPENDED` / `TENANT_HOST_UNKNOWN` raises a
+  `tenant-unavailable` signal. `GlobalResponseWatcher` navigates (replace) to the static chromeless
+  `/tenant-unavailable?reason=closed|suspended|unknown` (`system.tenant-unavailable`). Any other 403/404 is untouched.
+  `/api/v1/public/*` is excluded because it answers 404 `TENANT_HOST_UNKNOWN` on the demo host and on `app.<base>`.
+  Consequence: an unknown tenant host's sign-in page itself stays generic (its public lookup is excluded); the first
+  auth/context call after sign-in lands on the "no organization" page.
+- *`app.<base>` landing*: `isAppLandingHost(hostname)` (first label exactly `app`, at least 3 labels; `app` is a
+  reserved slug so no tenant collides) gates `main.tsx` registering `appLandingScreens` (`/`, chromeless). The shell
+  drops the Role Home index route when a chromeless screen owns `/`, otherwise the chromed layout outranks it. The
+  screen POSTs `find-my-organization` and always shows "If that address belongs to an organization, we've emailed
+  sign-in links", including when the request fails.
+- *Portal under `/portal/`*: `apps/portal/src/base-path.ts` (`PORTAL_BASE_PATH = "/portal"`) feeds Vite `base`, the
+  router `basename`, the magic-link `callbackURL` (`${origin}/portal/signed-in`) and `errorCallbackURL`, the two brand
+  `<img>` URLs and the post-sign-out `location.assign`. `index.html` public assets are rewritten by Vite. API calls
+  stay same-origin absolute `/api/...`; the dev proxy keys are unchanged, and dev serves the portal at
+  `http://localhost:5174/portal/`. No service worker or manifest exists. Portal tests push `/portal/...` URLs.
+- *Session-class allowlist audit*: every non-`/api/v1/portal/*` call in `apps/portal/src` is `/api/auth/*` (allowed),
+  `POST /api/v1/collaborators/consume` (anonymous) and `GET /api/v1/funeral/case` (a `funeral_home` session, which the
+  guard treats as neither portal nor staff). `StepUpCard`'s `/api/v1/sessions/step-up` is not used by the portal (it
+  uses `/api/v1/portal/sessions/step-up`). No allowlist change was needed; `apps/portal/__tests__/tenant-base-path.test.ts`
+  fails if the SPA gains a call outside that set.
+- *Not verified here*: a live browser pass against the Docker API on a real `*.<base>` host (needs wildcard DNS or
+  hosts entries and `TENANT_BASE_DOMAIN`); covered by jsdom tests and a production build of both SPAs only.
+
+**Phase 4 pre-PR review fixes** (same branch; findings from the mandatory pre-PR review).
+- *Recipient gate (B1, was a regression)*: `userMayUseTenantHost` read `tenant_links_for_email`, which only knows ACTIVE
+  memberships, so a portal-only person (patient / caregiver / bereaved: a `portal_account`, no membership) kept their
+  magic link on the global origin. Migration **1149** adds `email_belongs_to_tenant(p_email, p_label)` (SECURITY DEFINER,
+  owner `chartwarden_admin`, pinned search_path, EXECUTE for `chartwarden_app` only): boolean, no row cap, true for an
+  active membership OR a live portal account (invited / active / bereaved, not revoked or suspended) in the organization
+  whose CURRENT slug is `p_label` and whose status is `active` / `created` (a retired alias never matches).
+  `createUserMayUseTenantHost` (02-identity) wraps it; proved live in `m1-organization-slug-alias.live.test.ts`.
+- *Portal base path (B2)*: no deploy config serves the portal SPA today (no Dockerfile / nginx / compose entry), so the
+  only contract is `PORTAL_APP_URL` plus the build. The base is now a build-time knob, `VITE_PORTAL_BASE`
+  (`apps/portal/src/base-path.ts` `resolvePortalBase`): unset keeps `/portal` (tenant mode, dev, tests); `""` or `/`
+  builds for an origin-root deployment. In single-host mode (TENANT_BASE_DOMAIN unset) the backend still returns
+  `PORTAL_APP_URL` verbatim, so the operator sets `PORTAL_APP_URL` to wherever that build is served
+  (`https://portal.example` with `VITE_PORTAL_BASE=`, or `https://app.example/portal` with the default). Demo links are
+  unchanged. In tenant mode links are `https://<slug>.<base>/portal/...` as before.
+- *Session-class guard (B3)*: matches the DECODED path (`/api/v1/%70ortal/x` previously bypassed the staff-on-portal
+  check); a path that does not decode answers 400. Two token flows pass a stale cookie of the other class (POST only):
+  `POST /api/v1/portal/invitations/accept` for a staff-class session and `POST /api/v1/collaborators/consume` for a
+  portal-class session.
+- *find-my-organization hardening (B4-B6)*: the two limiters are built with `failClosed` (new opt-in on
+  `createBudgetedRateLimiter`; default stays fail-open for every other route), so a store outage skips the send and
+  still answers 202. `tenantOriginForSlug` (types) refuses a slug the 1144 rules would reject; `tenant-app-origin` falls
+  back to the global origin and the email omits that link (no email at all if none is left). Display names are
+  capped at 80 characters with URLs and control characters stripped; links remain slug-only.
+- *Link delivery gate (B7)*: collaborator / funeral links send when only `TENANT_BASE_DOMAIN` is set
+  (`baseUrl` is optional on `createLinkDelivery`; it throws, rather than mail a dead link, when neither a tenant origin nor
+  a global base resolves).
+- *Web (W1-W6)*: the organization picker's auto-bind is wrapped end to end; a rejected or refused bind falls back to the
+  picker, a `TENANT_HOST_MISMATCH` refusal names the host's organization, and every error state offers "Try again" and
+  "Sign out". The tenant lookup now runs in parallel with the memberships fetch and must report `status === "active"`.
+  `isAppLandingHost` requires the build-time `VITE_TENANT_BASE_DOMAIN` (set it to the backend's `TENANT_BASE_DOMAIN`;
+  `Dockerfile.web` takes it as a build ARG) and matches `app.<base>` exactly - unset means never the landing, so a
+  single-host deployment at `app.<domain>` is not hijacked. The landing uses the shared `TextField` / `Button`, announces
+  the confirmation as `role="status"` and moves focus to its heading. `GlobalResponseWatcher` no longer re-navigates when
+  already on `/tenant-unavailable`. `handleObservedResponse` (shell) is the one `onResponseStatus` handler; tests cover the
+  Response reaching it and a 410 body routing to `/tenant-unavailable` end to end.
 
 ### Phase 5 — edge and environment (PR B)
 - Confirm quillwardhealth.com controls `chartwarden.com` DNS; add the wildcard record and DNS-01 credentials.
@@ -115,6 +223,10 @@ user's explicit go-ahead.
   path rules on Talos. Path routing: `/api/` backend, `/portal/` portal SPA, `/` staff SPA.
 - CSP: `img-src` and `connect-src` to `'self'` plus the explicit `storage.` host.
 - Ops runbook section; `smoke.sh` probes a sample tenant host and a wrong-tenant request.
+- Edge must serve the portal build for EVERY `/portal/*` path (a deep-link reload such as `/portal/p/<id>/care-plan`, and the
+  magic-link return `/portal/signed-in`) with its own `index.html` fallback, and must not shadow it with the staff SPA's
+  fallback. `smoke.sh` probes a deep `/portal/` path and asserts the portal document (not the staff one) comes back.
+- Pass `VITE_TENANT_BASE_DOMAIN` (= `TENANT_BASE_DOMAIN`) as a build arg to `Dockerfile.web` so `app.<base>` shows the landing.
 
 ### Phase 6 — provisioning (PR B)
 - M34 tenant provisioning validates the slug (Phase 1 rules) and audits the action. No per-tenant DNS,
