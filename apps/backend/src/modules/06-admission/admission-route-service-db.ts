@@ -3211,7 +3211,8 @@ export function createDbAdmissionRouteService(
       actorUserId,
       opts,
     ): Promise<MutationResult & { admissionId: string }> {
-      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      const grant: { patientId?: string } = {};
+      const result = await withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
         if (cur.status === "converted") {
@@ -3350,6 +3351,10 @@ export function createDbAdmissionRouteService(
             aggregateId: id,
           });
         }
+        // Only a patient this referral itself created ("created") may open to the clinician converting it. A patient
+        // bound with confirm-patient ("matched") is an existing chart the actor was never scoped to, so conversion
+        // must not become a way to read it.
+        if (cur.patientResolutionStatus === "created") grant.patientId = patientId;
         return {
           id: r.id,
           state: r.status,
@@ -3357,6 +3362,14 @@ export function createDbAdmissionRouteService(
           admissionId: adm.id,
         };
       });
+      // After the conversion has committed, so a refused or rolled-back conversion never leaves a grant behind.
+      if (grant.patientId)
+        await patientResolver().grantAdmittingAccess({
+          organizationId,
+          patientId: grant.patientId,
+          userId: actorUserId,
+        });
+      return result;
     },
     async declineReferral(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {

@@ -19,6 +19,7 @@ import { createPatientReader } from "./patient-reader";
 const P = schema.patients;
 const ID = schema.patientIdentifiers;
 const SEAM_SYSTEM_USER_ID = "";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function splitReceiptName(name: string): { firstName: string; lastName: string } {
   const cleaned = name.trim().replace(/\s+/g, " ");
@@ -168,6 +169,17 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
 
     confirmPatient(input) {
       return reader.findById({ organizationId: input.organizationId, id: input.patientId });
+    },
+
+    async grantAdmittingAccess(input) {
+      // `clinician_user_id` is a uuid column: a machine principal or empty actor has no caseload to join.
+      if (!UUID.test(input.userId)) return;
+      await withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: input.userId },
+        (tx) =>
+          ensureAdmittingAssignment(tx, { ...input, reason: "Started the admission from a referral" }),
+      );
     },
 
     async createPatientFromIntake(input: PatientCreateFromIntakeInput) {

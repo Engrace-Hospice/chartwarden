@@ -53,6 +53,7 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const CREATOR = "33333333-3333-3333-3333-333333333333";
 const BYSTANDER = "44444444-4444-4444-4444-444444444444";
 const ORG_B_USER = "55555555-5555-5555-5555-555555555555";
+const NURSE = "66666666-6666-6666-6666-666666666666";
 // A CMS-format MBI (`isValidMedicareNumber`), unique to this suite.
 const MBI = "1EG4TE5MK73";
 
@@ -104,6 +105,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
       [CREATOR, "creator@x.test"],
       [BYSTANDER, "bystander@x.test"],
       [ORG_B_USER, "orgb@x.test"],
+      [NURSE, "nurse@x.test"],
     ])
       await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [id, email]);
     providerEntityId = (
@@ -285,6 +287,73 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
         false,
       );
       expect(await admissionScope(ctx(ORG_B, ORG_B_USER, supervisor), admissionId)).toBe(false);
+    });
+
+    it("the clinician who starts the admission is put on the caseload too, even when someone else created the patient", async () => {
+      const ref = await triagedReferral(ORG_A, "Kappa, Kai");
+      const { patientId } = await svc.createReferralPatient(ORG_A, ref.id, ref.version, CREATOR);
+      const qualified = await svc.qualifyReferral(ORG_A, ref.id, ref.version + 1, CREATOR);
+      expect(await caseloadOrScope(ctx(ORG_A, NURSE, ["rn"]), patientId)).toBe(false);
+
+      const { admissionId } = await svc.acceptReferral(
+        ORG_A,
+        ref.id,
+        { primaryDiagnosisIcd10: "C34.90", patientId },
+        qualified.version,
+        NURSE,
+      );
+
+      const holders = (await openAssignments(patientId)).map((r) => r.clinician_user_id).sort();
+      expect(holders).toEqual([CREATOR, NURSE].sort());
+      expect(await caseloadOrScope(ctx(ORG_A, NURSE, ["rn"]), patientId)).toBe(true);
+      expect(await admissionScope(ctx(ORG_A, NURSE, ["rn"]), admissionId)).toBe(true);
+      expect(await caseloadOrScope(ctx(ORG_A, BYSTANDER, ["rn"]), patientId)).toBe(false);
+      expect(await caseloadOrScope(ctx(ORG_B, NURSE, ["rn"]), patientId)).toBe(false);
+    });
+
+    it("a conversion that is refused grants nothing", async () => {
+      const ref = await triagedReferral(ORG_A, "Lambda, Lou");
+      const { patientId } = await svc.createReferralPatient(ORG_A, ref.id, ref.version, CREATOR);
+
+      // The referral is triaged but not qualified, so conversion throws.
+      await expect(
+        svc.acceptReferral(
+          ORG_A,
+          ref.id,
+          { primaryDiagnosisIcd10: "C34.90", patientId },
+          ref.version + 1,
+          NURSE,
+        ),
+      ).rejects.toThrow();
+
+      expect((await openAssignments(patientId)).map((r) => r.clinician_user_id)).toEqual([CREATOR]);
+    });
+
+    it("converting a referral bound to an EXISTING patient grants nothing (confirm-patient is not a way into a chart)", async () => {
+      const first = await triagedReferral(ORG_A, "Mu, Mae");
+      const victim = await svc.createReferralPatient(ORG_A, first.id, first.version, CREATOR);
+      const ref = await triagedReferral(ORG_A, "Nu, Nell");
+      const bound = await svc.confirmReferralPatient(
+        ORG_A,
+        ref.id,
+        victim.patientId,
+        ref.version,
+        NURSE,
+      );
+      const qualified = await svc.qualifyReferral(ORG_A, ref.id, bound.version, NURSE);
+
+      await svc.acceptReferral(
+        ORG_A,
+        ref.id,
+        { primaryDiagnosisIcd10: "C34.90", patientId: victim.patientId },
+        qualified.version,
+        NURSE,
+      );
+
+      expect((await openAssignments(victim.patientId)).map((r) => r.clinician_user_id)).toEqual([
+        CREATOR,
+      ]);
+      expect(await caseloadOrScope(ctx(ORG_A, NURSE, ["rn"]), victim.patientId)).toBe(false);
     });
 
     it("admitting_staff is an access grant only: excluded from the care-team roster, still in the caseload", async () => {
