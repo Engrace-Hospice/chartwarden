@@ -21,7 +21,7 @@ import type {
   OutOfBandTransportChannel,
   ResolvedDestination,
 } from "@chartwarden/messaging";
-import { encodeNativeDestination } from "@chartwarden/messaging";
+import { PUSH_TOKEN_UNREGISTERED, encodeNativeDestination } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { eq, sql } from "drizzle-orm";
 import { type DeliveryOutboxPort, type Tx, applyDeliveryTransition } from "./delivery-settlement";
@@ -82,6 +82,13 @@ export function createDrizzleDeliveryDispatchStore(
     inOrg(claim.organizationId, async (tx) => {
       await tx.execute(
         sql`SELECT delivery_endpoint_record_result(${claim.organizationId}, ${claim.deliveryId}, ${success})`,
+      );
+    });
+
+  const expireDeadToken = (claim: ClaimedDelivery) =>
+    inOrg(claim.organizationId, async (tx) => {
+      await tx.execute(
+        sql`SELECT delivery_endpoint_expire_dead_token(${claim.organizationId}, ${claim.deliveryId})`,
       );
     });
 
@@ -187,7 +194,11 @@ export function createDrizzleDeliveryDispatchStore(
           now,
         }),
       );
-      if (endpointId) await recordEndpointResult(claim, false);
+      if (endpointId) {
+        await recordEndpointResult(claim, false);
+        // A dead native token will never work again: expire it (best-effort bookkeeping, like the health counter).
+        if (reason === PUSH_TOKEN_UNREGISTERED) await expireDeadToken(claim);
+      }
     },
   };
 }

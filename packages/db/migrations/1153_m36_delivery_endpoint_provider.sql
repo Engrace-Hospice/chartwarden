@@ -37,4 +37,27 @@ AS $$
 $$;--> statement-breakpoint
 ALTER FUNCTION delivery_endpoint_for_delivery(uuid, uuid) OWNER TO chartwarden_admin;--> statement-breakpoint
 REVOKE ALL ON FUNCTION delivery_endpoint_for_delivery(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
-GRANT EXECUTE ON FUNCTION delivery_endpoint_for_delivery(uuid, uuid) TO chartwarden_app;
+GRANT EXECUTE ON FUNCTION delivery_endpoint_for_delivery(uuid, uuid) TO chartwarden_app;--> statement-breakpoint
+
+-- A native vendor said the device token is dead (FCM UNREGISTERED / APNs 410): expire THAT delivery's endpoint so the next send
+-- falls back to another verified endpoint or fails fast. Native providers only (a Web Push 404/410 stays on the failure counter),
+-- scoped by (organization, delivery) exactly like delivery_endpoint_record_result (0355), so a spoofed delivery id expires nothing.
+CREATE FUNCTION delivery_endpoint_expire_dead_token(
+  p_organization_id uuid,
+  p_delivery_id uuid
+) RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  UPDATE delivery_endpoint e
+     SET verification_status = 'expired'
+    FROM notification_delivery nd
+    JOIN alert a ON a.id = nd.alert_id AND a.organization_id = p_organization_id
+   WHERE nd.id = p_delivery_id
+     AND e.id = nd.endpoint_id
+     AND e.provider <> 'web';
+$$;--> statement-breakpoint
+ALTER FUNCTION delivery_endpoint_expire_dead_token(uuid, uuid) OWNER TO chartwarden_admin;--> statement-breakpoint
+REVOKE ALL ON FUNCTION delivery_endpoint_expire_dead_token(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION delivery_endpoint_expire_dead_token(uuid, uuid) TO chartwarden_app;

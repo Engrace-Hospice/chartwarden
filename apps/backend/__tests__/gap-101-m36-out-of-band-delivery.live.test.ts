@@ -11,7 +11,12 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
-import { TransportError, createDenyTransports, createFakeTransports } from "@chartwarden/messaging";
+import {
+  PUSH_TOKEN_UNREGISTERED,
+  TransportError,
+  createDenyTransports,
+  createFakeTransports,
+} from "@chartwarden/messaging";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -552,5 +557,48 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
     const sidB = (await row(b.id)).vendor_message_id as string;
     await webhooks.recordTwilioSmsStatus({ vendorMessageId: sidB, status: "delivered", raw: {} });
     expect((await row(b.id)).status).toBe("delivered");
+  });
+
+  it("W6: a dead native token settles terminally and its endpoint is expired; a web endpoint is left verified", async () => {
+    const DEAD = `${"d".repeat(40)}:dead`;
+    const d = await delivery(ORG_A, USER_A, "push", { endpoint: false });
+    await admin.query(
+      `INSERT INTO delivery_endpoint (user_id, channel, provider, endpoint_value, verification_status, verified_at, created_at)
+       VALUES ($1,'push','fcm',$2,'verified', now(), now() + interval '1 hour')`,
+      [USER_A, DEAD],
+    );
+    const dead = fakes({
+      failWith: () => new TransportError(PUSH_TOKEN_UNREGISTERED, false),
+    });
+    await runDeliverySweep(sweepDeps(dead.transports), "push");
+    const settled = await row(d.id);
+    expect(settled.status).toBe("failed");
+    expect(settled.fail_reason).toBe(PUSH_TOKEN_UNREGISTERED);
+    const state = async (value: string) =>
+      (
+        await admin.query(
+          "SELECT verification_status FROM delivery_endpoint WHERE user_id=$1 AND endpoint_value=$2",
+          [USER_A, value],
+        )
+      ).rows[0]?.verification_status;
+    expect(await state(DEAD)).toBe("expired");
+
+    // The same terminal reason against a Web Push endpoint never expires it (provider <> 'web' guard).
+    const w = await delivery(ORG_B, USER_B, "push", { endpoint: false });
+    await admin.query(
+      `INSERT INTO delivery_endpoint (user_id, channel, endpoint_value, verification_status, verified_at)
+       VALUES ($1,'push','{"endpoint":"https://push.example.test/dead","keys":{}}','verified', now())`,
+      [USER_B],
+    );
+    await runDeliverySweep(sweepDeps(dead.transports), "push");
+    expect((await row(w.id)).status).toBe("failed");
+    expect(
+      (
+        await admin.query(
+          "SELECT verification_status FROM delivery_endpoint WHERE user_id=$1 AND endpoint_value LIKE '%dead%'",
+          [USER_B],
+        )
+      ).rows[0].verification_status,
+    ).toBe("verified");
   });
 });
