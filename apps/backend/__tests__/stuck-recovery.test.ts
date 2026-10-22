@@ -470,12 +470,12 @@ describe("F-201 — GET /api/v1/orders/held-transmissions", () => {
     expect(listHeld).toHaveBeenLastCalledWith(ORG, expect.objectContaining({ patientIds: null }));
   });
 
-  it("GAP-030 — org_admin is NOT org-wide: with no caseload it reads nothing, and an unresolvable caseload fails closed", async () => {
+  it("GAP-030 — a caseload-bound role is NOT org-wide: with no caseload it reads nothing, and an unresolvable caseload fails closed", async () => {
     const empty = makeServer(async () => []);
     await empty.app.inject({
       method: "GET",
       url: URL,
-      headers: { ...RN, "x-test-roles": "org_admin" },
+      headers: { ...RN, "x-test-roles": "registered_nurse" },
     });
     expect(empty.listHeld).toHaveBeenLastCalledWith(
       ORG,

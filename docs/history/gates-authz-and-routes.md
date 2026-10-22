@@ -35,9 +35,9 @@
   `patient.assign` — a permission to put clinicians on caseloads that cannot be exercised against
   patients the holder may not see. A DON has been refused every care plan, assessment and safety row
   outside their own caseload. The list is now DERIVED from the floors that lock `patient.read` rather
-  than maintained by hand. `org_admin` is deliberately NOT included even though ~10 predicates treat it
-  as the tenant's top authority: it carries no `patient.read` floor, so the platform has never asserted
-  that role reads charts.
+  than maintained by hand. `org_admin` was deliberately NOT included at the time even though ~10 predicates treat it
+  as the tenant's top authority (it carries no `patient.read` floor). **Reversed by ADR-0090:**
+  `administrator` and `org_admin` are now named org-wide roles.
   **§7.5's other half — the CENSUS list — is now narrowed too (F-096, #209), and the derivation is
   shared rather than copied.** F-092 delivered the per-chart 404 and named the list half as open because
   "a preHandler can refuse a list but cannot filter one". That was the LARGER of the two disclosures: a

@@ -18,11 +18,10 @@
 //   • `compliance_officer` — read only (reveal for investigation / disclosure accounting).
 //
 // SCOPE NOTE. Both keys declare `abac: "caseload_or_scope"`, and the write/reveal routes compose the REAL chart-scope
-// predicate (a refusal is a 404). `compliance_officer` is an org-wide-scope role (org-wide-scope.ts); `intake_supervisor`,
-// `billing_manager`, `org_admin` and `administrator` are NOT, so for them reveal / identifier-edit reaches the charts
-// they hold an assignment on, while the ADMIT-time SSN capture (no chart exists yet) is gated by the permission +
-// step-up alone. Widening the org-wide list is a separate, deliberate decision (org-wide-scope.ts explains why
-// `org_admin` is excluded).
+// predicate (a refusal is a 404). `compliance_officer`, `org_admin` and `administrator` are org-wide-scope roles
+// (org-wide-scope.ts, ADR-0090), so for them reveal / identifier-edit reaches EVERY chart in the org (step-up still
+// applies); `intake_supervisor` and `billing_manager` are NOT, so theirs reaches the charts they hold an assignment on.
+// The ADMIT-time SSN capture (no chart exists yet) is gated by the permission + step-up alone.
 //
 // NOT a `system_locked` floor: a tenant may remove a key from a role it owns. This is the single source the backfill
 // migration `0801` and the dev-seed grant are pinned to (the INTAKE_DEFAULT_GRANTS / `0374` precedent).

@@ -712,6 +712,8 @@ Named predicates (code; **not** a generic rules engine). Each receives `(abacCon
 | `volunteer_gates_satisfied` | volunteer's CoP 418.78 gates all current | `VolunteerGateProvider` seam (boot-registered, deny-stub) |
 | `consent_permits` | Module 39 consent allows this access (e.g. 42 CFR Part 2 SUD) | `ConsentEvaluator` seam (boot-registered, **deny**-stub) |
 
+> **As-built org-wide scope ([ADR-0090](../adr/ADR-0090-administrator-and-org-admin-org-wide-patient-scope.md)).** The "org-wide read" arm of `caseload_or_scope` is the shared `ORG_WIDE_SCOPE_ROLES` list (`packages/auth/src/roles/org-wide-scope.ts`): the oversight roles, every role whose CoP floor locks `patient.read`, and, by decision, `administrator` and `org_admin`. Those two read every patient in the org in every module that composes the predicate.
+
 #### 4.2.1 Provider seams for cross-module predicates (M03-F01 / M03-F03)
 
 Seven predicates depend on data owned by modules that are **not** M3 dependencies (and that mostly

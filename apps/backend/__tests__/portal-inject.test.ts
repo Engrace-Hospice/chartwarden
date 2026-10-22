@@ -986,7 +986,7 @@ const CAREGIVER_NO_PATIENT_SELECTED = {
   "x-test-session-class": "caregiver_portal",
   "x-test-portal-account": ACCOUNT,
 };
-const STAFF = { "x-test-user": "staff_user", "x-test-org": ORG, "x-test-roles": "org_admin" };
+const STAFF = { "x-test-user": "staff_user", "x-test-org": ORG, "x-test-roles": "registered_nurse" };
 const STAFF_ORG_WIDE = { ...STAFF, "x-test-roles": "medical_director" };
 const ENGAGEMENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const AUDITOR = {

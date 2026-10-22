@@ -292,7 +292,7 @@ describe("M2-T06 identity route inventory", () => {
       expect(body.membershipId).toBe("adm_1");
       expect(body.roles).toContain("org_admin");
       expect(body.locationIds).toEqual([]);
-      expect(body.orgWidePatientScope).toBe(false);
+      expect(body.orgWidePatientScope).toBe(true); // org_admin is org-wide (ADR-0090)
       expect(body.isAdmin).toBe(true);
       // Permissions are the M3-resolved effective set (the SAME resolver requirePermission gates on).
       expect(body.permissions).toContain("member.invite");
