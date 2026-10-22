@@ -725,7 +725,7 @@ describe("offline banner", () => {
       window.dispatchEvent(new Event("offline"));
     });
     expect(
-      screen.getByText("You're offline — messages will be sent when you reconnect"),
+      screen.getByText("You're offline — new messages stay Not sent until you reconnect. Urgent messages, response requests and role sends need a connection."),
     ).toBeTruthy();
     expect(box().disabled).toBe(false);
 
