@@ -363,8 +363,8 @@ Thread (offline)  ⚠ You're offline. New messages stay Not sent until you recon
 - **Storage (decided 2026-10-22: memory only on web):** the web outbox holds React state only; message bodies are PHI and are never written to
   localStorage, sessionStorage or IndexedDB, so a reload or tab close drops the queue (a `beforeunload` warning says so). An encrypted persistent
   queue is the native app's (WP 5.11). Bodies of PHI threads are not persisted for read-only offline viewing in v1.
-- **States:** S0; *storage unavailable* (private window): warn that drafts are memory-only; *quota full*; *conflict on reconnect* (existing
-  `draft-conflict-prompt`).
+- **States:** S0; *conflict on reconnect* (existing `draft-conflict-prompt`). There are no storage-unavailable or quota-full states: nothing is
+  written to browser storage.
 - **A11y:** the offline banner is `role="status"`; each Not-sent row exposes Retry/Delete by keyboard.
 - **Acceptance:** axe + keyboard; Playwright offline→online soak with flapping network: no loss, no duplicate, never shown delivered; live: replay with the same key = one row.
 
