@@ -61,60 +61,70 @@ docker compose --env-file .env.production -f compose.yml config > ~/compose.reso
 
 The PR `chore/infra-final-rename` flips every default to `chartwarden`: `/opt/chartwarden` (`deploy.yml`, `reseed-production.yml`,
 `deploy.sh`, `smoke.sh`, docs), compose project `chartwarden`, volume prefix default `chartwarden`, MinIO policy default
-`chartwarden-app`, `smoke.sh` hosts `app./api.chartwarden.cloud`, and it REMOVES the code that appended `CHARTWARDEN_DB_NAME=wardenx`
-to `.env.production`. `main` auto-deploys, so merge it only when the host already matches:
+`chartwarden-app`, `smoke.sh` hosts `app./api.chartwarden.cloud`. It REMOVES the code that appended `CHARTWARDEN_DB_NAME=wardenx`
+to `.env.production`, so after the merge the host env must name its database itself. `main` auto-deploys, so complete these on the
+host first, in this order, then merge:
 
-| Merge only after | Why (what breaks if early) |
-| --- | --- |
-| Step C done: `/opt/chartwarden` exists and holds `.env.production`; `.env.production` has `CHARTWARDEN_VOLUME_PREFIX=wardenx` and `CHARTWARDEN_COMPOSE_PROJECT=chartwarden` | new default dir / project / volume prefix |
-| Step E done: database renamed and `CHARTWARDEN_DB_NAME=chartwarden` set in `.env.production` (or, if the rename is deferred, the line stays `CHARTWARDEN_DB_NAME=wardenx`: it is already on the host, so removing the pin code changes nothing) | default DB name is `chartwarden` |
-| Step D done: `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL` set in `.env.production` (or the new hosts serve) | `smoke.sh` fallback hosts changed |
-| Step B decision: cosign identity and repo-name strings are NOT in this PR (opt-in `CHARTWARDEN_COSIGN_IDENTITY`; the repo name does not exist yet) | unchanged |
+1. Step C (below) done: `/opt/chartwarden` is the real directory (`/opt/wardenx` may remain as a symlink to it) and holds
+   `.env.production` with `CHARTWARDEN_VOLUME_PREFIX=wardenx` and `CHARTWARDEN_COMPOSE_PROJECT=chartwarden`.
+2. The database name is explicit in `/opt/chartwarden/.env.production`. If the DB is still `wardenx` (Step E not yet done), add the pin yourself:
+   ```sh
+   cd /opt/chartwarden
+   grep -q '^CHARTWARDEN_DB_NAME=' .env.production || { [ -z "$(tail -c1 .env.production)" ] || echo >> .env.production; echo CHARTWARDEN_DB_NAME=wardenx >> .env.production; }
+   ```
+   After Step E the line reads `CHARTWARDEN_DB_NAME=chartwarden`. Either way, exactly one line.
+3. Step D done, or at least both smoke keys set in `.env.production`: `CHARTWARDEN_SMOKE_APP_URL=...` and `CHARTWARDEN_SMOKE_API_URL=...`
+   (the legacy hosts are fine until the hostname flip). The `smoke.sh` fallback is now the new hosts, which may not serve yet.
+4. Optional: repository variable `DEPLOY_DIR=/opt/chartwarden` (the workflow fallback is now that value).
+5. Run the preflight by hand, from the host: `cd /opt/chartwarden && sh -s < preflight.sh` (or copy `deploy/production/preflight.sh` there first). It must print `preflight ok`.
 
-Safety net if merged early anyway (nothing is created, nothing is restarted):
+Not in this PR (unchanged): the cosign identity default (`.../wardenx/...`, opt-in `CHARTWARDEN_COSIGN_IDENTITY`), repo-name strings,
+Postgres roles, the legacy-redirect nginx file, the `wardenx-app` MinIO account and the legacy volumes (Step F).
 
-1. Workflow step "Preflight deploy directory" (`deploy.yml`, `reseed-production.yml`) runs `test -d $DEPLOY_DIR && test -f
-   $DEPLOY_DIR/.env.production` over SSH BEFORE any upload. Missing: the job fails with an error, no file is uploaded.
-2. `deploy.sh` PREFLIGHT (exit 67, read-only, before the env file is touched, before any container, image pull or migration):
-   - the deploy dir exists (else exit 67);
-   - `/opt/wardenx` must not be a live real directory with a `.env.production` while the deploy runs from elsewhere;
-   - if ANY `*_postgres-data` volume exists, the configured one (`${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data`,
-     values from the environment or `.env.production`) must exist, so a missing `CHARTWARDEN_VOLUME_PREFIX=wardenx` cannot create an empty volume;
-   - if postgres containers of another compose project exist and none of the configured project does, refuse (no second stack);
-   - if a postgres container is running and the configured database is absent while `wardenx` exists, refuse (no empty new database).
-   A fresh host (no volumes, no containers) passes. On refusal, fix the host or `.env.production` (the message names the fix) and re-run.
-   `reseed-demo.sh` only gets the workflow preflight (it runs against the existing stack and fails on a missing database anyway).
-3. Rollback after a merge that went wrong: revert the PR, or set the repository variable `DEPLOY_DIR` back to `/opt/wardenx`
-   and keep the host env keys (`CHARTWARDEN_VOLUME_PREFIX`, `CHARTWARDEN_DB_NAME`, `CHARTWARDEN_COMPOSE_PROJECT`) pointing at the live names.
+### Preflight (`deploy/production/preflight.sh`, one source of truth)
 
-After merging, Step G below is done for everything except the repo-name strings and the cosign default (both wait for Step B).
-The legacy-redirect nginx file, the `wardenx-app` MinIO account and the legacy volumes are NOT touched here (Step F).
+Read-only, exit 67, fails closed. It runs (a) in the `deploy.yml` and `reseed-production.yml` step "Preflight (before any upload)", piped over
+SSH BEFORE any scp, mkdir or chmod, so a refused cutover leaves the host exactly as it was, and (b) from `deploy.sh` for manual deploys and rollbacks.
+Checks, in order:
+- the deploy dir and its `.env.production` exist; `docker info` works (a down daemon is a refusal, not a pass);
+- layout: the real directory must be `/opt/chartwarden`. The reverse (real `/opt/wardenx`, `/opt/chartwarden` a symlink or empty) and a live real
+  `/opt/wardenx` with an env file beside a different deploy dir are refused. Supported: real `/opt/chartwarden`, optional symlink `/opt/wardenx` -> it;
+- if any `*_postgres-data` volume exists, `${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data` must exist;
+- if postgres containers of another compose project exist and none of the configured project does, refuse (no second stack);
+- when ANY existing postgres volume or container is found: `CHARTWARDEN_DB_NAME`, `CHARTWARDEN_SMOKE_APP_URL` and `CHARTWARDEN_SMOKE_API_URL` must be set
+  explicitly (env or `.env.production`); defaults are only for fresh installs;
+- if the configured project's postgres container is running (found by compose label, so unset `${X:?}` variables cannot hide it), the configured database
+  must be listed in `pg_database`; if it is stopped, the explicit key above is the evidence and the check passes.
+A fresh host (no volumes, no containers) passes. Each refusal names the fix.
+
+Rollback after a merge that went wrong: revert the PR (or set the repository variable `DEPLOY_DIR` back) and keep the host env keys pointing at the live names.
 
 ## Cutover plan (ordered, supersedes the per-phase order below where they differ)
 
-`main` auto-deploys, so the repo ships every renamed identifier behind a variable whose default is the CURRENT live
-value. Merging changes nothing on the host; each step below is a manual operator action with its own rollback.
+The numbered steps are manual operator actions with their own rollback. They were designed while the repo still defaulted to the
+live `wardenx` names behind variables; the final-rename PR above has since flipped those defaults, so the "State" column describes the
+code AFTER that PR and the host keeps the old names only through the env keys the steps below set.
 Execute only with the user's go-ahead. Facts observed read-only on 2.25.109.137 on 2026-10-21 are marked (host).
 
-### What is code-safe now (a) and what is gated (b)
+### What is code-safe (a) and what is gated (b)
 
-| Item | Class | State after merge | Operator action |
+| Item | Class | State after the final-rename PR | Operator action |
 | --- | --- | --- | --- |
 | GHCR image names, CI container names, `pr-image-gate` tag | (a) | already `chartwarden*` | none |
-| Deploy dir in `deploy.sh`/`smoke.sh`/`reseed-demo.sh` | (a) | default = the directory the script sits in (works from both `/opt/wardenx` and `/opt/chartwarden`) | none |
-| `deploy.yml` / `reseed-production.yml` upload path | (b) | `vars.DEPLOY_DIR`, falls back to `/opt/wardenx` | set repo variable `DEPLOY_DIR=/opt/chartwarden` in Step C |
-| Compose project (containers `<p>-<svc>-1`, networks `<p>_default`, `<p>_scan`) | (b) | `CHARTWARDEN_COMPOSE_PROJECT`, default `wardenx` | set `chartwarden` in `.env.production` in Step C |
-| Data volumes | (b) | named explicitly: `${CHARTWARDEN_VOLUME_PREFIX:-<project>}_postgres-data` etc.; resolves to today's `wardenx_*` | set `CHARTWARDEN_VOLUME_PREFIX=wardenx` BEFORE the project flip (keeps the live volumes, no copy) |
-| MinIO IAM policy name | (b) | `CHARTWARDEN_MINIO_POLICY`, default `wardenx-app` | set `chartwarden-app` in Step C |
+| Deploy dir in `deploy.sh`/`smoke.sh`/`reseed-demo.sh` | (a) | default = the directory the script sits in (`/opt/chartwarden`); `preflight.sh` refuses any other real layout | none |
+| `deploy.yml` / `reseed-production.yml` upload path | (b) | `vars.DEPLOY_DIR`, falls back to `/opt/chartwarden` | optionally set repo variable `DEPLOY_DIR=/opt/chartwarden` in Step C (same value) |
+| Compose project (containers `<p>-<svc>-1`, networks `<p>_default`, `<p>_scan`) | (b) | `CHARTWARDEN_COMPOSE_PROJECT`, default `chartwarden` | set `chartwarden` in `.env.production` in Step C (explicit, so the preflight and a revert both see it) |
+| Data volumes | (b) | named explicitly: `${CHARTWARDEN_VOLUME_PREFIX:-<project>}_postgres-data` etc.; defaults to the project name (`chartwarden_*`) | the host MUST keep `CHARTWARDEN_VOLUME_PREFIX=wardenx` in `.env.production` (set BEFORE the project flip; keeps the live volumes, no copy) |
+| MinIO IAM policy name | (b) | `CHARTWARDEN_MINIO_POLICY`, default `chartwarden-app` | set `chartwarden-app` in Step C (same value) |
 | MinIO app account `MINIO_APP_ACCESS_KEY` | (b) | env value (host: key present) | set `chartwarden-app` in Step C (the secret value is unchanged; `minio-provision` creates the new account) |
 | `deploy.sh` `ensure_secret MINIO_APP_ACCESS_KEY` default, `.env.production.example` account names | (a) | `chartwarden-app` / `chartwarden-minio-admin`; only affect hosts where the key is absent | none |
-| DB name default (compose, `deploy.sh`, `reseed-demo.sh`) | (a) | default is now `chartwarden`; `deploy.sh`/`reseed-demo.sh` first append `CHARTWARDEN_DB_NAME=wardenx` to an env file that lacks the key (host: key is ABSENT and the cluster holds database `wardenx`) | none until the DB-rename window below, which replaces that line |
 | cosign identity | (b) | default = the CURRENT repository identity (`.../chartwarden/...`, since the repo rename) only; `deploy.sh` also checks the certificate's repository claim (`--certificate-github-workflow-repository`); a second identity is an explicit opt-in via `CHARTWARDEN_COSIGN_IDENTITY` (env or `.env.production`) | only needed to roll back to an image signed before the rename (identity `.../wardenx/...`); remove it afterwards |
+| DB name default (compose, `deploy.sh`, `reseed-demo.sh`) | (a) | default is `chartwarden`; the former auto-pin of `wardenx` is REMOVED (host: key was ABSENT and the cluster holds database `wardenx`) | add `CHARTWARDEN_DB_NAME=wardenx` by hand before the merge (Merge order step 2); the DB-rename window then replaces that line. The preflight refuses an existing stack without the key |
 | nginx vhosts, log format, bootstrap, env template | (a) | files renamed `chartwarden-*`, hostnames `app./api./storage.chartwarden.cloud`; NOT auto-deployed (only `bootstrap-vps.sh` or the operator installs them) | Step D |
-| `smoke.sh` probe URLs | (b) | `.env.production` keys `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, default the legacy hosts | set both in Step D |
-| MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_wardenx`), `wardenx-minio-admin` root user | kept | internal ids, never user-visible; changing the env KEY recreates MinIO | leave; optional rename in the follow-up commit, which only takes effect on a MinIO recreate |
+| `smoke.sh` probe URLs | (b) | `.env.production` keys `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, default `https://app.`/`api.chartwarden.cloud`; the preflight requires both keys on an existing stack | set both (legacy hosts are fine) before the merge, flip them in Step D |
+| MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_wardenx`), `wardenx-minio-admin` root user | kept | internal ids, never user-visible; changing the env KEY recreates MinIO | leave; optional rename later, which only takes effect on a MinIO recreate |
 | `wardenx-*` bucket ARNs in the policy, old buckets, `wardenx-app` policy/account | held | additive policy still allows both prefixes | Step F, only after the rollback window |
-| Repo-name strings (`CLAUDE.md`/`AGENTS.md`, issue-template link, README clone URLs) | follow-up | unchanged (the new repo name does not exist yet) | Step G, a commit AFTER the repo rename |
+| Repo-name strings (`CLAUDE.md`/`AGENTS.md`, issue-template link, README clone URLs) | follow-up | unchanged (the new repo name does not exist yet) | Step G (remaining part), a commit AFTER the repo rename |
 | cron / systemd / logrotate / pgbackrest / sudoers | n/a | none exist for `wardenx` on the host (host) and none are in the repo | none |
 
 Host facts (host): containers `wardenx-{postgres,valkey,minio,clamav,api,worker,web,docling-worker}-1`; volumes
@@ -130,22 +140,22 @@ so request URIs (including query strings) go to the default `/var/log/nginx/acce
 Run "Step 0" below (pg_dump, pg_dumpall --globals-only, MinIO mirror, env backup). Also record
 `docker compose --env-file .env.production -f compose.yml ps` and `docker volume ls`.
 
-### Step A - Merge
+### Step A - Merge (the final-rename PR, LAST among C/D/E)
 
-Merge deploys normally. Verify afterwards on the host: `grep -c '^CHARTWARDEN_DB_NAME=wardenx$' /opt/wardenx/.env.production`
-prints 1 (pinned by the first deploy), `docker ps` still shows the `wardenx-*` containers, the volumes are unchanged.
-Downtime: the normal deploy recreate only.
+Despite the letter, this PR merges after Steps C, D and E-or-the-manual-pin, per "Merge order" above. Verify afterwards on the host:
+`docker ps` shows the `chartwarden-*` containers, `docker volume ls` the unchanged `wardenx_*` volumes, `grep -c '^CHARTWARDEN_DB_NAME=' .env.production`
+prints 1. Downtime: the normal deploy recreate only.
 
 ### Step B - GitHub repository rename (Phase 2 below)
 
-After Step A. The cosign identity is the one coupling (see Phase 2): BEFORE renaming, add to `/opt/wardenx/.env.production` the line
+Independent of the final-rename PR. The cosign identity is the one coupling (see Phase 2): BEFORE renaming, add to `/opt/chartwarden/.env.production` the line
 `CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
 (new name first; the old one is only needed while a pre-rename release may still be rolled back to). Rename, deploy once, then land
 the Step G commit (default flips to the chartwarden identity) and REMOVE the line from `.env.production`. Do not leave it set:
 an identity that is listed is trusted. Security prerequisite: the org must prevent anyone from recreating a repository named
 `wardenx` (or any retired name) after the rename; keep the GitHub redirect in place by never creating a repo with the old
 name, and restrict repository creation to org owners. Rollback: delete the line, rename the repo back.
-Then land the Step G follow-up commit.
+Then land the remaining Step G commit.
 
 ### Step C - Host cutover: project, directory, MinIO names (downtime about 2-4 minutes)
 
@@ -179,6 +189,7 @@ real env plus the new variables, `docker compose --env-file e -f compose.yml con
    docker volume ls | grep wardenx_                                       # all four still listed
    sudo mv /opt/wardenx /opt/chartwarden && sudo ln -s /opt/chartwarden /opt/wardenx
    cd /opt/chartwarden
+   [ -z "$(tail -c1 .env.production)" ] || echo >> .env.production   # the file may lack a final newline
    printf '%s\n' 'CHARTWARDEN_VOLUME_PREFIX=wardenx' 'CHARTWARDEN_COMPOSE_PROJECT=chartwarden' \
      'CHARTWARDEN_MINIO_POLICY=chartwarden-app' >> .env.production
    sed -i 's/^MINIO_APP_ACCESS_KEY=.*/MINIO_APP_ACCESS_KEY=chartwarden-app/' .env.production
@@ -253,8 +264,7 @@ no earlier than 30 days later.
 
 ### Step E - Database rename
 
-Separate window, see "Database rename downtime window" at the end. Note: `deploy.sh` has by then appended
-`CHARTWARDEN_DB_NAME=wardenx` to `.env.production`, so step 5 there means REPLACE that line (a second line would also work
+Separate window, see "Database rename downtime window" at the end. Note: by then `.env.production` holds `CHARTWARDEN_DB_NAME=wardenx` (added by hand per Merge order), so step 5 there means REPLACE that line (a second line would also work
 because the last one wins, but keep one).
 
 ### Step F - Late cleanup (held until the rollback window closes; one clearly separate change)
@@ -265,14 +275,11 @@ because the last one wins, but keep one).
 - Remove the `/opt/wardenx` symlink, the legacy redirects/DNS/certificate (Step D), the `wardenx-*` GHCR packages,
   `_wardenx_migration` view (other owner).
 
-### Step G - Follow-up commit AFTER Step B/C/D (not part of the merge that ships the gates)
+### Step G - Remaining follow-up commit AFTER Step B (the host-default flips shipped in the final-rename PR)
 
-Each edit flips a default that is only safe once the host matches. All are mechanical:
+Already done by the final-rename PR: compose project/volume-prefix/policy defaults, `smoke.sh` host fallbacks, the `/opt/chartwarden` workflow fallbacks.
+Still to do, only once the host and the repository match:
 
-- `compose.yml`: `CHARTWARDEN_COMPOSE_PROJECT:-wardenx` -> `chartwarden` (twice: `name:` and the volume prefix default; the
-  host keeps `CHARTWARDEN_VOLUME_PREFIX=wardenx` in its env), `CHARTWARDEN_MINIO_POLICY:-wardenx-app` -> `chartwarden-app`.
-- `smoke.sh`: legacy URL fallbacks -> `https://app.chartwarden.cloud` / `https://api.chartwarden.cloud`.
-- `.github/workflows/deploy.yml`, `reseed-production.yml`: `'/opt/wardenx'` fallback -> `'/opt/chartwarden'` (then the variable can be deleted).
 - Repo-name strings after Step B: `CLAUDE.md` and `AGENTS.md` (copy verbatim) line "Issue tracker: ... `Engrace-Hospice/wardenx`", `.github/ISSUE_TEMPLATE/config.yml`
   line 4 (the `blob/develop` link), `deploy/production/README.md` rollback image examples, `docs/START_PROJECT.md` clone URLs,
   `docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` cosign identities. Leave `fabwebdev/wardenx` (a different, pre-migration
@@ -393,14 +400,11 @@ restarts/reconfigures MinIO (brief downtime); do it last, or leave as-is (intern
 Downtime: about one `docker compose up` cycle (30-120 s) if you move the directory while containers run
 with bind mounts (`/opt/wardenx/clamav/clamd.conf`). The ordered procedure is Step C above; this section is the reference.
 
-References to change in a follow-up PR (after the move): `.github/workflows/deploy.yml` (scp targets,
-`mkdir -p`, `chmod`, `deploy.sh` path), `.github/workflows/reseed-production.yml`, `deploy.sh` /
-`smoke.sh` / `reseed-demo.sh` defaults (`CHARTWARDEN_DEPLOY_DIR:-/opt/wardenx`), `bootstrap-vps.sh`
-(`DEPLOY_DIR`), `README.md` paths, `/etc/sudoers.d` entries and the deploy user's allowed Docker Compose
+Repository references to `/opt/wardenx` are already `/opt/chartwarden` in the final-rename PR (workflows, scripts, `bootstrap-vps.sh`, `README.md`). Host-side
+references are yours to change after the move: `/etc/sudoers.d` entries and the deploy user's allowed Docker Compose
 commands (they name `/opt/wardenx`), any cron/systemd units, log/backup paths (`CREDENTIALS.production.md`).
 
-Procedure (symlink strategy keeps old and new paths valid so the merged-code and VPS changes can land in
-either order):
+Procedure (the real directory becomes `/opt/chartwarden`; the `/opt/wardenx` symlink keeps old host-side references working. The reverse layout is refused by the preflight):
 
 ```sh
 ssh deploy@2.25.109.137
@@ -413,9 +417,9 @@ docker compose --env-file .env.production -f compose.yml up -d --force-recreate 
 ./smoke.sh   # or: bash smoke.sh
 ```
 
-Then merge the follow-up PR that points all scripts/workflows at `/opt/chartwarden`. Remove the symlink
+Then (and only then) merge the final-rename PR, per "Merge order". Remove the symlink
 (`sudo rm /opt/wardenx`) only after one successful deploy and one reseed dry run use the new path.
-Compose caveat: the project name (`CHARTWARDEN_COMPOSE_PROJECT`, default `wardenx`) drives container and network names.
+Compose caveat: the project name (`CHARTWARDEN_COMPOSE_PROJECT`, default `chartwarden`) drives container and network names.
 The data volumes are pinned by explicit `name:` (`CHARTWARDEN_VOLUME_PREFIX`), so flipping the project to `chartwarden`
 while `CHARTWARDEN_VOLUME_PREFIX=wardenx` keeps the existing `wardenx_*` volumes: no copy. Flipping the project WITHOUT
 setting the prefix first would create new, empty `chartwarden_*` volumes and orphan the data, so the prefix goes first (Step C).
@@ -452,8 +456,7 @@ Procedure:
    `FRONTEND_DOMAIN=... BACKEND_DOMAIN=... STORAGE_DOMAIN=... sudo ./bootstrap-vps.sh`, which sed-rewrites the
    hostnames), `nginx -t && systemctl reload nginx`. The repo files and format are already renamed; if you rename a live vhost,
    change the file, the `ln -sfn`, the `access_log` path and the format name together, `nginx -T | grep phi_safe`, and keep log rotation (`logrotate`) and any log shipper in sync.
-4. Env: update the variables above in `.env.production` and the defaults in `smoke.sh` /
-   `bootstrap-vps.sh` / `.env.production.example`; `docker compose up -d --force-recreate api worker web`.
+4. Env: update the variables above in `.env.production` (the `smoke.sh` fallbacks and `.env.production.example` already name the new hosts); `docker compose up -d --force-recreate api worker web`.
 5. Cut over web clients/links; keep the old hosts as 301 redirects for at least 30 days (staff bookmarks,
    emailed invitation links, FHIR/HL7 partners that hold the old base URL: notify first).
 
@@ -482,11 +485,11 @@ records and certificate were never removed.
 
 ## Database rename downtime window (`wardenx` -> `chartwarden`)
 
-The database name is now read from `CHARTWARDEN_DB_NAME` (default `wardenx`) by `compose.yml`
+The database name is read from `CHARTWARDEN_DB_NAME` (default `chartwarden`; the host's explicit `wardenx` pin overrides it until this window) by `compose.yml`
 (`POSTGRES_DB`, the `pg_isready` healthcheck, every `DATABASE_*_URL` built in compose),
 `reseed-demo.sh` and `deploy.sh`, which both fail fast (exit 64) unless the value matches
-`^[a-z_][a-z0-9_]*$`. Until the flip, behaviour is unchanged. Compose project `wardenx` and the `wardenx_*`
-volumes stay as they are. Estimated downtime: 5-10 minutes. Execute only with the user's go-ahead.
+`^[a-z_][a-z0-9_]*$`. Compose project `chartwarden` and the `wardenx_*`
+volumes (via `CHARTWARDEN_VOLUME_PREFIX=wardenx`) stay as they are. Estimated downtime: 5-10 minutes. Execute only with the user's go-ahead.
 
 Note: `POSTGRES_DB` only matters on first init of an empty data volume; the existing cluster keeps its
 database, so the rename below is what actually changes it.
@@ -520,47 +523,32 @@ If the rename itself failed, nothing changed: just restart the containers. Last 
 <!-- BEGIN DB-RENAME ADDENDUM (owner: refactor/rename-db-name-dev-items; the infra agent need not edit between these markers) -->
 ## Database rename: ordered procedure and what changes at the same moment
 
-This addendum supersedes the shorter "Database rename downtime window" section above wherever they differ
-(that section's "default `wardenx`", "Until the flip, behaviour is unchanged" and the rollback wording "or remove
-`CHARTWARDEN_DB_NAME`" are stale once the infra branch has flipped the defaults; see the end of this addendum).
+This addendum is the authoritative procedure; where the shorter section above differs, this one wins.
 
-State of the code: every NON-production default is already `chartwarden` (root `docker-compose.yml`,
-`.env.example`, `drizzle.config.ts`, `scripts/db/wait-for-postgres.ts`, `scripts/m36-restore-drill.ts`, CI
-databases). For `deploy/production/**` there are two possible states, depending on whether the infra branch
-(`refactor/rename-infra-wardenx`) has been merged:
-
-- **Infra NOT merged:** `compose.yml`, `deploy.sh` and `reseed-demo.sh` still default to `wardenx`; production keeps
-  working with no `CHARTWARDEN_DB_NAME`.
-- **Infra merged:** those three default to `chartwarden`, and `deploy.sh` APPENDS `CHARTWARDEN_DB_NAME=wardenx` to
-  `.env.production` when the key is absent (the pin). From then on ONLY that pin keeps production on the existing
-  `wardenx` database. Do not remove it except as part of step 5 below.
+State of the code: every default is `chartwarden` (root `docker-compose.yml`, `.env.example`, `drizzle.config.ts`,
+`scripts/db/wait-for-postgres.ts`, `scripts/m36-restore-drill.ts`, CI databases, and, since the final-rename PR, `deploy/production/**`).
+`deploy.sh` and `reseed-demo.sh` no longer append a `wardenx` pin. A production host whose database is still `wardenx` is kept on it ONLY by an
+explicit `CHARTWARDEN_DB_NAME=wardenx` line in `.env.production` (Merge order step 2); `preflight.sh` refuses an existing stack without the key and
+refuses a running cluster that lacks the configured database.
 
 Downtime ~5-10 min. Run only with the user's go-ahead.
 
 1. Step 0 safety net: `pg_dump -d wardenx`, `pg_dumpall --globals-only`, MinIO mirror, copy of `.env.production`.
 2. DISABLE `deploy.yml` and `reseed-production.yml` in the Actions UI, and hold merges to `main`. This is mandatory,
-   not tidiness: any `deploy.sh` run during the window sees the key absent or still `wardenx` and re-pins/starts
-   against `wardenx`, undoing or racing the rename.
+   not tidiness: any `deploy.sh` run during the window would start against the old name (`wardenx`) or fail the preflight
+   half-way, racing the rename.
 3. Stop `api`, `worker`, `web` and any `seed-api` / `docling-worker` / `provision-gateway` containers. Check
    `SELECT pid, usename, application_name FROM pg_stat_activity WHERE datname = 'wardenx';` is empty.
 4. Connect to the `postgres` maintenance DB (not `wardenx`), `pg_terminate_backend` leftovers, then
    `ALTER DATABASE wardenx RENAME TO chartwarden;` (fails and changes nothing if a connection remains).
 5. In `.env.production`, in the same minute: SET OR REPLACE the single existing `CHARTWARDEN_DB_NAME` line so it
    reads `CHARTWARDEN_DB_NAME=chartwarden` (unquoted, no trailing comment, LF endings). Never add a second line:
-   `deploy.sh` reads it with `sed -n ... | tail -n 1` and compose takes one value. If the key is absent (infra not yet
-   merged), add it. Also change `/wardenx` to `/chartwarden` in every whole `DATABASE_*_URL` and
+   `deploy.sh` reads it with `sed -n ... | tail -n 1` and compose takes one value. If the key is absent, add it (with a newline guard). Also change `/wardenx` to `/chartwarden` in every whole `DATABASE_*_URL` and
    `PROVISION_DATABASE_URL` value. Verify: `grep -c '^CHARTWARDEN_DB_NAME=' .env.production` prints 1 and
    `docker compose --env-file .env.production -f compose.yml config | grep -E '/(wardenx|chartwarden)$'` shows
    only `chartwarden`.
 6. `docker compose ... up -d`, then `./smoke.sh`. Re-enable the workflows only after smoke is green.
-7. Defaults in `deploy/production/**`, conditional on the infra merge state:
-   - Infra already merged: `compose.yml`, `deploy.sh` and `reseed-demo.sh` already default to `chartwarden`, and the
-     pin is now the explicit `chartwarden` value from step 5. Nothing to flip.
-   - Infra not merged: after smoke is green and one good deploy, flip these (by content, not line number): every
-     `${CHARTWARDEN_DB_NAME:-wardenx}` in `compose.yml` to `:-chartwarden`; the `db_name=${db_name:-wardenx}` default
-     and its comment in `deploy.sh`; the same default in `reseed-demo.sh`; the `README.md` sentence saying the database
-     name `wardenx` is unchanged. Do NOT flip before step 5: with the variable unset, compose would then point at a
-     database that does not exist yet.
+7. Defaults in `deploy/production/**` are already `chartwarden`; nothing to flip. The explicit value from step 5 is the only DB-name pin.
 
 Facts to carry into the window:
 
@@ -578,8 +566,7 @@ Facts to carry into the window:
 
 Rollback (any point up to step 6): keep the workflows disabled, stop api/worker/web, terminate backends,
 `ALTER DATABASE chartwarden RENAME TO wardenx;`, then SET `CHARTWARDEN_DB_NAME=wardenx` in `.env.production`
-(restoring the step-0 copy also works). Never remove the key once the infra defaults are merged: `deploy.sh` would
-then default to `chartwarden`. Then `up -d`, `./smoke.sh`. If the rename itself failed nothing changed: just restart
+(restoring the step-0 copy also works). Never remove the key: the default is `chartwarden`, and the preflight refuses an existing stack without it. Then `up -d`, `./smoke.sh`. If the rename itself failed nothing changed: just restart
 the containers. Last resort: restore the step-0 dump into a fresh `wardenx` database.
 
 Verification after step 6: `psql -U postgres -d postgres -c '\l'` lists `chartwarden` and not `wardenx`;

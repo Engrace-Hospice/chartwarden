@@ -60,47 +60,10 @@ case "$db_name" in
     ;;
 esac
 
-# ── PREFLIGHT (INFRA_RENAME_RUNBOOK.md, "Merge order"): read-only, runs before anything is written or restarted ─────
-# Defaults are the chartwarden names. A host that has not completed the cutover still holds the OLD names; running on
-# it would silently create an empty database / empty volumes / a second stack. Refuse instead, loudly, touching nothing.
-env_get() { sed -n "s/^$1=//p" .env.production | tail -n 1; }
-preflight_fail() {
-  echo "PREFLIGHT FAILED: $1" >&2
-  echo "  nothing was changed. See deploy/production/INFRA_RENAME_RUNBOOK.md (Merge order)." >&2
-  exit 67
-}
-
-# 1. A real (non-symlink) legacy directory with a live env means the operator never finished the move.
-legacy_dir=/opt/wardenx
-if [ "$deploy_dir" != "$legacy_dir" ] && [ -d "$legacy_dir" ] && [ ! -L "$legacy_dir" ] && [ -f "$legacy_dir/.env.production" ]; then
-  preflight_fail "$legacy_dir is a live directory (with .env.production) but this deploy runs from $deploy_dir; the host was not renamed (Step C)"
-fi
-
-# 2. Volumes: the configured postgres volume must exist if ANY postgres volume does (a fresh host has none).
-project=${CHARTWARDEN_COMPOSE_PROJECT:-$(env_get CHARTWARDEN_COMPOSE_PROJECT)}
-project=${project:-chartwarden}
-volume_prefix=${CHARTWARDEN_VOLUME_PREFIX:-$(env_get CHARTWARDEN_VOLUME_PREFIX)}
-volume_prefix=${volume_prefix:-$project}
-pg_volume="${volume_prefix}_postgres-data"
-existing_pg_volumes=$(docker volume ls -q --filter 'name=_postgres-data$' 2>/dev/null || true)
-if [ -n "$existing_pg_volumes" ] && ! printf '%s\n' "$existing_pg_volumes" | grep -qx "$pg_volume"; then
-  preflight_fail "configured postgres volume '$pg_volume' does not exist but these do: $(echo $existing_pg_volumes). Set CHARTWARDEN_VOLUME_PREFIX in .env.production to the existing prefix, or finish the cutover"
-fi
-
-# 3. Compose project: postgres containers of a differently named project mean 'up' would start a second stack.
-running_projects=$(docker ps -a --filter 'label=com.docker.compose.service=postgres' --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null | sort -u || true)
-if [ -n "$running_projects" ] && ! printf '%s\n' "$running_projects" | grep -qx "$project"; then
-  preflight_fail "compose project '$project' has no postgres container but project(s) already exist: $(echo $running_projects). Set CHARTWARDEN_COMPOSE_PROJECT accordingly or finish the cutover"
-fi
-
-# 4. Database: if the running cluster lacks the configured database but holds the legacy 'wardenx', do not proceed.
-if [ -n "$(docker compose --env-file .env.production -f compose.yml ps -q postgres 2>/dev/null || true)" ]; then
-  databases=$(docker compose --env-file .env.production -f compose.yml exec -T postgres \
-    psql -U postgres -d postgres -tAc 'SELECT datname FROM pg_database' 2>/dev/null || true)
-  if [ -n "$databases" ] && ! printf '%s\n' "$databases" | grep -qx "$db_name" && printf '%s\n' "$databases" | grep -qx wardenx; then
-    preflight_fail "database '$db_name' does not exist but legacy database 'wardenx' does. Set CHARTWARDEN_DB_NAME=wardenx in .env.production, or run the database rename (Step E)"
-  fi
-fi
+# ── PREFLIGHT: read-only, fails closed (exit 67) before anything below writes or restarts anything. The same file is
+# piped over SSH by the workflows before they upload; running it here covers manual deploys and rollbacks.
+[ -f "$deploy_dir/preflight.sh" ] || { echo "PREFLIGHT FAILED: $deploy_dir/preflight.sh is missing" >&2; exit 67; }
+(cd "$deploy_dir" && sh ./preflight.sh) || exit 67
 
 # GAP-138/139 — secrets the release needs but an older `.env.production` predates. Generated ONCE and
 # appended BEFORE the rollback backup is taken, so the backup (and therefore a rollback, which runs the

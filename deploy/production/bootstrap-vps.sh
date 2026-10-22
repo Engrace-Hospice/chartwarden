@@ -35,6 +35,7 @@ secret_b64() {
 install -d -m 0750 "$DEPLOY_DIR"
 install -m 0644 "$SOURCE_DIR/compose.yml" "$DEPLOY_DIR/compose.yml"
 install -m 0755 "$SOURCE_DIR/deploy.sh" "$DEPLOY_DIR/deploy.sh"
+install -m 0755 "$SOURCE_DIR/preflight.sh" "$DEPLOY_DIR/preflight.sh"
 
 if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
   tmp_env=$(mktemp "$DEPLOY_DIR/.env.production.XXXXXX")

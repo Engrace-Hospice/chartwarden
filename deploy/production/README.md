@@ -29,7 +29,7 @@ sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 ```
 
 An install lives in `/opt/chartwarden`, which is the fallback of `deploy.yml` and `reseed-production.yml` (override with the repository variable
-`DEPLOY_DIR`). `deploy.sh` runs a read-only PREFLIGHT first and refuses (exit 67) on a host that still holds the old `wardenx` names; see
+`DEPLOY_DIR`). `preflight.sh` (piped by the workflows before any upload, and run by `deploy.sh`) is read-only and refuses (exit 67) on a host that still holds the old `wardenx` names; see
 `INFRA_RENAME_RUNBOOK.md`, "Merge order". The env template already carries `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, which bootstrap rewrites with the domains.
 
 Override domains when needed:
