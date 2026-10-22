@@ -311,6 +311,31 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   const channelKey = async (org: string, channelId: string, bits = TAG_BITS) =>
     deriveChannelKey(await keys.tagKey(org, VERSION), VERSION, bits, channelId);
 
+  /**
+   * The first variant of `base` (itself, then letter-prefixed) whose 12-bit query tag matches NO token row in any other ORG_A
+   * channel. At TAG_BITS=12 a tag collides by design (~1/4096 per distinct word per channel); an unrelated message holding a
+   * colliding tag is a genuine extra candidate that is rightly opened and counted, which shifts the exact `scanned` / opened
+   * counts the tests that use this assert (earlier groups leave many channels, announcements included, in the org). Call it
+   * BEFORE the test creates its own channels, or pass `except` for a channel already made. Not a general fix for tests that
+   * assert recall: those want the collision.
+   */
+  async function freeWord(base: string, except?: string): Promise<string> {
+    const others = (await q(`SELECT id FROM channel WHERE organization_id=$1`, [ORG_A]))
+      .map((r) => r.id as string)
+      .filter((id) => id !== except);
+    const keys = await Promise.all(others.map((id) => channelKey(ORG_A, id)));
+    for (let i = 0; i < 26; i++) {
+      const word = i === 0 ? base : `${String.fromCharCode(96 + i)}${base}`;
+      const hit = await q(
+        `SELECT 1 FROM message_search_token t JOIN unnest($1::uuid[], $2::int[]) x(channel_id, tag)
+           ON t.channel_id = x.channel_id AND t.tag = x.tag WHERE t.organization_id=$3 LIMIT 1`,
+        [others, keys.map((k) => tagForPrefix(k, word.slice(0, 12), TAG_BITS)), ORG_A],
+      );
+      if (hit.length === 0) return word;
+    }
+    throw new Error(`no collision-free variant of ${base}`);
+  }
+
   const indexWriter = () =>
     createIndexWriter({
       db: handle.db,
@@ -829,30 +854,32 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     });
 
     it("row 16 deleted-never-returned (also with index rows planted by hand)", async () => {
+      const word = await freeWord("deletedneverword");
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      const m = await send(ORG_A, ch.id, u, "Deletedneverword was here");
-      expect(idsOf(await search(u, "deletedneverword"))).toEqual([m]);
+      const m = await send(ORG_A, ch.id, u, `${word} was here`);
+      expect(idsOf(await search(u, word))).toEqual([m]);
       await q(`UPDATE message SET status='deleted', deleted_at=now(), edited_at=NULL WHERE id=$1`, [
         m,
       ]);
       expect(await tokenCount(m)).toBe(0); // the same-transaction hook removed them
-      expect((await ok(u, "deletedneverword")).results).toEqual([]);
-      await plantTags(ORG_A, m, "Deletedneverword was here"); // simulated hook failure
+      expect((await ok(u, word)).results).toEqual([]);
+      await plantTags(ORG_A, m, `${word} was here`); // simulated hook failure
       expect(await tokenCount(m)).toBeGreaterThan(0);
       spy.reset();
-      expect((await ok(u, "deletedneverword")).results).toEqual([]);
+      expect((await ok(u, word)).results).toEqual([]);
       expect(spy.reads).toEqual([]); // the SQL excludes a tombstone: it is never even opened
     });
 
     it("row 17 redacted-never-returned (injected marker predicate; end-to-end waits for WP 5.x)", async () => {
+      const word = await freeWord("redactedneverword");
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      const m = await send(ORG_A, ch.id, u, "Redactedneverword content");
-      expect(idsOf(await search(u, "redactedneverword"))).toEqual([m]);
+      const m = await send(ORG_A, ch.id, u, `${word} content`);
+      expect(idsOf(await search(u, word))).toEqual([m]);
       redactedIds.add(m);
       spy.reset();
-      expect((await ok(u, "redactedneverword")).results).toEqual([]);
+      expect((await ok(u, word)).results).toEqual([]);
       expect(spy.reads).toEqual([]);
       redactedIds.delete(m);
     });
@@ -922,26 +949,28 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   // ═══ authority is the decider ═════════════════════════════════════════════════════════════════════
   describe("authority is the only decider", () => {
     it("a gate that denies a channel the prefilter selected returns zero, and NO body is opened", async () => {
+      const word = await freeWord("authoritydecidesword");
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { kind: "care_team", members: [[u, "manual"]] });
-      const m = await send(ORG_A, ch.id, u, "Authoritydecidesword secret");
+      const m = await send(ORG_A, ch.id, u, `${word} secret`);
       // the prefilter selects it (membership), proven by an allowed run first
-      expect(idsOf(await search(u, "authoritydecidesword"))).toEqual([m]);
+      expect(idsOf(await search(u, word))).toEqual([m]);
       part2.denied.add(ch.subject as string);
       spy.reset();
-      expect((await ok(u, "authoritydecidesword")).results).toEqual([]);
+      expect((await ok(u, word)).results).toEqual([]);
       expect(spy.reads).toEqual([]);
     });
 
     it("with the authority stubbed to nothing, the spy BodyReader records ZERO opens across many channels", async () => {
+      const word = await freeWord("stubbedauthorityword");
       const u = await newUser(ORG_A);
       const channels = await Promise.all(
         [1, 2, 3].map(() => newChannel(ORG_A, { kind: "care_team", members: [[u, "manual"]] })),
       );
-      for (const ch of channels) await send(ORG_A, ch.id, u, "Stubbedauthorityword note");
+      for (const ch of channels) await send(ORG_A, ch.id, u, `${word} note`);
       for (const ch of channels) part2.denied.add(ch.subject as string);
       spy.reset();
-      const res = await ok(u, "stubbedauthorityword");
+      const res = await ok(u, word);
       expect(res.results).toEqual([]);
       expect(res.scanned).toBe(0);
       expect(spy.reads).toEqual([]);
@@ -1170,7 +1199,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     });
 
     it("a destroyed ring / unknown key version / key derivation failure fails closed with 503, never a fallback", async () => {
-      const { u } = await memberWithMessage("Destroyedringword");
+      const word = await freeWord("destroyedringword");
+      const { u } = await memberWithMessage(word);
       const destroyed = async (): Promise<never> => {
         throw new Error("ring destroyed");
       };
@@ -1192,7 +1222,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       spy.reset();
       const res = await s.inject({
         method: "GET",
-        url: searchUrl("destroyedringword"),
+        url: searchUrl(word),
         headers: headers(u),
       });
       expect([res.statusCode, errorCode(res)]).toEqual([503, "GLOBAL_SEARCH_UNAVAILABLE"]);
@@ -1214,7 +1244,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await s2.ready();
       const res2 = await s2.inject({
         method: "GET",
-        url: searchUrl("destroyedringword"),
+        url: searchUrl(word),
         headers: headers(u),
       });
       expect(res2.statusCode).toBe(503);
@@ -1558,9 +1588,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   // ═══ bounds ═══════════════════════════════════════════════════════════════════════════════════════
   describe("bounds", () => {
     /** `count` messages whose bodies do NOT hold the term, with a tag for the term planted by hand (stale-index rows). */
-    async function plantedCandidates(term: string, count: number) {
+    async function plantedCandidates(base: string, count: number) {
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const term = await freeWord(base, ch.id);
       const sealed = await cipher.seal(ORG_A, "unrelated filler text without the searched word");
       await q(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
@@ -1573,13 +1604,13 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
          SELECT $1,$2,$4,$3,id FROM message WHERE channel_id=$4`,
         [ORG_A, VERSION, tag, ch.id],
       );
-      return { u, tag };
+      return { u, tag, term };
     }
 
     it("budget exhaustion => scanCapped with a cursor exactly while candidates remain; cursor holds only created_at, id, page", async () => {
-      const { u } = await plantedCandidates("budgetstaleword", 450);
+      const { u, term } = await plantedCandidates("budgetstaleword", 450);
       spy.reset();
-      const p0 = await ok(u, "budgetstaleword");
+      const p0 = await ok(u, term);
       expect(p0.scanned).toBe(DECRYPT_BUDGET);
       expect(p0.scanCapped).toBe(true);
       expect(p0.results).toEqual([]);
@@ -1587,18 +1618,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const decoded = decodeSearchCursor(p0.nextCursor as string);
       expect(decoded).toMatchObject({ page: 1 });
       expect(JSON.parse(decodeURIComponent(p0.nextCursor as string))).toHaveLength(3);
-      const p1 = await ok(
-        u,
-        "budgetstaleword",
-        `&cursor=${encodeURIComponent(p0.nextCursor as string)}`,
-      );
+      const p1 = await ok(u, term, `&cursor=${encodeURIComponent(p0.nextCursor as string)}`);
       expect(p1.scanned).toBe(DECRYPT_BUDGET);
       expect(p1.nextCursor).toBeTruthy();
-      const p2 = await ok(
-        u,
-        "budgetstaleword",
-        `&cursor=${encodeURIComponent(p1.nextCursor as string)}`,
-      );
+      const p2 = await ok(u, term, `&cursor=${encodeURIComponent(p1.nextCursor as string)}`);
       expect(p2.scanned).toBe(50);
       expect(p2.nextCursor).toBeUndefined(); // the true end: nothing remains
       expect(p2.scanCapped).toBe(false);
@@ -1606,13 +1629,13 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     }, 120_000);
 
     it("a chain never opens more than MAX_PAGES_PER_QUERY x DECRYPT_BUDGET bodies and ends with refine", async () => {
-      const { u } = await plantedCandidates("chainboundword", 1300);
+      const { u, term } = await plantedCandidates("chainboundword", 1300);
       spy.reset();
       let cursor: string | undefined;
       let requests = 0;
       let last: SearchBody | undefined;
       do {
-        last = await ok(u, "chainboundword", cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+        last = await ok(u, term, cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
         cursor = last.nextCursor;
         requests += 1;
       } while (cursor && requests < 20);
@@ -1779,16 +1802,17 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     });
 
     it("only the caller's member channels are probed: a word in a channel the caller is not in is neither found nor opened", async () => {
+      const word = await freeWord("perchannelprobeword");
       const mine = await newUser(ORG_A);
       const other = await newUser(ORG_A);
       const chMine = await newChannel(ORG_A, { members: [[mine, "manual"]] });
       const chOther = await newChannel(ORG_A, { members: [[other, "manual"]] });
-      const a = await send(ORG_A, chMine.id, mine, "Perchannelprobeword in my channel");
-      const b = await send(ORG_A, chOther.id, other, "Perchannelprobeword in their channel");
+      const a = await send(ORG_A, chMine.id, mine, `${word} in my channel`);
+      const b = await send(ORG_A, chOther.id, other, `${word} in their channel`);
       spy.reset();
-      expect(idsOf(await search(mine, "perchannelprobeword"))).toEqual([a]);
+      expect(idsOf(await search(mine, word))).toEqual([a]);
       expect(spy.reads).toEqual([a]); // b was never a candidate: its channel got no tag from this caller's query
-      expect(idsOf(await search(other, "perchannelprobeword"))).toEqual([b]);
+      expect(idsOf(await search(other, word))).toEqual([b]);
     });
 
     it("above MAX_QUERY_CHANNELS the most recently active channels are searched and the response says it was capped", async () => {
@@ -1922,12 +1946,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     });
 
     it("a hidden-only match is indistinguishable from no match at all", async () => {
+      const w0 = await freeWord("hiddenonlyword");
+      const w1 = await freeWord("nothingmatchesthisword");
       const u = await newUser(ORG_A);
       const hidden = await newChannel(ORG_A, { kind: "care_team", members: [[u, "manual"]] });
       part2.denied.add(hidden.subject as string);
-      for (let i = 0; i < 3; i += 1) await send(ORG_A, hidden.id, u, `Hiddenonlyword note ${i}`);
-      const withHidden = await ok(u, "hiddenonlyword");
-      const noMatch = await ok(u, "nothingmatchesthisword");
+      for (let i = 0; i < 3; i += 1) await send(ORG_A, hidden.id, u, `${w0} note ${i}`);
+      const withHidden = await ok(u, w0);
+      const noMatch = await ok(u, w1);
       expect(withHidden).toEqual(noMatch);
     });
 
@@ -1968,10 +1994,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
          ON CONFLICT (organization_id, key_version) DO UPDATE SET status='ready', reconciled_at=now()`,
         [ORG_A],
       );
+      const word = await freeWord("dualversionword");
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       const filler = await cipher.seal(ORG_A, "unrelated filler text without the searched word");
-      const real = await cipher.seal(ORG_A, "dualversionword is in the oldest message");
+      const real = await cipher.seal(ORG_A, `${word} is in the oldest message`);
       await q(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
          SELECT $1,$2,$3,'user', CASE WHEN g = 1 THEN $4::bytea ELSE $5::bytea END, CASE WHEN g = 1 THEN $6::text ELSE $7::text END,
@@ -1981,7 +2008,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       for (const version of [VERSION, "v2"]) {
         const tag = tagForPrefix(
           deriveChannelKey(await keys2.tagKey(ORG_A, version), version, 19, ch.id),
-          "dualversionw",
+          word.slice(0, 12),
           19,
         );
         await q(
@@ -2016,7 +2043,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       do {
         const res = await dual.inject({
           method: "GET",
-          url: searchUrl("dualversionword", cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
+          url: searchUrl(word, cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
           headers: headers(u),
         });
         expect(res.statusCode, res.body).toBe(200);
@@ -2073,22 +2100,24 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     });
 
     it("MED-5 removal race: a member removed between the prefilter and the re-select gets zero results", async () => {
+      const word = await freeWord("removalraceword");
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { kind: "care_team", members: [[u, "manual"]] });
-      await send(ORG_A, ch.id, u, "Removalraceword in the chart note");
+      await send(ORG_A, ch.id, u, `${word} in the chart note`);
       part2.beforeAnswer = async () => {
         part2.beforeAnswer = undefined;
         await q(`UPDATE channel_member SET removed_at=now() WHERE channel_id=$1`, [ch.id]);
       };
       spy.reset();
-      expect((await ok(u, "removalraceword")).results).toEqual([]);
+      expect((await ok(u, word)).results).toEqual([]);
       expect(spy.reads).toEqual([]); // the removed row never reached the visible queue
     });
 
     it("MED-5 authority cannot run: 503 GLOBAL_SEARCH_UNAVAILABLE, nothing opened", async () => {
+      const word = await freeWord("authoritydownword");
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      await send(ORG_A, ch.id, u, "Authoritydownword note");
+      await send(ORG_A, ch.id, u, `${word} note`);
       const server = buildServer({
         db: handle.db,
         authenticate: headerAuth,
@@ -2109,7 +2138,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       spy.reset();
       const res = await server.inject({
         method: "GET",
-        url: searchUrl("authoritydownword"),
+        url: searchUrl(word),
         headers: headers(u),
       });
       expect([res.statusCode, errorCode(res)]).toEqual([503, "GLOBAL_SEARCH_UNAVAILABLE"]);
@@ -2246,60 +2275,52 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     const limitHit = () => ({ results: [], scanned: 0, scanCapped: true, refine: true });
 
     it("M2 more than 500 hidden candidates only: the response equals a no-match query", async () => {
+      const word = await freeWord("overflowhiddenword");
       const u = await newUser(ORG_A);
       const ch = await hiddenChannel(u);
-      await plantRows(ch.id, u, "overflowhiddenword", 620, "2026-09-01T00:00:00Z");
+      await plantRows(ch.id, u, word, 620, "2026-09-01T00:00:00Z");
       spy.reset();
-      const res = await ok(u, "overflowhiddenword");
+      const res = await ok(u, word);
       expect(res).toEqual(noMatch());
       expect(spy.reads).toEqual([]);
     }, 120_000);
 
     it("M2 more than 50 hidden channels: the response equals a no-match query", async () => {
+      const word = await freeWord("manyhiddenchanword");
       const u = await newUser(ORG_A);
       for (let i = 0; i < 60; i += 1) {
         const ch = await hiddenChannel(u);
-        await plantRows(
-          ch.id,
-          u,
-          "manyhiddenchanword",
-          1,
-          new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
-        );
+        await plantRows(ch.id, u, word, 1, new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString());
       }
       authorityBatches.length = 0;
-      expect(await ok(u, "manyhiddenchanword")).toEqual(noMatch());
+      expect(await ok(u, word)).toEqual(noMatch());
       expect(Math.max(...authorityBatches)).toBeLessThanOrEqual(50);
       expect(authorityBatches.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(100);
     }, 120_000);
 
     it("L1 channels sent to the authority across rounds never exceed 100 per request", async () => {
+      const word = await freeWord("totalcapchanword");
       const u = await newUser(ORG_A);
       for (let i = 0; i < 130; i += 1) {
         const ch = await hiddenChannel(u);
-        await plantRows(
-          ch.id,
-          u,
-          "totalcapchanword",
-          1,
-          new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString(),
-        );
+        await plantRows(ch.id, u, word, 1, new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString());
       }
       authorityBatches.length = 0;
-      expect(await ok(u, "totalcapchanword")).toEqual(limitHit());
+      expect(await ok(u, word)).toEqual(limitHit());
       expect(authorityBatches.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(100);
     }, 180_000);
 
     it("M2 five hidden rounds followed by a visible row: EMPTY but flagged scanCapped/refine, never complete (accepted recall cost)", async () => {
+      const word = await freeWord("fiveroundshiddenword");
       const u = await newUser(ORG_A);
       const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      await send(ORG_A, visible.id, u, "Fiveroundshiddenword visible note", {
+      await send(ORG_A, visible.id, u, `${word} visible note`, {
         at: "2026-01-01T00:00:00Z",
       });
       const ch = await hiddenChannel(u);
-      await plantRows(ch.id, u, "fiveroundshiddenword", 2600, "2026-09-02T00:00:00Z");
+      await plantRows(ch.id, u, word, 2600, "2026-09-02T00:00:00Z");
       spy.reset();
-      expect(await ok(u, "fiveroundshiddenword")).toEqual(limitHit());
+      expect(await ok(u, word)).toEqual(limitHit());
       expect(spy.reads).toEqual([]);
     }, 180_000);
 
@@ -2317,25 +2338,20 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     }, 180_000);
 
     it("M1 slow hidden-driven fill rounds do not turn a visible result into refine / no cursor", async () => {
+      const word = await freeWord("slowfillhiddenword");
       const u = await newUser(ORG_A);
       const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      const m = await send(ORG_A, visible.id, u, "Slowfillhiddenword visible note", {
+      const m = await send(ORG_A, visible.id, u, `${word} visible note`, {
         at: "2026-01-01T00:00:00Z",
       });
       for (let i = 0; i < 3; i += 1) {
         const ch = await hiddenChannel(u);
-        await plantRows(
-          ch.id,
-          u,
-          "slowfillhiddenword",
-          500,
-          new Date(Date.UTC(2026, 8, 10 + i)).toISOString(),
-        );
+        await plantRows(ch.id, u, word, 500, new Date(Date.UTC(2026, 8, 10 + i)).toISOString());
       }
       authorityDelayMs = 1200; // four authority calls: ~4.8 s of fill time, more than DECRYPT_TIMEOUT_MS
       try {
         const started = performance.now();
-        const res = await ok(u, "slowfillhiddenword");
+        const res = await ok(u, word);
         expect(performance.now() - started).toBeGreaterThan(3000);
         expect(res.results.map((h) => h.messageId)).toEqual([m]);
         expect(res.refine).toBe(false);
@@ -2493,6 +2509,16 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
            JOIN ch ON ch.rn = g % $3::int
            JOIN perf_pool p ON p.idx = (g * 7919) % ${POOL}`,
         [ORG_P, user, channels.length, PERF_MESSAGES],
+      );
+      // The rare word's candidates are walked newest-first, and at 12-bit tags a random corpus can put 500 colliding candidates
+      // (common words) ahead of every pool hit, or spend the per-request channel budget on denied channels, so "rare finds
+      // something" would depend on the draw. One rare message newer than the whole corpus, in a channel the user is in (open
+      // channels come first in `channels`), is the first candidate of every walk: the assertion stays strict and deterministic.
+      const rareSealed = await cipher.seal(ORG_P, `${pool[0]}`);
+      await q(
+        `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         VALUES ($1,$2,$3,'user',$4,$5, now())`,
+        [ORG_P, channels[0], user, rareSealed.cipher, rareSealed.sha256],
       );
       process.stderr.write(
         `[search-perf] seeded messages in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
