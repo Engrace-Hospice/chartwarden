@@ -90,10 +90,17 @@ export type WriteResult<T> =
  */
 function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
   const code = typeof status === "number" ? status : null;
+  // The platform error envelope nests the reason as `{ error: { message } }`; a bare `{ message }` is kept as a fallback.
+  const envelope =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: { message?: unknown } }).error
+      : undefined;
   const detail =
-    body && typeof body === "object" && "message" in body && typeof body.message === "string"
-      ? body.message
-      : null;
+    typeof envelope?.message === "string"
+      ? envelope.message
+      : body && typeof body === "object" && "message" in body && typeof body.message === "string"
+        ? body.message
+        : null;
   const message =
     code === 403
       ? (detail ?? "Your role is not eligible to record or sign this HOPE timepoint.")
