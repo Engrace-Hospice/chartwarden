@@ -1,9 +1,10 @@
 // @chartwarden/iqies-client — the M10 iQIES adapter package (D6, spec §4.10 / §4.10.1). The ONLY package
 // allowed to talk to iQIES: it owns the CMS HOPE submission envelope model, the per-PE circuit breaker,
 // the typed `DegradedError`, the MinIO envelope-storage convention, and the typed adapter contract that
-// M10's submission workers consume. M10-T07 lands the typed surface + pure logic + the Phase-1 deny-stub
-// (`createUnboundIqiesAdapter`); the live transport (`transport.ts`) binds with M34's per-tenant submitter
-// credentials. No HTTP client is imported here yet — the contract is what M10 depends on.
+// M10's submission workers consume. M10-T07 lands the typed surface + pure logic + the deny-stub
+// (`createUnboundIqiesAdapter`). There is no `transport.ts` to write: iQIES has no submission API (CMS HOPE
+// Implementation FAQs Q30), so submission is a manual portal upload of the package M10 generates. No HTTP
+// client is imported here — the contract is kept for a future CMS API.
 export { DegradedError, isDegradedError, type IqiesOperation } from "./errors";
 export {
   IQIES_CIRCUIT_BREAKER_CONFIG,

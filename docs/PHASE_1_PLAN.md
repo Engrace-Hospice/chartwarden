@@ -142,7 +142,7 @@ These feature flags **default off** in Phase 1 and only flip in their activation
 3. `bun run arch:fitness` green; RLS cross-tenant isolation tests pass for every PHI table.
 4. All Phase-2/3 capabilities present only as **default-off** flags; no Phase-1 route depends on a
    flag being on.
-5. HOPE submission to iQIES works against the test endpoint; Medicare 837I produces a clean claim
+5. A HOPE submission package passes the CMS Validation Utility Tool (iQIES has no test endpoint or API; upload is manual); Medicare 837I produces a clean claim
    through the §11.A validation framework.
 6. DR/BCP degraded-mode paths tested for the Tier-1/2 modules (HOPE capture, messaging).
 

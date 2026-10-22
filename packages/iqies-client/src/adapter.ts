@@ -2,9 +2,10 @@ import type { HopeSubmissionEnvelope } from "./envelope";
 // @chartwarden/iqies-client — the typed iQIES adapter surface (M10-T07, spec §4.10 / D6). M10
 // (`apps/backend/src/modules/10-hope`) consumes ONLY these three typed methods and never imports an HTTP
 // client for iQIES; this package is the only place allowed to talk to iQIES. Phase 1 ships the typed
-// contract + a deny-stub (`createUnboundIqiesAdapter`) — the live transport (CMS HOPE submission XML,
-// per-MAC submitter auth, sandbox/prod selection, circuit-breaker-wrapped `fetch`) binds with the
-// per-tenant credential wiring from M34's secret store. The deny-stub fails with a `retryable: false`
+// contract + a deny-stub (`createUnboundIqiesAdapter`). There is NO live transport to bind: CMS states
+// iQIES "does not support API interoperability" (HOPE Implementation FAQs Q30), so HOPE records reach CMS
+// only when a person uploads the generated .zip in the iQIES portal (M10's `manual_iqies_upload` flow).
+// This contract is kept for the day CMS ships an API. The deny-stub fails with a `retryable: false`
 // {@link DegradedError} so the worker DLQs cleanly rather than blocking — capture (Tier 2) is unaffected.
 import { DegradedError, type IqiesOperation } from "./errors";
 
@@ -90,7 +91,7 @@ export function createUnboundIqiesAdapter(): IqiesAdapter {
       "iqies",
       operation,
       false,
-      "iQIES submission is not enabled in this environment; the live adapter binds with the per-tenant submitter credentials.",
+      "iQIES has no submission API; download the generated HOPE package and upload it in the iQIES portal.",
       UNBOUND_CORRELATION_ID,
     );
   };

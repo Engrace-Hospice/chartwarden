@@ -16,17 +16,26 @@ import {
 // via the typed client; the server enforces every scope incl. PE scope (ADR-0030 — no authz on the
 // frontend). Leaves only (@chartwarden/ui).
 //
-// #91 / #150 — this screen offers NO write, and that is the finding rather than an omission. Both M10
-// submission routes are mounted and reachable, and neither does what its summary says: `assemble`
-// inserts a batch with `itemCount: 0` and no `hope_submission_item` rows (ignoring
-// `planAssembleSubmissions`), and `retry` flips a status nothing downstream consumes. The pipeline
-// behind them is unreachable end to end — no writer for `hope_submission_item`, no caller for
-// `submitBatch`, no emitter for `m10.hope.submission_transmitted`. An Assemble button here would report
-// success for work the server does not do. The banner below says so to the reader instead.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// The one write here is "Generate iQIES package" (#150): iQIES has no submission API (CMS HOPE FAQs Q30),
+// so the workflow is manual — generate the package, download the ZIP on the batch's detail page, upload
+// it in the iQIES portal, mark it uploaded. `assemble` builds that package and answers `packaged`. Retry
+// is still absent: it requeues into a stage that cannot reach iQIES. The server enforces
+// `hope.submission.manage`; the button is hidden without it so a reader is not offered a 403.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSession } from "../../shell/session";
+import { assembleSubmission } from "./hope-api";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
+
+const MANAGE_PERMISSION = "hope.submission.manage";
+const PROVIDER_ENTITY_PAGE_SIZE = 100;
+
+interface ProviderEntityOption {
+  id: string;
+  legalName: string;
+  ccn?: string | null;
+}
 
 interface SubmissionRow {
   id: string;
@@ -50,6 +59,53 @@ export function SubmissionWorklist(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const canGenerate = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
+  const [providerEntities, setProviderEntities] = useState<ProviderEntityOption[]>([]);
+  const [providerEntityId, setProviderEntityId] = useState("");
+  const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    if (!canGenerate) return;
+    let cancelled = false;
+    void client
+      .GET("/api/v1/provider-entities", { params: { query: { limit: PROVIDER_ENTITY_PAGE_SIZE } } })
+      .then(({ data, error: err }) => {
+        if (cancelled) return;
+        if (err) {
+          setError("Could not load provider entities, so a package cannot be generated.");
+          return;
+        }
+        const options = (data?.items ?? []) as ProviderEntityOption[];
+        setProviderEntities(options);
+        setProviderEntityId((current) => current || (options[0]?.id ?? ""));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canGenerate, client]);
+
+  // Synchronous guard: `disabled={generating}` only takes effect after the next render, so a fast second click
+  // (or a key-repeat) could otherwise start a second batch.
+  const generatingRef = useRef(false);
+  const generatePackage = async (): Promise<void> => {
+    if (generatingRef.current) return;
+    generatingRef.current = true;
+    setGenerating(true);
+    setError(null);
+    try {
+      const result = await assembleSubmission(client, providerEntityId);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      navigate(`/hope/submissions/${encodeURIComponent(result.value.id)}`);
+    } catch {
+      setError("Could not generate the iQIES package. Check your connection and try again.");
+    } finally {
+      generatingRef.current = false;
+      setGenerating(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,9 +173,38 @@ export function SubmissionWorklist(): JSX.Element {
       filters={
         <div style={filterShellStyle}>
           <div style={pipelineNoticeStyle}>
-            Batches are listed read-only. Automated iQIES assembly and transmission are not yet
-            enabled in this deployment, so batches do not progress beyond <strong>queued</strong>.
+            iQIES has no submission API. <strong>Generate an iQIES package</strong>, download its
+            ZIP from the batch page, upload it in the iQIES portal, then mark it uploaded.
           </div>
+          {canGenerate ? (
+            <div style={controlGroupStyle}>
+              {providerEntities.length > 1 ? (
+                <label className="wx-filter-field">
+                  <span>Provider entity</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Provider entity"
+                    value={providerEntityId}
+                    onChange={(e) => setProviderEntityId(e.target.value)}
+                    style={selectStyle}
+                  >
+                    {providerEntities.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.ccn ? `${p.legalName} (${p.ccn})` : p.legalName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <Button
+                size="sm"
+                onClick={() => void generatePackage()}
+                disabled={!providerEntityId || generating}
+              >
+                {generating ? "Generating…" : "Generate iQIES package"}
+              </Button>
+            </div>
+          ) : null}
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <span>{error}</span>

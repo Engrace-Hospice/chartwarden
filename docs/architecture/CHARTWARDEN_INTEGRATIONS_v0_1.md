@@ -406,11 +406,11 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.7 CMS iQIES — HOPE Submission (Modules 10, 30)
 
 - **Purpose:** Batch submission of HOPE assessments to CMS iQIES. The HOPE Engine (Module 10) is a real-time scheduling engine; iQIES is the submission endpoint. Missing windows → HQRP non-compliance → 4-point APU reduction, so submission reliability is a compliance concern.
-- **Direction & protocol:** Outbound batch submission to iQIES; acceptance/validation report retrieved.
-- **Credential model:** Per-ProviderEntity iQIES submitter access.
-- **BAA / PHI:** PHI-bearing; CMS iQIES setup.
-- **Sandbox vs prod:** iQIES test environment; synthetic assessments validated against CMS HOPE spec before submission.
-- **Retry/idempotency:** Outbox-backed batch; idempotent on assessment submission record (`HopeSubmission`).
+- **Direction & protocol:** **Manual file upload — iQIES has no submission API** (CMS HOPE Implementation FAQs Q30: "does not support API interoperability"). ChartWarden produces one `.zip` (≤ 5 MB) of per-assessment XML files (`<ASSESSMENT>` root, ASCII); an Assessment Submitter uploads it in the iQIES web portal; acceptance is read from the Final Validation Report (up to 24 h later) and recorded back by the operator.
+- **Credential model:** None held by ChartWarden. iQIES access is a HARP account (identity proofing + MFA) with the Assessment Submitter role, approved by the agency's Provider Security Official; roles lapse after 60 days without a login. ChartWarden stores only the iQIES-assigned facility ID (`FAC_ID`).
+- **BAA / PHI:** PHI-bearing package; stored encrypted per tenant, handed to a human, never transmitted by the platform.
+- **Sandbox vs prod:** No sandbox endpoint. Packages are tested before upload in CMS's web-only Validation Utility Tool (`iqies.cms.gov/vut`) and validated locally against the CMS HOPE data specs (V1.00.1 + Errata V1.00.3).
+- **Retry/idempotency:** Idempotent on assessment submission record (`HopeSubmission`); a package is regenerated, never re-sent. Same-patient records belong in one zip (CMS warns of timing errors otherwise).
 - **Rate-limit posture:** Batch cadence aligned to HOPE timepoints (admission, HUV1 days 6–15, HUV2 days 16–30).
 - **Failure handling:** Submission failure raises a clinical-compliance alert (approaching submission deadline) — Tier 3, escalates as deadline nears. Validation rejections route to a correction worklist feeding Module 30.
 
