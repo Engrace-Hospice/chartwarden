@@ -15,6 +15,13 @@ export const RETENTION_NOTICE: Readonly<Record<RetentionDestructionMode, string>
     "Message destruction is in dry-run mode. The weekly run reports what an approved certificate would destroy and deletes nothing.",
   live: "Message destruction is on. Messages are destroyed only under an approved destruction certificate, and never while a legal hold covers them.",
 };
+// A missing or unrecognised mode (an older or newer server) must never print "undefined": say plainly that the state is not known and promise nothing.
+export const RETENTION_NOTICE_UNKNOWN =
+  "The message destruction mode could not be determined. Do not assume any message is being destroyed or kept beyond its period.";
+export const noticeFor = (mode: string | null | undefined): string =>
+  (mode && Object.hasOwn(RETENTION_NOTICE, mode)
+    ? RETENTION_NOTICE[mode as RetentionDestructionMode]
+    : undefined) ?? RETENTION_NOTICE_UNKNOWN;
 export const RETENTION_INTRO =
   "A legal hold always outranks retention: a held message is never destroyed, and releasing the hold does not extend its clock.";
 export const TAB_RETENTION = "Retention";
@@ -63,8 +70,14 @@ const CERTIFICATE_TAIL: Readonly<Record<RetentionDestructionMode, string>> = {
   dry_run: "Approving it destroys nothing yet: message destruction is in dry-run mode.",
   live: "Once approved, the next weekly run destroys the eligible messages it covers and then closes it.",
 };
-export const certificateText = (status: string, mode: RetentionDestructionMode): string =>
-  `Destruction certificate: ${certificateStatusLabel(status).toLowerCase()}. ${CERTIFICATE_TAIL[mode]}`;
+const CERTIFICATE_TAIL_UNKNOWN =
+  "What approving it does is not known: the message destruction mode could not be determined.";
+export const certificateText = (status: string, mode: string | null | undefined): string =>
+  `Destruction certificate: ${certificateStatusLabel(status).toLowerCase()}. ${
+    (mode && Object.hasOwn(CERTIFICATE_TAIL, mode)
+      ? CERTIFICATE_TAIL[mode as RetentionDestructionMode]
+      : undefined) ?? CERTIFICATE_TAIL_UNKNOWN
+  }`;
 export const certificateIdText = (id: string): string => `Certificate ${id}`;
 export const NEVER_SCANNED = "No scan has run yet. Counts appear after the first scan.";
 export const lastScanText = (when: string): string => `Last scan ${when}`;
@@ -85,9 +98,12 @@ export const heldMessagesText = (n: number): string =>
 export const placedText = (by: string, at: string): string => `Placed by ${by} on ${at}`;
 // WP 5.6: the message / thread chip. The words carry the meaning (colour is never the only signal).
 export const LEGAL_HOLD_CHIP_TEXT = "Legal hold";
-// Read after the visible words "Legal hold" (visually hidden).
-export const LEGAL_HOLD_MESSAGE_HINT = ". This message cannot be edited or destroyed.";
-export const LEGAL_HOLD_THREAD_HINT = ". At least one message in this thread is held.";
+// Read ONCE per message list or thread (visually hidden), not on every held row. A held message cannot be edited: the server answers 409
+// MESSAGE_UNDER_LEGAL_HOLD (apps/backend/src/modules/36-messaging/messaging-route-service-db.ts, the edit path, via isMessageHeldNow; and
+// governance/under-hold.ts for the migration 1138 backstop); it is also never destroyed (jobs/retention-destruction.ts).
+export const LEGAL_HOLD_LIST_NOTE = "A message marked Legal hold cannot be edited or destroyed.";
+// Read after the visible words "Legal hold" on the thread header (visually hidden).
+export const LEGAL_HOLD_THREAD_HINT = `. At least one message in this thread is held. ${LEGAL_HOLD_LIST_NOTE}`;
 export const REDACTED_TEXT = "Message redacted";
 export const PLACED_BY_YOU = "you";
 export const shortUserId = (id: string): string => `user ${id.slice(0, 8)}`;

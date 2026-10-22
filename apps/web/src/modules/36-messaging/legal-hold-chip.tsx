@@ -14,12 +14,11 @@ export function LegalHoldChip({
   readonly scope?: "message" | "thread";
 }): JSX.Element {
   return (
-    // The accessible name is the visible words plus a short visually hidden description (never an aria-label that replaces the visible text); plain inline text, so it is read in the flow of the message.
+    // A message row carries only the visible words (the pill, its lock glyph is aria-hidden): the explanation is read once per list or thread,
+    // not on every held row. Only the thread header chip adds a hidden sentence. Plain inline text, never an aria-label over the visible words.
     <span className="wx-legal-hold-chip" data-scope={scope}>
       <StatusPill tone="warning" glyph="lock" label={W.LEGAL_HOLD_CHIP_TEXT} />
-      <span className="wx-sr-only">
-        {scope === "thread" ? W.LEGAL_HOLD_THREAD_HINT : W.LEGAL_HOLD_MESSAGE_HINT}
-      </span>
+      {scope === "thread" ? <span className="wx-sr-only">{W.LEGAL_HOLD_THREAD_HINT}</span> : null}
     </span>
   );
 }

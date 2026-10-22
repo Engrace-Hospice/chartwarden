@@ -4,6 +4,7 @@
 import type { JSX, ReactNode, RefObject, UIEvent } from "react";
 import { MessageRow } from "./message-row";
 import type { Message } from "./messaging-types";
+import { LEGAL_HOLD_LIST_NOTE } from "./retention-wording";
 import { TimelineState } from "./timeline-state";
 import type { useAnnouncementTools } from "./use-announcement-tools";
 
@@ -81,6 +82,9 @@ export function MessageTimeline({
           ) : (
             <span className="wx-history-start">Beginning of conversation</span>
           )}
+          {messages.some((m) => m.legalHold) ? (
+            <p className="wx-sr-only">{LEGAL_HOLD_LIST_NOTE}</p>
+          ) : null}
           {messages.map((message, index) => (
             <MessageRow
               key={message.messageId}

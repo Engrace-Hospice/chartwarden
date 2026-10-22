@@ -2,7 +2,7 @@
 .wx-legal-hold-chip {
   display: inline-flex;
   align-items: center;
-  margin-inline-start: 0.4rem;
+  /* spacing comes from the parent's gap (message meta row, thread header): no margin of its own */
 }
 
 .wx-message-redacted {

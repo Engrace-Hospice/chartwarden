@@ -1,12 +1,12 @@
+// M36 WP 5.6 (ADR-0086, PROPOSED) - the retention and legal-hold screen against a mocked network boundary: the per-class view (plan-only wording, never
+// scanned, capped, certificate), the hold list, place (validation, step-up with stashed input), release (preview then a second confirmation that
+// sends the count seen, a stale count re-shown, step-up), the 403 / error states, free text rendered as text, keyboard and axe.
 import type {
   MessageLegalHoldDto,
   RetentionClassDto,
   RetentionOverviewDto,
 } from "@chartwarden/types";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-// M36 WP 5.6 (ADR-0086, PROPOSED) - the retention and legal-hold screen against a mocked network boundary: the per-class view (plan-only wording, never
-// scanned, capped, certificate), the hold list, place (validation, step-up with stashed input), release (preview then a second confirmation that
-// sends the count seen, a stale count re-shown, step-up), the 403 / error states, free text rendered as text, keyboard and axe.
 import {
   act,
   cleanup,
@@ -169,6 +169,21 @@ describe("Retention tab", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/switched off/)).toBeNull();
+  });
+
+  it("a missing or unrecognised destruction mode never prints 'undefined': it says the mode could not be determined", async () => {
+    const withMode = (mode: unknown) => ({ ...OVERVIEW, destruction_mode: mode }) as never;
+    for (const mode of [undefined, "paused", null]) {
+      mount({ retention: () => ok(withMode(mode)) });
+      expect(
+        await screen.findByText(/The message destruction mode could not be determined/),
+      ).toBeTruthy();
+      const list = await screen.findByRole("list", { name: "Retention by message class" });
+      expect(list.textContent).not.toContain("undefined");
+      expect(document.body.textContent).not.toContain("undefined");
+      expect(screen.queryByText(/switched off/)).toBeNull();
+      cleanup();
+    }
   });
 
   it("says so before the first scan", async () => {

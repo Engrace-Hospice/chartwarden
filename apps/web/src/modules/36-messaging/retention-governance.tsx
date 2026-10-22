@@ -6,7 +6,6 @@
 import type {
   MessageLegalHoldDto,
   RetentionClassDto,
-  RetentionDestructionMode,
   RetentionOverviewDto,
 } from "@chartwarden/types";
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
@@ -85,7 +84,7 @@ function LoadGate<T>({
 function ClassRow({
   row,
   mode,
-}: { readonly row: RetentionClassDto; readonly mode: RetentionDestructionMode }): JSX.Element {
+}: { readonly row: RetentionClassDto; readonly mode: string | null | undefined }): JSX.Element {
   return (
     <li className="wx-retention-row">
       <div className="wx-retention-main">
@@ -121,8 +120,15 @@ function ClassRow({
 function RetentionPanel({ data }: { readonly data: RetentionOverviewDto }): JSX.Element {
   return (
     <>
-      <p className="wx-retention-detail" data-destruction-mode={data.destruction_mode}>
-        {W.RETENTION_NOTICE[data.destruction_mode]}
+      <p
+        className="wx-retention-detail"
+        data-destruction-mode={
+          W.noticeFor(data.destruction_mode) === W.RETENTION_NOTICE_UNKNOWN
+            ? "unknown"
+            : data.destruction_mode
+        }
+      >
+        {W.noticeFor(data.destruction_mode)}
       </p>
       <p className="wx-retention-detail">
         {data.last_scan_at === null

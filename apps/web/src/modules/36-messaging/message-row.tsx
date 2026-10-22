@@ -157,9 +157,12 @@ function MessageRowImpl({
   const mine = message.authorUserId === meId;
   const replyCount = message.replyCount ?? 0;
   // A tombstone has no body and no files (live attachment-only messages keep a count): nothing to reply to.
+  // A redacted message is a tombstone whatever it carries: no actions, no files (access is refused server-side too).
+  const redacted = Boolean(message.redactedAt);
   const deleted =
-    !message.body &&
-    (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) === 0;
+    redacted ||
+    (!message.body &&
+      (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) === 0);
   const system = message.authorUserId === null || message.bodyKind === "system";
   const grouped =
     previous &&
@@ -175,7 +178,9 @@ function MessageRowImpl({
         </div>
       ) : null}
       {system ? (
-        <div className="wx-system-message">{message.body || "Message deleted"}</div>
+        <div className="wx-system-message">
+          {redacted ? REDACTED_TEXT : message.body || "Message deleted"}
+        </div>
       ) : (
         <article
           data-message-id={message.messageId}
@@ -226,8 +231,8 @@ function MessageRowImpl({
                   canVote={canAnnotate}
                 />
               ) : null}
-              <MessageAttachments attachments={message.attachments} />
-              {message.hiddenAttachmentCount ? (
+              {redacted ? null : <MessageAttachments attachments={message.attachments} />}
+              {message.hiddenAttachmentCount && !redacted ? (
                 <small className="wx-message-attachment-hidden">
                   {message.hiddenAttachmentCount === 1
                     ? "Attachment not available yet"
