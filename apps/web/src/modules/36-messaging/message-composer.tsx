@@ -5,7 +5,7 @@ import type { RichBody, SbarIssue } from "@chartwarden/types";
 import { Button, Glyph } from "@chartwarden/ui";
 import { useEffect, useRef } from "react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
-import { AttachButton, AttachmentChips } from "./attachment-composer";
+import { AttachButton, AttachmentChips, CameraButton } from "./attachment-composer";
 import type { ClinicalLinkCandidateSource, DraftClinicalLink } from "./clinical-link-kinds";
 import {
   ClinicalLinkPicker,
@@ -272,6 +272,7 @@ export function ThreadComposer({
         <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
         <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
         <div className="wx-composer-tools">
+          <CameraButton uploads={uploads} disabled={sending} />
           <ClinicalLinkPicker
             picker={linkPicker}
             links={draftLinks}
