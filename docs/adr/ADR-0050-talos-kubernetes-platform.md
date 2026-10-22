@@ -188,7 +188,7 @@ OS with no SSH and no shell.
   integrated-storage (Raft) StatefulSet. It holds every production secret: the ADR-0045 platform KEK,
   `BETTER_AUTH_SECRET`, `TWO_FACTOR_ENCRYPTION_KEY`, the DB role passwords, Garage keys and
   integration credentials. Paths are per environment, for example
-  `kv/wardenx/production/<component>`.
+  `kv/chartwarden/production/<component>`.
 - **Delivery:** External Secrets Operator syncs them into Kubernetes Secrets.
   - A `ClusterSecretStore` uses ESO's Vault provider, which is API-compatible with OpenBao, and
     authenticates with OpenBao's Kubernetes auth method.
@@ -266,7 +266,7 @@ OS with no SSH and no shell.
 
 ### D7 — Observability
 
-- kube-prometheus-stack, Loki and Grafana in-cluster. That realises System Design's `wardenx-obs-01`
+- kube-prometheus-stack, Loki and Grafana in-cluster. That realises System Design's `chartwarden-obs-01`
   role as workloads instead of a VM.
 - Logs keep the PHI-safe Pino redaction. Nothing PHI-bearing is added at the platform layer.
 - Ingress access logs must not record query strings: the GAP-073 lesson, where patient-search terms

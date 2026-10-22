@@ -108,7 +108,7 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > proves the backup/restore mechanics against a disposable local cluster.
 >
 > Every RTO/RPO figure, failover procedure and host name below is therefore a **target**, not a
-> commitment, and the `ssh wardenx-app-01`-style commands name hosts that do not exist. The
+> commitment, and the `ssh chartwarden-app-01`-style commands name hosts that do not exist. The
 > procedures are still worth keeping — they are the plan — but do not read them as operable today.
 > The repo uses this idiom already (`ops/pgbackrest/*.template`, `Dockerfile`,
 > `docker-compose.yml`, `deploy.yml` all carry "SCAFFOLD, NOT VALIDATED" headers); this document
@@ -164,7 +164,7 @@ Internal RTO/RPO targets are typically tighter than what is committed to custome
 #### 4.1.1 Stanza Configuration
 
 ```ini
-# /etc/pgbackrest/pgbackrest.conf on wardenx-db-01 and wardenx-db-02
+# /etc/pgbackrest/pgbackrest.conf on chartwarden-db-01 and chartwarden-db-02
 [global]
 repo1-path=/var/lib/pgbackrest
 repo1-retention-full=14
@@ -180,7 +180,7 @@ compress-level=3
 start-fast=y
 
 # Secondary repository on backup VM
-repo2-host=wardenx-backup-01
+repo2-host=chartwarden-backup-01
 repo2-host-user=pgbackrest
 repo2-path=/var/lib/pgbackrest
 repo2-retention-full=30
@@ -240,15 +240,15 @@ Every backup is verified within 1 hour of completion:
 
 | Bucket prefix                   | Versioning           | Object Lock         | Replication target                                    |
 | ------------------------------- | -------------------- | ------------------- | ----------------------------------------------------- |
-| `tenants/<org>/documents/`    | Enabled              | None                | wardenx-backup-01 (real-time async) + off-site weekly |
-| `tenants/<org>/generated/`    | Enabled              | None                | wardenx-backup-01 weekly                              |
+| `tenants/<org>/documents/`    | Enabled              | None                | chartwarden-backup-01 (real-time async) + off-site weekly |
+| `tenants/<org>/generated/`    | Enabled              | None                | chartwarden-backup-01 weekly                              |
 | `tenants/<org>/intake/`       | Disabled (ephemeral) | None                | None — 30-day lifecycle                              |
-| `tenants/<org>/claims/`       | Enabled              | Compliance, 7 years | wardenx-backup-01 (real-time) + off-site daily        |
-| `tenants/<org>/cost-reports/` | Enabled              | Compliance, 7 years | wardenx-backup-01 (real-time) + off-site daily        |
-| `tenants/<org>/exports/`      | Enabled              | None                | wardenx-backup-01 weekly                              |
-| `tenants/<org>/recordings/`   | Enabled              | Per-consent terms   | wardenx-backup-01 daily                               |
-| `platform/form-templates/`    | Enabled              | None                | wardenx-backup-01 daily + off-site weekly             |
-| `platform/ml-models/`         | Enabled              | None                | wardenx-backup-01 daily + off-site monthly            |
+| `tenants/<org>/claims/`       | Enabled              | Compliance, 7 years | chartwarden-backup-01 (real-time) + off-site daily        |
+| `tenants/<org>/cost-reports/` | Enabled              | Compliance, 7 years | chartwarden-backup-01 (real-time) + off-site daily        |
+| `tenants/<org>/exports/`      | Enabled              | None                | chartwarden-backup-01 weekly                              |
+| `tenants/<org>/recordings/`   | Enabled              | Per-consent terms   | chartwarden-backup-01 daily                               |
+| `platform/form-templates/`    | Enabled              | None                | chartwarden-backup-01 daily + off-site weekly             |
+| `platform/ml-models/`         | Enabled              | None                | chartwarden-backup-01 daily + off-site monthly            |
 
 #### 4.2.2 MinIO Replication Configuration
 
@@ -256,13 +256,13 @@ Site replication (active-active for redundancy) between primary and backup MinIO
 
 ```bash
 # Configure replication from primary to backup
-mc replicate add wardenx-primary/tenants \
-  --remote-bucket wardenx-backup/tenants \
+mc replicate add chartwarden-primary/tenants \
+  --remote-bucket chartwarden-backup/tenants \
   --priority 1 \
   --replicate "delete,delete-marker,replica-metadata-sync"
 
 # Verify replication health daily
-mc replicate status wardenx-primary/tenants
+mc replicate status chartwarden-primary/tenants
 ```
 
 #### 4.2.3 Off-Site Replication
@@ -305,14 +305,14 @@ save 60 10000
 | Asset                    | Storage                                               | Backup                                                                       |
 | ------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Container images         | GHCR (GitHub Container Registry)                      | GHCR retains by tag; we also pull-and-archive monthly snapshots to backup VM |
-| Source code              | GitHub (primary) + weekly mirror to wardenx-backup-01 | Git is itself a distributed backup; mirror provides off-platform redundancy  |
+| Source code              | GitHub (primary) + weekly mirror to chartwarden-backup-01 | Git is itself a distributed backup; mirror provides off-platform redundancy  |
 | Build artifacts          | GitHub Actions cache + GHCR                           | Re-buildable from source; not separately backed up                           |
 | Secrets (SOPS-encrypted) | In Git (encrypted)                                    | Inherits Git backup; age keys held offline in two locations                  |
 | Configurations           | In Git + on each VM                                   | Configs are immutable per deploy; backups via Proxmox VM snapshots           |
 
 ### 4.5 Proxmox VM Backups
 
-Weekly full VM backups to wardenx-backup-01 via Proxmox Backup Server (PBS):
+Weekly full VM backups to chartwarden-backup-01 via Proxmox Backup Server (PBS):
 
 | VM                          | Backup frequency                              | Retention                                      |
 | --------------------------- | --------------------------------------------- | ---------------------------------------------- |
@@ -360,21 +360,21 @@ Each backup type has a verification procedure run on schedule:
 
 ### 5.1 PostgreSQL Streaming Replication
 
-Primary (wardenx-db-01) → Replica (wardenx-db-02):
+Primary (chartwarden-db-01) → Replica (chartwarden-db-02):
 
 ```conf
-# wardenx-db-01 postgresql.conf
+# chartwarden-db-01 postgresql.conf
 wal_level = replica
 max_wal_senders = 5
 max_replication_slots = 5
 wal_keep_size = 1GB
 synchronous_standby_names = ''  # async replication; sync optional with performance trade
 
-# wardenx-db-01 pg_hba.conf
+# chartwarden-db-01 pg_hba.conf
 host replication wardenx_replicator 10.10.30.12/32 scram-sha-256
 
-# wardenx-db-02 (standby)
-primary_conninfo = 'host=wardenx-db-01 port=5432 user=wardenx_replicator password=<sealed> application_name=db-02'
+# chartwarden-db-02 (standby)
+primary_conninfo = 'host=chartwarden-db-01 port=5432 user=wardenx_replicator password=<sealed> application_name=db-02'
 primary_slot_name = 'standby_db_02'
 restore_command = 'pgbackrest --stanza=chartwarden archive-get %f %p'
 ```
@@ -388,7 +388,7 @@ restore_command = 'pgbackrest --stanza=chartwarden archive-get %f %p'
 
 ### 5.2 MinIO Active-Active Replication
 
-Bucket-level replication between primary MinIO (wardenx-storage-01) and backup MinIO (wardenx-backup-01) using MinIO's built-in async replication:
+Bucket-level replication between primary MinIO (chartwarden-storage-01) and backup MinIO (chartwarden-backup-01) using MinIO's built-in async replication:
 
 - **RPO from MinIO replication:** typically < 30 sec; worst-case minutes during heavy upload
 - **Recovery path:** if primary MinIO is down, applications can be reconfigured to read from backup (write-through behavior validated in DR drill)
@@ -417,8 +417,8 @@ Some state intentionally not replicated to keep complexity bounded:
 **Procedure** (target time: 15 minutes from decision to running):
 
 ```bash
-# Step 1: Verify replica state on wardenx-db-02
-psql -h wardenx-db-02 -U postgres -c "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
+# Step 1: Verify replica state on chartwarden-db-02
+psql -h chartwarden-db-02 -U postgres -c "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
 # If these differ significantly, replica is behind — consider RPO impact
 
 # Step 2: Halt writes to primary (if reachable)
@@ -428,7 +428,7 @@ psql -h wardenx-db-02 -U postgres -c "SELECT pg_last_wal_receive_lsn(), pg_last_
 sudo -u postgres pg_ctl promote -D /var/lib/postgresql/18/main
 
 # Step 4: Verify replica is now primary
-psql -h wardenx-db-02 -U postgres -c "SELECT pg_is_in_recovery();"
+psql -h chartwarden-db-02 -U postgres -c "SELECT pg_is_in_recovery();"
 # Expect: false
 
 # Step 5: Update application configuration
@@ -436,8 +436,8 @@ psql -h wardenx-db-02 -U postgres -c "SELECT pg_is_in_recovery();"
 # Method depends on infrastructure setup; see §6.1.1
 
 # Step 6: Restart backend instances (rolling)
-for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "sudo systemctl restart wardenx-backend"
+for vm in chartwarden-app-01 chartwarden-app-02; do
+  ssh $vm "sudo systemctl restart chartwarden-backend"
   sleep 30
   curl -sf https://$vm:3000/ready || echo "FAIL on $vm"
 done
@@ -461,7 +461,7 @@ Three approaches, in order of preference:
 
 **Method B — DNS-based:**
 
-- Internal DNS record `db-primary.wardenx.internal` updates to point to new primary
+- Internal DNS record `db-primary.chartwarden.internal` updates to point to new primary
 - TTL 30 sec; takes up to 30 sec to propagate
 - Application connection pool drops stale connections, reconnects to new target
 
@@ -484,7 +484,7 @@ sudo rm -rf /var/lib/postgresql/18/main/*
 
 # 3. Restore from new primary using pgBackRest
 sudo -u postgres pgbackrest --stanza=chartwarden --type=standby \
-  --recovery-option=primary_conninfo='host=wardenx-db-02 user=wardenx_replicator' restore
+  --recovery-option=primary_conninfo='host=chartwarden-db-02 user=wardenx_replicator' restore
 
 # 4. Start in standby mode
 sudo systemctl start postgresql
@@ -504,11 +504,11 @@ psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"  # Expect: streaming
 
 ```bash
 # Step 1: Check Valkey health
-redis-cli -h wardenx-data-01 PING
+redis-cli -h chartwarden-data-01 PING
 # If no response, escalate to recovery
 
 # Step 2: Inspect Valkey logs
-ssh wardenx-data-01 "tail -200 /var/log/valkey/valkey.log"
+ssh chartwarden-data-01 "tail -200 /var/log/valkey/valkey.log"
 # Identify cause: OOM, disk full, configuration error, etc.
 
 # Step 3: If salvageable, fix and restart
@@ -517,12 +517,12 @@ sudo systemctl restart valkey
 
 # Step 4: If unsalvageable, fail over to standby (if configured) OR rebuild from snapshot
 # Currently: single Valkey instance; rebuild from snapshot on backup VM
-scp wardenx-backup-01:/var/backups/valkey/latest.rdb /var/lib/valkey/dump.rdb
+scp chartwarden-backup-01:/var/backups/valkey/latest.rdb /var/lib/valkey/dump.rdb
 sudo systemctl start valkey
 
 # Step 5: Force all backend instances to reconnect
-for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "sudo systemctl restart wardenx-backend"
+for vm in chartwarden-app-01 chartwarden-app-02; do
+  ssh $vm "sudo systemctl restart chartwarden-backend"
 done
 
 # Step 6: Active users will need to re-login (session loss accepted)
@@ -541,12 +541,12 @@ done
 
 ```bash
 # Step 1: Verify primary MinIO is down
-mc admin info wardenx-primary
+mc admin info chartwarden-primary
 # If unreachable, proceed to failover
 
 # Step 2: Check backup MinIO health and replication lag
-mc admin info wardenx-backup
-mc replicate status wardenx-primary/tenants  # Check lag at last successful sync
+mc admin info chartwarden-backup
+mc replicate status chartwarden-primary/tenants  # Check lag at last successful sync
 
 # Step 3: Decide on data loss tolerance
 # If replication was lagging significantly (>5 min), document RPO impact
@@ -554,7 +554,7 @@ mc replicate status wardenx-primary/tenants  # Check lag at last successful sync
 # Step 4: Reconfigure applications to point to backup MinIO
 # Update Vault/SOPS secrets with new endpoint
 # Rolling restart of backend instances and workers
-for service in wardenx-backend wardenx-worker-billing wardenx-worker-intake; do
+for service in chartwarden-backend chartwarden-worker-billing chartwarden-worker-intake; do
   for vm in $(get_vms_for $service); do
     ssh $vm "sudo systemctl restart $service"
     sleep 30
@@ -562,7 +562,7 @@ for service in wardenx-backend wardenx-worker-billing wardenx-worker-intake; do
 done
 
 # Step 5: Verify backend can read/write to backup MinIO
-curl -sf https://wardenx-app-01:3000/api/v1/admin/storage/health
+curl -sf https://chartwarden-app-01:3000/api/v1/admin/storage/health
 
 # Step 6: Plan recovery of primary MinIO
 # If hardware failure, replace and restore from backup
@@ -638,8 +638,8 @@ Used when: data corruption detected, accidental destructive query, ransomware re
 ```bash
 # Step 1: Stop all writes to PG
 # Disable chartwarden_app role; halt backend services
-for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "sudo systemctl stop wardenx-backend"
+for vm in chartwarden-app-01 chartwarden-app-02; do
+  ssh $vm "sudo systemctl stop chartwarden-backend"
 done
 
 # Step 2: Take final snapshot of current (corrupted) state for forensic preservation
@@ -675,14 +675,14 @@ Used when: object accidentally deleted, bucket corruption, ransomware encryption
 **Object versioning** (enabled on all PHI buckets) is the first line of defense — deleted objects retrievable via:
 
 ```bash
-mc cp --version-id <version> wardenx-primary/tenants/<org>/documents/<key> /tmp/recovered.pdf
+mc cp --version-id <version> chartwarden-primary/tenants/<org>/documents/<key> /tmp/recovered.pdf
 ```
 
 If versioning insufficient (whole bucket lost):
 
 ```bash
 # Restore from backup MinIO
-mc mirror wardenx-backup/tenants/<org>/documents/ wardenx-primary/tenants/<org>/documents/
+mc mirror chartwarden-backup/tenants/<org>/documents/ chartwarden-primary/tenants/<org>/documents/
 ```
 
 If both primary and backup affected (e.g., ransomware encrypted both, which shouldn't happen with proper segmentation):
@@ -805,7 +805,7 @@ psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - 
 
 **Conducted by:** Fabrice
 **Backup tested:** Full backup of <date>
-**Sandbox:** wardenx-sandbox-01 (Proxmox)
+**Sandbox:** chartwarden-sandbox-01 (Proxmox)
 
 ## Timing
 - Restore start: HH:MM:SS
@@ -838,10 +838,10 @@ psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - 
 
 1. Pre-drill: notify customers of maintenance window (2-hour window, expect brief read-only mode)
 2. Drill steps:
-   - Promote wardenx-db-02 to primary
+   - Promote chartwarden-db-02 to primary
    - Cut traffic over
    - Verify operations on new primary for 30 min
-   - Cut back to wardenx-db-01 after re-establishing as replica
+   - Cut back to chartwarden-db-01 after re-establishing as replica
 3. Document timing of each step vs. RTO target
 4. Identify procedural gaps or surprises
 5. Update this DR document with learnings
@@ -1378,7 +1378,7 @@ The `tenant.shred` worker executes a four-phase sequence (module spec §3.5 / §
 
 ```bash
 # 1. Find the last completed phase for the tenant
-psql -h wardenx-db-01 -U postgres -d wardenx -c "
+psql -h chartwarden-db-01 -U postgres -d wardenx -c "
 SELECT phase, recorded_at
 FROM tenant_key_destruction_log
 WHERE organization_id = '<orgId>'
@@ -1391,7 +1391,7 @@ ORDER BY recorded_at DESC;
 #
 #    THERE IS NO CLI. Resume is the SAME platform-ops route that started the shred, re-posted with
 #    the SAME destruction-certificate id:
-curl -sf -X POST https://wardenx-app-01:3000/api/v1/platform/tenants/<orgSlug>/shred \
+curl -sf -X POST https://chartwarden-app-01:3000/api/v1/platform/tenants/<orgSlug>/shred \
   -H "authorization: Bearer <platform-ops session>" \
   -H "content-type: application/json" \
   -d '{"destructionCertificateId":"<the SAME certificate id as the original run>"}'
@@ -1413,8 +1413,8 @@ curl -sf -X POST https://wardenx-app-01:3000/api/v1/platform/tenants/<orgSlug>/s
 >
 > ```bash
 > # Inspect, then remove, the retained job record for this shred
-> redis-cli -h wardenx-valkey-01 --scan --pattern 'bull:tenant.shred:*<destructionCertificateId>*'
-> redis-cli -h wardenx-valkey-01 DEL 'bull:tenant.shred:<tenantAccountId>+<destructionCertificateId>'
+> redis-cli -h chartwarden-valkey-01 --scan --pattern 'bull:tenant.shred:*<destructionCertificateId>*'
+> redis-cli -h chartwarden-valkey-01 DEL 'bull:tenant.shred:<tenantAccountId>+<destructionCertificateId>'
 > ```
 >
 > Confirm the Phase markers again (step 1) before and after — they, not the queue, are the record of

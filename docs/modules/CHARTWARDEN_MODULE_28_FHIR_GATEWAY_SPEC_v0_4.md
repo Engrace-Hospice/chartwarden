@@ -1898,7 +1898,7 @@ The administrative web surfaces conform to WCAG 2.1 AA per architecture §-A11y 
 
 **Steps:**
 1. HIE queries `GET /fhir/r4/Claim/{id}`.
-2. Route returns `404 Not Found` + `OperationOutcome.issue.severity='error'`, `.issue.code='not-supported'`, `.issue.details.text='Claim resource is not yet exposed; expected enablement in Phase 2'`, `.issue.diagnostics='https://docs.wardenx.com/fhir/phase-2'`.
+2. Route returns `404 Not Found` + `OperationOutcome.issue.severity='error'`, `.issue.code='not-supported'`, `.issue.details.text='Claim resource is not yet exposed; expected enablement in Phase 2'`, `.issue.diagnostics='https://docs.chartwarden.com/fhir/phase-2'`.
 3. The same posture applies to `ServiceRequest`, `QuestionnaireResponse`, `Location` per D1.
 
 **Done means:** Phase-2 routes are advertised as not-yet-supported in the CapabilityStatement and return the FHIR-spec correct error; the consumer can distinguish "this resource is permanently unsupported" from "I lack scope" from "the patient has no such resource."

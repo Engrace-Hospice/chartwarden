@@ -46,7 +46,7 @@ Missing or invalid on a death — `422`:
     "message": "placeOfDeath is required when reason is \"death\". Send \"home\", \"facility\" or \"unknown\": it sets the Medicare claim's patient discharge status (40 expired at home, 41 expired in a medical facility, 42 expired, place unknown — CMS Pub. 100-04 Ch. 11 §30.3). Without it the final claim cannot be billed. \"unknown\" is a valid answer when the place of death is not known.",
     "details": [{ "field": "placeOfDeath", "code": "PLACE_OF_DEATH_REQUIRED", "message": "…same text…" }],
     "correlationId": "…",
-    "documentationUrl": "https://docs.wardenx.app/errors/PLACE_OF_DEATH_REQUIRED"
+    "documentationUrl": "https://docs.chartwarden.app/errors/PLACE_OF_DEATH_REQUIRED"
   }
 }
 ```

@@ -38,7 +38,7 @@ It is written so that any qualified engineer can execute the procedures, not onl
 ### 1.3 Conventions
 
 - Commands shown for production unless explicitly marked DEV
-- VM names use the convention in CHARTWARDEN_SYSTEM_DESIGN §2.2 (`wardenx-app-01`, `wardenx-db-01`, etc.)
+- VM names use the convention in CHARTWARDEN_SYSTEM_DESIGN §2.2 (`chartwarden-app-01`, `chartwarden-db-01`, etc.)
 - "Operator" refers to the engineer executing the procedure
 - "On-call" refers to whoever is currently designated to receive alerts
 - All times are operator's local timezone unless explicitly UTC
@@ -200,13 +200,13 @@ gh run list --workflow=ci.yml --status=success --limit=1
 #    branch protection (#16).
 cosign verify ghcr.io/engrace-hospice/chartwarden:sha-<sha> \
   --certificate-identity \
-    "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
+    "https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 
 #    The SBOM travels with the image as an attestation:
 cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/chartwarden:sha-<sha> \
   --certificate-identity \
-    "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
+    "https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   | jq -r '.payload | @base64d | fromjson | .predicate.name'
 
@@ -215,25 +215,25 @@ cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/chartwarden:sh
 #    hand only when deploying outside the workflow, or when answering "what is actually running?".
 
 # 3. Pull image to all app VMs (parallel; doesn't impact running traffic)
-#    NOTE the real image name is ghcr.io/<repository_owner>/wardenx (deploy.yml's metadata-action),
-#    NOT ghcr.io/wardenx/backend. Tags are `sha-<full-sha>` and `latest` on the default branch.
-for vm in wardenx-app-01 wardenx-app-02; do
+#    NOTE the real image name is ghcr.io/<repository_owner>/chartwarden (deploy.yml's metadata-action),
+#    NOT ghcr.io/chartwarden/backend. Tags are `sha-<full-sha>` and `latest` on the default branch.
+for vm in chartwarden-app-01 chartwarden-app-02; do
   ssh $vm "docker pull ghcr.io/<owner>/chartwarden:sha-<sha>" &
 done
 wait
 
 # 4. Start new (green) containers alongside existing (blue) on each app VM
-for vm in wardenx-app-01 wardenx-app-02; do
+for vm in chartwarden-app-01 chartwarden-app-02; do
   ssh $vm "docker run -d \
-    --name wardenx-backend-green \
-    --network wardenx \
-    --env-file /etc/wardenx/.env \
+    --name chartwarden-backend-green \
+    --network chartwarden \
+    --env-file /etc/chartwarden/.env \
     -p 3000:3000 \
     ghcr.io/<owner>/chartwarden:sha-<sha>"
 done
 
 # 5. Wait for health on green
-for vm in wardenx-app-01 wardenx-app-02; do
+for vm in chartwarden-app-01 chartwarden-app-02; do
   until curl -sf https://$vm:3000/ready; do
     sleep 5
     echo "Waiting for green health on $vm"
@@ -241,28 +241,28 @@ for vm in wardenx-app-01 wardenx-app-02; do
 done
 
 # 6. Add green to load balancer at 5% weight
-ssh wardenx-edge-01 "/etc/wardenx/lb-cli weight green 5"
+ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli weight green 5"
 sleep 60
 # Watch for error spike — if any, abort
 
 # 7. Ramp: 5% → 25% → 50% → 100% over 5 minutes
 for w in 25 50 100; do
-  ssh wardenx-edge-01 "/etc/wardenx/lb-cli weight green $w"
+  ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli weight green $w"
   sleep 90
   # Watch for error spike
 done
 
 # 8. Cut blue to 0%
-ssh wardenx-edge-01 "/etc/wardenx/lb-cli weight blue 0"
+ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli weight blue 0"
 
 # 9. Verify no traffic going to blue
-ssh wardenx-edge-01 "/etc/wardenx/lb-cli show"
+ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli show"
 
 # 10. Hold blue containers running for 1 hour (rollback window)
 # After 1 hour with no rollback need:
-for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "docker stop wardenx-backend-blue && docker rm wardenx-backend-blue"
-  ssh $vm "docker rename wardenx-backend-green wardenx-backend-blue"
+for vm in chartwarden-app-01 chartwarden-app-02; do
+  ssh $vm "docker stop chartwarden-backend-blue && docker rm chartwarden-backend-blue"
+  ssh $vm "docker rename chartwarden-backend-green chartwarden-backend-blue"
 done
 # Now what was green is blue, ready for next deploy
 ```
@@ -308,17 +308,17 @@ Triggers for immediate rollback:
 
 ```bash
 # 1. Re-weight to previous version
-ssh wardenx-edge-01 "/etc/wardenx/lb-cli weight blue 100; /etc/wardenx/lb-cli weight green 0"
+ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli weight blue 100; /etc/chartwarden/lb-cli weight green 0"
 
 # 2. Verify traffic shifted
-ssh wardenx-edge-01 "/etc/wardenx/lb-cli show"
+ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli show"
 
 # 3. Status page update if customer-impacting
 # "Rolled back recent deploy due to <description>. Investigating."
 
 # 4. Stop green containers
-for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "docker stop wardenx-backend-green && docker rm wardenx-backend-green"
+for vm in chartwarden-app-01 chartwarden-app-02; do
+  ssh $vm "docker stop chartwarden-backend-green && docker rm chartwarden-backend-green"
 done
 
 # 5. File rollback incident report
@@ -353,7 +353,7 @@ Migrations follow the **two-phase pattern** for breaking changes (Architecture v
 # Verify it's additive: adds columns/tables, no DROP, no RENAME of existing columns
 
 # 2. Take pre-migration backup
-ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden --type=incr --tag=pre-migration-<sha> backup"
+ssh chartwarden-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden --type=incr --tag=pre-migration-<sha> backup"
 
 # 3. Run migration against primary
 # scripts/db/migrate.ts is the real production migration path (TASK-040E, OPS-016) — a
@@ -362,11 +362,11 @@ ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden --type=incr 
 # checksum drift, without touching the chartwarden_app LOGIN/password/BYPASSRLS state (that's a
 # one-time/rotation-only step — see the file header). Requires a superuser/owner connection: the
 # migration files themselves CREATE EXTENSION / CREATE ROLE / own tables.
-DATABASE_ADMIN_URL=postgres://chartwarden_admin:<pass>@wardenx-db-01/wardenx \
+DATABASE_ADMIN_URL=postgres://chartwarden_admin:<pass>@chartwarden-db-01/wardenx \
   bun run db:migrate:deploy
 
 # 4. Verify migration applied
-psql -h wardenx-db-01 -U postgres -d wardenx -c "SELECT * FROM _chartwarden_migration ORDER BY applied_at DESC LIMIT 5;"
+psql -h chartwarden-db-01 -U postgres -d wardenx -c "SELECT * FROM _chartwarden_migration ORDER BY applied_at DESC LIMIT 5;"
 
 # 5. Deploy new backend (with code that dual-writes old + new columns if applicable)
 
@@ -431,7 +431,7 @@ Sunday maintenance window:
 
 ```bash
 # Targets: heavily-updated tables not adequately handled by autovacuum
-ssh wardenx-db-01 "psql -U postgres -d wardenx <<EOF
+ssh chartwarden-db-01 "psql -U postgres -d wardenx <<EOF
 VACUUM (ANALYZE, VERBOSE) outbox_event;
 VACUUM (ANALYZE, VERBOSE) session;
 VACUUM (ANALYZE, VERBOSE) idempotency_key;
@@ -596,7 +596,7 @@ ALTER TABLE audit_event DETACH PARTITION audit_event_2026_01;
 COPY audit_event_2026_01 TO '/tmp/audit_2026_01.parquet' WITH (FORMAT 'parquet');
 
 -- Upload to MinIO cold storage
-mc cp /tmp/audit_2026_01.parquet wardenx-primary/platform/cold-storage/audit/2026/
+mc cp /tmp/audit_2026_01.parquet chartwarden-primary/platform/cold-storage/audit/2026/
 
 -- Drop the partition
 DROP TABLE audit_event_2026_01;
@@ -625,7 +625,7 @@ For `legal_hold` retention class:
 ```ini
 # /etc/pgbouncer/pgbouncer.ini
 [databases]
-wardenx = host=wardenx-db-01 dbname=wardenx pool_mode=transaction
+wardenx = host=chartwarden-db-01 dbname=wardenx pool_mode=transaction
 
 [pgbouncer]
 listen_port = 6432
@@ -646,13 +646,13 @@ ignore_startup_parameters = extra_float_digits
 
 ```bash
 # Check pool status
-psql -h wardenx-app-01 -p 6432 -U pgbouncer pgbouncer -c "SHOW POOLS;"
+psql -h chartwarden-app-01 -p 6432 -U pgbouncer pgbouncer -c "SHOW POOLS;"
 
 # Watch for: cl_waiting > 0 means connections queued (pool exhausted)
 # If sustained: increase pool size or investigate connection leak
 
 # Check active queries
-psql -h wardenx-db-01 -U postgres -c "
+psql -h chartwarden-db-01 -U postgres -c "
 SELECT pid, usename, application_name, state, query_start, query
 FROM pg_stat_activity
 WHERE state != 'idle'
@@ -666,7 +666,7 @@ Symptoms: connection count growing over time without traffic increase; PgBouncer
 
 ```bash
 # 1. Identify long-running queries
-psql -h wardenx-db-01 -U postgres -c "
+psql -h chartwarden-db-01 -U postgres -c "
 SELECT pid, state, query_start, NOW() - query_start AS duration, application_name, query
 FROM pg_stat_activity
 WHERE state != 'idle' AND query_start < NOW() - INTERVAL '5 minutes'
@@ -674,7 +674,7 @@ ORDER BY duration DESC;
 "
 
 # 2. Identify idle-in-transaction (leaked connections)
-psql -h wardenx-db-01 -U postgres -c "
+psql -h chartwarden-db-01 -U postgres -c "
 SELECT pid, query_start, NOW() - query_start AS duration, application_name
 FROM pg_stat_activity
 WHERE state = 'idle in transaction' AND query_start < NOW() - INTERVAL '5 minutes';
@@ -684,7 +684,7 @@ WHERE state = 'idle in transaction' AND query_start < NOW() - INTERVAL '5 minute
 # Cross-reference application_name with backend logs by correlation ID
 
 # 4. Emergency: kill stuck connections
-psql -h wardenx-db-01 -U postgres -c "SELECT pg_terminate_backend(<pid>);"
+psql -h chartwarden-db-01 -U postgres -c "SELECT pg_terminate_backend(<pid>);"
 
 # 5. Long-term: fix the code path holding the transaction open
 ```
@@ -693,7 +693,7 @@ psql -h wardenx-db-01 -U postgres -c "SELECT pg_terminate_backend(<pid>);"
 
 ```bash
 # Recent slow queries via pg_stat_statements
-psql -h wardenx-db-01 -U postgres -d wardenx -c "
+psql -h chartwarden-db-01 -U postgres -d wardenx -c "
 SELECT
   query,
   calls,
@@ -711,7 +711,7 @@ LIMIT 20;
 # psql -c "SELECT pg_stat_statements_reset();"
 
 # For a specific slow query, get the plan
-psql -h wardenx-db-01 -U postgres -d wardenx -c "EXPLAIN (ANALYZE, BUFFERS) <query>;"
+psql -h chartwarden-db-01 -U postgres -d wardenx -c "EXPLAIN (ANALYZE, BUFFERS) <query>;"
 ```
 
 Common causes and fixes:
@@ -729,7 +729,7 @@ Common causes and fixes:
 
 ```bash
 # On primary: check replicas' lag
-psql -h wardenx-db-01 -U postgres -c "
+psql -h chartwarden-db-01 -U postgres -c "
 SELECT
   application_name,
   client_addr,
@@ -740,7 +740,7 @@ FROM pg_stat_replication;
 "
 
 # On replica: check own lag
-psql -h wardenx-db-02 -U postgres -c "
+psql -h chartwarden-db-02 -U postgres -c "
 SELECT
   pg_is_in_recovery(),
   pg_last_wal_receive_lsn(),
@@ -767,7 +767,7 @@ DDL changes (CREATE INDEX, ALTER TABLE, etc.) require special care:
 
 ```bash
 # Safe index addition example
-ssh wardenx-db-01 "psql -U postgres -d wardenx -c '
+ssh chartwarden-db-01 "psql -U postgres -d wardenx -c '
 CREATE INDEX CONCURRENTLY IF NOT EXISTS encounter_status_org_idx
 ON encounter (status, organization_id)
 WHERE status IN (\"draft\", \"in_progress\");
@@ -788,16 +788,16 @@ FROM pg_stat_progress_create_index;
 
 ```bash
 # Bucket inventory
-mc admin info wardenx-primary
+mc admin info chartwarden-primary
 
 # Per-bucket size and object count
-mc du wardenx-primary/tenants/<org>/
+mc du chartwarden-primary/tenants/<org>/
 
 # Replication status
-mc replicate status wardenx-primary/tenants
+mc replicate status chartwarden-primary/tenants
 
 # Quota check
-mc admin user info wardenx-primary <tenant-user>
+mc admin user info chartwarden-primary <tenant-user>
 ```
 
 ### 6.2 Lifecycle Policy Verification
@@ -806,7 +806,7 @@ Each PHI bucket has a lifecycle policy. Verify monthly:
 
 ```bash
 # Get lifecycle policy
-mc ilm rule list wardenx-primary/tenants/<org>/intake
+mc ilm rule list chartwarden-primary/tenants/<org>/intake
 
 # Expected output should match:
 # - Expire incomplete multipart after 7 days
@@ -819,7 +819,7 @@ If discrepancy, restore policy from `infra/minio/policies/` in Git.
 
 ```bash
 # Verify object lock on claims bucket
-mc retention info wardenx-primary/tenants/<org>/claims/
+mc retention info chartwarden-primary/tenants/<org>/claims/
 # Expected: COMPLIANCE mode with 7-year retention
 
 # Object lock prevents deletion even by admin (compliance mode)
@@ -830,13 +830,13 @@ mc retention info wardenx-primary/tenants/<org>/claims/
 
 ```bash
 # Replication status all buckets
-for bucket in $(mc ls wardenx-primary | awk '{print $5}'); do
+for bucket in $(mc ls chartwarden-primary | awk '{print $5}'); do
   echo "Bucket: $bucket"
-  mc replicate status wardenx-primary/$bucket
+  mc replicate status chartwarden-primary/$bucket
 done
 
 # Lag check
-mc replicate status wardenx-primary/tenants --json | jq '.ReplicationStats'
+mc replicate status chartwarden-primary/tenants --json | jq '.ReplicationStats'
 
 # Expected: PendingCount low, FailedCount zero
 ```
@@ -845,11 +845,11 @@ mc replicate status wardenx-primary/tenants --json | jq '.ReplicationStats'
 
 ```bash
 # Total capacity
-mc admin info wardenx-primary
+mc admin info chartwarden-primary
 
 # Per-tenant utilization
 for org in $(get_active_org_ids); do
-  size=$(mc du wardenx-primary/tenants/$org/ --json | jq .size)
+  size=$(mc du chartwarden-primary/tenants/$org/ --json | jq .size)
   echo "$org: $(numfmt --to=iec --suffix=B $size)"
 done
 
@@ -866,28 +866,28 @@ When a new tenant is onboarded:
 ```bash
 # Create buckets per Module 40 / tenant onboarding workflow
 for subbucket in documents generated intake claims cost-reports exports; do
-  mc mb wardenx-primary/tenants/<new-org-id>/$subbucket
+  mc mb chartwarden-primary/tenants/<new-org-id>/$subbucket
 done
 
 # Apply lifecycle policy
-mc ilm rule import wardenx-primary/tenants/<new-org-id>/intake \
+mc ilm rule import chartwarden-primary/tenants/<new-org-id>/intake \
   < infra/minio/policies/intake-30-day-lifecycle.json
 
 # Apply object lock on compliance buckets
 mc retention set --default COMPLIANCE 7y \
-  wardenx-primary/tenants/<new-org-id>/claims
+  chartwarden-primary/tenants/<new-org-id>/claims
 
 mc retention set --default COMPLIANCE 7y \
-  wardenx-primary/tenants/<new-org-id>/cost-reports
+  chartwarden-primary/tenants/<new-org-id>/cost-reports
 
 # Generate tenant-scoped access key
-mc admin user add wardenx-primary tenant-<new-org-id> <generated-secret>
+mc admin user add chartwarden-primary tenant-<new-org-id> <generated-secret>
 
 # Apply IAM policy scoping to that tenant's prefix
-mc admin policy attach wardenx-primary tenant-<new-org-id> --user tenant-<new-org-id>
+mc admin policy attach chartwarden-primary tenant-<new-org-id> --user tenant-<new-org-id>
 
 # Verify
-mc admin user info wardenx-primary tenant-<new-org-id>
+mc admin user info chartwarden-primary tenant-<new-org-id>
 ```
 
 **Backfill (current deployment).** The application's per-tenant bucket is `tenant-<orgId>`, created by the M34 provisioner at
@@ -907,36 +907,36 @@ files. `DATABASE_DESTRUCTION_URL` must be set on api and worker (orphan reaper, 
 
 ```bash
 # Quick health
-redis-cli -h wardenx-data-01 PING
+redis-cli -h chartwarden-data-01 PING
 # Expected: PONG
 
 # Memory info
-redis-cli -h wardenx-data-01 INFO memory
+redis-cli -h chartwarden-data-01 INFO memory
 
 # Key stats by namespace
-redis-cli -h wardenx-data-01 --bigkeys
+redis-cli -h chartwarden-data-01 --bigkeys
 # Identify large keys; investigate if unexpected
 
 # Connection count
-redis-cli -h wardenx-data-01 INFO clients
+redis-cli -h chartwarden-data-01 INFO clients
 ```
 
 ### 7.2 Memory Management
 
 ```bash
 # Maxmemory configuration
-redis-cli -h wardenx-data-01 CONFIG GET maxmemory
+redis-cli -h chartwarden-data-01 CONFIG GET maxmemory
 # Expected: <80% of VM RAM, leaving room for OS
 
 # Eviction policy
-redis-cli -h wardenx-data-01 CONFIG GET maxmemory-policy
+redis-cli -h chartwarden-data-01 CONFIG GET maxmemory-policy
 # Expected: allkeys-lru (cache+session DB 0); noeviction (BullMQ DB 1)
 ```
 
 If memory pressure:
 
-1. Identify large keys: `redis-cli -h wardenx-data-01 --bigkeys`
-2. Check key expiration: `redis-cli -h wardenx-data-01 INFO keyspace` — look for expires column
+1. Identify large keys: `redis-cli -h chartwarden-data-01 --bigkeys`
+2. Check key expiration: `redis-cli -h chartwarden-data-01 INFO keyspace` — look for expires column
 3. If too many non-expiring keys, audit code for missing TTLs
 4. Scale up VM if legitimate growth
 
@@ -944,13 +944,13 @@ If memory pressure:
 
 ```bash
 # Manual snapshot
-redis-cli -h wardenx-data-01 BGSAVE
+redis-cli -h chartwarden-data-01 BGSAVE
 
 # Last save time
-redis-cli -h wardenx-data-01 LASTSAVE
+redis-cli -h chartwarden-data-01 LASTSAVE
 
 # Verify snapshot on backup VM
-ssh wardenx-backup-01 "ls -la /var/backups/valkey/"
+ssh chartwarden-backup-01 "ls -la /var/backups/valkey/"
 # Expect: dump.rdb mirrored within 15 min of BGSAVE
 ```
 
@@ -958,14 +958,14 @@ ssh wardenx-backup-01 "ls -la /var/backups/valkey/"
 
 ```bash
 # Connect to BullMQ DB
-redis-cli -h wardenx-data-01 -n 1
+redis-cli -h chartwarden-data-01 -n 1
 
 # Per-queue stats
 for queue in claim.submit intake.process notification.deliver; do
   echo "Queue: $queue"
-  redis-cli -h wardenx-data-01 -n 1 ZCARD bull:$queue:wait
-  redis-cli -h wardenx-data-01 -n 1 ZCARD bull:$queue:active
-  redis-cli -h wardenx-data-01 -n 1 ZCARD bull:$queue:failed
+  redis-cli -h chartwarden-data-01 -n 1 ZCARD bull:$queue:wait
+  redis-cli -h chartwarden-data-01 -n 1 ZCARD bull:$queue:active
+  redis-cli -h chartwarden-data-01 -n 1 ZCARD bull:$queue:failed
 done
 
 # Check for backed-up queues
@@ -976,7 +976,7 @@ done
 
 ```bash
 # Failed jobs in DLQ
-redis-cli -h wardenx-data-01 -n 1 ZRANGE bull:claim.submit:failed 0 -1
+redis-cli -h chartwarden-data-01 -n 1 ZRANGE bull:claim.submit:failed 0 -1
 
 # Retry a failed job
 # (Use admin UI or BullMQ CLI; raw redis-cli is brittle)
@@ -1062,15 +1062,15 @@ NEW_PASS=$(openssl rand -base64 32)
 
 # 2. Update PG with both passwords valid temporarily
 # (Better Auth keeps old session alive; want both passwords valid during deploy)
-psql -h wardenx-db-01 -U postgres -c "ALTER ROLE chartwarden_app PASSWORD '$NEW_PASS';"
+psql -h chartwarden-db-01 -U postgres -c "ALTER ROLE chartwarden_app PASSWORD '$NEW_PASS';"
 
 # 3. Update PgBouncer userlist
-ssh wardenx-app-01 "sudo bash -c 'echo \"chartwarden_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
-ssh wardenx-app-02 "sudo bash -c 'echo \"chartwarden_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
+ssh chartwarden-app-01 "sudo bash -c 'echo \"chartwarden_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
+ssh chartwarden-app-02 "sudo bash -c 'echo \"chartwarden_app=$NEW_PASS\" >> /etc/pgbouncer/userlist.txt'"
 
 # 4. Reload PgBouncer (no connection drop)
-ssh wardenx-app-01 "sudo systemctl reload pgbouncer"
-ssh wardenx-app-02 "sudo systemctl reload pgbouncer"
+ssh chartwarden-app-01 "sudo systemctl reload pgbouncer"
+ssh chartwarden-app-02 "sudo systemctl reload pgbouncer"
 
 # 5. Update SOPS env file with new password
 # (As per §8.2.1)
@@ -1208,16 +1208,16 @@ off-site envelope alongside `SOPS_AGE_KEY` (§8.4).
 ```bash
 # Certbot/acme.sh handles automatic renewal 30 days before expiration
 # Verify state:
-ssh wardenx-edge-01 "certbot certificates"
+ssh chartwarden-edge-01 "certbot certificates"
 
 # Check next renewal time
-ssh wardenx-edge-01 "systemctl list-timers | grep certbot"
+ssh chartwarden-edge-01 "systemctl list-timers | grep certbot"
 ```
 
 If auto-renewal fails (e.g., DNS challenge issue):
 
 ```bash
-ssh wardenx-edge-01 "sudo certbot renew --dry-run"
+ssh chartwarden-edge-01 "sudo certbot renew --dry-run"
 # Diagnose and fix DNS config
 ```
 
@@ -1239,7 +1239,7 @@ Annual rotation; manual procedure in offline secure environment:
 
 The age key that decrypts all SOPS-encrypted secrets is a critical artifact:
 
-- **Primary copy** on each production VM in `/etc/wardenx/age.key` (mode 0400, owner: systemd service user)
+- **Primary copy** on each production VM in `/etc/chartwarden/age.key` (mode 0400, owner: systemd service user)
 - **Backup copy** in sealed envelope in fire safe at primary location
 - **Recovery copy** in second sealed envelope at off-site location (trusted secondary holder — currently Fabrice's designated successor; documented separately)
 - **Test annually:** decrypt a known SOPS-encrypted file using the off-site copy
@@ -1276,7 +1276,7 @@ For emergency admin access when normal channels unavailable:
 
 - One break-glass `chartwarden_admin` PostgreSQL credential, password sealed in offline envelope
 - One break-glass MinIO root credential, similarly sealed
-- One break-glass SSH key for `wardenx-edge-01` (host of last resort), sealed
+- One break-glass SSH key for `chartwarden-edge-01` (host of last resort), sealed
 
 **Usage triggers:**
 - Total directory service failure
@@ -1419,7 +1419,7 @@ Anthropic spend is the largest variable cost and most worth governing closely:
 
 # 3. Per-tenant attribution
 # Query wardenx audit_event for ai_capability_used events
-psql -h wardenx-db-02 -U readonly -d wardenx -c "
+psql -h chartwarden-db-02 -U readonly -d wardenx -c "
 SELECT organization_id, context->>'capability' AS capability,
        SUM((context->>'input_tokens')::int) AS input_tokens,
        SUM((context->>'output_tokens')::int) AS output_tokens
@@ -1447,8 +1447,8 @@ for vm in $(get_all_vms); do
 done
 
 # Specifically watch:
-# - Disk usage approaching 80% on wardenx-db-01, wardenx-storage-01, wardenx-backup-01
-# - Memory pressure on wardenx-app-* (frequent OOM kills indicate insufficient RAM)
+# - Disk usage approaching 80% on chartwarden-db-01, chartwarden-storage-01, chartwarden-backup-01
+# - Memory pressure on chartwarden-app-* (frequent OOM kills indicate insufficient RAM)
 # - CPU sustained > 80% (need to scale up worker VMs)
 
 # Prometheus alerts:
@@ -1464,10 +1464,10 @@ done
 
 When current instances at sustained > 70% utilization:
 
-1. Clone Proxmox VM template `wardenx-app-template`
-2. Name: `wardenx-app-03`
+1. Clone Proxmox VM template `chartwarden-app-template`
+2. Name: `chartwarden-app-03`
 3. Configure networking (assign VLAN 20 IP)
-4. Run Ansible role `wardenx-backend-host` to provision
+4. Run Ansible role `chartwarden-backend-host` to provision
 5. Add to Pangolin upstream pool at weight 0
 6. Verify health endpoint
 7. Ramp weight to match peers
@@ -1475,21 +1475,21 @@ When current instances at sustained > 70% utilization:
 
 #### 10.4.2 Scale Database Vertical
 
-If wardenx-db-01 needs more resources:
+If chartwarden-db-01 needs more resources:
 
 1. Schedule maintenance window
-2. Failover to wardenx-db-02 (DR_BCP §6.1)
-3. Shutdown wardenx-db-01
+2. Failover to chartwarden-db-02 (DR_BCP §6.1)
+3. Shutdown chartwarden-db-01
 4. Increase VM resources via Proxmox UI
-5. Restart wardenx-db-01 as new replica
+5. Restart chartwarden-db-01 as new replica
 6. Failback after sync complete (optional)
-7. Repeat on wardenx-db-02 in next maintenance window
+7. Repeat on chartwarden-db-02 in next maintenance window
 
 #### 10.4.3 Scale Storage
 
 When MinIO approaching capacity:
 
-1. Add disk to wardenx-storage-01 VM via Proxmox
+1. Add disk to chartwarden-storage-01 VM via Proxmox
 2. Extend MinIO server with new disk
 3. Verify capacity in MinIO console
 
@@ -1517,7 +1517,7 @@ Steps after sales/contract complete (full automation lives in Module 34 SaaS Ten
 > M34 platform-ops surface**, not CLI scripts — that is deliberate (each one is ABAC-gated,
 > step-up-gated where destructive, and audited; a script bypassing the API would bypass all three).
 > Below, each step is either its real route, or marked **NOT IMPLEMENTED** where no equivalent
-> exists. All routes need a platform-ops session; `$API` is `https://wardenx-app-01:3000`.
+> exists. All routes need a platform-ops session; `$API` is `https://chartwarden-app-01:3000`.
 
 ```bash
 # 1. Create the tenant (organization + tenant_account spine)
@@ -1701,7 +1701,7 @@ Process:
 
 ```bash
 # 1. Pull active users by role
-psql -h wardenx-db-02 -U readonly -d wardenx -c "
+psql -h chartwarden-db-02 -U readonly -d wardenx -c "
 SELECT u.email, u.name, o.slug, m.status, m.accepted_at, 
        (SELECT MAX(created_at) FROM audit_event WHERE actor_user_id = u.id) AS last_active
 FROM \"user\" u
@@ -1895,13 +1895,13 @@ Alert: tls_cert_expiry_soon (30 days, 7 days)
 
 ```bash
 # 1. Check load balancer health
-ssh wardenx-edge-01 "/etc/wardenx/lb-cli show"
+ssh chartwarden-edge-01 "/etc/chartwarden/lb-cli show"
 
 # 2. Check per-instance latency
-curl -w "@curl-timing.txt" -sf https://wardenx-app-01:3000/health
+curl -w "@curl-timing.txt" -sf https://chartwarden-app-01:3000/health
 
 # 3. Check DB connection pool
-ssh wardenx-app-01 "psql -h localhost -p 6432 -U pgbouncer pgbouncer -c 'SHOW POOLS;'"
+ssh chartwarden-app-01 "psql -h localhost -p 6432 -U pgbouncer pgbouncer -c 'SHOW POOLS;'"
 
 # 4. Check for slow queries (§5.4)
 
@@ -2030,7 +2030,7 @@ Handoff log format:
 
 ### 16.1 Bastion / SSH Access
 
-- All production SSH via bastion VM (`wardenx-bastion-01`)
+- All production SSH via bastion VM (`chartwarden-bastion-01`)
 - Bastion has its own MFA-protected admin authentication
 - All SSH sessions audited (recorded session logs retained 6 years)
 - Per-engineer SSH keys; no shared keys
@@ -2254,19 +2254,19 @@ Where to start?
 curl -sf https://api.wardenx.app/health
 
 # DB health
-psql -h wardenx-db-01 -U postgres -c "SELECT NOW();"
+psql -h chartwarden-db-01 -U postgres -c "SELECT NOW();"
 
 # Replica lag
-psql -h wardenx-db-02 -U postgres -c "SELECT NOW() - pg_last_xact_replay_timestamp();"
+psql -h chartwarden-db-02 -U postgres -c "SELECT NOW() - pg_last_xact_replay_timestamp();"
 
 # Valkey ping
-redis-cli -h wardenx-data-01 PING
+redis-cli -h chartwarden-data-01 PING
 
 # MinIO health
-mc admin info wardenx-primary
+mc admin info chartwarden-primary
 
 # Backup status
-ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden info"
+ssh chartwarden-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden info"
 
 # All VMs status
 for vm in $(get_all_vms); do

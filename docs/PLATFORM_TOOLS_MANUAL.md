@@ -174,9 +174,9 @@ Namespaces:
 
 | Namespace | Contents |
 | --- | --- |
-| `wardenx-prod` | API, web, BFF services |
-| `wardenx-workers` | Background jobs, HOPE/claims processors |
-| `wardenx-integration` | Clearinghouse, eFax, external connectors |
+| `chartwarden-prod` | API, web, BFF services |
+| `chartwarden-workers` | Background jobs, HOPE/claims processors |
+| `chartwarden-integration` | Clearinghouse, eFax, external connectors |
 | `database` | CloudNativePG clusters, PgBouncer |
 | `storage` | Garage |
 | `messaging` | Reserved for NATS (deferred, ADR-0036); not created |
@@ -201,7 +201,7 @@ Namespaces:
 
 ### Security and HIPAA notes
 
-- Only PHI-handling namespaces (`wardenx-*`, `database`, `storage`, `messaging`) may hold patient data. Observability must not ingest PHI; scrub logs at the application.
+- Only PHI-handling namespaces (`chartwarden-*`, `database`, `storage`, `messaging`) may hold patient data. Observability must not ingest PHI; scrub logs at the application.
 - The Kubernetes API is never exposed publicly.
 - Service accounts have no token mounted unless they need one.
 
@@ -247,11 +247,11 @@ Allowed application flows:
 
 | From | To | Port |
 | --- | --- | --- |
-| Gateway | `wardenx-prod` web and API | HTTP |
-| `wardenx-prod` API | PgBouncer (`database`) | 5432 |
-| `wardenx-prod`, `wardenx-workers` | Valkey | 6379 |
-| `wardenx-prod`, `wardenx-workers` | Garage S3 API | 3900 |
-| `wardenx-integration` | Named external FQDNs only | 443 |
+| Gateway | `chartwarden-prod` web and API | HTTP |
+| `chartwarden-prod` API | PgBouncer (`database`) | 5432 |
+| `chartwarden-prod`, `chartwarden-workers` | Valkey | 6379 |
+| `chartwarden-prod`, `chartwarden-workers` | Garage S3 API | 3900 |
+| `chartwarden-integration` | Named external FQDNs only | 443 |
 | All PHI namespaces | OpenBao | 8200 |
 
 Everything else, including web to database and any pod to the internet, is denied.
@@ -487,7 +487,7 @@ NATS with JetStream carries domain events and background commands: `PatientAdmit
 
 ### Key concepts
 
-- **Subjects:** hierarchical topic names, e.g. `wardenx.<tenant>.patient.admitted`. Wildcards (`*`, `>`) let consumers subscribe broadly.
+- **Subjects:** hierarchical topic names, e.g. `chartwarden.<tenant>.patient.admitted`. Wildcards (`*`, `>`) let consumers subscribe broadly.
 - **Stream:** a durable, replicated log that captures messages on a set of subjects, with retention by age, size, or interest.
 - **Consumer:** a cursor over a stream. Durable pull consumers with explicit acknowledgement are the default for workers.
 - **Ack, redelivery, max deliver:** unacknowledged messages are redelivered; after the limit they go to a dead-letter path for inspection.
@@ -707,7 +707,7 @@ Forgejo is a self-hosted Git forge (a community fork of Gitea) for the ChartWard
 
 ### Key concepts
 
-- **Organizations and repositories:** `wardenx/app`, `wardenx/infrastructure`, `wardenx/gitops` (the manifests Argo CD watches).
+- **Organizations and repositories:** `chartwarden/app`, `chartwarden/infrastructure`, `chartwarden/gitops` (the manifests Argo CD watches).
 - **Branch protection:** required reviews, required status checks, signed commits, no force-push to `main`.
 - **Runners:** separate processes that execute jobs, ideally in ephemeral containers or VMs that are destroyed after each job.
 - **Workflow secrets:** values injected into jobs; scoped per repository and environment.
@@ -768,7 +768,7 @@ Harbor is the private registry for every container image and Helm chart ChartWar
 
 ### Key concepts
 
-- **Projects:** groups of repositories with their own access, quotas, and policies (`wardenx`, `platform`, `proxy-dockerhub`).
+- **Projects:** groups of repositories with their own access, quotas, and policies (`chartwarden`, `platform`, `proxy-dockerhub`).
 - **Robot accounts:** non-human credentials with narrow scopes (push for CI, pull for the cluster).
 - **Proxy cache projects:** pull-through caches for public registries.
 - **Replication rules:** push or pull images to another Harbor (the DR region).
@@ -778,11 +778,11 @@ Harbor is the private registry for every container image and Helm chart ChartWar
 ### Deployment baseline
 
 - Harbor in the software-factory domain with external PostgreSQL (CNPG) and Garage or local storage for blobs.
-- Projects: `wardenx` (application images, private), `platform` (mirrored platform images pinned by digest), proxy caches for Docker Hub, GHCR, and Quay.
-- Tag immutability on `wardenx`; deployments reference images by digest anyway.
+- Projects: `chartwarden` (application images, private), `platform` (mirrored platform images pinned by digest), proxy caches for Docker Hub, GHCR, and Quay.
+- Tag immutability on `chartwarden`; deployments reference images by digest anyway.
 - Built-in Trivy scanning on push; policy prevents pulls of images with critical vulnerabilities that have a fix available.
-- CI robot: push only to `wardenx`. Cluster robot: pull only.
-- Replication of `wardenx` and `platform` to the DR Harbor on every push.
+- CI robot: push only to `chartwarden`. Cluster robot: pull only.
+- Replication of `chartwarden` and `platform` to the DR Harbor on every push.
 - SSO via authentik.
 
 ### Day-2 operations
@@ -834,12 +834,12 @@ Argo CD is the only thing that changes production. It watches the `gitops` repos
 - Argo CD in `gitops`, UI on the internal Gateway only, reached through Pangolin's authentication. SSO via authentik
   arrives at stage 2. Local admin is disabled after setup (break-glass kept sealed).
 - App-of-apps or ApplicationSet structure: `platform/*` (Cilium, CNPG, Garage, OpenBao, External Secrets, Kyverno,
-  observability) and `apps/wardenx`.
+  observability) and `apps/chartwarden`.
 - Auto-sync with self-heal. Prune is on for app resources and **off** for data services (CNPG `Cluster`, Garage,
   OpenBao), so a bad commit can never delete a database (ADR-0050 D4). The production app syncs only after the
   `gitops` PR merges.
 - Sync waves: CRDs and operators → databases and storage → migration Job (PreSync hook) → application → smoke-test Job (PostSync hook).
-- AppProjects restrict `apps/wardenx` to `wardenx-*` namespaces; only the platform project can touch cluster-scoped resources.
+- AppProjects restrict `apps/chartwarden` to `chartwarden-*` namespaces; only the platform project can touch cluster-scoped resources.
 - Notifications to the alert channel on sync failure or degraded health.
 
 ### Day-2 operations
@@ -941,7 +941,7 @@ Kyverno checks every resource before Kubernetes accepts it. If a Deployment uses
 
 ### Deployment baseline
 
-Production policies, enforced in all `wardenx-*`, `database`, `storage`, `messaging`, and `cache` namespaces:
+Production policies, enforced in all `chartwarden-*`, `database`, `storage`, `messaging`, and `cache` namespaces:
 
 | Policy | Rule |
 | --- | --- |
@@ -1003,7 +1003,7 @@ Falco watches what containers actually do at runtime, using kernel events throug
 ### Deployment baseline
 
 - DaemonSet on every node with the modern eBPF driver; runs in `security` under a named Kyverno exception (it needs privileges).
-- Start with the default ruleset, then add ChartWarden rules: no shells in `wardenx-*` pods, no outbound connections from `database` except to replicas and the backup target, no reads of service-account tokens by application processes.
+- Start with the default ruleset, then add ChartWarden rules: no shells in `chartwarden-*` pods, no outbound connections from `database` except to replicas and the backup target, no reads of service-account tokens by application processes.
 - Falcosidekick forwards Warning and above to the alert channel and all events to Loki (stage 3: also Wazuh).
 - Tune noise for two weeks before paging on any rule.
 

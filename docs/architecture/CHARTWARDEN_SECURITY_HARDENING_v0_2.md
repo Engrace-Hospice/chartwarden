@@ -1226,12 +1226,12 @@ Standards:
 
 ```bash
 # Sign image on CI publish
-cosign sign --key cosign.key ghcr.io/wardenx/backend:<sha>
+cosign sign --key cosign.key ghcr.io/engrace-hospice/chartwarden:<sha>
 
 # Verify before deploy
 cosign verify --certificate-identity=<identity> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-  ghcr.io/wardenx/backend:<sha>
+  ghcr.io/engrace-hospice/chartwarden:<sha>
 ```
 
 Signing pipeline:
@@ -1246,7 +1246,7 @@ CycloneDX format, generated in CI:
 
 ```bash
 # In CI pipeline
-syft ghcr.io/wardenx/backend:<sha> -o cyclonedx-json > backend-sbom.json
+syft ghcr.io/engrace-hospice/chartwarden:<sha> -o cyclonedx-json > backend-sbom.json
 ```
 
 SBOM:
@@ -1260,7 +1260,7 @@ SBOM:
 
 ```bash
 # Trivy scan in CI
-trivy image --severity CRITICAL,HIGH --exit-code 1 ghcr.io/wardenx/backend:<sha>
+trivy image --severity CRITICAL,HIGH --exit-code 1 ghcr.io/engrace-hospice/chartwarden:<sha>
 ```
 
 Findings:

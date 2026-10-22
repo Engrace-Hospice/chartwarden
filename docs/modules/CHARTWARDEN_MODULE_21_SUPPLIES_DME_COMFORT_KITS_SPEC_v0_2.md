@@ -3218,7 +3218,7 @@ ignoring `tenant_id`).
 
 ### 8.4 OpenTelemetry Spans
 
-Standard span attribution: `service.name = wardenx-backend`, `module = m21`, plus per-span
+Standard span attribution: `service.name = chartwarden-backend`, `module = m21`, plus per-span
 attributes listed below. All spans inherit the request trace from the inbound HTTP / job
 boundary.
 

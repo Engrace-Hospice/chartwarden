@@ -612,7 +612,7 @@ export class CredentialBuilder {
     cert.validity.notBefore = new Date()
     cert.validity.notAfter = new Date(Date.now() + CERT_VALIDITY_DAYS * 24 * 60 * 60 * 1000)
     cert.setSubject([
-      { name: 'commonName', value: isInbound ? `wardenx-${input.feedId}` : `wardenx-client-${input.feedId}` },
+      { name: 'commonName', value: isInbound ? `chartwarden-${input.feedId}` : `chartwarden-client-${input.feedId}` },
       { name: 'organizationName', value: 'ChartWarden' },
       { name: 'organizationalUnitName', value: `Feed-${input.feedId.slice(0, 8)}` },
     ])

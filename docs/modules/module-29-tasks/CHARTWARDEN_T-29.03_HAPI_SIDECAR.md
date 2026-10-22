@@ -42,7 +42,7 @@ This addendum delivers the drop-in artifacts for T-29.03 — the Java HAPI HL7v2
 The M29 spec v0.2 carries an internal inconsistency between §3.1 and §§4.11.3 + 13.2:
 
 - §3.1 says: *"`parser-sidecar-client.ts` — typed JSON-over-HTTP client to the HAPI Java sidecar"*.
-- §4.11.3 says: *"Sidecar communication: localhost-bound gRPC over UDS (`/var/run/wardenx/hapi.sock`)"*.
+- §4.11.3 says: *"Sidecar communication: localhost-bound gRPC over UDS (`/var/run/chartwarden/hapi.sock`)"*.
 - §13.2 cruiser rule references: *"the sidecar gRPC stubs"*.
 
 The later two sections agree; the earlier one drifted. **Resolution: gRPC over UDS wins.** Reasoning:
@@ -67,7 +67,7 @@ A second §3.1 path-comment correction for the sidecar layout:
 -     ├── pom.xml                               # HAPI HL7 v2.5.1 dependency
 +     ├── build.gradle.kts                      # HAPI HL7 v2.5.1 dependency (Gradle Kotlin DSL — Maven-free)
 +     ├── settings.gradle.kts
-      └── src/main/java/com/wardenx/hl7/
+      └── src/main/java/com/chartwarden/hl7/
           ├── ParserService.java                # gRPC server exposing Parse/Build/Health
           └── SegmentMapper.java                # HAPI → proto-typed mapping
 ```
@@ -92,17 +92,17 @@ parser-sidecar/
 │   └── parser.proto -> ../../proto/parser.proto
 └── src/
     ├── main/
-    │   ├── java/com/wardenx/hl7/
+    │   ├── java/com/chartwarden/hl7/
     │   │   ├── ParserServiceImpl.java       # gRPC service implementation
     │   │   ├── SegmentMapper.java           # HAPI ↔ proto mapping
     │   │   ├── BuilderService.java          # outbound HL7 wire builder
-    │   │   ├── UdsServerBootstrap.java      # binds /var/run/wardenx/hapi.sock
+    │   │   ├── UdsServerBootstrap.java      # binds /var/run/chartwarden/hapi.sock
     │   │   ├── RedactingLogger.java         # PHI-aware structured logger
     │   │   └── App.java                     # main entrypoint
     │   └── resources/
     │       └── logback.xml                  # log config with PHI redaction
     └── test/
-        └── java/com/wardenx/hl7/
+        └── java/com/chartwarden/hl7/
             ├── ParserServiceImplTest.java
             ├── SegmentMapperTest.java
             └── fixtures/                    # HL7 sample frames
@@ -112,7 +112,7 @@ parser-sidecar/
 
 ```kotlin
 // packages/hl7-worker/parser-sidecar/settings.gradle.kts
-rootProject.name = "wardenx-hl7-parser-sidecar"
+rootProject.name = "chartwarden-hl7-parser-sidecar"
 ```
 
 ### 3.2 `gradle.properties`
@@ -155,7 +155,7 @@ java {
 }
 
 application {
-    mainClass.set("com.wardenx.hl7.App")
+    mainClass.set("com.chartwarden.hl7.App")
     applicationDefaultJvmArgs = listOf(
         "-Xms256m",
         "-Xmx1024m",
@@ -231,7 +231,7 @@ tasks.test {
 
 tasks.named<JavaExec>("run") {
     // Local-dev: bind to a host-writable socket path
-    environment("CHARTWARDEN_HL7_UDS_PATH", "/tmp/wardenx-hl7.sock")
+    environment("CHARTWARDEN_HL7_UDS_PATH", "/tmp/chartwarden-hl7.sock")
 }
 
 // Produce a fat JAR for the container image
@@ -239,7 +239,7 @@ tasks.register<Jar>("fatJar") {
     archiveClassifier.set("all")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes["Main-Class"] = "com.wardenx.hl7.App"
+        attributes["Main-Class"] = "com.chartwarden.hl7.App"
     }
     from(sourceSets.main.get().output)
     dependsOn(configurations.runtimeClasspath)
@@ -261,9 +261,9 @@ Path: `packages/hl7-worker/proto/parser.proto`. Single source of truth for both 
 // packages/hl7-worker/proto/parser.proto
 syntax = "proto3";
 
-package wardenx.hl7;
+package chartwarden.hl7;
 
-option java_package = "com.wardenx.hl7.proto";
+option java_package = "com.chartwarden.hl7.proto";
 option java_multiple_files = true;
 option java_outer_classname = "ParserProto";
 
@@ -431,8 +431,8 @@ The segment tree is intentionally string-shaped at the leaf. Type-narrowing into
 ### 5.1 `App.java` — entrypoint
 
 ```java
-// packages/hl7-worker/parser-sidecar/src/main/java/com/wardenx/hl7/App.java
-package com.wardenx.hl7;
+// packages/hl7-worker/parser-sidecar/src/main/java/com/chartwarden/hl7/App.java
+package com.chartwarden.hl7;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -465,8 +465,8 @@ public final class App {
 ### 5.2 `UdsServerBootstrap.java` — gRPC over UDS via Netty epoll
 
 ```java
-// packages/hl7-worker/parser-sidecar/src/main/java/com/wardenx/hl7/UdsServerBootstrap.java
-package com.wardenx.hl7;
+// packages/hl7-worker/parser-sidecar/src/main/java/com/chartwarden/hl7/UdsServerBootstrap.java
+package com.chartwarden.hl7;
 
 import io.grpc.Server;
 import io.grpc.netty.NettyServerBuilder;
@@ -510,7 +510,7 @@ public final class UdsServerBootstrap {
             .start();
 
         // The socket file is created with the worker-process default umask; tighten to 0660
-        // so only the wardenx-app user (mounted in the bind-volume) can read/write it.
+        // so only the chartwarden-app user (mounted in the bind-volume) can read/write it.
         final boolean modeOk = sockFile.setReadable(false, false)
             && sockFile.setWritable(false, false)
             && sockFile.setReadable(true, true)
@@ -545,15 +545,15 @@ public final class UdsServerBootstrap {
 ### 5.3 `ParserServiceImpl.java` — gRPC service
 
 ```java
-// packages/hl7-worker/parser-sidecar/src/main/java/com/wardenx/hl7/ParserServiceImpl.java
-package com.wardenx.hl7;
+// packages/hl7-worker/parser-sidecar/src/main/java/com/chartwarden/hl7/ParserServiceImpl.java
+package com.chartwarden.hl7;
 
 import ca.uhn.hl7v2.DefaultHapiContext;
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.HapiContext;
 import ca.uhn.hl7v2.model.Message;
 import ca.uhn.hl7v2.parser.PipeParser;
-import com.wardenx.hl7.proto.*;
+import com.chartwarden.hl7.proto.*;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -676,12 +676,12 @@ public final class ParserServiceImpl extends ParserServiceGrpc.ParserServiceImpl
 ### 5.4 `SegmentMapper.java` — HAPI tree → proto
 
 ```java
-// packages/hl7-worker/parser-sidecar/src/main/java/com/wardenx/hl7/SegmentMapper.java
-package com.wardenx.hl7;
+// packages/hl7-worker/parser-sidecar/src/main/java/com/chartwarden/hl7/SegmentMapper.java
+package com.chartwarden.hl7;
 
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.*;
-import com.wardenx.hl7.proto.*;
+import com.chartwarden.hl7.proto.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -793,15 +793,15 @@ public final class SegmentMapper {
 ### 5.5 `BuilderService.java` — proto → HAPI tree → wire bytes
 
 ```java
-// packages/hl7-worker/parser-sidecar/src/main/java/com/wardenx/hl7/BuilderService.java
-package com.wardenx.hl7;
+// packages/hl7-worker/parser-sidecar/src/main/java/com/chartwarden/hl7/BuilderService.java
+package com.chartwarden.hl7;
 
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.HapiContext;
 import ca.uhn.hl7v2.model.Message;
 import ca.uhn.hl7v2.parser.PipeParser;
 import com.google.protobuf.ByteString;
-import com.wardenx.hl7.proto.*;
+import com.chartwarden.hl7.proto.*;
 
 import java.util.UUID;
 
@@ -950,7 +950,7 @@ import { ulid } from 'ulid'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 export interface SidecarConfig {
-  readonly udsPath: string                  // e.g. /var/run/wardenx/hapi.sock
+  readonly udsPath: string                  // e.g. /var/run/chartwarden/hapi.sock
   readonly healthIntervalMs: number         // default 30_000
   readonly parseTimeoutMs: number           // default 2_000
   readonly buildTimeoutMs: number           // default 2_000
@@ -1603,10 +1603,10 @@ WORKDIR /app
 COPY --from=build /build/build/libs/*-all.jar /app/sidecar.jar
 
 # Non-root user; mount-point for the UDS socket
-RUN addgroup -S wardenx && adduser -S -G wardenx wardenx
-USER wardenx
+RUN addgroup -S chartwarden && adduser -S -G chartwarden chartwarden
+USER chartwarden
 
-ENV CHARTWARDEN_HL7_UDS_PATH=/var/run/wardenx/hapi.sock
+ENV CHARTWARDEN_HL7_UDS_PATH=/var/run/chartwarden/hapi.sock
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["java", "-jar", "/app/sidecar.jar"]
@@ -1618,17 +1618,17 @@ CMD ["java", "-jar", "/app/sidecar.jar"]
 # docker-compose.yaml (additions; merge with the existing services block)
 services:
   hl7-sidecar:
-    image: wardenx/hl7-sidecar:${VERSION:-dev}
+    image: chartwarden/hl7-sidecar:${VERSION:-dev}
     build:
       context: ./packages/hl7-worker
       dockerfile: parser-sidecar/Dockerfile
     volumes:
-      - hl7-uds:/var/run/wardenx
+      - hl7-uds:/var/run/chartwarden
     environment:
-      CHARTWARDEN_HL7_UDS_PATH: /var/run/wardenx/hapi.sock
+      CHARTWARDEN_HL7_UDS_PATH: /var/run/chartwarden/hapi.sock
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "test -S /var/run/wardenx/hapi.sock"]
+      test: ["CMD", "sh", "-c", "test -S /var/run/chartwarden/hapi.sock"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -1641,9 +1641,9 @@ services:
         condition: service_healthy
     volumes:
       # Shared UDS mount — same bind volume as the sidecar.
-      - hl7-uds:/var/run/wardenx
+      - hl7-uds:/var/run/chartwarden
     environment:
-      CHARTWARDEN_HL7_UDS_PATH: /var/run/wardenx/hapi.sock
+      CHARTWARDEN_HL7_UDS_PATH: /var/run/chartwarden/hapi.sock
 
 volumes:
   hl7-uds:
@@ -1707,13 +1707,13 @@ These compose with the §13.2 rules from the M29 spec (after the §2 path correc
 ### 12.1 Java unit tests
 
 ```java
-// packages/hl7-worker/parser-sidecar/src/test/java/com/wardenx/hl7/SegmentMapperTest.java
-package com.wardenx.hl7;
+// packages/hl7-worker/parser-sidecar/src/test/java/com/chartwarden/hl7/SegmentMapperTest.java
+package com.chartwarden.hl7;
 
 import ca.uhn.hl7v2.DefaultHapiContext;
 import ca.uhn.hl7v2.HapiContext;
 import ca.uhn.hl7v2.model.Message;
-import com.wardenx.hl7.proto.ParsedMessage;
+import com.chartwarden.hl7.proto.ParsedMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -1768,7 +1768,7 @@ let sidecarProcess: ChildProcess
 let udsPath: string
 
 beforeAll(async () => {
-  udsPath = join(tmpdir(), `wardenx-hl7-test-${Date.now()}.sock`)
+  udsPath = join(tmpdir(), `chartwarden-hl7-test-${Date.now()}.sock`)
   // Start the sidecar via gradle run with the test socket path
   sidecarProcess = spawn(
     './gradlew',
@@ -1915,8 +1915,8 @@ describe('Sidecar log redaction', () => {
 - [ ] All TS integration tests pass (including the crash-recovery scenario and the round-trip byte-equality check).
 - [ ] PHI redaction tests pass — sidecar logs never emit PID-5/NK1/IN1/GT1/NTE raw values nor 10-digit MRN-like nor date-like sequences.
 - [ ] The sidecar image builds at ~150MB or less.
-- [ ] Sidecar container runs as non-root (`wardenx` user).
-- [ ] UDS socket file mode is 0660 owned by `wardenx:wardenx`.
+- [ ] Sidecar container runs as non-root (`chartwarden` user).
+- [ ] UDS socket file mode is 0660 owned by `chartwarden:chartwarden`.
 - [ ] No TCP port exposed by the sidecar service (compose config verified).
 - [ ] **Integrations engineer** sign-off on the gRPC contract.
 - [ ] **Platform engineer** sign-off on the Docker integration and the UDS bind volume.

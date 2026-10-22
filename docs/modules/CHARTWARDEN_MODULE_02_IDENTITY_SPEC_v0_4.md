@@ -1774,7 +1774,7 @@ All M2 error responses conform to the M1 standard error envelope (SD-051). Every
     "message": "Human-readable description",
     "details": { ... },
     "correlationId": "<uuid>",
-    "documentationUrl": "https://docs.wardenx.app/errors/<CODE>"
+    "documentationUrl": "https://docs.chartwarden.app/errors/<CODE>"
   }
 }
 ```

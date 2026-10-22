@@ -2,7 +2,7 @@
 
 ## Portée et invariants
 
-Ce contrat lie le repository `wardenx` à la future PR C de `wardenx-mobile`. Le mobile utilise
+Ce contrat lie le repository `chartwarden` à la future PR C de `wardenx-mobile`. Le mobile utilise
 l’instance Better Auth existante et les routes `/api/auth/*`; il n’existe ni JWT ChartWarden, ni second
 store de sessions, ni endpoint d’authentification mobile parallèle. Le serveur calcule l’utilisateur,
 l’organisation, les rôles, les permissions, les attributs ABAC et les rooms Socket.IO. Une valeur

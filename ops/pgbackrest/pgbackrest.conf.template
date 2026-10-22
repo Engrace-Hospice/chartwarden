@@ -35,7 +35,7 @@ compress-level=3
 start-fast=y
 
 # Secondary repository on backup VM — COMMENTED OUT, see file header (no such VM exists yet).
-# repo2-host=wardenx-backup-01
+# repo2-host=chartwarden-backup-01
 # repo2-host-user=pgbackrest
 # repo2-path=/var/lib/pgbackrest
 # repo2-retention-full=30

@@ -589,7 +589,7 @@ packages/hl7-worker/
     ├── build.gradle.kts                      # Gradle Kotlin DSL — HAPI HL7 v2.5.1 + grpc-netty + Netty epoll UDS
     ├── settings.gradle.kts
     ├── gradle.properties
-    └── src/main/java/com/wardenx/hl7/
+    └── src/main/java/com/chartwarden/hl7/
         ├── ParserServiceImpl.java            # gRPC service: Parse / Build / Health
         ├── SegmentMapper.java                # HAPI tree → proto Segment mapping
         ├── BuilderService.java               # proto Segments → HAPI tree → wire bytes
@@ -1790,7 +1790,7 @@ The seam-validation gate verifies every event name is declared in the M4 `outbox
 
 ### 4.11 MLLP Listener Lifecycle
 
-Per **D3** (port-per-feed listener), every active inbound HL7 feed binds a dedicated MLLP TCP listener. Listeners run inside a long-lived **`hl7-listener-supervisor`** sibling Node process owned by M29 (`apps/backend/src/modules/29-external-interfaces/listener/index.ts`, the process entrypoint; `supervisor.ts` is the supervisor class). The supervisor is a **separate operating-system process** from the Fastify HTTP server — not a `cluster.fork()` child, not a Fastify-thread, not a worker_thread. The two processes share Postgres (separate bounded connection pools), Valkey (separate BullMQ connections), and the `/var/run/wardenx/hapi.sock` UDS to the T-29.03 HAPI sidecar; they do **not** share memory, HTTP routing, or the Fastify lifecycle. Crash isolation is the explicit goal: a Fastify route crash does not bring down the listener; a listener crash does not bring down Fastify. Docker compose adds an `hl7-listener` service alongside `backend` and `hl7-sidecar`; in production this is managed by the container orchestrator or a supervisord-equivalent (see Ops Runbook §M29). Listeners run on isolated ports, never bound to the public ingress, and never co-tenant with HTTP traffic on a single port.
+Per **D3** (port-per-feed listener), every active inbound HL7 feed binds a dedicated MLLP TCP listener. Listeners run inside a long-lived **`hl7-listener-supervisor`** sibling Node process owned by M29 (`apps/backend/src/modules/29-external-interfaces/listener/index.ts`, the process entrypoint; `supervisor.ts` is the supervisor class). The supervisor is a **separate operating-system process** from the Fastify HTTP server — not a `cluster.fork()` child, not a Fastify-thread, not a worker_thread. The two processes share Postgres (separate bounded connection pools), Valkey (separate BullMQ connections), and the `/var/run/chartwarden/hapi.sock` UDS to the T-29.03 HAPI sidecar; they do **not** share memory, HTTP routing, or the Fastify lifecycle. Crash isolation is the explicit goal: a Fastify route crash does not bring down the listener; a listener crash does not bring down Fastify. Docker compose adds an `hl7-listener` service alongside `backend` and `hl7-sidecar`; in production this is managed by the container orchestrator or a supervisord-equivalent (see Ops Runbook §M29). Listeners run on isolated ports, never bound to the public ingress, and never co-tenant with HTTP traffic on a single port.
 
 #### 4.11.1 Boot Sequence
 
@@ -1890,7 +1890,7 @@ const parsed = await sidecar.parse({ payload, profile: feed.hl7Profile });
 // returns typed segment tree projected into TS via packages/hl7-worker/src/types.ts
 ```
 
-Sidecar communication: localhost-bound gRPC over UDS (`/var/run/wardenx/hapi.sock`), no network exposure, no PHI logs from sidecar (sidecar log denylist enforced in §3.6 mirror).
+Sidecar communication: localhost-bound gRPC over UDS (`/var/run/chartwarden/hapi.sock`), no network exposure, no PHI logs from sidecar (sidecar log denylist enforced in §3.6 mirror).
 
 #### 4.11.4 Graceful Shutdown
 
