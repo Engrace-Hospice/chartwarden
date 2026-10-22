@@ -6,7 +6,7 @@
 // worklist was read-only. Like the sibling suite (`hope-writes.dom.test.tsx`) this asserts on RECORDED
 // FETCH CALLS, so a button re-wired to a handler that never issues the request still fails.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
@@ -143,8 +143,12 @@ describe("HOPE Submissions — generate the iQIES upload package", () => {
     const button = await screen.findByRole("button", { name: generateLabel });
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
 
-    fireEvent.click(button);
-    fireEvent.click(button);
+    // One `act` batches both clicks, so `disabled` has not rendered yet when the second lands: only the
+    // synchronous ref guard can stop it. Two separate `fireEvent.click`s each flush, which hides the race.
+    act(() => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
 
     await screen.findByText("Submission detail page");
     expect(writes()).toEqual(["POST /api/v1/hope/submissions/assemble"]);

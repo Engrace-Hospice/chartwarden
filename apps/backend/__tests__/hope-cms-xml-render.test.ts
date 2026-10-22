@@ -62,6 +62,15 @@ describe("renderCmsAssessmentXml", () => {
 });
 
 describe("renderCmsAssessmentXml item codes", () => {
+  it("accepts real HOPE item codes, including digits and underscores", () => {
+    expect(() =>
+      renderCmsAssessmentXml([
+        { itemCode: "A0500C", value: "v" },
+        { itemCode: "SFTWR_PROD_VRSN_CD", value: "v" },
+      ]),
+    ).not.toThrow();
+  });
+
   it("refuses an item code that is not a plain element name", () => {
     expect(() => renderCmsAssessmentXml([{ itemCode: "A0500C><X", value: "v" }])).toThrowError(
       HopeSubmissionPayloadError,
