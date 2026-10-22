@@ -48,32 +48,15 @@ describe("applyCsrfProtection — cookie minting", () => {
     expect(res.headers["set-cookie"]).toBeUndefined();
   });
 
-  it("legacy wardenx_csrf cookie still passes double-submit and is swapped for the new name", async () => {
-    const app = buildApp();
-    const res = await app.inject({
+  it("no longer honours the pre-rename wardenx_csrf cookie (mints a fresh chartwarden_csrf, rejects the mutation)", async () => {
+    const res = await buildApp().inject({
       method: "POST",
       url: "/mutate",
-      headers: {
-        cookie: "better-auth.session_token=s1; wardenx_csrf=old-token",
-        "x-csrf-token": "old-token",
-      },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(extractCookie(res, "chartwarden_csrf")).toBe("old-token");
-    expect(String(res.headers["set-cookie"])).toContain("wardenx_csrf=; Path=/; Max-Age=0");
-  });
-
-  it("legacy cookie with a wrong header is still rejected", async () => {
-    const app = buildApp();
-    const res = await app.inject({
-      method: "POST",
-      url: "/mutate",
-      headers: {
-        cookie: "better-auth.session_token=s1; wardenx_csrf=old-token",
-        "x-csrf-token": "nope",
-      },
+      headers: { cookie: "better-auth.session_token=s1; wardenx_csrf=old-token", "x-csrf-token": "old-token" },
     });
     expect(res.statusCode).toBe(403);
+    expect(extractCookie(res, "chartwarden_csrf")).not.toBe("old-token");
+    expect(String(res.headers["set-cookie"])).not.toContain("wardenx_csrf");
   });
 
   it("sets Secure when forced on, omits it by default in test/dev", async () => {
@@ -213,13 +196,13 @@ describe("applyCsrfProtection — host-only mode (ADR-0049 D4)", () => {
     expect(String(res.headers["set-cookie"])).toContain("Secure");
   });
 
-  it("ignores a planted legacy csrf cookie (cookie tossing from a sibling tenant)", async () => {
+  it("ignores a planted plain csrf cookie (cookie tossing from a sibling tenant)", async () => {
     const app = buildApp({ hostOnly: true });
     const planted = "b".repeat(64);
     const res = await app.inject({
       method: "POST",
       url: "/mutate",
-      headers: { cookie: `wardenx_csrf=${planted}; __Host-better-auth.session_token=s`, "x-csrf-token": planted },
+      headers: { cookie: `chartwarden_csrf=${planted}; __Host-better-auth.session_token=s`, "x-csrf-token": planted },
     });
     expect(res.statusCode).toBe(403);
   });

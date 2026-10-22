@@ -460,7 +460,7 @@ describe("M28-fhir-inject — R3: token mint", () => {
     await app.close();
   });
 
-  it("a BAA refusal carries chartwarden_code AND the deprecated wardenx_code on the wire", async () => {
+  it("a BAA refusal carries chartwarden_code on the wire and no wardenx_code alias", async () => {
     const { app } = makeServer({
       tokenEndpointUrl: TOKEN_URL,
       baa: { isBaaActive: async () => false },
@@ -479,8 +479,8 @@ describe("M28-fhir-inject — R3: token mint", () => {
     expect(res.json()).toMatchObject({
       error: "invalid_client",
       chartwarden_code: "BAA_NOT_IN_FORCE",
-      wardenx_code: "BAA_NOT_IN_FORCE",
     });
+    expect(res.json()).not.toHaveProperty("wardenx_code");
     await app.close();
   });
 

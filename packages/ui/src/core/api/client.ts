@@ -86,8 +86,6 @@ function readCookie(name: string): string | undefined {
 const CSRF_COOKIE_NAME = "chartwarden_csrf";
 /** Per-tenant hosts (ADR-0049 D4) mint the host-only name instead; whichever the server set is the one present. */
 const HOST_ONLY_CSRF_COOKIE_NAME = "__Host-chartwarden_csrf";
-/** Pre-rename name; read as a fallback until the server has swapped the cookie. */
-const LEGACY_CSRF_COOKIE_NAME = "wardenx_csrf";
 
 /**
  * Double-submit CSRF defense (WX-PR-017; backend half in
@@ -100,10 +98,7 @@ const LEGACY_CSRF_COOKIE_NAME = "wardenx_csrf";
 const csrfToken: Middleware = {
   onRequest({ request }) {
     if (MUTATING_METHODS.has(request.method) && !request.headers.has("X-CSRF-Token")) {
-      const token =
-        readCookie(HOST_ONLY_CSRF_COOKIE_NAME) ??
-        readCookie(CSRF_COOKIE_NAME) ??
-        readCookie(LEGACY_CSRF_COOKIE_NAME);
+      const token = readCookie(HOST_ONLY_CSRF_COOKIE_NAME) ?? readCookie(CSRF_COOKIE_NAME);
       if (token) request.headers.set("X-CSRF-Token", token);
     }
     return request;

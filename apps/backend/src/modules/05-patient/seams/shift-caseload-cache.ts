@@ -48,10 +48,6 @@ import type Redis from "ioredis";
 import type { CaseloadStore } from "./caseload-provider";
 
 const KEY_PREFIX = "chartwarden:m5:caseload-cache";
-// LEGACY(wardenx->chartwarden): DELETE-ONLY. Never written or read any more, but an unassign still removes the visit from the
-// legacy hash so a release-B pod (rollout overlap, or a rollback to B whose union read still sees it) cannot re-grant an
-// unassigned visit (authorization input). Remove one release later, once no B pod has run for 24 h (SAFETY_TTL_SEC).
-const LEGACY_KEY_PREFIX = "wardenx:m5:caseload-cache";
 /** Whole-key safety-net TTL, refreshed on every write — bounds memory even if an `.unassigned` delivery
  *  is lost. Per-entry expiry (below) is what actually governs correctness. */
 const SAFETY_TTL_SEC = 24 * 60 * 60; // 24h
@@ -96,12 +92,7 @@ export async function removeShiftAssignment(
   userId: string,
   visitId: string,
 ): Promise<void> {
-  // One MULTI/EXEC so the visit is never left in only one of the two hashes after a half-done delete.
-  const results = await redis
-    .multi()
-    .hdel(`${LEGACY_KEY_PREFIX}:${organizationId}:${userId}`, visitId)
-    .hdel(cacheKey(organizationId, userId), visitId)
-    .exec();
+  const results = await redis.multi().hdel(cacheKey(organizationId, userId), visitId).exec();
   if (results === null) throw new Error("shift caseload unassign was not executed");
   for (const [err] of results) if (err) throw err;
 }
