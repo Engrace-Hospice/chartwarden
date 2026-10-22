@@ -111,8 +111,8 @@ Bucket inventory (code/config references):
 
 | Bucket | Where it is referenced |
 | --- | --- |
-| `wardenx-platform-terminology` | `apps/backend/src/modules/38-terminology/jobs/platform-objects.ts` (`DEFAULT_PLATFORM_BUCKET`, overridable via env `TERMINOLOGY_PLATFORM_BUCKET`); `apps/backend/src/index.ts` (~3968); `apps/backend/src/modules/22-documents/access-log/minio-access-log.test.ts` |
-| `wardenx-readiness` | `apps/backend/src/index.ts` (`READINESS_PROBE_BUCKET`) |
+| `chartwarden-platform-terminology` (was `wardenx-platform-terminology`; code switched in step 2) | `apps/backend/src/modules/38-terminology/jobs/platform-objects.ts` (`DEFAULT_PLATFORM_BUCKET`, overridable via env `TERMINOLOGY_PLATFORM_BUCKET`); `apps/backend/src/index.ts` (`TERMINOLOGY_PLATFORM_BUCKET`, ~3986); `apps/backend/src/modules/22-documents/access-log/minio-access-log.test.ts` |
+| `chartwarden-readiness` (was `wardenx-readiness`; code switched in step 2) | `apps/backend/src/index.ts` (`READINESS_PROBE_BUCKET`) |
 | `wardenx-*` IAM scope | `deploy/production/compose.yml` minio-provision policy `wardenx-app` (`arn:aws:s3:::wardenx-*`, `.../wardenx-*/*`) |
 | Policy / account names | `wardenx-app` (policy and `MINIO_APP_ACCESS_KEY` default in `deploy.sh` and `.env.production.example`), `wardenx-minio-admin` (root user) |
 | Audit webhook target id | `compose.yml` `MINIO_AUDIT_WEBHOOK_*_wardenx` (suffix is the target name) |
@@ -122,13 +122,17 @@ Order of the bucket change (production holds only `tenant-*` buckets today; neit
 `wardenx-readiness` exists on disk, so no data copy is needed unless a terminology release has been uploaded since):
 1. Policy PR (additive, done first): the `wardenx-app` policy in `compose.yml` also allows `chartwarden-*`. After its deploy,
    confirm with `mc admin policy info local wardenx-app` that both prefixes are present.
-2. Code PR (only after step 1 is live): `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET` switch to the new names.
+2. DONE (code PR, after step 1 was live): `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET` switched to the new names.
+   Neither creates a bucket: the readiness probe treats 404 (missing bucket) as healthy; the terminology store fails on a
+   missing bucket, so `chartwarden-platform-terminology` must exist (`mc mb`) before the first terminology upload/read.
+   A deployment already holding releases in the old bucket must either mirror them (procedure below) or set
+   `TERMINOLOGY_PLATFORM_BUCKET=wardenx-platform-terminology` to keep using the old bucket.
 3. Cleanup (after the rollback window): drop the `wardenx-*` entries and rename the policy/account.
 
 Only after step 1 is deployed may `TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`;
 setting it earlier makes every terminology read/write fail with AccessDenied because the policy would still only allow
 `wardenx-*`. `minio-provision` re-applies the policy on every deploy, before api/worker are recreated. `READINESS_PROBE_BUCKET`
-is hardcoded (not env-overridable), so that bucket needs the code change (step 2).
+was hardcoded (not env-overridable); step 2 changed the constant.
 
 Procedure (on the VPS; `mc` alias `local` points at the MinIO root):
 

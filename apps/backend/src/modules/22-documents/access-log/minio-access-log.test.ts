@@ -41,7 +41,7 @@ describe("parseConsumptions", () => {
     ["a HEAD", get({ name: "HeadObject" })],
     ["a PUT", get({ name: "PutObject" })],
     ["a failed GET", get({ statusCode: 403, status: "Forbidden" })],
-    ["a non-tenant bucket", get({ bucket: "wardenx-platform-terminology" })],
+    ["a non-tenant bucket", get({ bucket: "chartwarden-platform-terminology" })],
     ["a tenant bucket with a non-uuid suffix", get({ bucket: "tenant-not-a-uuid" })],
     ["a record with no object", get({ object: undefined })],
   ])("ignores %s", (_label, record) => {
