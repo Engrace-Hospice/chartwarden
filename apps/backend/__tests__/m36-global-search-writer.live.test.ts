@@ -37,6 +37,7 @@ import {
   EXCLUSION_REINDEX_DELAY_MS,
   NAME_ENUMERATION_BUDGET_MS,
   NAME_SYNC_MIN_INTERVAL_MS,
+  NameExclusionNotSyncedError,
   type PatientNameSource,
   createNameExclusions,
   createNoNameExclusions,
@@ -68,7 +69,12 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-4111-8111-1111000f0278";
 const ORG_B = "22222222-2222-4222-8222-2222000f0278";
 const VERSION = "legacy";
@@ -711,6 +717,78 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       expect(state.exclusion_synced_at).not.toBeNull();
       expect(state.d).not.toMatch(/lindqvist|okafor|astrid/i);
       expect((state.d.match(/[0-9a-f]{16}/g) ?? []).length).toBe(3);
+    });
+
+    it("release 3: a tenant holding only LEGACY-key name digests fails closed until the current-key digests are synced; a synced tenant works", async () => {
+      await enableSearch(ORG_A);
+      // The tenant had been synced under the removed legacy search key: its only digest is inert under the current key.
+      const legacyKey = randomBytes(32);
+      await createNameExclusions({ db: handle.db, keys, names: nameSource(["Zed"]) }).sync(
+        ORG_A,
+        VERSION,
+      );
+      await admin.query(
+        `UPDATE message_search_index_state
+            SET excluded_name_digests = ARRAY[$2]::text[], exclusion_pending = '{}', exclusion_pending_since = NULL,
+                exclusion_synced_at = now()
+          WHERE organization_id=$1`,
+        [ORG_A, nameTokenDigest(legacyKey, "astrid")],
+      );
+      // Migration 1152's forced re-sync, run verbatim from the file.
+      const migration = readFileSync(
+        join(MIGRATIONS_DIR, "1152_drop_label_backfill_functions.sql"),
+        "utf8",
+      );
+      const forced = migration.match(/UPDATE "message_search_index_state"[^;]*;/)?.[0];
+      expect(forced).toBeTruthy();
+      await admin.query(forced as string);
+      expect(
+        (
+          await admin.query(
+            `SELECT exclusion_synced_at FROM message_search_index_state WHERE organization_id=$1`,
+            [ORG_A],
+          )
+        ).rows[0].exclusion_synced_at,
+      ).toBeNull();
+
+      const id = await sendMessage(ORG_A, "Mrs Astrid needs morphine");
+      // query side: never served from the legacy digest set
+      await expect(
+        createNameExclusions({ db: handle.db, keys }).currentReadOnly(ORG_A, VERSION),
+      ).rejects.toBeInstanceOf(NameExclusionNotSyncedError);
+      // writer with no name source: nothing is indexed (the name is not leaked into the index)
+      const noSource = createIndexWriter(
+        writerDeps({ exclusions: createNameExclusions({ db: handle.db, keys }) }),
+      );
+      await expect(noSource.indexMessage(ORG_A, id)).rejects.toThrow(/no name source/);
+      expect(await rowCount(id)).toBe(0);
+      // writer with the source: syncs inline, then indexes with the name excluded
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(["Astrid"]),
+      });
+      expect(await createIndexWriter(writerDeps({ exclusions })).indexMessage(ORG_A, id)).toBe(
+        "indexed",
+      );
+      const searchKey = await keys.tagKey(ORG_A, VERSION);
+      const stored = await storedTags(id);
+      expect(holdsAll(stored, await realTagsOf(ORG_A, "astrid"))).toBe(false);
+      expect(holdsAll(stored, await realTagsOf(ORG_A, "morphine"))).toBe(true);
+      const state = (
+        await admin.query(
+          `SELECT excluded_name_digests AS d, exclusion_synced_at FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+      expect(state.exclusion_synced_at).not.toBeNull();
+      expect(state.d).toContain(nameTokenDigest(searchKey, "astrid"));
+      // and a read-only (query) view now works
+      expect(
+        (await createNameExclusions({ db: handle.db, keys }).currentReadOnly(ORG_A, VERSION)).has(
+          "astrid",
+        ),
+      ).toBe(true);
     });
 
     it("fails closed: with no name source nothing is indexed (the error propagates, no row is written)", async () => {

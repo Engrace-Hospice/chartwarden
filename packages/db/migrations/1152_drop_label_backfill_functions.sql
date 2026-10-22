@@ -26,6 +26,16 @@
 -- last and, if a sibling database still holds objects owned by it (not yet migrated), is skipped with a NOTICE; the role is then
 -- inert (NOLOGIN, no grants here) and the last database to run this migration removes it.
 
+-- NAME-EXCLUSION DIGESTS MUST BE RE-SYNCED. A stored name digest is an HMAC under the search key, whose HKDF label this release
+-- changes for good: digests computed under the removed legacy label are inert from here on, and the code never treats them as
+-- authoritative. If a (organization, key version) were left marked "synced" with only legacy-key digests, the index writer would
+-- exclude no names and index patient/contact names in the clear (a PHI leak into the search index, fail-open). Clearing
+-- exclusion_synced_at forces the next index write to read the name source and add the current-key digests first, and makes the
+-- search QUERY path fail closed (503 GLOBAL_SEARCH_UNAVAILABLE) until that has happened. It does NOT block message send: indexing runs
+-- off the outbox / reconcile job, never in the send path. Writers repopulate the column themselves (NameExclusions.sync), so there
+-- is no downtime for writes. Legacy digests stay as inert orphans (the column is grow-only).
+UPDATE "message_search_index_state" SET "exclusion_synced_at" = NULL, "updated_at" = now();--> statement-breakpoint
+
 DROP FUNCTION IF EXISTS m36_label_backfill_page(text, uuid, uuid, integer);--> statement-breakpoint
 DROP FUNCTION IF EXISTS m36_label_backfill_swap(text, uuid, uuid, bytea, bytea);--> statement-breakpoint
 
