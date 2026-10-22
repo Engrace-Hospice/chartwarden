@@ -23,7 +23,11 @@
 import { execSync } from "node:child_process";
 
 const GUARDED_PREFIX = "docs/plans/";
-const BASE_REF = "main";
+// Prefer the remote-tracking ref: in worktrees/clones the LOCAL `main` often lags `origin/main`, so
+// the merge-base lands on an old commit and every file changed upstream since then reads as a local edit.
+// Fall back to local `main` only when there is no `origin/main` (no remote, or never fetched).
+const REMOTE_BASE_REF = "origin/main";
+const LOCAL_BASE_REF = "main";
 
 function git(args: string): string {
   return execSync(`git ${args}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -69,7 +73,10 @@ addPaths(tryGit(`ls-files --others --exclude-standard -- ${GUARDED_PREFIX}`)); /
 // 2) Committed-on-this-branch changes vs the fork point with `main` (belt + suspenders:
 //    catches a run that committed a plan edit). Skipped gracefully if `main` is unreachable
 //    (e.g. shallow CI checkout) — the working-tree check above still covers the live case.
-const base = tryGit(`merge-base HEAD ${BASE_REF}`);
+const baseRef = tryGit(`rev-parse --verify --quiet ${REMOTE_BASE_REF}`)
+  ? REMOTE_BASE_REF
+  : LOCAL_BASE_REF;
+const base = tryGit(`merge-base HEAD ${baseRef}`);
 if (base) {
   const committed = tryGit(`diff --name-only ${base} HEAD -- ${GUARDED_PREFIX}`);
   if (committed) {
