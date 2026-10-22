@@ -95,6 +95,15 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.retention_destruction.reconciled", // WP 5.6 — reservations stranded by a crash were settled against the message table
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "Destruction batches left reserved by a crash were reconciled (runId, batches: batchId, certificateId, planned, destroyed, refunded). A planned id already gone counts as destroyed; the rest is refunded to the certificate. Ids and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.retention_destruction.certificate_executed", // WP 5.6 — the M4 certificate for the class and month was closed
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",

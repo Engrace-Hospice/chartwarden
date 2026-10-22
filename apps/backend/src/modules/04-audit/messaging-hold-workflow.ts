@@ -398,8 +398,9 @@ export async function lockMessageCertificate(
 }
 
 /**
- * Reserve `count` of an approved certificate's remainder (conditional UPDATE: only while it is approved and `count` still fits). `record_count`,
- * the approved figure, is never written. The DB CHECK keeps destroyed + reserved within it.
+ * Reserve `count` of an approved certificate's remainder through the SECURITY DEFINER function (migration 1159): the app role cannot write the
+ * spend columns itself. The function pins the tenant (app.org_id), the `message.*` class and the approved status, and refuses to exceed the
+ * approved figure; false (nothing reserved) when it no longer fits. `record_count`, the approved figure, is never written.
  */
 export async function reserveMessageCertificateCount(
   tx: DbClient,
@@ -409,23 +410,13 @@ export async function reserveMessageCertificateCount(
     readonly count: number;
   },
 ): Promise<boolean> {
-  const rows = await tx
-    .update(CERT)
-    .set({ reservedCount: sql`${CERT.reservedCount} + ${input.count}` })
-    .where(
-      and(
-        eq(CERT.organizationId, input.organizationId),
-        eq(CERT.id, input.certificateId),
-        eq(CERT.status, "approved"),
-        sql`${CERT.dataClass} LIKE 'message.%'`,
-        sql`${CERT.recordCount} - ${CERT.destroyedCount} - ${CERT.reservedCount} >= ${input.count}`,
-      ),
-    )
-    .returning({ id: CERT.id });
-  return rows.length > 0;
+  const res = await tx.execute<{ ok: boolean }>(
+    sql`SELECT destruction_certificate_reserve(${input.organizationId}::uuid, ${input.certificateId}::uuid, ${input.count}::int) AS ok`,
+  );
+  return res.rows[0]?.ok === true;
 }
 
-/** Settle a batch: release its reservation and add what was really deleted to destroyed_count (the difference is refunded). Returns what is left. */
+/** Settle a batch through the definer function: release its reservation and add what was really deleted (never more than reserved). Returns what is left. */
 export async function settleMessageCertificateCount(
   tx: DbClient,
   input: {
@@ -435,23 +426,10 @@ export async function settleMessageCertificateCount(
     readonly destroyed: number;
   },
 ): Promise<number> {
-  const rows = await tx
-    .update(CERT)
-    .set({
-      reservedCount: sql`greatest(${CERT.reservedCount} - ${input.reserved}, 0)`,
-      destroyedCount: sql`${CERT.destroyedCount} + ${input.destroyed}`,
-    })
-    .where(
-      and(
-        eq(CERT.organizationId, input.organizationId),
-        eq(CERT.id, input.certificateId),
-        sql`${CERT.dataClass} LIKE 'message.%'`,
-      ),
-    )
-    .returning({
-      left: sql<number>`greatest(${CERT.recordCount} - ${CERT.destroyedCount} - ${CERT.reservedCount}, 0)`,
-    });
-  return rows[0]?.left ?? 0;
+  const res = await tx.execute<{ left: number }>(
+    sql`SELECT destruction_certificate_settle(${input.organizationId}::uuid, ${input.certificateId}::uuid, ${input.reserved}::int, ${input.destroyed}::int) AS "left"`,
+  );
+  return Number(res.rows[0]?.left ?? 0);
 }
 
 /** One legal hold as the messaging governance screen reads it (the free-text reason stays in the audit row). */

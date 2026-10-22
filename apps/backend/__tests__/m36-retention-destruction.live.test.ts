@@ -263,6 +263,7 @@ describe.skipIf(!DB_URL)(
       flagOn = true;
       execute = true;
       // Each test starts from a clean slate: no certificates, holds or messages (the superuser bypasses RLS and the hold guard has no holds left).
+      await kit.admin.query("DELETE FROM message_destruction_batch");
       await kit.admin.query("DELETE FROM destruction_certificate");
       await kit.admin.query("DELETE FROM legal_hold");
       await kit.admin.query("DELETE FROM message");
@@ -309,7 +310,7 @@ describe.skipIf(!DB_URL)(
       const old = await aged(ORG_A, channel, 8);
       await certificate(ORG_A, "pending");
       await certificate(ORG_A, "held");
-      await certificate(ORG_A, "approved", "audit.compliance");
+      await certificate(ORG_A, "approved", "audit_event.compliance");
       const result = await run();
       expect(result.certificates).toHaveLength(0);
       expect(await exists(old)).toBe(true);
@@ -674,12 +675,12 @@ describe.skipIf(!DB_URL)(
       await kit.appConn.query("BEGIN");
       try {
         await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
-        // The spend can never exceed the approved figure (CHECK), and destroyed_count never goes down (guard).
+        // The spend columns are not writable by the app role at all (column-level privilege; only the definer functions move them).
         await expect(
           kit.appConn.query("UPDATE destruction_certificate SET destroyed_count = 8 WHERE id=$1", [
             cert,
           ]),
-        ).rejects.toMatchObject({ code: "23514" });
+        ).rejects.toMatchObject({ code: "42501" });
       } finally {
         await kit.appConn.query("ROLLBACK");
       }
@@ -721,6 +722,177 @@ describe.skipIf(!DB_URL)(
       expect(result.destroyed).toBe(0);
       expect(result.certificates[0]).toMatchObject({ refusedAtDelete: 1, destroyed: 0 });
       expect(await exists(kept)).toBe(true);
+    });
+
+    // ---------------------------------------------------------------- certificate guard and spend privileges (migration 1159)
+
+    /** Runs `fn` as the app role in a transaction pinned to `org`; always rolled back. */
+    const asApp = async (fn: () => Promise<void>, org = ORG_A) => {
+      await kit.appConn.query("BEGIN");
+      try {
+        await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        await fn();
+      } finally {
+        await kit.appConn.query("ROLLBACK");
+      }
+    };
+
+    it("the guard refuses a data_class change and a return to pending once the certificate has left pending", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      // data_class is not even in the app role's column grant; the superuser proves the TRIGGER refuses it for everyone.
+      await expect(
+        kit.admin.query(
+          "UPDATE destruction_certificate SET data_class='message.operational' WHERE id=$1",
+          [cert],
+        ),
+      ).rejects.toMatchObject({ message: expect.stringContaining("data class cannot change") });
+      await asApp(async () => {
+        await expect(
+          kit.appConn.query("UPDATE destruction_certificate SET status='pending' WHERE id=$1", [
+            cert,
+          ]),
+        ).rejects.toMatchObject({ message: expect.stringContaining("cannot return to pending") });
+      });
+      expect(await certStatus(cert)).toBe("approved");
+    });
+
+    it("the record_count carve-out is exactly approved -> executed/partial_refused/held of an audit_event.* certificate (M4's sweep); nothing else", async () => {
+      const audit1 = await certificate(ORG_A, "approved", "audit_event.compliance", 9);
+      const audit2 = await certificate(ORG_A, "approved", "audit_event.compliance", 9);
+      const audit3 = await certificate(ORG_A, "approved", "audit_event.compliance", 9);
+      const msg = await certificate(ORG_A, "approved", "message.care_related", 9);
+      // M4's sweep: the actual erased count on the transition out of approved.
+      await asApp(async () => {
+        await kit.appConn.query(
+          "UPDATE destruction_certificate SET status='executed', record_count=4 WHERE id=$1",
+          [audit1],
+        );
+        await kit.appConn.query(
+          "UPDATE destruction_certificate SET status='held', record_count=2 WHERE id=$1",
+          [audit2],
+        );
+      });
+      // Without a transition, or for a message.* certificate, the figure is frozen even for the transition columns.
+      await asApp(async () => {
+        await expect(
+          kit.appConn.query("UPDATE destruction_certificate SET record_count=1 WHERE id=$1", [
+            audit3,
+          ]),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining("approved count cannot change"),
+        });
+      });
+      await asApp(async () => {
+        await expect(
+          kit.appConn.query(
+            "UPDATE destruction_certificate SET status='executed', record_count=1 WHERE id=$1",
+            [msg],
+          ),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining("approved count cannot change"),
+        });
+      });
+      expect((await countsOf(msg)).record).toBe(9);
+      expect((await countsOf(audit3)).record).toBe(9);
+    });
+
+    it("the app role cannot write the spend columns, cannot DELETE a certificate, and the definer functions refuse another tenant and any overspend", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 3);
+      await asApp(async () => {
+        await expect(
+          kit.appConn.query("UPDATE destruction_certificate SET reserved_count = 0 WHERE id=$1", [
+            cert,
+          ]),
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await asApp(async () => {
+        await expect(
+          kit.appConn.query("DELETE FROM destruction_certificate WHERE id=$1", [cert]),
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await asApp(async () => {
+        const reserve = (org: string, n: number) =>
+          kit.appConn.query(
+            "SELECT destruction_certificate_reserve($1::uuid,$2::uuid,$3::int) AS ok",
+            [org, cert, n],
+          );
+        expect((await reserve(ORG_A, 4)).rows[0].ok).toBe(false); // more than the approved 3
+        expect((await reserve(ORG_A, 3)).rows[0].ok).toBe(true);
+        expect((await reserve(ORG_A, 1)).rows[0].ok).toBe(false); // nothing left
+      });
+      await asApp(async () => {
+        // Another tenant's id for this connection's tenant: refused.
+        await expect(
+          kit.appConn.query("SELECT destruction_certificate_reserve($1::uuid,$2::uuid,1)", [
+            ORG_B,
+            cert,
+          ]),
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await asApp(async () => {
+        // settle can never claim more destroyed than the batch reserved
+        await expect(
+          kit.appConn.query("SELECT destruction_certificate_settle($1::uuid,$2::uuid,2,3)", [
+            ORG_A,
+            cert,
+          ]),
+        ).rejects.toMatchObject({ code: "23514" });
+      });
+      expect(await countsOf(cert)).toEqual({ record: 3, destroyed: 0, reserved: 0 }); // everything above was rolled back
+    });
+
+    it("a reservation stranded by a crash is reconciled: ids already gone count as destroyed, the rest are refunded, fail-safe and only once", async () => {
+      const kept = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      const goneId = randomUUID(); // a planned message that no longer exists (destroyed by the crashed batch)
+      await kit.admin.query("UPDATE destruction_certificate SET reserved_count = 2 WHERE id=$1", [
+        cert,
+      ]);
+      const stranded = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count, reserved_at)
+           VALUES ($1,$2,$3::uuid[],2, now() - interval '7 hours') RETURNING id`,
+          [ORG_A, cert, `{${goneId},${kept}}`],
+        )
+      )[0].id;
+      // A recent reservation (a live executor's) is left alone.
+      await kit.admin.query("UPDATE destruction_certificate SET reserved_count = 3 WHERE id=$1", [
+        cert,
+      ]);
+      const recent = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count)
+           VALUES ($1,$2,$3::uuid[],1) RETURNING id`,
+          [ORG_A, cert, `{${randomUUID()}}`],
+        )
+      )[0].id;
+      // A dry run only REPORTS it.
+      const dry = await run(ORG_A, { execute: false });
+      expect(dry.reconciled).toEqual([
+        expect.objectContaining({ batchId: stranded, planned: 2, destroyed: 1, refunded: 1 }),
+      ]);
+      expect(await countsOf(cert)).toEqual({ record: 5, destroyed: 0, reserved: 3 });
+      // Live: settled once; the recent one is untouched. The same run may then spend the refunded capacity on `kept`.
+      const live = await run(ORG_A, { batchSize: 1 });
+      expect(live.reconciled).toHaveLength(1);
+      const batches = await kit.one<{ id: string; state: string; destroyed_count: number | null }>(
+        "SELECT id, state, destroyed_count FROM message_destruction_batch WHERE certificate_id=$1 ORDER BY id",
+        [cert],
+      );
+      expect(batches.find((b) => b.id === stranded)).toMatchObject({
+        state: "reconciled",
+        destroyed_count: 1,
+      });
+      expect(batches.find((b) => b.id === recent)?.state).toBe("reserved");
+      const after = await countsOf(cert);
+      expect(after.record).toBe(5); // the approved figure never moves
+      expect(after.reserved).toBe(1); // only the recent batch is still held
+      expect(after.destroyed + after.reserved).toBeLessThanOrEqual(5);
+      expect(after.destroyed).toBeGreaterThanOrEqual(1); // the gone id counted; `kept` may have been destroyed too under the refunded capacity
+      // Reconciling again changes nothing (the batch is no longer reserved).
+      const again = await run(ORG_A, { batchSize: 1 });
+      expect(again.reconciled).toHaveLength(0);
+      expect((await countsOf(cert)).record).toBe(5);
     });
 
     it("an approved certificate older than its validity is refused: a message held at approval and released long after is not destroyed under it", async () => {

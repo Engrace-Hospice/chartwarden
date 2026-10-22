@@ -26,7 +26,7 @@
 //     per-run batch budget). A worker is not a request: every transaction is org-explicit (`withOrgContext(systemOrgContext(org))`).
 import { randomUUID } from "node:crypto";
 import { type AuditExecutor, audit } from "@chartwarden/audit";
-import type { DbClient } from "@chartwarden/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   MESSAGE_RETENTION_CLASSES,
@@ -34,7 +34,7 @@ import {
   type RetentionDestructionMode,
   messagingHoldLockName,
 } from "@chartwarden/types";
-import { type SQL, sql } from "drizzle-orm";
+import { type SQL, and, eq, lt, sql } from "drizzle-orm";
 import {
   type ActiveMessageHold,
   type ApprovedMessageCertificateRef,
@@ -65,6 +65,15 @@ export const CERTIFICATE_VALIDITY_DAYS = 35;
 export const BATCH_RECORD_ATTEMPTS = 3;
 /** Expired approvals named in a run row (the rest are not listed; none is ever acted on). */
 export const EXPIRED_REPORT_LIMIT = 50;
+/**
+ * A reservation whose batch is still `reserved` after this long is treated as stranded (a crash between the delete and the settle) and
+ * reconciled. Deliberately far longer than any delete transaction can run, so a live executor is never raced.
+ */
+export const STRANDED_BATCH_AFTER_HOURS = 6;
+/** Stranded batches reconciled per org per run. */
+export const RECONCILE_MAX_BATCHES_PER_RUN = 50;
+
+const BATCH = schema.messageDestructionBatches;
 
 export interface RetentionDestructionDeps {
   /** The tenant (app role) pool: candidate planning, certificate close, audit. */
@@ -137,6 +146,8 @@ export interface RetentionDestructionResult {
   readonly certificates: readonly CertificateDestructionResult[];
   /** Approved certificates older than their validity: refused, nothing destroyed under them. */
   readonly expiredCertificateIds: readonly string[];
+  /** Stranded reservations found (dry run: reported only; live: reconciled before planning). */
+  readonly reconciled: readonly ReconcileResult[];
 }
 
 const SYSTEM = (organizationId: string, correlationId: string) => ({
@@ -185,6 +196,7 @@ interface PlannedBatch {
 async function planBatch(
   deps: RetentionDestructionDeps,
   orgId: string,
+  batchId: string,
   cert: ApprovedMessageCertificateRef,
   cls: MessageRetentionClass,
   windowEndsAt: Date,
@@ -220,6 +232,14 @@ async function planBatch(
       count: ids.length,
     });
     if (!reserved) return { ids: [], remaining: 0, refused: true };
+    // The reservation is described in the same transaction (the planned ids), so a crash can be reconciled later.
+    await tx.insert(BATCH).values({
+      id: batchId,
+      organizationId: orgId,
+      certificateId: cert.id,
+      plannedMessageIds: [...ids],
+      plannedCount: ids.length,
+    });
     await onPlanned(tx, ids);
     return { ids, remaining: locked.available - ids.length, refused: false };
   });
@@ -341,6 +361,20 @@ async function recordBatch(
             destroyedMessageIds: deletedIds,
           },
         });
+        // The batch must still be `reserved`: one a reconcile already settled is not settled twice (a live executor never races it, see
+        // STRANDED_BATCH_AFTER_HOURS, but the guard is cheap).
+        const marked = await tx
+          .update(BATCH)
+          .set({ state: "settled", settledAt: new Date(), destroyedCount: deletedIds.length })
+          .where(
+            and(
+              eq(BATCH.organizationId, orgId),
+              eq(BATCH.id, batchId),
+              eq(BATCH.state, "reserved"),
+            ),
+          )
+          .returning({ id: BATCH.id });
+        if (marked.length === 0) throw new Error("batch already reconciled or unknown");
         return deps.messageHolds.settleCertificateCount(tx, {
           organizationId: orgId,
           certificateId: cert.id,
@@ -412,6 +446,7 @@ async function destroyUnderCertificate(
       const plan = await planBatch(
         deps,
         orgId,
+        batchId,
         cert,
         cls,
         windowEndsAt,
@@ -500,6 +535,85 @@ async function destroyUnderCertificate(
   };
 }
 
+export interface ReconcileResult {
+  readonly batchId: string;
+  readonly certificateId: string;
+  readonly planned: number;
+  readonly destroyed: number;
+  readonly refunded: number;
+}
+
+/**
+ * Reconcile reservations stranded by a crash: a batch still `reserved` after STRANDED_BATCH_AFTER_HOURS is settled by comparing its planned ids
+ * with the message table (a planned id that no longer exists was destroyed by that batch; the rest are refunded). Fail-safe: destroyed is never
+ * more than planned, `destroyed_count` only goes up, the reservation is released exactly once (the batch row is locked and flips state in the same
+ * transaction), so capacity can never exceed the approved figure. Runs before planning, so refunded capacity is usable in the same run.
+ */
+async function reconcileStrandedBatches(
+  deps: RetentionDestructionDeps,
+  orgId: string,
+  runId: string,
+  now: Date,
+  apply: boolean,
+): Promise<readonly ReconcileResult[]> {
+  const before = new Date(now.getTime() - STRANDED_BATCH_AFTER_HOURS * 3_600_000);
+  const write = deps.auditWriter ?? audit;
+  return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
+    const tx = txRaw as unknown as DbClient;
+    const stranded = await tx
+      .select()
+      .from(BATCH)
+      .where(
+        and(
+          eq(BATCH.organizationId, orgId),
+          eq(BATCH.state, "reserved"),
+          lt(BATCH.reservedAt, before),
+        ),
+      )
+      .orderBy(BATCH.reservedAt)
+      .limit(RECONCILE_MAX_BATCHES_PER_RUN)
+      .for("update", { skipLocked: true });
+    const results: ReconcileResult[] = [];
+    for (const batch of stranded) {
+      const gone = (
+        await tx.execute<{ n: number }>(
+          sql`SELECT count(*)::int AS n FROM unnest(ARRAY[${uuidList(batch.plannedMessageIds)}]::uuid[]) AS u(id)
+               WHERE NOT EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${orgId}::uuid AND m.id = u.id)`,
+        )
+      ).rows[0]?.n;
+      const destroyed = Math.min(Number(gone ?? 0), batch.plannedCount);
+      results.push({
+        batchId: batch.id,
+        certificateId: batch.certificateId,
+        planned: batch.plannedCount,
+        destroyed,
+        refunded: batch.plannedCount - destroyed,
+      });
+      if (!apply) continue;
+      await deps.messageHolds.settleCertificateCount(tx, {
+        organizationId: orgId,
+        certificateId: batch.certificateId,
+        reserved: batch.plannedCount,
+        destroyed,
+      });
+      await tx
+        .update(BATCH)
+        .set({ state: "reconciled", settledAt: now, destroyedCount: destroyed })
+        .where(and(eq(BATCH.organizationId, orgId), eq(BATCH.id, batch.id)));
+    }
+    if (apply && results.length > 0) {
+      await write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
+        eventType: "m36.retention_destruction.reconciled",
+        resourceKind: "message_retention_run",
+        resourceId: runId,
+        outcome: "success",
+        context: { runId, batches: results },
+      });
+    }
+    return results;
+  });
+}
+
 /** One org's destruction run. Returns `mode: "off"` (and touches nothing) when the tenant flag is off. */
 export async function runRetentionDestructionForOrg(
   deps: RetentionDestructionDeps,
@@ -507,13 +621,22 @@ export async function runRetentionDestructionForOrg(
 ): Promise<RetentionDestructionResult> {
   const runId = (deps.newRunId ?? randomUUID)();
   if (!(await deps.isEnabled(orgId))) {
-    return { runId, mode: "off", destroyed: 0, certificates: [], expiredCertificateIds: [] };
+    return {
+      runId,
+      mode: "off",
+      destroyed: 0,
+      certificates: [],
+      expiredCertificateIds: [],
+      reconciled: [],
+    };
   }
   const live = deps.execute === true;
   const mode: RetentionDestructionMode = live ? "live" : "dry_run";
   const now = (deps.now ?? (() => new Date()))();
   const validityMs = (deps.certificateValidityDays ?? CERTIFICATE_VALIDITY_DAYS) * 86_400_000;
   const notBefore = new Date(now.getTime() - validityMs);
+  // Stranded reservations (a crash between delete and settle) are reconciled first when live, and only REPORTED in a dry run.
+  const reconciled = await reconcileStrandedBatches(deps, orgId, runId, now, live);
   const approved = await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
     deps.messageHolds.approvedCertificates(
       txRaw as unknown as DbClient,
@@ -547,6 +670,7 @@ export async function runRetentionDestructionForOrg(
     destroyed,
     certificates,
     expiredCertificateIds,
+    reconciled: reconciled.length,
   });
   const failures = certificates.filter((c) => c.failure);
   if (failures.length > 0) {
@@ -561,5 +685,5 @@ export async function runRetentionDestructionForOrg(
       `retention destruction run ${runId} for org ${orgId}: ${failures.length} certificate(s) failed after the others ran; ${reasons.join("; ")}`,
     );
   }
-  return { runId, mode, destroyed, certificates, expiredCertificateIds };
+  return { runId, mode, destroyed, certificates, expiredCertificateIds, reconciled };
 }

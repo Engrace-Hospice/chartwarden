@@ -11,7 +11,7 @@ ADR-0086 and confirmed the retention periods (care_related 7y, bereavement 7y, o
 - It never touches a message under an active legal hold (re-checked inside the delete transaction), a message with an attachment object not yet destroyed, or a message a reply still points at.
 - It removes at most 500 messages per transaction, 40 batches per certificate per run. A big backlog drains over several weekly runs.
 - It closes the certificate (`executed`) only when nothing past the certificate's window remains for the class. A held message keeps it `approved`; releasing the hold lets the next run finish it.
-- It does NOT destroy attachment objects (a message that bears one is kept), and a batch whose recording failed leaves its reservation in place (`reserved_count`), so the certificate may close below its approved count. Actual counts are in the run's audit rows.
+- It does NOT destroy attachment objects (a message that bears one is kept), and a reservation stranded by a crash is reconciled at the start of the next live run once its batch (`message_destruction_batch`, state `reserved`) is older than 6 hours: ids already gone count as destroyed, the rest are refunded (the `m36.retention_destruction.reconciled` audit row lists them; a dry run only reports them in the result). Actual counts are in the run's audit rows.
 
 ## Prerequisites
 

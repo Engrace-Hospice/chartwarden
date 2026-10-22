@@ -303,6 +303,7 @@ export const MODULES: ModuleDef[] = [
       "message_export_download",
       "legal_hold_message",
       "message_redaction",
+      "message_destruction_batch",
       "messaging_review_item",
       "chart_promotion_request",
       "tenant_handoff_policy",
