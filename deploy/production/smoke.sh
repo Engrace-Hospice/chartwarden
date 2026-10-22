@@ -27,8 +27,8 @@ set -eu
 fail() { echo "SMOKE FAIL [$1] $2" >&2; exit 1; }
 ok()   { echo "  ✓ $1"; }
 
-# Defaults to the directory this script was uploaded to, so the same file works from /opt/wardenx today and
-# /opt/chartwarden after the infra-rename cutover (INFRA_RENAME_RUNBOOK.md). Override with CHARTWARDEN_DEPLOY_DIR.
+# Defaults to the directory this script was uploaded to (/opt/chartwarden unless the workflow's DEPLOY_DIR says otherwise).
+# Override with CHARTWARDEN_DEPLOY_DIR.
 deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-$(cd "$(dirname "$0")" && pwd)}
 compose="docker compose --env-file .env.production -f compose.yml"
 cd "$deploy_dir"
@@ -161,12 +161,12 @@ ok "web serving on 8080"
 # staging host.
 echo "tier 3 — public ingress"
 # An exported variable wins, then a key in .env.production (so the hostname flip of the infra-rename cutover is one
-# env edit and the post-deploy smoke follows it), then the legacy hosts. Both keys are absent from the live env today.
+# env edit and the post-deploy smoke follows it), then the chartwarden hosts.
 env_value() { sed -n "s/^$1=//p" .env.production | tail -n 1; }
 app_url=${CHARTWARDEN_SMOKE_APP_URL:-$(env_value CHARTWARDEN_SMOKE_APP_URL)}
 api_url=${CHARTWARDEN_SMOKE_API_URL:-$(env_value CHARTWARDEN_SMOKE_API_URL)}
-app_url=${app_url:-https://wardenx.chartwarden.cloud}
-api_url=${api_url:-https://be082026.wardenx.chartwarden.cloud}
+app_url=${app_url:-https://app.chartwarden.cloud}
+api_url=${api_url:-https://api.chartwarden.cloud}
 
 # Deliberately NOT `-k`. Certificate validation is the point: an expired or mis-issued certificate is
 # a production outage for every browser, and a smoke test that passes `-k` would be blind to the single

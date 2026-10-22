@@ -334,6 +334,17 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Preflight deploy directory
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/chartwarden' }}
+        run: |
+          # Fails BEFORE any upload if the host has not been cut over (INFRA_RENAME_RUNBOOK.md, "Merge order").
+          ssh -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "test -d '$DEPLOY_DIR' && test -f '$DEPLOY_DIR/.env.production'" \
+            || { echo "::error::$DEPLOY_DIR (with .env.production) does not exist on the host; the infra cutover (Step C) has not been done. Nothing was uploaded or changed."; exit 1; }
       - name: Upload and run deploy script
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -342,9 +353,8 @@ jobs:
           BACKEND_IMAGE: ${{ needs.release.outputs.backend_image }}
           WEB_IMAGE: ${{ needs.release.outputs.web_image }}
           DOCLING_IMAGE: ${{ needs.release.outputs.docling_image }}
-          # Infra-rename cutover: set the repository variable DEPLOY_DIR=/opt/chartwarden in the same step as the host-side move
-          # (deploy/production/INFRA_RENAME_RUNBOOK.md). Unset, the live /opt/wardenx path is used.
-          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/wardenx' }}
+          # Defaults to /opt/chartwarden. Merge only after the host-side move (INFRA_RENAME_RUNBOOK.md, "Merge order").
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/chartwarden' }}
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
           test -n "$DEPLOY_DIR"

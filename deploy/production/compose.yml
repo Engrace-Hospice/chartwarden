@@ -8,9 +8,10 @@
 #
 # INFRA RENAME (wardenx -> chartwarden), see INFRA_RENAME_RUNBOOK.md. The project name drives the container
 # (`<project>-<service>-1`) and network (`<project>_default`, `<project>_scan`) names. It defaults to the
-# CURRENT live value so merging this file changes nothing; the operator flips it in .env.production during
-# the cutover. The data volumes are pinned by explicit name below so the flip does NOT orphan them.
-name: ${CHARTWARDEN_COMPOSE_PROJECT:-wardenx}
+# chartwarden. The live host was cut over first (INFRA_RENAME_RUNBOOK.md, Step C) and pins CHARTWARDEN_VOLUME_PREFIX=wardenx
+# in .env.production, so its data volumes (named below) keep their old names. deploy.sh refuses to run on a host whose
+# configured volumes/database are missing while old-named ones exist, so a stale host fails safe instead of starting empty state.
+name: ${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}
 
 services:
   postgres:
@@ -91,7 +92,7 @@ services:
       MINIO_APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       # Name of the IAM policy. Defaults to the live name; the infra-rename cutover sets `chartwarden-app` (the old
       # policy stays attached to the account until the late cleanup step, so a rollback keeps working).
-      CHARTWARDEN_MINIO_POLICY: ${CHARTWARDEN_MINIO_POLICY:-wardenx-app}
+      CHARTWARDEN_MINIO_POLICY: ${CHARTWARDEN_MINIO_POLICY:-chartwarden-app}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -430,14 +431,14 @@ networks:
 
 # Volume names are explicit (not derived from `name:` above) so the project rename keeps the live data. The prefix
 # defaults to the project name, which on a fresh install gives `<project>_postgres-data` etc.; the production
-# host sets CHARTWARDEN_VOLUME_PREFIX=wardenx in .env.production for the cutover so it keeps its existing
-# `wardenx_*` volumes under the renamed `chartwarden` project (no copy, no downtime beyond the recreate).
+# host keeps CHARTWARDEN_VOLUME_PREFIX=wardenx in .env.production so it keeps its existing `wardenx_*` volumes
+# under the renamed `chartwarden` project (no copy).
 volumes:
   postgres-data:
-    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-wardenx}}_postgres-data
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data
   valkey-data:
-    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-wardenx}}_valkey-data
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_valkey-data
   minio-data:
-    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-wardenx}}_minio-data
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_minio-data
   clamav-data:
-    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-wardenx}}_clamav-data
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_clamav-data
