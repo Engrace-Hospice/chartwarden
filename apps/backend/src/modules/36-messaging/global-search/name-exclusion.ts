@@ -193,8 +193,16 @@ export function createNameExclusions(deps: NameExclusionDeps): NameExclusions {
         row = await inTenantTx(organizationId, readRow);
         if (!row?.syncedAt) throw new NameExclusionNotSyncedError(); // over the enumeration budget: still not complete
       }
-      const key = await deps.keys.tagKey(organizationId, keyVersion);
-      const exclusion = digestExclusion(key, new Set(row.digests ?? []));
+      // A stored digest is an HMAC under the search key of the label set that was the WRITER's when it was added, so after the
+      // label flip the digests written before it only match under the legacy key. Test a token against the digest set under
+      // EVERY accepted label set: until `sync` has added the new-label digests (and after a rebuild has re-indexed under
+      // them), a name must stay excluded rather than be indexed in the clear.
+      // LEGACY(wardenx->chartwarden): with the legacy label gone (release 3) this is the single write-label key again.
+      const digestSet = new Set(row.digests ?? []);
+      const readKeys = await deps.keys.tagKeysForRead(organizationId, keyVersion);
+      if (readKeys.length === 0) throw new NameExclusionNotSyncedError(); // no key: fail closed, never "exclude nothing"
+      const exclusions = readKeys.map((k) => digestExclusion(k.key, digestSet));
+      const exclusion: ExcludedTokens = { has: (token) => exclusions.some((e) => e.has(token)) };
       cache.set(id, { expiresAt: now() + EXCLUSION_CACHE_TTL_MS, exclusion });
       return exclusion;
     };
