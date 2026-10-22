@@ -17,6 +17,8 @@ const FILES = ["apps/web/src/shell/alert-inbox.tsx", "apps/web/src/shell/notific
 
 /** Files allowed to use the words, each WITH a reason (a ratchet: add only for a real, different meaning). */
 const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
+  "apps/web/src/modules/36-messaging/break-glass-wording.ts":
+    "WP 5.8 break-glass review wording: `ack` is the audited resource kind of an acknowledgment request the reviewer read (label 'Read a request'); it labels no delivery, open or read receipt",
   "apps/backend/src/modules/36-messaging/outbox-consumers/oncall-alerts.ts":
     "M19 triage escalation acknowledgement — a clinical triage action, not a message receipt",
   "apps/backend/src/modules/36-messaging/outbox-consumers/m39-consent-revoked.ts":
