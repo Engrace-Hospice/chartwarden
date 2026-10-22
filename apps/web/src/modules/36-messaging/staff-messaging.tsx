@@ -18,7 +18,7 @@ import {
 } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { OfflineBanner } from "./offline-banner";
-import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
+import { RealtimeBanner, RealtimeChip, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useFocusThreadAfterPick } from "./use-focus-thread-after-pick";
 import { useMessagingRealtime } from "./use-messaging-realtime";
@@ -252,6 +252,8 @@ function OrganizationStaffMessaging({
     if (activeId !== null) setAccessEnded(false);
   }, [activeId]);
   activeIdRef.current = activeId;
+  const [catchingUp, setCatchingUp] = useState(false);
+  const [mergeNote, setMergeNote] = useState("");
   const refreshFromHint = useCallback(async (): Promise<void> => {
     const generation = generationRef.current;
     if (channelLoadInFlight.current) await channelLoadInFlight.current;
@@ -278,7 +280,9 @@ function OrganizationStaffMessaging({
       [refreshFromHint],
     ),
     useCallback(() => {
-      void refreshFromHint();
+      // WP 5.2: "Catching up…" lasts until the list read behind the reconnect has resolved.
+      setCatchingUp(true);
+      void refreshFromHint().finally(() => setCatchingUp(false));
       setLiveToken((n) => n + 1);
       setLiveHint((previous) => pushLiveHint(previous, null, null));
     }, [refreshFromHint]),
@@ -452,6 +456,15 @@ function OrganizationStaffMessaging({
       />
 
       <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
+      <RealtimeChip
+        connected={realtimeConnected}
+        degraded={realtimeDegraded}
+        catchingUp={catchingUp}
+      />
+      {/* Counts only, never message text. A repeat of the same count is re-announced by the key. */}
+      <output className="wx-sr-only" aria-live="polite" key={mergeNote}>
+        {mergeNote}
+      </output>
       <OfflineBanner />
 
       <section
@@ -492,6 +505,9 @@ function OrganizationStaffMessaging({
               onMessageSent={() => void loadChannels(true)}
               onAccessRevoked={onAccessRevoked}
               liveToken={liveToken}
+              onLiveMerge={(added) =>
+                setMergeNote(`${added} new ${added === 1 ? "message" : "messages"}`)
+              }
               liveHint={liveHint}
               realtimeConnected={realtimeConnected}
               canAnnounce={canAnnounce}

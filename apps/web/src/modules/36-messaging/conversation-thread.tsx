@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
 import { sendBlockedReason } from "./attachment-utils";
+import { catchUpIfNeeded } from "./catch-up";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
 import { deferUntilLoaded } from "./defer-until-loaded";
@@ -67,6 +68,7 @@ export interface ConversationThreadProps {
   onLanded?: () => void;
   /** Changes when a realtime hint (or a socket reconnect) says this channel has news: read the latest now. */
   liveToken?: number;
+  onLiveMerge?: (added: number) => void;
   /** While the socket is up, polling is only a safety net and runs slowly. */
   realtimeConnected?: boolean;
   /** WP 2.2: what the latest realtime hint said changed, so an open thread panel refreshes only when it is concerned. */
@@ -107,6 +109,7 @@ function ConversationThreadView({
   landOnMessageId = null,
   onLanded,
   liveToken = 0,
+  onLiveMerge,
   realtimeConnected = false,
   liveHint = null,
   canAnnounce = false,
@@ -123,6 +126,7 @@ function ConversationThreadView({
   const [loadCorrelationId, setLoadCorrelationId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [catchUpGap, setCatchUpGap] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftReferences, setDraftReferences] = useState<MessageReferenceInput[]>([]);
   // WP 3.3: the SBAR form's text lives here, not in the dialog, so Cancel keeps it (this thread is keyed by channel).
@@ -176,6 +180,7 @@ function ConversationThreadView({
   const meIdRef = useRef(meId);
   const onReadConfirmedRef = useRef(onReadConfirmed);
   const onAccessRevokedRef = useRef(onAccessRevoked);
+  const onLiveMergeRef = useRef(onLiveMerge);
   // The route anchor follows ONLY its own prop: "Back to latest" clears the mirror, and a re-render with new callback
   // identities must not write the old anchor back.
   useEffect(() => {
@@ -185,7 +190,8 @@ function ConversationThreadView({
     meIdRef.current = meId;
     onReadConfirmedRef.current = onReadConfirmed;
     onAccessRevokedRef.current = onAccessRevoked;
-  }, [meId, onReadConfirmed, onAccessRevoked]);
+    onLiveMergeRef.current = onLiveMerge;
+  }, [meId, onReadConfirmed, onAccessRevoked, onLiveMerge]);
 
   // WP 2.2 jump-to-parent (and "Back to latest" after an anchored page): see use-jump-to-message.ts.
   const readViewRef = useRef<ReadView>(INITIAL_READ_VIEW);
@@ -335,6 +341,10 @@ function ConversationThreadView({
             ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
           },
         );
+        const caught =
+          background && !error && !view.anchor && !view.replace
+            ? await catchUpIfNeeded(client, channel.channelId, messagesRef.current, data)
+            : null;
         if (generation !== generationRef.current) return false;
         if (view !== readViewRef.current) {
           // A newer request (a jump, back to latest) arrived while this read was in flight: this answer is for the
@@ -360,7 +370,7 @@ function ConversationThreadView({
           }
           return false;
         }
-        const incoming = (data?.messages ?? []) as Message[];
+        const incoming = caught ? [...caught.messages] : ((data?.messages ?? []) as Message[]);
         latestPageIdsRef.current = new Set(incoming.map((message) => message.messageId));
         // WP 2.2: a jump to an unloaded message (or back to latest) shows ONE contiguous page, never a merge of two.
         const replace = view.replace;
@@ -374,6 +384,7 @@ function ConversationThreadView({
         setLoadError(null);
         setLoadCorrelationId(null);
         setRefreshError(false);
+        setCatchUpGap(caught?.gap ?? false);
         setOlderCursor((data?.nextCursor as string | undefined) ?? null);
         const merged =
           currentMessages === null ? incoming : mergeMessages(currentMessages, incoming);
@@ -392,6 +403,7 @@ function ConversationThreadView({
             if (timeline) timeline.scrollTop = timeline.scrollHeight;
           });
         }
+        if (background && added > 0) onLiveMergeRef.current?.(added);
         if (!background) window.setTimeout(() => void markReadBoundary(incoming), 0);
         return true;
       } finally {
@@ -725,6 +737,14 @@ function ConversationThreadView({
       ) : null}
       {jump.anchorMissing ? (
         <output className="wx-thread-refresh-warning">That message is no longer available.</output>
+      ) : null}
+      {catchUpGap ? (
+        <output className="wx-thread-refresh-warning">
+          Some messages may be missing.{" "}
+          <button type="button" onClick={jump.backToLatest}>
+            Reload
+          </button>
+        </output>
       ) : null}
       {refreshError && !loadError ? (
         <output className="wx-thread-refresh-warning">
