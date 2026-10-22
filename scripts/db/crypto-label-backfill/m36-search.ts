@@ -19,7 +19,10 @@ import {
 } from "@chartwarden/messaging";
 import { sql } from "drizzle-orm";
 import type { IndexWriter } from "../../../apps/backend/src/modules/36-messaging/global-search/index-writer";
-import type { NameExclusions } from "../../../apps/backend/src/modules/36-messaging/global-search/name-exclusion";
+import {
+  NameExclusionNotSyncedError,
+  type NameExclusions,
+} from "../../../apps/backend/src/modules/36-messaging/global-search/name-exclusion";
 import {
   type BodyReader,
   isEligibleForIndex,
@@ -51,12 +54,6 @@ export interface M36SearchDeps {
   readonly bodies: BodyReader;
   readonly exclusions: NameExclusions;
   readonly writer: IndexWriter;
-}
-
-/** What a tenant's index was prepared with (apply only). */
-export interface PreparedSearch {
-  readonly keyVersion: string;
-  readonly pendingAtStart: readonly string[];
 }
 
 async function readTagBits(
@@ -92,18 +89,41 @@ export function m36SearchScan(
       bodies.read(organizationId, { bodyKind: row.bodyKind, bodyCipher: row.bodyCipher }),
     );
     if (!body) return "unreadable";
-    const excluded = await exclusions.currentReadOnly(organizationId, keyVersion);
+    let excluded: Awaited<ReturnType<typeof exclusions.currentReadOnly>>;
+    try {
+      excluded = await exclusions.currentReadOnly(organizationId, keyVersion);
+    } catch (error) {
+      // One tenant whose names were never synced must not abort a multi-tenant run: it counts as unresolved rows instead.
+      if (error instanceof NameExclusionNotSyncedError) return "unreadable";
+      throw error;
+    }
     const tokens = tokenizeForSearch(body.text, excluded);
     if (tokens.length === 0) return "ignore"; // only dummies are stored; no label is involved
+    // Tokens the index must NOT carry: the body's non-stop-word tokens that the exclusion set removed (patient / contact names).
+    const everyToken = tokenizeForSearch(body.text);
+    const excludedTokens = everyToken.filter((t) => !tokens.includes(t));
     const sets = await keys.tagKeysForRead(organizationId, keyVersion);
+    const channelKeyOf = (set: (typeof sets)[number]) =>
+      deriveChannelKey(set.key, keyVersion, tagBits, row.channelId, set.labels);
     const containsAll = (set: (typeof sets)[number]) => {
-      const channelKey = deriveChannelKey(set.key, keyVersion, tagBits, row.channelId, set.labels);
+      const channelKey = channelKeyOf(set);
       return tokens.every((token) => row.storedTags.has(tagForWord(channelKey, token, tagBits)));
     };
-    // `tagKeysForRead` lists the current set first. Tags that match no set are a stale index (an edit the index has not
-    // caught up with): rewriting them is the repair, so they count as work, never as "current".
+    const carriesExcludedName = sets.some((set) => {
+      const channelKey = channelKeyOf(set);
+      return excludedTokens.some((token) =>
+        row.storedTags.has(tagForWord(channelKey, token, tagBits)),
+      );
+    });
+    // Work, never "current", when: the tags are not the NEW set's (legacy, or a stale index the reconcile job has not caught up
+    // with); or they ALSO contain every legacy tag (a short message can hold the new tags by chance; a rewrite draws fresh dummies
+    // and settles it); or a name that is now excluded is still indexed.
     const current = sets.find((s) => s.labels === SEARCH_LABELS_CURRENT);
-    return current && containsAll(current) ? "current" : "legacy";
+    const legacy = sets.filter((s) => s !== current);
+    const ambiguous = legacy.some(containsAll);
+    return current && containsAll(current) && !ambiguous && !carriesExcludedName
+      ? "current"
+      : "legacy";
   }
 
   return {
@@ -158,7 +178,11 @@ export function m36SearchScan(
         if (outcome === "removed") return "resealed";
         // Verify: re-read this message's tags and prove they are now the NEW set's.
         return (await verifyOne(row.id)) ? "resealed" : "failed";
-      } catch {
+      } catch (error) {
+        // The class only: a driver error message embeds the failed statement's parameters.
+        console.error(
+          `m36-search: re-index of one message failed (${error instanceof Error ? error.name : "unknown"})`,
+        );
         return "failed";
       }
     },
@@ -209,39 +233,17 @@ export async function m36SearchState(
   return { keyVersion, tagBits: await readTagBits(deps.db, organizationId, keyVersion) };
 }
 
-/** Apply only, before the first rewrite: add the new-label name digests and remember what was pending. */
+/**
+ * Apply only, before the first rewrite: add the new-label name digests (grow-only). They are left PENDING on purpose: only the
+ * reconcile tick's targeted reindex (`reindexPendingExclusions`) may clear them, because only it looks for messages that still carry
+ * an excluded name's tag. This pass re-indexes every message with the names excluded, and its classification flags any message
+ * that still carries one, but it does not assert that every pending name has been looked for.
+ */
 export async function m36SearchPrepare(
   deps: M36SearchDeps,
   organizationId: string,
   keyVersion: string,
-): Promise<PreparedSearch> {
+): Promise<void> {
   await deps.exclusions.sync(organizationId, keyVersion);
   deps.exclusions.invalidate(organizationId, keyVersion);
-  const pending = await inOrg(
-    deps.db,
-    organizationId,
-    async (tx) =>
-      rowsOf<{ pending: string[] | null }>(
-        await tx.execute(sql`
-        SELECT exclusion_pending AS pending FROM message_search_index_state
-         WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}`),
-      )[0]?.pending,
-  );
-  return { keyVersion, pendingAtStart: pending ?? [] };
-}
-
-/** Apply only, after the scan: clear the digests that were pending at its start, but only for a clean full pass. */
-export async function m36SearchFinish(
-  deps: M36SearchDeps,
-  organizationId: string,
-  prepared: PreparedSearch,
-  report: TableReport,
-): Promise<void> {
-  const clean =
-    report.stoppedBy === "exhausted" &&
-    report.counts.failed === 0 &&
-    report.counts.skipped === 0 &&
-    report.counts.unreadable === 0;
-  if (!clean) return;
-  await deps.exclusions.clearPending(organizationId, prepared.keyVersion, prepared.pendingAtStart);
 }

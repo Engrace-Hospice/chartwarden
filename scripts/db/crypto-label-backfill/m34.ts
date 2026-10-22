@@ -26,6 +26,19 @@ export class BackupNotConfirmedError extends Error {
   }
 }
 
+/**
+ * Restoring the old bytes after a failed read-back itself failed: the ring is in the NEW state, which was not proven. The run
+ * stops here (it never carries on past a ring it could not put right). The message names no value.
+ */
+export class RingRestoreFailedError extends Error {
+  constructor(readonly ringId: string) {
+    super(
+      `tenant_key_ring ${ringId}: the re-wrapped ring failed its read-back and the old bytes could NOT be restored; the ring holds the new, unproven wraps. Inspect it and restore from the backup if it does not unwrap.`,
+    );
+    this.name = "RingRestoreFailedError";
+  }
+}
+
 /** What a test hook throws to simulate the process dying at that point; it escapes the scan instead of being counted. */
 export class SimulatedCrash extends Error {
   constructor(readonly point: string) {
@@ -42,6 +55,10 @@ export interface M34Hooks {
   readonly beforeCommit?: () => Promise<void> | void;
   /** COMMIT done, before the read-back verification. */
   readonly afterCommit?: () => Promise<void> | void;
+  /** Just before the read-back query (a plain throw here is a transient read failure). */
+  readonly beforeReadBack?: () => Promise<void> | void;
+  /** Just before the old bytes are written back (a plain throw here is a failed restore). */
+  readonly beforeRestore?: () => Promise<void> | void;
 }
 
 interface PriorEntry {
@@ -161,6 +178,7 @@ export function m34KeyRingScan(
       const entries = entriesOf(row);
       if (entries.length === 0) return "ignore";
       let anyLegacy = false;
+      let anyUnreadable = false;
       for (const entry of entries) {
         const asCurrent = await tryOpen(() => unwrapEntry(row, entry, "current"));
         if (asCurrent) {
@@ -168,11 +186,16 @@ export function m34KeyRingScan(
           continue;
         }
         const asLegacy = await tryOpen(() => unwrapEntry(row, entry, "legacy"));
-        if (!asLegacy) return "unreadable";
+        if (!asLegacy) {
+          anyUnreadable = true;
+          continue;
+        }
         asLegacy.fill(0);
         anyLegacy = true;
       }
-      return anyLegacy ? "legacy" : "current";
+      // Entries are judged one by one: an unreadable prior version never hides a legacy current DEK (the work is done on the
+      // readable ones), and once nothing legacy is left the ring is "unreadable" until the operator resolves that entry.
+      return anyLegacy ? "legacy" : anyUnreadable ? "unreadable" : "current";
     },
     async reseal(row): Promise<WriteResult> {
       if (!deps.backupConfirmed) throw new BackupNotConfirmedError();
@@ -181,8 +204,14 @@ export function m34KeyRingScan(
         const expected = new Map<"current" | number, string>();
         let newCurrent: Buffer | null = row.currentCiphertext;
         const newPriors: PriorEntry[] = [...row.priors];
+        let unreadableEntries = 0;
+        let rewrappedEntries = 0;
         for (const entry of entriesOf(row)) {
-          const dek = await unwrapEntry(row, entry);
+          const dek = await tryOpen(() => unwrapEntry(row, entry));
+          if (!dek) {
+            unreadableEntries += 1; // reported below; it does not stop the readable entries
+            continue;
+          }
           expected.set(entry.slot, fingerprint(dek));
           dek.fill(0);
           const alreadyCurrent = await tryOpen(() => unwrapEntry(row, entry, "current"));
@@ -195,6 +224,7 @@ export function m34KeyRingScan(
             kekWrappedCiphertext: entry.wrapped,
             kekId: entry.kekId,
           });
+          rewrappedEntries += 1;
           const bytes = Buffer.from(rewrapped.wrappedCiphertextB64, "base64");
           if (entry.slot === "current") newCurrent = bytes;
           else {
@@ -205,6 +235,7 @@ export function m34KeyRingScan(
           }
         }
         await hooks?.afterCompute?.();
+        if (rewrappedEntries === 0) return unreadableEntries > 0 ? "failed" : "skipped";
 
         // ── Phase 2: replace the row atomically, only if nobody changed it since it was read. ──
         const replaced = await inOrg(platformDb, organizationId, async (tx) => {
@@ -225,20 +256,51 @@ export function m34KeyRingScan(
         await hooks?.afterCommit?.();
 
         // ── Phase 3: read back and prove every entry opens under the NEW label alone, to the same DEK. ──
-        const after = await readRing(platformDb, organizationId, row.id);
+        let after: RingRow | undefined;
+        try {
+          await hooks?.beforeReadBack?.();
+          after = await readRing(platformDb, organizationId, row.id);
+        } catch (error) {
+          if (error instanceof SimulatedCrash) throw error;
+          return "unverified"; // committed, but the read-back could not be taken
+        }
+        if (after) {
+          // Someone else (a DEK rotation, a shred) changed the ring after our commit: what we wrote is no longer there to
+          // judge, and rolling it back would undo their work. The next run looks at the ring as it is.
+          const wrote = entriesOf({ ...row, currentCiphertext: newCurrent, priors: newPriors });
+          const read = entriesOf(after);
+          const unchanged =
+            wrote.length === read.length &&
+            wrote.every(
+              (w, i) => w.slot === read[i]?.slot && w.wrapped.equals(read[i]?.wrapped as Buffer),
+            );
+          if (!unchanged) return "skipped";
+        }
         let ok = after !== undefined;
         if (after) {
           for (const entry of entriesOf(after)) {
+            if (!expected.has(entry.slot)) continue; // the unreadable entry has no fingerprint; it is reported, not judged
             const dek = await tryOpen(() => unwrapEntry(after, entry, "current"));
             if (!dek || fingerprint(dek) !== expected.get(entry.slot)) ok = false;
             dek?.fill(0);
           }
         }
-        if (ok) return "resealed";
-        await restore(platformDb, organizationId, row, newCurrent, newPriors);
+        // An entry that could not be read at all is a problem the operator must resolve: the gate stays red (failed).
+        if (ok) return unreadableEntries > 0 ? "failed" : "resealed";
+        try {
+          await hooks?.beforeRestore?.();
+          await restore(platformDb, organizationId, row, newCurrent, newPriors);
+        } catch (error) {
+          if (error instanceof SimulatedCrash) throw error;
+          throw new RingRestoreFailedError(row.id);
+        }
         return "failed";
       } catch (error) {
-        if (error instanceof BackupNotConfirmedError || error instanceof SimulatedCrash)
+        if (
+          error instanceof BackupNotConfirmedError ||
+          error instanceof SimulatedCrash ||
+          error instanceof RingRestoreFailedError
+        )
           throw error;
         return "failed";
       }

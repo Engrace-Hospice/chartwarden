@@ -10,27 +10,55 @@
 -- m36_label_backfill_swap   compare-and-swap of one sealed value for another of EXACTLY THE SAME SHAPE: same scheme byte (1 or 2), same
 --                           length and, for a ring (2) envelope, the same ring version label. So a swap can change which AAD / HKDF
 --                           label sealed a value and nothing else; it cannot change the scheme, the ring version or the size.
--- Both are SECURITY DEFINER owned by chartwarden_admin, answer only for the org the session is bound to (a NULL or foreign org matches
+-- Both are SECURITY DEFINER owned by chartwarden_label_backfill_owner, answer only for the org the session is bound to (a NULL or foreign org matches
 -- nothing), and EXECUTE goes only to the NOLOGIN carrier chartwarden_m36_reseal (the login that holds it is operator-only, 1090). Every
 -- swap is audited by the table's own UPDATE audit trigger (the cipher is scrubbed from the image).
 
--- Column-level reach for the function owner on the two owner-isolated tables (the revision / poll-option grants and policies exist: 1089, 1094).
-GRANT SELECT ("organization_id", "id", "body_cipher") ON "message_draft" TO chartwarden_admin;--> statement-breakpoint
-GRANT UPDATE ("body_cipher") ON "message_draft" TO chartwarden_admin;--> statement-breakpoint
-CREATE POLICY "message_draft_label_backfill_select" ON "message_draft"
-  FOR SELECT TO chartwarden_admin
+-- THE OWNER. The two functions are owned by a dedicated NOLOGIN, NOBYPASSRLS role that holds nothing but the column grants and the
+-- org-pinned policies below, on exactly these four tables. chartwarden_admin is NOT widened (it keeps its 1087 due-lister view of
+-- scheduled_message and gets no new reach), and nothing can log in as the owner.
+-- RELEASE-3-DROP: release 3 must DROP both functions, every policy named *_label_backfill_* below, these column grants and this
+-- role (see the COMMENTs at the end of this file; the live suite asserts the markers exist).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_label_backfill_owner') THEN
+    CREATE ROLE chartwarden_label_backfill_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+  END IF;
+END $$;--> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO chartwarden_label_backfill_owner;--> statement-breakpoint
+GRANT SELECT ("organization_id", "id", "body_cipher") ON "message_revision" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+GRANT UPDATE ("body_cipher") ON "message_revision" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+CREATE POLICY "message_revision_label_backfill_select" ON "message_revision"
+  FOR SELECT TO chartwarden_label_backfill_owner
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
-CREATE POLICY "message_draft_label_backfill_update" ON "message_draft"
-  FOR UPDATE TO chartwarden_admin
+CREATE POLICY "message_revision_label_backfill_update" ON "message_revision"
+  FOR UPDATE TO chartwarden_label_backfill_owner
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
-GRANT SELECT ("body_cipher") ON "scheduled_message" TO chartwarden_admin;--> statement-breakpoint
-GRANT UPDATE ("body_cipher") ON "scheduled_message" TO chartwarden_admin;--> statement-breakpoint
+GRANT SELECT ("organization_id", "id", "label_cipher") ON "message_poll_option" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+GRANT UPDATE ("label_cipher") ON "message_poll_option" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+CREATE POLICY "message_poll_option_label_backfill_select" ON "message_poll_option"
+  FOR SELECT TO chartwarden_label_backfill_owner
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY "message_poll_option_label_backfill_update" ON "message_poll_option"
+  FOR UPDATE TO chartwarden_label_backfill_owner
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
+GRANT SELECT ("organization_id", "id", "body_cipher") ON "message_draft" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+GRANT UPDATE ("body_cipher") ON "message_draft" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+CREATE POLICY "message_draft_label_backfill_select" ON "message_draft"
+  FOR SELECT TO chartwarden_label_backfill_owner
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
+CREATE POLICY "message_draft_label_backfill_update" ON "message_draft"
+  FOR UPDATE TO chartwarden_label_backfill_owner
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
+GRANT SELECT ("organization_id", "id", "body_cipher") ON "scheduled_message" TO chartwarden_label_backfill_owner;--> statement-breakpoint
+GRANT UPDATE ("body_cipher") ON "scheduled_message" TO chartwarden_label_backfill_owner;--> statement-breakpoint
 CREATE POLICY "scheduled_message_label_backfill_select" ON "scheduled_message"
-  FOR SELECT TO chartwarden_admin
+  FOR SELECT TO chartwarden_label_backfill_owner
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 CREATE POLICY "scheduled_message_label_backfill_update" ON "scheduled_message"
-  FOR UPDATE TO chartwarden_admin
+  FOR UPDATE TO chartwarden_label_backfill_owner
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 
@@ -63,7 +91,7 @@ BEGIN
     RAISE EXCEPTION 'm36_label_backfill_page: unknown table' USING ERRCODE = '22023';
   END IF;
 END $$;--> statement-breakpoint
-ALTER FUNCTION m36_label_backfill_page(text, uuid, uuid, integer) OWNER TO chartwarden_admin;--> statement-breakpoint
+ALTER FUNCTION m36_label_backfill_page(text, uuid, uuid, integer) OWNER TO chartwarden_label_backfill_owner;--> statement-breakpoint
 REVOKE ALL ON FUNCTION m36_label_backfill_page(text, uuid, uuid, integer) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION m36_label_backfill_page(text, uuid, uuid, integer) TO chartwarden_m36_reseal;--> statement-breakpoint
 
@@ -81,6 +109,12 @@ BEGIN
   IF p_old IS NULL OR p_new IS NULL OR octet_length(p_old) < 29 OR octet_length(p_new) <> octet_length(p_old) THEN
     RAISE EXCEPTION 'm36_label_backfill_swap: the new value must have the shape of the old one' USING ERRCODE = '22023';
   END IF;
+  IF p_new = p_old THEN
+    RAISE EXCEPTION 'm36_label_backfill_swap: the new value must differ from the old one' USING ERRCODE = '22023';
+  END IF;
+  -- The org binding above is a session setting the CALLER controls, so the login that may call this is the control: it must stay
+  -- disabled outside the backfill window. Every swap is attributed to the connected login in the table's audit row.
+  PERFORM set_config('app.correlation_id', 'label-backfill:' || session_user, true);
   v_scheme := get_byte(p_old, 0);
   IF v_scheme NOT IN (1, 2) OR get_byte(p_new, 0) <> v_scheme THEN
     RAISE EXCEPTION 'm36_label_backfill_swap: the scheme must be unchanged (1 or 2)' USING ERRCODE = '22023';
@@ -107,6 +141,13 @@ BEGIN
   GET DIAGNOSTICS v_rows = ROW_COUNT;
   RETURN v_rows = 1;
 END $$;--> statement-breakpoint
-ALTER FUNCTION m36_label_backfill_swap(text, uuid, uuid, bytea, bytea) OWNER TO chartwarden_admin;--> statement-breakpoint
+ALTER FUNCTION m36_label_backfill_swap(text, uuid, uuid, bytea, bytea) OWNER TO chartwarden_label_backfill_owner;--> statement-breakpoint
 REVOKE ALL ON FUNCTION m36_label_backfill_swap(text, uuid, uuid, bytea, bytea) FROM PUBLIC;--> statement-breakpoint
-GRANT EXECUTE ON FUNCTION m36_label_backfill_swap(text, uuid, uuid, bytea, bytea) TO chartwarden_m36_reseal;
+GRANT EXECUTE ON FUNCTION m36_label_backfill_swap(text, uuid, uuid, bytea, bytea) TO chartwarden_m36_reseal;--> statement-breakpoint
+
+COMMENT ON FUNCTION m36_label_backfill_page(text, uuid, uuid, integer) IS
+  'RELEASE-3-DROP: crypto label backfill (release 2). Drop with m36_label_backfill_swap, the *_label_backfill_* policies, the column grants and chartwarden_label_backfill_owner in release 3.';--> statement-breakpoint
+COMMENT ON FUNCTION m36_label_backfill_swap(text, uuid, uuid, bytea, bytea) IS
+  'RELEASE-3-DROP: crypto label backfill (release 2). Same-shape compare-and-swap of a sealed value; the login holding chartwarden_m36_reseal must stay disabled outside the backfill window.';--> statement-breakpoint
+COMMENT ON ROLE chartwarden_label_backfill_owner IS
+  'RELEASE-3-DROP: owner of the crypto label backfill functions (migration 1150); holds only the four *_label_backfill_* column grants and policies.';

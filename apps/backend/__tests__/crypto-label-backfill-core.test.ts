@@ -119,4 +119,14 @@ describe("runScan", () => {
     expect(report.counts.unreadable).toBe(50);
     expect(report.problemIds).toHaveLength(20);
   });
+
+  it("counts a committed-but-unproven write as unverified (a problem), not as legacy-only and not as resealed", async () => {
+    const t = scanOf([
+      { id: "1", klass: "legacy", write: "unverified" },
+      { id: "2", klass: "legacy" },
+    ]);
+    const report = await runScan(t.scan, { mode: "apply", batchSize: 5 });
+    expect(report.counts).toMatchObject({ unverified: 1, resealed: 1, legacyOnly: 0, failed: 0 });
+    expect(report.problemIds).toEqual(["1"]);
+  });
 });

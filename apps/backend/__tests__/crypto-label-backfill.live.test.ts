@@ -20,6 +20,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55441/postgres bun run test:crypto-labels:backfill:live
  */
 import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -41,6 +42,7 @@ import { m23MacCredentialScan } from "../../../scripts/db/crypto-label-backfill/
 import { m24TradingPartnerScan } from "../../../scripts/db/crypto-label-backfill/m24";
 import {
   BackupNotConfirmedError,
+  RingRestoreFailedError,
   SimulatedCrash,
 } from "../../../scripts/db/crypto-label-backfill/m34";
 import { MissingResealCredentialError } from "../../../scripts/db/crypto-label-backfill/m36-body";
@@ -59,6 +61,7 @@ import {
   type NameExclusions,
   type PatientNameSource,
   createNameExclusions,
+  reindexPendingExclusions,
 } from "../src/modules/36-messaging/global-search/name-exclusion";
 import { createPlatformSearchFlag } from "../src/modules/36-messaging/global-search/platform-flag";
 import { createBodyReader } from "../src/modules/36-messaging/global-search/ports";
@@ -80,6 +83,7 @@ const ROLES = [
   "chartwarden_platform",
   "chartwarden_body_backfill_login",
   "chartwarden_m36_reseal",
+  "chartwarden_label_backfill_owner",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000c2a01";
 const ORG_B = "bbbbbbbb-0000-4000-8000-0000000c2b02";
@@ -513,6 +517,104 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
       expect(fails(() => legacyOracle.unwrapDek(KEK0, "kek-0", ORG_A, priorBytes))).toBe(true);
       const b = await ringRow(ORG_B);
       expect(currentOracle.unwrapDek(KEK1, "kek-1", ORG_B, b.w).equals(DEK_B1)).toBe(true);
+      await ringStillReadable();
+    });
+
+    /** Put a ring in an exact state under one label (the oracle), so a test can start from "legacy" again. */
+    async function setRing(
+      org: string,
+      prefix: "wardenx" | "chartwarden",
+      opts: { corruptPrior?: boolean } = {},
+    ) {
+      const o = prefix === "wardenx" ? legacyOracle : currentOracle;
+      if (org === ORG_B) {
+        await admin.query(
+          "UPDATE tenant_key_ring SET current_dek_kek_wrapped_ciphertext=$2 WHERE organization_id=$1",
+          [org, o.wrapDek(KEK1, "kek-1", org, DEK_B1)],
+        );
+        return;
+      }
+      const prior = Buffer.from(o.wrapDek(KEK0, "kek-0", org, DEK_A1));
+      if (opts.corruptPrior) prior[prior.length - 1] = (prior[prior.length - 1] as number) ^ 0xff;
+      await admin.query(
+        `UPDATE tenant_key_ring SET current_dek_kek_wrapped_ciphertext=$2, prior_dek_versions=$3::jsonb WHERE organization_id=$1`,
+        [
+          org,
+          o.wrapDek(KEK1, "kek-1", org, DEK_A2),
+          JSON.stringify([
+            {
+              version: "v1",
+              kekWrappedCiphertext: b64(prior),
+              kekId: "kek-0",
+              rotatedAt: "2026-10-08T00:00:00.000Z",
+            },
+          ]),
+        ],
+      );
+    }
+
+    it("an unreadable prior version does not block the readable current DEK, is reported, and keeps the gate red", async () => {
+      await setRing(ORG_A, "wardenx", { corruptPrior: true });
+      const before = await ringRow(ORG_A);
+      const applied = await run(["m34"], "apply", { organizationIds: [ORG_A] });
+      // the readable current DEK was re-wrapped; the corrupt prior entry is reported as a problem
+      expect(totalOf(applied, "m34")).toMatchObject({ failed: 1, resealed: 0 });
+      expect(applied.problemTotal).toBe(1);
+      const after = await ringRow(ORG_A);
+      expect(currentOracle.unwrapDek(KEK1, "kek-1", ORG_A, after.w).equals(DEK_A2)).toBe(true);
+      expect(after.p[0]?.kekWrappedCiphertext).toBe(before.p[0]?.kekWrappedCiphertext); // untouched
+      const verify = await run(["m34"], "verify", { organizationIds: [ORG_A] });
+      expect(totalOf(verify, "m34")).toMatchObject({ unreadable: 1, legacyOnly: 0 });
+      expect(verify.problemTotal).toBe(1);
+      await setRing(ORG_A, "chartwarden");
+    });
+
+    it("a committed write whose read-back cannot be taken is `unverified` (a distinct problem), not failed", async () => {
+      await setRing(ORG_B, "wardenx");
+      const report = await run(
+        ["m34"],
+        "apply",
+        { organizationIds: [ORG_B] },
+        {
+          ...deps,
+          m34Hooks: {
+            beforeReadBack: () => {
+              throw new Error("connection reset");
+            },
+          },
+        },
+      );
+      expect(totalOf(report, "m34")).toMatchObject({ unverified: 1, failed: 0, resealed: 0 });
+      expect(report.problemTotal).toBe(1);
+      expect(report.complete).toBe(true);
+      const b = await ringRow(ORG_B); // the new, valid wrap IS committed
+      expect(currentOracle.unwrapDek(KEK1, "kek-1", ORG_B, b.w).equals(DEK_B1)).toBe(true);
+      expect(totalOf(await run(["m34"], "verify"), "m34")?.legacyOnly).toBe(0);
+    });
+
+    it("a failed restore after a failed read-back stops the run with a distinct error", async () => {
+      await setRing(ORG_B, "wardenx");
+      sabotage = false;
+      await expect(
+        run(
+          ["m34"],
+          "apply",
+          { organizationIds: [ORG_B] },
+          {
+            ...deps,
+            m34Hooks: {
+              afterCommit: () => {
+                sabotage = true;
+              },
+              beforeRestore: () => {
+                throw new Error("connection reset");
+              },
+            },
+          },
+        ),
+      ).rejects.toThrow(RingRestoreFailedError);
+      sabotage = false;
+      await setRing(ORG_B, "chartwarden"); // operator action: put a proven ring back
       await ringStillReadable();
     });
   });
@@ -1117,6 +1219,8 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
       await client.connect();
       try {
         const old = await cipherOf("message_draft", "body_cipher", ids.draft as string);
+        const flipped = Buffer.from(old);
+        flipped[flipped.length - 1] = (flipped[flipped.length - 1] as number) ^ 0xff;
         const call = async (newC: Buffer, org = ORG_A) => {
           await client.query("BEGIN");
           try {
@@ -1136,7 +1240,8 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
         await expect(call(otherVersion)).rejects.toThrow();
         const longer = Buffer.concat([old, Buffer.from([0])]);
         await expect(call(longer)).rejects.toThrow();
-        expect(await call(Buffer.from(old), ORG_B)).toBe(false); // another tenant's session matches no row of this tenant
+        expect(await call(Buffer.from(flipped), ORG_B)).toBe(false);
+        await expect(call(Buffer.from(old))).rejects.toThrow(/must differ/); // a no-op swap is refused // another tenant's session matches no row of this tenant
         const foreign = new Client({ connectionString: urls.reseal });
         await foreign.connect();
         try {
@@ -1148,7 +1253,7 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
               ORG_B,
               ids.draft,
               old,
-              old,
+              flipped,
             ]),
           ).rejects.toThrow();
         } finally {
@@ -1160,12 +1265,63 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
             ORG_A,
             ids.v1,
             old,
-            old,
+            flipped,
           ]),
         ).rejects.toThrow(); // unknown table
       } finally {
         await client.end();
       }
+    });
+  });
+
+  describe("migration 1150 hardening", () => {
+    it("carries the release-3 DROP markers on both functions and the owner role", async () => {
+      const rows = await q<{ what: string; c: string }>(
+        `SELECT p.proname AS what, d.description AS c FROM pg_proc p JOIN pg_description d ON d.objoid = p.oid
+          WHERE p.proname IN ('m36_label_backfill_page', 'm36_label_backfill_swap')
+         UNION ALL
+         SELECT r.rolname, d.description FROM pg_roles r JOIN pg_shdescription d ON d.objoid = r.oid
+          WHERE r.rolname = 'chartwarden_label_backfill_owner'`,
+      );
+      expect(rows.map((r) => r.what).sort()).toEqual([
+        "chartwarden_label_backfill_owner",
+        "m36_label_backfill_page",
+        "m36_label_backfill_swap",
+      ]);
+      for (const r of rows) expect(r.c).toMatch(/^RELEASE-3-DROP/);
+    });
+
+    it("the functions are owned by a dedicated NOLOGIN role, and chartwarden_admin was not widened", async () => {
+      const [owner] = await q<{ owner: string; login: boolean; bypass: boolean }>(
+        `SELECT r.rolname AS owner, r.rolcanlogin AS login, r.rolbypassrls AS bypass
+           FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner WHERE p.proname = 'm36_label_backfill_swap'`,
+      );
+      expect(owner).toEqual({
+        owner: "chartwarden_label_backfill_owner",
+        login: false,
+        bypass: false,
+      });
+      for (const [table, column] of [
+        ["scheduled_message", "body_cipher"],
+        ["message_draft", "body_cipher"],
+      ] as const) {
+        for (const priv of ["SELECT", "UPDATE"]) {
+          const [r] = await q<{ ok: boolean }>(
+            "SELECT has_column_privilege('chartwarden_admin', $1, $2, $3) AS ok",
+            [table, column, priv],
+          );
+          expect(r?.ok, `${priv} ${table}.${column}`).toBe(false);
+        }
+      }
+    });
+
+    it("a swap is attributed to the connected login in the table's audit row", async () => {
+      const rows = await q<{ c: string }>(
+        `SELECT correlation_id AS c FROM audit_event
+          WHERE event_type = 'scheduled_message.update'`,
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.some((r) => r.c === "label-backfill:chartwarden_body_backfill_login")).toBe(true);
     });
   });
 
@@ -1288,7 +1444,7 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
       expect(tags.has(wordTag(current, "zebrowski"))).toBe(false); // the name is NOT indexed in the clear
     });
 
-    it("apply rewrites every message under the new labels, adds the new-label digests, clears the pending list; verify is zero", async () => {
+    it("apply rewrites every message under the new labels, adds the new-label digests (left pending for the reconcile tick); verify is zero", async () => {
       const applied = await run(["m36-search"], "apply", { organizationIds: [ORG_A] });
       expect(totalOf(applied, "m36-search")).toMatchObject({ resealed: 3, failed: 0, skipped: 0 });
       expect(
@@ -1321,10 +1477,69 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
       );
       expect(state?.digests).toEqual(expect.arrayContaining([newDigest, oldDigest])); // grow-only: both kept
       expect(newDigest).not.toBe(oldDigest); // the digest DOES change with the flip
-      expect(state?.pending ?? []).toEqual([]); // nothing left to reindex
+      // The backfill does NOT clear pending digests: only the reconcile tick's targeted reindex does (see the next test).
+      expect(state?.pending ?? []).toEqual([newDigest]);
       expect(
         totalOf(await run(["m36-search"], "apply", { organizationIds: [ORG_A] }), "m36-search")
           ?.resealed,
+      ).toBe(0);
+    });
+
+    it("a name still indexed under the LEGACY tags is flagged by --verify; the pending LEGACY-key digest is looked for (not orphaned) and the message reindexed", async () => {
+      const text = "Zebrowski asked about visiting hours";
+      const id = (
+        await q<{ id: string }>(
+          `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, body_kind)
+           VALUES ($1,$2,$3,'user',$4,$5,'plain') RETURNING id`,
+          [chan, ORG_A, userOf[ORG_A], currentOracle.bodyV2(DEK_A2, ORG_A, "v2", text), SHA(text)],
+        )
+      )[0]?.id as string;
+      // indexed under the LEGACY labels with the name NOT excluded: the leak the pending list exists to repair
+      const tags = buildMessageTags(channelKey(legacyOracle, chan), text, BITS);
+      await admin.query(
+        `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id)
+         SELECT $1,$2,$3,unnest($4::int[]),$5`,
+        [ORG_A, VERSION, chan, tags, id],
+      );
+      const verify = await run(["m36-search"], "verify", { organizationIds: [ORG_A] });
+      expect(totalOf(verify, "m36-search")?.legacyOnly).toBe(1);
+
+      const legacyDigest = legacyOracle.nameDigest(
+        legacyOracle.searchKey(DEK_A2, ORG_A, VERSION),
+        "zebrowski",
+      );
+      await admin.query(
+        `UPDATE message_search_index_state
+            SET exclusion_pending = $3, exclusion_pending_since = now() - interval '1 hour'
+          WHERE organization_id = $1 AND key_version = $2`,
+        [ORG_A, VERSION, [legacyDigest]],
+      );
+      const search = deps.search as NonNullable<BackfillDeps["search"]>;
+      const reindexed = await reindexPendingExclusions(
+        {
+          db: app.db,
+          keys: search.keys,
+          exclusions: search.exclusions,
+          indexMessage: (org, message) => search.writer.indexMessage(org, message),
+        },
+        ORG_A,
+        VERSION,
+        BITS,
+      );
+      expect(reindexed).toBeGreaterThanOrEqual(1);
+      const after = await storedTags(id);
+      for (const o of [legacyOracle, currentOracle]) {
+        expect(after.has(wordTag(channelKey(o, chan), "zebrowski"))).toBe(false);
+      }
+      expect(after.has(wordTag(channelKey(currentOracle, chan), "visiting"))).toBe(true);
+      const [state] = await q<{ pending: string[] }>(
+        "SELECT exclusion_pending AS pending FROM message_search_index_state WHERE organization_id=$1 AND key_version=$2",
+        [ORG_A, VERSION],
+      );
+      expect(state?.pending ?? []).toEqual([]); // cleared by the pass that actually looked for the name
+      expect(
+        totalOf(await run(["m36-search"], "verify", { organizationIds: [ORG_A] }), "m36-search")
+          ?.legacyOnly,
       ).toBe(0);
     });
 
@@ -1423,6 +1638,96 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
       expect(r.stdout).not.toMatch(/body of|secret-a0|Zebrowski/i); // counts and ids only
     });
 
+    it("a run stopped by --max-rows is incomplete and exits 2 even when its counts are clean", () => {
+      const r = cli("--verify", "--all-orgs", "--module", "m23", "--max-rows", "1");
+      expect(r.status, r.stderr).toBe(2);
+      const report = JSON.parse(r.stdout) as BackfillReport;
+      expect(report.complete).toBe(false);
+      expect(report.legacyOnlyTotal).toBe(0);
+      expect(r.stderr).toMatch(/did not scan every row/);
+      expect(cli("--verify", "--all-orgs", "--module", "m23").status).toBe(0); // the same run, uncapped, is complete
+    });
+
+    it("Ctrl-C stops without starting anything further, reports incomplete, and exits 2", async () => {
+      const child = spawn(
+        "bun",
+        [
+          "run",
+          join(__dirname, "../../../scripts/db/backfill-crypto-labels.ts"),
+          "--verify",
+          "--all-orgs",
+          "--module",
+          "m24,m23,m5",
+          "--batch-size",
+          "1",
+          "--pause-ms",
+          "3000",
+        ],
+        { env: env() },
+      );
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (c) => {
+        stdout += c;
+      });
+      const firstBatch = new Promise<void>((resolve) => {
+        child.stderr.on("data", (c) => {
+          stderr += c;
+          if (/scanned/.test(stderr)) resolve();
+        });
+      });
+      await firstBatch;
+      child.kill("SIGINT");
+      const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
+      expect(code).toBe(2);
+      const report = JSON.parse(stdout) as BackfillReport;
+      expect(report.complete).toBe(false);
+    }, 60_000);
+
+    it("a nonexistent --org is an error, not an empty clean run", () => {
+      const r = cli("--verify", "--org", "11111111-1111-4111-8111-111111111111");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/no such organization/);
+      expect(r.stdout).toBe("");
+    });
+
+    it("checks every selected module's inputs up front: nothing runs when one is missing", () => {
+      const r = spawnSync(
+        "bun",
+        [
+          "run",
+          join(__dirname, "../../../scripts/db/backfill-crypto-labels.ts"),
+          "--verify",
+          "--all-orgs",
+          "--module",
+          "m5,m24",
+        ],
+        { env: { ...env(), M24_CREDENTIAL_ENCRYPTION_KEY: "" }, encoding: "utf8" },
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/module m24 cannot run/);
+      expect(r.stderr).not.toMatch(/scanned/); // m5 (which sorts after m24 but is checked first) never started
+      expect(r.stdout).toBe("");
+    });
+
+    it("tells a malformed key from a missing one", () => {
+      const r = spawnSync(
+        "bun",
+        [
+          "run",
+          join(__dirname, "../../../scripts/db/backfill-crypto-labels.ts"),
+          "--verify",
+          "--all-orgs",
+          "--module",
+          "m24",
+        ],
+        { env: { ...env(), M24_CREDENTIAL_ENCRYPTION_KEY: "not-a-32-byte-key" }, encoding: "utf8" },
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/M24_CREDENTIAL_ENCRYPTION_KEY is set but malformed/);
+      expect(r.stderr).not.toMatch(/not-a-32-byte-key/);
+    });
+
     it("exits 2 when legacy-only rows remain, and 1 for usage errors", async () => {
       await admin.query(
         "UPDATE mac_submitter_credential SET client_secret_cipher=$2 WHERE provider_entity_id=$1",
@@ -1436,6 +1741,7 @@ describe.skipIf(!DB_URL)("crypto label backfill (release 2) - LIVE Postgres", ()
           ),
         ],
       );
+      expect(cli("--dry-run", "--all-orgs", "--module", "m23").status).toBe(0); // a dry run plans: legacy rows are expected
       const left = cli("--verify", "--all-orgs", "--module", "m23");
       expect(left.status).toBe(2);
       expect(JSON.parse(left.stdout).legacyOnlyTotal).toBe(1);

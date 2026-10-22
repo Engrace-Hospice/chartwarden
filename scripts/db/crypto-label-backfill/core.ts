@@ -19,7 +19,7 @@ export type Mode = "verify" | "dry-run" | "apply";
 export type RowClass = "current" | "legacy" | "unreadable" | "ignore";
 
 /** The outcome of re-sealing one legacy row. "skipped" = a concurrent change or a legal hold; the next run sees the row again. */
-export type WriteResult = "resealed" | "skipped" | "failed";
+export type WriteResult = "resealed" | "skipped" | "failed" | "unverified";
 
 export interface Counts {
   readonly scanned: number;
@@ -37,6 +37,8 @@ export interface Counts {
   readonly skipped: number;
   /** Rows whose re-seal did not verify or could not be written. Never overwritten. */
   readonly failed: number;
+  /** A write that COMMITTED but could not be read back and proven (M34 only). Needs the operator; blocks release 3. */
+  readonly unverified: number;
   readonly ignored: number;
 }
 
@@ -49,6 +51,7 @@ export const emptyCounts: Counts = {
   unreadable: 0,
   skipped: 0,
   failed: 0,
+  unverified: 0,
   ignored: 0,
 };
 
@@ -62,6 +65,7 @@ export function addCounts(a: Counts, b: Counts): Counts {
     unreadable: a.unreadable + b.unreadable,
     skipped: a.skipped + b.skipped,
     failed: a.failed + b.failed,
+    unverified: a.unverified + b.unverified,
     ignored: a.ignored + b.ignored,
   };
 }
@@ -152,7 +156,11 @@ export async function runScan<R>(scan: Scan<R>, opts: RunOptions): Promise<Table
         const written = await scan.reseal(row);
         // A resealed row is no longer legacy-only; a skipped or failed one still is.
         if (written === "resealed") delta = { ...delta, resealed: 1 };
-        else {
+        else if (written === "unverified") {
+          // committed, not proven: it is not legacy-only any more, but it is a problem the operator must look at
+          delta = { ...delta, unverified: 1 };
+          problem(scan.idOf(row));
+        } else {
           delta = {
             ...delta,
             legacyOnly: 1,

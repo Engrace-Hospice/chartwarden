@@ -28,13 +28,7 @@ import {
   m36BodyScan,
 } from "./m36-body";
 import { m36ExportJobScan } from "./m36-export";
-import {
-  type M36SearchDeps,
-  m36SearchFinish,
-  m36SearchPrepare,
-  m36SearchScan,
-  m36SearchState,
-} from "./m36-search";
+import { type M36SearchDeps, m36SearchPrepare, m36SearchScan, m36SearchState } from "./m36-search";
 
 /** Lowest-risk first; the tenant key ring (every tenant's PHI depends on it) last. */
 export const ALL_MODULES = [
@@ -99,8 +93,13 @@ export interface BackfillReport {
   readonly modules: readonly ModuleReport[];
   /** Rows that still open ONLY under the legacy label, summed (apply: those this run could not fix). */
   readonly legacyOnlyTotal: number;
-  /** Rows that open under neither label, plus failed re-seals: either one blocks release 3. */
+  /** Rows that open under neither label, failed re-seals and unverified M34 writes: each blocks release 3. */
   readonly problemTotal: number;
+  /**
+   * True only when every selected table of every selected tenant was scanned to its end. A run stopped by `--max-rows` or an
+   * interrupt is NOT complete, whatever its counts say, and must never be read as "nothing left".
+   */
+  readonly complete: boolean;
 }
 
 function need<T>(module: ModuleId, what: string, value: T | null | undefined): T {
@@ -183,6 +182,7 @@ async function runModuleForOrg(
       const tables = ["message", ...M36_VIA_FUNCTION_TABLES] as const;
       const reports: TableReport[] = [];
       for (const table of tables) {
+        if (options.interrupted?.()) break;
         reports.push(
           await run(m36BodyScan({ db: deps.db, resealDb: deps.resealDb, kit }, org, table)),
         );
@@ -201,13 +201,56 @@ async function runModuleForOrg(
     case "m36-search": {
       const search = need(module, "no search key provider", deps.search);
       const { keyVersion, tagBits } = await m36SearchState(search, org);
-      const prepared =
-        options.mode === "apply" && tagBits !== undefined
-          ? await m36SearchPrepare(search, org, keyVersion)
-          : undefined;
-      const report = await run(m36SearchScan(search, org, keyVersion, tagBits));
-      if (prepared) await m36SearchFinish(search, org, prepared, report);
-      return [report];
+      if (options.interrupted?.()) return []; // no search preparation (it writes) after an interrupt
+      if (options.mode === "apply" && tagBits !== undefined) {
+        await m36SearchPrepare(search, org, keyVersion);
+      }
+      return [await run(m36SearchScan(search, org, keyVersion, tagBits))];
+    }
+  }
+}
+
+/** Nothing to do is an error, not a clean result: an empty tenant list would otherwise print zeros and exit 0. */
+export class EmptyScopeError extends Error {
+  constructor() {
+    super("no organizations selected: refusing to report a clean result over nothing");
+    this.name = "EmptyScopeError";
+  }
+}
+
+/** Every selected module's inputs, checked BEFORE any module runs, so a run never half-completes and a missing input is never a zero. */
+export function assertDependencies(
+  deps: BackfillDeps,
+  modules: readonly ModuleId[],
+  organizationIds: readonly string[],
+): void {
+  const tenantModules = modules.filter((m) => !GLOBAL_MODULES.has(m));
+  if (tenantModules.length > 0 && organizationIds.length === 0) throw new EmptyScopeError();
+  for (const module of modules) {
+    switch (module) {
+      case "m5":
+        need(module, "no identifier cipher (M34_TENANT_KEK)", deps.identifierCipher);
+        break;
+      case "m23":
+        need(module, "M24_CREDENTIAL_ENCRYPTION_KEY is not set", deps.macCipher);
+        break;
+      case "m24":
+        need(module, "M24_CREDENTIAL_ENCRYPTION_KEY is not set", deps.credentialKek);
+        break;
+      case "m34":
+      case "m36-export":
+        need(module, "M34_TENANT_KEK is not set", deps.kekAdapter);
+        break;
+      case "m35":
+        need(module, "M35_PSEUDONYM_KEY_KEK is not set", deps.pseudonymRing);
+        break;
+      case "m36-body":
+        need(module, "no message-body key kit (M34_TENANT_KEK)", deps.bodyKit);
+        if (!deps.resealDb) throw new MissingResealCredentialError();
+        break;
+      case "m36-search":
+        need(module, "no search key provider (M34_TENANT_KEK)", deps.search);
+        break;
     }
   }
 }
@@ -218,11 +261,19 @@ export async function runBackfill(
   request: BackfillRequest,
 ): Promise<BackfillReport> {
   const selected = ALL_MODULES.filter((m) => request.modules.includes(m));
+  assertDependencies(deps, selected, request.organizationIds);
   const reports: ModuleReport[] = [];
+  const interrupted = () => request.interrupted?.() === true;
+  let stoppedEarly = false;
   for (const module of selected) {
     const tables: TableReport[] = [];
     const orgs = GLOBAL_MODULES.has(module) ? [null] : request.organizationIds;
     for (const organizationId of orgs) {
+      // After an interrupt nothing further is started: no org, no module, no search preparation.
+      if (interrupted()) {
+        stoppedEarly = true;
+        break;
+      }
       tables.push(...(await runModuleForOrg(module, deps, organizationId, request)));
     }
     reports.push({
@@ -230,12 +281,19 @@ export async function runBackfill(
       tables,
       total: tables.reduce((sum, t) => addCounts(sum, t.counts), emptyCounts),
     });
+    if (stoppedEarly || interrupted()) {
+      stoppedEarly = true;
+      break;
+    }
   }
   const sum = (pick: (c: Counts) => number) => reports.reduce((n, r) => n + pick(r.total), 0);
+  const allExhausted = reports.every((r) => r.tables.every((t) => t.stoppedBy === "exhausted"));
   return {
     mode: request.mode,
     modules: reports,
+    // Only a run that looked at EVERY row of EVERY selected table says anything about "zero left".
+    complete: !stoppedEarly && allExhausted && reports.length === selected.length,
     legacyOnlyTotal: sum((c) => c.legacyOnly),
-    problemTotal: sum((c) => c.unreadable + c.failed),
+    problemTotal: sum((c) => c.unreadable + c.failed + c.unverified),
   };
 }

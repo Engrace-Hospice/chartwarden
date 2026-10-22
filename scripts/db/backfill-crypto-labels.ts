@@ -24,16 +24,17 @@
  */
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { loadMessagingKek } from "@chartwarden/messaging";
-import { loadPseudonymKekRing } from "@chartwarden/subscription-billing";
+import { PseudonymKekError, loadPseudonymKekRing } from "@chartwarden/subscription-billing";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import {
+  PlatformKekError,
   createPlatformKekAdapter,
   loadPlatformKekRing,
 } from "../../apps/backend/src/bootstrap/tenant-kek";
 import { createPatientIdentifierCipher } from "../../apps/backend/src/modules/05-patient/identifiers/identifier-cipher";
 import { patientNameFragmentsPageForOrg } from "../../apps/backend/src/modules/05-patient/seams/patient-name-fragments-page-for-org";
-import { buildMacSecretCipherFromEnv } from "../../apps/backend/src/modules/23-billing-medicare/routes/secret-cipher";
+import { buildMacSecretCipher } from "../../apps/backend/src/modules/23-billing-medicare/routes/secret-cipher";
 import { loadCredentialKek } from "../../apps/backend/src/modules/24-billing-medicaid/credential-crypto";
 import { buildKeyProvider } from "../../apps/backend/src/modules/34-saas-tenant-platform/seam-registration";
 import { createRingDekCache } from "../../apps/backend/src/modules/36-messaging/body-key-ring";
@@ -46,29 +47,74 @@ import { createMessageBodyCipher } from "../../apps/backend/src/modules/36-messa
 import {
   ALL_MODULES,
   type BackfillDeps,
+  EmptyScopeError,
   MissingDependencyError,
   type ModuleId,
   runBackfill,
 } from "./crypto-label-backfill";
 import { DEFAULT_BATCH_SIZE, type Mode } from "./crypto-label-backfill/core";
-import { BackupNotConfirmedError } from "./crypto-label-backfill/m34";
+import { BackupNotConfirmedError, RingRestoreFailedError } from "./crypto-label-backfill/m34";
 import { MissingResealCredentialError } from "./crypto-label-backfill/m36-body";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class UsageError extends Error {}
 
-function flag(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+const VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "module",
+  "org",
+  "batch-size",
+  "pause-ms",
+  "max-rows",
+]);
+const SWITCH_FLAGS: ReadonlySet<string> = new Set([
+  "verify",
+  "dry-run",
+  "apply",
+  "all-orgs",
+  "i-have-a-backup",
+]);
+
+interface ParsedArgs {
+  readonly values: ReadonlyMap<string, string>;
+  readonly switches: ReadonlySet<string>;
 }
-const has = (name: string): boolean => process.argv.includes(`--${name}`);
-function intFlag(name: string): number | undefined {
+
+/** Strict: an unknown flag, a value flag with no value (or whose "value" is another flag) and a repeated flag are usage errors. */
+export function parseArgs(argv: readonly string[]): ParsedArgs {
+  const values = new Map<string, string>();
+  const switches = new Set<string>();
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i] as string;
+    if (!token.startsWith("--")) throw new UsageError(`unexpected argument '${token}'`);
+    const name = token.slice(2);
+    if (SWITCH_FLAGS.has(name)) {
+      switches.add(name);
+    } else if (VALUE_FLAGS.has(name)) {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new UsageError(`--${name} needs a value`);
+      }
+      if (values.has(name)) throw new UsageError(`--${name} given twice`);
+      values.set(name, value);
+      i++;
+    } else {
+      throw new UsageError(`unknown flag '${token}'`);
+    }
+  }
+  return { values, switches };
+}
+
+let args: ParsedArgs = { values: new Map(), switches: new Set() };
+const flag = (name: string): string | undefined => args.values.get(name);
+const has = (name: string): boolean => args.switches.has(name);
+function intFlag(name: string, min: number): number | undefined {
   const raw = flag(name);
   if (raw === undefined) return undefined;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0)
-    throw new UsageError(`--${name} must be a non-negative integer`);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min) {
+    throw new UsageError(`--${name} must be an integer >= ${min}`);
+  }
   return n;
 }
 
@@ -93,28 +139,47 @@ function parseModules(): ModuleId[] {
 
 async function resolveOrgs(platformDb: DbClient): Promise<string[]> {
   const orgFlag = flag("org");
-  if (orgFlag) {
-    const ids = orgFlag.split(",").map((s) => s.trim());
-    const bad = ids.filter((id) => !UUID.test(id));
-    if (bad.length > 0) throw new UsageError("--org takes organization uuids");
+  if (orgFlag !== undefined) {
+    const ids = orgFlag.split(",").map((s) => s.trim().toLowerCase());
+    if (ids.some((id) => !UUID.test(id))) throw new UsageError("--org takes organization uuids");
+    const result = await platformDb.execute(
+      sql`SELECT id::text AS id FROM organization WHERE id IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid)`,
+    );
+    const found = new Set(
+      (result as unknown as { rows: Array<{ id: string }> }).rows.map((r) => r.id),
+    );
+    const missing = ids.filter((id) => !found.has(id));
+    if (missing.length > 0) throw new UsageError(`no such organization: ${missing.join(", ")}`);
     return ids;
   }
-  if (!has("all-orgs")) throw new UsageError("pass --org <uuid[,uuid]> or --all-orgs");
   const result = await platformDb.execute(sql`SELECT id::text AS id FROM organization ORDER BY id`);
   return (result as unknown as { rows: Array<{ id: string }> }).rows.map((r) => r.id);
 }
 
-function optional<T>(build: () => T): T | undefined {
+/**
+ * A key variable that is SET but unusable is an error that says so; one that is not set is simply absent (the modules that need it
+ * then fail with their own "is not set"). Neither ever prints the value.
+ */
+function keyIfSet(name: string, load: () => Buffer): Buffer | undefined {
+  if (!process.env[name]?.trim()) return undefined;
   try {
-    return build();
+    return load();
   } catch {
-    return undefined;
+    throw new UsageError(`${name} is set but malformed (it must be a base64-encoded 32-byte key)`);
   }
 }
 
 async function main(): Promise<number> {
+  args = parseArgs(process.argv.slice(2));
   const mode = parseMode();
   const modules = parseModules();
+  // Every flag is validated before any connection is opened.
+  if (has("all-orgs") === (flag("org") !== undefined)) {
+    throw new UsageError("pass exactly one of --org <uuid[,uuid]> or --all-orgs");
+  }
+  const batchSize = intFlag("batch-size", 1) ?? DEFAULT_BATCH_SIZE;
+  const pauseMs = intFlag("pause-ms", 0);
+  const maxRows = intFlag("max-rows", 1);
   const backupConfirmed = has("i-have-a-backup");
   if (mode === "apply" && modules.includes("m34") && !backupConfirmed) {
     throw new UsageError(
@@ -156,9 +221,9 @@ async function main(): Promise<number> {
         })
       : undefined;
     const ringCache = keys ? createRingDekCache(keys) : undefined;
-    const messagingKek = optional(() => loadMessagingKek());
-    const macCipher = buildMacSecretCipherFromEnv(process.env);
-    const credentialKek = optional(() => loadCredentialKek());
+    const messagingKek = keyIfSet("MESSAGING_ENCRYPTION_KEY", () => loadMessagingKek());
+    const credentialKek = keyIfSet("M24_CREDENTIAL_ENCRYPTION_KEY", () => loadCredentialKek());
+    const macCipher = credentialKek ? buildMacSecretCipher(credentialKek) : undefined;
 
     let search: BackfillDeps["search"];
     if (ringCache && keys) {
@@ -208,13 +273,11 @@ async function main(): Promise<number> {
       backupConfirmed,
     };
 
-    const maxRows = intFlag("max-rows");
-    const pauseMs = intFlag("pause-ms");
     const report = await runBackfill(deps, {
       modules,
       organizationIds,
       mode,
-      batchSize: intFlag("batch-size") ?? DEFAULT_BATCH_SIZE,
+      batchSize,
       ...(pauseMs === undefined ? {} : { pauseMs }),
       ...(maxRows === undefined ? {} : { maxRows }),
       interrupted: () => interrupted,
@@ -224,8 +287,15 @@ async function main(): Promise<number> {
         ),
     });
     console.log(JSON.stringify(report, null, 2));
-    if (mode === "dry-run") return 0;
-    return report.legacyOnlyTotal === 0 && report.problemTotal === 0 ? 0 : 2;
+    if (!report.complete) {
+      console.error(
+        "the run did not scan every row (--max-rows or an interrupt): its counts say nothing about what is left",
+      );
+      return 2;
+    }
+    if (report.problemTotal > 0) return 2;
+    // A dry run only plans: legacy-only rows are expected there. Everywhere else they are what is still left to do.
+    return mode === "dry-run" || report.legacyOnlyTotal === 0 ? 0 : 2;
   } finally {
     await tenant.close();
     await platform.close();
@@ -250,7 +320,11 @@ function describeFailure(err: unknown): string {
     err instanceof UsageError ||
     err instanceof MissingDependencyError ||
     err instanceof MissingResealCredentialError ||
-    err instanceof BackupNotConfirmedError
+    err instanceof BackupNotConfirmedError ||
+    err instanceof EmptyScopeError ||
+    err instanceof RingRestoreFailedError ||
+    err instanceof PlatformKekError ||
+    err instanceof PseudonymKekError
   ) {
     return err.message;
   }
