@@ -5,7 +5,7 @@
  *
  * Runs ONLY against containers this process starts (pgvector/pgvector:pg18 + MinIO), never the shared Docker cluster:
  *   1. source: migrate + provision roles (the production path), seed two tenants through the real M36 routes
- *   2. backup the way production does it: `pg_dump -d wardenx | gzip` (deploy/production/reseed-demo.sh) plus a copy of
+ *   2. backup the way production does it: `pg_dump -d chartwarden | gzip` (deploy/production/reseed-demo.sh) plus a copy of
  *      the MinIO data volume (production has NO object-store backup at all - see the runbook; this is the closest
  *      real mechanism)
  *   3. write more data after the backup, then kill the source (the RPO is what that data window costs)
@@ -64,7 +64,7 @@ import {
 const FAULTS = ["none", "missing-object", "hash-flip", "object-bytes"] as const;
 type Fault = (typeof FAULTS)[number];
 
-const DB = process.env.CHARTWARDEN_DB_NAME || "wardenx"; // the production database name (deploy/production/reseed-demo.sh)
+const DB = process.env.CHARTWARDEN_DB_NAME || "chartwarden"; // the production database name (deploy/production/reseed-demo.sh)
 const APP_PW = "drill-app-pw";
 const PLATFORM_PW = "drill-platform-pw";
 const DESTRUCTION_PW = "drill-destruction-pw";
@@ -115,7 +115,7 @@ async function createDatabase(pg: Pg, db: string): Promise<void> {
 }
 
 function pgDump(pg: Pg): Buffer {
-  // deploy/production/reseed-demo.sh: `docker compose exec -T postgres pg_dump -U postgres -d wardenx | gzip`
+  // deploy/production/reseed-demo.sh: `docker compose exec -T postgres pg_dump -U postgres -d chartwarden | gzip`
   return gzipSync(docker(["exec", pg.name, "pg_dump", "-U", "postgres", "-d", DB]));
 }
 
@@ -325,7 +325,7 @@ async function main(): Promise<number> {
       fault: faultNote,
       backupMethod: {
         postgres:
-          "pg_dump -U postgres -d wardenx | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot, no WAL archive, no PITR)",
+          "pg_dump -U postgres -d chartwarden | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot, no WAL archive, no PITR)",
         objectStore:
           "tar of the stopped MinIO /data (closest real mechanism; production has NO object-store backup)",
         coordination:

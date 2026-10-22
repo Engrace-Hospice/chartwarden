@@ -257,7 +257,7 @@ async function seedMacSubmitterCredential(
       macJurisdiction: "cgs_j15",
       submitterId: "DEV-SUBMITTER-0001",
       tradingPartnerId: "DEV-TP-0001",
-      clientId: "wardenx-dev-client",
+      clientId: "chartwarden-dev-client",
       clientSecret: "dev-only-not-a-real-secret",
     },
   });

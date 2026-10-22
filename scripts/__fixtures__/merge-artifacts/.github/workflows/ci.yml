@@ -18,10 +18,10 @@
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
     runs-on: [self-hosted, Linux, X64, hostinger]
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/chartwarden_boot
       CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3999
@@ -61,15 +61,15 @@
       # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker run -d --name wardenx-ci-pg-boot \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
+          docker run -d --name chartwarden-ci-pg-boot \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_boot \
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-boot pg_isready -U postgres -d wardenx_boot && exit 0
+            docker exec chartwarden-ci-pg-boot pg_isready -U postgres -d chartwarden_boot && exit 0
             sleep 1
           done
-          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-boot; exit 1
+          echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-boot; exit 1
       - name: Migrate
         run: bun run db:migrate
       # The platform login is a REAL provisioned role (carrier + BYPASSRLS), not a superuser alias —

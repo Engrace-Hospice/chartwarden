@@ -13,7 +13,7 @@
 //     connectionString: (DB_URL as string).replace("://postgres@", "://chartwarden_app@")
 //
 // which only matches a PASSWORDLESS url (`postgres://postgres@host/db`). Against any url carrying a
-// password — including CI's own `postgresql://postgres:postgres@localhost:5432/wardenx_test` — the
+// password — including CI's own `postgresql://postgres:postgres@localhost:5432/chartwarden_test` — the
 // pattern misses, `String.replace` returns the input unchanged, and the suite silently connects as the
 // superuser instead. It fails open and says nothing: no error, no warning, just a weaker test. Locally,
 // with the passwordless url the runbook prescribes, the same suites switched roles correctly and passed —

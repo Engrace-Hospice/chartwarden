@@ -31,7 +31,7 @@ const ROLES = [
   "chartwarden_admin",
   "chartwarden_readonly",
   "chartwarden_audit_writer",
-  "wardenx_report_writer",
+  "report_writer",
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";

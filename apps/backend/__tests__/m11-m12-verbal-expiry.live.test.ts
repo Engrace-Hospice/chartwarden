@@ -73,7 +73,7 @@ describe.skipIf(!DB_URL)(
       // `DROP OWNED BY ... CASCADE` is per-database (safe against a dedicated throwaway database); `DROP
       // ROLE` is CLUSTER-WIDE and fails whenever another database in the same cluster still has objects
       // depending on the role — exactly the case in this shared local cluster, where other concurrent live
-      // suites' databases (wardenx_e2e, wardenx_recovery_scratch, …) hold thousands of such objects. The
+      // suites' databases (chartwarden_e2e, chartwarden_recovery_scratch, …) hold thousands of such objects. The
       // roles are idempotently `CREATE ROLE IF NOT EXISTS`-created by migration 0001 regardless, so this
       // suite never needs to drop them — only to disown whatever this OWN database once granted them.
       for (const r of ROLES)

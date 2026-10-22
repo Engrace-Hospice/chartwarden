@@ -155,7 +155,7 @@ jobs:
           # full replay + raised lock limit this job already provides. Had no runner.
           - { name: "M4 nested audit redaction", script: "test:audit:nested-redaction:live" }
     env:
-      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_test
     steps:
       - uses: actions/checkout@v7
       - name: Install Bun
@@ -173,11 +173,11 @@ jobs:
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
           docker run -d --name chartwarden-ci-pg \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
+            docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg; exit 1
@@ -1228,7 +1228,7 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     env:
-      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_test
       CHARTWARDEN_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
@@ -1243,11 +1243,11 @@ jobs:
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
           docker run -d --name chartwarden-ci-pg-lifecycle \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec chartwarden-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
+            docker exec chartwarden-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-lifecycle; exit 1
@@ -1277,8 +1277,8 @@ jobs:
     name: Production migration path (scripts/db/migrate.ts)
     runs-on: [self-hosted, Linux, X64, hostinger]
     env:
-      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
-      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_migration_gate
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_migration_gate
     steps:
       - uses: actions/checkout@v7
       - name: Install Bun
@@ -1293,11 +1293,11 @@ jobs:
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
           docker run -d --name chartwarden-ci-pg-migrate \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_migration_gate \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_migration_gate \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec chartwarden-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d wardenx_migration_gate && exit 0
+            docker exec chartwarden-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d chartwarden_migration_gate && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-migrate; exit 1
@@ -1319,7 +1319,7 @@ jobs:
 
       - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
         run: |
-          docker exec chartwarden-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
+          docker exec chartwarden-ci-pg-migrate psql -U postgres -d chartwarden_migration_gate -c \
             "UPDATE _chartwarden_migration SET checksum = 'deliberately-corrupted' WHERE filename = (SELECT filename FROM _chartwarden_migration ORDER BY filename LIMIT 1);"
           if bun run db:migrate:deploy; then
             echo "expected --strict to fail on checksum drift, but it exited 0" >&2
@@ -1336,7 +1336,7 @@ jobs:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
     runs-on: [self-hosted, Linux, X64, hostinger]
     env:
-      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3000
       # 32-byte base64 test key for the 2FA at-rest encryption (ADR-0034). Decodes to 32 bytes.
@@ -1354,11 +1354,11 @@ jobs:
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
           docker run -d --name chartwarden-ci-pg \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
+            docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg; exit 1
@@ -1392,10 +1392,10 @@ jobs:
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
     runs-on: [self-hosted, Linux, X64, hostinger]
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/chartwarden_boot
       CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3999
@@ -1412,11 +1412,11 @@ jobs:
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
           docker run -d --name chartwarden-ci-pg-boot \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_boot \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec chartwarden-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d wardenx_boot && exit 0
+            docker exec chartwarden-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d chartwarden_boot && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-boot; exit 1
@@ -1499,8 +1499,8 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
-      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_e2e
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_e2e
       REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3000
@@ -1557,16 +1557,16 @@ jobs:
       # gain, not a cost: `outbox-boot` proves the platform-credential branch STARTS, and this now runs
       # the product across it — the relay, the audited active-org enumerator and the platform crons are
       # live for the whole suite rather than a branch nothing but a boot check has taken.
-      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_e2e
       CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
-      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_e2e
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/chartwarden_e2e
       # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
       # deployment's lives in its secret manager (ADR-0045).
       M34_TENANT_KEK: kek-1:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=
       # Document upload (documents.spec) needs the MinIO/S3 adapter: without MINIO_* the upload route answers
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
       MINIO_ENDPOINT: http://localhost:9000
-      MINIO_ACCESS_KEY: wardenx
+      MINIO_ACCESS_KEY: chartwarden
       MINIO_SECRET_KEY: chartwarden-minio-ci-secret
       MINIO_REGION: us-east-1
     steps:
@@ -1582,11 +1582,11 @@ jobs:
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
           docker run -d --name chartwarden-ci-pg-e2e \
-            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_e2e \
             -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec chartwarden-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d wardenx_e2e && exit 0
+            docker exec chartwarden-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d chartwarden_e2e && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-e2e; exit 1
@@ -1597,7 +1597,7 @@ jobs:
       - name: Start MinIO (document storage)
         run: |
           docker run -d --name chartwarden-ci-minio-e2e \
-            -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
+            -e MINIO_ROOT_USER=chartwarden -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
             -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
           for i in $(seq 1 60); do
             curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0

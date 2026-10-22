@@ -285,3 +285,72 @@ database, so the rename below is what actually changes it.
 Rollback: stop api/worker/web, terminate backends, `ALTER DATABASE chartwarden RENAME TO wardenx;`, restore
 `.env.production` from the backup (or remove `CHARTWARDEN_DB_NAME` and revert the URLs), `up -d`, `./smoke.sh`.
 If the rename itself failed, nothing changed: just restart the containers. Last resort: restore the Step 0 dump.
+
+<!-- BEGIN DB-RENAME ADDENDUM (owner: refactor/rename-db-name-dev-items; the infra agent need not edit between these markers) -->
+## Database rename: ordered procedure and what changes at the same moment
+
+State after the code-side PR (`refactor/rename-db-name-dev-items`): every NON-production default is already
+`chartwarden` (root `docker-compose.yml`, `.env.example`, `drizzle.config.ts`, `scripts/db/wait-for-postgres.ts`,
+`scripts/m36-restore-drill.ts`, CI databases `chartwarden_test|boot|e2e|migration_gate`). Production still
+defaults to `wardenx` in `deploy/production/**` and keeps working until the window below. The window itself is
+the numbered procedure in "Database rename downtime window" above; this addendum adds the ordering, the coupled
+file edits, the ledger facts and the checks.
+
+Ordered procedure (downtime ~5-10 min; run only with the user's go-ahead):
+
+1. Step 0 safety net (`pg_dump -d wardenx`, `pg_dumpall --globals-only`, MinIO mirror, copy of `.env.production`).
+2. Freeze: disable `deploy.yml` and `reseed-production.yml` in the Actions UI; no merges to `main`.
+3. Stop `api`, `worker`, `web` (+ any `seed-api` / `docling-worker` / `provision-gateway` containers). Nothing else
+   may hold a connection: pgbouncer/pgBackRest are not part of this compose file, so verify with
+   `SELECT pid, usename, application_name FROM pg_stat_activity WHERE datname = 'wardenx';` before terminating.
+4. Connect to the `postgres` maintenance DB (not `wardenx`), `pg_terminate_backend` any leftovers, then
+   `ALTER DATABASE wardenx RENAME TO chartwarden;`. It fails with "database is being accessed by other users" if a
+   connection is left, and changes nothing in that case.
+5. In `/opt/wardenx/.env.production` (same moment, before step 6): add `CHARTWARDEN_DB_NAME=chartwarden` and change
+   the path of every whole-URL value (`DATABASE_URL`, `DATABASE_ADMIN_URL`, `DATABASE_PLATFORM_URL`,
+   `DATABASE_DESTRUCTION_URL`, `PROVISION_DATABASE_URL`, any `DATABASE_*_URL`) from `/wardenx` to `/chartwarden`.
+6. `docker compose ... up -d`, then `./smoke.sh`. Then re-enable the workflows.
+7. Only after a green smoke and one successful deploy: merge the infra follow-up that flips the production defaults
+   (list below). Until then production relies on the explicit `CHARTWARDEN_DB_NAME`, which wins over any default.
+
+Do NOT flip the production defaults before step 5: an unset variable would then point compose at a database that
+does not exist yet.
+
+What must change in `deploy/production/**` at the same time (defaults only; the explicit env var in step 5 already
+covers the running system):
+
+| File | Change |
+| --- | --- |
+| `compose.yml` lines 17, 21, 144, 157, 198, 214-216, 268-270, 336-338, 408-410 | `${CHARTWARDEN_DB_NAME:-wardenx}` -> `${CHARTWARDEN_DB_NAME:-chartwarden}` (17 occurrences) |
+| `deploy.sh` line 53 | `db_name=${db_name:-wardenx}` -> `:-chartwarden`; update the comment on line 49 |
+| `reseed-demo.sh` line 31 | `db_name=${db_name:-wardenx}` -> `:-chartwarden` (its `pg_dump -d "$db_name"` follows the variable) |
+| `README.md` line 269 | "The database name `wardenx` is unchanged." -> now `chartwarden` |
+| `INFRA_RENAME_RUNBOOK.md` "Explicitly NOT renamed" first bullet and Phase 1 step `pg_dump -d wardenx` | historical wording; mark as done |
+| `.env.production.example` | add `CHARTWARDEN_DB_NAME=chartwarden` if the template lists whole DATABASE_* URLs |
+
+Facts to carry into the window:
+
+- The `_wardenx_migration` view and the `_chartwarden_migration` ledger live INSIDE the database, so they travel
+  with `ALTER DATABASE ... RENAME`; nothing to copy. `scripts/db/migrate.ts` is unchanged by this PR (the compat view
+  stays for rollback of the previous release's runner; drop it in a later cleanup).
+- Roles are cluster-global and already `chartwarden_*` (migration 1139); the rename does not touch roles, grants,
+  RLS policies or the `app.org_id` GUC. Role passwords are unchanged in production (the dev password rename in this PR
+  applies to the local compose stack only).
+- pgBackRest is cluster-level (`pg1-path`), has no database name in `ops/pgbackrest/pgbackrest.conf.template`, and the
+  stanza is already `chartwarden_*`; nothing to change. Take a fresh full backup after the rename anyway
+  (`pgbackrest --stanza=... --type=full backup`) so the first post-rename WAL sits in a known-good backup set.
+  Logical dumps (`reseed-demo.sh`, `pre-reseed-*.sql.gz`) taken before the window restore into a database of any
+  name; the m36 restore drill reads `CHARTWARDEN_DB_NAME` (default now `chartwarden`).
+- Session-level or per-database settings (`ALTER DATABASE ... SET`) move with the database. Logical-replication
+  subscriptions or external monitors that name the database (Prometheus postgres_exporter DSN, Grafana data source,
+  pgbouncer `[databases]` section if you run one) are NOT in this repo: update them in the same minute.
+
+Rollback (any point up to step 6): stop api/worker/web, terminate backends,
+`ALTER DATABASE chartwarden RENAME TO wardenx;`, restore `.env.production` from the step-0 copy, `up -d`,
+`./smoke.sh`. If the rename itself failed nothing changed: just restart the containers. Last resort: restore the
+step-0 dump into a fresh `wardenx` database. After step 7 is merged, rolling back also means reverting that PR.
+
+Verification after step 6: `psql -U postgres -d postgres -c '\l'` lists `chartwarden` and not `wardenx`;
+`SELECT count(*) FROM _chartwarden_migration;` equals the pre-window count; `/api/health` and `/api/ready` green;
+one sign-in as a demo user; `docker compose ... config | grep -E '/(wardenx|chartwarden)$'` shows only `chartwarden`.
+<!-- END DB-RENAME ADDENDUM -->

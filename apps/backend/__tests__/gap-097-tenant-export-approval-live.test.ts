@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     // mechanism `scripts/db/migrate.ts` uses for `chartwarden_app` under CHARTWARDEN_DEV_BYPASSRLS — to stand in
     // for that dedicated role without provisioning a new one just for this test cluster.
     await admin.query(
-      "ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'wardenx_admin_live_test'",
+      "ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'chartwarden_admin_live_test'",
     );
     // `m34PlatformBypassAuditor` (the mandatory F09 bypass audit) calls the SECURITY DEFINER
     // `audit_writer_insert_platform_event` (migration 0187), EXECUTE-granted only to `chartwarden_app` —
@@ -131,7 +131,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     // Same GAP-086 rule as `handle`: parse, never string-replace (which silently keeps superuser).
     const platformUrl = new URL(DB_URL as string);
     platformUrl.username = "chartwarden_admin";
-    platformUrl.password = "wardenx_admin_live_test";
+    platformUrl.password = "chartwarden_admin_live_test";
     platformHandle = createDbClient({ connectionString: platformUrl.toString() });
 
     wireM34Tenancy(); // idempotent — registers M34_PLATFORM_JOB_ID on the tenancy allowlist
