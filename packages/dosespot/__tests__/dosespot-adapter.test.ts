@@ -420,9 +420,9 @@ describe("patient-sync planner (§2.6 D4)", () => {
     );
   });
 
-  it("builds the upsert payload keyed on wardenxPatientId and drops absent optionals", () => {
+  it("builds the upsert payload keyed on chartwardenPatientId and drops absent optionals", () => {
     const payload = buildPatientUpsertPayload(snapshot);
-    expect(payload.wardenxPatientId).toBe("p-1");
+    expect(payload.chartwardenPatientId).toBe("p-1");
     expect(payload.address.line1).toBe("1 Analytical Way");
     expect("line2" in payload.address).toBe(false);
     expect("phone" in payload).toBe(false);

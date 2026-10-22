@@ -323,7 +323,7 @@ describe("other operations", () => {
       "PUT /api/patients/501": () => ({ status: 200, body: { Id: 501 } }),
     });
     const base = {
-      wardenxPatientId: "p1",
+      chartwardenPatientId: "p1",
       firstName: "A",
       lastName: "B",
       dateOfBirth: "1940-01-01",
