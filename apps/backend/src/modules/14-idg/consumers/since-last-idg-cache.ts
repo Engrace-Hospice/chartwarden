@@ -28,7 +28,7 @@
 // the "since last IDG projection cache" heading and none other from M9/M10/M11/M12 — corroborating,
 // not contradicting.
 //
-// KEY SCHEME: one JSON object per patient, `wardenx:m14:idg:since-last-idg:<patientId>`, holding the four
+// KEY SCHEME: one JSON object per patient, `chartwarden:m14:idg:since-last-idg:<patientId>`, holding the four
 // typed digest arrays the packet builder's `SinceLastIdgInput` already declares slots for
 // (`significantAssessmentChanges`, `j2051Triggers`, `ordersChanged`, `medicationsChanged` — named here
 // `orderChanges`/`medicationChanges` to avoid colliding with the builder's own post-cursor-filter field
@@ -68,9 +68,7 @@ import type {
 } from "@chartwarden/types";
 import type Redis from "ioredis";
 
-// LEGACY(wardenx->chartwarden): remove after 30 days post release B (SINCE_LAST_IDG_TTL_SEC).
-const LEGACY_KEY_PREFIX = "wardenx:m14:idg:since-last-idg";
-const NEW_KEY_PREFIX = "chartwarden:m14:idg:since-last-idg";
+const KEY_PREFIX = "chartwarden:m14:idg:since-last-idg";
 export const SINCE_LAST_IDG_TTL_SEC = 30 * 24 * 60 * 60; // 30 days, per the §4.5 table's own note
 
 /** A digest entry tagged with the outbox event id it was written from (the dedup identity). */
@@ -91,19 +89,12 @@ const EMPTY_ENTRY: SinceLastIdgCacheEntry = {
   medicationChanges: [],
 };
 
-/** Release B: write BOTH keys (rollback safety), read `newKey` first and fall back to `legacyKey` on a miss (a digest
- *  accumulated before release A exists only there, and a miss would drop it and its event-id dedup). Every post-A write puts
- *  the full entry in both keys, so a new-key hit is never staler than legacy. */
-export function cacheKeys(patientId: string): { legacyKey: string; newKey: string } {
-  return {
-    legacyKey: `${LEGACY_KEY_PREFIX}:${patientId}`,
-    newKey: `${NEW_KEY_PREFIX}:${patientId}`,
-  };
+export function cacheKey(patientId: string): string {
+  return `${KEY_PREFIX}:${patientId}`;
 }
 
 async function readEntry(redis: Redis, patientId: string): Promise<SinceLastIdgCacheEntry> {
-  const { legacyKey, newKey } = cacheKeys(patientId);
-  const raw = (await redis.get(newKey)) ?? (await redis.get(legacyKey));
+  const raw = await redis.get(cacheKey(patientId));
   if (!raw) return EMPTY_ENTRY;
   try {
     const parsed = JSON.parse(raw) as Partial<SinceLastIdgCacheEntry>;
@@ -125,12 +116,7 @@ async function writeEntry(
   patientId: string,
   entry: SinceLastIdgCacheEntry,
 ): Promise<void> {
-  const { legacyKey, newKey } = cacheKeys(patientId);
-  const serialised = JSON.stringify(entry);
-  // New key first: a failure on the second write leaves legacy unwritten, so the redelivery (which
-  // short-circuits on a legacy hit) redoes both instead of leaving the new key permanently behind.
-  await redis.set(newKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
-  await redis.set(legacyKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
+  await redis.set(cacheKey(patientId), JSON.stringify(entry), "EX", SINCE_LAST_IDG_TTL_SEC);
 }
 
 /**

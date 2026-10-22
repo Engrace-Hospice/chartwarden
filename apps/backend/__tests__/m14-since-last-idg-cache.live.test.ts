@@ -113,9 +113,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     }
 
     async function cacheEntry(patientId: string): Promise<Record<string, unknown[]> | null> {
-      const raw = await redis.get(`wardenx:m14:idg:since-last-idg:${patientId}`);
-      // Release A dual-write: the chartwarden: copy must always equal the legacy key (both present or both absent).
-      expect(await redis.get(`chartwarden:m14:idg:since-last-idg:${patientId}`)).toBe(raw);
+      const raw = await redis.get(`chartwarden:m14:idg:since-last-idg:${patientId}`);
+      // Release C: nothing is written under the legacy prefix any more.
+      expect(await redis.get(`wardenx:m14:idg:since-last-idg:${patientId}`)).toBeNull();
       return raw ? JSON.parse(raw) : null;
     }
 
@@ -346,34 +346,22 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             isCorrection: false,
           }),
         );
-        const ttl = await redis.ttl(`wardenx:m14:idg:since-last-idg:${patientId}`);
+        const ttl = await redis.ttl(`chartwarden:m14:idg:since-last-idg:${patientId}`);
         expect(ttl).toBeGreaterThan(SINCE_LAST_IDG_TTL_SEC - 60);
         expect(ttl).toBeLessThanOrEqual(SINCE_LAST_IDG_TTL_SEC);
-        const newTtl = await redis.ttl(`chartwarden:m14:idg:since-last-idg:${patientId}`);
-        expect(newTtl).toBeGreaterThan(SINCE_LAST_IDG_TTL_SEC - 60);
-        expect(newTtl).toBeLessThanOrEqual(SINCE_LAST_IDG_TTL_SEC);
       });
 
-      it("release B: a legacy-only digest (written before release A) is read, extended, and migrated to the new key", async () => {
+      it("release C: a legacy-only digest is ignored and left untouched; the new key starts empty", async () => {
         const patientId = "aaaaaaaa-2000-4000-8000-00000000f001";
         const legacyKey = `wardenx:m14:idg:since-last-idg:${patientId}`;
         const newKey = `chartwarden:m14:idg:since-last-idg:${patientId}`;
-        const seeded = {
-          significantAssessmentChanges: [
-            {
-              _digestId: "pre-a-event",
-              assessmentId: "pre-a",
-              scaleKind: "pps",
-              changeKind: "recorded",
-              occurredAt: "2026-05-01T00:00:00.000Z",
-            },
-          ],
+        const legacySeed = JSON.stringify({
+          significantAssessmentChanges: [{ _digestId: "pre-a-event", assessmentId: "pre-a" }],
           j2051Triggers: [],
           orderChanges: [],
           medicationChanges: [],
-        };
-        await redis.set(legacyKey, JSON.stringify(seeded), "EX", 1_000);
-        expect(await redis.get(newKey)).toBeNull();
+        });
+        await redis.set(legacyKey, legacySeed, "EX", 1_000);
 
         await recordedConsumer.handle(
           fakeEvent(ORG_A, {
@@ -387,51 +375,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           }),
         );
 
-        // The pre-A entry survived (a new-key-only read would have dropped it) and both keys now hold it.
-        for (const key of [legacyKey, newKey]) {
-          const entry = JSON.parse((await redis.get(key)) as string);
-          expect(
-            entry.significantAssessmentChanges.map(
-              (e: { assessmentId: string }) => e.assessmentId,
-            ),
-          ).toEqual(["pre-a", "aaaaaaaa-2000-4000-8000-00000000f002"]);
-          expect(await redis.ttl(key)).toBeGreaterThan(
-            SINCE_LAST_IDG_TTL_SEC - 60,
-          );
-        }
-      });
-
-      it("release B: when the new key is present it wins over a stale legacy key", async () => {
-        const patientId = "aaaaaaaa-2000-4000-8000-00000000f004";
-        const legacyKey = `wardenx:m14:idg:since-last-idg:${patientId}`;
-        const newKey = `chartwarden:m14:idg:since-last-idg:${patientId}`;
-        const empty = {
-          significantAssessmentChanges: [],
-          j2051Triggers: [],
-          orderChanges: [],
-          medicationChanges: [],
-        };
-        await redis.set(legacyKey, JSON.stringify(empty), "EX", 1_000);
-        await redis.set(
-          newKey,
-          JSON.stringify({ ...empty, orderChanges: [{ _digestId: "kept" }] }),
-          "EX",
-          1_000,
-        );
-        await recordedConsumer.handle(
-          fakeEvent(ORG_A, {
-            patientId,
-            assessmentId: "aaaaaaaa-2000-4000-8000-00000000f005",
-            admissionId: "aaaaaaaa-2000-4000-8000-00000000f006",
-            scaleType: "esas_r",
-            score: 3,
-            capturedAt: "2026-06-07T00:00:00.000Z",
-            isCorrection: false,
-          }),
-        );
+        const entry = JSON.parse((await redis.get(newKey)) as string);
         expect(
-          JSON.parse((await redis.get(newKey)) as string).orderChanges,
-        ).toEqual([{ _digestId: "kept" }]);
+          entry.significantAssessmentChanges.map((e: { assessmentId: string }) => e.assessmentId),
+        ).toEqual(["aaaaaaaa-2000-4000-8000-00000000f002"]);
+        expect(await redis.get(legacyKey)).toBe(legacySeed);
       });
     });
 
