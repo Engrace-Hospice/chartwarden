@@ -7,7 +7,7 @@ Run it: `bun run m36:restore-drill` (needs Docker and the images `pgvector/pgvec
 `WX_DRILL_MINIO_IMAGE` overrides the default `cgr.dev/chainguard/minio:latest`). Reports are written to
 `audit/restore-drill/m36-restore-drill.{json,md}`. Detection proof: `bun run m36:restore-drill:detect`.
 It starts and removes only containers it labels itself (`wx-m36-restore-drill=<runId>`); it never touches the shared
-cluster or the `wardenx4-*` stack, and it is not wired into CI (a live, Docker-in-Docker drill is run by a person, per release).
+cluster or the local Docker compose stack, and it is not wired into CI (a live, Docker-in-Docker drill is run by a person, per release).
 
 ## 1. What production actually backs up (findings)
 

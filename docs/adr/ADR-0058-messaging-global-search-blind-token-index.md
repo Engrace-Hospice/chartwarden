@@ -61,7 +61,7 @@ patient-attribution mechanism; archived-channel inclusion (patient-name exclusio
 - Message bodies are envelope-encrypted per tenant: `message.body_cipher` (`packages/db/src/schema/messaging/messages.ts`), AES-256-GCM,
   and `message_revision.body_cipher` for replaced bodies (ADR-0055). **Today** the tenant DEK is HKDF-derived from the single master
   `MESSAGING_ENCRYPTION_KEY` and the org id (`packages/messaging/src/crypto/body-crypto.ts`: `deriveOrgDek`, line 43;
-  `DEK_INFO_PREFIX = "wardenx-message-dek:"`, line 24). The DEK is a pure function of one env var and the org id, so it is always
+  `DEK_INFO_PREFIX = "chartwarden-message-dek:"`, line 27; a body sealed under the legacy `chartwarden-message-dek:` label no longer opens). The DEK is a pure function of one env var and the org id, so it is always
   recomputable: there is no key row to destroy, and "destroying the tenant DEK" is, in the code's own words, "modelled by forgetting
   the org's derived key". A normal database index would hold plaintext or be useless.
 - A second key model exists: the `TenantKeyProvider` seam (`packages/saas-tenant-platform/src/seams/tenant-key-provider.ts`) returns a
@@ -190,12 +190,12 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    attachments). Indexing (inserts only) runs in a worker driven by `m36.message.sent.v1` / `m36.message.revised.v1` outbox events (**indexer work item: emit and catalog both events**; they exist only in the plan today, `02` §9, not in the event catalog or emit sites) and is therefore
    eventually consistent; the UI states that new messages may take seconds to appear. The index is derived data, never the record.
    Wire the worker's consumer factory in `apps/backend/src/index.ts` (grep for it; `arch:outbox-bindings` does not prove it is wired).
-2. **Keys (after P1).** `K_search(org, v) = HKDF-SHA256(ikm = TenantDek.key, salt = "", info = "wardenx-message-search:" || orgId || ":" || ringVersionLabel)`
+2. **Keys (after P1).** `K_search(org, v) = HKDF-SHA256(ikm = TenantDek.key, salt = "", info = "chartwarden-message-search:" || orgId || ":" || ringVersionLabel)`
    where `TenantDek` is the unwrapped M34 DEK for key-ring version `v` and the info label is distinct from the body-encryption label,
    so the two keys are domain-separated. `v` is stored on every index row. Rotation: a new ring version, rebuild under it, query both
    during the overlap, then delete the old version's rows (as built: only the active version is live, and the old version's rows and state are
    removed in the same transaction that marks the new version `ready`, security review M1). **Per-channel keys (product-owner decision
-   2026-10-13):** the key that tags a message is `K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = "wardenx-message-search-channel:" || version || ":t" || T || ":" || channel_id)`
+   2026-10-13):** the key that tags a message is `K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = "chartwarden-message-search-channel:" || version || ":t" || T || ":" || channel_id)`
    (`deriveChannelKey`; the version label and `T` are bound into the info, security review L3, so a rebuild at another `T` or under another ring
    version yields unrelated tags). The same word therefore has a different tag in every channel. **Ring destruction (P1) makes the index unusable** because `K_search` can no
    longer be derived for any version and the tags are indistinguishable from random without it; the eraser still deletes the rows
@@ -1046,7 +1046,7 @@ Rose) are unsearchable as words for the whole tenant; a name recorded after the 
 
 ### 2. Per-channel keys
 
-**Derivation.** `K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = "wardenx-message-search-channel:" || version || ":t" || T || ":" ||
+**Derivation.** `K_ch = HKDF-SHA256(ikm = K_search, salt = "", info = "chartwarden-message-search-channel:" || version || ":t" || T || ":" ||
 channel_id)`. `T` and the ring version label are bound into the info (security review L3). The token row gains `channel_id` (migration 1096;
 index `(organization_id, key_version, channel_id, tag, message_id)`; not a foreign key, the composite message FK already pins the message). The
 indexer derives the key from the message's `channel_id`; the tag input strings (`w\0token`, `p\0len\0prefix`) and the sparse prefix lengths

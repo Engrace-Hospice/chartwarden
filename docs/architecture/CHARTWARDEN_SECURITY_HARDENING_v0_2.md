@@ -1321,7 +1321,7 @@ For each production VM:
 
 ### 11.3 SSH Access
 
-- All SSH via bastion (`wardenx-bastion-01`)
+- All SSH via bastion (`chartwarden-bastion-01`)
 - Per-engineer SSH keys (no shared keys)
 - Keys stored in YubiKey or hardware-backed where possible
 - Bastion logs all sessions (recorded session logs retained per Ops Runbook §16.1)

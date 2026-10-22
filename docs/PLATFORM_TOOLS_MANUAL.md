@@ -421,7 +421,7 @@ Targets (engineering objectives, proven only by drills):
 
 **Stage 1 · Production · S3-compatible object storage**
 
-**Update (2026-10-02):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `wardenx-documents` bucket. Tenant buckets are created and destroyed through the M34 provision gateway, which does not exist yet and must call Garage's admin API. The adapter (`s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with Garage by setting `MINIO_ENDPOINT` and `MINIO_REGION` (Garage's region, `garage` by default). Platform buckets (`cnpg-wal`, `cnpg-base`) stay as listed below. Local development keeps MinIO (product-owner decision, 2026-10-05). CI runs a live suite that exercises the real
+**Update (2026-10-02):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `chartwarden-documents` bucket. Tenant buckets are created and destroyed through the M34 provision gateway, which does not exist yet and must call Garage's admin API. The adapter (`s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with Garage by setting `MINIO_ENDPOINT` and `MINIO_REGION` (Garage's region, `garage` by default). Platform buckets (`cnpg-wal`, `cnpg-base`) stay as listed below. Local development keeps MinIO (product-owner decision, 2026-10-05). CI runs a live suite that exercises the real
 adapter against a Garage container, so production's store is still tested (ADR-0050 D6).
 
 ### Role in ChartWarden

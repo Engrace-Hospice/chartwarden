@@ -67,7 +67,7 @@ Unconfirmed: whether `apps/web/src/modules/*/clinician-preferences.tsx` overlaps
 
 ## F. Browser pass (not done)
 
-- Feasible: a local Docker stack is up (api :3000) and :5173 answers HTTP 200 (not confirmed to be the wardenx4 web app).
+- Feasible: a local Docker stack is up (api :3000) and :5173 answers HTTP 200 (not confirmed to be the ChartWarden web app).
 - Needs a seeded test login supplied by the user; no credentials entered so far.
 - Scope: thread panel, rich message with link and mention, reactions/pins/drafts/templates/announcements after Tranche B merges.
 
