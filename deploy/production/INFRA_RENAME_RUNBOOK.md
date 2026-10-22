@@ -116,10 +116,26 @@ Then land the Step G follow-up commit.
 
 ### Step C - Host cutover: project, directory, MinIO names (downtime about 2-4 minutes)
 
-Rehearse first, read-only for production: in a scratch dir on the host copy `compose.yml` and a dummy env, run
-`docker compose --env-file e -f compose.yml config | grep -E '^name:|    name:'` with the new values and confirm the
-volumes still say `wardenx_*`. (Verified locally on Compose v5.6.0 that an existing volume labelled for the old project
-is reused without error when `name:` pins it.)
+PRE-REHEARSAL on the host (Compose v5.5.0; verified only on v5.6.0 locally). Touches nothing of production: unique throwaway
+names, own scratch directory, removed afterwards.
+```sh
+mkdir /tmp/rehearsal && cd /tmp/rehearsal
+cat > compose.yml <<'EOF'
+name: ${P:-zzrehold}
+services:
+  a: {image: alpine:3, command: sleep 60, volumes: [d:/d]}
+volumes:
+  d: {name: "${V:-zzrehold_d}"}
+EOF
+docker compose up --no-start                      # project zzrehold, creates volume zzrehold_d labelled for it
+P=zzrehnew docker compose up --no-start           # flip project, volume name pinned: must succeed and reuse zzrehold_d
+docker inspect zzrehnew-a-1 --format '{{range .Mounts}}{{.Name}}{{end}}'    # expect zzrehold_d
+P=zzrehnew docker compose down; docker compose down; docker volume rm zzrehold_d; cd / && rm -rf /tmp/rehearsal
+```
+If the flip errors with a "volume ... was not created by Docker Compose / belongs to project" message, STOP: use `external: true`
+volumes or copy the data instead (not covered here). Then dry-run the real file: in a scratch copy of `compose.yml` with the
+real env plus the new variables, `docker compose --env-file e -f compose.yml config | grep -E '^name:|    name:'` must show
+`name: chartwarden` and volumes `wardenx_*`.
 
 1. Disable `deploy.yml` and `reseed-production.yml` (Actions UI) and make sure none is running.
 2. On the host as `deploy`:
@@ -175,18 +191,27 @@ nothing on this host changes for them.
    ```
    (The legacy vhosts keep serving; the old certificate lineage stays.) This also installs the PHI-safe access-log
    format the live vhosts lack; confirm with `curl -s "https://api.chartwarden.cloud/ready?q=Smith"` and a log line without `?q=`.
-3. Env flip in `.env.production`, together, then `docker compose ... up -d --no-deps --force-recreate api worker web`:
+3. PRE-FLIP CHECK (before touching `PASSKEY_RP_ID`): every operator/admin account must have a sign-in path that does not need a
+   passkey, i.e. a working password plus TOTP, or a platform-admin reset you have verified. Test one real sign-in per operator
+   without the passkey first. Rollback for access loss is env-only: set `PASSKEY_RP_ID` / `WEBAUTHN_RP_ID` back to
+   `wardenx.chartwarden.cloud` and recreate api/worker/web; the old passkeys work again as long as the old host still serves
+   the web app (so do this BEFORE the Step 4 redirect swap, or serve the old host again).
+   Env flip in `.env.production`, together, then `docker compose ... up -d --no-deps --force-recreate api worker web`:
    `BETTER_AUTH_URL=https://api.chartwarden.cloud`, `TRUSTED_ORIGINS=https://app.chartwarden.cloud` (add the old origin as a
    second comma-separated entry during the transition if links are still in flight), `STORAGE_PUBLIC_ORIGIN=https://storage.chartwarden.cloud`,
    `M34_INVITATION_ACCEPT_URL=https://app.chartwarden.cloud/tenant-invite`, `FHIR_TOKEN_ENDPOINT_URL=https://api.chartwarden.cloud/fhir/oauth2/token`,
-   `PASSKEY_RP_ID` and `WEBAUTHN_RP_ID` = `app.chartwarden.cloud` (existing passkeys registered for the old RP id stop
-   working; this host holds demo data, so plan a re-enrolment), and `CHARTWARDEN_SMOKE_APP_URL=https://app.chartwarden.cloud`,
+   `PASSKEY_RP_ID` and `WEBAUTHN_RP_ID` = `app.chartwarden.cloud` (ALL existing passkeys stop working, no RP id value
+   preserves them; see the Phase 5 warning), and `CHARTWARDEN_SMOKE_APP_URL=https://app.chartwarden.cloud`,
    `CHARTWARDEN_SMOKE_API_URL=https://api.chartwarden.cloud`. List every other occurrence first:
    `grep -n 'wardenx.chartwarden.cloud' .env.production`. Then `./smoke.sh`, log in, upload and download a document.
 4. After a successful session, swap the three old vhosts for `nginx/chartwarden-legacy-redirects.conf` (308 to the new hosts,
    uses the old certificate): remove `sites-enabled/wardenx-*`, install that file, `nginx -t && systemctl reload nginx`,
    `curl -sI https://wardenx.chartwarden.cloud/` shows `308` to `app.chartwarden.cloud`. Notify any FHIR/HL7 partner and
-   mobile build that holds the old base URL before this step.
+   mobile build that holds the old base URL before this step. Then `certbot renew --dry-run`: the redirect vhosts keep using the
+   legacy lineage `wardenx.chartwarden.cloud` (expires 2027-01-16), whose renewal needs the old names to keep resolving to this
+   host and port 80 to answer the ACME challenge (the redirect file's `listen 80` blocks 308 everything, so certbot's
+   `--nginx` authenticator injects its challenge location; confirm the dry run passes). If you retire the old DNS names before
+   the redirects are retired, the legacy certificate will fail to renew and the redirects will break TLS at expiry.
 
 Rollback: restore `~/.env.production.pre-infra-cutover` values for the keys above, `up -d --force-recreate api worker web`, and
 re-link the old vhosts from `/root/nginx-sites-available.pre-infra-cutover`. Old DNS records and certificate are never removed
@@ -243,7 +268,7 @@ rename carry `.../Engrace-Hospice/wardenx/...`; signatures made AFTER carry `...
 4. The first release after the rename signs with the new identity (accepted through the opt-in above). Merge the Step G
    commit that flips the default as the FIRST commit after the rename and then delete the env line; the release job's own `cosign verify` uses `${GITHUB_REPOSITORY}`
    and needs no edit. The VPS `deploy.sh` is re-uploaded on every deploy, so no VPS edit is needed.
-   If you deploy before step 3 is merged, `deploy.sh` rejects the new signatures and restores the
+   If you deploy after the rename without the opt-in from step 1, `deploy.sh` rejects the new signatures and restores the
    previous release (safe, but the release is not deployed).
 5. Update repo references: `gh` issue-tracker docs (`docs/agents/issue-tracker.md`, another owner),
    `CLAUDE.md`/`AGENTS.md` (verbatim copies), badges, `.archon/workflows`, branch protection / required
@@ -369,9 +394,12 @@ break unless handled, see the warnings.
 
 WARNINGS (not reversible by DNS alone):
 
-- `PASSKEY_RP_ID` / `WEBAUTHN_RP_ID` (`.env.production`): changing the relying-party id invalidates every
-  registered passkey/WebAuthn credential. Either keep the old RP id (a parent-domain RP id such as
-  `chartwarden.cloud` is valid for both hosts and is the migration target), or plan a re-enrolment.
+- `PASSKEY_RP_ID` / `WEBAUTHN_RP_ID` (`.env.production`): a WebAuthn credential is bound to the exact RP id it was
+  registered under (today `wardenx.chartwarden.cloud`). A browser only accepts an RP id that is a registrable suffix of the
+  page's domain, and `wardenx.chartwarden.cloud` is not a suffix of `app.chartwarden.cloud`, so NO RP id value carries the
+  existing passkeys to the new host (a parent-domain id such as `chartwarden.cloud` is valid for the new host but is a
+  different id from the registered one, so those credentials still fail). Every existing passkey must be re-enrolled; the
+  only way to keep them is to keep serving the web app on the old host. Run the pre-flip check in Step D.3.
 - `BETTER_AUTH_URL`, `TRUSTED_ORIGINS`, `STORAGE_PUBLIC_ORIGIN`, `M34_INVITATION_ACCEPT_URL`,
   `FHIR_TOKEN_ENDPOINT_URL`, `CORS` lists: changing the origin invalidates cookies scoped to the old host
   (sessions) and presigned URLs. Mobile deep link `wardenx://` and wire names are a different owner.
@@ -399,7 +427,7 @@ records and certificate were never removed.
 
 ## Explicitly NOT renamed (by design)
 
-- Postgres database name `wardenx` (parameterized by `CHARTWARDEN_DB_NAME`, default `wardenx`; flipped only in the downtime window below), applied migration SQL, legacy function names
+- Postgres database name `wardenx` (parameterized by `CHARTWARDEN_DB_NAME`; the compose/script default is now `chartwarden`, and `deploy.sh` pins `wardenx` in the host's `.env.production` until the downtime window below replaces it), applied migration SQL, legacy function names
   (renaming a database requires dropping connections and updating every `DATABASE_*_URL`; applied-migration
   checksums forbid editing SQL). The `wardenx_destruction` role alias was dropped by migration 1142.
 - The `_wardenx_migration` ledger IS renamed to `_chartwarden_migration` (by `scripts/db/migrate.ts`

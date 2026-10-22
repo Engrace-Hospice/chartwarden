@@ -28,6 +28,10 @@ To automate that first-time setup (and start MinIO before the first release), co
 sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 ```
 
+A fresh install lives in `/opt/chartwarden`, so set the repository variable `DEPLOY_DIR=/opt/chartwarden` for `deploy.yml` and
+`reseed-production.yml` (their fallback is `/opt/wardenx`, the live host's path until its cutover), or bootstrap with
+`DEPLOY_DIR=/opt/wardenx`. The env template already carries `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, which bootstrap rewrites with the domains.
+
 Override domains when needed:
 
 ```sh
