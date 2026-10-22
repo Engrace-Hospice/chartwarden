@@ -48,11 +48,11 @@ Write: `intake_supervisor`, `billing_manager`, `org_admin`, `administrator`. Rea
 names "Billing roles, Admissions Nurse, org_admin": `billing_finance` is a role CATEGORY (not a role key),
 `billing_manager` is the M23 role, and there is no admissions-nurse key (clinical roles deliberately get neither key).
 
-**Scope limitation, stated plainly.** Both keys declare `caseload_or_scope`. Of the granted roles only
-`compliance_officer` is an org-wide-scope role (`org-wide-scope.ts`), so for `intake_supervisor`, `billing_manager`,
-`org_admin` and `administrator` the reveal and the identifier POST reach only charts they hold an assignment on
-(an off-chart refusal is a 404). Admit-time SSN capture has no chart yet, so it needs only the permission + step-up.
-Widening the org-wide list is a separate decision (`org_admin` is excluded there on purpose).
+**Scope, as amended by ADR-0090.** Both keys declare `caseload_or_scope`. `compliance_officer`, `org_admin` and
+`administrator` are org-wide-scope roles (`org-wide-scope.ts`), so their reveal and identifier POST reach every chart
+in the org; for `intake_supervisor` and `billing_manager` they reach only charts the holder is assigned to (an
+off-chart refusal is a 404). Admit-time SSN capture has no chart yet, so it needs only the permission + step-up.
+(Before ADR-0090 `org_admin` and `administrator` were excluded from the org-wide list on purpose.)
 
 ## Not built / residual
 
