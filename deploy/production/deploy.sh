@@ -38,7 +38,9 @@ case "$docling_image" in
   *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
 esac
 
-deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-/opt/wardenx}
+# Defaults to the directory this script was uploaded to, so the same file works from /opt/wardenx today and
+# /opt/chartwarden after the infra-rename cutover (INFRA_RENAME_RUNBOOK.md). Override with CHARTWARDEN_DEPLOY_DIR.
+deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-$(cd "$(dirname "$0")" && pwd)}
 cd "$deploy_dir"
 
 if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
@@ -46,11 +48,21 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   exit 66
 fi
 
-# The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-wardenx}). It is interpolated into
+# Installs that predate CHARTWARDEN_DB_NAME run the database `wardenx` and rely on the old compose default. The default is now
+# `chartwarden`, so pin the legacy value in the env file BEFORE anything interpolates it; otherwise the next compose command
+# would point every service at a database that does not exist. Fresh installs get an explicit value from the env template.
+# The operator renames the database later (INFRA_RENAME_RUNBOOK.md) by replacing this line.
+if ! grep -q '^CHARTWARDEN_DB_NAME=' .env.production; then
+  [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
+  printf 'CHARTWARDEN_DB_NAME=wardenx\n' >> .env.production
+  echo "pinned legacy CHARTWARDEN_DB_NAME=wardenx in .env.production"
+fi
+
+# The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-chartwarden}). It is interpolated into
 # connection URLs and psql/pg_dump arguments, so fail fast unless it is a plain lower-case identifier.
 # An exported variable wins over .env.production, exactly as it does for compose interpolation.
 db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
-db_name=${db_name:-wardenx}
+db_name=${db_name:-chartwarden}
 case "$db_name" in
   '' | [!a-z_]* | *[!a-z0-9_]*)
     echo "CHARTWARDEN_DB_NAME must match ^[a-z_][a-z0-9_]*\$ (got: $db_name)" >&2
@@ -71,7 +83,7 @@ ensure_secret() {
 ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
 # The scoped MinIO service account the api/worker use instead of the MinIO ROOT account (the
 # `minio-provision` one-shot creates it with a bucket-scoped policy; see compose.yml).
-ensure_secret MINIO_APP_ACCESS_KEY "wardenx-app"
+ensure_secret MINIO_APP_ACCESS_KEY "chartwarden-app"
 ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
 # The bearer MinIO's audit webhook presents to the api's access-log receiver (GAP-141).
 ensure_secret MINIO_ACCESS_LOG_WEBHOOK_TOKEN "$(openssl rand -hex 32)"
@@ -162,17 +174,26 @@ restore_previous_release() {
 # It also closes the gap between "verify" and "pull": cosign reports the digest it verified, and that
 # digest is written back into `.env.production`, so Compose pulls THAT artefact rather than re-resolving
 # the tag a moment later and possibly getting a different one.
-cosign_identity=${CHARTWARDEN_COSIGN_IDENTITY:-https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main}
+# The certificate identity embeds `<owner>/<repo>`. Until the GitHub repository rename (INFRA_RENAME_RUNBOOK.md, Phase 2) is
+# done, and for rollbacks to releases signed before it, BOTH repository names are accepted; each identity must still name
+# this workflow file on `main` and GitHub's OIDC issuer. Set CHARTWARDEN_COSIGN_IDENTITY (one value) to pin exactly one.
+cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-"https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main"}
 cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
 
-# Prints the verified digest on success; anything else is a failure the caller must treat as fatal.
+# Prints the verified digest on success; anything else (empty output) is a failure the caller must treat as fatal.
 verify_image_digest() {
-  cosign verify "$1" \
-    --certificate-identity "$cosign_identity" \
-    --certificate-oidc-issuer "$cosign_issuer" \
-    --output json 2>/dev/null \
-    | sed -n 's/.*"docker-manifest-digest":"\(sha256:[a-f0-9]\{64\}\)".*/\1/p' \
-    | head -1
+  for identity in $cosign_identities; do
+    digest=$(cosign verify "$1" \
+      --certificate-identity "$identity" \
+      --certificate-oidc-issuer "$cosign_issuer" \
+      --output json 2>/dev/null \
+      | sed -n 's/.*"docker-manifest-digest":"\(sha256:[a-f0-9]\{64\}\)".*/\1/p' \
+      | head -1)
+    case "$digest" in
+      sha256:*) printf '%s\n' "$digest"; return 0 ;;
+    esac
+  done
+  return 0
 }
 
 backend_ref=$backend_image
@@ -195,14 +216,14 @@ else
   case "$backend_digest" in
     sha256:*) ;;
     *) echo "signature verification FAILED for $backend_image" >&2
-       echo "expected identity: $cosign_identity" >&2
+       echo "expected identity (any of): $cosign_identities" >&2
        restore_previous_release; exit 1 ;;
   esac
   web_digest=$(verify_image_digest "$web_image")
   case "$web_digest" in
     sha256:*) ;;
     *) echo "signature verification FAILED for $web_image" >&2
-       echo "expected identity: $cosign_identity" >&2
+       echo "expected identity (any of): $cosign_identities" >&2
        restore_previous_release; exit 1 ;;
   esac
 
@@ -211,7 +232,7 @@ else
     case "$docling_digest" in
       sha256:*) ;;
       *) echo "signature verification FAILED for $docling_image" >&2
-         echo "expected identity: $cosign_identity" >&2
+         echo "expected identity (any of): $cosign_identities" >&2
          restore_previous_release; exit 1 ;;
     esac
     docling_ref="${docling_image%%:sha-*}@${docling_digest}"

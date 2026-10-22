@@ -1566,7 +1566,7 @@ jobs:
       # Document upload (documents.spec) needs the MinIO/S3 adapter: without MINIO_* the upload route answers
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
       MINIO_ENDPOINT: http://localhost:9000
-      MINIO_ACCESS_KEY: wardenx
+      MINIO_ACCESS_KEY: chartwarden
       MINIO_SECRET_KEY: chartwarden-minio-ci-secret
       MINIO_REGION: us-east-1
     steps:
@@ -1597,7 +1597,7 @@ jobs:
       - name: Start MinIO (document storage)
         run: |
           docker run -d --name chartwarden-ci-minio-e2e \
-            -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
+            -e MINIO_ROOT_USER=chartwarden -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
             -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
           for i in $(seq 1 60); do
             curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0

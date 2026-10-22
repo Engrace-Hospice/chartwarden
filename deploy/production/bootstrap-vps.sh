@@ -2,17 +2,17 @@
 # Bootstrap the single-VPS production host for ChartWarden object storage.
 #
 # Run from the repository root after copying the repo or the deploy/production folder to the VPS:
-#   sudo DEPLOY_DIR=/opt/wardenx ./deploy/production/bootstrap-vps.sh
+#   sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 #
 # The script is idempotent: it creates missing files, refreshes compose/nginx config, starts MinIO,
 # and leaves an existing .env.production untouched.
 set -eu
 
-DEPLOY_DIR=${DEPLOY_DIR:-/opt/wardenx}
+DEPLOY_DIR=${DEPLOY_DIR:-/opt/chartwarden}
 SOURCE_DIR=${SOURCE_DIR:-deploy/production}
-FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-wardenx.chartwarden.cloud}
-BACKEND_DOMAIN=${BACKEND_DOMAIN:-be082026.wardenx.chartwarden.cloud}
-STORAGE_DOMAIN=${STORAGE_DOMAIN:-storage.wardenx.chartwarden.cloud}
+FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-app.chartwarden.cloud}
+BACKEND_DOMAIN=${BACKEND_DOMAIN:-api.chartwarden.cloud}
+STORAGE_DOMAIN=${STORAGE_DOMAIN:-storage.chartwarden.cloud}
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "run as root, or with sudo" >&2
@@ -61,9 +61,9 @@ if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
       print
     }
   ' "$SOURCE_DIR/.env.production.example" | sed \
-    -e "s#https://wardenx.chartwarden.cloud#https://$FRONTEND_DOMAIN#g" \
-    -e "s#https://be082026.wardenx.chartwarden.cloud#https://$BACKEND_DOMAIN#g" \
-    -e "s#https://storage.wardenx.chartwarden.cloud#https://$STORAGE_DOMAIN#g" \
+    -e "s#https://app.chartwarden.cloud#https://$FRONTEND_DOMAIN#g" \
+    -e "s#https://api.chartwarden.cloud#https://$BACKEND_DOMAIN#g" \
+    -e "s#https://storage.chartwarden.cloud#https://$STORAGE_DOMAIN#g" \
     -e "s#^PASSKEY_RP_ID=.*#PASSKEY_RP_ID=$FRONTEND_DOMAIN#" \
     -e "s#^WEBAUTHN_RP_ID=.*#WEBAUTHN_RP_ID=$FRONTEND_DOMAIN#" \
     >"$tmp_env"
@@ -77,9 +77,9 @@ fi
 if command -v nginx >/dev/null 2>&1; then
   install -d -m 0755 /etc/nginx/sites-available /etc/nginx/sites-enabled
   install -d -m 0755 /etc/nginx/conf.d
-  install -m 0644 "$SOURCE_DIR/nginx/wardenx-log-format.conf" /etc/nginx/conf.d/wardenx-log-format.conf
-  install -m 0644 "$SOURCE_DIR/nginx/wardenx-storage.conf" /etc/nginx/sites-available/wardenx-storage.conf
-  ln -sfn /etc/nginx/sites-available/wardenx-storage.conf /etc/nginx/sites-enabled/wardenx-storage.conf
+  install -m 0644 "$SOURCE_DIR/nginx/chartwarden-log-format.conf" /etc/nginx/conf.d/chartwarden-log-format.conf
+  install -m 0644 "$SOURCE_DIR/nginx/chartwarden-storage.conf" /etc/nginx/sites-available/chartwarden-storage.conf
+  ln -sfn /etc/nginx/sites-available/chartwarden-storage.conf /etc/nginx/sites-enabled/chartwarden-storage.conf
   nginx -t
   systemctl reload nginx || systemctl restart nginx
 else

@@ -57,6 +57,166 @@ cp .env.production ~/.env.production.pre-rename && chmod 600 ~/.env.production.p
 docker compose --env-file .env.production -f compose.yml config > ~/compose.resolved.pre-rename.yml
 ```
 
+## Cutover plan (ordered, supersedes the per-phase order below where they differ)
+
+`main` auto-deploys, so the repo ships every renamed identifier behind a variable whose default is the CURRENT live
+value. Merging changes nothing on the host; each step below is a manual operator action with its own rollback.
+Execute only with the user's go-ahead. Facts observed read-only on 2.25.109.137 on 2026-10-21 are marked (host).
+
+### What is code-safe now (a) and what is gated (b)
+
+| Item | Class | State after merge | Operator action |
+| --- | --- | --- | --- |
+| GHCR image names, CI container names, `pr-image-gate` tag | (a) | already `chartwarden*` | none |
+| Deploy dir in `deploy.sh`/`smoke.sh`/`reseed-demo.sh` | (a) | default = the directory the script sits in (works from both `/opt/wardenx` and `/opt/chartwarden`) | none |
+| `deploy.yml` / `reseed-production.yml` upload path | (b) | `vars.DEPLOY_DIR`, falls back to `/opt/wardenx` | set repo variable `DEPLOY_DIR=/opt/chartwarden` in Step C |
+| Compose project (containers `<p>-<svc>-1`, networks `<p>_default`, `<p>_scan`) | (b) | `CHARTWARDEN_COMPOSE_PROJECT`, default `wardenx` | set `chartwarden` in `.env.production` in Step C |
+| Data volumes | (b) | named explicitly: `${CHARTWARDEN_VOLUME_PREFIX:-<project>}_postgres-data` etc.; resolves to today's `wardenx_*` | set `CHARTWARDEN_VOLUME_PREFIX=wardenx` BEFORE the project flip (keeps the live volumes, no copy) |
+| MinIO IAM policy name | (b) | `CHARTWARDEN_MINIO_POLICY`, default `wardenx-app` | set `chartwarden-app` in Step C |
+| MinIO app account `MINIO_APP_ACCESS_KEY` | (b) | env value (host: key present) | set `chartwarden-app` in Step C (the secret value is unchanged; `minio-provision` creates the new account) |
+| `deploy.sh` `ensure_secret MINIO_APP_ACCESS_KEY` default, `.env.production.example` account names | (a) | `chartwarden-app` / `chartwarden-minio-admin`; only affect hosts where the key is absent | none |
+| DB name default (compose, `deploy.sh`, `reseed-demo.sh`) | (a) | default is now `chartwarden`; `deploy.sh`/`reseed-demo.sh` first append `CHARTWARDEN_DB_NAME=wardenx` to an env file that lacks the key (host: key is ABSENT and the cluster holds database `wardenx`) | none until the DB-rename window below, which replaces that line |
+| cosign identity | (a) | `deploy.sh` accepts the `.../wardenx/...` OR `.../chartwarden/...` workflow identity | none; makes Step B safe |
+| nginx vhosts, log format, bootstrap, env template | (a) | files renamed `chartwarden-*`, hostnames `app./api./storage.chartwarden.cloud`; NOT auto-deployed (only `bootstrap-vps.sh` or the operator installs them) | Step D |
+| `smoke.sh` probe URLs | (b) | `.env.production` keys `CHARTWARDEN_SMOKE_APP_URL` / `_API_URL`, default the legacy hosts | set both in Step D |
+| MinIO audit-webhook target id (`MINIO_AUDIT_WEBHOOK_*_wardenx`), `wardenx-minio-admin` root user | kept | internal ids, never user-visible; changing the env KEY recreates MinIO | leave; optional rename in the follow-up commit, which only takes effect on a MinIO recreate |
+| `wardenx-*` bucket ARNs in the policy, old buckets, `wardenx-app` policy/account | held | additive policy still allows both prefixes | Step F, only after the rollback window |
+| Repo-name strings (`CLAUDE.md`/`AGENTS.md`, issue-template link, README clone URLs) | follow-up | unchanged (the new repo name does not exist yet) | Step G, a commit AFTER the repo rename |
+| cron / systemd / logrotate / pgbackrest / sudoers | n/a | none exist for `wardenx` on the host (host) and none are in the repo | none |
+
+Host facts (host): containers `wardenx-{postgres,valkey,minio,clamav,api,worker,web,docling-worker}-1`; volumes
+`wardenx_{postgres,valkey,minio,clamav}-data`; networks `wardenx_default`, `wardenx_scan`; deploy dir `/opt/wardenx`
+(owner `deploy`, with `backups/`, `clamav/`, `CREDENTIALS.*.md`); nginx vhosts `/etc/nginx/sites-enabled/wardenx-{frontend,backend,storage}`
+(certbot-managed; ONE certificate lineage `wardenx.chartwarden.cloud`, SANs for the three legacy hosts, expires 2027-01-16);
+`.env.production` has no `CHARTWARDEN_DB_NAME`, no `COMPOSE_PROJECT_NAME`, has `MINIO_APP_ACCESS_KEY`; Docker Compose v5.5.0.
+Drift worth fixing in Step D: the live vhosts have NO `access_log ... phi_safe` line and `nginx -T` shows no `log_format`,
+so request URIs (including query strings) go to the default `/var/log/nginx/access.log`.
+
+### Step 0 - Safety net
+
+Run "Step 0" below (pg_dump, pg_dumpall --globals-only, MinIO mirror, env backup). Also record
+`docker compose --env-file .env.production -f compose.yml ps` and `docker volume ls`.
+
+### Step A - Merge
+
+Merge deploys normally. Verify afterwards on the host: `grep -c '^CHARTWARDEN_DB_NAME=wardenx$' /opt/wardenx/.env.production`
+prints 1 (pinned by the first deploy), `docker ps` still shows the `wardenx-*` containers, the volumes are unchanged.
+Downtime: the normal deploy recreate only.
+
+### Step B - GitHub repository rename (Phase 2 below)
+
+Safe at any time after Step A (dual cosign identity). Then land the Step G follow-up commit.
+
+### Step C - Host cutover: project, directory, MinIO names (downtime about 2-4 minutes)
+
+Rehearse first, read-only for production: in a scratch dir on the host copy `compose.yml` and a dummy env, run
+`docker compose --env-file e -f compose.yml config | grep -E '^name:|    name:'` with the new values and confirm the
+volumes still say `wardenx_*`. (Verified locally on Compose v5.6.0 that an existing volume labelled for the old project
+is reused without error when `name:` pins it.)
+
+1. Disable `deploy.yml` and `reseed-production.yml` (Actions UI) and make sure none is running.
+2. On the host as `deploy`:
+   ```sh
+   cd /opt/wardenx
+   cp .env.production ~/.env.production.pre-infra-cutover && chmod 600 ~/.env.production.pre-infra-cutover
+   docker compose --env-file .env.production -f compose.yml down          # NEVER -v: the named volumes hold all data
+   docker volume ls | grep wardenx_                                       # all four still listed
+   sudo mv /opt/wardenx /opt/chartwarden && sudo ln -s /opt/chartwarden /opt/wardenx
+   cd /opt/chartwarden
+   printf '%s\n' 'CHARTWARDEN_VOLUME_PREFIX=wardenx' 'CHARTWARDEN_COMPOSE_PROJECT=chartwarden' \
+     'CHARTWARDEN_MINIO_POLICY=chartwarden-app' >> .env.production
+   sed -i 's/^MINIO_APP_ACCESS_KEY=.*/MINIO_APP_ACCESS_KEY=chartwarden-app/' .env.production
+   docker compose --env-file .env.production -f compose.yml config | grep -E '^name:|    name:'
+   #   expect: name: chartwarden, chartwarden_default, chartwarden_scan, volumes wardenx_*-data
+   docker compose --env-file .env.production -f compose.yml up -d --no-deps postgres valkey minio clamav
+   docker compose --env-file .env.production -f compose.yml run --rm minio-provision   # creates policy chartwarden-app + account
+   docker compose --env-file .env.production -f compose.yml up -d --no-deps api worker web docling-worker
+   ./smoke.sh
+   docker inspect chartwarden-postgres-1 --format '{{range .Mounts}}{{.Name}} {{end}}'   # expect wardenx_postgres-data
+   ```
+3. In the repo settings set the Actions variable `DEPLOY_DIR=/opt/chartwarden`, then re-enable the workflows and run
+   one deploy (or the reseed `inventory` mode) to prove the new path.
+4. Keep `/opt/wardenx` (symlink) until one deploy and one reseed have used the new path.
+
+Rollback (any point before step 3): `cd /opt/chartwarden && docker compose --env-file .env.production -f compose.yml down`;
+`cp ~/.env.production.pre-infra-cutover .env.production`; `sudo rm /opt/wardenx && sudo mv /opt/chartwarden /opt/wardenx`;
+`cd /opt/wardenx && docker compose --env-file .env.production -f compose.yml up -d`; `./smoke.sh`; unset the `DEPLOY_DIR`
+variable. The old `wardenx-app` policy and account were never removed, so the restored env authenticates unchanged.
+
+### Step D - Hostnames (no downtime; dual-host, then redirect)
+
+Canonical names proposed (change the three strings and the nginx files if the user prefers others): web
+`app.chartwarden.cloud`, api `api.chartwarden.cloud`, storage `storage.chartwarden.cloud`. These sit on the demo
+domain (ADR-0088: demo stays `chartwarden.cloud`, single-host, `TENANT_BASE_DOMAIN` unset). The `*.chartwarden.com`
+wildcard and `admin.`/`app.` hosts of the real environment belong to that separate deployment and its own manifests;
+nothing on this host changes for them.
+
+1. DNS (operator): A/AAAA for the three new names to `2.25.109.137`, TTL 300. Keep the old records.
+2. nginx on the host (as root), keeping a backup of the old vhosts:
+   ```sh
+   # from a workstation first: scp -r deploy/production/nginx root@2.25.109.137:/root/nginx-chartwarden
+   cp -a /etc/nginx/sites-available /root/nginx-sites-available.pre-infra-cutover
+   cd /root/nginx-chartwarden
+   install -m 0644 chartwarden-log-format.conf /etc/nginx/conf.d/chartwarden-log-format.conf
+   for n in frontend backend storage; do
+     install -m 0644 chartwarden-$n.conf /etc/nginx/sites-available/chartwarden-$n.conf
+     ln -sfn /etc/nginx/sites-available/chartwarden-$n.conf /etc/nginx/sites-enabled/chartwarden-$n.conf
+   done
+   nginx -t && systemctl reload nginx
+   certbot --nginx -d app.chartwarden.cloud -d api.chartwarden.cloud -d storage.chartwarden.cloud --cert-name chartwarden.cloud
+   nginx -t && systemctl reload nginx && certbot renew --dry-run
+   ```
+   (The legacy vhosts keep serving; the old certificate lineage stays.) This also installs the PHI-safe access-log
+   format the live vhosts lack; confirm with `curl -s "https://api.chartwarden.cloud/ready?q=Smith"` and a log line without `?q=`.
+3. Env flip in `.env.production`, together, then `docker compose ... up -d --no-deps --force-recreate api worker web`:
+   `BETTER_AUTH_URL=https://api.chartwarden.cloud`, `TRUSTED_ORIGINS=https://app.chartwarden.cloud` (add the old origin as a
+   second comma-separated entry during the transition if links are still in flight), `STORAGE_PUBLIC_ORIGIN=https://storage.chartwarden.cloud`,
+   `M34_INVITATION_ACCEPT_URL=https://app.chartwarden.cloud/tenant-invite`, `FHIR_TOKEN_ENDPOINT_URL=https://api.chartwarden.cloud/fhir/oauth2/token`,
+   `PASSKEY_RP_ID` and `WEBAUTHN_RP_ID` = `app.chartwarden.cloud` (existing passkeys registered for the old RP id stop
+   working; this host holds demo data, so plan a re-enrolment), and `CHARTWARDEN_SMOKE_APP_URL=https://app.chartwarden.cloud`,
+   `CHARTWARDEN_SMOKE_API_URL=https://api.chartwarden.cloud`. List every other occurrence first:
+   `grep -n 'wardenx.chartwarden.cloud' .env.production`. Then `./smoke.sh`, log in, upload and download a document.
+4. After a successful session, swap the three old vhosts for `nginx/chartwarden-legacy-redirects.conf` (308 to the new hosts,
+   uses the old certificate): remove `sites-enabled/wardenx-*`, install that file, `nginx -t && systemctl reload nginx`,
+   `curl -sI https://wardenx.chartwarden.cloud/` shows `308` to `app.chartwarden.cloud`. Notify any FHIR/HL7 partner and
+   mobile build that holds the old base URL before this step.
+
+Rollback: restore `~/.env.production.pre-infra-cutover` values for the keys above, `up -d --force-recreate api worker web`, and
+re-link the old vhosts from `/root/nginx-sites-available.pre-infra-cutover`. Old DNS records and certificate are never removed
+by this step. Retire the redirects, the old DNS names and the old certificate (`certbot delete --cert-name wardenx.chartwarden.cloud`)
+no earlier than 30 days later.
+
+### Step E - Database rename
+
+Separate window, see "Database rename downtime window" at the end. Note: `deploy.sh` has by then appended
+`CHARTWARDEN_DB_NAME=wardenx` to `.env.production`, so step 5 there means REPLACE that line (a second line would also work
+because the last one wins, but keep one).
+
+### Step F - Late cleanup (held until the rollback window closes; one clearly separate change)
+
+- Bucket step 3: drop the `wardenx-*` ARNs from the policy in `compose.yml`, deploy, then on the host
+  `mc admin policy detach local wardenx-app --user wardenx-app`, `mc admin user rm local wardenx-app`,
+  `mc admin policy rm local wardenx-app`; mirror/remove the legacy buckets per Phase 3.
+- Remove the `/opt/wardenx` symlink, the legacy redirects/DNS/certificate (Step D), the `wardenx-*` GHCR packages,
+  `_wardenx_migration` view (other owner).
+
+### Step G - Follow-up commit AFTER Step B/C/D (not part of the merge that ships the gates)
+
+Each edit flips a default that is only safe once the host matches. All are mechanical:
+
+- `compose.yml`: `CHARTWARDEN_COMPOSE_PROJECT:-wardenx` -> `chartwarden` (twice: `name:` and the volume prefix default; the
+  host keeps `CHARTWARDEN_VOLUME_PREFIX=wardenx` in its env), `CHARTWARDEN_MINIO_POLICY:-wardenx-app` -> `chartwarden-app`.
+- `smoke.sh`: legacy URL fallbacks -> `https://app.chartwarden.cloud` / `https://api.chartwarden.cloud`.
+- `.github/workflows/deploy.yml`, `reseed-production.yml`: `'/opt/wardenx'` fallback -> `'/opt/chartwarden'` (then the variable can be deleted).
+- Repo-name strings after Step B: `CLAUDE.md` and `AGENTS.md` (copy verbatim) line "Issue tracker: ... `Engrace-Hospice/wardenx`", `.github/ISSUE_TEMPLATE/config.yml`
+  line 4 (the `blob/develop` link), `deploy/production/README.md` rollback image examples, `docs/START_PROJECT.md` clone URLs,
+  `docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` cosign identities. Leave `fabwebdev/wardenx` (a different, pre-migration
+  repository) and dated history/audit documents alone. `deploy.sh` keeps the dual identity until the last pre-rename release
+  is outside the rollback window.
+- Optionally the MinIO audit-webhook suffix and root user (see table); only together with a planned MinIO recreate.
+
+The numbered Phases below are the detailed reference for each area; where they disagree with the plan above, the plan above wins.
+
 ## Phase 2 - GitHub repo rename `Engrace-Hospice/wardenx` -> `Engrace-Hospice/chartwarden`
 
 Downtime: none for the running app. CI is unusable between the rename and the identity change (below),
@@ -71,11 +231,10 @@ rename carry `.../Engrace-Hospice/wardenx/...`; signatures made AFTER carry `...
 1. Rename (GitHub keeps web + git redirects, but NOT Actions OIDC claims):
    `gh api -X PATCH repos/Engrace-Hospice/wardenx -f name=chartwarden`
 2. Update local remotes everywhere: `git remote set-url origin git@github.com:Engrace-Hospice/chartwarden.git`.
-3. Change the default identity in `deploy/production/deploy.sh` (the `cosign_identity=` line) to
-   `https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main`.
-   MANDATORY before step 1: land a PR that makes `deploy.sh` accept BOTH identities (try the new, then the old), so no
-   main push in the window between the rename and this change can fail a deploy and pre-rename signed images still roll
-   back. The alternative for a one-off rollback is to export `CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
+3. DONE IN CODE (no edit needed at rename time): `deploy.sh` accepts BOTH the `.../wardenx/...` and the
+   `.../chartwarden/...` workflow identity (`cosign_identities`), so no main push in the window between the rename and
+   any later change can fail a deploy, and pre-rename signed images still roll back. Pin exactly one by exporting
+   `CHARTWARDEN_COSIGN_IDENTITY`. The old note follows for reference. The alternative for a one-off rollback is to export `CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
    before running `deploy.sh` (the env override already exists). Pre-rename images were signed
    under the OLD identity and will fail verification against the new default.
 4. The first release after the rename signs with the new identity. Merge the identity change as the
@@ -166,8 +325,7 @@ restarts/reconfigures MinIO (brief downtime); do it last, or leave as-is (intern
 ## Phase 4 - VPS directory `/opt/wardenx` -> `/opt/chartwarden`
 
 Downtime: about one `docker compose up` cycle (30-120 s) if you move the directory while containers run
-with bind mounts (`/opt/wardenx/clamav/clamd.conf`). Compose project name stays `wardenx` (see below), so
-volumes/networks are unaffected.
+with bind mounts (`/opt/wardenx/clamav/clamd.conf`). The ordered procedure is Step C above; this section is the reference.
 
 References to change in a follow-up PR (after the move): `.github/workflows/deploy.yml` (scp targets,
 `mkdir -p`, `chmod`, `deploy.sh` path), `.github/workflows/reseed-production.yml`, `deploy.sh` /
@@ -191,10 +349,10 @@ docker compose --env-file .env.production -f compose.yml up -d --force-recreate 
 
 Then merge the follow-up PR that points all scripts/workflows at `/opt/chartwarden`. Remove the symlink
 (`sudo rm /opt/wardenx`) only after one successful deploy and one reseed dry run use the new path.
-Compose caveat: the project name is `name: wardenx` in `compose.yml` and containers/volumes/networks are
-`wardenx_*`. KEEP IT. Changing `name:` makes Compose create new, empty `chartwarden_pgdata` / MinIO / clamav
-volumes and orphan the old ones (data loss from the app's point of view). A volume rename needs
-`docker run` copy into new volumes with downtime; it is not worth doing and is out of scope.
+Compose caveat: the project name (`CHARTWARDEN_COMPOSE_PROJECT`, default `wardenx`) drives container and network names.
+The data volumes are pinned by explicit `name:` (`CHARTWARDEN_VOLUME_PREFIX`), so flipping the project to `chartwarden`
+while `CHARTWARDEN_VOLUME_PREFIX=wardenx` keeps the existing `wardenx_*` volumes: no copy. Flipping the project WITHOUT
+setting the prefix first would create new, empty `chartwarden_*` volumes and orphan the data, so the prefix goes first (Step C).
 Rollback: `sudo rm /opt/wardenx && sudo mv /opt/chartwarden /opt/wardenx`, `up -d`.
 
 ## Phase 5 - Hostnames, DNS, TLS, nginx
@@ -220,12 +378,11 @@ Procedure:
 1. DNS: add A/AAAA records for the new hosts to `2.25.109.137` (TTL 300). Keep the old records.
 2. TLS: `sudo certbot certonly --nginx -d <new-web> -d <new-api> -d <new-storage>` (or add SANs to the
    existing certificate with `--expand`). Confirm `certbot renew --dry-run`.
-3. nginx: `bootstrap-vps.sh` installs `nginx/wardenx-*.conf` to `/etc/nginx/sites-available/` and the
-   `wardenx_phi_safe` log format. Add the new hosts as additional `server_name` values (or run
+3. nginx: `bootstrap-vps.sh` installs `nginx/chartwarden-*.conf` to `/etc/nginx/sites-available/` and the
+   `chartwarden_phi_safe` log format (the procedure that actually applies is Step D). Add the new hosts as additional `server_name` values (or run
    `FRONTEND_DOMAIN=... BACKEND_DOMAIN=... STORAGE_DOMAIN=... sudo ./bootstrap-vps.sh`, which sed-rewrites the
-   hostnames), `nginx -t && systemctl reload nginx`. Renaming the vhost files / the `wardenx_phi_safe` format
-   is cosmetic: if done, rename the file, the `ln -sfn` in `bootstrap-vps.sh`, the `access_log` path, and
-   the format name together, `nginx -T | grep phi_safe`, and keep log rotation (`logrotate`) and any log shipper in sync.
+   hostnames), `nginx -t && systemctl reload nginx`. The repo files and format are already renamed; if you rename a live vhost,
+   change the file, the `ln -sfn`, the `access_log` path and the format name together, `nginx -T | grep phi_safe`, and keep log rotation (`logrotate`) and any log shipper in sync.
 4. Env: update the variables above in `.env.production` and the defaults in `smoke.sh` /
    `bootstrap-vps.sh` / `.env.production.example`; `docker compose up -d --force-recreate api worker web`.
 5. Cut over web clients/links; keep the old hosts as 301 redirects for at least 30 days (staff bookmarks,
@@ -245,7 +402,7 @@ records and certificate were never removed.
 - The `_wardenx_migration` ledger IS renamed to `_chartwarden_migration` (by `scripts/db/migrate.ts`
   `ensureLedger`). A `_wardenx_migration` compat view remains so a rollback to the previous release's runner
   keeps working; a later cleanup step drops it.
-- Compose project name `wardenx` and the `wardenx_*` volumes/network (data loss, see Phase 4).
+- The `wardenx_*` data VOLUME names: the project/containers/networks are renamed (Step C), the volumes keep their names via `CHARTWARDEN_VOLUME_PREFIX=wardenx` (a copy would add downtime for no benefit; internal names only).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
 - The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.
 

@@ -17,7 +17,7 @@ and these secrets:
 | `DEPLOY_KNOWN_HOSTS` | Exact `known_hosts` line(s) for the VPS SSH host key |
 
 The matching public key belongs in the deploy account's `~/.ssh/authorized_keys`. The account needs
-access to `/opt/wardenx` and permission to run the narrowly required Docker Compose commands; do not
+access to the deploy directory (`/opt/wardenx` on the live host until the infra-rename cutover, `/opt/chartwarden` after; see `INFRA_RENAME_RUNBOOK.md`) and permission to run the narrowly required Docker Compose commands; do not
 use a root SSH account or disable host-key checking.
 
 The server must already contain a mode-`0600` `.env.production` copied from the production template.
@@ -25,14 +25,14 @@ To automate that first-time setup (and start MinIO before the first release), co
 (or just `deploy/production`) to the VPS and run:
 
 ```sh
-sudo DEPLOY_DIR=/opt/wardenx ./deploy/production/bootstrap-vps.sh
+sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 ```
 
 Override domains when needed:
 
 ```sh
 sudo FRONTEND_DOMAIN=app.example.com BACKEND_DOMAIN=api.example.com STORAGE_DOMAIN=storage.example.com \
-  DEPLOY_DIR=/opt/wardenx ./deploy/production/bootstrap-vps.sh
+  DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 ```
 
 The bootstrap keeps an existing `.env.production`, installs the storage Nginx vhost when Nginx is
@@ -46,8 +46,8 @@ for clients, but `/ready` does not depend on a host-network hairpin through Ngin
 
 The stock `combined` access-log format records the full request URI, so patient search terms
 (`?q=Smith`), cursors and S3 presigned signatures (`X-Amz-Signature`, `X-Amz-Credential`) would land in
-`/var/log/nginx`. The repo's vhosts therefore name `wardenx_phi_safe` (defined in
-`nginx/wardenx-log-format.conf`, installed to `/etc/nginx/conf.d/` by `bootstrap-vps.sh`), which logs
+`/var/log/nginx`. The repo's vhosts therefore name `chartwarden_phi_safe` (defined in
+`nginx/chartwarden-log-format.conf`, installed to `/etc/nginx/conf.d/` by `bootstrap-vps.sh`), which logs
 `$uri` (path only, no query string) and omits the Referer. The storage vhost has `access_log off`.
 
 Host requirements — the repo cannot enforce these, so check them once per host:
@@ -56,8 +56,8 @@ Host requirements — the repo cannot enforce these, so check them once per host
   default), and must not set a server-wide `access_log` with the `combined`/`main` format.
 - `error_log` can still echo the request line on upstream errors (`request: "GET /x?q=..."`). Keep it at
   `warn` or above and treat it as PHI-bearing: same retention and access controls as the application logs.
-- Verify: `nginx -T | grep -n wardenx_phi_safe`, then `curl -s "https://<host>/api/health?q=Smith" >/dev/null`
-  and confirm the new `/var/log/nginx/wardenx-*.access.log` line shows `/api/health` with no `?q=Smith`.
+- Verify: `nginx -T | grep -n chartwarden_phi_safe`, then `curl -s "https://<host>/api/health?q=Smith" >/dev/null`
+  and confirm the new `/var/log/nginx/chartwarden-*.access.log` line shows `/api/health` with no `?q=Smith`.
 
 The workflow uploads `deploy.sh`, `smoke.sh` and `compose.yml` for every release, pulls the SHA-pinned
 images, provisions the scoped MinIO account, runs strict schema-only migrations and runtime-role
@@ -74,12 +74,12 @@ are not rolled back.
   attests `ghcr.io/<owner>/chartwarden-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
   argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
-- **`minio-provision`** — a one-shot that creates the `wardenx-app` policy and the service account the api/worker use
+- **`minio-provision`** — a one-shot that creates the IAM policy (`CHARTWARDEN_MINIO_POLICY`, default `wardenx-app` until the infra-rename cutover sets `chartwarden-app`) and the service account the api/worker use
   (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*`,
   `wardenx-*` and `chartwarden-*` buckets only (the last is the rename target); the MinIO root account is no longer an application credential.
 
 - **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
-  `deploy/clamav/clamd.conf` (shipped to `/opt/wardenx/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
+  `deploy/clamav/clamd.conf` (shipped to `<deploy dir>/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
   and over-limit files, `StreamMaxLength` 26M (>= the 25 MB upload cap), signature DB in the `clamav-data` volume,
   refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do not
   `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
@@ -93,7 +93,7 @@ are not rolled back.
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
   `byteSize`, so MinIO refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
   the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
-  `client_max_body_size` in `nginx/wardenx-storage.conf` (100m today, sized for the largest M22 upload, so it is a ceiling
+  `client_max_body_size` in `nginx/chartwarden-storage.conf` (100m today, sized for the largest M22 upload, so it is a ceiling
   not a per-file limit) and, if you want a hard per-tenant cap, a MinIO bucket quota on `tenant-*` buckets
   (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
   returned `headers` map, which is expected.
@@ -167,10 +167,12 @@ reporting success for something never measured. To deploy without it, set
 
 | Variable | Default |
 | --- | --- |
-| `CHARTWARDEN_SMOKE_APP_URL` | `https://wardenx.chartwarden.cloud` |
-| `CHARTWARDEN_SMOKE_API_URL` | `https://be082026.wardenx.chartwarden.cloud` |
+| `CHARTWARDEN_SMOKE_APP_URL` | `.env.production` key of the same name, else `https://wardenx.chartwarden.cloud` |
+| `CHARTWARDEN_SMOKE_API_URL` | `.env.production` key of the same name, else `https://be082026.wardenx.chartwarden.cloud` |
 
-Defaults come from the `server_name`s in `nginx/`, so a stock install needs no configuration.
+An exported variable wins, then the `.env.production` key, then the legacy host (what the live host serves until the
+infra-rename cutover). The cutover sets both keys in `.env.production`, so the post-deploy smoke follows the new hosts
+without a code change. A new install should set both keys to its `nginx/chartwarden-*.conf` hosts.
 
 ### Env-var rename and rolling back to an older release
 
@@ -218,7 +220,7 @@ What is actually checked is the **workflow identity**, not a key:
 
 | Variable | Default |
 | --- | --- |
-| `CHARTWARDEN_COSIGN_IDENTITY` | `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` |
+| `CHARTWARDEN_COSIGN_IDENTITY` | unset = accept EITHER `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` OR the same path under `.../chartwarden/...` (repo rename in progress; set one value to pin) |
 | `CHARTWARDEN_COSIGN_ISSUER` | `https://token.actions.githubusercontent.com` |
 
 A signature produced by any other workflow, repository, branch or actor fails. That property is worth
@@ -239,6 +241,7 @@ which is a stronger rollback target than a tag: it names one artefact and cannot
 export DEPLOY_HOST="2.25.109.137"
 export DEPLOY_USER="deploy"
 export DEPLOY_PORT="22"
+export DEPLOY_DIR="/opt/wardenx"   # /opt/chartwarden after the infra-rename cutover
 
 SHA="94b4ca9dfb56e3c1d0551d08e18b78532e26728f"
 # Image names: releases built before the infra rename were published as `wardenx` / `wardenx-web` (and
@@ -250,10 +253,10 @@ scp -P "$DEPLOY_PORT" \
   deploy/production/deploy.sh \
   deploy/production/smoke.sh \
   deploy/production/compose.yml \
-  "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
+  "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
 
 ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-  "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
+  "chmod 700 $DEPLOY_DIR/deploy.sh $DEPLOY_DIR/smoke.sh && $DEPLOY_DIR/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
 
 
   git rev-parse main (to get de SHA)
