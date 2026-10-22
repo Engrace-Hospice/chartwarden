@@ -91,7 +91,9 @@ const EMPTY_ENTRY: SinceLastIdgCacheEntry = {
   medicationChanges: [],
 };
 
-/** Release A: write BOTH keys, read `legacyKey`. Release B flips the read to `newKey` (with legacy fallback). */
+/** Release B: write BOTH keys (rollback safety), read `newKey` first and fall back to `legacyKey` on a miss (a digest
+ *  accumulated before release A exists only there, and a miss would drop it and its event-id dedup). Every post-A write puts
+ *  the full entry in both keys, so a new-key hit is never staler than legacy. */
 export function cacheKeys(patientId: string): { legacyKey: string; newKey: string } {
   return {
     legacyKey: `${LEGACY_KEY_PREFIX}:${patientId}`,
@@ -100,7 +102,8 @@ export function cacheKeys(patientId: string): { legacyKey: string; newKey: strin
 }
 
 async function readEntry(redis: Redis, patientId: string): Promise<SinceLastIdgCacheEntry> {
-  const raw = await redis.get(cacheKeys(patientId).legacyKey);
+  const { legacyKey, newKey } = cacheKeys(patientId);
+  const raw = (await redis.get(newKey)) ?? (await redis.get(legacyKey));
   if (!raw) return EMPTY_ENTRY;
   try {
     const parsed = JSON.parse(raw) as Partial<SinceLastIdgCacheEntry>;

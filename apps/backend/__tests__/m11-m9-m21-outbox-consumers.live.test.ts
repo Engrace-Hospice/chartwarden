@@ -245,6 +245,40 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         );
       });
 
+      it("release B: a legacy-only banner (written before release A) still dedups a redelivery and is migrated forward", async () => {
+        const patientId = "aaaaaaaa-1000-4000-8000-0000000000f1";
+        const assessmentId = "aaaaaaaa-1000-4000-8000-0000000000f2";
+        const legacyKey = `wardenx:m11:orders:suggestion:${patientId}`;
+        const newKey = `chartwarden:m11:orders:suggestion:${patientId}`;
+        const seeded = [
+          { triggeringId: assessmentId, suggestedKind: "comfort_kit" },
+        ];
+        await redis.set(legacyKey, JSON.stringify(seeded), "EX", 1_000);
+
+        // Redelivery of the SAME assessment: the legacy hit short-circuits, nothing is re-raised.
+        await suggestionConsumer.handle({
+          organizationId: ORG_A,
+          payload: { patientId, assessmentId, ruleId: "painad_ge_4" },
+        });
+        expect(JSON.parse((await redis.get(legacyKey)) as string)).toEqual(
+          seeded,
+        );
+
+        // A NEW assessment appends to the pre-A list and writes it to BOTH keys.
+        const second = "aaaaaaaa-1000-4000-8000-0000000000f3";
+        await suggestionConsumer.handle({
+          organizationId: ORG_A,
+          payload: { patientId, assessmentId: second, ruleId: "painad_ge_4" },
+        });
+        for (const key of [legacyKey, newKey]) {
+          const banner = JSON.parse((await redis.get(key)) as string);
+          expect(
+            banner.map((e: { triggeringId: string }) => e.triggeringId),
+          ).toEqual([assessmentId, second]);
+          expect(await redis.ttl(key)).toBeGreaterThan(7 * 86_400 - 60);
+        }
+      });
+
       it("skips a non-qualifying rule id (below threshold)", async () => {
         const patientId = "aaaaaaaa-1000-4000-8000-000000000005";
         await suggestionConsumer.handle({

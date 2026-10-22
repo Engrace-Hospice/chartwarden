@@ -55,7 +55,9 @@ export interface AssessmentSuggestionDeps {
   readonly outbox: OrderWriteOutboxPort;
 }
 
-/** Release A: write BOTH keys, read `legacyKey`. Release B flips the read to `newKey` (with legacy fallback). */
+/** Release B: write BOTH keys (rollback safety), read `newKey` first and fall back to `legacyKey` on a miss (a banner written
+ *  before release A exists only there; a miss would re-raise a suggestion the dedup already holds). Every post-A write puts
+ *  the full list in both keys, so a new-key hit is never staler than legacy. */
 export function bannerKeys(patientId: string): { legacyKey: string; newKey: string } {
   return {
     legacyKey: `${LEGACY_BANNER_KEY_PREFIX}:${patientId}`,
@@ -63,8 +65,9 @@ export function bannerKeys(patientId: string): { legacyKey: string; newKey: stri
   };
 }
 
-async function readBanner(redis: Redis, patientId: string): Promise<OrderSuggestionEntry[]> {
-  const raw = await redis.get(bannerKeys(patientId).legacyKey);
+export async function readBanner(redis: Redis, patientId: string): Promise<OrderSuggestionEntry[]> {
+  const { legacyKey, newKey } = bannerKeys(patientId);
+  const raw = (await redis.get(newKey)) ?? (await redis.get(legacyKey));
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
