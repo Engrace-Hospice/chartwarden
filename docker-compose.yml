@@ -131,11 +131,22 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # The HOPE iQIES package header needs a product version: APP_VERSION, or GIT_SHA when APP_VERSION is
+      # the "dev" default. Set APP_VERSION in .env, then rebuild (`docker compose up -d --build api`): build args
+      # are baked at build time.
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+        GIT_SHA: ${GIT_SHA:-unknown}
     command: ["bun", "run", "apps/backend/src/index.ts"]
     environment:
       PROCESS_ROLE: api
       NODE_ENV: development
       MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
+      # HOPE iQIES package header (ChartWarden as software vendor). Package generation 422s, naming each
+      # missing key, until these are set in .env (see .env.example).
+      CHARTWARDEN_SOFTWARE_VENDOR_ID: ${CHARTWARDEN_SOFTWARE_VENDOR_ID:-}
+      CHARTWARDEN_SOFTWARE_VENDOR_NAME: ${CHARTWARDEN_SOFTWARE_VENDOR_NAME:-}
+      CHARTWARDEN_SOFTWARE_VENDOR_EMAIL: ${CHARTWARDEN_SOFTWARE_VENDOR_EMAIL:-}
       PORT: "3000"
       LOG_LEVEL: info
       DATABASE_URL: postgres://chartwarden_app:chartwarden-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
