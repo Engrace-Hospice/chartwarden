@@ -17,9 +17,9 @@
 // NO PHI beyond what the order list already exposes (`patientId`); the reason is a fixed token, never free text.
 //
 // CASELOAD (GAP-030): like every other order queue, the list narrows to the caller's caseload (`readScopeOf`) —
-// org-wide scope roles (DON, medical director, compliance officer, ...) see the whole org. `view_held` alone is not
-// chart access: an org_admin holds it but deliberately no `patient.read` scope, and before this the queue listed
-// rows whose order and patient reads then 404'd for that same caller.
+// org-wide scope roles (DON, medical director, compliance officer, administrator, org_admin, ...) see the whole org.
+// `view_held` alone is not chart access: a caseload-bound caller holds it but sees only their caseload, and before
+// this the queue listed rows whose order and patient reads then 404'd for that same caller.
 import { requirePermission } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";

@@ -25,6 +25,18 @@ Both roles now read **every patient in the org, in every module that asks this q
 - This reverses the earlier deliberate exclusion recorded in F-096. That history entry is updated to point here.
 - Tests that asserted the exclusion (`org-wide-scope.test.ts`, `ssn-grants.test.ts`) now assert the opposite.
 
+## Risks accepted by the owner after security review
+
+The owner chose to keep one shared rule for reads and writes. Known consequences, beyond the above:
+
+- A user holding `administrator`/`org_admin` plus a clinical or physician role (common in small hospices) can chart, draft, administer or prescribe on any patient; a pure admin is still stopped by the separate discipline gates.
+- Staff telehealth join, record and end (`staff-visit-scope.ts`) reach any live visit for these roles.
+- IDG meeting scoping by location, and HOPE provider-entity scoping, no longer narrow these roles.
+- Break-glass is never invoked for these roles, because the predicate passes first; read-audit rows do not record that org-wide scope admitted the read.
+- Mitigation built here: a tenant cannot create a role under any org-wide-scope key (`POST /api/v1/roles` returns 422 `RESERVED_ROLE`), so deleting and recreating `org_admin` with zero permissions cannot self-grant the scope.
+
+Follow-ups worth a ticket: a `scopeBasis: "org_wide"` marker on read audit, and a read-only variant if the write reach proves too wide.
+
 ## Alternatives not taken
 
 - Org-wide for the census list only, with per-chart reads still caseload-bound. Rejected by the owner in favour of one shared rule.

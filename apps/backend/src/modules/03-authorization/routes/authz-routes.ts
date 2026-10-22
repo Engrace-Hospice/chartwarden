@@ -23,6 +23,7 @@
 import type { AuditContext } from "@chartwarden/audit";
 import {
   allPermissionMirrorRows,
+  ORG_WIDE_SCOPE_ROLES,
   isSystemLocked,
   isTenantRoleReserved,
   requirePermission,
@@ -135,6 +136,16 @@ const reservedRole = () =>
     422,
   );
 
+// ADR-0090: org-wide patient scope is keyed on the role KEY, and anti-escalation compares permission keys only, so a
+// tenant-created role reusing one of those keys would carry the scope with zero permissions. Seeded roles come from
+// the templates, never from this route.
+const orgWideKeyReserved = () =>
+  new ChartWardenError(
+    "RESERVED_ROLE",
+    "role keys that grant org-wide patient scope are seeded from the platform templates and cannot be created",
+    422,
+  );
+
 export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRouteDeps): void {
   const breakGlassTtlSec = deps.breakGlassTtlSec ?? DEFAULT_BREAK_GLASS_TTL_SEC;
 
@@ -183,6 +194,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       // rows. Refused before anti-escalation, which a zero-permission spoof passes trivially. The
       // enrichment reader and the migration 0318 CHECK enforce the same rule below this route.
       if (isTenantRoleReserved(body)) throw reservedRole();
+      if (ORG_WIDE_SCOPE_ROLES.includes(body.key)) throw orgWideKeyReserved();
 
       await assertNoEscalation(request, organizationId, userId, permissionKeys);
 
