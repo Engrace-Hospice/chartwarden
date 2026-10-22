@@ -979,7 +979,7 @@ describe("M2-T06 identity route inventory", () => {
     it("per-org origin wins over webAppBaseUrl; an unresolved org falls back to it", async () => {
       const resolved = makeServer({
         emailTransport: capturingEmailTransport(),
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
         appOriginFor: async () => "https://acme.chartwarden.com",
       });
       const res = await resolved.app.inject({
@@ -992,7 +992,7 @@ describe("M2-T06 identity route inventory", () => {
       await resolved.app.close();
       const fallback = makeServer({
         emailTransport: capturingEmailTransport(),
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
         appOriginFor: async () => undefined,
       });
       const res2 = await fallback.app.inject({
@@ -1001,7 +1001,7 @@ describe("M2-T06 identity route inventory", () => {
         headers: ADMIN,
         payload: { email: "new2@example.com" },
       });
-      expect((res2.json() as { inviteUrl?: string }).inviteUrl).toMatch(/^https:\/\/app\.wardenx\.example\/invite\//);
+      expect((res2.json() as { inviteUrl?: string }).inviteUrl).toMatch(/^https:\/\/app\.chartwarden\.example\/invite\//);
       await fallback.app.close();
     });
 

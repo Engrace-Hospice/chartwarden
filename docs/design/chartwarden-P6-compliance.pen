@@ -230,7 +230,7 @@
               "id": "tysjH",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -1610,7 +1610,7 @@
               "id": "rcgsV",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -2985,7 +2985,7 @@
               "id": "PlY2E",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -4362,7 +4362,7 @@
               "id": "EuFdW",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -5742,7 +5742,7 @@
               "id": "Dh3RB",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -7106,7 +7106,7 @@
               "id": "qCdfQ",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -8432,7 +8432,7 @@
               "id": "KgBqP",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -9768,7 +9768,7 @@
               "id": "YoZAZ",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"

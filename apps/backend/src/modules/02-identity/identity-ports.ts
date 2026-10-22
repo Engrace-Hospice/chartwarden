@@ -648,7 +648,7 @@ export interface IdentityRouteDeps {
    */
   emailTransport?: InvitationEmailTransport;
   /**
-   * The web app's origin, for building the `/invite/:token` link (e.g. `https://app.wardenx.example`).
+   * The web app's origin, for building the `/invite/:token` link (e.g. `https://app.chartwarden.example`).
    * Omitted → the route falls back to a relative path only (no origin to safely guess).
    */
   webAppBaseUrl?: string;

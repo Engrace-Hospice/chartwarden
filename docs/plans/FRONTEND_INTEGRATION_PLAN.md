@@ -122,7 +122,7 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
   `RightDetailPanel`, `StickyFooterActions`, `PatientBanner`. Foundational patterns —
   `CenteredCardLayout` (Auth Flow → M2), `CenteredStatusLayout` (System Page), `WorkQueueLayout`,
   `DashboardLayout`, `StepperWorkflowLayout`, `PatientWorkspaceLayout` (→ M5), `DetailPageLayout`.
-  Slot-based, presentational, no business logic; exported from the `@wardenx/ui` barrel.
+  Slot-based, presentational, no business logic; exported from the `@chartwarden/ui` barrel.
 - accept: `bun run build` + `arch:fitness` + `test` green; `docs:ui` still green (no spec change);
   Vite bundles. Specialized patterns tracked to their module screens.
 

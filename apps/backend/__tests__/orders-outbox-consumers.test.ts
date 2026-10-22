@@ -127,7 +127,7 @@ describe("M11 outbox event contract (§4.4)", () => {
         priority: "R",
         patientDemographics: {
           mrn: "MRN-1",
-          internalMrnAuthority: "WARDENX",
+          internalMrnAuthority: "CHARTWARDEN",
           familyName: "Doe",
           givenName: "Jane",
           dateOfBirth: "1950-01-01",

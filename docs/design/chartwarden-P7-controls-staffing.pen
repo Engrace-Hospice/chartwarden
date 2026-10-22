@@ -230,7 +230,7 @@
               "id": "rzCVU",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -1577,7 +1577,7 @@
               "id": "q7Enl8",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -2940,7 +2940,7 @@
               "id": "jRXMo",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -4240,7 +4240,7 @@
               "id": "RnojE",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -5625,7 +5625,7 @@
               "id": "CvZxd",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"

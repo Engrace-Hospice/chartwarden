@@ -12,7 +12,7 @@ tables/code); architecture wins over specs.
 >
 > **AI governance is the gate (M32):** every capability registered, prompt-registry validated, the
 > per-module AI-prohibited zones (`validate*AIBlock()`) hold at boot, kill-switch + per-tenant opt-in +
-> per-clinician opt-out enforced (`WARDENX_AI_GOVERNANCE`). Layer 2 is **narrate-around-existing-rows
+> per-clinician opt-out enforced (`CHARTWARDEN_AI_GOVERNANCE`). Layer 2 is **narrate-around-existing-rows
 > only** — never invents clinical facts; shares M8's hard-block category list.
 
 ## A1 — M32 AI Platform: activate `ai.full`

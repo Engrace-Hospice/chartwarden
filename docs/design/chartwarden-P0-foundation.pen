@@ -259,7 +259,7 @@
               "id": "Ah3UB",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -1283,7 +1283,7 @@
               "id": "OX7ma",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -2438,7 +2438,7 @@
                   "id": "ObrtZ",
                   "name": "Brand",
                   "fill": "$--primary",
-                  "content": "WardenX",
+                  "content": "ChartWarden",
                   "fontFamily": "$--font-primary",
                   "fontSize": 24,
                   "fontWeight": "600"
@@ -2653,7 +2653,7 @@
                   "id": "obph4",
                   "name": "Brand",
                   "fill": "$--primary",
-                  "content": "WardenX",
+                  "content": "ChartWarden",
                   "fontFamily": "$--font-primary",
                   "fontSize": 24,
                   "fontWeight": "600"
@@ -2917,7 +2917,7 @@
               "id": "dtcQg",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -5542,7 +5542,7 @@
                   "fill": "$--muted-foreground",
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
-                  "content": "WardenX is undergoing maintenance. Back online at 02:00 UTC.",
+                  "content": "ChartWarden is undergoing maintenance. Back online at 02:00 UTC.",
                   "textAlign": "center",
                   "fontFamily": "$--font-secondary",
                   "fontSize": 13,
@@ -6397,7 +6397,7 @@
               "id": "eUR0b",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -7637,7 +7637,7 @@
               "id": "NHjYJ",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -8583,7 +8583,7 @@
               "id": "h1ZNB",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -9438,7 +9438,7 @@
               "id": "lfiJK",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"
@@ -10419,7 +10419,7 @@
               "id": "nO99S",
               "name": "Brand",
               "fill": "$--primary",
-              "content": "WardenX",
+              "content": "ChartWarden",
               "fontFamily": "$--font-primary",
               "fontSize": 20,
               "fontWeight": "600"

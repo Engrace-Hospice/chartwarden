@@ -152,4 +152,4 @@ status ledger [`../design/DEFERRED_SCREENS.md`](../design/DEFERRED_SCREENS.md). 
 
 ## Open ADRs to apply during the run
 - [x] **ADR-0029** (`x12-worker-client` split) — applied (38 pkgs; Wave G plan corrected). No remaining
-  ungoverned adapter packages (only `@wardenx/mobile-offline` stays intentionally exempt).
+  ungoverned adapter packages (only `@chartwarden/mobile-offline` stays intentionally exempt).

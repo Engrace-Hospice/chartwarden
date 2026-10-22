@@ -19,7 +19,7 @@ Specs (all `docs/modules/`): `CHARTWARDEN_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0
 > architecture (§2.4) behind the flag as a deny-stub; no Phase-1 prescribe route depends on it.
 >
 > **Mobile offline is manifest-exempt.** M9 `assessment_draft` + M10 `hope_assessment_draft` live in
-> `@wardenx/mobile-offline` (on-device sqlcipher, **not** in any codePath, **not** fitness-governed —
+> `@chartwarden/mobile-offline` (on-device sqlcipher, **not** in any codePath, **not** fitness-governed —
 > deferred in Phase 0). Build the **server-side** path only; `administration_offline_queue` (M13) IS a
 > server table and is built.
 >

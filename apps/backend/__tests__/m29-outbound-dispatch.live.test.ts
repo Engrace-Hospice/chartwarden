@@ -234,7 +234,7 @@ function ormRequestedPayload(overrides: {
       clinicalNotes: ["fasting draw"],
       patientDemographics: {
         mrn: "MRN-1",
-        internalMrnAuthority: "WARDENX",
+        internalMrnAuthority: "CHARTWARDEN",
         familyName: "Doe",
         givenName: "John",
         dateOfBirth: "1950-01-01",

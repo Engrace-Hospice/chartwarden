@@ -199,7 +199,7 @@
                   "id": "xxBm0",
                   "name": "t",
                   "fill": "$--primary",
-                  "content": "WardenX",
+                  "content": "ChartWarden",
                   "fontFamily": "$--font-primary",
                   "fontSize": 19,
                   "fontWeight": "600"
@@ -1688,7 +1688,7 @@
                   "id": "bBH6w",
                   "name": "t",
                   "fill": "$--primary",
-                  "content": "WardenX",
+                  "content": "ChartWarden",
                   "fontFamily": "$--font-primary",
                   "fontSize": 19,
                   "fontWeight": "600"
@@ -2740,7 +2740,7 @@
                   "id": "uGGxP",
                   "name": "t",
                   "fill": "$--primary",
-                  "content": "WardenX",
+                  "content": "ChartWarden",
                   "fontFamily": "$--font-primary",
                   "fontSize": 19,
                   "fontWeight": "600"
@@ -3921,7 +3921,7 @@
                   "id": "GzfqZ",
                   "name": "t",
                   "fill": "$--primary",
-                  "content": "WardenX",
+                  "content": "ChartWarden",
                   "fontFamily": "$--font-primary",
                   "fontSize": 19,
                   "fontWeight": "600"

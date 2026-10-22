@@ -145,7 +145,7 @@ describe.skipIf(!DB_URL)(
           status, proposed_by_membership_id, rate_limit_msg_per_sec, lab_destination_facility_id,
           msh_sending_application, msh_sending_facility, msh_receiving_application, msh_receiving_facility)
        VALUES ($1,$2,'orm_outbound','Reference Lab','127.0.0.1',$3,'mllp_plain',NULL,'active',$4,1000,$5,
-               'WARDENX','HOSPICE-A','REFLAB','REFLAB-FAC')`,
+               'CHARTWARDEN','HOSPICE-A','REFLAB','REFLAB-FAC')`,
         [id, organizationId, port, randomUUID(), FAC_ACTIVE],
       );
       return id;
