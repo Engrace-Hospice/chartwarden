@@ -105,7 +105,7 @@ old-name redirect.
 
 Downtime: only if you want zero risk of lost writes. Platform buckets are written rarely
 (terminology releases); `wardenx-readiness` is an ephemeral probe. `tenant-*` buckets are NOT renamed and
-NOT touched. Cut over in a short write freeze (stop `worker`) or accept re-running the sync.
+NOT touched. Cut over (mirror, then deploy the code switch) in a short write freeze (stop `worker`) or accept re-running the sync.
 
 Bucket inventory (code/config references):
 
@@ -120,13 +120,14 @@ Bucket inventory (code/config references):
 
 Order of the bucket change (production holds only `tenant-*` buckets today; neither `wardenx-platform-terminology` nor
 `wardenx-readiness` exists on disk, so no data copy is needed unless a terminology release has been uploaded since):
-1. Policy PR (additive, done first): the `wardenx-app` policy in `compose.yml` also allows `chartwarden-*`. After its deploy,
-   confirm with `mc admin policy info local wardenx-app` that both prefixes are present.
+1. Policy PR (additive, done first): the `wardenx-app` policy in `compose.yml` also allows `chartwarden-*` (done; after step 3 the
+   policy holds only `tenant-*` and `chartwarden-*`, confirm with `mc admin policy info local wardenx-app`).
 2. DONE (code PR, after step 1 was live): `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET` switched to the new names.
    Neither creates a bucket: the readiness probe treats 404 (missing bucket) as healthy; the terminology store fails on a
-   missing bucket, so `chartwarden-platform-terminology` must exist (`mc mb`) before the first terminology upload/read.
-   A deployment already holding releases in the old bucket must either mirror them (procedure below) or set
-   `TERMINOLOGY_PLATFORM_BUCKET=wardenx-platform-terminology` to keep using the old bucket.
+   missing bucket, so `chartwarden-platform-terminology` is a MANUAL prerequisite: nothing creates it (not minio-provision),
+   run `mc mb local/chartwarden-platform-terminology` before the first terminology upload/read.
+   A deployment already holding releases in the old bucket MUST mirror them (procedure below); after step 3 the old bucket
+   cannot be used as a fallback (see the step 3 note).
 3. DONE (cleanup PR): the `wardenx-*` ARNs were dropped from the policy (kept: `tenant-*`, `chartwarden-*`; the readiness
    probe's `s3:ListBucket` on `chartwarden-readiness` is covered by `chartwarden-*`). Verified read-only on production first:
    `/data` held only `tenant-*` buckets, no `wardenx-*` on disk or in `.minio.sys/buckets`, no `TERMINOLOGY_PLATFORM_BUCKET`
@@ -156,15 +157,15 @@ mc mirror --preserve --overwrite local/wardenx-platform-terminology local/chartw
 # 4. Verify
 mc diff local/wardenx-platform-terminology local/chartwarden-platform-terminology   # expect no output
 mc du local/wardenx-platform-terminology; mc du local/chartwarden-platform-terminology
-# 5. Switch: ship the policy/code/env change above, deploy, re-run the mirror once more, then smoke
+# 5. Switch: the code already uses the new names (step 2) and the policy already allows them; re-run the mirror once more, then smoke
 ```
 
 Verification: terminology release job reads/writes the new bucket; `GET /api/ready` (readiness probe)
 healthy; MinIO audit webhook still posts to `/api/v1/webhooks/minio/access-log` for the new bucket
 (`mc admin config get local audit_webhook`; the webhook target is server-wide, buckets need no per-bucket
 hook). Keep the old buckets read-only for at least one release cycle; delete only after the operator
-confirms (`mc rb --force local/wardenx-platform-terminology`). Rollback: revert the env/code change; old
-buckets are untouched. Renaming the policy `wardenx-app` or the webhook target suffix is optional and
+confirms (`mc rb --force local/wardenx-platform-terminology`). Rollback: revert the code change AND re-add the
+`wardenx-*` policy ARNs (step 3 rollback above), otherwise the app cannot reach the old buckets; old buckets are untouched. Renaming the policy `wardenx-app` or the webhook target suffix is optional and
 restarts/reconfigures MinIO (brief downtime); do it last, or leave as-is (internal names, never user-facing).
 
 ## Phase 4 - VPS directory `/opt/wardenx` -> `/opt/chartwarden`
