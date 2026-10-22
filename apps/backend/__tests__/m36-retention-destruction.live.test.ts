@@ -27,7 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { audit } from "@chartwarden/audit";
 import { type DbClient, createDbClient } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readStaffNames } from "../src/modules/02-identity/staff-names";
 import {
@@ -973,6 +973,89 @@ describe.skipIf(!DB_URL)(
         );
         await refused(q, RESERVE, [ORG_A, cert, randomUUID(), []], { code: "23514" });
       });
+    });
+
+    it("a reconciled settle is refused for a young batch (database clock): an in-flight batch cannot be refunded", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      const batch = randomUUID();
+      await inApp(async (q) => {
+        expect((await q(RESERVE, [ORG_A, cert, batch, [randomUUID()]])).rows[0].ok).toBe(true);
+        await refused(q, SETTLE, [ORG_A, batch, 0, "reconciled"], { code: "23514" });
+        // the executor's own settle is not gated by age
+        expect((await q(SETTLE, [ORG_A, batch, 0, "settled"])).rows[0].left).toBe(5);
+      });
+    });
+
+    it("reconcile follows the DATABASE clock, not the host's: a young batch stays reserved when the host clock is far ahead, a stranded one is settled when it is far behind", async () => {
+      const kept = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      await kit.admin.query("UPDATE destruction_certificate SET reserved_count = 2 WHERE id=$1", [
+        cert,
+      ]);
+      const young = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count)
+           VALUES ($1,$2,ARRAY[$3]::uuid[],1) RETURNING id`,
+          [ORG_A, cert, randomUUID()],
+        )
+      )[0].id;
+      const old = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count, reserved_at)
+           VALUES ($1,$2,ARRAY[$3]::uuid[],1, now() - interval '7 hours') RETURNING id`,
+          [ORG_A, cert, randomUUID()],
+        )
+      )[0].id;
+      const dayMs = 86_400_000;
+      // host clock 30 days AHEAD: the young batch is not stranded just because the host thinks so
+      const ahead = await run(ORG_A, {
+        execute: false,
+        now: () => new Date(Date.now() + 30 * dayMs),
+      });
+      expect(ahead.reconciled.map((r) => r.batchId)).toEqual([old]);
+      // host clock 2 days BEHIND: the stranded batch is still settled
+      const behind = await run(ORG_A, { now: () => new Date(Date.now() - 2 * dayMs) });
+      expect(behind.reconciled.map((r) => r.batchId)).toEqual([old]);
+      const states = await kit.one<{ id: string; state: string }>(
+        "SELECT id, state FROM message_destruction_batch WHERE certificate_id=$1",
+        [cert],
+      );
+      expect(states.find((b) => b.id === young)?.state).toBe("reserved");
+      expect(states.find((b) => b.id === old)?.state).toBe("reconciled");
+      expect(await exists(kept)).toBe(false); // the refunded capacity was spent in the same run
+    });
+
+    it("reserve refuses an id another certificate's unsettled batch holds (the overlap check spans certificates)", async () => {
+      const certA = await certificate(ORG_A, "approved", "message.care_related", 5);
+      const certB = await certificate(ORG_A, "approved", "message.operational", 5);
+      const shared = randomUUID();
+      await inApp(async (q) => {
+        expect((await q(RESERVE, [ORG_A, certA, randomUUID(), [shared]])).rows[0].ok).toBe(true);
+        expect((await q(RESERVE, [ORG_A, certB, randomUUID(), [shared]])).rows[0].ok).toBe(false);
+      });
+    });
+
+    it("a settle whose acknowledgement was lost (it committed, the caller saw an error) is a success on retry, not an unrecorded batch", async () => {
+      const x = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      let calls = 0;
+      const lostAck: MessageDestructionHoldPort = {
+        ...messageHolds,
+        settleCertificateCount: async (tx, input) => {
+          calls += 1;
+          if (calls > 1) return settleMessageCertificateCount(tx, input);
+          // First attempt: the settle really commits (own transaction), but the caller's transaction fails, as if the ack were lost.
+          await withOrgContext(kit.handle.db, systemOrgContext(ORG_A), (other) =>
+            settleMessageCertificateCount(other as unknown as DbClient, input),
+          );
+          throw new Error("connection lost after commit");
+        },
+      };
+      const result = await run(ORG_A, { messageHolds: lostAck });
+      expect(result.destroyed).toBe(1);
+      expect(result.certificates[0]?.failure).toBeUndefined();
+      expect(await exists(x)).toBe(false);
+      expect(await countsOf(cert)).toEqual({ record: 5, destroyed: 1, reserved: 0 });
     });
 
     it("the app role can only READ batches: it cannot insert or update one, and a settled batch cannot be revived even by the superuser", async () => {

@@ -132,6 +132,24 @@ describe("migration 1159 destruction certificate spend", () => {
     expect(src).not.toMatch(/PLATFORM_PROVISION_UPDATE_TABLES = \[[^\]]*"destruction_certificate"/);
   });
 
+  it("reserve serialises per tenant; a reconciled settle needs a batch older than 6 hours on the database clock; the platform grant is also in the migration", () => {
+    expect(sql).toContain("pg_advisory_xact_lock(hashtextextended('mdb:' || p_org::text, 0))");
+    expect(sql).toContain(
+      "p_state = 'reconciled' AND v_batch.reserved_at >= now() - interval '6 hours'",
+    );
+    expect(sql).toContain('REVOKE UPDATE ON "destruction_certificate" FROM chartwarden_platform');
+    const platform =
+      /GRANT UPDATE \(([^)]*)\)\s+ON "destruction_certificate" TO chartwarden_platform/.exec(sql);
+    expect(platform).not.toBeNull();
+    for (const forbidden of ["destroyed_count", "reserved_count", "data_class"]) {
+      expect(platform?.[1]).not.toContain(forbidden);
+    }
+    const exec = read("apps/backend/src/modules/36-messaging/jobs/retention-destruction.ts");
+    expect(exec).toContain("make_interval(hours => ${STRANDED_BATCH_AFTER_HOURS})");
+    expect(exec).toContain("set_config('transaction_timeout'");
+    expect(exec).toContain("clock_timestamp()");
+  });
+
   it("the executor never writes record_count", () => {
     const src = read("apps/backend/src/modules/04-audit/messaging-hold-workflow.ts");
     expect(src).not.toMatch(/set\(\{[^}]*recordCount/);

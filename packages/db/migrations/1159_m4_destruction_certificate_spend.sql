@@ -121,6 +121,8 @@ BEGIN
   IF p_org IS DISTINCT FROM nullif(current_setting('app.org_id', true), '')::uuid THEN
     RAISE EXCEPTION 'destruction_certificate_reserve: not this tenant''s certificate' USING ERRCODE = 'insufficient_privilege';
   END IF;
+  -- One reserve per tenant at a time: the overlap check below spans certificates, so it must not rely on the caller's per-certificate row lock.
+  PERFORM pg_advisory_xact_lock(hashtextextended('mdb:' || p_org::text, 0));
   -- A message another unsettled batch has planned is not planned twice (its delete may still be in flight).
   IF EXISTS (SELECT 1 FROM public.message_destruction_batch b
               WHERE b.organization_id = p_org AND b.state = 'reserved' AND b.planned_message_ids && p_ids) THEN
@@ -152,6 +154,10 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'destruction_certificate_settle: no reserved batch %', p_batch USING ERRCODE = 'no_data_found';
   END IF;
+  -- A reconcile may only refund a batch that is really stranded, judged on the DATABASE clock: a young, possibly in-flight batch cannot be refunded.
+  IF p_state = 'reconciled' AND v_batch.reserved_at >= now() - interval '6 hours' THEN
+    RAISE EXCEPTION 'destruction_certificate_settle: batch % is not stranded yet', p_batch USING ERRCODE = 'check_violation';
+  END IF;
   IF p_destroyed IS NULL OR p_destroyed < 0 OR p_destroyed > v_batch.planned_count THEN
     RAISE EXCEPTION 'destruction_certificate_settle: destroyed must be within the planned batch' USING ERRCODE = 'check_violation';
   END IF;
@@ -174,6 +180,16 @@ REVOKE ALL ON FUNCTION destruction_certificate_reserve(uuid, uuid, uuid, uuid[])
 REVOKE ALL ON FUNCTION destruction_certificate_settle(uuid, uuid, integer, text) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION destruction_certificate_reserve(uuid, uuid, uuid, uuid[]) TO chartwarden_app;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION destruction_certificate_settle(uuid, uuid, integer, text) TO chartwarden_app;--> statement-breakpoint
+
+-- The platform carrier (M34 offboarding) gets the same column set, never the spend columns or data_class. The provisioner (scripts/db/provision-runtime-roles.ts)
+-- applies the same grant when it runs, so either order of migrate and provision ends in the same state.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
+    REVOKE UPDATE ON "destruction_certificate" FROM chartwarden_platform;
+    GRANT UPDATE ("status", "approved_by", "executed_at", "record_count", "refusal_reason", "refused_rows_by_module", "dek_destroyed_at", "certificate_pdf_ref")
+      ON "destruction_certificate" TO chartwarden_platform;
+  END IF;
+END $$;--> statement-breakpoint
 
 GRANT SELECT ("id", "organization_id", "status", "data_class", "created_at", "record_count", "destroyed_count", "reserved_count")
   ON "destruction_certificate" TO chartwarden_destruction;--> statement-breakpoint

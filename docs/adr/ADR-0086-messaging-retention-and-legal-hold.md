@@ -113,6 +113,13 @@ A redaction **masks, it never destroys**: the cipher, hash and status are untouc
 - **The redaction reason is stored in plaintext** (`message_redaction.reason`, left out of the audit row and every response). Entering PHI or patient identifiers in it is forbidden: the web copy and the runbook must say so (the hold dialog already does). Sealing it under the tenant DEK like a message body is cheap if compliance wants it; not done.
 
 - **Batch rows are never pruned.** `message_destruction_batch` keeps one row (ids only) per reserved batch, settled or not, forever. That is the evidence trail for the spend; a retention rule for it is a product decision. Not built.
+- **Residuals recorded in round 5 (documented, not built).**
+  - Earlier drafts of 1159: any dev DB that applied one must be reset (functions, grants and the batch table changed more than once).
+  - A refused plan (`refused: true`) reports `approvedRemaining: 0`, which can read as "the count is spent" when the cause was a stale, held or overlapping reservation. The certificate is left open in that case.
+  - `destruction_certificate_reserve` does not check that the ids are distinct or that they belong to the certificate's class; the planner supplies them, and a duplicate id only makes the batch's planned_count (and so its reservation) larger, never smaller.
+  - The reconcile still takes the destroyed figure from the caller (the gone-ids count the executor computed); the settle function bounds it by the batch's own planned_count and refuses a batch younger than 6 hours on the database clock, but does not recount against `message` (the admin role has no RLS path to it).
+  - Platform carrier grant: it is applied by the migration (when the role exists) AND by the provisioner; run `scripts/db/provision-runtime-roles.ts` after `migrate` in the deploy checklist so either order ends the same.
+  - The destructive transaction is bounded by `transaction_timeout` (30 min), `idle_in_transaction_session_timeout` (3 min), the statement and lock timeouts, and refuses a reservation older than 5 hours (checked with `clock_timestamp()` right before the DELETE), so 5 h + 30 min stays under the 6 h reconcile threshold by construction. Reconcile compares against the database clock.
 - **Migration 1159 was amended in place** (it is unmerged). Any development database that applied an earlier version of 1159 must be reset (the function signatures and the batch grants changed); say so in the PR.
 
 ### Known limits of this slice

@@ -79,6 +79,9 @@ export const MAX_RESERVATION_AGE_HOURS = 5;
 /** Statement and lock timeouts of the destructive transaction (a few statements, so the whole transaction ends far inside the stranded threshold). */
 export const DELETE_STATEMENT_TIMEOUT_MS = 600_000;
 export const DELETE_LOCK_TIMEOUT_MS = 60_000;
+/** The whole destructive transaction (PG18 transaction_timeout) and its idle gaps. MAX_RESERVATION_AGE_HOURS + this < STRANDED_BATCH_AFTER_HOURS by construction. */
+export const DELETE_TRANSACTION_TIMEOUT_MS = 1_800_000;
+export const DELETE_IDLE_IN_TRANSACTION_TIMEOUT_MS = 180_000;
 /** Stranded batches reconciled per org per run. */
 export const RECONCILE_MAX_BATCHES_PER_RUN = 50;
 
@@ -286,17 +289,9 @@ async function deleteBatch(
     const tx = txRaw as unknown as DbClient;
     // Bounded: a statement or lock wait that hangs ends this transaction long before a reconcile could treat the reservation as stranded.
     await tx.execute(sql`SELECT set_config('statement_timeout', ${String(DELETE_STATEMENT_TIMEOUT_MS)}, true),
-                                set_config('lock_timeout', ${String(DELETE_LOCK_TIMEOUT_MS)}, true)`);
-    // The reservation must still be young (the database's clock): an old one may already be reconciled, so nothing is deleted under it;
-    // the caller settles it with 0 destroyed, which refunds it.
-    const aged = reservedAt
-      ? (
-          await tx.execute<{ fresh: boolean }>(
-            sql`SELECT (now() - ${reservedAt.toISOString()}::timestamptz) < (${String(maxAgeMs)} || ' milliseconds')::interval AS fresh`,
-          )
-        ).rows[0]?.fresh !== true
-      : true;
-    if (aged) return [];
+                                set_config('lock_timeout', ${String(DELETE_LOCK_TIMEOUT_MS)}, true),
+                                set_config('transaction_timeout', ${String(DELETE_TRANSACTION_TIMEOUT_MS)}, true),
+                                set_config('idle_in_transaction_session_timeout', ${String(DELETE_IDLE_IN_TRANSACTION_TIMEOUT_MS)}, true)`);
     await lockHoldsShared(tx, orgId);
     const holds = await deps.messageHolds.activeHolds(tx, orgId);
     // The certificate is re-checked in THIS transaction (M4's reader; the destruction credential can only read it): a certificate moved off
@@ -307,6 +302,17 @@ async function deleteBatch(
       notBefore,
     });
     if (!live) return [];
+    // The reservation must still be young on the database's clock, judged RIGHT before the DELETE (clock_timestamp, not the transaction's start):
+    // an old one may already be reconciled, so nothing is deleted under it; the caller settles it with 0 destroyed, which refunds it. The transaction
+    // itself ends within DELETE_TRANSACTION_TIMEOUT_MS, so max age + that timeout stays under the stranded threshold.
+    const fresh = reservedAt
+      ? (
+          await tx.execute<{ fresh: boolean }>(
+            sql`SELECT (clock_timestamp() - ${reservedAt.toISOString()}::timestamptz) < (${String(maxAgeMs)} || ' milliseconds')::interval AS fresh`,
+          )
+        ).rows[0]?.fresh === true
+      : false;
+    if (!fresh) return [];
     const deleted = await tx.execute<{ id: string }>(
       sql`DELETE FROM message m USING channel c
            WHERE c.organization_id = m.organization_id AND c.id = m.channel_id
@@ -367,6 +373,33 @@ async function auditIn(
   );
 }
 
+/** What is left to reserve when `batchId` is already settled with exactly `destroyed`; null otherwise (including when the check itself fails). */
+async function alreadySettled(
+  deps: RetentionDestructionDeps,
+  orgId: string,
+  cert: ApprovedMessageCertificateRef,
+  batchId: string,
+  destroyed: number,
+): Promise<number | null> {
+  try {
+    return await withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
+      const tx = txRaw as unknown as DbClient;
+      const [row] = await tx
+        .select({ state: BATCH.state, destroyedCount: BATCH.destroyedCount })
+        .from(BATCH)
+        .where(and(eq(BATCH.organizationId, orgId), eq(BATCH.id, batchId)));
+      if (row?.state !== "settled" || row.destroyedCount !== destroyed) return null;
+      const locked = await deps.messageHolds.lockCertificate(tx, {
+        organizationId: orgId,
+        certificateId: cert.id,
+      });
+      return locked?.available ?? 0;
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Record a committed batch: its audit row and the settled reservation, in ONE tenant transaction, retried. Returns what is still reservable. */
 async function recordBatch(
   deps: RetentionDestructionDeps,
@@ -409,6 +442,9 @@ async function recordBatch(
       });
     } catch (error) {
       last = error;
+      // A lost reply: an earlier attempt's settle DID commit. The batch then reads settled with exactly our count, which is success.
+      const done = await alreadySettled(deps, orgId, cert, batchId, deletedIds.length);
+      if (done !== null) return done;
     }
   }
   throw new DestructionUnrecordedError(cert.id, deletedIds, { cause: last });
@@ -593,7 +629,6 @@ async function reconcileStrandedBatches(
   apply: boolean,
   onError: (error: unknown) => void,
 ): Promise<readonly ReconcileResult[]> {
-  const before = new Date(now.getTime() - STRANDED_BATCH_AFTER_HOURS * 3_600_000);
   const write = deps.auditWriter ?? audit;
   const stranded = await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
     (txRaw as unknown as DbClient)
@@ -603,7 +638,8 @@ async function reconcileStrandedBatches(
         and(
           eq(BATCH.organizationId, orgId),
           eq(BATCH.state, "reserved"),
-          lt(BATCH.reservedAt, before),
+          // The DATABASE clock decides (the same one that stamped reserved_at and that the settle function re-checks), never this host's.
+          sql`${BATCH.reservedAt} < now() - make_interval(hours => ${STRANDED_BATCH_AFTER_HOURS})`,
         ),
       )
       .orderBy(BATCH.certificateId, BATCH.reservedAt)
