@@ -13,7 +13,7 @@ import {
 import { runHashVerifyForOrg } from "../../../apps/backend/src/modules/36-messaging/jobs/integrity-jobs";
 import { createMessageBodyCipher } from "../../../apps/backend/src/modules/36-messaging/messaging-write-core";
 import { MODULES } from "../../../architecture/module-manifest";
-import type { AttachmentExpectation, Check, ObjectFingerprint } from "./report";
+import type { AttachmentExpectation, Check, ObjectFingerprint, ReconcileFindings } from "./report";
 import { objectId } from "./report";
 
 const M36 = MODULES.find((m) => m.id === 36);
@@ -120,6 +120,42 @@ export async function auditFingerprints(
   } finally {
     await handle.close();
   }
+}
+
+/** Ids (as text) returned by `sql`, whose first column is aliased `id`. */
+async function ids(c: Client, sql: string): Promise<string[]> {
+  return (await c.query(sql)).rows.map((r) => String(r.id));
+}
+
+const unaudited = (table: string): string =>
+  `SELECT t.id FROM ${table} t WHERE NOT EXISTS (SELECT 1 FROM audit_event e WHERE e.event_type='${table}.insert' AND e.resource_id=t.id)`;
+
+/**
+ * Intrinsic reconcile (superuser read, so RLS does not hide anything): the M36 tables carry a generic `<table>.insert`
+ * audit trigger, so every row must have its insert event, every such event must point at a row, and an attachment must
+ * belong to an existing message of the same org (an upload not yet attached to a message has message_id NULL by design). Soft-deleted rows stay in the tables, so none of this expects removals.
+ */
+export async function reconcileFindings(adminUrl: string): Promise<ReconcileFindings> {
+  return withClient(adminUrl, async (c) => ({
+    messagesWithoutAudit: await ids(c, unaudited("message")),
+    revisionsWithoutAudit: await ids(c, unaudited("message_revision")),
+    attachmentsWithoutAudit: await ids(c, unaudited("message_attachment")),
+    attachmentsWithoutMessage: await ids(
+      c,
+      `SELECT a.id FROM message_attachment a LEFT JOIN message m ON m.id=a.message_id WHERE a.message_id IS NOT NULL AND m.id IS NULL`,
+    ),
+    attachmentsCrossOrg: await ids(
+      c,
+      `SELECT a.id FROM message_attachment a JOIN message m ON m.id=a.message_id WHERE m.organization_id <> a.organization_id`,
+    ),
+    orphanAudit: await ids(
+      c,
+      `SELECT e.resource_id AS id FROM audit_event e WHERE e.event_type IN ('message.insert','message_revision.insert','message_attachment.insert')
+         AND NOT EXISTS (SELECT 1 FROM message t WHERE e.event_type='message.insert' AND t.id=e.resource_id)
+         AND NOT EXISTS (SELECT 1 FROM message_revision t WHERE e.event_type='message_revision.insert' AND t.id=e.resource_id)
+         AND NOT EXISTS (SELECT 1 FROM message_attachment t WHERE e.event_type='message_attachment.insert' AND t.id=e.resource_id)`,
+    ),
+  }));
 }
 
 export async function attachmentRows(adminUrl: string): Promise<AttachmentExpectation[]> {

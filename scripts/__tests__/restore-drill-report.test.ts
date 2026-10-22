@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   type AttachmentExpectation,
   type ObjectFingerprint,
+  type ReconcileFindings,
   compareCounts,
   compareObjects,
   objectId,
+  reconcileCheck,
+  rtoCheck,
 } from "../lib/restore-drill/report";
 
 const row = (over: Partial<AttachmentExpectation> = {}): AttachmentExpectation => ({
@@ -71,5 +74,45 @@ describe("restore drill verdicts", () => {
     const check = compareCounts({ message: 5, channel: 2 }, { message: 4, channel: 2 });
     expect(check.ok).toBe(false);
     expect(check.detail).toContain("message: backup 5 != restored 4");
+  });
+});
+
+const clean: ReconcileFindings = {
+  messagesWithoutAudit: [],
+  revisionsWithoutAudit: [],
+  attachmentsWithoutAudit: [],
+  attachmentsWithoutMessage: [],
+  attachmentsCrossOrg: [],
+  orphanAudit: [],
+};
+
+describe("restore drill reconcile and RTO verdicts", () => {
+  it("passes a restored DB where message, attachment and audit agree", () => {
+    expect(reconcileCheck(clean).ok).toBe(true);
+  });
+
+  it.each([
+    ["messagesWithoutAudit", "messages with no message.insert audit event"],
+    ["revisionsWithoutAudit", "message_revisions with no audit event"],
+    ["attachmentsWithoutAudit", "attachments with no message_attachment.insert audit event"],
+    ["attachmentsWithoutMessage", "attachments whose message row is missing"],
+    ["attachmentsCrossOrg", "attachments in a different org than their message"],
+    ["orphanAudit", "orphan audit events"],
+  ] as const)("fails and names the problem when %s is non-empty", (key, label) => {
+    const check = reconcileCheck({ ...clean, [key]: ["id-1", "id-2"] });
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain(label);
+    expect(check.detail).toContain("id-1");
+  });
+
+  it("truncates long id lists but keeps the count", () => {
+    const check = reconcileCheck({ ...clean, orphanAudit: ["a", "b", "c", "d", "e"] });
+    expect(check.detail).toContain("5 (a, b, c, ...)");
+  });
+
+  it("rtoCheck passes at or under the target and fails over it", () => {
+    expect(rtoCheck(12_500, 3_600_000).ok).toBe(true);
+    expect(rtoCheck(3_600_000, 3_600_000).ok).toBe(true);
+    expect(rtoCheck(3_600_001, 3_600_000).ok).toBe(false);
   });
 });

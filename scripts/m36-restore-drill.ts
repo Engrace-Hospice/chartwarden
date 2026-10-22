@@ -13,8 +13,8 @@
  *   5. verify consistency (counts, hashes, objects, audit chain, RLS/grants) and write JSON + markdown reports
  *
  *   bun run m36:restore-drill                      # expect exit 0
- *   bun run m36:restore-drill -- --fault=missing-object|hash-flip|object-bytes   # expect exit 1 (detection proof)
- *   bun run m36:restore-drill:detect               # runs all three faults and asserts each one FAILS the drill
+ *   bun run m36:restore-drill -- --fault=<name>    # expect exit 1 (detection proof); names in FAULTS below
+ *   bun run m36:restore-drill:detect               # runs every fault and asserts each one FAILS the drill
  *
  * Needs: docker, bun. Optional: WX_DRILL_MINIO_IMAGE (default cgr.dev/chainguard/minio:latest), --out=<dir>.
  */
@@ -44,7 +44,9 @@ import {
   type DrillReport,
   compareCounts,
   compareObjects,
+  reconcileCheck,
   renderMarkdown,
+  rtoCheck,
   summarise,
 } from "./lib/restore-drill/report";
 import { ORG_A, ORG_B, createWorld } from "./lib/restore-drill/seed";
@@ -57,11 +59,20 @@ import {
   countM36Tables,
   fingerprintAll,
   hashVerifyAll,
+  reconcileFindings,
   rlsChecks,
   withClient,
 } from "./lib/restore-drill/verify";
 
-const FAULTS = ["none", "missing-object", "hash-flip", "object-bytes"] as const;
+const FAULTS = [
+  "none",
+  "missing-object",
+  "hash-flip",
+  "object-bytes",
+  "orphan-audit",
+  "missing-audit",
+  "message-deleted",
+] as const;
 type Fault = (typeof FAULTS)[number];
 
 const DB = process.env.CHARTWARDEN_DB_NAME || "chartwarden"; // the production database name (deploy/production/reseed-demo.sh)
@@ -69,6 +80,8 @@ const APP_PW = "drill-app-pw";
 const PLATFORM_PW = "drill-platform-pw";
 const DESTRUCTION_PW = "drill-destruction-pw";
 const ORGS = [ORG_A, ORG_B] as const;
+/** DR/BCP section 3 Tier 1 RTO (1 h), the stricter of the two candidate M36 tiers; override with WX_DRILL_RTO_TARGET_S. Still a TARGET, not an SLO. */
+const RTO_TARGET_MS = Number(process.env.WX_DRILL_RTO_TARGET_S ?? 3600) * 1000;
 
 function arg(name: string): string | undefined {
   return process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -139,6 +152,34 @@ async function bootstrapRoles(pg: Pg): Promise<void> {
   await withClient(pg.url("postgres"), (c) => c.query("DROP DATABASE roles_bootstrap"));
 }
 
+/** Corruption the way an attacker or a lossy restore would do it: triggers bypassed with session_replication_role. */
+async function injectAuditFault(
+  fault: "orphan-audit" | "missing-audit" | "message-deleted",
+  pg: Pg,
+): Promise<string> {
+  return withClient(pg.url(DB), async (c) => {
+    await c.query("SET session_replication_role = replica");
+    if (fault === "orphan-audit") {
+      await c.query(
+        `INSERT INTO audit_event (organization_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome)
+         SELECT organization_id, 'system', 'message.insert', 'message', gen_random_uuid(), 'drill-orphan', 'success' FROM message LIMIT 1`,
+      );
+      return "orphan-audit: one message.insert audit event added for a message id that has no row";
+    }
+    if (fault === "missing-audit") {
+      await c.query(
+        `DELETE FROM audit_event WHERE id = (SELECT id FROM audit_event WHERE event_type='message.insert' ORDER BY id LIMIT 1)`,
+      );
+      return "missing-audit: one message.insert audit event removed (message row still present)";
+    }
+    // Remove a message that owns an attachment: leaves the attachment pointing at nothing and its audit event orphaned.
+    await c.query(
+      `DELETE FROM message WHERE id = (SELECT message_id FROM message_attachment ORDER BY id LIMIT 1)`,
+    );
+    return "message-deleted: a message that owns an attachment removed (attachment and audit left dangling)";
+  });
+}
+
 async function injectFault(fault: Fault, pg: Pg, minio: Minio): Promise<string> {
   if (fault === "none") return "none";
   if (fault === "hash-flip") {
@@ -149,6 +190,9 @@ async function injectFault(fault: Fault, pg: Pg, minio: Minio): Promise<string> 
       );
     });
     return "hash-flip: one message.body_sha256 overwritten after restore";
+  }
+  if (fault === "orphan-audit" || fault === "missing-audit" || fault === "message-deleted") {
+    return injectAuditFault(fault, pg);
   }
   const row = await withClient(
     pg.url(DB),
@@ -300,6 +344,7 @@ async function main(): Promise<number> {
         stored: restoredStored,
       }),
     );
+    checks.push(reconcileCheck(await reconcileFindings(scratch.url(DB))));
     checks.push(...(await rlsChecks(restoredAppUrl, ORG_A, ORG_B)));
     // Last: the job writes its own audit rows, which would disturb the audit comparison above.
     checks.push(
@@ -316,6 +361,7 @@ async function main(): Promise<number> {
     const rowsLostPerTable = Object.fromEntries(
       M36_TABLES.map((t) => [t, (countsAtFailure[t] ?? 0) - (restoredCounts[t] ?? 0)]),
     );
+    checks.push(rtoCheck(restoreWallMs, RTO_TARGET_MS));
     const { passed } = summarise(checks);
     const report: DrillReport = {
       runId,

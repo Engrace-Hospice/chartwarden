@@ -16,6 +16,9 @@ const EXPECTED_CHECK: Readonly<Record<string, string>> = {
   "missing-object": "byte-identical",
   "object-bytes": "byte-identical",
   "hash-flip": "body hashes verify",
+  "orphan-audit": "reconcile",
+  "missing-audit": "reconcile",
+  "message-deleted": "reconcile",
 };
 
 function main(): number {
