@@ -70,7 +70,6 @@ the `chartwarden-` prefix (`chartwarden-compose-pgdata|minio|clamav`). A stack c
 (or `bun run db:reset`), optionally `docker volume rm wardenx-compose-pgdata wardenx-compose-minio
 wardenx-compose-clamav` for the orphaned old volumes, re-copy `.env.example` to `.env` (or edit the
 `DATABASE_*` URLs and `CHARTWARDEN_APP_PASSWORD` by hand), then `bun run db:migrate && bun run db:seed:all`.
-The seeds still delete the legacy `wardenx-demo` organization if one is found.
 
 `cp .env.example .env` is sufficient; the full onboarding runbook is
 [`docs/START_PROJECT.md`](./START_PROJECT.md).

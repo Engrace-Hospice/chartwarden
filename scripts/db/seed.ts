@@ -30,9 +30,6 @@ import { firstRow } from "./lib/query-rows";
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
-/** The demo org's slug before the ChartWarden rename; the reset still removes it. */
-const LEGACY_ORG_SLUG = "wardenx-demo";
-
 const ORG = {
   slug: "chartwarden-demo",
   legal: "Engrace Hospice, Inc.",
@@ -326,11 +323,8 @@ async function main(): Promise<void> {
   // --- Idempotent cleanup: drop prior demo org + demo users (+ Better Auth child rows) ---
   await db.query("BEGIN");
   const soleTenantUserIds = new Set<string>();
-  // The demo org was seeded as `wardenx-demo` before the ChartWarden rename: reset both slugs so a
-  // reseed over an old database removes the legacy tenant and its identities (usernames are the email
-  // local part, so a leftover `admin@chartwarden.local` would collide with the new sign-up).
-  const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = ANY($1)", [
-    [ORG.slug, LEGACY_ORG_SLUG],
+  const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
+    ORG.slug,
   ]);
   const priorOrgIds = prior.rows.map((row) => row.id);
   // Seed emails are global Better Auth identities. If one has been attached to another tenant, abort

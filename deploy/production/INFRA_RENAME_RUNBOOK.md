@@ -490,7 +490,7 @@ records and certificate were never removed.
   unsupported.
 - The `wardenx_*` data VOLUME names: the project/containers/networks are renamed (Step C); the volumes kept their names via `CHARTWARDEN_VOLUME_PREFIX=wardenx` until the copy in "Phase 2 operator windows", Window 2 (Docker cannot rename volumes).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
-- The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.
+- The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Done: the production reseed (`reseed-production.yml`) of 2026-10-22 removed the legacy org and its identities.
 
 ## Database rename downtime window (`wardenx` -> `chartwarden`)
 
