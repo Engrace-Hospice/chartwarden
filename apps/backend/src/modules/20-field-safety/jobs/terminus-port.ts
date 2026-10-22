@@ -74,7 +74,7 @@ export function createWebhookOpsPager(options: WebhookOpsPagerOptions): SosTermi
             ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
           },
           body: JSON.stringify({
-            source: "wardenx.m20.sos_terminus",
+            source: "chartwarden.m20.sos_terminus",
             severity: "critical",
             summary: "SOS alert reached the emergency terminus without an acknowledgment",
             dedupKey: `sos:${input.sosAlertId}`,

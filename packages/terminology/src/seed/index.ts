@@ -31,7 +31,7 @@ import { PLATFORM_VALUE_SETS } from "./value-sets";
 
 /** Canonical FHIR-style url for a platform value set (§7.9 metadata). */
 export function platformValueSetUrl(valueSetId: string): string {
-  return `urn:wardenx:valueset:${valueSetId}`;
+  return `urn:chartwarden:valueset:${valueSetId}`;
 }
 
 /**

@@ -460,6 +460,30 @@ describe("M28-fhir-inject — R3: token mint", () => {
     await app.close();
   });
 
+  it("a BAA refusal carries chartwarden_code AND the deprecated wardenx_code on the wire", async () => {
+    const { app } = makeServer({
+      tokenEndpointUrl: TOKEN_URL,
+      baa: { isBaaActive: async () => false },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/fhir/oauth2/token",
+      payload: {
+        grant_type: "client_credentials",
+        scope: "system/Patient.read",
+        client_id: API_KEY_CLIENT_ID,
+        client_secret: API_KEY_SECRET,
+      },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({
+      error: "invalid_client",
+      chartwarden_code: "BAA_NOT_IN_FORCE",
+      wardenx_code: "BAA_NOT_IN_FORCE",
+    });
+    await app.close();
+  });
+
   it("refuses a wrong secret and an unknown client with the SAME generic invalid_client", async () => {
     // Byte-identical bodies on purpose: a description that distinguished them would turn an
     // unauthenticated endpoint into a client-id oracle.

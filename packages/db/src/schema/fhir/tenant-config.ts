@@ -14,7 +14,7 @@ export const tenantFhirConfig = pgTable("tenant_fhir_config", {
     .primaryKey()
     .references(() => organizations.id, { onDelete: "restrict" }),
   tenantFhirHost: text("tenant_fhir_host").notNull(),
-  /** e.g. 'https://engrace.fhir.wardenx.com/sid' (D9). */
+  /** e.g. 'https://engrace.fhir.chartwarden.com/sid' (D9). */
   identifierUriBase: text("identifier_uri_base").notNull(),
   /** Per-tenant DEK-encrypted HMAC key for the search-cursor signature (§3.6). */
   cursorSigningKeyCipher: bytea("cursor_signing_key_cipher").notNull(),

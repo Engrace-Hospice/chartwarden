@@ -300,7 +300,7 @@ describe("assembleOregonSubmissionPayload — pure local render", () => {
     const { body, idempotencyKey } = assembleOregonSubmissionPayload(snapshot);
     expect(idempotencyKey).toBe("CCN-1");
     const parsed = JSON.parse(new TextDecoder().decode(body));
-    expect(parsed).toMatchObject({ schema: "wardenx.oregon-direct-mmis.v1", claimId: "c1" });
+    expect(parsed).toMatchObject({ schema: "chartwarden.oregon-direct-mmis.v1", claimId: "c1" });
   });
 });
 

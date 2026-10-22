@@ -25,7 +25,7 @@ export interface Hl7OrmDemographics {
   readonly mrn: string;
   /** The assigning authority for the INTERNAL MRN. M5 stores no issuer for it (`patient_identifier.issuer`
    *  is NULL for kind='mrn'), and the MRN is unique per organization (`patient_mrn_org_unique`), so the
-   *  namespace that assigned it is the tenant itself: `WARDENX-<organizationId>`. A namespace label, not a
+   *  namespace that assigned it is the tenant itself: `CHARTWARDEN-<organizationId>`. A namespace label, not a
    *  demographic fact. */
   readonly mrnAssigningAuthority: string;
   readonly familyName: string;
@@ -47,6 +47,10 @@ export interface Hl7OrmDemographics {
   /** True when the privacy-flag snapshot lists `sud` (fail-closed — see the header). */
   readonly sudRestricted: boolean;
 }
+
+/** The MRN assigning authority: the tenant itself. LEGACY(wardenx->chartwarden): messages sent before the rename carried `WARDENX-<orgId>`; nothing here parses the value back, so there is no reader to keep compatible. */
+export const mrnAssigningAuthorityFor = (organizationId: string): string =>
+  `CHARTWARDEN-${organizationId}`;
 
 export async function hl7OrmDemographicsInTx(
   tx: DbClient,
@@ -86,7 +90,7 @@ export async function hl7OrmDemographicsInTx(
   return {
     patientId: patient.id,
     mrn: patient.mrn,
-    mrnAssigningAuthority: `WARDENX-${organizationId}`,
+    mrnAssigningAuthority: mrnAssigningAuthorityFor(organizationId),
     familyName: patient.legalLastName,
     givenName: patient.legalFirstName,
     dateOfBirth: patient.dob,

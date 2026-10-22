@@ -54,7 +54,7 @@ function requirePassword(ctx: { context: { password: { config: { minPasswordLeng
 /** Better Auth extension used by M02's orchestration service; none of these operations has an HTTP path. */
 export const credentialAdminPlugin = () =>
   ({
-    id: "wardenx-credential-admin",
+    id: "chartwarden-credential-admin",
     endpoints: {
       provisionIdentityCredential: createAuthEndpoint(
         "/_chartwarden-internal/provision-identity-credential",

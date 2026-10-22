@@ -572,7 +572,7 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
       ]);
       const copyright = attRows[0]?.text;
       return {
-        url: csRows[0]?.sourceUri ?? `urn:wardenx:codesystem:${system}`,
+        url: csRows[0]?.sourceUri ?? `urn:chartwarden:codesystem:${system}`,
         version: verRows[0]?.version ?? "0",
         ...(copyright ? { copyright } : {}),
       } satisfies CodeSystemMeta;
@@ -580,7 +580,7 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
 
     async valueSetMeta(valueSetId) {
       // `value_set` carries no canonical url column in Phase 1 — derive the stable urn from the slug.
-      return { url: `urn:wardenx:valueset:${valueSetId}` };
+      return { url: `urn:chartwarden:valueset:${valueSetId}` };
     },
   };
 

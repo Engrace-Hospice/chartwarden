@@ -118,7 +118,7 @@ export interface FhirR4RouteDeps {
 const ADVERTISED_RESOURCES = SERVED_RESOURCES.map((r) => r.type);
 
 /** Where a consumer finds the sha256 of an export output file (W-FHIR-04 step 6). */
-const CHECKSUM_EXTENSION_URL = "urn:wardenx:fhir:bulk-export:checksum-sha256";
+const CHECKSUM_EXTENSION_URL = "urn:chartwarden:fhir:bulk-export:checksum-sha256";
 
 const bearerToken = (request: FastifyRequest): string | null => {
   const header = request.headers.authorization;
@@ -172,8 +172,8 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     return {
       organizationId: ctx.organizationId,
       recipientClientId: ctx.clientId,
-      tenantFhirHost: config?.tenantFhirHost ?? `urn:wardenx:org:${ctx.organizationId}`,
-      identifierUriBase: config?.identifierUriBase ?? `urn:wardenx:org:${ctx.organizationId}`,
+      tenantFhirHost: config?.tenantFhirHost ?? `urn:chartwarden:org:${ctx.organizationId}`,
+      identifierUriBase: config?.identifierUriBase ?? `urn:chartwarden:org:${ctx.organizationId}`,
       asOfDate: now(),
     };
   };

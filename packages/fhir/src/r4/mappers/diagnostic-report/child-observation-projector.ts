@@ -18,7 +18,7 @@ export function isSudClass(sudRedactionStatus: string): boolean {
 }
 
 const SUD_SECURITY: FhirCoding = {
-  system: "http://wardenx.com/fhir/CodeSystem/internal-security",
+  system: "http://chartwarden.com/fhir/CodeSystem/internal-security",
   code: SUD_SECURITY_MARKER_CODE,
 };
 

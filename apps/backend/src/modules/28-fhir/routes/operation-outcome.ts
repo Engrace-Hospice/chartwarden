@@ -31,12 +31,12 @@ export interface FhirOperationOutcome {
   }>;
 }
 
-/** Build a single-issue `OperationOutcome`. `wardenxCode` cross-references the internal error catalog. */
+/** Build a single-issue `OperationOutcome`. `chartwardenCode` cross-references the internal error catalog. */
 export function operationOutcome(
   severity: FhirIssueSeverity,
   code: FhirIssueCode,
   diagnostics: string,
-  wardenxCode?: string,
+  chartwardenCode?: string,
 ): FhirOperationOutcome {
   return {
     resourceType: "OperationOutcome",
@@ -45,10 +45,10 @@ export function operationOutcome(
         severity,
         code,
         diagnostics,
-        ...(wardenxCode
+        ...(chartwardenCode
           ? {
               details: {
-                coding: [{ system: "https://wardenx.com/fhir/error-code", code: wardenxCode }],
+                coding: [{ system: "https://chartwarden.com/fhir/error-code", code: chartwardenCode }],
               },
             }
           : {}),
@@ -64,8 +64,8 @@ export function sendOutcome(
   severity: FhirIssueSeverity,
   code: FhirIssueCode,
   diagnostics: string,
-  wardenxCode?: string,
+  chartwardenCode?: string,
 ): FhirOperationOutcome {
   reply.code(httpStatus).header("content-type", FHIR_JSON_CONTENT_TYPE);
-  return operationOutcome(severity, code, diagnostics, wardenxCode);
+  return operationOutcome(severity, code, diagnostics, chartwardenCode);
 }
