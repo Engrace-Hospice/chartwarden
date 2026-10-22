@@ -228,6 +228,17 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + compat view 
     expect(await kindOf(NEW)).toBe("r");
   });
 
+  it("keeps the rows of a populated ledger when the compat view is dropped", async () => {
+    await applyMigrations(db, { migrationsDir: dir });
+    await db.query(`CREATE VIEW ${OLD} WITH (security_invoker = true) AS SELECT * FROM ${NEW}`);
+
+    await ensureLedger(db);
+
+    expect(await kindOf(OLD)).toBeNull();
+    const { rows } = await db.query(`SELECT filename FROM ${NEW} ORDER BY filename`);
+    expect(rows.map((r) => r.filename)).toEqual([FILE_A, FILE_B]);
+  });
+
   it("still detects a tampered checksum after the rename", async () => {
     await legacyLedger([[FILE_A, "deliberately-corrupted"]]);
     const lenient = await applyMigrations(db, { migrationsDir: dir });
