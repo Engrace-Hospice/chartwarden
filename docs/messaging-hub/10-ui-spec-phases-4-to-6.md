@@ -352,18 +352,19 @@ Message the on-call role                                   Step 2 of 2: confirm 
 ### 5.1 Offline drafts and optimistic send (outbox)
 
 ```
-Thread (offline)  ⚠ You are offline. Messages are saved on this device and sent when you reconnect.
- You: Will visit at 3         ◔ Not sent · saved on this device   [Retry] [Delete]
- Composer: [Message…]                       Draft: Saved on this device only
+Thread (offline)  ⚠ You're offline. New messages stay Not sent until you reconnect; closing this tab discards them.
+ You: Will visit at 3         ◔ Not sent                           [Retry] [Delete]
+ Composer: [Message…]                       Draft: not saved while offline; closing this tab discards it
 ```
 - **Rule:** an offline message is **never** shown as sent, delivered or read. States, in order: *Draft → Not sent (queued) → Sending → Sent → Failed (retry)*;
   text and icon each. Reuse the existing `use-outbox` and `client_message_id` (replay returns the original, so no duplicate).
 - **Never queued offline:** urgent clinical, "Needs a response", acknowledge, take responsibility, reassign. Their controls are disabled with "Needs a
   connection. Use the agency telephone procedure." (a queued urgent message that arrives late is a hazard).
-- **Storage:** IndexedDB, encrypted with a key held only for the session; cleared on sign-out, session revoke, and tenant switch (existing sign-out
-  reset tests must still pass). Bodies of PHI threads are not persisted for read-only offline viewing in v1.
-- **States:** S0; *storage unavailable* (private window): warn that drafts are memory-only; *quota full*; *conflict on reconnect* (existing
-  `draft-conflict-prompt`).
+- **Storage (decided 2026-10-22: memory only on web):** the web outbox holds React state only; message bodies are PHI and are never written to
+  localStorage, sessionStorage or IndexedDB, so a reload or tab close drops the queue (a `beforeunload` warning says so). An encrypted persistent
+  queue is the native app's (WP 5.11). Bodies of PHI threads are not persisted for read-only offline viewing in v1.
+- **States:** S0; *conflict on reconnect* (existing `draft-conflict-prompt`). There are no storage-unavailable or quota-full states: nothing is
+  written to browser storage.
 - **A11y:** the offline banner is `role="status"`; each Not-sent row exposes Retry/Delete by keyboard.
 - **Acceptance:** axe + keyboard; Playwright offline→online soak with flapping network: no loss, no duplicate, never shown delivered; live: replay with the same key = one row.
 
