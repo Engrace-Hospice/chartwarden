@@ -1042,6 +1042,72 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       });
       expect(clean.done?.json().scanState).toBe("clean");
     });
+
+    it("WP 5.3 (review H1-H3, M1): trailing Exif, a mislabelled JPEG, GPS TIFF and unparseable input all quarantine", async () => {
+      const seg = (code: number, payload: number[]) => [
+        0xff,
+        code,
+        (payload.length + 2) >> 8,
+        (payload.length + 2) & 0xff,
+        ...payload,
+      ];
+      const ascii = (s: string) => Array.from(new TextEncoder().encode(s));
+      const jfif = seg(0xe0, ascii("JFIF\0\x01\x01\0"));
+      const exif = seg(0xe1, [...ascii("Exif\0\0"), ...ascii("MM\0*GPS 48.85N 2.35E")]);
+      const tail = [...seg(0xda, [0, 0]), 1, 2, 3, 0xff, 0xd9];
+      const signatureOf = async (id: string) =>
+        (await admin.query(`SELECT scan_signature FROM message_attachment WHERE id=$1`, [id]))
+          .rows[0].scan_signature;
+
+      const afterEoi = await uploaded(
+        u1,
+        dm,
+        new Uint8Array([0xff, 0xd8, ...jfif, ...tail, ...exif]),
+        {
+          over: { contentType: "image/jpeg" },
+          mime: "image/jpeg",
+        },
+      );
+      expect(afterEoi.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(afterEoi.attachmentId)).toBe("image-metadata-present");
+
+      // A JPEG with Exif declared as image/png is walked by its magic bytes, not its label.
+      const mislabelled = await uploaded(
+        u1,
+        dm,
+        new Uint8Array([0xff, 0xd8, ...jfif, ...exif, ...tail]),
+        {
+          over: { contentType: "image/png" },
+          mime: "image/png",
+        },
+      );
+      expect(mislabelled.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(mislabelled.attachmentId)).toBe("image-metadata-present");
+
+      // TIFF with a GPS IFD pointer (tag 0x8825), little-endian, one entry.
+      const gpsTiff = new Uint8Array([
+        0x49, 0x49, 0x2a, 0, 8, 0, 0, 0, 1, 0, 0x25, 0x88, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ]);
+      const tiff = await uploaded(u1, dm, gpsTiff, {
+        over: { contentType: "image/tiff" },
+        mime: "image/tiff",
+      });
+      expect(tiff.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(tiff.attachmentId)).toBe("image-metadata-present");
+
+      // A JPEG cut off before EOI cannot be proven metadata-free: fail closed.
+      const truncated = await uploaded(
+        u1,
+        dm,
+        new Uint8Array([0xff, 0xd8, ...jfif, ...tail.slice(0, 6)]),
+        {
+          over: { contentType: "image/jpeg" },
+          mime: "image/jpeg",
+        },
+      );
+      expect(truncated.done?.json().scanState).toBe("quarantined");
+      expect(await signatureOf(truncated.attachmentId)).toBe("image-metadata-unparseable");
+    });
   });
 
   describe("access is re-authorized on every open", () => {

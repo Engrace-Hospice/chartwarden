@@ -35,7 +35,7 @@ import {
   messageHeldByAnyPredicate,
 } from "../jobs/retention-hold-sql";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
-import { hasImageMetadata } from "./attachment-metadata";
+import { inspectImageMetadata } from "./attachment-metadata";
 import {
   ATTACHMENT_ACCESS_TTL_SECONDS,
   ATTACHMENT_UPLOAD_TTL_SECONDS,
@@ -665,7 +665,9 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         return quarantine("checksum-mismatch");
       }
       // WP 5.3: the client strips EXIF; the server cannot rewrite the (checksum-bound) object, so it fails closed.
-      if (hasImageMetadata(bytes, row.mimeType)) return quarantine("image-metadata-present");
+      const imageVerdict = inspectImageMetadata(bytes);
+      if (imageVerdict === "metadata") return quarantine("image-metadata-present");
+      if (imageVerdict === "unparseable") return quarantine("image-metadata-unparseable");
       phase = "scanner";
       let result: Awaited<ReturnType<ScanPort["scan"]>>;
       try {
