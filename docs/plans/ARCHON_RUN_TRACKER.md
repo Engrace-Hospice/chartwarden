@@ -14,7 +14,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 
 ## Prerequisites (once)
 - [x] **PRs #1 + #2 merged** — `main` is the buildable baseline.
-- [ ] `cd /Users/fabrice/Apps/ChartWarden && git checkout main && git pull`
+- [ ] `cd <path-to-your-checkout> && git checkout main && git pull`
 - [ ] `bun install` (auto-activates the pre-push gate via `prepare`) — or `bun run setup:hooks`
 - [ ] `archon validate workflows chartwarden-piv` → `1 valid, 0 with errors`
 - [ ] `archon workflow list` shows `chartwarden-piv`

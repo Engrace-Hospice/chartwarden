@@ -58,7 +58,7 @@ The harness-builder Archon doesn't run as a long-lived MCP server you point a cl
 ChartWarden root:
 
 ```bash
-cd /Users/fabrice/Apps/ChartWarden
+cd <path-to-your-checkout>
 archon workflow list                       # bundled defaults + our chartwarden-piv
 archon validate workflows chartwarden-piv      # expect: 1 valid, 0 with errors
 archon                                      # launches Claude Code in this repo under the harness
@@ -94,7 +94,7 @@ message and writes it to `.archon/run-plan.txt`, which every node reads. With **
 back to the M1+M2 slice default, so just:
 
 ```bash
-cd /Users/fabrice/Apps/ChartWarden
+cd <path-to-your-checkout>
 # isolated worktree (recommended) so the run can't disturb your working tree:
 archon workflow run chartwarden-piv --branch feat/m1-m2-slice
 # …or run directly on the current branch:

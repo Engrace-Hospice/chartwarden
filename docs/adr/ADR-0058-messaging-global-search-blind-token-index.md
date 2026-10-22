@@ -61,7 +61,7 @@ patient-attribution mechanism; archived-channel inclusion (patient-name exclusio
 - Message bodies are envelope-encrypted per tenant: `message.body_cipher` (`packages/db/src/schema/messaging/messages.ts`), AES-256-GCM,
   and `message_revision.body_cipher` for replaced bodies (ADR-0055). **Today** the tenant DEK is HKDF-derived from the single master
   `MESSAGING_ENCRYPTION_KEY` and the org id (`packages/messaging/src/crypto/body-crypto.ts`: `deriveOrgDek`, line 43;
-  `DEK_INFO_PREFIX = "chartwarden-message-dek:"`, line 27; a body sealed under the legacy `chartwarden-message-dek:` label no longer opens). The DEK is a pure function of one env var and the org id, so it is always
+  `DEK_INFO_PREFIX = "chartwarden-message-dek:"`, line 27; a body sealed under the legacy `wardenx-message-dek:` label no longer opens). The DEK is a pure function of one env var and the org id, so it is always
   recomputable: there is no key row to destroy, and "destroying the tenant DEK" is, in the code's own words, "modelled by forgetting
   the org's derived key". A normal database index would hold plaintext or be useless.
 - A second key model exists: the `TenantKeyProvider` seam (`packages/saas-tenant-platform/src/seams/tenant-key-provider.ts`) returns a

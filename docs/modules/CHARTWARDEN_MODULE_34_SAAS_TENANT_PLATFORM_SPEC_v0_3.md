@@ -2542,11 +2542,11 @@ This pattern is binding for all nine tables receiving `organization_id` per F02:
 
 **Pre-migration pgBackRest backup tag (OPS-016):** Before executing the Contract phase of any breaking migration (or any migration that is not trivially reversible — index creation, NOT NULL constraint, column rename, type change), the migration CI pipeline must:
 
-1. Trigger a `pgbackrest backup --type=incr --stanza=chartwarden-prod` and capture the resulting WAL segment label.
+1. Trigger a `pgbackrest backup --type=incr --stanza=chartwarden` and capture the resulting WAL segment label.
 2. Tag the resulting backup with the short SHA of the migration commit: `pgbackrest annotate --set backup-label=pre-migration-<sha>` where `<sha>` is the 7-character git SHA of the migration file's commit.
 3. Confirm the backup completed successfully (exit 0) before proceeding. If the backup fails, the migration is held in CI and a `migration-backup-failed` alert routes to the ops oncall.
 
-This produces a deterministic, human-readable restore target (`pre-migration-<sha>`) that any on-call engineer can use to restore to the state immediately before a problematic migration: `pgbackrest restore --stanza=chartwarden-prod --set pre-migration-<sha>`. The tag name and the backup completion timestamp are logged in the CI run summary and in the Ops Runbook incident template.
+This produces a deterministic, human-readable restore target (`pre-migration-<sha>`) that any on-call engineer can use to restore to the state immediately before a problematic migration: `pgbackrest restore --stanza=chartwarden --set pre-migration-<sha>`. The tag name and the backup completion timestamp are logged in the CI run summary and in the Ops Runbook incident template.
 
 The M34 initial schema migration (tasks 1-5 above) is itself tagged `pre-migration-<sha>` so that a restore to a pre-M34 database state is always one known tag away, even after subsequent migrations have run.
 

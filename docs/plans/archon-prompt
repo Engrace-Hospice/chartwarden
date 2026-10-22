@@ -2,7 +2,7 @@ Archon launch sequence
 
 Prerequisites (once):
 - Merge PR #1 so your base branch has the buildable scaffold + all plans.
-- From a normal terminal (not nested in Claude Code): cd /Users/fabrice/Apps/ChartWarden and git checkout main && git pull.
+- From a normal terminal (not nested in Claude Code): cd <path-to-your-checkout> and git checkout main && git pull.
 - Each run creates an isolated worktree, loops the plan task-by-task gating on bun run build && bun run arch:fitness && bun run test, pauses at the approval node, then opens a PR. Merge each wave's PR before starting the next (later waves assume earlier seams exist). Watch with archon workflow status (v0.3.2 has no serve/web dashboard).
 - BEFORE each task's gate-check, regenerate the freshness-checked reports and commit them: bun run status:matrix && bun run ui:parity. Any task that adds schema/routes/screens makes audit/implementation-status/ and audit/ui-parity/ stale, and arch:fitness's arch:status-matrix / arch:ui-parity stages go red until the committed reports match source. (If you forget, the gate failure prints the exact command to run — regen, commit, re-gate.)
 
