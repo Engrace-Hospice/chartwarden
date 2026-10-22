@@ -169,6 +169,14 @@ describe("inspectImageMetadata: sniffing and TIFF", () => {
       expect(inspectImageMetadata(tiff([0x0100, tag], { bigEndian }))).toBe("metadata");
     }
   });
+  it.each([
+    ["ImageDescription", 0x010e],
+    ["Software", 0x0131],
+    ["unknown private tag", 0xc000],
+  ])("flags a TIFF carrying %s", (_n, tag) => {
+    expect(inspectImageMetadata(tiff([0x0100, tag]))).toBe("metadata");
+    expect(inspectImageMetadata(tiff([0x0100, tag], { bigEndian: true }))).toBe("metadata");
+  });
   it("passes a TIFF without metadata tags", () => {
     expect(inspectImageMetadata(tiff([0x0100, 0x0101]))).toBe("clean");
     expect(inspectImageMetadata(tiff([0x0100, 0x0101], { bigEndian: true }))).toBe("clean");

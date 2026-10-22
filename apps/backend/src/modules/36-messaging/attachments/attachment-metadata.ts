@@ -12,9 +12,10 @@
 //  - WHOLE FILE: JPEG is walked through every scan to EOI and the bytes after EOI are inspected; PNG is walked to IEND
 //    and the bytes after IEND are inspected. Only zero padding may trail.
 //  - FAIL CLOSED: truncation, cap exhaustion, malformed lengths and any parser fault yield "unparseable", never "clean".
-//  - TIFF is in the attachment mime allowlist and the client cannot strip it, so its IFD chain is parsed for GPS
-//    (0x8825), Exif IFD (0x8769), XMP (0x02BC), IPTC (0x83BB), Photoshop (0x8649) and SubIFDs (0x014A); BigTIFF and
-//    anything unparseable is quarantined.
+//  - TIFF is in the attachment mime allowlist and the client cannot strip it, so its IFD chain is parsed against an
+//    ALLOWLIST of baseline structural tags (plus ICC 0x8773); every other tag (GPS/Exif/SubIFD pointers, XMP, IPTC,
+//    ImageDescription, Make, Model, Software, DateTime, Artist, Copyright, unknown/private tags) is metadata. BigTIFF
+//    and anything unparseable is quarantined.
 //
 // Pure, synchronous, never throws. Work is O(n): every loop step consumes at least one byte and is additionally
 // capped by the buffer length.
@@ -71,7 +72,12 @@ const PNG_CHUNK_ALLOWLIST = new Set([
 ]);
 const PNG_CHUNK_OVERHEAD = 12; // length + type + crc
 
-const TIFF_METADATA_TAGS = new Set([0x8825, 0x8769, 0x02bc, 0x83bb, 0x8649, 0x014a]);
+/** Baseline structural TIFF tags plus ICC (0x8773, same class as the JPEG/PNG ICC allowance). Any other tag is metadata. */
+const TIFF_STRUCTURAL_TAGS = new Set([
+  0xfe, 0xff, 0x100, 0x101, 0x102, 0x103, 0x106, 0x107, 0x10a, 0x111, 0x112, 0x115, 0x116, 0x117,
+  0x11a, 0x11b, 0x11c, 0x128, 0x13d, 0x140, 0x142, 0x143, 0x144, 0x145, 0x152, 0x153, 0x15b, 0x211,
+  0x212, 0x213, 0x214, 0x8773,
+]);
 const TIFF_ENTRY_BYTES = 12;
 
 function asciiAt(bytes: Uint8Array, offset: number, text: string): boolean {
@@ -178,7 +184,7 @@ function tiffVerdict(bytes: Uint8Array): ImageMetadataVerdict {
     const end = ifd + 2 + count * TIFF_ENTRY_BYTES;
     if (end + 4 > bytes.length) return UNPARSEABLE;
     for (let e = ifd + 2; e < end; e += TIFF_ENTRY_BYTES) {
-      if (TIFF_METADATA_TAGS.has(u16(e))) return METADATA;
+      if (!TIFF_STRUCTURAL_TAGS.has(u16(e))) return METADATA;
     }
     ifd = u32(end);
   }
