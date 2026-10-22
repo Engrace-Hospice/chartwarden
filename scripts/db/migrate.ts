@@ -58,10 +58,8 @@ const APP_ROLE = "chartwarden_app";
 /** Runtime bookkeeping table (created by this script, not a migration; unowned by any module). */
 const TRACK_TABLE = "_chartwarden_migration";
 /**
- * Pre-rename ledger name. A rolled-back PREVIOUS release's runner still reads/writes this name, so
- * `ensureLedger` leaves a simple auto-updatable view under it. The runner itself never touches it.
- * TODO(rename-plan, after the rollback window closes): drop the `_wardenx_migration` compat view
- * and delete LEGACY_TRACK_TABLE plus the view branches in `ensureLedger`.
+ * Pre-rename ledger name. Only used to upgrade a database that still has the legacy TABLE (one-time
+ * rename) and to drop the former rollback-compat VIEW of this name.
  */
 const LEGACY_TRACK_TABLE = "_wardenx_migration";
 const LEDGER_LOCK_KEY = "chartwarden:migration-ledger";
@@ -76,37 +74,13 @@ async function relkindOf(db: Client, name: string): Promise<string | null> {
   return rows[0]?.relkind ?? null;
 }
 
-/** security_invoker (PG15+): the caller's own privileges apply, so the view widens nothing. */
-async function createCompatView(db: Client): Promise<void> {
-  await db.query(
-    `CREATE VIEW ${LEGACY_TRACK_TABLE} WITH (security_invoker = true) AS SELECT * FROM ${TRACK_TABLE}`,
-  );
-  // Mirror the table's explicit grants (if any) onto the view; owner-only tables have a NULL ACL.
-  await db.query(
-    `DO $$
-     DECLARE r record;
-     BEGIN
-       FOR r IN
-         SELECT DISTINCT a.privilege_type,
-                CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(a.grantee)) END AS grantee
-           FROM pg_class c, aclexplode(c.relacl) a
-          WHERE c.oid = '${TRACK_TABLE}'::regclass AND a.grantee <> c.relowner
-       LOOP
-         EXECUTE format('GRANT %s ON ${LEGACY_TRACK_TABLE} TO %s', r.privilege_type, r.grantee);
-       END LOOP;
-     END $$`,
-  );
-}
-
 /**
  * Make `_chartwarden_migration` the ledger, transactionally and idempotently (advisory-locked so two
  * concurrent runners cannot race the rename):
- *   - old table only      -> RENAME it (rows, checksums, PK, owner, grants survive) + compat view;
- *   - neither             -> fresh ledger table + compat view;
- *   - new table (+ view)  -> no-op;
+ *   - old table only      -> RENAME it (rows, checksums, PK, owner, grants survive);
+ *   - neither             -> fresh ledger table;
+ *   - new table           -> no-op, plus DROP the old compat VIEW if one is still there (never a table);
  *   - both are tables, or the old name is a view without the new table -> throw (never guess).
- * The compat view keeps a rolled-back previous release working: its `CREATE TABLE IF NOT EXISTS`
- * on the view name is a notice-level no-op and its SELECT/INSERT/UPDATE hit the real table.
  */
 export async function ensureLedger(db: Client): Promise<void> {
   await db.query("BEGIN");
@@ -125,10 +99,9 @@ export async function ensureLedger(db: Client): Promise<void> {
           `both ${LEGACY_TRACK_TABLE} and ${TRACK_TABLE} are tables; refusing to guess which ledger is authoritative - reconcile manually`,
         );
       }
-      // old name absent or already the compat view: nothing to do (a dropped view is not recreated)
+      if (legacy === "v") await db.query(`DROP VIEW ${LEGACY_TRACK_TABLE}`);
     } else if (legacy === "r") {
       await db.query(`ALTER TABLE ${LEGACY_TRACK_TABLE} RENAME TO ${TRACK_TABLE}`);
-      await createCompatView(db);
     } else if (legacy === null) {
       await db.query(
         `CREATE TABLE ${TRACK_TABLE} (
@@ -137,7 +110,6 @@ export async function ensureLedger(db: Client): Promise<void> {
            applied_at timestamptz NOT NULL DEFAULT now()
          )`,
       );
-      await createCompatView(db);
     } else {
       throw new Error(
         `${LEGACY_TRACK_TABLE} is a non-table relation (relkind ${legacy}) and ${TRACK_TABLE} does not exist`,

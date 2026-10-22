@@ -137,10 +137,10 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
   }, 60_000);
 });
 
-// The ledger rename (_wardenx_migration -> _chartwarden_migration) must keep rows/checksums and keep a
-// rolled-back PREVIOUS release's runner working through the compat view. Uses a tiny temp migrations dir
+// The ledger rename (_wardenx_migration -> _chartwarden_migration) must keep rows/checksums, and the
+// former rollback-compat view must be dropped (never a real table). Uses a tiny temp migrations dir
 // so it does not depend on the full chain.
-describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + rollback compat (LIVE Postgres)", () => {
+describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + compat view removal (LIVE Postgres)", () => {
   const OLD = "_wardenx_migration";
   const NEW = "_chartwarden_migration";
   const FILE_A = "9101_ledger_a.sql";
@@ -187,21 +187,19 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + rollback com
 
   const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-  it("renames a populated legacy ledger, preserving rows and checksums, and leaves a compat view", async () => {
+  it("renames a populated legacy ledger, preserving rows and checksums, and leaves no legacy relation", async () => {
     await legacyLedger([[FILE_A, sha("SELECT 1;\n")]]);
 
     const result = await applyMigrations(db, { migrationsDir: dir, strict: true });
 
     expect(result.ran).toEqual([FILE_B]);
     expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBe("v");
+    expect(await kindOf(OLD)).toBeNull();
     const { rows } = await db.query("SELECT filename, checksum FROM _chartwarden_migration ORDER BY filename");
     expect(rows).toEqual([
       { filename: FILE_A, checksum: sha("SELECT 1;\n") },
       { filename: FILE_B, checksum: sha("SELECT 2;\n") },
     ]);
-    const view = await db.query("SELECT filename FROM _wardenx_migration ORDER BY filename");
-    expect(view.rows.map((r) => r.filename)).toEqual([FILE_A, FILE_B]);
   });
 
   it("a second run is a no-op", async () => {
@@ -210,33 +208,24 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + rollback com
     const again = await applyMigrations(db, { migrationsDir: dir });
     expect(again.ran).toEqual([]);
     expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBe("v");
+    expect(await kindOf(OLD)).toBeNull();
   });
 
-  it("a fresh database gets the ledger table and the compat view", async () => {
+  it("a fresh database gets the ledger table and no compat view", async () => {
     await applyMigrations(db, { migrationsDir: dir });
     expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBe("v");
+    expect(await kindOf(OLD)).toBeNull();
   });
 
-  it("rollback compat: the previous runner's CREATE IF NOT EXISTS is a no-op and its INSERT lands in the table", async () => {
+  it("drops a pre-existing compat view over the new ledger, idempotently", async () => {
     await applyMigrations(db, { migrationsDir: dir });
+    await db.query(`CREATE VIEW ${OLD} WITH (security_invoker = true) AS SELECT * FROM ${NEW}`);
 
-    // exactly what the previous release's runner executes
-    await db.query(
-      `CREATE TABLE IF NOT EXISTS ${OLD} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
-    );
-    await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2)`, ["9199_old_runner.sql", "abc"]);
-    await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [
-      "9199_old_runner.sql",
-      "abc",
-    ]);
-
-    expect(await kindOf(OLD)).toBe("v");
-    const { rows } = await db.query(`SELECT checksum, applied_at FROM ${NEW} WHERE filename = '9199_old_runner.sql'`);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.checksum).toBe("abc");
-    expect(rows[0]!.applied_at).toBeInstanceOf(Date);
+    await ensureLedger(db);
+    expect(await kindOf(OLD)).toBeNull();
+    await ensureLedger(db);
+    expect(await kindOf(OLD)).toBeNull();
+    expect(await kindOf(NEW)).toBe("r");
   });
 
   it("still detects a tampered checksum after the rename", async () => {
@@ -254,33 +243,6 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + rollback com
     await expect(applyMigrations(db, { migrationsDir: dir })).rejects.toThrow(/both .* are tables/);
     expect(await kindOf(OLD)).toBe("r");
   });
-  it("copies a non-owner role's full grants onto the compat view without aborting", async () => {
-    const role = "ledger_grant_probe";
-    await db.query(`DROP ROLE IF EXISTS ${role}`);
-    await db.query(`CREATE ROLE ${role}`);
-    try {
-      await legacyLedger([]);
-      await db.query(`GRANT ALL ON ${OLD} TO ${role}`);
-      await ensureLedger(db);
-      const privs = async (rel: string) =>
-        (
-          await db.query<{ p: string }>(
-            `SELECT DISTINCT a.privilege_type AS p FROM pg_class c, aclexplode(c.relacl) a
-              WHERE c.oid = $1::regclass AND a.grantee = $2::regrole ORDER BY 1`,
-            [rel, role],
-          )
-        ).rows.map((r) => r.p);
-      expect(await kindOf(OLD)).toBe("v");
-      const onTable = await privs(NEW);
-      expect(onTable.length).toBeGreaterThan(0);
-      expect(await privs(OLD)).toEqual(onTable);
-    } finally {
-      await db.query("DROP SCHEMA IF EXISTS public CASCADE");
-      await db.query("CREATE SCHEMA public");
-      await db.query(`DROP ROLE IF EXISTS ${role}`);
-    }
-  });
-
   it("is a no-op when the new table exists and the legacy name is absent", async () => {
     await db.query(
       `CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,

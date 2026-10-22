@@ -243,8 +243,9 @@ records and certificate were never removed.
   (renaming a database requires dropping connections and updating every `DATABASE_*_URL`; applied-migration
   checksums forbid editing SQL). The `wardenx_destruction` role alias was dropped by migration 1142.
 - The `_wardenx_migration` ledger IS renamed to `_chartwarden_migration` (by `scripts/db/migrate.ts`
-  `ensureLedger`). A `_wardenx_migration` compat view remains so a rollback to the previous release's runner
-  keeps working; a later cleanup step drops it.
+  `ensureLedger`). The `_wardenx_migration` compat view is gone: `ensureLedger` drops it if present (only ever a
+  view, never a table); the one-time table rename remains for a database that still has the legacy table.
+  Rolling back to a release older than #545 is no longer supported.
 - Compose project name `wardenx` and the `wardenx_*` volumes/network (data loss, see Phase 4).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
 - The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.
