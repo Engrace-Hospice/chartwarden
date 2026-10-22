@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { seedCalendar } from "../db/cop27/dates";
 import { findByMarker, matchesDemoPatient } from "../db/cop27/refind";
 
 describe("COP27 re-find", () => {
@@ -23,5 +24,13 @@ describe("COP27 re-find", () => {
     expect(matchesDemoPatient({ firstName: "Julian", lastName: "DEMO-COP27-04" }, spec)).toBe(
       false,
     );
+  });
+});
+
+describe("COP27 seed calendar", () => {
+  it("never runs ahead of the backend's date, even when the location zone has rolled over", () => {
+    const justAfterUtcMidnight = new Date("2026-10-22T06:10:00Z"); // New York: Oct 22, Los Angeles: Oct 21
+    expect(seedCalendar("America/New_York", justAfterUtcMidnight).today).toBe("2026-10-21");
+    expect(seedCalendar("America/Los_Angeles", justAfterUtcMidnight).rel(-1)).toBe("2026-10-20");
   });
 });

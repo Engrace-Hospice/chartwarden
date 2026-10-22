@@ -50,7 +50,12 @@ export interface SeedCalendar {
   readonly rel: (days: number) => string;
 }
 
+/** The backend validates dates against this zone (`DEFAULT_ORG_TZ`, recert-period-activation.ts), not the
+ * location's own, so a seed "today" that is ahead of it is rejected as "in the future" (F2F encounter dates)
+ * and leaves a just-opened care plan not yet current. */
+const SERVER_TZ = "America/Los_Angeles";
+
 export function seedCalendar(timeZone: string, now = new Date()): SeedCalendar {
-  const today = localDate(now, timeZone);
+  const today = minDate(localDate(now, timeZone), localDate(now, SERVER_TZ));
   return { timeZone, today, rel: (days: number) => addDays(today, days) };
 }
