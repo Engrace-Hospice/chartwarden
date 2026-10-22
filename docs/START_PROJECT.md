@@ -38,23 +38,23 @@ Add these settings to `.env` (the database URLs intentionally use different role
 
 ```dotenv
 # Migration/seed connection: PostgreSQL superuser.
-DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/wardenx
+DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/chartwarden
 
 # Runtime connection: created by `bun run db:migrate` below.
-DATABASE_URL=postgres://chartwarden_app:wardenx_app@localhost:5432/wardenx
-CHARTWARDEN_APP_PASSWORD=wardenx_app
+DATABASE_URL=postgres://chartwarden_app:chartwarden-app-dev-password@localhost:5432/chartwarden
+CHARTWARDEN_APP_PASSWORD=chartwarden-app-dev-password
 
 # Lets the single-org demo complete pre-organization reads. Never enable in production.
 CHARTWARDEN_DEV_BYPASSRLS=1
 
 REDIS_URL=redis://localhost:6379
 MINIO_ENDPOINT=http://localhost:9000
-MINIO_ACCESS_KEY=wardenx
-MINIO_SECRET_KEY=wardenx-minio-secret
+MINIO_ACCESS_KEY=chartwarden
+MINIO_SECRET_KEY=chartwarden-minio-secret
 MINIO_REGION=us-east-1
 
 BETTER_AUTH_URL=http://localhost:3000
-BETTER_AUTH_SECRET=wardenx-local-development-secret-change-me
+BETTER_AUTH_SECRET=chartwarden-local-development-secret-change-me
 TRUSTED_ORIGINS=http://localhost:3000,http://localhost:5173
 NODE_ENV=development
 PORT=3000

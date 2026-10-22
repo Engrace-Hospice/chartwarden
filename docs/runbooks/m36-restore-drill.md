@@ -16,7 +16,7 @@ document's own banner says the same: every backup topology in it is a target, no
 
 | Asset | What exists today | What does not |
 |---|---|---|
-| Postgres | `pg_dump -U postgres -d wardenx \| gzip` into `backups/pre-reseed-<ts>.sql.gz` on the VPS, **only** when an operator runs `reseed-demo.sh reseed` (`deploy/production/reseed-demo.sh`) | No scheduled backup, no WAL archiving, no PITR, no off-host copy, no retention, no restore script. pgBackRest is `ops/pgbackrest/pgbackrest.conf.template` ("NOT wired to any real host/credentials"). `deploy.sh` backs up only `.env.production` |
+| Postgres | `pg_dump -U postgres -d chartwarden \| gzip` into `backups/pre-reseed-<ts>.sql.gz` on the VPS, **only** when an operator runs `reseed-demo.sh reseed` (`deploy/production/reseed-demo.sh`) | No scheduled backup, no WAL archiving, no PITR, no off-host copy, no retention, no restore script. pgBackRest is `ops/pgbackrest/pgbackrest.conf.template` ("NOT wired to any real host/credentials"). `deploy.sh` backs up only `.env.production` |
 | Object store (MinIO) | Data lives in the `minio-data` Docker volume on the same host | **No backup of any kind**: no `mc mirror`, no site replication, no snapshot. DR/BCP section 4.2 (replication to a backup VM, Object Lock) is unbuilt |
 | Cross-store coordination | none | Nothing relates a DB backup to an object-store backup. A DB restore with no matching object restore leaves attachment rows pointing at missing objects |
 | Secrets | `.env.production` copy beside each deploy | `MESSAGING_ENCRYPTION_KEY` (and `M34_TENANT_KEK`) are not in any backup; a DB restored without the same key cannot decrypt a single message body, and `messaging.hash_verify` reports every row as a mismatch |
@@ -32,7 +32,7 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
 
 ## 2. What the drill does
 
-1. Starts a source Postgres 18 (pgvector) and MinIO; creates database `wardenx`; runs `scripts/db/migrate.ts` and
+1. Starts a source Postgres 18 (pgvector) and MinIO; creates database `chartwarden`; runs `scripts/db/migrate.ts` and
    `scripts/db/provision-runtime-roles.ts` (the production path).
 2. Seeds two tenants **through the real M36 routes** as `chartwarden_app` (Authorization Contract, `channel_visibility` ABAC,
    idempotency store, catalog-validating outbox): messages, two edits (revisions), attachments uploaded by real presigned
@@ -60,7 +60,7 @@ Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts
    throwaway database and dropping it. Verified failure without this step: `bun run m36:restore-drill -- --no-role-bootstrap`
    stops with `ERROR: role "chartwarden_admin" does not exist`. Without `ON_ERROR_STOP` the same restore completes with
    thousands of errors and a database whose policies and grants are partly missing.
-2. `gunzip -c backup.sql.gz | psql -U postgres -d wardenx -v ON_ERROR_STOP=1`.
+2. `gunzip -c backup.sql.gz | psql -U postgres -d chartwarden -v ON_ERROR_STOP=1`.
 3. Restore the object store (the drill copies the volume tar into a fresh MinIO container before it starts).
 4. Provide the same `MESSAGING_ENCRYPTION_KEY` and runtime-role passwords as the failed host.
 5. Run the verification above (or the drill's report) before cutting traffic over.

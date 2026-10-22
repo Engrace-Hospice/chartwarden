@@ -4,7 +4,7 @@
  * explicitly, over the real `chartwarden_app` connection and the real catalog-validating outbox publisher. Idempotent:
  * a second run carries nothing and increments nothing.
  *
- *   DATABASE_URL="postgres://chartwarden_app:wardenx-app-dev-password@localhost:5432/wardenx" bun run db:idg:carry-forward
+ *   DATABASE_URL="postgres://chartwarden_app:chartwarden-app-dev-password@localhost:5432/chartwarden" bun run db:idg:carry-forward
  */
 import { createDbClient } from "@chartwarden/db";
 import {

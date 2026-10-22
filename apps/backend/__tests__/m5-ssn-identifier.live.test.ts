@@ -63,7 +63,7 @@ const ROLES = [
   "chartwarden_admin",
   "chartwarden_readonly",
   "chartwarden_audit_writer",
-  "wardenx_report_writer",
+  "report_writer",
   "chartwarden_destruction",
   "tenant_platform_writer",
 ];

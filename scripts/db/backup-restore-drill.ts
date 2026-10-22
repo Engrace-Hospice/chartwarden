@@ -97,10 +97,10 @@ async function main(): Promise<void> {
     throw new Error("pgbackrest not found. Install it (macOS: brew install pgbackrest) and retry.");
   }
 
-  const work = mkdtempSync(join(tmpdir(), "wardenx-backup-drill-"));
+  const work = mkdtempSync(join(tmpdir(), "chartwarden-backup-drill-"));
   // A Unix-domain socket path is capped at ~103 bytes on macOS — `work` (under the OS tmpdir) can
   // exceed that, so the socket directory is a short, separate path under /tmp, not `work` itself.
-  const sockDir = join("/tmp", `wardenx-drill-sock-${process.pid}`);
+  const sockDir = join("/tmp", `chartwarden-drill-sock-${process.pid}`);
   const sourceData = join(work, "source-data");
   const restoreData = join(work, "restore-data");
   const repo1 = join(work, "repo1");

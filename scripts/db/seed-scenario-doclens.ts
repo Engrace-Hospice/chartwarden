@@ -25,7 +25,7 @@
  *
  * Prereqs: the stack is up and seeded (`db:seed`, `db:seed:org-structure`), the backend answers on
  *   BETTER_AUTH_URL, and these are set (the compose dev values work against the local stack):
- *     DATABASE_ADMIN_URL      postgres://postgres:postgres@localhost:5432/wardenx
+ *     DATABASE_ADMIN_URL      postgres://postgres:postgres@localhost:5432/chartwarden
  *     DATABASE_PLATFORM_URL   the platform login (it alone may read `tenant_key_ring`)
  *     M34_TENANT_KEK          the KEK the API runs with (`docker compose config | grep M34_TENANT_KEK`)
  * Run:     bun run db:seed:scenario-doclens

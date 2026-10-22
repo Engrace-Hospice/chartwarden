@@ -17,7 +17,7 @@ export default defineConfig({
   out: "./packages/db/migrations",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://localhost:5432/wardenx",
+    url: process.env.DATABASE_URL ?? "postgres://localhost:5432/chartwarden",
   },
   strict: true,
   verbose: true,

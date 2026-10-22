@@ -63,6 +63,15 @@ the 5432 compose database, which was never reset. `db:wait --expect-empty` now a
 really is empty before migrations replay, so that class of mismatch fails loudly instead of silently
 seeding on top of existing data.
 
+**Existing dev volume after the database/dev-credential rename.** The local database is now named
+`chartwarden` (was `wardenx`) and the dev role passwords, MinIO credentials and compose volumes carry
+the `chartwarden-` prefix (`chartwarden-compose-pgdata|minio|clamav`). A stack created before that has a
+`wardenx` database with the old role passwords, so it cannot be reused: run `docker compose down -v`
+(or `bun run db:reset`), optionally `docker volume rm wardenx-compose-pgdata wardenx-compose-minio
+wardenx-compose-clamav` for the orphaned old volumes, re-copy `.env.example` to `.env` (or edit the
+`DATABASE_*` URLs and `CHARTWARDEN_APP_PASSWORD` by hand), then `bun run db:migrate && bun run db:seed:all`.
+The seeds still delete the legacy `wardenx-demo` organization if one is found.
+
 `cp .env.example .env` is sufficient; the full onboarding runbook is
 [`docs/START_PROJECT.md`](./START_PROJECT.md).
 
@@ -111,7 +120,7 @@ M34 offboarding eraser, **and every per-tenant PHI cipher**) and `DATABASE_DESTR
 affected paths refuse loudly — the boot log says exactly what is off.
 
 **Message attachments (M36 WP 1.5) in the compose stack.** `docker compose up` starts a `clamav` sidecar (clamd on the
-compose network only; config `deploy/clamav/clamd.conf`; signature DB in the `wardenx-compose-clamav` volume, downloaded on
+compose network only; config `deploy/clamav/clamd.conf`; signature DB in the `chartwarden-compose-clamav` volume, downloaded on
 first start, a minute or two) and sets `MESSAGING_ATTACHMENT_SCANNER=clamd` on api and worker. api/worker only wait for it to
 *start*: until clamd answers, attachments stay `pending` (nothing is delivered). For a quick run without ClamAV set
 `MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1` in `.env` (EICAR + type check, not an antivirus).

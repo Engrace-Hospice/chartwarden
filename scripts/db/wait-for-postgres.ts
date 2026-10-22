@@ -26,7 +26,7 @@ import { Client } from "pg";
 const URL =
   process.env.DATABASE_ADMIN_URL ??
   process.env.DATABASE_URL ??
-  "postgres://postgres:postgres@localhost:5432/wardenx";
+  "postgres://postgres:postgres@localhost:5432/chartwarden";
 
 const TIMEOUT_MS = Number(process.env.CHARTWARDEN_DB_WAIT_TIMEOUT_MS ?? 60_000);
 const EXPECT_EMPTY = process.argv.includes("--expect-empty");

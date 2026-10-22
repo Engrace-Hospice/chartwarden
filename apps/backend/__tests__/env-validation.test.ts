@@ -325,7 +325,7 @@ describe("#115 — reserved placeholder hosts", () => {
 
   it("extracts hosts from URLs, connection strings, origin lists and bare names", () => {
     expect(hostnamesIn("https://gw.example.invalid/dek/unwrap")).toEqual(["gw.example.invalid"]);
-    expect(hostnamesIn("postgresql://u:p%40ss@db-host:5432/wardenx")).toEqual(["db-host"]);
+    expect(hostnamesIn("postgresql://u:p%40ss@db-host:5432/chartwarden")).toEqual(["db-host"]);
     expect(hostnamesIn("https://a.chartwarden.cloud, https://b.chartwarden.cloud")).toEqual([
       "a.chartwarden.cloud",
       "b.chartwarden.cloud",

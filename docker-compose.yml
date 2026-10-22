@@ -30,13 +30,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ${CHARTWARDEN_DB_NAME:-wardenx}
+      POSTGRES_DB: ${CHARTWARDEN_DB_NAME:-chartwarden}
     ports:
       - "5432:5432"
     volumes:
-      - wardenx-compose-pgdata:/var/lib/postgresql
+      - chartwarden-compose-pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ${CHARTWARDEN_DB_NAME:-wardenx}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ${CHARTWARDEN_DB_NAME:-chartwarden}"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -61,13 +61,13 @@ services:
     image: cgr.dev/chainguard/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: wardenx
-      MINIO_ROOT_PASSWORD: wardenx-minio-secret
+      MINIO_ROOT_USER: chartwarden
+      MINIO_ROOT_PASSWORD: chartwarden-minio-secret
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - wardenx-compose-minio:/data
+      - chartwarden-compose-minio:/data
 
   # M36 WP 1.5 — the attachment malware scanner (clamd over TCP INSTREAM). Reachable only on the compose network:
   # NO published host port. deploy/clamav/clamd.conf sets the alert-on-unscannable policy (encrypted, over-limit) and
@@ -84,7 +84,7 @@ services:
     cpus: 2
     networks: [scan]
     volumes:
-      - wardenx-compose-clamav:/var/lib/clamav
+      - chartwarden-compose-clamav:/var/lib/clamav
       - ./deploy/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "clamdcheck.sh"]
@@ -111,14 +111,14 @@ services:
         "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts && (bun run scripts/backfill-tenant-buckets.ts || echo 'tenant bucket backfill skipped (will be created on first use)')",
       ]
     environment:
-      DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
-      PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
-      CHARTWARDEN_APP_PASSWORD: wardenx-app-dev-password
-      CHARTWARDEN_PLATFORM_PASSWORD: wardenx-platform-dev-password
-      CHARTWARDEN_DESTRUCTION_PASSWORD: wardenx-destruction-dev-password
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      CHARTWARDEN_APP_PASSWORD: chartwarden-app-dev-password
+      CHARTWARDEN_PLATFORM_PASSWORD: chartwarden-platform-dev-password
+      CHARTWARDEN_DESTRUCTION_PASSWORD: chartwarden-destruction-dev-password
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: wardenx
-      MINIO_SECRET_KEY: wardenx-minio-secret
+      MINIO_ACCESS_KEY: chartwarden
+      MINIO_SECRET_KEY: chartwarden-minio-secret
       MINIO_REGION: us-east-1
     depends_on:
       postgres:
@@ -138,13 +138,13 @@ services:
       MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
       PORT: "3000"
       LOG_LEVEL: info
-      DATABASE_URL: postgres://chartwarden_app:wardenx-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
-      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:wardenx-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
-      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:wardenx-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      DATABASE_URL: postgres://chartwarden_app:chartwarden-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:chartwarden-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: wardenx
-      MINIO_SECRET_KEY: wardenx-minio-secret
+      MINIO_ACCESS_KEY: chartwarden
+      MINIO_SECRET_KEY: chartwarden-minio-secret
       MINIO_REGION: us-east-1
       # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
       # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
@@ -153,7 +153,7 @@ services:
       CLAMD_HOST: clamav
       CLAMD_PORT: "3310"
       BETTER_AUTH_URL: http://localhost:3000
-      BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
+      BETTER_AUTH_SECRET: chartwarden-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
       # Local-only KEK for the synthetic tenant's envelope-encrypted PHI. Production supplies its
       # own key from .env.production; this default exists so the documented Compose demo can finalize
@@ -214,13 +214,13 @@ services:
       MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
       WORKER_PORT: "3001"
       LOG_LEVEL: info
-      DATABASE_URL: postgres://chartwarden_app:wardenx-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
-      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:wardenx-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
-      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:wardenx-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-wardenx}
+      DATABASE_URL: postgres://chartwarden_app:chartwarden-app-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:chartwarden-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: wardenx
-      MINIO_SECRET_KEY: wardenx-minio-secret
+      MINIO_ACCESS_KEY: chartwarden
+      MINIO_SECRET_KEY: chartwarden-minio-secret
       MINIO_REGION: us-east-1
       # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
       # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
@@ -229,7 +229,7 @@ services:
       CLAMD_HOST: clamav
       CLAMD_PORT: "3310"
       BETTER_AUTH_URL: http://localhost:3000
-      BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
+      BETTER_AUTH_SECRET: chartwarden-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
       M34_TENANT_KEK: ${M34_TENANT_KEK:-kek-local:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=}
       <<: *m34-provision-gateway-env
@@ -296,6 +296,6 @@ networks:
   scan:
 
 volumes:
-  wardenx-compose-pgdata:
-  wardenx-compose-minio:
-  wardenx-compose-clamav:
+  chartwarden-compose-pgdata:
+  chartwarden-compose-minio:
+  chartwarden-compose-clamav:
