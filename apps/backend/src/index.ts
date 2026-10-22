@@ -379,7 +379,11 @@ import {
   activeLegalHolds,
   approvedMessageCertificates,
   completeMessageCertificate,
-  consumeMessageCertificateCount,
+  expiredMessageCertificateIds,
+  lockMessageCertificate,
+  messageCertificateIsLive,
+  reserveMessageCertificateCount,
+  settleMessageCertificateCount,
   createMessagingGovernanceHoldPort,
   openMessageCertificate,
 } from "./modules/04-audit/messaging-hold-workflow";
@@ -9533,7 +9537,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   openCertificate: openMessageCertificate,
                   approvedCertificates: approvedMessageCertificates,
                   completeCertificate: completeMessageCertificate,
-                  consumeCertificateCount: consumeMessageCertificateCount,
+                  expiredCertificateIds: expiredMessageCertificateIds,
+                  lockCertificate: lockMessageCertificate,
+                  certificateIsLive: messageCertificateIsLive,
+                  reserveCertificateCount: reserveMessageCertificateCount,
+                  settleCertificateCount: settleMessageCertificateCount,
                 },
                 onBatchError: (err: unknown) =>
                   app.log.error(

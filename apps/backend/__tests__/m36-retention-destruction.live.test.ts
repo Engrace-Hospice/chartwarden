@@ -34,8 +34,12 @@ import {
   activeLegalHolds,
   approvedMessageCertificates,
   completeMessageCertificate,
-  consumeMessageCertificateCount,
+  expiredMessageCertificateIds,
+  lockMessageCertificate,
+  messageCertificateIsLive,
   openMessageCertificate,
+  reserveMessageCertificateCount,
+  settleMessageCertificateCount,
 } from "../src/modules/04-audit/messaging-hold-workflow";
 import { createMessageRedactionService } from "../src/modules/36-messaging/governance/message-redaction-service";
 import type { GovernanceActor } from "../src/modules/36-messaging/governance/retention-governance-service";
@@ -74,9 +78,14 @@ describe.skipIf(!DB_URL)(
     const messageHolds: MessageDestructionHoldPort = {
       activeHolds: activeLegalHolds,
       openCertificate: openMessageCertificate,
-      approvedCertificates: (tx, org, limit) => approvedMessageCertificates(tx, org, limit),
+      approvedCertificates: (tx, org, limit, notBefore) =>
+        approvedMessageCertificates(tx, org, limit, notBefore),
       completeCertificate: completeMessageCertificate,
-      consumeCertificateCount: consumeMessageCertificateCount,
+      expiredCertificateIds: expiredMessageCertificateIds,
+      lockCertificate: lockMessageCertificate,
+      certificateIsLive: messageCertificateIsLive,
+      reserveCertificateCount: reserveMessageCertificateCount,
+      settleCertificateCount: settleMessageCertificateCount,
     };
     const deps = (over: Partial<RetentionDestructionDeps> = {}): RetentionDestructionDeps => ({
       db: kit.handle.db,
@@ -116,13 +125,21 @@ describe.skipIf(!DB_URL)(
           [org, dataClass, status, status === "approved" ? officer1 : null, recordCount, ageDays],
         )
       )[0].id;
-    const recordCountOf = async (id: string) =>
-      (
-        await kit.one<{ record_count: number }>(
-          "SELECT record_count FROM destruction_certificate WHERE id=$1",
+    const recordCountOf = async (id: string) => (await countsOf(id)).record;
+    /** The approved figure (immutable) and the spend beside it. */
+    const countsOf = async (id: string) => {
+      const r = (
+        await kit.one<{ record_count: number; destroyed_count: number; reserved_count: number }>(
+          "SELECT record_count, destroyed_count, reserved_count FROM destruction_certificate WHERE id=$1",
           [id],
         )
-      )[0]?.record_count;
+      )[0];
+      return {
+        record: r?.record_count,
+        destroyed: r?.destroyed_count,
+        reserved: r?.reserved_count,
+      };
+    };
     const certStatus = async (id: string) =>
       (
         await kit.one<{ status: string }>(
@@ -538,7 +555,7 @@ describe.skipIf(!DB_URL)(
         certificateExecuted: true,
       });
       expect(await certStatus(cert)).toBe("executed");
-      expect(await recordCountOf(cert)).toBe(0);
+      expect(await countsOf(cert)).toEqual({ record: 3, destroyed: 3, reserved: 0 }); // the approved figure is untouched
       let alive = 0;
       for (const id of ids) if (await exists(id)) alive += 1;
       expect(alive).toBe(2);
@@ -555,7 +572,7 @@ describe.skipIf(!DB_URL)(
         approvedRemaining: 1,
         certificateExecuted: false,
       });
-      expect(await recordCountOf(cert)).toBe(1);
+      expect(await countsOf(cert)).toEqual({ record: 4, destroyed: 3, reserved: 0 });
       const rest = await run();
       expect(rest.destroyed).toBe(1);
       expect(rest.certificates[0]).toMatchObject({
@@ -585,6 +602,125 @@ describe.skipIf(!DB_URL)(
       const certId = scan.certificates.find((c) => c.dataClass === "message.care_related")
         ?.certificateId as string;
       expect(await recordCountOf(certId)).toBe(5003); // the certificate is not: 5003 destroyable, the object-bearing one is out
+    });
+
+    it("two executors at once never exceed the approved count (the row lock serialises them; the second sees the reduced remainder)", async () => {
+      for (let i = 0; i < 10; i += 1) await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 4);
+      const results = await Promise.all([
+        run(ORG_A, { batchSize: 1 }),
+        run(ORG_A, { batchSize: 1 }),
+        run(ORG_A, { batchSize: 2 }),
+      ]);
+      // Racing executors may plan the same message (one wins, the other's delete finds it gone and its reservation is refunded), so the total
+      // can fall short of 4 in one pass; it can NEVER exceed it.
+      const total = results.reduce((n, r) => n + r.destroyed, 0);
+      expect(total).toBeLessThanOrEqual(4);
+      expect(total).toBeGreaterThanOrEqual(1);
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM message WHERE organization_id=$1", [ORG_A]),
+      ).toBe(10 - total);
+      expect(await countsOf(cert)).toEqual({ record: 4, destroyed: total, reserved: 0 });
+      // A later serial run finishes exactly the approved count and closes the certificate.
+      await run();
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM message WHERE organization_id=$1", [ORG_A]),
+      ).toBe(6);
+      expect(await countsOf(cert)).toEqual({ record: 4, destroyed: 4, reserved: 0 });
+      expect(await certStatus(cert)).toBe("executed");
+    });
+
+    it("a crash between the delete and the spend can only under-delete: the reservation stays, and later runs never exceed the approved count", async () => {
+      for (let i = 0; i < 8; i += 1) await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 3);
+      // The batch is deleted, then recording it fails for good (simulated crash after the delete).
+      const crashing = (async (...args: Parameters<typeof audit>) => {
+        if (args[2].eventType === "m36.retention_destruction.batch_completed") {
+          throw new Error("worker died before recording");
+        }
+        return audit(...args);
+      }) as never;
+      await expect(run(ORG_A, { batchSize: 1, auditWriter: crashing })).rejects.toThrow(
+        /destroyed but unrecorded/,
+      );
+      expect(await countsOf(cert)).toEqual({ record: 3, destroyed: 0, reserved: 1 });
+      const next = await run(ORG_A, { batchSize: 1 });
+      expect(next.destroyed).toBe(2); // 1 already gone + 2 = the 3 approved, never 4
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM message WHERE organization_id=$1", [ORG_A]),
+      ).toBe(5);
+      expect(await countsOf(cert)).toEqual({ record: 3, destroyed: 2, reserved: 1 });
+      expect((await run()).destroyed).toBe(0);
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM message WHERE organization_id=$1", [ORG_A]),
+      ).toBe(5);
+    });
+
+    it("record_count is immutable once the certificate leaves pending, even for the app role", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 7);
+      await kit.appConn.query("BEGIN");
+      try {
+        await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        await expect(
+          kit.appConn.query("UPDATE destruction_certificate SET record_count = 99 WHERE id=$1", [
+            cert,
+          ]),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining("destruction_certificate_count"),
+        });
+      } finally {
+        await kit.appConn.query("ROLLBACK");
+      }
+      await kit.appConn.query("BEGIN");
+      try {
+        await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        // The spend can never exceed the approved figure (CHECK), and destroyed_count never goes down (guard).
+        await expect(
+          kit.appConn.query("UPDATE destruction_certificate SET destroyed_count = 8 WHERE id=$1", [
+            cert,
+          ]),
+        ).rejects.toMatchObject({ code: "23514" });
+      } finally {
+        await kit.appConn.query("ROLLBACK");
+      }
+      expect(await countsOf(cert)).toEqual({ record: 7, destroyed: 0, reserved: 0 });
+    });
+
+    it("expired approvals do not starve a fresh one: more stale certificates than the per-run limit, the fresh one still runs", async () => {
+      const stale: string[] = [];
+      for (let i = 0; i < 8; i += 1) {
+        stale.push(await certificate(ORG_A, "approved", "message.care_related", 1000, 40 + i));
+      }
+      const old = await aged(ORG_A, channel, 8);
+      const fresh = await certificate(ORG_A, "approved", "message.care_related", 1000, 0);
+      const result = await run();
+      expect(result.certificates.map((c) => c.certificateId)).toEqual([fresh]);
+      expect(result.destroyed).toBe(1);
+      expect(await exists(old)).toBe(false);
+      expect([...result.expiredCertificateIds].sort()).toEqual([...stale].sort());
+      for (const id of stale) expect(await certStatus(id)).toBe("approved");
+    });
+
+    it("the delete re-checks the certificate in its own statement: one moved off approved after the plan destroys nothing", async () => {
+      const kept = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved");
+      let calls = 0;
+      const pulled: MessageDestructionHoldPort = {
+        ...messageHolds,
+        activeHolds: async (tx, org) => {
+          calls += 1;
+          // Call 1 is the plan; call 2 is the destructive transaction: another actor holds the certificate in between.
+          if (calls === 2)
+            await kit.admin.query("UPDATE destruction_certificate SET status='held' WHERE id=$1", [
+              cert,
+            ]);
+          return activeLegalHolds(tx, org);
+        },
+      };
+      const result = await run(ORG_A, { messageHolds: pulled });
+      expect(result.destroyed).toBe(0);
+      expect(result.certificates[0]).toMatchObject({ refusedAtDelete: 1, destroyed: 0 });
+      expect(await exists(kept)).toBe(true);
     });
 
     it("an approved certificate older than its validity is refused: a message held at approval and released long after is not destroyed under it", async () => {
@@ -655,7 +791,7 @@ describe.skipIf(!DB_URL)(
       const ok = await run(ORG_A, { auditWriter: flakyWriter(2) as never });
       expect(ok.destroyed).toBe(1);
       expect(await exists(a)).toBe(false);
-      expect(await recordCountOf(cert)).toBe(9);
+      expect(await countsOf(cert)).toEqual({ record: 10, destroyed: 1, reserved: 0 });
       expect(await auditRows("m36.retention_destruction.batch_completed", ok.runId)).toHaveLength(
         1,
       );

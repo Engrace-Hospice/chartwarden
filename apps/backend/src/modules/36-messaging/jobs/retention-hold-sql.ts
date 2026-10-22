@@ -31,21 +31,47 @@ export interface MessageHoldPort {
   ): Promise<{ readonly id: string; readonly created: boolean }>;
 }
 
-/** An approved M4 certificate the destruction executor may act on (ids, class and dates only). */
+/** An approved M4 certificate the destruction executor may act on (ids, class, dates and counts only). */
 export interface ApprovedMessageCertificateRef {
   readonly id: string;
   readonly dataClass: string;
   readonly createdAt: Date;
+  /** What the approver approved (immutable). */
   readonly recordCount: number;
+  readonly destroyedCount: number;
+  readonly reservedCount: number;
 }
 
-/** The destruction executor's extra needs from M4: approved certificates to act on, and closing one. Same tenant-tx rule as above. */
+/** The certificate row as the planning transaction sees it, read under a row lock. */
+export interface LockedCertificate {
+  readonly status: string;
+  readonly createdAt: Date;
+  /** record_count - destroyed_count - reserved_count, never below 0. */
+  readonly available: number;
+  /** record_count - destroyed_count: what is not yet really spent (reservations in flight may still be refunded, so this is what "spent" means). */
+  readonly unspent: number;
+}
+
+/**
+ * The destruction executor's extra needs from M4. Every call runs in the caller's tenant tx. The approved count is spent by RESERVE (in the
+ * plan transaction, under the certificate's row lock, so a concurrent executor waits and then sees the reduced remainder), then SETTLE (after the
+ * delete: reserved goes down by the plan, destroyed up by what was really deleted, the difference is refunded). `record_count` never changes.
+ */
 export interface MessageDestructionHoldPort extends MessageHoldPort {
+  /** Approved `message.*` certificates opened at or after `notBefore` (older approvals are stale), oldest first, bounded. */
   approvedCertificates(
     tx: DbClient,
     organizationId: string,
     limit: number,
+    notBefore: Date,
   ): Promise<readonly ApprovedMessageCertificateRef[]>;
+  /** Ids of approved `message.*` certificates opened BEFORE `notBefore` (expired approvals, reported and never acted on). */
+  expiredCertificateIds(
+    tx: DbClient,
+    organizationId: string,
+    notBefore: Date,
+    limit: number,
+  ): Promise<readonly string[]>;
   completeCertificate(
     tx: DbClient,
     input: {
@@ -54,15 +80,36 @@ export interface MessageDestructionHoldPort extends MessageHoldPort {
       readonly executedAt: Date;
     },
   ): Promise<boolean>;
-  /**
-   * Spend `destroyed` of the certificate's approved count (record_count never goes below 0) and return what is left. The approved count is
-   * the CEILING of what the certificate may ever destroy, across runs; the audit trail of the certificate row keeps the original figure.
-   */
-  consumeCertificateCount(
+  /** Is the certificate still `approved` and opened at or after `notBefore`? A plain read (the destruction credential cannot lock or write it). */
+  certificateIsLive(
     tx: DbClient,
     input: {
       readonly organizationId: string;
       readonly certificateId: string;
+      readonly notBefore: Date;
+    },
+  ): Promise<boolean>;
+  /** SELECT ... FOR UPDATE of the certificate: serialises executors on it. null when unknown or not this org's. */
+  lockCertificate(
+    tx: DbClient,
+    input: { readonly organizationId: string; readonly certificateId: string },
+  ): Promise<LockedCertificate | null>;
+  /** Reserve `count` of the remainder, only if it is still available and the certificate is approved; false (nothing reserved) otherwise. */
+  reserveCertificateCount(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly count: number;
+    },
+  ): Promise<boolean>;
+  /** Settle a batch: release `reserved` and add `destroyed` to destroyed_count. Returns what is left to reserve. */
+  settleCertificateCount(
+    tx: DbClient,
+    input: {
+      readonly organizationId: string;
+      readonly certificateId: string;
+      readonly reserved: number;
       readonly destroyed: number;
     },
   ): Promise<number>;

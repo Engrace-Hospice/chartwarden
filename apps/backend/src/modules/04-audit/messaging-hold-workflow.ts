@@ -13,7 +13,7 @@ import {
   NotFoundError,
   messagingHoldLockName,
 } from "@chartwarden/types";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
 const HOLD = schema.legalHolds;
@@ -247,6 +247,8 @@ export interface ApprovedMessageCertificate {
   /** When the scan opened it: the executor's window is measured from here, so only what the approver's count covered is destroyed. */
   readonly createdAt: Date;
   readonly recordCount: number;
+  readonly destroyedCount: number;
+  readonly reservedCount: number;
 }
 
 /**
@@ -258,13 +260,17 @@ export async function approvedMessageCertificates(
   tx: DbClient,
   organizationId: string,
   limit: number,
+  notBefore: Date,
 ): Promise<readonly ApprovedMessageCertificate[]> {
+  // The freshness filter is in the SQL: an expired approval (which stays `approved` forever) must never fill the LIMIT and starve a fresh one.
   const rows = await tx
     .select({
       id: CERT.id,
       dataClass: CERT.dataClass,
       createdAt: CERT.createdAt,
       recordCount: CERT.recordCount,
+      destroyedCount: CERT.destroyedCount,
+      reservedCount: CERT.reservedCount,
     })
     .from(CERT)
     .where(
@@ -272,11 +278,35 @@ export async function approvedMessageCertificates(
         eq(CERT.organizationId, organizationId),
         eq(CERT.status, "approved"),
         sql`${CERT.dataClass} LIKE 'message.%'`,
+        gte(CERT.createdAt, notBefore),
       ),
     )
     .orderBy(asc(CERT.createdAt), asc(CERT.id))
     .limit(limit);
   return rows;
+}
+
+/** Ids of approved `message.*` certificates older than their validity (reported in the run row, never acted on). Bounded. */
+export async function expiredMessageCertificateIds(
+  tx: DbClient,
+  organizationId: string,
+  notBefore: Date,
+  limit: number,
+): Promise<readonly string[]> {
+  const rows = await tx
+    .select({ id: CERT.id })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, organizationId),
+        eq(CERT.status, "approved"),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+        lt(CERT.createdAt, notBefore),
+      ),
+    )
+    .orderBy(asc(CERT.createdAt), asc(CERT.id))
+    .limit(limit);
+  return rows.map((r) => r.id);
 }
 
 /**
@@ -306,30 +336,121 @@ export async function completeMessageCertificate(
   return rows.length > 0;
 }
 
-/**
- * Spend part of an approved message certificate's count (the ceiling of what it may destroy). Only an `approved` `message.*` certificate
- * of this org moves; returns the count left (0 when the certificate is not approved or unknown, so a stale caller destroys nothing more).
- */
-export async function consumeMessageCertificateCount(
+/** Is the certificate still approved and fresh? A plain SELECT, so the destruction credential (SELECT only) can run it in its delete transaction. */
+export async function messageCertificateIsLive(
   tx: DbClient,
   input: {
     readonly organizationId: string;
     readonly certificateId: string;
-    readonly destroyed: number;
+    readonly notBefore: Date;
   },
-): Promise<number> {
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: CERT.id })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        eq(CERT.status, "approved"),
+        gte(CERT.createdAt, input.notBefore),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** The certificate row under a FOR UPDATE lock: executors serialise here, so the remainder they read is the remainder they may reserve. */
+export async function lockMessageCertificate(
+  tx: DbClient,
+  input: { readonly organizationId: string; readonly certificateId: string },
+): Promise<{
+  readonly status: string;
+  readonly createdAt: Date;
+  readonly available: number;
+  readonly unspent: number;
+} | null> {
+  const [row] = await tx
+    .select({
+      status: CERT.status,
+      createdAt: CERT.createdAt,
+      recordCount: CERT.recordCount,
+      destroyedCount: CERT.destroyedCount,
+      reservedCount: CERT.reservedCount,
+    })
+    .from(CERT)
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!row) return null;
+  return {
+    status: row.status,
+    createdAt: row.createdAt,
+    available: Math.max(row.recordCount - row.destroyedCount - row.reservedCount, 0),
+    unspent: Math.max(row.recordCount - row.destroyedCount, 0),
+  };
+}
+
+/**
+ * Reserve `count` of an approved certificate's remainder (conditional UPDATE: only while it is approved and `count` still fits). `record_count`,
+ * the approved figure, is never written. The DB CHECK keeps destroyed + reserved within it.
+ */
+export async function reserveMessageCertificateCount(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly count: number;
+  },
+): Promise<boolean> {
   const rows = await tx
     .update(CERT)
-    .set({ recordCount: sql`greatest(${CERT.recordCount} - ${input.destroyed}, 0)` })
+    .set({ reservedCount: sql`${CERT.reservedCount} + ${input.count}` })
     .where(
       and(
         eq(CERT.organizationId, input.organizationId),
         eq(CERT.id, input.certificateId),
         eq(CERT.status, "approved"),
         sql`${CERT.dataClass} LIKE 'message.%'`,
+        sql`${CERT.recordCount} - ${CERT.destroyedCount} - ${CERT.reservedCount} >= ${input.count}`,
       ),
     )
-    .returning({ left: CERT.recordCount });
+    .returning({ id: CERT.id });
+  return rows.length > 0;
+}
+
+/** Settle a batch: release its reservation and add what was really deleted to destroyed_count (the difference is refunded). Returns what is left. */
+export async function settleMessageCertificateCount(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly certificateId: string;
+    readonly reserved: number;
+    readonly destroyed: number;
+  },
+): Promise<number> {
+  const rows = await tx
+    .update(CERT)
+    .set({
+      reservedCount: sql`greatest(${CERT.reservedCount} - ${input.reserved}, 0)`,
+      destroyedCount: sql`${CERT.destroyedCount} + ${input.destroyed}`,
+    })
+    .where(
+      and(
+        eq(CERT.organizationId, input.organizationId),
+        eq(CERT.id, input.certificateId),
+        sql`${CERT.dataClass} LIKE 'message.%'`,
+      ),
+    )
+    .returning({
+      left: sql<number>`greatest(${CERT.recordCount} - ${CERT.destroyedCount} - ${CERT.reservedCount}, 0)`,
+    });
   return rows[0]?.left ?? 0;
 }
 

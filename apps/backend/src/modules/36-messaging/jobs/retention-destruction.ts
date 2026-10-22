@@ -5,18 +5,22 @@
 //   * It acts only under an APPROVED M4 `message.<class>` certificate (approval is M4's: permission, step-up, a person other than the
 //     scan), and only while that approval is FRESH: CERTIFICATE_VALIDITY_DAYS after the scan opened it. An older one is refused, so a message
 //     held at approval and released years later is never destroyed under a stale approval.
-//   * The certificate's count is a CEILING. The scan records the exact number of destroyable messages (not the capped plan list), every
-//     committed batch spends it (`record_count`, in the same transaction as the batch's audit row), and no batch plans more than is left, so
-//     the total across runs never exceeds what the approver was shown. The window is measured from the moment the scan opened the
-//     certificate; messages that age past it later wait for a later certificate.
+//   * The certificate's count is a CEILING and the approved figure (`record_count`) is never written. The scan records the exact number of
+//     destroyable messages (not the capped plan list). A batch RESERVES its planned count in its plan transaction, under a row lock on the
+//     certificate (a second executor waits, then sees the reduced remainder); after the delete it SETTLES: the reservation is released and
+//     `destroyed_count` goes up by what was really deleted (the difference is refunded). A crash after the reserve can only UNDER-delete.
+//     remaining = record_count - destroyed_count - reserved_count. The window is measured from the moment the scan opened the certificate;
+//     messages that age past it later wait for a later certificate. Freshness and "still approved" are re-checked in the plan transaction and
+//     again in the destructive transaction.
 //   * A held message is never a candidate and is never deleted: the hold is re-read, and the delete re-evaluates it, INSIDE the
 //     destructive transaction, under the shared per-org hold lock (an apply takes it exclusive, so apply and destroy serialise). The
 //     database trigger (migration 1138) is the backstop behind that. A message with an undestroyed attachment object, or a reply or quote
 //     that still points at it, is kept (the bytes cannot be rolled back; a parent outlives its replies).
 //   * Per batch: (A) plan, in the app role's tenant tx, and COMMIT an audit row naming the ids; (B) delete, in the destruction
 //     credential's tenant tx (the only role the append-only history cascades accept), RE-checking everything and returning the ids it
-//     deleted; (C) audit what B did and spend the count, in ONE transaction, retried. A crash between steps leaves the planned ids on
-//     record. If C still fails after the retries, the destroyed ids are carried on the thrown error and in the run summary (ids only).
+//     deleted; (C) audit what B did and settle the reservation, in ONE transaction, retried. A crash between steps leaves the planned ids
+//     on record and the count reserved (never over-spent). If C still fails after the retries, the destroyed ids are carried on the thrown
+//     error and in the run summary (ids only); the reservation stays, so the certificate can only destroy less, never more.
 //   * One failing batch ends only its own certificate; the org's other certificates still run and the failure is reported at the end.
 //   * Idempotent (deleting a gone row is a no-op, an executed certificate is not picked up again) and bounded (a batch size and a
 //     per-run batch budget). A worker is not a request: every transaction is org-explicit (`withOrgContext(systemOrgContext(org))`).
@@ -59,6 +63,8 @@ export const DESTRUCTION_MAX_CERTIFICATES_PER_RUN = 6;
 export const CERTIFICATE_VALIDITY_DAYS = 35;
 /** Attempts at recording a committed batch (audit plus spending the count) before the destroyed ids are reported on the error. */
 export const BATCH_RECORD_ATTEMPTS = 3;
+/** Expired approvals named in a run row (the rest are not listed; none is ever acted on). */
+export const EXPIRED_REPORT_LIMIT = 50;
 
 export interface RetentionDestructionDeps {
   /** The tenant (app role) pool: candidate planning, certificate close, audit. */
@@ -168,27 +174,54 @@ async function lockHoldsShared(tx: DbClient, orgId: string): Promise<void> {
   );
 }
 
+interface PlannedBatch {
+  readonly ids: readonly string[];
+  /** What is still reservable after this batch's reservation. */
+  readonly remaining: number;
+  /** True when the certificate is gone, not approved or stale: nothing was planned and the certificate must not be acted on. */
+  readonly refused: boolean;
+}
+
 async function planBatch(
   deps: RetentionDestructionDeps,
   orgId: string,
+  cert: ApprovedMessageCertificateRef,
   cls: MessageRetentionClass,
   windowEndsAt: Date,
   limit: number,
+  notBefore: Date,
   onPlanned: (tx: DbClient, ids: readonly string[]) => Promise<void>,
-): Promise<readonly string[]> {
+): Promise<PlannedBatch> {
   return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
     const tx = txRaw as unknown as DbClient;
+    // The row lock serialises executors on this certificate: what is read here is what may be reserved here.
+    const locked = await deps.messageHolds.lockCertificate(tx, {
+      organizationId: orgId,
+      certificateId: cert.id,
+    });
+    if (!locked || locked.status !== "approved" || locked.createdAt < notBefore) {
+      return { ids: [], remaining: 0, refused: true };
+    }
+    const take = Math.min(limit, locked.available);
+    if (take <= 0) return { ids: [], remaining: locked.available, refused: false };
     await lockHoldsShared(tx, orgId);
     const holds = await deps.messageHolds.activeHolds(tx, orgId);
     const rows = (
       await tx.execute<{ id: string }>(
         sql`SELECT m.id ${FROM_MESSAGE} WHERE ${destroyablePredicate(orgId, cls, windowEndsAt, holds)}
-            ORDER BY m.created_at, m.id LIMIT ${limit}`,
+            ORDER BY m.created_at, m.id LIMIT ${take}`,
       )
     ).rows;
     const ids = rows.map((r) => r.id);
-    if (ids.length > 0) await onPlanned(tx, ids);
-    return ids;
+    if (ids.length === 0) return { ids, remaining: locked.available, refused: false };
+    const reserved = await deps.messageHolds.reserveCertificateCount(tx, {
+      organizationId: orgId,
+      certificateId: cert.id,
+      count: ids.length,
+    });
+    if (!reserved) return { ids: [], remaining: 0, refused: true };
+    await onPlanned(tx, ids);
+    return { ids, remaining: locked.available - ids.length, refused: false };
   });
 }
 
@@ -199,6 +232,8 @@ async function planBatch(
 async function deleteBatch(
   deps: RetentionDestructionDeps,
   orgId: string,
+  certificateId: string,
+  notBefore: Date,
   cls: MessageRetentionClass,
   windowEndsAt: Date,
   ids: readonly string[],
@@ -207,6 +242,14 @@ async function deleteBatch(
     const tx = txRaw as unknown as DbClient;
     await lockHoldsShared(tx, orgId);
     const holds = await deps.messageHolds.activeHolds(tx, orgId);
+    // The certificate is re-checked in THIS transaction (M4's reader; the destruction credential can only read it): a certificate moved off
+    // approved, or gone stale, since the plan destroys nothing.
+    const live = await deps.messageHolds.certificateIsLive(tx, {
+      organizationId: orgId,
+      certificateId,
+      notBefore,
+    });
+    if (!live) return [];
     const deleted = await tx.execute<{ id: string }>(
       sql`DELETE FROM message m USING channel c
            WHERE c.organization_id = m.organization_id AND c.id = m.channel_id
@@ -267,7 +310,7 @@ async function auditIn(
   );
 }
 
-/** Record a committed batch: its audit row and the spent count, in ONE tenant transaction, retried. Returns what the approved count still allows. */
+/** Record a committed batch: its audit row and the settled reservation, in ONE tenant transaction, retried. Returns what is still reservable. */
 async function recordBatch(
   deps: RetentionDestructionDeps,
   orgId: string,
@@ -298,9 +341,10 @@ async function recordBatch(
             destroyedMessageIds: deletedIds,
           },
         });
-        return deps.messageHolds.consumeCertificateCount(tx, {
+        return deps.messageHolds.settleCertificateCount(tx, {
           organizationId: orgId,
           certificateId: cert.id,
+          reserved: planned,
           destroyed: deletedIds.length,
         });
       });
@@ -346,6 +390,7 @@ async function destroyUnderCertificate(
   cert: ApprovedMessageCertificateRef,
   cls: MessageRetentionClass,
   live: boolean,
+  notBefore: Date,
 ): Promise<CertificateDestructionResult> {
   const now = (deps.now ?? (() => new Date()))();
   const windowEndsAt = windowEnd(cert.createdAt, MESSAGE_RETENTION_YEARS[cls]);
@@ -356,19 +401,22 @@ async function destroyUnderCertificate(
   let planned = 0;
   let refusedAtDelete = 0;
   let drained = !live;
+  let refused = false;
   // The approved count is the ceiling across runs: every committed batch spends it, and no batch may plan more than is left.
-  let remaining = Math.max(cert.recordCount, 0);
+  let remaining = Math.max(cert.recordCount - cert.destroyedCount - cert.reservedCount, 0);
   let failure: CertificateDestructionResult["failure"];
 
   try {
     for (let batch = 0; live && batch < maxBatches && remaining > 0; batch += 1) {
       const batchId = randomUUID();
-      const ids = await planBatch(
+      const plan = await planBatch(
         deps,
         orgId,
+        cert,
         cls,
         windowEndsAt,
-        Math.min(batchSize, remaining),
+        batchSize,
+        notBefore,
         (tx, plannedIds) =>
           write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
             eventType: "m36.retention_destruction.batch_started",
@@ -384,12 +432,18 @@ async function destroyUnderCertificate(
             },
           }),
       );
+      const ids = plan.ids;
+      remaining = plan.remaining;
+      if (plan.refused) {
+        refused = true;
+        break;
+      }
       if (ids.length === 0) {
         drained = true;
         break;
       }
       planned += ids.length;
-      const deletedIds = await deleteBatch(deps, orgId, cls, windowEndsAt, ids);
+      const deletedIds = await deleteBatch(deps, orgId, cert.id, notBefore, cls, windowEndsAt, ids);
       destroyed += deletedIds.length;
       refusedAtDelete += ids.length - deletedIds.length;
       remaining = await recordBatch(deps, orgId, runId, cert, batchId, ids.length, deletedIds);
@@ -409,8 +463,24 @@ async function destroyUnderCertificate(
   const rest = await countRemainder(deps, orgId, cls, windowEndsAt);
   // Close the certificate when its approved count is spent, or when nothing past its window remains for the class; held, object-bearing or
   // referenced rows (with count left) keep it open until it expires.
+  // "Spent" means really spent (record - destroyed), read now: another executor's in-flight reservation may still be refunded, so a remainder
+  // of 0 at plan time (reservations included) must not close the certificate.
+  const unspent = live
+    ? await withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
+        const locked = await deps.messageHolds.lockCertificate(txRaw as unknown as DbClient, {
+          organizationId: orgId,
+          certificateId: cert.id,
+        });
+        return locked?.unspent;
+      })
+    : undefined;
   let certificateExecuted = false;
-  if (live && !failure && (remaining === 0 || (drained && rest.pastWindowRemaining === 0))) {
+  if (
+    live &&
+    !failure &&
+    !refused &&
+    (unspent === 0 || (drained && rest.pastWindowRemaining === 0))
+  ) {
     certificateExecuted = await closeCertificate(deps, orgId, runId, cert, now);
   }
   return {
@@ -443,23 +513,32 @@ export async function runRetentionDestructionForOrg(
   const mode: RetentionDestructionMode = live ? "live" : "dry_run";
   const now = (deps.now ?? (() => new Date()))();
   const validityMs = (deps.certificateValidityDays ?? CERTIFICATE_VALIDITY_DAYS) * 86_400_000;
+  const notBefore = new Date(now.getTime() - validityMs);
   const approved = await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
     deps.messageHolds.approvedCertificates(
       txRaw as unknown as DbClient,
       orgId,
       DESTRUCTION_MAX_CERTIFICATES_PER_RUN,
+      notBefore,
     ),
   );
+  const expiredCertificateIds = [
+    ...(await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
+      deps.messageHolds.expiredCertificateIds(
+        txRaw as unknown as DbClient,
+        orgId,
+        notBefore,
+        EXPIRED_REPORT_LIMIT,
+      ),
+    )),
+  ];
   const certificates: CertificateDestructionResult[] = [];
-  const expiredCertificateIds: string[] = [];
   for (const cert of approved) {
     const cls = retentionClassOf(cert.dataClass);
     if (!cls) continue; // not a class this module owns: never guess
-    if (now.getTime() - cert.createdAt.getTime() > validityMs) {
-      expiredCertificateIds.push(cert.id); // a stale approval is never acted on
-      continue;
-    }
-    certificates.push(await destroyUnderCertificate(deps, orgId, runId, cert, cls, live));
+    certificates.push(
+      await destroyUnderCertificate(deps, orgId, runId, cert, cls, live, notBefore),
+    );
   }
   const destroyed = certificates.reduce((n, c) => n + c.destroyed, 0);
   await auditIn(deps, orgId, runId, "m36.retention_destruction.run", runId, {

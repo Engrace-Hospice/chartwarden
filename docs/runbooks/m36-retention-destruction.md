@@ -7,11 +7,11 @@ ADR-0086 and confirmed the retention periods (care_related 7y, bereavement 7y, o
 ## What it will and will not do
 
 - It acts only on a **destruction certificate for `message.<class>` that a person approved** in M4 (`POST /api/v1/destruction-certificates/:id/approve`: permission, step-up, a person other than the scan, a live hold pre-check). The scan opens the certificate; nothing here approves it.
-- The certificate's count is a **ceiling**: the scan records the exact destroyable count, every batch spends it, and it never destroys more than is left. An approval is acted on for **35 days** after the scan opened the certificate; an older one is refused (reported as `expiredCertificateIds` in the run row) and the next scan opens a fresh one.
+- The certificate's count is a **ceiling**: the scan records the exact destroyable count, every batch reserves before it deletes and settles after (`reserved_count`, `destroyed_count`; `record_count`, the approved figure, never changes), so two executors or a crash can only destroy less, never more. An approval is acted on for **35 days** after the scan opened the certificate; an older one is refused (reported as `expiredCertificateIds` in the run row) and the next scan opens a fresh one.
 - It never touches a message under an active legal hold (re-checked inside the delete transaction), a message with an attachment object not yet destroyed, or a message a reply still points at.
 - It removes at most 500 messages per transaction, 40 batches per certificate per run. A big backlog drains over several weekly runs.
 - It closes the certificate (`executed`) only when nothing past the certificate's window remains for the class. A held message keeps it `approved`; releasing the hold lets the next run finish it.
-- It does NOT destroy attachment objects (a message that bears one is kept), and `record_count` is spent as batches commit (it shows what is LEFT of the approved count; the original figure is in the certificate's own audit row). Actual counts are in the run's audit rows.
+- It does NOT destroy attachment objects (a message that bears one is kept), and a batch whose recording failed leaves its reservation in place (`reserved_count`), so the certificate may close below its approved count. Actual counts are in the run's audit rows.
 
 ## Prerequisites
 

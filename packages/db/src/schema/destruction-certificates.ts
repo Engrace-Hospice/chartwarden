@@ -16,7 +16,12 @@ export const destructionCertificates = pgTable(
       .notNull()
       .references(() => organizations.id),
     dataClass: text("data_class").notNull(),
+    /** What the approver approved. Immutable once the certificate leaves `pending` (migration 1159 guard). */
     recordCount: integer("record_count").notNull(),
+    /** M36 message executor (migration 1159): committed deletions, only ever goes up. */
+    destroyedCount: integer("destroyed_count").notNull().default(0),
+    /** Planned but not yet settled batches. remaining = record_count - destroyed_count - reserved_count. */
+    reservedCount: integer("reserved_count").notNull().default(0),
     dateRangeStart: timestamp("date_range_start", { withTimezone: true }).notNull(),
     dateRangeEnd: timestamp("date_range_end", { withTimezone: true }).notNull(),
     method: text("method").notNull(), // crypto_erasure | secure_delete
