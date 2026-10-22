@@ -80,7 +80,9 @@ to `.env.production`, so after the merge the host env must name its database its
 4. Optional: repository variable `DEPLOY_DIR=/opt/chartwarden` (the workflow fallback is now that value).
 5. Run the preflight by hand, from the host: `cd /opt/chartwarden && sh -s < preflight.sh` (or copy `deploy/production/preflight.sh` there first). It must print `preflight ok`.
 
-Not in this PR (unchanged): the cosign identity default (`.../wardenx/...`, opt-in `CHARTWARDEN_COSIGN_IDENTITY`), repo-name strings,
+Not in this PR (unchanged): repo-name strings,
+
+Env file format: the preflight and the deploy scripts read `.env.production` as plain `KEY=value` lines (an optional leading CR, surrounding quotes and a trailing ` # comment` are tolerated). Do not use `export KEY=`, leading whitespace or `KEY = value`, and do not put ` #` inside a quoted value: Compose accepts those but the scripts would read a different value.
 Postgres roles, the legacy-redirect nginx file, the `wardenx-app` MinIO account and the legacy volumes (Step F).
 
 ### Preflight (`deploy/production/preflight.sh`, one source of truth)
