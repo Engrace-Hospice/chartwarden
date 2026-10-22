@@ -94,23 +94,30 @@ export interface MessageDestructionHoldPort extends MessageHoldPort {
     tx: DbClient,
     input: { readonly organizationId: string; readonly certificateId: string },
   ): Promise<LockedCertificate | null>;
-  /** Reserve `count` of the remainder, only if it is still available and the certificate is approved; false (nothing reserved) otherwise. */
+  /**
+   * Reserve a batch: creates its `message_destruction_batch` row and reserves its count, in one database function. False (nothing reserved) when the
+   * remainder no longer fits, the certificate is not approved, or another unsettled batch already holds one of the ids.
+   */
   reserveCertificateCount(
     tx: DbClient,
     input: {
       readonly organizationId: string;
       readonly certificateId: string;
-      readonly count: number;
+      readonly batchId: string;
+      readonly messageIds: readonly string[];
     },
   ): Promise<boolean>;
-  /** Settle a batch: release `reserved` and add `destroyed` to destroyed_count. Returns what is left to reserve. */
+  /**
+   * Settle one batch by id: the database takes the reserved amount from the batch itself, requires it to be `reserved` and flips it once;
+   * `destroyed` is what was really deleted (at most the plan). Throws for an unknown, foreign or already settled batch. Returns what is left.
+   */
   settleCertificateCount(
     tx: DbClient,
     input: {
       readonly organizationId: string;
-      readonly certificateId: string;
-      readonly reserved: number;
+      readonly batchId: string;
       readonly destroyed: number;
+      readonly state: "settled" | "reconciled";
     },
   ): Promise<number>;
 }

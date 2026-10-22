@@ -31,6 +31,10 @@ describe("migration 1159 destruction certificate spend", () => {
     expect(sql).toContain(
       "NEW.record_count IS DISTINCT FROM OLD.record_count AND NOT (OLD.status = 'approved' AND NEW.status IN ('executed', 'partial_refused', 'held') AND OLD.data_class LIKE 'audit_event.%' AND NEW.data_class = OLD.data_class)",
     );
+    // L3: a message certificate's count is also frozen on the way OUT of pending
+    expect(sql).toContain(
+      "OLD.status = 'pending' AND NEW.status <> 'pending' AND OLD.data_class LIKE 'message.%' AND NEW.record_count IS DISTINCT FROM OLD.record_count",
+    );
     expect(sql).toContain("IF NEW.destroyed_count < OLD.destroyed_count THEN");
     expect(sql).toContain(
       'CREATE TRIGGER "trg_destruction_certificate_count_guard" BEFORE UPDATE ON "destruction_certificate"',
@@ -60,10 +64,10 @@ describe("migration 1159 destruction certificate spend", () => {
     expect(cols).toEqual(expect.arrayContaining(["status", "executed_at", "record_count"]));
   });
 
-  it("the spend is written only by SECURITY DEFINER functions owned by the admin role that pin the tenant, the class and the ceiling", () => {
+  it("the spend and the batch rows are written only by SECURITY DEFINER functions owned by the admin role that pin the tenant, the class and the ceiling", () => {
     for (const fn of [
-      "destruction_certificate_reserve(uuid, uuid, integer)",
-      "destruction_certificate_settle(uuid, uuid, integer, integer)",
+      "destruction_certificate_reserve(uuid, uuid, uuid, uuid[])",
+      "destruction_certificate_settle(uuid, uuid, integer, text)",
     ]) {
       expect(sql).toContain(`ALTER FUNCTION ${fn} OWNER TO chartwarden_admin`);
       expect(sql).toContain(`REVOKE ALL ON FUNCTION ${fn} FROM PUBLIC`);
@@ -73,8 +77,17 @@ describe("migration 1159 destruction certificate spend", () => {
       "p_org IS DISTINCT FROM nullif(current_setting('app.org_id', true), '')::uuid",
     );
     expect(sql).toContain("data_class LIKE 'message.%'");
-    expect(sql).toContain("record_count - destroyed_count - reserved_count >= p_count");
-    expect(sql).toContain("p_destroyed > p_reserved");
+    expect(sql).toContain("record_count - destroyed_count - reserved_count >= v_count");
+    // reserve writes the batch row and refuses ids an unsettled batch holds; settle is bound to the batch id
+    expect(sql).toContain("INSERT INTO public.message_destruction_batch");
+    expect(sql).toContain("b.state = 'reserved' AND b.planned_message_ids && p_ids");
+    expect(sql).toContain(
+      "WHERE id = p_batch AND organization_id = p_org AND state = 'reserved' FOR UPDATE",
+    );
+    expect(sql).toContain("reserved_count - v_batch.planned_count");
+    expect(sql).toContain("AND reserved_count >= v_batch.planned_count");
+    // a clamp would hide a double settle: it must be an error
+    expect(sql).not.toContain("greatest(reserved_count");
   });
 
   it("the destruction credential gets column-limited SELECT only, org-pinned, and nothing else on the table", () => {
@@ -93,17 +106,30 @@ describe("migration 1159 destruction certificate spend", () => {
     expect(sql).not.toMatch(/GRANT [^;]*(UPDATE|INSERT|DELETE)[^;]*TO chartwarden_destruction/);
   });
 
-  it("message_destruction_batch: FORCEd org RLS, app SELECT/INSERT plus three UPDATE columns, audited, in the Drizzle schema and the manifest", () => {
+  it("message_destruction_batch: FORCEd org RLS, the app role can only SELECT it, state is monotonic, audited, in the Drizzle schema and the manifest", () => {
     expect(sql).toContain('ALTER TABLE "message_destruction_batch" FORCE ROW LEVEL SECURITY');
-    expect(sql).toContain('GRANT SELECT, INSERT ON "message_destruction_batch" TO chartwarden_app');
-    expect(sql).toContain(
-      'GRANT UPDATE ("state", "settled_at", "destroyed_count") ON "message_destruction_batch" TO chartwarden_app',
+    expect(sql).toContain('GRANT SELECT ON "message_destruction_batch" TO chartwarden_app');
+    expect(sql).not.toMatch(
+      /GRANT [^;]*(INSERT|UPDATE|DELETE)[^;]*"message_destruction_batch" TO chartwarden_app/,
     );
-    expect(sql).not.toMatch(/GRANT [^;]*DELETE[^;]*"message_destruction_batch"/);
+    expect(sql).toContain('REVOKE ALL ON "message_destruction_batch" FROM PUBLIC');
+    expect(sql).toContain("IF OLD.state <> 'reserved' THEN");
+    expect(sql).toContain('CREATE TRIGGER "trg_message_destruction_batch_guard"');
     expect(sql).toContain('CREATE TRIGGER "trg_audit_message_destruction_batch"');
     expect(batchSchema).toContain('pgTable( "message_destruction_batch"');
     expect(read("architecture/module-manifest.ts")).toContain('"message_destruction_batch",');
     expect(read("architecture/module-manifest.cjs")).toContain('"message_destruction_batch",');
+  });
+
+  it("the platform carrier gets a COLUMN grant on the certificate, never the spend columns or data_class", () => {
+    const src = read("scripts/db/provision-runtime-roles.ts");
+    const list = /DESTRUCTION_CERTIFICATE_PLATFORM_UPDATE_COLUMNS = \[([^\]]*)\]/.exec(src);
+    expect(list).not.toBeNull();
+    const cols = (list?.[1] ?? "").split(",").map((c) => c.trim().replace(/"/g, ""));
+    for (const forbidden of ["destroyed_count", "reserved_count", "data_class"]) {
+      expect(cols).not.toContain(forbidden);
+    }
+    expect(src).not.toMatch(/PLATFORM_PROVISION_UPDATE_TABLES = \[[^\]]*"destruction_certificate"/);
   });
 
   it("the executor never writes record_count", () => {

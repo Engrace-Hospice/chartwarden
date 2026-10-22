@@ -810,11 +810,12 @@ describe.skipIf(!DB_URL)(
           kit.appConn.query("DELETE FROM destruction_certificate WHERE id=$1", [cert]),
         ).rejects.toMatchObject({ code: "42501" });
       });
+      const ids = (n: number) => Array.from({ length: n }, () => randomUUID());
       await asApp(async () => {
         const reserve = (org: string, n: number) =>
           kit.appConn.query(
-            "SELECT destruction_certificate_reserve($1::uuid,$2::uuid,$3::int) AS ok",
-            [org, cert, n],
+            "SELECT destruction_certificate_reserve($1::uuid,$2::uuid,$3::uuid,$4::uuid[]) AS ok",
+            [org, cert, randomUUID(), ids(n)],
           );
         expect((await reserve(ORG_A, 4)).rows[0].ok).toBe(false); // more than the approved 3
         expect((await reserve(ORG_A, 3)).rows[0].ok).toBe(true);
@@ -823,20 +824,11 @@ describe.skipIf(!DB_URL)(
       await asApp(async () => {
         // Another tenant's id for this connection's tenant: refused.
         await expect(
-          kit.appConn.query("SELECT destruction_certificate_reserve($1::uuid,$2::uuid,1)", [
-            ORG_B,
-            cert,
-          ]),
+          kit.appConn.query(
+            "SELECT destruction_certificate_reserve($1::uuid,$2::uuid,$3::uuid,$4::uuid[])",
+            [ORG_B, cert, randomUUID(), ids(1)],
+          ),
         ).rejects.toMatchObject({ code: "42501" });
-      });
-      await asApp(async () => {
-        // settle can never claim more destroyed than the batch reserved
-        await expect(
-          kit.appConn.query("SELECT destruction_certificate_settle($1::uuid,$2::uuid,2,3)", [
-            ORG_A,
-            cert,
-          ]),
-        ).rejects.toMatchObject({ code: "23514" });
       });
       expect(await countsOf(cert)).toEqual({ record: 3, destroyed: 0, reserved: 0 }); // everything above was rolled back
     });
@@ -895,6 +887,221 @@ describe.skipIf(!DB_URL)(
       expect((await countsOf(cert)).record).toBe(5);
     });
 
+    // ---------------------------------------------------------------- DB-bound settle, monotonic batches (migration 1159, round 4)
+
+    /** Runs `fn` as the app role pinned to ORG_A in a transaction that is always rolled back; `expectRefused` rolls back to a savepoint per refusal. */
+    const inApp = async (
+      fn: (
+        q: (sql: string, p?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>,
+      ) => Promise<void>,
+      org = ORG_A,
+    ) => {
+      await kit.appConn.query("BEGIN");
+      try {
+        await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        await fn((sql, p) => kit.appConn.query(sql, p));
+      } finally {
+        await kit.appConn.query("ROLLBACK");
+      }
+    };
+    const refused = async (
+      q: (sql: string, p?: unknown[]) => Promise<unknown>,
+      sql: string,
+      params: unknown[],
+      match: Record<string, unknown>,
+    ) => {
+      await q("SAVEPOINT refusal");
+      await expect(q(sql, params)).rejects.toMatchObject(match);
+      await q("ROLLBACK TO SAVEPOINT refusal");
+    };
+    const RESERVE =
+      "SELECT destruction_certificate_reserve($1::uuid,$2::uuid,$3::uuid,$4::uuid[]) AS ok";
+    const SETTLE =
+      'SELECT destruction_certificate_settle($1::uuid,$2::uuid,$3::int,$4::text) AS "left"';
+
+    it("settle is bound to its batch in the database: unknown, foreign, over-claimed and already settled batches are refused; a double settle is impossible", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      const batch = randomUUID();
+      await inApp(async (q) => {
+        expect(
+          (await q(RESERVE, [ORG_A, cert, batch, [randomUUID(), randomUUID()]])).rows[0].ok,
+        ).toBe(true);
+        // unknown batch id; a certificate id is not a batch id
+        await refused(q, SETTLE, [ORG_A, randomUUID(), 0, "settled"], { code: "P0002" });
+        await refused(q, SETTLE, [ORG_A, cert, 0, "settled"], { code: "P0002" });
+        // more destroyed than the batch planned (the amount reserved is the BATCH's own planned_count, never a caller figure)
+        await refused(q, SETTLE, [ORG_A, batch, 3, "settled"], { code: "23514" });
+        await refused(q, SETTLE, [ORG_A, batch, 1, "revived"], { code: "23514" });
+        // a different tenant's context cannot name this batch
+        await refused(q, SETTLE, [ORG_B, batch, 1, "settled"], { code: "42501" });
+        expect((await q(SETTLE, [ORG_A, batch, 1, "settled"])).rows[0].left).toBe(4);
+        const spend = (
+          await q(
+            "SELECT reserved_count, destroyed_count FROM destruction_certificate WHERE id=$1",
+            [cert],
+          )
+        ).rows[0];
+        expect(spend).toMatchObject({ reserved_count: 0, destroyed_count: 1 });
+        // the same batch cannot be settled twice: the reservation is not released a second time and nothing goes negative
+        await refused(q, SETTLE, [ORG_A, batch, 1, "settled"], { code: "P0002" });
+        await refused(q, SETTLE, [ORG_A, batch, 0, "reconciled"], { code: "P0002" });
+        const after = (
+          await q(
+            "SELECT reserved_count, destroyed_count FROM destruction_certificate WHERE id=$1",
+            [cert],
+          )
+        ).rows[0];
+        expect(after).toMatchObject({ reserved_count: 0, destroyed_count: 1 });
+      });
+      // org B's connection cannot see org A's batch at all
+      await inApp(async (q) => {
+        await refused(q, SETTLE, [ORG_B, batch, 0, "settled"], { code: "P0002" });
+      }, ORG_B);
+      expect(await countsOf(cert)).toEqual({ record: 5, destroyed: 0, reserved: 0 });
+    });
+
+    it("reserve refuses ids an unsettled batch already holds, and an empty id list", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 9);
+      const shared = randomUUID();
+      await inApp(async (q) => {
+        expect(
+          (await q(RESERVE, [ORG_A, cert, randomUUID(), [shared, randomUUID()]])).rows[0].ok,
+        ).toBe(true);
+        expect((await q(RESERVE, [ORG_A, cert, randomUUID(), [shared]])).rows[0].ok).toBe(false);
+        expect((await q(RESERVE, [ORG_A, cert, randomUUID(), [randomUUID()]])).rows[0].ok).toBe(
+          true,
+        );
+        await refused(q, RESERVE, [ORG_A, cert, randomUUID(), []], { code: "23514" });
+      });
+    });
+
+    it("the app role can only READ batches: it cannot insert or update one, and a settled batch cannot be revived even by the superuser", async () => {
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      await inApp(async (q) => {
+        await refused(
+          q,
+          `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count)
+           VALUES ($1,$2,ARRAY[$3]::uuid[],1)`,
+          [ORG_A, cert, randomUUID()],
+          { code: "42501" },
+        );
+        await refused(q, "UPDATE message_destruction_batch SET state='settled'", [], {
+          code: "42501",
+        });
+        await refused(q, "DELETE FROM message_destruction_batch", [], { code: "42501" });
+      });
+      await aged(ORG_A, channel, 8);
+      await run();
+      const [settled] = await kit.one<{ id: string }>(
+        "SELECT id FROM message_destruction_batch WHERE certificate_id=$1 AND state='settled'",
+        [cert],
+      );
+      expect(settled).toBeDefined();
+      await expect(
+        kit.admin.query(
+          "UPDATE message_destruction_batch SET state='reserved', settled_at=NULL, destroyed_count=NULL WHERE id=$1",
+          [settled.id],
+        ),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("a settled batch cannot change"),
+      });
+    });
+
+    it("an id an unsettled batch holds is not planned again; once that batch is reconciled it is, and it is counted exactly once", async () => {
+      const x = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      await kit.admin.query("UPDATE destruction_certificate SET reserved_count = 1 WHERE id=$1", [
+        cert,
+      ]);
+      const b1 = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count)
+           VALUES ($1,$2,ARRAY[$3]::uuid[],1) RETURNING id`,
+          [ORG_A, cert, x],
+        )
+      )[0].id;
+      // B1 is a live executor's batch (recent): its id is not planned a second time.
+      const held = await run();
+      expect(held.destroyed).toBe(0);
+      expect(await exists(x)).toBe(true);
+      // B1 strands (the crash never deleted x): the reconcile refunds it, then x is planned again and destroyed ONCE.
+      await kit.admin.query("BEGIN");
+      // The guard keeps reserved_at immutable for everyone; the test back-dates it with triggers off, in one transaction.
+      await kit.admin.query("SET LOCAL session_replication_role = replica");
+      await kit.admin.query(
+        "UPDATE message_destruction_batch SET reserved_at = now() - interval '7 hours' WHERE id=$1",
+        [b1],
+      );
+      await kit.admin.query("COMMIT");
+      const next = await run();
+      expect(next.reconciled).toEqual([
+        expect.objectContaining({ batchId: b1, destroyed: 0, refunded: 1 }),
+      ]);
+      expect(next.destroyed).toBe(1);
+      expect(await exists(x)).toBe(false);
+      expect(await countsOf(cert)).toEqual({ record: 5, destroyed: 1, reserved: 0 });
+    });
+
+    it("a failing reconcile is reported but does not stop the org's certificates from running", async () => {
+      const kept = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      const stuck = await certificate(ORG_A, "approved", "message.operational", 5);
+      await kit.admin.query("UPDATE destruction_certificate SET reserved_count = 1 WHERE id=$1", [
+        stuck,
+      ]);
+      await kit.admin.query(
+        `INSERT INTO message_destruction_batch (organization_id, certificate_id, planned_message_ids, planned_count, reserved_at)
+         VALUES ($1,$2,ARRAY[$3]::uuid[],1, now() - interval '7 hours')`,
+        [ORG_A, stuck, randomUUID()],
+      );
+      const broken: MessageDestructionHoldPort = {
+        ...messageHolds,
+        settleCertificateCount: async (tx, input) => {
+          if (input.state === "reconciled") throw new Error("settle exploded");
+          return settleMessageCertificateCount(tx, input);
+        },
+      };
+      await expect(run(ORG_A, { messageHolds: broken })).rejects.toThrow(/reconcile/);
+      expect(await exists(kept)).toBe(false); // the certificate still ran
+      expect((await countsOf(cert)).destroyed).toBe(1);
+    });
+
+    it("the delete refuses a reservation older than its threshold and the batch is settled with 0 destroyed (a refund)", async () => {
+      const kept = await aged(ORG_A, channel, 8);
+      const cert = await certificate(ORG_A, "approved", "message.care_related", 5);
+      const result = await run(ORG_A, { maxReservationAgeMs: 0 });
+      expect(result.destroyed).toBe(0);
+      expect(result.certificates[0]).toMatchObject({ refusedAtDelete: 1, destroyed: 0 });
+      expect(await exists(kept)).toBe(true);
+      expect(await countsOf(cert)).toEqual({ record: 5, destroyed: 0, reserved: 0 });
+      const batches = await kit.one<{ state: string; destroyed_count: number }>(
+        "SELECT state, destroyed_count FROM message_destruction_batch WHERE certificate_id=$1",
+        [cert],
+      );
+      expect(batches).toEqual([expect.objectContaining({ state: "settled", destroyed_count: 0 })]);
+    });
+
+    it("a message certificate's approved count is frozen on the way OUT of pending too (an audit_event.* certificate is not)", async () => {
+      const msg = await certificate(ORG_A, "pending", "message.care_related", 9);
+      const aud = await certificate(ORG_A, "pending", "audit_event.compliance", 9);
+      await expect(
+        kit.admin.query(
+          "UPDATE destruction_certificate SET status='approved', record_count=99 WHERE id=$1",
+          [msg],
+        ),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("cannot change on the way out of pending"),
+      });
+      await kit.admin.query(
+        "UPDATE destruction_certificate SET status='approved', record_count=99 WHERE id=$1",
+        [aud],
+      );
+      await kit.admin.query("UPDATE destruction_certificate SET status='approved' WHERE id=$1", [
+        msg,
+      ]);
+      expect((await countsOf(msg)).record).toBe(9);
+    });
+
     it("an approved certificate older than its validity is refused: a message held at approval and released long after is not destroyed under it", async () => {
       const heldThen = await aged(ORG_A, channel, 8);
       const stale = await certificate(ORG_A, "approved", "message.care_related", 1000, 40);
@@ -938,7 +1145,7 @@ describe.skipIf(!DB_URL)(
       const failures: unknown[] = [];
       await expect(
         run(ORG_A, { messageHolds: flaky, onBatchError: (e) => failures.push(e) }),
-      ).rejects.toThrow(/1 certificate\(s\) failed after the others ran/);
+      ).rejects.toThrow(/1 failure\(s\) after the rest of the run completed/);
       expect(failures).toHaveLength(1);
       expect(await exists(care)).toBe(true);
       expect(await certStatus(careCert)).toBe("approved");

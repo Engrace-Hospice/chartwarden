@@ -398,36 +398,44 @@ export async function lockMessageCertificate(
 }
 
 /**
- * Reserve `count` of an approved certificate's remainder through the SECURITY DEFINER function (migration 1159): the app role cannot write the
- * spend columns itself. The function pins the tenant (app.org_id), the `message.*` class and the approved status, and refuses to exceed the
- * approved figure; false (nothing reserved) when it no longer fits. `record_count`, the approved figure, is never written.
+ * Reserve a batch through the definer function (the app role cannot write the spend columns or the batch table itself). It creates the batch row
+ * and reserves its count in one statement, pins the tenant (app.org_id), the `message.*` class and the approved status, refuses to exceed the
+ * approved figure and refuses ids another unsettled batch already holds; false (nothing reserved) then. `record_count` is never written.
  */
 export async function reserveMessageCertificateCount(
   tx: DbClient,
   input: {
     readonly organizationId: string;
     readonly certificateId: string;
-    readonly count: number;
+    readonly batchId: string;
+    readonly messageIds: readonly string[];
   },
 ): Promise<boolean> {
   const res = await tx.execute<{ ok: boolean }>(
-    sql`SELECT destruction_certificate_reserve(${input.organizationId}::uuid, ${input.certificateId}::uuid, ${input.count}::int) AS ok`,
+    sql`SELECT destruction_certificate_reserve(${input.organizationId}::uuid, ${input.certificateId}::uuid, ${input.batchId}::uuid,
+         ARRAY[${sql.join(
+           input.messageIds.map((i) => sql`${i}::uuid`),
+           sql`, `,
+         )}]::uuid[]) AS ok`,
   );
   return res.rows[0]?.ok === true;
 }
 
-/** Settle a batch through the definer function: release its reservation and add what was really deleted (never more than reserved). Returns what is left. */
+/**
+ * Settle ONE batch through the definer function: it locks the batch row, requires it to be `reserved`, releases the batch's own planned count and
+ * adds what was really deleted (never more than planned), once. Raises for an unknown, foreign or already settled batch. Returns what is left.
+ */
 export async function settleMessageCertificateCount(
   tx: DbClient,
   input: {
     readonly organizationId: string;
-    readonly certificateId: string;
-    readonly reserved: number;
+    readonly batchId: string;
     readonly destroyed: number;
+    readonly state: "settled" | "reconciled";
   },
 ): Promise<number> {
   const res = await tx.execute<{ left: number }>(
-    sql`SELECT destruction_certificate_settle(${input.organizationId}::uuid, ${input.certificateId}::uuid, ${input.reserved}::int, ${input.destroyed}::int) AS "left"`,
+    sql`SELECT destruction_certificate_settle(${input.organizationId}::uuid, ${input.batchId}::uuid, ${input.destroyed}::int, ${input.state}) AS "left"`,
   );
   return Number(res.rows[0]?.left ?? 0);
 }

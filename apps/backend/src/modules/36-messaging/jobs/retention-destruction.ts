@@ -9,7 +9,8 @@
 //     destroyable messages (not the capped plan list). A batch RESERVES its planned count in its plan transaction, under a row lock on the
 //     certificate (a second executor waits, then sees the reduced remainder); after the delete it SETTLES: the reservation is released and
 //     `destroyed_count` goes up by what was really deleted (the difference is refunded). A crash after the reserve can only UNDER-delete.
-//     remaining = record_count - destroyed_count - reserved_count. The window is measured from the moment the scan opened the certificate;
+//     remaining = record_count - destroyed_count - reserved_count. Reserve and settle are database functions bound to a batch ROW (created by the
+//     reserve, settled once by id, amount taken from the row), so exactly-once is the database's, not this file's. The window is measured from the moment the scan opened the certificate;
 //     messages that age past it later wait for a later certificate. Freshness and "still approved" are re-checked in the plan transaction and
 //     again in the destructive transaction.
 //   * A held message is never a candidate and is never deleted: the hold is re-read, and the delete re-evaluates it, INSIDE the
@@ -70,6 +71,14 @@ export const EXPIRED_REPORT_LIMIT = 50;
  * reconciled. Deliberately far longer than any delete transaction can run, so a live executor is never raced.
  */
 export const STRANDED_BATCH_AFTER_HOURS = 6;
+/**
+ * The delete step refuses to run when its reservation is older than this (it refunds instead). Must stay well under STRANDED_BATCH_AFTER_HOURS:
+ * a reconcile reads "gone" ids from committed state, so a delete that could still commit after a reconcile would be counted as refunded.
+ */
+export const MAX_RESERVATION_AGE_HOURS = 5;
+/** Statement and lock timeouts of the destructive transaction (a few statements, so the whole transaction ends far inside the stranded threshold). */
+export const DELETE_STATEMENT_TIMEOUT_MS = 600_000;
+export const DELETE_LOCK_TIMEOUT_MS = 60_000;
 /** Stranded batches reconciled per org per run. */
 export const RECONCILE_MAX_BATCHES_PER_RUN = 50;
 
@@ -90,6 +99,8 @@ export interface RetentionDestructionDeps {
   readonly batchSize?: number;
   readonly maxBatchesPerCertificate?: number;
   readonly certificateValidityDays?: number;
+  /** Tests only: the oldest reservation the delete step will act on (default MAX_RESERVATION_AGE_HOURS). */
+  readonly maxReservationAgeMs?: number;
   /** Tests only: the audit writer (default `@chartwarden/audit`). */
   readonly auditWriter?: typeof audit;
   /** Called with the error of a failed batch (the worker logs it; ids only). */
@@ -191,7 +202,13 @@ interface PlannedBatch {
   readonly remaining: number;
   /** True when the certificate is gone, not approved or stale: nothing was planned and the certificate must not be acted on. */
   readonly refused: boolean;
+  /** The database's clock when the reservation was written; the delete step refuses a reservation that has aged past MAX_RESERVATION_AGE_HOURS. */
+  readonly reservedAt?: Date;
 }
+
+/** A message an unsettled batch has planned is not planned again: its delete may still be in flight. */
+const NOT_IN_RESERVED_BATCH: SQL = sql`NOT EXISTS (SELECT 1 FROM message_destruction_batch b
+  WHERE b.organization_id = m.organization_id AND b.state = 'reserved' AND b.planned_message_ids @> ARRAY[m.id])`;
 
 async function planBatch(
   deps: RetentionDestructionDeps,
@@ -221,27 +238,32 @@ async function planBatch(
     const rows = (
       await tx.execute<{ id: string }>(
         sql`SELECT m.id ${FROM_MESSAGE} WHERE ${destroyablePredicate(orgId, cls, windowEndsAt, holds)}
+              AND ${NOT_IN_RESERVED_BATCH}
             ORDER BY m.created_at, m.id LIMIT ${take}`,
       )
     ).rows;
     const ids = rows.map((r) => r.id);
     if (ids.length === 0) return { ids, remaining: locked.available, refused: false };
+    // The database function reserves the count AND writes the batch row (the planned ids) in one step, so a crash can be reconciled later
+    // and a settle can only ever name this batch.
     const reserved = await deps.messageHolds.reserveCertificateCount(tx, {
       organizationId: orgId,
       certificateId: cert.id,
-      count: ids.length,
+      batchId,
+      messageIds: ids,
     });
     if (!reserved) return { ids: [], remaining: 0, refused: true };
-    // The reservation is described in the same transaction (the planned ids), so a crash can be reconciled later.
-    await tx.insert(BATCH).values({
-      id: batchId,
-      organizationId: orgId,
-      certificateId: cert.id,
-      plannedMessageIds: [...ids],
-      plannedCount: ids.length,
-    });
+    const [row] = await tx
+      .select({ reservedAt: BATCH.reservedAt })
+      .from(BATCH)
+      .where(and(eq(BATCH.organizationId, orgId), eq(BATCH.id, batchId)));
     await onPlanned(tx, ids);
-    return { ids, remaining: locked.available - ids.length, refused: false };
+    return {
+      ids,
+      remaining: locked.available - ids.length,
+      refused: false,
+      reservedAt: row?.reservedAt,
+    };
   });
 }
 
@@ -257,9 +279,24 @@ async function deleteBatch(
   cls: MessageRetentionClass,
   windowEndsAt: Date,
   ids: readonly string[],
+  reservedAt: Date | undefined,
 ): Promise<readonly string[]> {
+  const maxAgeMs = deps.maxReservationAgeMs ?? MAX_RESERVATION_AGE_HOURS * 3_600_000;
   return withOrgContext(deps.destructionDb, systemOrgContext(orgId), async (txRaw) => {
     const tx = txRaw as unknown as DbClient;
+    // Bounded: a statement or lock wait that hangs ends this transaction long before a reconcile could treat the reservation as stranded.
+    await tx.execute(sql`SELECT set_config('statement_timeout', ${String(DELETE_STATEMENT_TIMEOUT_MS)}, true),
+                                set_config('lock_timeout', ${String(DELETE_LOCK_TIMEOUT_MS)}, true)`);
+    // The reservation must still be young (the database's clock): an old one may already be reconciled, so nothing is deleted under it;
+    // the caller settles it with 0 destroyed, which refunds it.
+    const aged = reservedAt
+      ? (
+          await tx.execute<{ fresh: boolean }>(
+            sql`SELECT (now() - ${reservedAt.toISOString()}::timestamptz) < (${String(maxAgeMs)} || ' milliseconds')::interval AS fresh`,
+          )
+        ).rows[0]?.fresh !== true
+      : true;
+    if (aged) return [];
     await lockHoldsShared(tx, orgId);
     const holds = await deps.messageHolds.activeHolds(tx, orgId);
     // The certificate is re-checked in THIS transaction (M4's reader; the destruction credential can only read it): a certificate moved off
@@ -361,25 +398,13 @@ async function recordBatch(
             destroyedMessageIds: deletedIds,
           },
         });
-        // The batch must still be `reserved`: one a reconcile already settled is not settled twice (a live executor never races it, see
-        // STRANDED_BATCH_AFTER_HOURS, but the guard is cheap).
-        const marked = await tx
-          .update(BATCH)
-          .set({ state: "settled", settledAt: new Date(), destroyedCount: deletedIds.length })
-          .where(
-            and(
-              eq(BATCH.organizationId, orgId),
-              eq(BATCH.id, batchId),
-              eq(BATCH.state, "reserved"),
-            ),
-          )
-          .returning({ id: BATCH.id });
-        if (marked.length === 0) throw new Error("batch already reconciled or unknown");
+        // The database settles THIS batch: it must still be `reserved` (one a reconcile already settled is refused, never settled twice), and
+        // its reserved amount is the batch's own planned count.
         return deps.messageHolds.settleCertificateCount(tx, {
           organizationId: orgId,
-          certificateId: cert.id,
-          reserved: planned,
+          batchId,
           destroyed: deletedIds.length,
+          state: "settled",
         });
       });
     } catch (error) {
@@ -478,7 +503,16 @@ async function destroyUnderCertificate(
         break;
       }
       planned += ids.length;
-      const deletedIds = await deleteBatch(deps, orgId, cert.id, notBefore, cls, windowEndsAt, ids);
+      const deletedIds = await deleteBatch(
+        deps,
+        orgId,
+        cert.id,
+        notBefore,
+        cls,
+        windowEndsAt,
+        ids,
+        plan.reservedAt,
+      );
       destroyed += deletedIds.length;
       refusedAtDelete += ids.length - deletedIds.length;
       remaining = await recordBatch(deps, orgId, runId, cert, batchId, ids.length, deletedIds);
@@ -545,9 +579,11 @@ export interface ReconcileResult {
 
 /**
  * Reconcile reservations stranded by a crash: a batch still `reserved` after STRANDED_BATCH_AFTER_HOURS is settled by comparing its planned ids
- * with the message table (a planned id that no longer exists was destroyed by that batch; the rest are refunded). Fail-safe: destroyed is never
- * more than planned, `destroyed_count` only goes up, the reservation is released exactly once (the batch row is locked and flips state in the same
- * transaction), so capacity can never exceed the approved figure. Runs before planning, so refunded capacity is usable in the same run.
+ * with the message table (a planned id that no longer exists was destroyed by that batch; the rest are refunded). The settle is the same database
+ * function the executor uses, so the batch flips exactly once and the reservation is released from the batch's own planned count: capacity can
+ * never exceed the approved figure. Planning never re-plans an id an unsettled batch holds, so an id is credited by at most one batch.
+ * One batch per transaction, in certificate order (no two transactions take certificate locks in different orders); one batch failing is
+ * reported and does not stop the others. Runs before planning, so refunded capacity is usable in the same run.
  */
 async function reconcileStrandedBatches(
   deps: RetentionDestructionDeps,
@@ -555,12 +591,12 @@ async function reconcileStrandedBatches(
   runId: string,
   now: Date,
   apply: boolean,
+  onError: (error: unknown) => void,
 ): Promise<readonly ReconcileResult[]> {
   const before = new Date(now.getTime() - STRANDED_BATCH_AFTER_HOURS * 3_600_000);
   const write = deps.auditWriter ?? audit;
-  return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
-    const tx = txRaw as unknown as DbClient;
-    const stranded = await tx
+  const stranded = await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
+    (txRaw as unknown as DbClient)
       .select()
       .from(BATCH)
       .where(
@@ -570,48 +606,51 @@ async function reconcileStrandedBatches(
           lt(BATCH.reservedAt, before),
         ),
       )
-      .orderBy(BATCH.reservedAt)
-      .limit(RECONCILE_MAX_BATCHES_PER_RUN)
-      .for("update", { skipLocked: true });
-    const results: ReconcileResult[] = [];
-    for (const batch of stranded) {
-      const gone = (
-        await tx.execute<{ n: number }>(
-          sql`SELECT count(*)::int AS n FROM unnest(ARRAY[${uuidList(batch.plannedMessageIds)}]::uuid[]) AS u(id)
-               WHERE NOT EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${orgId}::uuid AND m.id = u.id)`,
-        )
-      ).rows[0]?.n;
-      const destroyed = Math.min(Number(gone ?? 0), batch.plannedCount);
-      results.push({
-        batchId: batch.id,
-        certificateId: batch.certificateId,
-        planned: batch.plannedCount,
-        destroyed,
-        refunded: batch.plannedCount - destroyed,
+      .orderBy(BATCH.certificateId, BATCH.reservedAt)
+      .limit(RECONCILE_MAX_BATCHES_PER_RUN),
+  );
+  const results: ReconcileResult[] = [];
+  for (const batch of stranded) {
+    try {
+      const result = await withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
+        const tx = txRaw as unknown as DbClient;
+        const gone = (
+          await tx.execute<{ n: number }>(
+            sql`SELECT count(*)::int AS n FROM unnest(ARRAY[${uuidList(batch.plannedMessageIds)}]::uuid[]) AS u(id)
+                 WHERE NOT EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${orgId}::uuid AND m.id = u.id)`,
+          )
+        ).rows[0]?.n;
+        const destroyed = Math.min(Number(gone ?? 0), batch.plannedCount);
+        const reconciled: ReconcileResult = {
+          batchId: batch.id,
+          certificateId: batch.certificateId,
+          planned: batch.plannedCount,
+          destroyed,
+          refunded: batch.plannedCount - destroyed,
+        };
+        if (!apply) return reconciled;
+        await deps.messageHolds.settleCertificateCount(tx, {
+          organizationId: orgId,
+          batchId: batch.id,
+          destroyed,
+          state: "reconciled",
+        });
+        await write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
+          eventType: "m36.retention_destruction.reconciled",
+          resourceKind: "message_retention_run",
+          resourceId: batch.id,
+          outcome: "success",
+          context: { runId, batches: [reconciled] },
+        });
+        return reconciled;
       });
-      if (!apply) continue;
-      await deps.messageHolds.settleCertificateCount(tx, {
-        organizationId: orgId,
-        certificateId: batch.certificateId,
-        reserved: batch.plannedCount,
-        destroyed,
-      });
-      await tx
-        .update(BATCH)
-        .set({ state: "reconciled", settledAt: now, destroyedCount: destroyed })
-        .where(and(eq(BATCH.organizationId, orgId), eq(BATCH.id, batch.id)));
+      results.push(result);
+    } catch (error) {
+      // Another executor settled it first, or the database refused: report, keep going.
+      onError(error);
     }
-    if (apply && results.length > 0) {
-      await write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
-        eventType: "m36.retention_destruction.reconciled",
-        resourceKind: "message_retention_run",
-        resourceId: runId,
-        outcome: "success",
-        context: { runId, batches: results },
-      });
-    }
-    return results;
-  });
+  }
+  return results;
 }
 
 /** One org's destruction run. Returns `mode: "off"` (and touches nothing) when the tenant flag is off. */
@@ -636,7 +675,16 @@ export async function runRetentionDestructionForOrg(
   const validityMs = (deps.certificateValidityDays ?? CERTIFICATE_VALIDITY_DAYS) * 86_400_000;
   const notBefore = new Date(now.getTime() - validityMs);
   // Stranded reservations (a crash between delete and settle) are reconciled first when live, and only REPORTED in a dry run.
-  const reconciled = await reconcileStrandedBatches(deps, orgId, runId, now, live);
+  // A failed reconcile is reported with the run's other failures, never allowed to block the certificates below.
+  const reconcileErrors: unknown[] = [];
+  const reconciled = await reconcileStrandedBatches(deps, orgId, runId, now, live, (error) => {
+    reconcileErrors.push(error);
+    deps.onBatchError?.(error);
+  }).catch((error: unknown) => {
+    reconcileErrors.push(error);
+    deps.onBatchError?.(error);
+    return [] as readonly ReconcileResult[];
+  });
   const approved = await withOrgContext(deps.db, systemOrgContext(orgId), (txRaw) =>
     deps.messageHolds.approvedCertificates(
       txRaw as unknown as DbClient,
@@ -673,16 +721,22 @@ export async function runRetentionDestructionForOrg(
     reconciled: reconciled.length,
   });
   const failures = certificates.filter((c) => c.failure);
-  if (failures.length > 0) {
-    const reasons = failures.map((c) => {
-      const ids = c.failure?.unrecordedDestroyedIds ?? [];
-      return `certificate ${c.certificateId}: ${c.failure?.message}${
-        ids.length > 0 ? ` (destroyed but unrecorded: ${ids.join(",")})` : ""
-      }`;
-    });
+  if (failures.length > 0 || reconcileErrors.length > 0) {
+    const reasons = [
+      ...reconcileErrors.map(
+        (e) =>
+          `reconcile: ${e instanceof Error ? e.name : "unknown"} (stranded reservation not settled)`,
+      ),
+      ...failures.map((c) => {
+        const ids = c.failure?.unrecordedDestroyedIds ?? [];
+        return `certificate ${c.certificateId}: ${c.failure?.message}${
+          ids.length > 0 ? ` (destroyed but unrecorded: ${ids.join(",")})` : ""
+        }`;
+      }),
+    ];
     throw new AggregateError(
       reasons.map((r) => new Error(r)),
-      `retention destruction run ${runId} for org ${orgId}: ${failures.length} certificate(s) failed after the others ran; ${reasons.join("; ")}`,
+      `retention destruction run ${runId} for org ${orgId}: ${reasons.length} failure(s) after the rest of the run completed; ${reasons.join("; ")}`,
     );
   }
   return { runId, mode, destroyed, certificates, expiredCertificateIds, reconciled };

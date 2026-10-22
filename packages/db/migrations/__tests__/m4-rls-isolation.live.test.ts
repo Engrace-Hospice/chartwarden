@@ -219,7 +219,7 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
 
   it("org B cannot UPDATE org A's destruction certificate (the USING clause covers writes too)", async () => {
     const res = await withOrg(ORG_B, () =>
-      db.query("UPDATE destruction_certificate SET method='overwrite' WHERE id=$1", [
+      db.query("UPDATE destruction_certificate SET status='held' WHERE id=$1", [
         a.destructionCertificate,
       ]),
     );
