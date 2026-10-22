@@ -658,7 +658,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           actor_user_id: officer.userId,
           previous_assigned_user_id: leaver.userId,
           assigned_user_id: rn.userId,
-          reason_code: "assignee_unable_to_sign_in",
+          reason_code: "assignee_left_organisation",
         },
       ]);
 

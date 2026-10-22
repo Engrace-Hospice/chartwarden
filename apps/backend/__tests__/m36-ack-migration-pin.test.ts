@@ -198,11 +198,20 @@ describe("migration 1126 supervisor reassign (ADR-0078)", () => {
     expect(flatSql).toContain(
       'ALTER TABLE "message_acknowledgment_event" ADD COLUMN "reason_code" text',
     );
+    // 1126 created the CHECK with the original six; migration 1158 (below) widens it to the full list.
     expect(flatSql).toContain(
-      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
+      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES.filter((c) => c !== "assignee_left_organisation"))})`,
     );
     expect(flat(read("packages/db/src/schema/messaging/message-acknowledgments.ts"))).toContain(
       `${"${t.eventType}"} = 'reassigned' AND ${"${t.actorKind}"} = 'user' AND ${"${t.reasonCode}"} IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
+    );
+  });
+
+  it("migration 1158 widens the reason CHECK to the full code list (ADR-0084, assignee_left_organisation)", () => {
+    const sql1158 = flat(read("packages/db/migrations/1158_m36_ack_reason_assignee_left.sql"));
+    expect(sql1158).toContain('DROP CONSTRAINT "message_ack_event_reason_code"');
+    expect(sql1158).toContain(
+      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
     );
   });
 

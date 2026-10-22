@@ -34,6 +34,7 @@ export const REASSIGN_REASON_TEXT: Readonly<Record<AckSupervisorReasonCode, stri
   coverage_change: "Coverage has changed",
   workload: "Workload",
   other_operational: "Another operational reason",
+  assignee_left_organisation: "The assigned person has left the organisation",
 };
 
 export const REASSIGN_SAVED_CARD_TEXT = "Saved. The request was reassigned.";

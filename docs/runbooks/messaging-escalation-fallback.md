@@ -173,8 +173,8 @@ their own session (supervisor reassign, ADR-0078).
    reach the assignee, or to learn who else is qualified. The sender may reassign from the card themselves while the request is not yet taken.
 3. **If the assignee cannot be reached or cannot sign in, the supervisor reassigns.** From the queue row press **Reassign**,
    choose a reachable, qualified colleague from the list (it shows eligible people only), choose the **reason code** that fits
-   (`assignee_unreachable`, `assignee_unable_to_sign_in`, `assignee_off_shift`, `coverage_change`, `workload` or
-   `other_operational`) and confirm. Then **call the new assignee**: "ChartWarden shows a response request waiting for you; please
+   (`assignee_unreachable`, `assignee_unable_to_sign_in`, `assignee_off_shift`, `coverage_change`, `workload`, `other_operational` or
+   `assignee_left_organisation`) and confirm. Then **call the new assignee**: "ChartWarden shows a response request waiting for you; please
    sign in and open Messages." They take responsibility **in their own session**. Notes: it works on a restricted row and on a
    `failed_unreachable` row (the timer watches it again); it is refused for an `acknowledged`, `resolved` or `cancelled`
    request (`409`); a `422` means pick a differently qualified colleague (no reason is given; an empty list or a `422` for every colleague can mean you are walled off from the patient, so ask a person who is admitted, or the clinical lead); a `409` that mentions the clinical lead means this request has been moved by supervisors five times in 24 hours: ask the clinical lead; a `429` means wait and try

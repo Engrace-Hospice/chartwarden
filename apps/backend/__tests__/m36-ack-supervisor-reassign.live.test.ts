@@ -77,6 +77,7 @@ const REASONS = [
   "coverage_change",
   "workload",
   "other_operational",
+  "assignee_left_organisation",
 ];
 
 describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () => {

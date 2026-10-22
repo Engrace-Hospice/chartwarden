@@ -151,7 +151,7 @@ export const messageAckEvents = pgTable(
     tier: check("message_ack_event_tier", sql`${t.tier} >= 0`),
     reasonCode: check(
       "message_ack_event_reason_code",
-      sql`${t.reasonCode} IS NULL OR (${t.eventType} = 'reassigned' AND ${t.actorKind} = 'user' AND ${t.reasonCode} IN ('assignee_unreachable', 'assignee_unable_to_sign_in', 'assignee_off_shift', 'coverage_change', 'workload', 'other_operational'))`,
+      sql`${t.reasonCode} IS NULL OR (${t.eventType} = 'reassigned' AND ${t.actorKind} = 'user' AND ${t.reasonCode} IN ('assignee_unreachable', 'assignee_unable_to_sign_in', 'assignee_off_shift', 'coverage_change', 'workload', 'other_operational', 'assignee_left_organisation'))`,
     ),
   }),
 );

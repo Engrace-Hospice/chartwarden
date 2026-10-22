@@ -298,6 +298,8 @@ export const ACK_SUPERVISOR_REASON_CODES = [
   "coverage_change",
   "workload",
   "other_operational",
+  // Offboarding (ADR-0084): the assignee has left the organisation. Written by the offboarding run; also accepted from the supervisor route.
+  "assignee_left_organisation",
 ] as const;
 export type AckSupervisorReasonCode = (typeof ACK_SUPERVISOR_REASON_CODES)[number];
 
