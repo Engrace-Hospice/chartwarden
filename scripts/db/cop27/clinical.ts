@@ -9,7 +9,7 @@
 import type { AdmissionHandle } from "./admission";
 import type { SeedContext } from "./context";
 import { type SeedCalendar, addDays } from "./dates";
-import { SkipStep, asAnyone, must, readAsAnyone } from "./http";
+import { ApiError, SkipStep, asAnyone, must, readAsAnyone } from "./http";
 import type { ScenarioRun } from "./run";
 
 interface CarePlanView {
@@ -28,6 +28,9 @@ async function readCarePlan(ctx: SeedContext, patientId: string): Promise<CarePl
   if (!plan?.id) return null;
   return { id: plan.id, problems: plan.problems ?? [], goals: plan.goals ?? [] };
 }
+
+const CARE_PLAN_POLL_ATTEMPTS = 10;
+const CARE_PLAN_POLL_MS = 1_000;
 
 const PROBLEMS = [
   {
@@ -57,15 +60,23 @@ export async function ensureCarePlan(
     "care plan",
     () => readCarePlan(ctx, adm.patient.id),
     async () => {
+      // The admission-activated consumer opens the plan asynchronously, so a read right after activation can
+      // miss it and this POST then loses the race: that 409 means the plan exists, so wait for it to read back.
       await asAnyone("open care plan", ctx.sessions, (s) =>
         s.client.POST("/api/v1/patients/{patientId}/care-plan", {
           params: { path: { patientId: adm.patient.id } },
           body: { admissionId: adm.id },
         }),
-      );
-      const p = await readCarePlan(ctx, adm.patient.id);
-      if (!p) throw new Error("care plan not readable after create");
-      return p;
+      ).catch((e: unknown) => {
+        if (e instanceof ApiError && e.code === "ONE_ACTIVE_PLAN_PER_ADMISSION") return;
+        throw e;
+      });
+      for (let i = 0; i < CARE_PLAN_POLL_ATTEMPTS; i++) {
+        const p = await readCarePlan(ctx, adm.patient.id);
+        if (p) return p;
+        await new Promise((r) => setTimeout(r, CARE_PLAN_POLL_MS));
+      }
+      throw new Error("care plan not readable after create");
     },
     (p) => `plan ${p.id}`,
   );

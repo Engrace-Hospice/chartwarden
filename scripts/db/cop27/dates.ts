@@ -1,6 +1,6 @@
 /**
- * COP27 API seed — calendar helpers. Every date the seed writes is relative to "today" in the organization's
- * service-location timezone, so deadlines (5-day initial addendum, 3-day update, F2F windows) are meaningful
+ * COP27 API seed — calendar helpers. Every date the seed writes is relative to "today" in the service-location timezone,
+ * clamped to the backend's date zone (see SERVER_TZ), so deadlines (5-day initial addendum, 3-day update, F2F windows) are meaningful
  * whenever the seed runs.
  */
 
