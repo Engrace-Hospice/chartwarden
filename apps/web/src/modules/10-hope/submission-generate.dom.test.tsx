@@ -124,7 +124,13 @@ describe("HOPE Submissions — generate the iQIES upload package", () => {
   it("shows the server's own reason when nothing is eligible and stays on the worklist", async () => {
     assembleFailure = {
       status: 409,
-      body: { message: "No signed HOPE assessments are eligible for iQIES package generation" },
+      // The platform's real error envelope, not a bare `{ message }`.
+      body: {
+        error: {
+          code: "CONFLICT",
+          message: "No signed HOPE assessments are eligible for iQIES package generation",
+        },
+      },
     };
     mount(["hope.submission.manage"]);
     const button = await screen.findByRole("button", { name: generateLabel });
