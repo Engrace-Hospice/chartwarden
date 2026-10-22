@@ -23,7 +23,7 @@
     "@chartwarden/types": "workspace:*",
     "bullmq": "^5.81.3",
     "cron-parser": "^4.9.0",
-    "fastify": "^5.12.5",
+    "fastify": "^5.12.6",
     "ioredis": "5.11.1",
     "pino": "^10.3.1",
     "prom-client": "^15.1.3",
