@@ -186,9 +186,13 @@ export function createFcmTransport(opts: FcmOptions): OutOfBandTransport {
           settlesOnAcceptance: true,
         };
       } catch (err) {
-        // FCM v1 answers 404 UNREGISTERED for a token that is no longer installed.
-        if (err instanceof TransportError && err.reason === "fcm_rejected:404")
-          throw new TransportError(PUSH_TOKEN_UNREGISTERED, false);
+        // Only an explicit UNREGISTERED marks the token dead. A bare 404 is also a wrong/disabled project (a config fault that
+        // must not expire every user's endpoint); a 401 means the cached access token was revoked, so drop it.
+        if (err instanceof TransportError) {
+          if (err.reason === "fcm_rejected:404:UNREGISTERED")
+            throw new TransportError(PUSH_TOKEN_UNREGISTERED, false);
+          if (err.reason.startsWith("fcm_rejected:401")) cached = undefined;
+        }
         throw err;
       }
     },
@@ -239,7 +243,7 @@ const http2Request: ApnsRequest = ({ host, path, headers, body, timeoutMs }) =>
     );
     function finish(settle: () => void): void {
       clearTimeout(timer);
-      session.close();
+      session.destroy();
       settle();
     }
     session.on("error", () => finish(() => reject(new TransportError("apns_unreachable", true))));
@@ -320,7 +324,9 @@ export function createApnsTransport(opts: ApnsOptions): OutOfBandTransport {
         };
       }
       const reason = apnsReason(res.body);
-      if (res.status === 410 || reason === "BadDeviceToken" || reason === "Unregistered")
+      // BadDeviceToken is NOT dead-token evidence: Apple returns it for a sandbox/production mismatch, which would otherwise
+      // expire every user's endpoint after one bad APNS_ENVIRONMENT.
+      if (res.status === 410 || reason === "Unregistered")
         throw new TransportError(PUSH_TOKEN_UNREGISTERED, false);
       if (res.status === 429) throw new TransportError("apns_rate_limited", true);
       if (res.status >= 500) throw new TransportError(`apns_unavailable:${res.status}`, true);

@@ -41,7 +41,15 @@ async function readJson(res: Response): Promise<Record<string, unknown> | undefi
 function vendorCode(json: Record<string, unknown> | undefined): string {
   // Twilio: `code`; Postmark: `ErrorCode`. Numeric only, so no free text can leak into the reason.
   const raw = json?.code ?? json?.ErrorCode;
-  return typeof raw === "number" && Number.isFinite(raw) ? `:${raw}` : "";
+  if (typeof raw === "number" && Number.isFinite(raw)) return `:${raw}`;
+  // Google (FCM v1): error.details[].errorCode, a fixed UPPER_SNAKE vocabulary (e.g. UNREGISTERED). Shape-checked so no free text leaks.
+  const details = (json?.error as { details?: unknown } | undefined)?.details;
+  if (Array.isArray(details))
+    for (const d of details) {
+      const code = (d as { errorCode?: unknown } | null)?.errorCode;
+      if (typeof code === "string" && /^[A-Z_]{1,40}$/.test(code)) return `:${code}`;
+    }
+  return "";
 }
 
 /** POST once; resolve on 2xx, otherwise throw a classified {@link TransportError}. */

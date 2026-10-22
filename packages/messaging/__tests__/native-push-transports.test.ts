@@ -167,13 +167,24 @@ describe("FCM v1 transport", () => {
   });
 
   it("maps a dead token to a terminal reason that never carries the token", async () => {
-    const { transport } = setup(() => json(404, { error: { status: "UNREGISTERED" } }));
+    const { transport } = setup(() =>
+      json(404, { error: { status: "NOT_FOUND", details: [{ errorCode: "UNREGISTERED" }] } }),
+    );
     const err = await rejection(
       transport.send({ notification: NOTIFICATION, destination: fcmDestination }),
     );
     expect(err.reason).toBe(PUSH_TOKEN_UNREGISTERED);
     expect(err.retryable).toBe(false);
     expect(err.reason).not.toContain(FCM_TOKEN);
+  });
+
+  it("does not call a bare 404 (wrong project) a dead token", async () => {
+    const { transport } = setup(() => json(404, { error: { status: "NOT_FOUND" } }));
+    const err = await rejection(
+      transport.send({ notification: NOTIFICATION, destination: fcmDestination }),
+    );
+    expect(err.reason).toBe("fcm_rejected:404");
+    expect(err.retryable).toBe(false);
   });
 
   it("retries 5xx and 429, and fails other 4xx terminally", async () => {
@@ -283,7 +294,8 @@ describe("APNs transport", () => {
   it("classifies vendor refusals", async () => {
     const cases: Array<[number, string | undefined, string, boolean]> = [
       [410, undefined, PUSH_TOKEN_UNREGISTERED, false],
-      [400, '{"reason":"BadDeviceToken"}', PUSH_TOKEN_UNREGISTERED, false],
+      [400, '{"reason":"Unregistered"}', PUSH_TOKEN_UNREGISTERED, false],
+      [400, '{"reason":"BadDeviceToken"}', "apns_rejected:400:BadDeviceToken", false],
       [403, '{"reason":"InvalidProviderToken"}', "apns_rejected:403:InvalidProviderToken", false],
       [403, '{"reason":"free text with spaces"}', "apns_rejected:403", false],
       [429, undefined, "apns_rate_limited", true],

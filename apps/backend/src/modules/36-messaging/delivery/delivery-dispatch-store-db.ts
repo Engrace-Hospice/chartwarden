@@ -21,7 +21,11 @@ import type {
   OutOfBandTransportChannel,
   ResolvedDestination,
 } from "@chartwarden/messaging";
-import { PUSH_TOKEN_UNREGISTERED, encodeNativeDestination } from "@chartwarden/messaging";
+import {
+  PUSH_TOKEN_UNREGISTERED,
+  encodeNativeDestination,
+  parseNativeDestination,
+} from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { eq, sql } from "drizzle-orm";
 import { type DeliveryOutboxPort, type Tx, applyDeliveryTransition } from "./delivery-settlement";
@@ -146,6 +150,9 @@ export function createDrizzleDeliveryDispatchStore(
         // trail) can name it.
         await tx.update(ND).set({ endpointId: row.endpoint_id }).where(eq(ND.id, claim.deliveryId));
         // A native endpoint stores a bare device token; the transport wants the token AND the alert hint, so encode both.
+        // A web row must never route to a native transport (the router sniffs the value): refuse native-looking web values.
+        if (row.provider === "web" && parseNativeDestination(row.endpoint_value) !== null)
+          return null;
         const value =
           row.provider === "web"
             ? row.endpoint_value

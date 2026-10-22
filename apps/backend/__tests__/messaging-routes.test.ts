@@ -1188,6 +1188,15 @@ describe("M36-T07 messaging route inventory", () => {
       expect(res.statusCode).toBe(422);
     });
 
+    it("refuses a native-shaped destination registered as a web endpoint", async () => {
+      const target = JSON.stringify({
+        provider: "apns",
+        token: "ab".repeat(32),
+        alertId: "11111111-1111-4111-8111-111111111111",
+      });
+      expect((await register({ channel: "push", target })).statusCode).toBe(422);
+    });
+
     it("rejects an unknown provider and keeps the default web registration working", async () => {
       expect(
         (await register({ channel: "push", provider: "carrier-pigeon", target: "x" })).statusCode,

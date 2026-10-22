@@ -28,7 +28,7 @@ import {
   requirePermission,
   resolveActorPermissions,
 } from "@chartwarden/auth";
-import { isValidNativePushToken } from "@chartwarden/messaging";
+import { isValidNativePushToken, parseNativeDestination } from "@chartwarden/messaging";
 import type {
   AnnouncementService,
   MemberAdminActor,
@@ -887,6 +887,12 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       // WP 5.5: link the endpoint to the session that registers it, so revoking that session expires it. Server-side context only.
       const sessionId = request.context.attributes?.sessionId;
       const provider = body.provider ?? "web";
+      if (provider === "web" && parseNativeDestination(body.target) !== null)
+        throw new ChartWardenError(
+          "VALIDATION_FAILED",
+          "a native push destination must be registered with its provider",
+          422,
+        );
       if (provider !== "web") {
         // A native token is only meaningful on the push channel, must look like that provider's token, and must be linked to the
         // registering session so a session revoke can expire it (fail closed: an unlinked native token would outlive a lost phone).
