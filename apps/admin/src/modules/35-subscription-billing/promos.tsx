@@ -1,9 +1,14 @@
 import {
   Button,
+  type FieldErrors,
   SelectField,
   StatusPill,
   TextField,
+  focusFirstInvalid,
   interactiveRowProps,
+  isValid,
+  stashStepUpDraft,
+  takeStepUpDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
@@ -43,6 +48,26 @@ const EMPTY_FORM = {
 };
 type PromoForm = typeof EMPTY_FORM;
 
+const PROMO_DRAFT_KEY = "promo-create";
+
+/** Per-field messages for the New promo form; empty when it can be submitted (#597, F-042). */
+export function promoFormErrors(form: PromoForm): FieldErrors<keyof PromoForm> {
+  const errors: FieldErrors<keyof PromoForm> = {};
+  if (form.code.trim() === "") errors.code = "Enter a promo code.";
+  if (form.kind === "percent_off") {
+    const percent = Number(form.percent);
+    if (form.percent.trim() === "") errors.percent = "Enter a percentage from 1 to 100.";
+    else if (!Number.isInteger(percent) || percent < 1 || percent > 100)
+      errors.percent = "Enter a whole percentage from 1 to 100.";
+  } else {
+    const amount = Number(form.amount);
+    if (form.amount.trim() === "") errors.amount = "Enter an amount in dollars, e.g. 10.00.";
+    else if (!Number.isFinite(amount) || amount <= 0)
+      errors.amount = "Enter a dollar amount greater than 0, e.g. 10.00.";
+  }
+  return errors;
+}
+
 const KIND_OPTIONS = [
   { value: "percent_off", label: "Percent off" },
   { value: "amount_off", label: "Amount off" },
@@ -73,10 +98,12 @@ export function Promos(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
+  // A step-up refusal sends the operator to /step-up and back; the typed promo is restored and the drawer reopens.
+  const [restored] = useState(() => takeStepUpDraft<PromoForm>(PROMO_DRAFT_KEY));
+  const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("promo");
-  const [form, setForm] = useState<PromoForm>(EMPTY_FORM);
+  const [form, setForm] = useState<PromoForm>(restored ?? EMPTY_FORM);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
 
@@ -102,6 +129,7 @@ export function Promos(): JSX.Element {
   }, [load]);
 
   const create = useCallback(async () => {
+    if (!isValid(promoFormErrors(form))) return;
     setBusy(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/promos", {
@@ -177,7 +205,9 @@ export function Promos(): JSX.Element {
             </Button>
           </div>
         </header>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {outcome ? (
+          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PROMO_DRAFT_KEY, form)} />
+        ) : null}
         {loading ? (
           <StateLoading label="Loading promos…" />
         ) : error ? (
@@ -329,10 +359,18 @@ function CreatePromoDrawer({
   onClose: () => void;
 }): JSX.Element {
   const drawer = useDrawerA11y<HTMLElement>(onClose);
-  const canSubmit = !busy && form.code.trim() !== "";
-  const submit = (e: FormEvent): void => {
+  // Errors appear after the first submit attempt; the button stays enabled so a refusal always explains itself.
+  const [attempted, setAttempted] = useState(false);
+  const errors = attempted ? promoFormErrors(form) : {};
+  const submit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    if (canSubmit) onCreate();
+    if (busy) return;
+    if (!isValid(promoFormErrors(form))) {
+      setAttempted(true);
+      focusFirstInvalid(e.currentTarget);
+      return;
+    }
+    onCreate();
   };
   return (
     <aside className="wx-admission-drawer" aria-label="New promo" {...drawer}>
@@ -341,6 +379,8 @@ function CreatePromoDrawer({
         <form className="wx-drawer-card" onSubmit={submit} noValidate>
           <TextField
             label="Code"
+            required
+            error={errors.code}
             value={form.code}
             onChange={(e) => onChange({ ...form, code: e.target.value })}
           />
@@ -354,6 +394,8 @@ function CreatePromoDrawer({
             {form.kind === "percent_off" ? (
               <TextField
                 label="Percent"
+                required
+                error={errors.percent}
                 value={form.percent}
                 inputMode="numeric"
                 onChange={(e) => onChange({ ...form, percent: e.target.value })}
@@ -361,6 +403,8 @@ function CreatePromoDrawer({
             ) : (
               <TextField
                 label="Amount (USD)"
+                required
+                error={errors.amount}
                 value={form.amount}
                 inputMode="decimal"
                 onChange={(e) => onChange({ ...form, amount: e.target.value })}
@@ -380,7 +424,7 @@ function CreatePromoDrawer({
             onChange={(e) => onChange({ ...form, coupon: e.target.value })}
           />
           <div className="wx-drawer-actions">
-            <Button type="submit" disabled={!canSubmit}>
+            <Button type="submit" disabled={busy}>
               Create promo
             </Button>
           </div>

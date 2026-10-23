@@ -66,6 +66,14 @@ export {
   stepUpPath,
 } from "./components/step-up-link";
 export type { ReverifyLinkProps } from "./components/step-up-link";
+// Submit-time form validation + the typed-form draft kept across the step-up round trip (#597)
+export { focusFirstInvalid, isValid } from "./components/form-validation";
+export type { FieldErrors } from "./components/form-validation";
+export {
+  STEP_UP_DRAFT_TTL_MS,
+  stashStepUpDraft,
+  takeStepUpDraft,
+} from "./components/step-up-draft";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";
 export { WorkflowStepper } from "./components/workflow-stepper";

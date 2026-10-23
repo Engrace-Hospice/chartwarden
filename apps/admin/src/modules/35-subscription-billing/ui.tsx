@@ -37,14 +37,26 @@ export function failureOutcome(error: unknown, fallback: string): Outcome {
  * also carries a Re-verify link to the console's /step-up page, which returns here — never an automatic
  * redirect, so a form with typed input is not torn away.
  */
-export function OutcomeBanner({ ok, message, stepUp = false }: Outcome): JSX.Element {
+export function OutcomeBanner({
+  ok,
+  message,
+  stepUp = false,
+  onReverify,
+}: Outcome & {
+  /** Called as the operator leaves for /step-up, to keep their typed form for the return trip (#597). */
+  onReverify?: () => void;
+}): JSX.Element {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <InlineAlert tone={ok ? "success" : "error"}>{message}</InlineAlert>
-      {stepUp ? <ReverifyLink /> : null}
+      {stepUp ? <ReverifyLink onNavigate={onReverify} /> : null}
     </div>
   );
 }
+
+/** True when a read answered 404: the record is gone, so "Try again" cannot succeed (#597, F-044). */
+export const isNotFound = (res: { response?: { status?: number } }): boolean =>
+  res.response?.status === 404;
 
 /** A keyset "Load more" affordance shared by the cursor-paged lists. */
 export function LoadMore({

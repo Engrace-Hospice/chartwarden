@@ -25,6 +25,7 @@ import {
   StateError,
   StateLoading,
   failureOutcome,
+  isNotFound,
 } from "./ui";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
@@ -53,6 +54,7 @@ export function RefundApprove(): JSX.Element {
   const [refund, setRefund] = useState<Refund | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [denyReason, setDenyReason] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -67,10 +69,13 @@ export function RefundApprove(): JSX.Element {
     }
     setLoading(true);
     setError(null);
+    setNotFound(false);
     const res = await client.GET("/api/admin/refunds/{id}", { params: { path: { id } } });
     if (!isCurrent()) return;
     if (res.error) {
-      setError("Refund unavailable.");
+      // A 404 is final: retrying cannot bring the record back, so no "Try again" (#597, F-044).
+      setNotFound(isNotFound(res));
+      setError(isNotFound(res) ? "Refund not found." : "Refund unavailable.");
       setLoading(false);
       return;
     }
@@ -136,7 +141,10 @@ export function RefundApprove(): JSX.Element {
           {loading ? (
             <StateLoading label="Loading refund…" />
           ) : (
-            <StateError message={error ?? "Refund not found."} onRetry={() => void load()} />
+            <StateError
+              message={error ?? "Refund not found."}
+              onRetry={notFound ? undefined : () => void load()}
+            />
           )}
         </div>
       </div>

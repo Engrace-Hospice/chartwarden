@@ -1,9 +1,14 @@
 import {
   Button,
+  type FieldErrors,
   SelectField,
   StatusPill,
   TextField,
+  focusFirstInvalid,
   interactiveRowProps,
+  isValid,
+  stashStepUpDraft,
+  takeStepUpDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
@@ -58,11 +63,24 @@ export function parseTrialDays(raw: string): number | null {
   return Number.isInteger(days) && days >= 0 ? days : null;
 }
 
-const canCreatePlan = (form: PlanForm): boolean =>
-  form.slug.trim() !== "" &&
-  form.name.trim() !== "" &&
-  parsePriceCents(form.basePrice) !== null &&
-  parseTrialDays(form.trialDays) !== null;
+const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PLAN_DRAFT_KEY = "plan-create";
+
+/** Per-field messages for the New plan form; empty when it can be submitted (#597, F-042). */
+export function planFormErrors(form: PlanForm): FieldErrors<keyof PlanForm> {
+  const errors: FieldErrors<keyof PlanForm> = {};
+  const slug = form.slug.trim();
+  if (slug === "") errors.slug = "Enter a slug.";
+  else if (!SLUG_SHAPE.test(slug))
+    errors.slug = "Use lowercase letters, numbers and hyphens only, e.g. starter-monthly.";
+  if (form.name.trim() === "") errors.name = "Enter a plan name.";
+  if (form.basePrice.trim() === "") errors.basePrice = "Enter a price in dollars, e.g. 49.00.";
+  else if (parsePriceCents(form.basePrice) === null)
+    errors.basePrice = "Enter a number of dollars, 0 or more, e.g. 49.00.";
+  if (parseTrialDays(form.trialDays) === null)
+    errors.trialDays = "Enter a whole number of days, 0 or more.";
+  return errors;
+}
 
 const TIER_OPTIONS = [
   { value: "starter", label: "Starter" },
@@ -81,9 +99,11 @@ export function PlansList(): JSX.Element {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [form, setForm] = useState<PlanForm>(EMPTY_FORM);
+  // A step-up refusal sends the operator to /step-up and back; the typed plan is restored and the drawer reopens.
+  const [restored] = useState(() => takeStepUpDraft<PlanForm>(PLAN_DRAFT_KEY));
+  const [showCreate, setShowCreate] = useState(restored !== undefined);
+  const [form, setForm] = useState<PlanForm>(restored ?? EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
@@ -112,7 +132,8 @@ export function PlansList(): JSX.Element {
   const create = useCallback(async () => {
     const basePriceCents = parsePriceCents(form.basePrice);
     const trialPeriodDays = parseTrialDays(form.trialDays);
-    if (basePriceCents === null || trialPeriodDays === null) return;
+    if (!isValid(planFormErrors(form)) || basePriceCents === null || trialPeriodDays === null)
+      return;
     setSaving(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/plans", {
@@ -166,7 +187,9 @@ export function PlansList(): JSX.Element {
             </Button>
           </div>
         </header>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {outcome ? (
+          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PLAN_DRAFT_KEY, form)} />
+        ) : null}
         {loading ? (
           <StateLoading label="Loading plans…" />
         ) : error ? (
@@ -309,10 +332,18 @@ function CreatePlanDrawer({
   onClose: () => void;
 }): JSX.Element {
   const drawer = useDrawerA11y<HTMLElement>(onClose);
-  const canSubmit = canCreatePlan(form);
-  const submit = (e: FormEvent): void => {
+  // Errors appear after the first submit attempt; the button stays enabled so a refusal always explains itself.
+  const [attempted, setAttempted] = useState(false);
+  const errors = attempted ? planFormErrors(form) : {};
+  const submit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    if (canSubmit && !saving) onCreate();
+    if (saving) return;
+    if (!isValid(planFormErrors(form))) {
+      setAttempted(true);
+      focusFirstInvalid(e.currentTarget);
+      return;
+    }
+    onCreate();
   };
   return (
     <aside className="wx-admission-drawer" aria-label="New plan" {...drawer}>
@@ -321,11 +352,16 @@ function CreatePlanDrawer({
         <form className="wx-drawer-card" onSubmit={submit} noValidate>
           <TextField
             label="Slug"
+            required
+            hint="Lowercase letters, numbers and hyphens, e.g. starter-monthly."
+            error={errors.slug}
             value={form.slug}
             onChange={(e) => onChange({ ...form, slug: e.target.value })}
           />
           <TextField
             label="Name"
+            required
+            error={errors.name}
             value={form.name}
             onChange={(e) => onChange({ ...form, name: e.target.value })}
           />
@@ -344,19 +380,23 @@ function CreatePlanDrawer({
             />
             <TextField
               label="Base price (USD)"
+              required
+              error={errors.basePrice}
               value={form.basePrice}
               inputMode="decimal"
               onChange={(e) => onChange({ ...form, basePrice: e.target.value })}
             />
             <TextField
               label="Trial days"
+              required
+              error={errors.trialDays}
               value={form.trialDays}
               inputMode="numeric"
               onChange={(e) => onChange({ ...form, trialDays: e.target.value })}
             />
           </div>
           <div className="wx-drawer-actions">
-            <Button type="submit" loading={saving} disabled={saving || !canSubmit}>
+            <Button type="submit" loading={saving} disabled={saving}>
               Create draft
             </Button>
           </div>

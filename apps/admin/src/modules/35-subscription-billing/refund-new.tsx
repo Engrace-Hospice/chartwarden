@@ -1,9 +1,21 @@
-import { Button, Panel, SelectField, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  type FieldErrors,
+  Panel,
+  SelectField,
+  TextAreaField,
+  TextField,
+  focusFirstInvalid,
+  isValid,
+  stashStepUpDraft,
+  takeStepUpDraft,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 New refund request (`/admin/refunds/new`,
 // refund.request). POST /api/admin/refunds (step-up + Idempotency-Key). The §4.8 four-eyes rule keeps
 // the REQUESTER distinct from the approver, so this screen only REQUESTS — approval is a separate surface.
 // The reason detail carries a 40-char minimum (mirrors the server contract) enforced before submit.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { idempotencyKey } from "./status";
@@ -15,24 +27,61 @@ const MIN_REASON = 40;
 const KIND_OPTIONS = KINDS.map((k) => ({ value: k, label: k.replace(/_/g, " ") }));
 const REASON_OPTIONS = REASONS.map((r) => ({ value: r, label: r.replace(/_/g, " ") }));
 
+const REFUND_DRAFT_KEY = "refund-new";
+const INVOICE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type RefundForm = {
+  invoiceId: string;
+  amount: string;
+  kind: string;
+  reasonCode: string;
+  detail: string;
+};
+
+/** Per-field messages for the refund request; empty when it can be submitted (#597, F-042). */
+export function refundFormErrors(form: RefundForm): FieldErrors<keyof RefundForm> {
+  const errors: FieldErrors<keyof RefundForm> = {};
+  const invoice = form.invoiceId.trim();
+  if (invoice === "") errors.invoiceId = "Enter the invoice id.";
+  else if (!INVOICE_UUID.test(invoice)) errors.invoiceId = "The invoice id is a UUID, e.g. 3f2b…";
+  const amount = Number(form.amount);
+  if (form.amount.trim() === "") errors.amount = "Enter the refund amount in dollars.";
+  else if (!Number.isFinite(amount) || amount <= 0)
+    errors.amount = "Enter a dollar amount greater than 0, e.g. 25.00.";
+  const length = form.detail.trim().length;
+  if (length < MIN_REASON)
+    errors.detail = `Describe the reason in at least ${MIN_REASON} characters (${length} so far).`;
+  return errors;
+}
+
 export function RefundNew(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    invoiceId: "",
-    amount: "",
-    kind: "partial",
-    reasonCode: "requested_by_customer",
-    detail: "",
-  });
+  // A step-up refusal sends the operator to /step-up and back; the typed request is restored.
+  const [form, setForm] = useState<RefundForm>(
+    () =>
+      takeStepUpDraft<RefundForm>(REFUND_DRAFT_KEY) ?? {
+        invoiceId: "",
+        amount: "",
+        kind: "partial",
+        reasonCode: "requested_by_customer",
+        detail: "",
+      },
+  );
+  const [attempted, setAttempted] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const detailShort = useMemo(() => form.detail.trim().length < MIN_REASON, [form.detail]);
-  const canSubmit = !detailShort && form.invoiceId.trim().length > 0 && Number(form.amount) > 0;
+  const errors = attempted ? refundFormErrors(form) : {};
 
   const submit = useCallback(async () => {
-    if (!canSubmit) return;
+    if (!isValid(refundFormErrors(form))) {
+      setAttempted(true);
+      focusFirstInvalid(formRef.current);
+      return;
+    }
     setBusy(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds", {
@@ -65,7 +114,7 @@ export function RefundNew(): JSX.Element {
     });
     setBusy(false);
     setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, form, canSubmit, navigate]);
+  }, [client, form, navigate]);
 
   return (
     <div className="wx-list-drawer">
@@ -78,10 +127,12 @@ export function RefundNew(): JSX.Element {
         </header>
         <div className="max-w-2xl">
           <Panel title="Refund request" icon="rotate-ccw">
-            <div className="grid gap-4">
+            <div className="grid gap-4" ref={formRef}>
               <TextField
                 id="invoice-id"
                 label="Invoice id"
+                required
+                error={errors.invoiceId}
                 value={form.invoiceId}
                 onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
                 placeholder="Invoice UUID"
@@ -90,6 +141,8 @@ export function RefundNew(): JSX.Element {
                 <TextField
                   id="amount"
                   label="Amount (USD)"
+                  required
+                  error={errors.amount}
                   value={form.amount}
                   inputMode="decimal"
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
@@ -112,7 +165,9 @@ export function RefundNew(): JSX.Element {
               <div className="grid gap-1">
                 <TextAreaField
                   id="detail"
-                  label={`Reason detail (min ${MIN_REASON} chars)`}
+                  label="Reason detail"
+                  required
+                  error={errors.detail}
                   value={form.detail}
                   onChange={(e) => setForm({ ...form, detail: e.target.value })}
                   rows={4}
@@ -127,12 +182,17 @@ export function RefundNew(): JSX.Element {
                   {form.detail.trim().length}/{MIN_REASON} characters
                 </span>
               </div>
-              {outcome ? <OutcomeBanner {...outcome} /> : null}
+              {outcome ? (
+                <OutcomeBanner
+                  {...outcome}
+                  onReverify={() => stashStepUpDraft(REFUND_DRAFT_KEY, form)}
+                />
+              ) : null}
               <div className="wx-action-row is-end">
                 <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>
                   Cancel
                 </Button>
-                <Button loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
+                <Button loading={busy} onClick={() => void submit()}>
                   Submit request
                 </Button>
               </div>

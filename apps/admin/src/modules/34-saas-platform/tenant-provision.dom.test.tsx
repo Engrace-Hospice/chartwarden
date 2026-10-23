@@ -1,8 +1,8 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — "New tenant" used to be a browser alert() placeholder. The drawer posts
 // the six fields the route requires, and a step-up refusal must keep what was typed and offer Re-verify rather than
 // claim success or wipe the form.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantProvisionDrawer } from "./tenant-provision";
@@ -41,7 +41,8 @@ function mount(respond: () => Response): { calls: Recorded[]; onAccepted: () => 
 }
 
 function fill(label: string, value: string): void {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  // Required fields carry a visible "*" after the label text, so match the start of it.
+  fireEvent.change(screen.getByLabelText(new RegExp(`^${label}`)), { target: { value } });
 }
 
 function fillAll(): void {
@@ -61,14 +62,23 @@ afterEach(() => {
 });
 
 describe("TenantProvisionDrawer", () => {
-  it("keeps Provision disabled until every field is valid", () => {
-    mount(() => json(202, {}));
+  it("explains what is missing instead of silently disabling Provision (#597)", async () => {
+    const { calls } = mount(() => json(202, {}));
     const submit = screen.getByRole("button", { name: "Provision tenant" }) as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
-    fillAll();
     expect(submit.disabled).toBe(false);
+    expect(screen.queryByText("Enter the billing contact email.")).toBeNull();
+    fireEvent.click(submit);
+    expect(await screen.findByText("Enter the billing contact email.")).toBeTruthy();
+    expect(screen.getByText(/Enter the legal business name/)).toBeTruthy();
+    expect(calls).toEqual([]);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText(/^Legal business name/)),
+    );
+    fillAll();
     fill("Billing contact email", "not-an-email");
-    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(await screen.findByText(/Enter a valid email address/)).toBeTruthy();
+    expect(calls).toEqual([]);
   });
 
   it("posts the trimmed fields and reports the request as accepted", async () => {
@@ -106,7 +116,7 @@ describe("TenantProvisionDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
     expect(await screen.findByRole("link", { name: "Re-verify" })).toBeTruthy();
     expect(onAccepted).not.toHaveBeenCalled();
-    expect((screen.getByLabelText("First admin email") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(/^First admin email/) as HTMLInputElement).value).toBe(
       "ada@cedar.example",
     );
   });
@@ -120,10 +130,10 @@ describe("TenantProvisionDrawer", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     cleanup();
     mount(() => json(202, {}));
-    expect((screen.getByLabelText("Legal business name") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(/^Legal business name/) as HTMLInputElement).value).toBe(
       "  Cedar Ridge Hospice LLC ",
     );
-    expect((screen.getByLabelText("First admin email") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(/^First admin email/) as HTMLInputElement).value).toBe(
       "ada@cedar.example",
     );
   });
