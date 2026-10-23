@@ -613,6 +613,17 @@ export interface FuneralCaseReader {
  */
 export interface PasswordVerifier {
   verify(input: { userId: string; password: string }): Promise<boolean>;
+  /** False when the account has no credential password (SSO-only / link session): unlock answers 409, spends no budget. */
+  hasPassword?(userId: string): Promise<boolean>;
+}
+
+/** One org-less (platform-scoped) audit row: an unlock by a session that never bound an organization (#602). */
+export interface PlatformUnlockAuditInput {
+  eventType: string;
+  outcome: "success" | "failure";
+  sessionId: string;
+  userId: string;
+  correlationId: string;
 }
 
 /** The full injection surface for `registerIdentityRoutes`. */
@@ -622,6 +633,8 @@ export interface IdentityRouteDeps {
   passwordVerifier?: PasswordVerifier;
   /** #589 - the per-user failed-unlock budget. Required alongside `passwordVerifier`: unbound -> 503 (fail closed). */
   unlockGuard?: import("./unlock-guard").UnlockGuard;
+  /** #602 - the tenant-less audit sink for unlocks by an org-less session (enrolment-stage auditor, password-change session). */
+  platformUnlockAudit?: (input: PlatformUnlockAuditInput) => Promise<void>;
   memberships: MembershipRepository;
   sessions: SessionWriter;
   invitations: InvitationStore;

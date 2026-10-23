@@ -4732,6 +4732,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             linkRedeemThrottle,
             ...(auth ? { passwordVerifier: createPasswordVerifier(auth) } : {}),
             unlockGuard,
+            // #602 - an org-less session's unlock has no tenant: the platform-scoped audit writer takes the row.
+            platformUnlockAudit: (input) =>
+              auditPlatformEvent(dbHandle.db, {
+                eventType: input.eventType,
+                resourceKind: "session",
+                resourceId: input.sessionId,
+                outcome: input.outcome,
+                correlationId: input.correlationId,
+                retentionClass: "compliance",
+                context: { userId: input.userId },
+              }),
             ...(mfaGate ? { mfaGate } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>

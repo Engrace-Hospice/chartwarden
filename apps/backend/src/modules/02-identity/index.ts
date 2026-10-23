@@ -487,6 +487,7 @@ export function mountIdentityRoutes(
     linkRedeemThrottle?: IdentityRouteDeps["linkRedeemThrottle"];
     passwordVerifier?: IdentityRouteDeps["passwordVerifier"];
     unlockGuard?: IdentityRouteDeps["unlockGuard"];
+    platformUnlockAudit?: IdentityRouteDeps["platformUnlockAudit"];
     /** M5's minimum decedent read for `GET /funeral/case`. */
     funeralCases?: IdentityRouteDeps["funeralCases"];
     /** GAP-005 - the MFA matrix gate `select-organization` consults before binding an organization. */
@@ -532,6 +533,7 @@ export function mountIdentityRoutes(
     ...(invite?.linkRedeemThrottle ? { linkRedeemThrottle: invite.linkRedeemThrottle } : {}),
     ...(invite?.passwordVerifier ? { passwordVerifier: invite.passwordVerifier } : {}),
     ...(invite?.unlockGuard ? { unlockGuard: invite.unlockGuard } : {}),
+    ...(invite?.platformUnlockAudit ? { platformUnlockAudit: invite.platformUnlockAudit } : {}),
     ...(invite?.funeralCases ? { funeralCases: invite.funeralCases } : {}),
     ...(invite?.mfaGate ? { mfaGate: invite.mfaGate } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),

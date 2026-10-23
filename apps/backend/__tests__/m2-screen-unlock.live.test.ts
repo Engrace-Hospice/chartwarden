@@ -41,6 +41,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { auditPlatformEvent } from "@chartwarden/audit";
 import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
@@ -158,6 +159,16 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
         )
       ).rows[0].count,
     );
+  /** Platform-scoped (org-less) unlock rows for a user: `organization_id IS NULL`, the user riding in `context`. */
+  const platformUnlockRows = async (userId: string) =>
+    (
+      await admin.query(
+        `SELECT event_type, outcome, resource_id FROM audit_event
+          WHERE organization_id IS NULL AND event_type LIKE 'm2.session.unlock%' AND context->>'userId'=$1
+          ORDER BY created_at`,
+        [userId],
+      )
+    ).rows as { event_type: string; outcome: string; resource_id: string }[];
   const outboxRows = async (eventType: string, sessionId: string) =>
     (
       await admin.query(
@@ -222,6 +233,17 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
       outbox: { publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }) },
       passwordVerifier: createPasswordVerifier(auth),
       unlockGuard: createUnlockGuard(createInMemoryFailedLoginStore()),
+      // The production wiring (index.ts): an org-less session's unlock rides the SECURITY DEFINER platform writer.
+      platformUnlockAudit: (input) =>
+        auditPlatformEvent(handle.db as never, {
+          eventType: input.eventType,
+          resourceKind: "session",
+          resourceId: input.sessionId,
+          outcome: input.outcome,
+          correlationId: input.correlationId,
+          retentionClass: "compliance",
+          context: { userId: input.userId },
+        }),
     });
     app.get(
       "/__probe/org",
@@ -305,6 +327,47 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
     expect((await unlock(cookie, u.password)).statusCode).toBe(401);
     expect(await auditCount("m2.session.unlock_failed", u.userId)).toBe(5);
     expect(await auditCount("m2.session.terminated_unlock_lockout", u.userId)).toBe(1);
+  });
+
+  it("a lockout does not make the user's NEXT session wait: the shared counter is refunded (#602)", async () => {
+    const u = await seedStaff("next");
+    const cookie = await signInAndBind(u);
+    for (let i = 0; i < 5; i += 1) await unlock(cookie, "wrong-wrong-wrong-1");
+    expect(await sessionsOf(u.userId)).toEqual([]);
+
+    const fresh = await signInAndBind(u);
+    expect((await unlock(fresh, u.password)).statusCode).toBe(200); // not 429
+  });
+
+  it("an org-less session's unlock works and is audited platform-scoped, not dropped (#602)", async () => {
+    const u = await seedStaff("platform");
+    const orgless = await signIn(u.email, u.password); // never selected an organization
+    const [row] = await sessionsOf(u.userId);
+
+    expect((await unlock(orgless, "wrong-wrong-wrong-1")).statusCode).toBe(401);
+    const ok = await unlock(orgless, u.password);
+
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ sessionId: row?.id, activeOrganizationId: null });
+    expect(await platformUnlockRows(u.userId)).toEqual([
+      { event_type: "m2.session.unlock_failed", outcome: "failure", resource_id: row?.id },
+      { event_type: "m2.session.unlocked", outcome: "success", resource_id: row?.id },
+    ]);
+    expect(await auditCount("m2.session.unlocked", u.userId)).toBe(0); // no tenant row exists to find
+  });
+
+  it("an account with no password gets 409 UNLOCK_NO_PASSWORD and burns none of its budget (#602)", async () => {
+    const u = await seedStaff("nopw");
+    const cookie = await signInAndBind(u);
+    await admin.query(`DELETE FROM account WHERE user_id=$1 AND provider_id='credential'`, [u.userId]);
+
+    for (let i = 0; i < 7; i += 1) {
+      const res = await unlock(cookie, "wrong-wrong-wrong-1");
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("UNLOCK_NO_PASSWORD");
+    }
+    expect((await probe(cookie)).statusCode).toBe(200); // never locked out
+    expect(await auditCount("m2.session.unlock_failed", u.userId)).toBe(0);
   });
 
   it("a correct password refunds the budget, so earlier typos do not accumulate toward a lockout", async () => {

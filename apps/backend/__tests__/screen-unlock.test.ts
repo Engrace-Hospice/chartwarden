@@ -4,7 +4,7 @@
 // (the org is bound only by select-organization), so the next org-scoped call 401'd and the user landed on
 // /expired with their drafts wiped. `POST /api/v1/auth/unlock` instead verifies the password for the CURRENT
 // session's user and mints nothing. Slice test through the full M1 chain; the live proof is m2-screen-unlock.live.
-import { type FailedLoginStore, createInMemoryFailedLoginStore } from "@chartwarden/auth";
+import { type FailedLoginStore, createInMemoryFailedLoginStore, credentialKey } from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -54,10 +54,25 @@ function makeServer(
     verifier?: IdentityRouteDeps["passwordVerifier"] | null;
     store?: FailedLoginStore;
     actor?: Actor | null;
+    hasPassword?: boolean;
+    /** Make the next `revokeSession` throw once (a DB outage at lockout). */
+    revokeFailsOnce?: boolean;
   } = {},
 ) {
   const memberships = createInMemoryMembershipRepository([]);
   const sessions = createInMemorySessionWriter();
+  const revokeFault = { armed: opts.revokeFailsOnce === true };
+  const writer: typeof sessions.writer = {
+    ...sessions.writer,
+    async revokeSession(id) {
+      if (revokeFault.armed) {
+        revokeFault.armed = false;
+        throw new Error("session store unavailable");
+      }
+      return sessions.writer.revokeSession(id);
+    },
+  };
+  const platformAudits: Array<{ eventType: string; outcome: string; sessionId: string; userId: string }> = [];
   const auditSink = createInMemoryAuditExecutor();
   const auditFault = { armed: false };
   const audit: typeof auditSink.executor = {
@@ -78,21 +93,30 @@ function makeServer(
       verifyCalls.push(input);
       return input.password === GOOD_PASSWORD;
     },
+    async hasPassword() {
+      return opts.hasPassword !== false;
+    },
   };
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerIdentityRoutes(app, {
     actors: createFixedActorResolver(opts.actor === undefined ? ACTOR : opts.actor),
     memberships: memberships.repo,
-    sessions: sessions.writer,
+    sessions: writer,
     invitations: createInMemoryInvitationStore().store,
     collaborators: createInMemoryCollaboratorLinkStore().store,
     users: createInMemoryUserDirectory(memberships.repo).directory,
     audit,
     outbox: { publish: async (e) => void published.push({ eventName: e.eventName, payload: e.payload }) },
     unlockGuard: createUnlockGuard(opts.store ?? createInMemoryFailedLoginStore()),
+    platformUnlockAudit: async (input) => void platformAudits.push(input),
     ...(opts.verifier === null ? {} : { passwordVerifier: opts.verifier ?? verifier }),
   });
-  return { app, auditSink, auditFault, published, verifyCalls, sessions };
+  return { app, auditSink, auditFault, published, verifyCalls, sessions, platformAudits };
+}
+
+/** Spend the user's whole shared budget directly (as other devices' typos would), without locking a session. */
+async function spendBudget(store: FailedLoginStore): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await store.recordFailure(`screen-unlock:user:${credentialKey("user_rn")}`, 600_000);
 }
 
 const unlock = (app: ReturnType<typeof makeServer>["app"], payload: unknown) =>
@@ -147,8 +171,9 @@ describe("#589 POST /api/v1/auth/unlock", () => {
 
   it("Retry-After is the window's remaining time, not the full window (#602)", async () => {
     let t = 1_000_000;
-    const h = makeServer({ store: createInMemoryFailedLoginStore(() => t) });
-    for (let i = 0; i < 5; i += 1) await unlock(h.app, { password: "nope" });
+    const store = createInMemoryFailedLoginStore(() => t);
+    const h = makeServer({ store });
+    await spendBudget(store);
     t += 4 * 60_000; // 4 of the 10 minutes have passed
 
     const next = await unlock(h.app, { password: GOOD_PASSWORD });
@@ -158,23 +183,100 @@ describe("#589 POST /api/v1/auth/unlock", () => {
     await h.app.close();
   });
 
-  it("a lockout does NOT refund the budget, so requests already in flight cannot reserve fresh attempts", async () => {
+  it("a locked-out session stays refused (423) and is never hashed again, even with the right password (#602)", async () => {
     const h = makeServer();
     for (let i = 0; i < 5; i += 1) await unlock(h.app, { password: "nope" });
     const hashed = h.verifyCalls.length;
 
-    const next = await unlock(h.app, { password: GOOD_PASSWORD }); // right password, budget still spent
+    const next = await unlock(h.app, { password: GOOD_PASSWORD });
 
-    expect(next.statusCode).toBe(429);
-    expect(next.headers["retry-after"]).toBe("600");
+    expect(next.statusCode).toBe(423);
+    expect(next.json().error.code).toBe("UNLOCK_LOCKED_OUT");
     expect(h.verifyCalls.length).toBe(hashed); // refused BEFORE the password was hashed
     await h.app.close();
   });
 
-  it("audits the first throttled attempt of a window, not every one", async () => {
-    const h = makeServer();
-    for (let i = 0; i < 5; i += 1) await unlock(h.app, { password: "nope" });
+  it("a lockout refunds the shared budget, so the user's NEXT session is not told to wait (#602)", async () => {
+    const store = createInMemoryFailedLoginStore();
+    const first = makeServer({ store });
+    for (let i = 0; i < 5; i += 1) await unlock(first.app, { password: "nope" });
+    await first.app.close();
+
+    const second = makeServer({ store, actor: { ...ACTOR, sessionId: "sess_2" } });
+    const res = await unlock(second.app, { password: GOOD_PASSWORD });
+
+    expect(res.statusCode).toBe(200);
+    await second.app.close();
+  });
+
+  it("a failed revoke at lockout leaves the session refused, and the next request retries the revoke (#602)", async () => {
+    const h = makeServer({ revokeFailsOnce: true });
     for (let i = 0; i < 4; i += 1) await unlock(h.app, { password: "nope" });
+
+    const fifth = await unlock(h.app, { password: "nope" });
+    expect(fifth.statusCode).toBe(500); // the revoke blew up...
+    expect(h.sessions.revokedSessions()).toEqual([]); // ...so the session is still alive
+
+    const next = await unlock(h.app, { password: GOOD_PASSWORD }); // ...but it can no longer unlock
+    expect(next.statusCode).toBe(423);
+    expect(h.sessions.revokedSessions()).toEqual(["sess_1"]); // and this request finished the job
+    await h.app.close();
+  });
+
+  it("a counter-store failure while marking the lockout still ends the session (#602)", async () => {
+    let failMarkers = false;
+    const base = createInMemoryFailedLoginStore();
+    const store: FailedLoginStore = {
+      ...base,
+      async recordFailure(key, windowMs) {
+        if (failMarkers && key.startsWith("screen-unlock:locked:")) throw new Error("valkey blip");
+        return base.recordFailure(key, windowMs);
+      },
+    };
+    const h = makeServer({ store });
+    for (let i = 0; i < 4; i += 1) await unlock(h.app, { password: "nope" });
+    failMarkers = true;
+
+    const fifth = await unlock(h.app, { password: "nope" });
+
+    expect(fifth.statusCode).toBe(423);
+    expect(h.sessions.revokedSessions()).toEqual(["sess_1"]);
+    await h.app.close();
+  });
+
+  it("a passwordless account gets 409 UNLOCK_NO_PASSWORD and spends no attempts (#602)", async () => {
+    const h = makeServer({ hasPassword: false });
+    for (let i = 0; i < 8; i += 1) {
+      const res = await unlock(h.app, { password: "anything" });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("UNLOCK_NO_PASSWORD");
+    }
+    expect(h.verifyCalls).toEqual([]);
+    expect(h.sessions.revokedSessions()).toEqual([]); // never locked out
+    await h.app.close();
+  });
+
+  it("an org-less session's unlock is audited through the platform sink instead of being dropped (#602)", async () => {
+    const h = makeServer({ actor: { ...ACTOR, organizationId: null } });
+    const wrong = await unlock(h.app, { password: "nope" });
+    const right = await unlock(h.app, { password: GOOD_PASSWORD });
+
+    expect(wrong.statusCode).toBe(401);
+    expect(right.statusCode).toBe(200);
+    expect(h.platformAudits.map((a) => [a.eventType, a.outcome, a.userId])).toEqual([
+      ["m2.session.unlock_failed", "failure", "user_rn"],
+      ["m2.session.unlocked", "success", "user_rn"],
+    ]);
+    expect(h.auditSink.rows).toEqual([]); // no tenant row
+    expect(h.published).toEqual([]); // and no tenant event
+    await h.app.close();
+  });
+
+  it("audits the first throttled attempt of a window, not every one", async () => {
+    const store = createInMemoryFailedLoginStore();
+    const h = makeServer({ store });
+    await spendBudget(store);
+    for (let i = 0; i < 4; i += 1) expect((await unlock(h.app, { password: "nope" })).statusCode).toBe(429);
 
     const throttled = h.auditSink.rows.filter((r) => r.eventType === "m2.session.unlock_throttled");
     expect(throttled).toHaveLength(1);
@@ -198,7 +300,12 @@ describe("#589 POST /api/v1/auth/unlock", () => {
     const burst = await Promise.all(Array.from({ length: 20 }, () => unlock(h.app, { password: "nope" })));
 
     expect(h.verifyCalls.length).toBe(5);
-    expect(burst.filter((r) => r.statusCode === 429)).toHaveLength(15);
+    // Every other guess is turned away unhashed: 429 while the budget was spent, 423 once the lockout landed.
+    const codes = burst.map((r) => r.statusCode);
+    expect(codes.filter((c) => c === 401)).toHaveLength(4); // the first four wrong passwords
+    expect(codes.filter((c) => c === 429 || c === 423)).toHaveLength(16); // the 5th (lockout) + 15 turned away
+    expect(codes.every((c) => [401, 423, 429].includes(c))).toBe(true);
+    expect([...new Set(h.sessions.revokedSessions())]).toEqual(["sess_1"]); // retries are idempotent
     await h.app.close();
   });
 

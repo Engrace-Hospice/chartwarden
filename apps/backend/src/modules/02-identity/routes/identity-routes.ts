@@ -44,6 +44,7 @@ import {
   auditMembershipAccepted,
   auditMembershipRevoked,
   auditSessionUnlock,
+  unlockAuditEvent,
   auditMembershipStatusChanged,
   auditRolesAttachedOnAccept,
   auditUserDeactivated,
@@ -314,9 +315,18 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     if (!deps.passwordVerifier || !deps.unlockGuard) {
       throw unavailable("UNLOCK_UNAVAILABLE", "screen unlock is not available in this deployment");
     }
-    // A session that never bound an org has no tenant to audit against; it cannot be screen-locked in practice.
+    // An org-less session (enrolment-stage auditor, password-change session) has no tenant to audit against, so its
+    // row goes to the platform-scoped writer (#602); with no sink bound there is nothing to write to.
     const record = async (result: SessionUnlockOutcome): Promise<void> => {
-      if (!actor.organizationId) return;
+      if (!actor.organizationId) {
+        await deps.platformUnlockAudit?.({
+          ...unlockAuditEvent(result),
+          sessionId: actor.sessionId,
+          userId: actor.userId,
+          correlationId: request.context.correlationId,
+        });
+        return;
+      }
       await auditSessionUnlock(
         deps.audit,
         auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
@@ -324,7 +334,33 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       );
     };
 
+    // An SSO-only / link-session account has no password to check: say so, and spend none of the budget on it.
+    if (deps.passwordVerifier.hasPassword && !(await deps.passwordVerifier.hasPassword(actor.userId))) {
+      throw new ChartWardenError(
+        "UNLOCK_NO_PASSWORD",
+        "this account has no password; sign out and sign in again",
+        409,
+      );
+    }
+    // A session already locked out stays refused until it is gone, even if its revoke failed (see unlock-guard.ts).
+    const refuseLockedSession = async (): Promise<never> => {
+      try {
+        await deps.sessions.revokeSession(actor.sessionId);
+      } catch (err) {
+        request.log.error({ err, sessionId: actor.sessionId }, "unlock lockout revoke retry failed");
+      }
+      throw new ChartWardenError(
+        "UNLOCK_LOCKED_OUT",
+        "too many failed unlock attempts; this session has ended - sign in again",
+        423,
+      );
+    };
+    if (await deps.unlockGuard.isSessionLocked(actor.sessionId)) return refuseLockedSession();
+
     const attempt = await deps.unlockGuard.reserve(actor.userId);
+    // Re-check AFTER reserving: a lockout that raced this request has already cleared the counter, so the reservation
+    // above may be a fresh attempt on a dead session - the marker, written before the clear, is what refuses it.
+    if (await deps.unlockGuard.isSessionLocked(actor.sessionId)) return refuseLockedSession();
     if (!attempt.allowed) {
       // One audit row per window, not per request: a held cookie hammering past the limit must not amplify into
       // unbounded compliance rows (the lockout row already records the event that matters).
@@ -337,11 +373,21 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const ok = await deps.passwordVerifier.verify({ userId: actor.userId, password });
     if (!ok) {
       if (attempt.last) {
-        // Kill the session FIRST: it is the only consequence of repeated failures, so an audit-store hiccup must not be
-        // able to skip it. The audit rows are still written, but a failure there is logged, not allowed to hide the 423.
+        // Mark the session locked FIRST, then refund the shared budget (so the user's next session is not told to wait),
+        // then kill the session. The marker keeps in-flight requests and a failed revoke from reopening the door
+        // (see unlock-guard.ts). The audit rows are still written, but a failure there is logged, not allowed to hide the 423.
+        // The revoke never waits on the marker: a counter-store blip here must not leave the session alive.
+        let markerError: unknown;
+        try {
+          await deps.unlockGuard.lockSession(actor.sessionId);
+        } catch (err) {
+          markerError = err;
+        }
+        await deps.unlockGuard.release(actor.userId);
         await deps.sessions.revokeSession(actor.sessionId);
-        // The counter is deliberately NOT cleared here: requests already in flight when the session dies would reserve
-        // fresh attempts and the lockout would be worth nothing against a parallel burst (see unlock-guard.ts).
+        if (markerError) {
+          request.log.error({ err: markerError, sessionId: actor.sessionId }, "unlock lock marker write failed");
+        }
         try {
           await record("failed");
           await record("locked_out");
@@ -358,6 +404,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       throw new ChartWardenError("INVALID_CREDENTIALS", "that password did not match", 401);
     }
 
+    // A lockout may have landed while this (correct) guess was being hashed: that session is dead, not unlocked.
+    if (await deps.unlockGuard.isSessionLocked(actor.sessionId)) return refuseLockedSession();
     await deps.unlockGuard.release(actor.userId);
     await record("unlocked");
     if (actor.organizationId) {

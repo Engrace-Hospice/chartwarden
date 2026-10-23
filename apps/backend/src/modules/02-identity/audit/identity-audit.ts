@@ -48,6 +48,11 @@ const UNLOCK_AUDIT: Record<SessionUnlockOutcome, { eventType: string; outcome: "
   locked_out: { eventType: IDENTITY_AUDIT_EVENTS.sessionTerminatedUnlockLockout, outcome: "failure" },
 };
 
+/** The audit event type + outcome an unlock result is recorded as (shared by the org-scoped and platform sinks). */
+export function unlockAuditEvent(result: SessionUnlockOutcome): { eventType: string; outcome: "success" | "failure" } {
+  return UNLOCK_AUDIT[result];
+}
+
 /** Record a screen-lock unlock attempt (#589): a re-authentication of the SAME session. Never carries the password. */
 export async function auditSessionUnlock(
   tx: AuditExecutor,

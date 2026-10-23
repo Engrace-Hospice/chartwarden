@@ -18,10 +18,17 @@ export interface PasswordVerifierCapableAuth {
 
 export interface PasswordVerifier {
   verify(input: { userId: string; password: string }): Promise<boolean>;
+  /** False for an SSO-only / link-session account with no credential password: it can never pass `verify` (#602). */
+  hasPassword(userId: string): Promise<boolean>;
 }
 
 export function createPasswordVerifier(auth: PasswordVerifierCapableAuth): PasswordVerifier {
   return {
+    async hasPassword(userId) {
+      const ctx = await auth.$context;
+      const accounts = await ctx.internalAdapter.findAccounts(userId);
+      return accounts.some((a) => a.providerId === "credential" && Boolean(a.password));
+    },
     async verify({ userId, password }) {
       const ctx = await auth.$context;
       const accounts = await ctx.internalAdapter.findAccounts(userId);

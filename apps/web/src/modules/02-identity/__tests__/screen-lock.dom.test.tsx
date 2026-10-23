@@ -91,6 +91,15 @@ describe("ScreenLock unlock (#589)", () => {
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
   });
 
+  it("a passwordless account is told to sign in again and cannot submit the form (#602)", async () => {
+    post.mockResolvedValue(refusal(409, "UNLOCK_NO_PASSWORD"));
+    await lockAndSubmit();
+
+    expect(screen.getByText(/without a password/i)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Unlock" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /sign out instead/i })).toBeTruthy();
+  });
+
   it("tells the user to wait when the failed-attempt budget is spent", async () => {
     post.mockResolvedValue(refusal(429, "TOO_MANY_FAILED_ATTEMPTS"));
     await lockAndSubmit();
