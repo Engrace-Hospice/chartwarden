@@ -1,10 +1,17 @@
-import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  TextField,
+  focusFirstInvalid,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Tenant usage drill-down (`/admin/usage/:organizationId`,
 // usage.admin.read). The meter-by-meter current-period usage for one tenant over GET
 // /api/admin/usage/:organizationId/current, with used / included / overage and the projected overage cost.
 // An org-id box lets an operator retarget without leaving the screen.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cap, formatCents, formatDate, usageThresholdTone } from "./status";
@@ -21,6 +28,8 @@ export function Usage(): JSX.Element {
   const [usage, setUsage] = useState<UsageCurrent | null>(null);
   const [loading, setLoading] = useState(Boolean(organizationId));
   const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const guard = useRequestGuard();
   const load = useCallback(async () => {
@@ -50,7 +59,12 @@ export function Usage(): JSX.Element {
 
   const view = (e: FormEvent): void => {
     e.preventDefault();
-    if (orgInput.trim()) navigate(`/admin/usage/${orgInput.trim()}`);
+    setAttempted(true);
+    if (!orgInput.trim()) {
+      focusFirstInvalid(formRef.current);
+      return;
+    }
+    navigate(`/admin/usage/${orgInput.trim()}`);
   };
 
   return (
@@ -62,18 +76,17 @@ export function Usage(): JSX.Element {
             <p>One tenant's metered usage for the current billing period.</p>
           </div>
         </header>
-        <form className="flex max-w-xl items-end gap-2" onSubmit={view}>
+        <form className="flex max-w-xl items-end gap-2" onSubmit={view} ref={formRef}>
           <div className="min-w-0 flex-1">
             <TextField
               label="Organization id"
               value={orgInput}
               onChange={(e) => setOrgInput(e.target.value)}
+              error={attempted && !orgInput.trim() ? "Enter an organization id." : undefined}
               placeholder="Organization id"
             />
           </div>
-          <Button type="submit" disabled={!orgInput.trim()}>
-            View
-          </Button>
+          <Button type="submit">View</Button>
         </form>
         {!organizationId ? (
           <StateEmpty icon="search">

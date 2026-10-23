@@ -1,4 +1,12 @@
-import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Modal,
+  TextAreaField,
+  TextField,
+  nowLocalInput,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — the §2.11 D11 IV-CONTINUOUS SEGMENT ceremony (F-031 / #134).
 //
 // A continuous infusion is not a dose, it is a SESSION: an append-only sequence of rows sharing one
@@ -59,11 +67,6 @@ const WITNESSED: readonly IvSegmentMode[] = [
   "iv_continuous_stop",
 ];
 
-function nowLocal(): string {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
-
 export function IvSegmentModal({
   open,
   mode,
@@ -76,7 +79,7 @@ export function IvSegmentModal({
   onRecorded,
 }: IvSegmentModalProps): JSX.Element | null {
   const client = useApiClient();
-  const [at, setAt] = useState(nowLocal);
+  const [at, setAt] = useState(nowLocalInput);
   const [rate, setRate] = useState("");
   const [rateUnit, setRateUnit] = useState("");
   const [dilution, setDilution] = useState("");
@@ -92,7 +95,7 @@ export function IvSegmentModal({
 
   useEffect(() => {
     if (!open) return;
-    setAt(nowLocal());
+    setAt(nowLocalInput());
     setRate(mode === "iv_continuous_rate_change" ? "" : "");
     setRateUnit(currentRateUnit ?? "");
     setDilution("");

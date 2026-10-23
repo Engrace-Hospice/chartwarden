@@ -1,5 +1,12 @@
 import { isValidMedicaidNumber, isValidMedicareNumber } from "@chartwarden/types";
-import { Button, DetailPageLayout, PageHeader, nowLocalInput, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  DetailPageLayout,
+  PageHeader,
+  localInputToIso,
+  nowLocalInput,
+  useApiClient,
+} from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -78,6 +85,11 @@ export function ReferralNew(): JSX.Element {
       setError("Patient full name is required.");
       return;
     }
+    const receivedAtIso = localInputToIso(form.receivedAt);
+    if (!receivedAtIso) {
+      setError("Enter the date and time the referral was received.");
+      return;
+    }
     if (
       form.medicareNumberAtReceipt.trim() &&
       !isValidMedicareNumber(form.medicareNumberAtReceipt)
@@ -97,7 +109,7 @@ export function ReferralNew(): JSX.Element {
     try {
       const created = await createReferral(client, {
         source: form.source,
-        receivedAt: new Date(form.receivedAt).toISOString(),
+        receivedAt: receivedAtIso,
         ...(patientId ? { patientId } : {}),
         patientNameAtReceipt: form.patientNameAtReceipt.trim(),
         ...(form.patientDobAtReceipt ? { patientDobAtReceipt: form.patientDobAtReceipt } : {}),

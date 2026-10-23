@@ -6,6 +6,7 @@ import {
   TextAreaField,
   TextField,
   ghostBorder,
+  nowLocalInput,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -97,13 +98,6 @@ const LATE_REASON_MIN = 20;
 /** `prn.triggeringPrnReason` — minLength 1, but a one-character PRN rationale is not a rationale. */
 const PRN_REASON_MIN = 1;
 
-/** A `datetime-local` value for `now`, in the browser's own zone (the server stores an instant). */
-function nowLocal(): string {
-  const d = new Date();
-  const off = d.getTimezoneOffset() * 60_000;
-  return new Date(d.getTime() - off).toISOString().slice(0, 16);
-}
-
 export function AdministerModal({
   open,
   patientId,
@@ -119,7 +113,7 @@ export function AdministerModal({
   const client = useApiClient();
   const session = useSession();
   const [orderId, setOrderId] = useState(initialOrderId ?? orders[0]?.id ?? "");
-  const [at, setAt] = useState(nowLocal);
+  const [at, setAt] = useState(nowLocalInput);
   const [route, setRoute] = useState("");
   const [amount, setAmount] = useState("");
   const [unit, setUnit] = useState("");
@@ -148,7 +142,7 @@ export function AdministerModal({
   useEffect(() => {
     if (!open) return;
     setOrderId(initialOrderId ?? orders[0]?.id ?? "");
-    setAt(nowLocal());
+    setAt(nowLocalInput());
     setNotes("");
     setConfirmed({});
     setIsPrn(false);

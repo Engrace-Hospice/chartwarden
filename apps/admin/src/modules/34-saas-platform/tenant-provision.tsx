@@ -1,3 +1,4 @@
+import { validateTenantSlug } from "@chartwarden/types";
 import {
   Button,
   type FieldErrors,
@@ -29,6 +30,12 @@ const PLAN_OPTIONS: readonly { value: PlanLabel; label: string }[] = [
 const NAME_MIN = 2;
 const NAME_MAX = 300;
 const ADMIN_NAME_MAX = 200;
+const SLUG_MESSAGES = {
+  format:
+    "Use 3–63 lowercase letters, digits or hyphens, starting and ending with a letter or digit.",
+  punycode: "A slug cannot start with “xn--”.",
+  reserved: "That name is reserved. Choose another.",
+} as const;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Re-verify leaves the page, so the typed values ride through sessionStorage and are restored once, on return.
@@ -40,6 +47,7 @@ interface Draft {
   breachEmail: string;
   adminEmail: string;
   adminName: string;
+  slug: string;
   plan: PlanLabel;
 }
 
@@ -64,11 +72,32 @@ function stashDraft(draft: Draft): void {
 
 /** Per-field messages for the New tenant form; empty when it can be submitted (#597, F-042). */
 export function tenantProvisionErrors(
-  form: Pick<Draft, "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName">,
-): FieldErrors<"legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> {
-  const errors: FieldErrors<
+  form: Pick<
+    Draft,
     "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"
+  > &
+    Partial<Pick<Draft, "slug">>,
+): FieldErrors<
+  | "legalName"
+  | "slug"
+  | "billingEmail"
+  | "breachEmail"
+  | "adminEmail"
+  | "adminName"
+> {
+  const errors: FieldErrors<
+    | "legalName"
+    | "slug"
+    | "billingEmail"
+    | "breachEmail"
+    | "adminEmail"
+    | "adminName"
   > = {};
+  const slug = (form.slug ?? "").trim();
+  if (slug !== "") {
+    const verdict = validateTenantSlug(slug);
+    if (!verdict.ok) errors.slug = SLUG_MESSAGES[verdict.reason];
+  }
   const name = form.legalName.trim();
   if (name.length < NAME_MIN)
     errors.legalName = `Enter the legal business name (at least ${NAME_MIN} characters).`;
@@ -78,19 +107,41 @@ export function tenantProvisionErrors(
       : EMAIL_SHAPE.test(value.trim())
         ? undefined
         : "Enter a valid email address, e.g. name@example.com.";
-  errors.billingEmail = email(form.billingEmail, "Enter the billing contact email.");
-  errors.breachEmail = email(form.breachEmail, "Enter the breach notification email.");
+  errors.billingEmail = email(
+    form.billingEmail,
+    "Enter the billing contact email.",
+  );
+  errors.breachEmail = email(
+    form.breachEmail,
+    "Enter the breach notification email.",
+  );
   errors.adminEmail = email(form.adminEmail, "Enter the first admin's email.");
-  if (form.adminName.trim() === "") errors.adminName = "Enter the first admin's full name.";
-  return Object.fromEntries(Object.entries(errors).filter(([, v]) => v !== undefined));
+  if (form.adminName.trim() === "")
+    errors.adminName = "Enter the first admin's full name.";
+  return Object.fromEntries(
+    Object.entries(errors).filter(([, v]) => v !== undefined),
+  );
 }
 
 type Outcome = { ok: true } | { ok: false; message: string; stepUp: boolean };
 
 /** The server's own message from the error envelope, when it carries one. */
 function serverMessage(err: unknown): string | null {
-  const message = (err as { error?: { message?: unknown } } | null)?.error?.message;
-  return typeof message === "string" && message.trim().length > 0 ? message : null;
+  const message = (err as { error?: { message?: unknown } } | null)?.error
+    ?.message;
+  return typeof message === "string" && message.trim().length > 0
+    ? message
+    : null;
+}
+
+/** Refusal codes that name the Subdomain field: shown on it, not in the general alert. */
+const SLUG_REFUSAL_CODES: readonly string[] = [
+  "INVALID_TENANT_SLUG",
+  "TENANT_SLUG_UNAVAILABLE",
+];
+function isSlugRefusal(err: unknown): boolean {
+  const code = (err as { error?: { code?: unknown } } | null)?.error?.code;
+  return typeof code === "string" && SLUG_REFUSAL_CODES.includes(code);
 }
 
 export function TenantProvisionDrawer({
@@ -108,7 +159,9 @@ export function TenantProvisionDrawer({
   const [breachEmail, setBreachEmail] = useState(draft?.breachEmail ?? "");
   const [adminEmail, setAdminEmail] = useState(draft?.adminEmail ?? "");
   const [adminName, setAdminName] = useState(draft?.adminName ?? "");
+  const [slug, setSlug] = useState(draft?.slug ?? "");
   const [plan, setPlan] = useState<PlanLabel>(draft?.plan ?? "standard");
+  const [slugRefusal, setSlugRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Provisioning is queued, not instant, so the tenant is not in the list yet; locking the form after acceptance stops
   // a second click from enqueueing a duplicate `tenant.provision`.
@@ -118,8 +171,16 @@ export function TenantProvisionDrawer({
   const name = legalName.trim();
   // Errors appear after the first submit attempt; the button stays enabled so a refusal always explains itself.
   const [attempted, setAttempted] = useState(false);
-  const fieldValues = { legalName, billingEmail, breachEmail, adminEmail, adminName };
+  const fieldValues = {
+    legalName,
+    slug,
+    billingEmail,
+    breachEmail,
+    adminEmail,
+    adminName,
+  };
   const errors = attempted ? tenantProvisionErrors(fieldValues) : {};
+  const slugError = errors.slug ?? slugRefusal ?? undefined;
 
   async function submit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
@@ -131,6 +192,7 @@ export function TenantProvisionDrawer({
     }
     setBusy(true);
     setOutcome(null);
+    setSlugRefusal(null);
     let error: unknown;
     try {
       ({ error } = await client.POST("/api/v1/platform/tenants", {
@@ -141,6 +203,7 @@ export function TenantProvisionDrawer({
           firstAdminEmail: adminEmail.trim(),
           firstAdminFullName: adminName.trim(),
           planLabel: plan,
+          ...(slug.trim() === "" ? {} : { slug: slug.trim() }),
         },
       }));
     } catch {
@@ -148,12 +211,22 @@ export function TenantProvisionDrawer({
       setOutcome({
         ok: false,
         stepUp: false,
-        message: "Could not reach the server. Nothing was requested; try again.",
+        message:
+          "Could not reach the server. Nothing was requested; try again.",
       });
       return;
     }
     setBusy(false);
     if (error) {
+      if (isSlugRefusal(error)) {
+        setSlugRefusal(
+          serverMessage(error) ?? "That subdomain cannot be used.",
+        );
+        requestAnimationFrame(() =>
+          document.getElementById("prov-slug")?.focus(),
+        );
+        return;
+      }
       const stepUp = isStepUpRequired(error);
       setOutcome({
         ok: false,
@@ -186,7 +259,11 @@ export function TenantProvisionDrawer({
           <Glyph name="close" size={16} />
         </Button>
       </header>
-      <form className="wx-drawer-body" onSubmit={(e) => void submit(e)} noValidate>
+      <form
+        className="wx-drawer-body"
+        onSubmit={(e) => void submit(e)}
+        noValidate
+      >
         <section className="wx-drawer-card">
           <TextField
             id="prov-legal-name"
@@ -196,6 +273,20 @@ export function TenantProvisionDrawer({
             value={legalName}
             maxLength={NAME_MAX}
             onChange={(e) => setLegalName(e.target.value)}
+          />
+          <TextField
+            id="prov-slug"
+            label="Subdomain (optional)"
+            hint="The tenant's address, e.g. sunrise for sunrise.chartwarden.com. Leave blank to generate one. It cannot be changed or reused later."
+            error={slugError}
+            value={slug}
+            maxLength={63}
+            autoCapitalize="none"
+            spellCheck={false}
+            onChange={(e) => {
+              setSlug(e.target.value);
+              setSlugRefusal(null);
+            }}
           />
           <SelectField
             label="Plan"
@@ -254,7 +345,15 @@ export function TenantProvisionDrawer({
             {!outcome.ok && outcome.stepUp ? (
               <ReverifyLink
                 onNavigate={() =>
-                  stashDraft({ legalName, billingEmail, breachEmail, adminEmail, adminName, plan })
+                  stashDraft({
+                    legalName,
+                    billingEmail,
+                    breachEmail,
+                    adminEmail,
+                    adminName,
+                    slug,
+                    plan,
+                  })
                 }
               />
             ) : null}

@@ -6,6 +6,7 @@ import {
   StatusPill,
   TextAreaField,
   TextField,
+  isoToLocalInput,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -132,13 +133,6 @@ function spanOf(targetIso: string, window: RecordWindow | null): CaptureSpan {
   return "expired";
 }
 
-/** `datetime-local` wants `YYYY-MM-DDTHH:mm` in LOCAL time; the wire wants a UTC instant. */
-const toLocalInput = (iso: string): string => {
-  const d = new Date(iso);
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
 export interface HopeRecordModalProps {
   readonly open: boolean;
   readonly admissionId: string;
@@ -202,7 +196,7 @@ export function HopeRecordModal({
     setError(null);
     setBusy(false);
     setRfaKind(isSfv ? "04_sfv" : (pinnedRfa ?? defaultRfaKind ?? "01_admission"));
-    setTargetLocal(toLocalInput(new Date().toISOString()));
+    setTargetLocal(isoToLocalInput(new Date().toISOString()));
     setAuthorDiscipline(authorRoles.length === 1 ? (authorRoles[0] as AuthorDiscipline) : "");
     setAdminOverride(false);
     setPrimaryDiagnosisIcd10("");

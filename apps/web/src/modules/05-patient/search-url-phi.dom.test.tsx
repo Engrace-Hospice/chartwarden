@@ -1,4 +1,3 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // apps/web/src/modules/05-patient — GAP-080: a patient name / MRN must never reach the browser URL.
 //
 // The global search needle is PHI. Carried as `?q=…` it lands in the address bar, the history
@@ -15,6 +14,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // somewhere put the term back in the URL.
 import { createApiClient } from "@chartwarden/ui";
 import { __resetSearchTermForTest } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "../../shell/app";
 import { createScreenRegistry } from "../../shell/screen-registry";
@@ -30,7 +30,8 @@ const SESSION: Session = {
   organizationName: "Test Org",
   roles: ["administrator"],
   isAdmin: true,
-  permissions: [],
+  // /search requires patient.read (#592 route-level gate); without it the screen renders the denied state.
+  permissions: ["patient.read"],
 };
 
 // Every URL the app WRITES to session history, in order. Asserting only on the final

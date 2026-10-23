@@ -6,6 +6,7 @@ import {
   LoadingSpinner,
   StatusPill,
   TextField,
+  focusFirstInvalid,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -19,7 +20,7 @@ import {
 // refuses isCanonical=true), so the editor surfaces a GuardChip on a canonical selection and an inline
 // edit/add form for non-canonical ones in the right drawer (`?template=<id>` or `?template=new`), POSTing /api/v1/platform/onboarding-templates (step-up gated
 // server-side). requiredPermission: `onboarding_template.list`. Mirrors the M40/M36 R1 exemplars.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -252,11 +253,29 @@ function TemplateEditor({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const canSave =
-    !readOnly && key.trim().length > 0 && title.trim().length > 0 && order.trim().length > 0;
+  const [attempted, setAttempted] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  const orderNumber = Number(order);
+  const errors = {
+    key: key.trim().length === 0 ? "Enter a template key, e.g. baa_signed." : undefined,
+    title: title.trim().length === 0 ? "Enter the step title." : undefined,
+    order:
+      order.trim().length === 0
+        ? "Enter the step order."
+        : !Number.isInteger(orderNumber) || orderNumber < ORDER_MIN || orderNumber > ORDER_MAX
+          ? `Step order is a whole number from ${ORDER_MIN} to ${ORDER_MAX}.`
+          : undefined,
+  };
+  const canSave = !readOnly && !errors.key && !errors.title && !errors.order;
 
   async function save(): Promise<void> {
-    if (!canSave || saving) return;
+    if (readOnly || saving) return;
+    setAttempted(true);
+    if (!canSave) {
+      focusFirstInvalid(bodyRef.current);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     const { error: err } = await client.POST("/api/v1/platform/onboarding-templates", {
@@ -289,7 +308,7 @@ function TemplateEditor({
           <Glyph name="close" size={16} />
         </Button>
       </header>
-      <div className="wx-drawer-body">
+      <div className="wx-drawer-body" ref={bodyRef}>
         <section className="wx-drawer-card">
           {readOnly ? (
             <GuardChip reason="Canonical templates are platform-seed (migration-only) and cannot be edited." />
@@ -301,6 +320,7 @@ function TemplateEditor({
             value={key}
             disabled={readOnly || mode === "edit"}
             onChange={(e) => setKey(e.target.value)}
+            error={attempted ? errors.key : undefined}
             placeholder="e.g. baa_signed"
           />
           <TextField
@@ -309,6 +329,7 @@ function TemplateEditor({
             value={title}
             disabled={readOnly}
             onChange={(e) => setTitle(e.target.value)}
+            error={attempted ? errors.title : undefined}
             placeholder="Human-readable step title"
           />
           <TextField
@@ -321,11 +342,12 @@ function TemplateEditor({
             value={order}
             disabled={readOnly}
             onChange={(e) => setOrder(e.target.value)}
+            error={attempted ? errors.order : undefined}
           />
           {saveError ? <InlineAlert tone="error">{saveError}</InlineAlert> : null}
           {!readOnly ? (
             <div className="wx-drawer-actions">
-              <Button disabled={!canSave || saving} onClick={() => void save()}>
+              <Button disabled={saving} onClick={() => void save()}>
                 {saving ? "Saving…" : mode === "add" ? "Add template" : "Save changes"}
               </Button>
             </div>

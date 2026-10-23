@@ -4,6 +4,7 @@ import {
   SelectField,
   StatusPill,
   TextField,
+  toLocalInput,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the MAC REOPENING section of the denial work panel (hospice ADR/TPE/QIC PRD,
@@ -59,11 +60,6 @@ interface FilingDraft {
   readonly filedAt: string;
 }
 
-/** Local `YYYY-MM-DDTHH:mm` for a datetime-local input. */
-const toLocalInput = (d: Date): string => {
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
 const isoOrNull = (local: string): string | null =>
   local && !Number.isNaN(Date.parse(local)) ? new Date(local).toISOString() : null;
 

@@ -1,4 +1,12 @@
-import { Button, InlineAlert, SelectField, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  InlineAlert,
+  SelectField,
+  StatusPill,
+  TextField,
+  focusFirstInvalid,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Channel members (`/admin/messaging/channels/:id/members`, M36 spec §4.1).
 // List, add (POST) and remove (DELETE) members of one channel, with role + source shown per row. The server is the
 // authority on who may manage members (`messaging.manage_members` plus channel-scoped authority); a 403 on the list
@@ -33,6 +41,7 @@ export function ChannelMembers(): JSX.Element {
   const [role, setRole] = useState<MemberRole>("member");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
 
   const addFormRef = useRef<HTMLFormElement>(null);
   // Add/Remove disable controls while busy and a removed row unmounts its button: send focus back to the Add field.
@@ -61,8 +70,15 @@ export function ChannelMembers(): JSX.Element {
   const onAdd = async (ev: FormEvent): Promise<void> => {
     ev.preventDefault();
     const id = userId.trim();
-    if (!id) return;
-    if (await run(() => addMember(client, channelId, id, role))) setUserId("");
+    setAttempted(true);
+    if (!id) {
+      focusFirstInvalid(addFormRef.current);
+      return;
+    }
+    if (await run(() => addMember(client, channelId, id, role))) {
+      setUserId("");
+      setAttempted(false);
+    }
   };
 
   const fallback = renderLoadFallback(state, {
@@ -98,6 +114,7 @@ export function ChannelMembers(): JSX.Element {
             label="User ID"
             value={userId}
             onChange={(ev) => setUserId(ev.target.value)}
+            error={attempted && !userId.trim() ? "Enter the user id to add." : undefined}
             autoComplete="off"
           />
           <SelectField
@@ -106,7 +123,7 @@ export function ChannelMembers(): JSX.Element {
             onChange={(ev) => setRole(ev.target.value as MemberRole)}
             options={MEMBER_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
           />
-          <Button type="submit" size="lg" loading={busy} disabled={!userId.trim()}>
+          <Button type="submit" size="lg" loading={busy}>
             Add member
           </Button>
         </form>

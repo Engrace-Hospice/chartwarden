@@ -4,6 +4,7 @@ import {
   LoadingSpinner,
   StatusPill,
   TextField,
+  toLocalInput,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the SUBMISSION section of an ADR, appeal or reopening panel (hospice ADR/TPE/QIC
@@ -51,10 +52,6 @@ interface ReceiptDraft {
   readonly receiptDocumentId: string;
 }
 
-const toLocalInput = (d: Date): string => {
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
 const isoOrNull = (local: string): string | null =>
   local && !Number.isNaN(Date.parse(local)) ? new Date(local).toISOString() : null;
 /** ADR, reopening and escalation filings keep their own copy on the case, which stays authoritative. */

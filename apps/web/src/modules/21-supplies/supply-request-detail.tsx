@@ -21,7 +21,15 @@
 // surface is M4's own screen and its own permission (`audit.read`), and re-rendering a filtered slice of it
 // inside a supplies screen would put a second, unaudited copy of the accounting trail in a second place.
 // The lifecycle timeline below is reconstructed from the request's OWN columns and says so.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  nowLocalInput,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -94,13 +102,6 @@ type Ceremony =
   | "cancel"
   | "return"
   | null;
-
-/** An ISO instant suitable for a `datetime-local` input's initial value (local minute precision). */
-function nowLocalInput(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 /** A `datetime-local` value → the ISO instant the §4.2 `date-time` format expects. */
 function toInstant(local: string): string {

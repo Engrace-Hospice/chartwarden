@@ -7,6 +7,7 @@ import {
   StatusPill,
   type StatusTone,
   TextField,
+  focusFirstInvalid,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -17,7 +18,7 @@ import {
 // The route keys by org slug; there is no cross-tenant list, so the operator resolves one tenant at
 // a time. Live-wired over the typed client; imports only @chartwarden/ui leaves + the Foundation map.
 // Laid out in the redesign's page frame (wx-page-head, a lookup row, the metadata as flat cards).
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { KEY_RING_TONE, cap } from "./saas-status";
 
@@ -58,16 +59,26 @@ export function KeyRings(): JSX.Element {
   const [searched, setSearched] = useState(false);
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const slug = orgSlug.trim();
-    if (!slug) return;
+    setAttempted(true);
+    if (!slug) {
+      focusFirstInvalid(toolbarRef.current);
+      return;
+    }
     const isCurrent = guard();
     setLoading(true);
     setError(null);
     setRing(null);
     setSearched(true);
-    const { data, error: err, response } = await client.GET("/api/v1/platform/tenants/{orgSlug}/key-ring", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.GET("/api/v1/platform/tenants/{orgSlug}/key-ring", {
       params: { path: { orgSlug: slug } },
     });
     if (!isCurrent()) return;
@@ -116,7 +127,7 @@ export function KeyRings(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar">
+        <div className="wx-list-toolbar" ref={toolbarRef}>
           <div className="flex w-full flex-wrap items-end gap-3">
             <div className="min-w-0 flex-[1_1_18rem]">
               <TextField
@@ -124,12 +135,13 @@ export function KeyRings(): JSX.Element {
                 placeholder="Tenant org slug"
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
+                error={attempted && !orgSlug.trim() ? "Enter the tenant's org slug." : undefined}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void load();
                 }}
               />
             </div>
-            <Button tone="primary" onClick={() => void load()} disabled={!orgSlug.trim()}>
+            <Button tone="primary" onClick={() => void load()}>
               Load
             </Button>
           </div>

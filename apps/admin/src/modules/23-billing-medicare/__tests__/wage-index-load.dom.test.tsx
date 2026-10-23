@@ -1,9 +1,9 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — the platform wage-index load screen (M23 §4.1 #42) over RECORDED FETCH
 // CALLS. Before this screen the annual CMS load was API-only. The net asserts what is SENT (the parsed rows, the fiscal
 // year, the source reference and an Idempotency-Key), that nothing is sent while the preview shows a problem, and that
 // every refusal the route can give (STEP_UP_REQUIRED, 403, 409, 422 with row details) reaches the operator.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WageIndexLoad } from "../wage-index-load";
@@ -124,9 +124,22 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     mount();
     fill("381588,1.0\n38158,1.1");
     expect(await screen.findByText(/Line 2:/)).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Review and load" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    const review = screen.getByRole("button", { name: "Review and load" }) as HTMLButtonElement;
+    expect(review.disabled).toBe(false);
+    fireEvent.click(review);
+    expect(await screen.findByText("Fix the lines listed under the preview.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("says what is missing on an empty form instead of disabling the button (#630)", async () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Review and load" }));
+    expect(await screen.findByText("Enter the source reference to load.")).toBeTruthy();
+    expect(screen.getByText("Paste or upload at least one row.")).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText(/Source reference/)),
+    );
     expect(calls).toEqual([]);
   });
 

@@ -439,6 +439,9 @@ spoof detector open through the same cipher.
   `/triage-calls` answer 403 FORBIDDEN. `POST /triage-calls/paper-reentry` answers 403 STEP_UP_REQUIRED, i.e. the
   permission guard PASSED: the dev auditor role takes every `compliance`-category key and `triage.paper_reentry` is
   categorised `compliance` (M19 decision 3). It is a back-dating write, so whether an auditor should hold it is a policy
-  question (tracked in a follow-up), not a route bug.
+  question, decided in #640: the seed's per-key role filter (`scripts/db/lib/idg-role-grants.ts`) now withholds it from
+  the read-only `auditor` and every clinical role, keeping it for `clinical_supervisor` (the DON, M19 §2.7) and
+  `compliance_officer`; `administrator` / `org_admin` take the whole catalog as before. The sidebar highlight on
+  `/triage` and `/safety` pages (F-026) is intended (#637): Visits is the field-work entry, pinned by a nav test.
 - **Not done.** A permanent live suite for route-level caseload resolution (needs a CI job row); the in-memory route
   tests and the manual run above stand in for it.

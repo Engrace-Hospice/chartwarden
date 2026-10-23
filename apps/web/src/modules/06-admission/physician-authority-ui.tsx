@@ -225,19 +225,8 @@ export function AuthorityDrawer({
   );
 }
 
-/** "2026-10-06T14:05" for a datetime-local field, from now. */
-export function nowLocalInput(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** A datetime-local value → ISO instant (`""` stays `""`). */
-export function localInputToIso(value: string): string {
-  if (!value) return "";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
-}
+// The datetime-local helpers live in @chartwarden/ui; re-exported for the admission screens that import them here.
+export { localInputToIso, nowLocalInput } from "@chartwarden/ui";
 
 export function usDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";

@@ -42,6 +42,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AdmissionLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import {
   type AnswerWriteResult,
   type EscalationTier,
@@ -983,8 +984,22 @@ export function TriageCallPanel(): JSX.Element {
             Both ids are required: M8's encounter creator needs patient AND admission NOT NULL, so a
             call carrying only one of the two can never be documented.
           </p>
-          <TextField label="Patient id" value={patientId} onChange={setPatientId} mono />
-          <TextField label="Admission id" value={admissionId} onChange={setAdmissionId} mono />
+          <PatientLookupField
+            label="Patient"
+            value={patientId}
+            onChange={(id) => {
+              setPatientId(id);
+              setAdmissionId("");
+            }}
+            appearance="modal"
+          />
+          <AdmissionLookupField
+            label="Admission"
+            value={admissionId}
+            patientId={patientId}
+            onChange={setAdmissionId}
+            appearance="modal"
+          />
         </Modal>
       ) : null}
 
