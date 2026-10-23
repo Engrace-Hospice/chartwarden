@@ -128,6 +128,14 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 6.1 (ADR-0091) the work inbox screen: it shows the urgent acknowledgment band and has no acknowledge control",
   "apps/web/src/modules/36-messaging/smart-inbox-wording.ts":
     "WP 6.1 (ADR-0091) the work inbox wording for the urgent acknowledgment band; nothing is acknowledged here",
+  "apps/backend/src/modules/36-messaging/analytics/response-analytics-reader.ts":
+    "WP 6.2 (ADR-0092) response analytics: aggregate figures ABOUT acknowledgments (counts, medians, rates); it reads and reports, and acknowledges nothing",
+  "apps/web/src/modules/36-messaging/response-analytics-wording.ts":
+    "WP 6.2 (ADR-0092) response analytics: aggregate figures ABOUT acknowledgments (counts, medians, rates); it reads and reports, and acknowledges nothing",
+  "apps/web/src/modules/36-messaging/response-analytics.tsx":
+    "WP 6.2 (ADR-0092) response analytics: aggregate figures ABOUT acknowledgments (counts, medians, rates); it reads and reports, and acknowledges nothing",
+  "apps/web/src/modules/36-messaging/redaction-dialogs.tsx":
+    "WP 5.6 (ADR-0086) the sole-officer redaction dialog: the 'acknowledgement' is the officer ticking that they accept the provisional-fallback warning, not an acknowledgment request or a receipt",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };
