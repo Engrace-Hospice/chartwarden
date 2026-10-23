@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { signOut } from "../auth-http";
-import { validateNext } from "../session-guard";
+import { patientIdOf, validateNext } from "../session-guard";
 import { humanize } from "./portal-format";
 import {
   PortalOnboardingBrand,
@@ -66,6 +66,25 @@ export function PortalSignedIn(): JSX.Element {
     setBusyId(null);
     pendingBind.current = false;
 
+    // A `/p/:patientId/...` return path is honoured only when the bound account is granted that patient; the
+    // session is then bound to it (select-patient), exactly as the picker would. Any miss falls back to the picker.
+    async function canReturnTo(returnTo: string): Promise<boolean> {
+      const patientId = patientIdOf(returnTo);
+      if (!patientId) return true;
+      try {
+        const list = await client.GET("/api/v1/portal/sessions/patients", {});
+        if ("error" in list) return false;
+        const items = (list.data?.items ?? []) as { patientId: string }[];
+        if (!items.some((item) => item.patientId === patientId)) return false;
+        const picked = await client.POST("/api/v1/portal/sessions/select-patient", {
+          body: { patientId },
+        });
+        return !("error" in picked);
+      } catch {
+        return false;
+      }
+    }
+
     async function bind(portalAccountId: string): Promise<void> {
       if (!current() || pendingBind.current) return;
       pendingBind.current = true;
@@ -97,7 +116,9 @@ export function PortalSignedIn(): JSX.Element {
           const returnTo = validateNext(
             new URLSearchParams(window.location.search).get("next"),
           );
-          if (returnTo) navigate(returnTo, { replace: true });
+          const reachable = returnTo ? await canReturnTo(returnTo) : false;
+          if (!current()) return;
+          if (returnTo && reachable) navigate(returnTo, { replace: true });
           else
             navigate("/patient-picker", {
               replace: true,

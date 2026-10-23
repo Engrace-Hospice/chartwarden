@@ -48,11 +48,35 @@ describe("expired portal session", () => {
     expect(window.location.pathname).toBe("/portal/funeral/case");
   });
 
-  it("sign-in honours next after password sign-in", async () => {
-    const target = `/p/${PID}/care-plan`;
+  it("shows a calm notice on the sign-in screen only when the redirect carries reason=expired", async () => {
+    window.history.pushState({}, "", `/portal/p/${PID}/care-plan`);
+    const view = render(app(unauthorized));
+    await waitFor(() => expect(window.location.pathname).toMatch(/^\/portal\/?$/));
+    expect(new URLSearchParams(window.location.search).get("reason")).toBe("expired");
+    expect(await screen.findByText("Your session ended. Please sign in again.")).toBeTruthy();
+    expect(screen.queryByText(/UNAUTHENTICATED/)).toBeNull();
+    view.unmount();
+
+    window.history.pushState({}, "", "/portal/");
+    render(app(unauthorized));
+    await screen.findByLabelText(/email/i);
+    expect(screen.queryByText("Your session ended. Please sign in again.")).toBeNull();
+  });
+
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const OTHER2 = "33333333-3333-4333-8333-333333333333";
+  const target = `/p/${PID}/care-plan`;
+
+  /** Drives the password form to completion; `granted` is what /sessions/patients answers. */
+  async function passwordSignIn(granted: string[], twoFactor = false, holdAtSignedIn = false) {
     window.history.pushState({}, "", `/portal/?next=${encodeURIComponent(target)}`);
+    const posts: string[] = [];
     const handler = (url: string): Response => {
-      if (url.includes("/api/auth/sign-in/email")) return Response.json({});
+      if (url.includes("/api/auth/sign-in/email"))
+        return Response.json(twoFactor ? { twoFactorRedirect: true } : {});
+      if (url.includes("/two-factor/verify-totp")) return Response.json({});
+      if (url.includes("/portal/sign-in/accounts") && holdAtSignedIn)
+        return new Response("{}", { status: 500, headers: { "content-type": "application/json" } });
       if (url.includes("/portal/sign-in/accounts"))
         return Response.json({
           items: [
@@ -65,21 +89,64 @@ describe("expired portal session", () => {
           ],
         });
       if (url.includes("/portal/sign-in/establish")) return Response.json({});
+      if (url.includes("/portal/sessions/patients"))
+        return Response.json({
+          items: granted.map((patientId) => ({
+            patientId,
+            grantId: `g-${patientId}`,
+            grantKind: "family",
+            layPatientLabel: "Someone",
+          })),
+        });
+      if (url.includes("/portal/sessions/select-patient")) {
+        posts.push(url);
+        return Response.json({});
+      }
       return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
     };
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input) => handler(String(input)));
+    render(app(handler));
+    const email = await screen.findByLabelText(/email/i);
+    const passwordToggle = screen.queryByRole("button", { name: /password/i });
+    if (passwordToggle) fireEvent.click(passwordToggle);
+    fireEvent.change(email, { target: { value: "a@b.co" } });
+    const pw = await screen.findByLabelText(/^password/i);
+    fireEvent.change(pw, { target: { value: "pw-pw-pw-pw" } });
+    fireEvent.submit(pw.closest("form") as HTMLFormElement);
+    return { posts, fetchSpy };
+  }
+
+  it("sign-in honours next after password sign-in when the patient is granted, binding the session", async () => {
+    const { posts, fetchSpy } = await passwordSignIn([PID]);
     try {
-      render(app(handler));
-      const email = await screen.findByLabelText(/email/i);
-      const passwordToggle = screen.queryByRole("button", { name: /password/i });
-      if (passwordToggle) fireEvent.click(passwordToggle);
-      fireEvent.change(email, { target: { value: "a@b.co" } });
-      const pw = await screen.findByLabelText(/^password/i);
-      fireEvent.change(pw, { target: { value: "pw-pw-pw-pw" } });
-      fireEvent.submit(pw.closest("form") as HTMLFormElement);
       await waitFor(() => expect(window.location.pathname).toBe(`/portal${target}`));
+      expect(posts).toHaveLength(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to the picker when next names a patient the account is not granted", async () => {
+    // Two other patients: a lone granted patient would auto-open from the picker.
+    const { posts, fetchSpy } = await passwordSignIn([OTHER, OTHER2]);
+    try {
+      await waitFor(() => expect(window.location.pathname).toBe("/portal/patient-picker"));
+      expect(posts).toHaveLength(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("carries next through the authenticator-code step to /signed-in", async () => {
+    const { fetchSpy } = await passwordSignIn([PID], true, true);
+    try {
+      const code = await screen.findByRole("textbox", { name: /authenticator code/i });
+      fireEvent.change(code, { target: { value: "123456" } });
+      fireEvent.submit(code.closest("form") as HTMLFormElement);
+      await waitFor(() => expect(window.location.pathname).toBe("/portal/signed-in"));
+      expect(new URLSearchParams(window.location.search).get("next")).toBe(target);
     } finally {
       fetchSpy.mockRestore();
     }
