@@ -3546,7 +3546,7 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
-  // Milestone 8a-1 (migrations 1180/1181): ADVISORY documentation readiness. None of these gates sign-off or filing.
+  // Milestone 8a-1 (migrations 1190/1191): ADVISORY documentation readiness. None of these gates sign-off or filing.
   "adr.readiness_read": {
     resource: "adr_readiness",
     action: "read",

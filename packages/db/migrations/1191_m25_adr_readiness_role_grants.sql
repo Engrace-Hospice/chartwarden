@@ -1,5 +1,5 @@
 -- M25 milestone 8a-1 permissions: grant the readiness keys to the roles that already hold the matching ADR key, in every
--- tenant that has them. 1180 added the catalog rows only and the template materializer runs at tenant creation, so an
+-- tenant that has them. 1190 added the catalog rows only and the template materializer runs at tenant creation, so an
 -- EXISTING tenant's roles would hold none of them (the gap 1111 and 1173 each closed for their own keys).
 --
 -- Readiness is advisory and parallels packet assembly, so the grant mirrors the ADR keys instead of naming roles:

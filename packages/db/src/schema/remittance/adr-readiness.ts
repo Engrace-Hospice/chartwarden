@@ -1,4 +1,4 @@
-// @chartwarden/db - M25 milestone 8a-1 (migration 1180): ADVISORY ADR documentation readiness - adr_readiness_review (one per
+// @chartwarden/db - M25 milestone 8a-1 (migration 1190): ADVISORY ADR documentation readiness - adr_readiness_review (one per
 // requested review, immutable) and adr_readiness_finding (the assistant findings that survived the citation filter, each
 // with a human disposition). They sit BESIDE adr_case / adr_case_document and the checklist, never inside them. States
 // are text + CHECK (closed sets mirrored in domain/readiness.ts), so there is no new pgEnum. checklist_key is free text on

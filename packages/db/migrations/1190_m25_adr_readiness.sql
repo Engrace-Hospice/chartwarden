@@ -139,7 +139,7 @@ CREATE TRIGGER "trg_adr_readiness_finding_guard" BEFORE INSERT ON adr_readiness_
 
 -- adr.readiness_read: see the documentation-readiness view and any stored review. adr.readiness_request: ask for a
 -- review. adr.readiness_dispose: acknowledge / dismiss / dispute a finding. None of them touches the packet, the
--- checklist, sign-off or filing, and none gates them. Existing tenants' roles get them from 1181.
+-- checklist, sign-off or filing, and none gates them. Existing tenants' roles get them from 1191.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('adr.readiness_read', 'adr_readiness', 'read', 'billing', 'provider_entity_scope', ''),
   ('adr.readiness_request', 'adr_readiness', 'request', 'billing', 'provider_entity_scope', ''),
