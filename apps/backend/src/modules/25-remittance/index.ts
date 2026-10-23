@@ -116,6 +116,7 @@ export {
 export {
   type M25IngestActor,
   type M25IngestService,
+  type RawAdviceStore,
   type ReceiveAdviceInput,
   type ReceiveAdviceResult,
   type PostAdviceResult,

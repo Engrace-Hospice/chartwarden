@@ -111,6 +111,17 @@ export interface DocumentSeamStore {
  * client (presign + version-aware delete); the in-memory slice records writes/deletes for tests. The
  * presigned URL is never logged (§4.12) — callers receive it and hand it straight to the client.
  */
+/** #658 — a bounded read of one object's bytes; null means the object is not present. */
+export interface ObjectReaderPort {
+  getObject(args: {
+    readonly bucket: string;
+    readonly objectKey: string;
+    /** Refuses (throws) an object larger than this, so a hostile or runaway object cannot exhaust memory. */
+    readonly maxBytes: number;
+    readonly signal?: AbortSignal;
+  }): Promise<Uint8Array | null>;
+}
+
 export interface ObjectStorePort {
   /** Write rendered bytes under `bucket/objectKey` and return the content hash (sha256, hex). */
   putObject(args: {

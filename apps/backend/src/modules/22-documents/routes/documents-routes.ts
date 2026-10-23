@@ -303,9 +303,14 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       await assertDocumentInScope(request as FastifyRequest, doc, "write");
     };
   const observedPatient = new WeakMap<object, string | null>();
+  const observedAdmission = new WeakMap<object, string | null>();
   const basisOf = (request: FastifyRequest): WriteBasis => {
     const expectedPatientId = observedPatient.get(request);
-    return expectedPatientId === undefined ? {} : { expectedPatientId };
+    const expectedAdmissionId = observedAdmission.get(request);
+    return {
+      ...(expectedPatientId === undefined ? {} : { expectedPatientId }),
+      ...(expectedAdmissionId === undefined ? {} : { expectedAdmissionId }),
+    };
   };
   const SCOPE_WRITE = scopeWrite(false);
   const SCOPE_WRITE_LINK = scopeWrite(true);
@@ -339,15 +344,21 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
    * Through M6's `AdmissionStatusReader` seam — M22 does not read M6's table.
    */
   async function assertAdmissionMatchesPatient(
+    request: FastifyRequest,
     organizationId: string,
     docId: string,
     body: { patientId?: string | null; admissionId?: string | null },
   ): Promise<void> {
     const doc = await service.getDocument(organizationId, docId);
+    // #656: the write re-checks this under the row lock, so a concurrent admission-only relink cannot slip between.
+    observedAdmission.set(request, doc.admissionId);
+    // A detach that leaves the document's own admission behind needs `admissionId: null` as well.
+    const stranded = body.patientId === null && body.admissionId === undefined;
     await assertAdmissionBelongsTo(
       organizationId,
       body.admissionId !== undefined ? body.admissionId : doc.admissionId,
       body.patientId !== undefined ? body.patientId : doc.patientId,
+      stranded,
     );
   }
 
@@ -355,6 +366,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     organizationId: string,
     admissionId: string | null | undefined,
     patientId: string | null | undefined,
+    stranded = false,
   ): Promise<void> {
     if (!admissionId) return;
     const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
@@ -365,7 +377,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     if (care.patientId !== (patientId ?? null)) {
       throw new ChartWardenError(
         "VALIDATION_FAILED",
-        "the admission does not belong to the document's patient",
+        stranded
+          ? "the document still has an admission; send admissionId: null with patientId: null to detach both"
+          : "the admission does not belong to the document's patient",
         422,
       );
     }
@@ -576,7 +590,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const { organizationId, actor } = actorOf(request);
       const body = parse(LinkDocumentRequest, request.body);
       await assertLinkTargetInScope(request, docIdOf(request), body);
-      await assertAdmissionMatchesPatient(organizationId, docIdOf(request), body);
+      await assertAdmissionMatchesPatient(request, organizationId, docIdOf(request), body);
       return service.linkDocument(
         organizationId,
         actor,

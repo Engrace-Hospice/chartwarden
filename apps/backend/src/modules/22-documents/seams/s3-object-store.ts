@@ -35,7 +35,7 @@
 import { createHash, createHmac } from "node:crypto";
 import type { IsoInstant, OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { deriveTenantBucket } from "../lifecycle/storage";
-import type { ObjectStorePort } from "./store";
+import type { ObjectReaderPort, ObjectStorePort } from "./store";
 
 // ── config ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -405,7 +405,7 @@ function createS3SignedFetch(
 export function createS3ObjectStore(
   config: S3ObjectStoreConfig,
   deps: S3ObjectStoreDeps = {},
-): ObjectStorePort {
+): ObjectStorePort & ObjectReaderPort {
   const region = config.region?.trim() || DEFAULT_REGION;
   const now = deps.now ?? ((): Date => new Date());
   const signedFetch = createS3SignedFetch(config, deps, "createS3ObjectStore");
@@ -510,6 +510,28 @@ export function createS3ObjectStore(
         },
         expiresAt: new Date(at.getTime() + ttlSeconds * 1000).toISOString(),
       };
+    },
+
+    async getObject({ bucket, objectKey, maxBytes, signal }) {
+      const res = await signedFetch({
+        method: "GET",
+        bucket,
+        objectKey,
+        query: [],
+        payload: null,
+        ...(signal ? { signal } : {}),
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw opError("getObject", res.status, bucket, objectKey);
+      const tooBig = (): Error =>
+        new Error(
+          `m22 s3 object store: object exceeds ${maxBytes} bytes at ${bucket}/${objectKey}`,
+        );
+      const declared = Number(res.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > maxBytes) throw tooBig();
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength > maxBytes) throw tooBig();
+      return bytes;
     },
 
     async inspectObject({ bucket, objectKey, signal }) {
