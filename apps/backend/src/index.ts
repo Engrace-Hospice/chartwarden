@@ -1110,7 +1110,9 @@ import {
   type WorkerAlertPort as M25WorkerAlertPort,
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
+  type RemittanceAiPromptRegistryPort,
   type TerminologyLookupPort,
+  buildDrizzleAdrReadinessService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
   buildDrizzleCaseViewService,
@@ -1138,6 +1140,7 @@ import {
   registerM25PublishedSeams,
   registerRemittanceErasers,
   scheduleM25Jobs,
+  validateRemittanceAIBlock,
   wireM25Tenancy,
 } from "./modules/25-remittance/index";
 import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
@@ -5805,6 +5808,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               sources: buildSeamAppealSourcePorts(),
             }),
             caseViewService: buildDrizzleCaseViewService(dbHandle.db),
+            // Milestone 8a-1: advisory documentation readiness. The assistant port is the deny-stub (no model is
+            // reachable); the deterministic gap view and the review record work with AI off.
+            adrReadinessService: buildDrizzleAdrReadinessService(dbHandle.db, {
+              outbox: m25OutboxPublisher,
+            }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
@@ -6695,6 +6703,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       await validateSupplyAIBlock(registry);
       await validateBillingAiBlockAtBoot(registry);
       await validateDocumentsAIBlock(registry);
+      await validateRemittanceAIBlock(registry as unknown as RemittanceAiPromptRegistryPort);
     });
   }
 

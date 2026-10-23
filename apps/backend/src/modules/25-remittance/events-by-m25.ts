@@ -290,6 +290,54 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
+  // ── Milestone 8a-1: advisory ADR documentation readiness. Ids and counts ONLY (the finding note is PHI-bearing and is
+  // never evented). Nothing consumes these: the review is advisory and gates nothing, so no consumer is declared
+  // (a declared-but-unbound consumer would sit pending forever, the F-043 deferral register).
+  {
+    eventName: "m25.adr_readiness.requested",
+    moduleOwner: "m25",
+    description: "A documentation-readiness review was requested for an ADR packet.",
+    payloadSchema: Type.Object({ adrCaseId: id, reviewId: id }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m25.adr_readiness.completed",
+    moduleOwner: "m25",
+    description:
+      "An assistant answered a readiness review; the counts are findings kept and findings the citation filter refused.",
+    payloadSchema: Type.Object({
+      adrCaseId: id,
+      reviewId: id,
+      findingCount: Type.Integer(),
+      droppedFindingCount: Type.Integer(),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m25.adr_readiness.unavailable",
+    moduleOwner: "m25",
+    description:
+      "No assistant answered a readiness review (capability off, killed, failed or unusable); the deterministic gap view is unaffected.",
+    payloadSchema: Type.Object({ adrCaseId: id, reviewId: id, reason: str }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m25.adr_readiness.finding_disposed",
+    moduleOwner: "m25",
+    description:
+      "A person acknowledged, dismissed or disputed a readiness finding (the evaluation feedback loop).",
+    payloadSchema: Type.Object({
+      adrCaseId: id,
+      reviewId: id,
+      findingId: id,
+      disposition: str,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
   {
     eventName: "m25.denial_resolution_letter.render_requested",
     moduleOwner: "m25",
