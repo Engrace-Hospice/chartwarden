@@ -104,6 +104,31 @@ describe("requirePermission — deny by default (§2.2)", () => {
   });
 });
 
+describe("requirePermission — service principal (#678)", () => {
+  const system = () =>
+    makeRequest({ userId: "system", attributes: { actorKind: "system" } as never });
+
+  it("grants *_internal seam keys without consulting the membership resolver", async () => {
+    const resolver = vi.fn(() => new Set<string>());
+    setEffectivePermissionResolver(resolver);
+    await expect(
+      requirePermission("remittance.ingest_internal")(system()),
+    ).resolves.toBeUndefined();
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("denies a user-facing key to the service principal", async () => {
+    setEffectivePermissionResolver(() => new Set(["role.manage"]));
+    await expect(requirePermission("role.manage")(system())).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("does not elevate a user session that merely lacks the key", async () => {
+    await expect(
+      requirePermission("remittance.ingest_internal")(makeRequest()),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});
+
 describe("requireAbac — deny by default + break-glass branch (§2.2)", () => {
   it("403s when the predicate is unregistered (a missing predicate is a deny, not an allow)", async () => {
     await expect(
