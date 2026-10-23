@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 190,
+  "totalStaticWebScreens": 191,
   "e2eReachedCount": 20,
-  "axeReachedCount": 180,
+  "axeReachedCount": 181,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",

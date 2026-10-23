@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1715,
-    "enriched": 1715,
+    "routes": 1717,
+    "enriched": 1717,
     "deficit": 0,
     "mutating": 970,
     "mutatingNoBody": 1,
-    "gets": 696,
+    "gets": 698,
     "getsNoResponse": 9
   },
   "modules": [
@@ -321,12 +321,12 @@
     },
     {
       "module": "33-reporting",
-      "routes": 42,
-      "enriched": 42,
+      "routes": 43,
+      "enriched": 43,
       "deficit": 0,
       "mutating": 22,
       "mutatingNoBody": 0,
-      "gets": 20,
+      "gets": 21,
       "getsNoResponse": 0
     },
     {
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 157,
-      "enriched": 157,
+      "routes": 158,
+      "enriched": 158,
       "deficit": 0,
       "mutating": 75,
       "mutatingNoBody": 0,
-      "gets": 66,
+      "gets": 67,
       "getsNoResponse": 1
     },
     {

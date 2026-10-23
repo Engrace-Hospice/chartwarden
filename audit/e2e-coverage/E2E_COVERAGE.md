@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 190 statically-routable `web` screen(s) — 20/190 E2E-reached, 180/190 axe-reached.
+**Coverage:** 191 statically-routable `web` screen(s) — 20/191 E2E-reached, 181/191 axe-reached.
 
 ## Zero E2E coverage
 
