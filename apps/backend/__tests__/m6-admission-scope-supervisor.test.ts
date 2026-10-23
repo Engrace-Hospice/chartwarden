@@ -96,3 +96,83 @@ describe("admission.scope — clinical_supervisor", () => {
     expect(await scope(null, null)(["org_admin"], [PE_X])).toBe(true);
   });
 });
+
+// #605 — the census (`readScopeOf`) lists every admission to org_admin / administrator, so the detail and
+// readiness reads (gated by `admission.scope`) must open them too — on a SITED admission with no provider-entity
+// match and no caseload. Only these two roles: compliance_officer / survey_coordinator / DON stay narrow here.
+describe("admission.scope — org_admin / administrator are org-wide (ADR-0090, #605)", () => {
+  const KINDS = [
+    "admission",
+    "electionPeriod",
+    "electionStatement",
+    "cti",
+    "f2f",
+    "loc",
+    "complianceWindow",
+  ] as const;
+  const FACTS = {
+    patientId: PATIENT,
+    providerEntityId: PE_Y,
+    locationId: null,
+    createdByUserId: "x",
+  };
+
+  function scopeFor(kind: (typeof KINDS)[number]) {
+    const loader = async () => FACTS;
+    const predicates = buildAdmissionAbacPredicates({
+      resolver: {
+        loadAdmission: loader,
+        loadElectionPeriodScope: loader,
+        loadElectionStatementScope: loader,
+        loadCtiScope: loader,
+        loadF2fScope: loader,
+        loadLocScope: loader,
+        loadComplianceWindow: loader,
+        loadPatientIntakeFacts: async () => null,
+      } as never,
+      isInCaseload: async () => false,
+    });
+    return (roles: string[]) =>
+      predicates["admission.scope"]!(
+        {
+          organizationId: ORG,
+          userId: "u1",
+          roles,
+          providerEntityIds: [PE_X],
+          locationIds: [],
+          attributes: {},
+        },
+        { id: "r1", resourceKind: kind },
+      );
+  }
+
+  for (const kind of KINDS) {
+    it(`opens a sited admission with no entity match or caseload via ${kind}`, async () => {
+      expect(await scopeFor(kind)(["org_admin"])).toBe(true);
+      expect(await scopeFor(kind)(["administrator"])).toBe(true);
+    });
+    it(`keeps compliance_officer, survey_coordinator, clinical_supervisor, rn denied via ${kind}`, async () => {
+      for (const role of ["compliance_officer", "survey_coordinator", "clinical_supervisor", "rn"])
+        expect(await scopeFor(kind)([role])).toBe(false);
+    });
+  }
+
+  it("still fails closed when the facts are absent (cross-tenant / missing)", async () => {
+    const predicates = buildAdmissionAbacPredicates({
+      resolver: { loadAdmission: async () => null } as never,
+      isInCaseload: async () => true,
+    });
+    const allowed = await predicates["admission.scope"]!(
+      {
+        organizationId: ORG,
+        userId: "u1",
+        roles: ["org_admin", "administrator"],
+        providerEntityIds: [],
+        locationIds: [],
+        attributes: {},
+      },
+      { id: "adm_1" },
+    );
+    expect(allowed).toBe(false);
+  });
+});

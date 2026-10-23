@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { ORG_WIDE_SCOPE_ROLES, hasOrgWideScope } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,6 +20,7 @@ import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "../src/modules/06-admission/admission-route-service-db";
+import { buildAdmissionAbacPredicates } from "../src/modules/06-admission/abac-predicates";
 import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -192,6 +194,45 @@ describe.skipIf(!DB_URL)(
       await expect(resolver.loadCtiScope(ORG_A, cti.id)).resolves.toEqual(admissionFacts);
       await expect(resolver.loadF2fScope(ORG_A, f2f.id)).resolves.toEqual(admissionFacts);
       await expect(resolver.loadLocScope(ORG_A, loc.id)).resolves.toEqual(admissionFacts);
+    });
+
+    // #605 — list/detail agreement. The census lists every admission to any role in ORG_WIDE_SCOPE_ROLES
+    // (`readScopeOf` → hasOrgWideScope), so the detail + readiness reads (`admission.scope`, real resolver, real
+    // NOBYPASSRLS connection) must open that admission too — unless the role is NAMED below with a reason.
+    // A role with no site match and no caseload row, on a SITED admission, is the failing shape.
+    const LIST_DETAIL_DISAGREEMENTS: Readonly<Record<string, string>> = {
+      // Deliberately NOT widened by #605 (ADR-0090 names only administrator / org_admin for M6). Each is listed by
+      // the census but refused detail/readiness on a sited admission outside its caseload — a follow-up decision.
+      compliance_officer: "oversight role: census lists all, admission.scope only grants window overrides",
+      director_of_nursing: "floor patient.read role: census lists all, admission.scope needs caseload/site",
+      survey_coordinator: "oversight role: census lists all, admission.scope needs caseload/site",
+    };
+
+    it("every ORG_WIDE_SCOPE_ROLES role that the census lists an admission to can open it (or is named)", async () => {
+      const { admissionId, periodId } = await activeAdmission(randomUUID());
+      const facts = await resolver.loadAdmission(ORG_A, admissionId);
+      expect(facts?.providerEntityId).not.toBeNull(); // SITED — the shape #605 broke
+      const predicates = buildAdmissionAbacPredicates({ resolver, isInCaseload: async () => false });
+      const disagree: string[] = [];
+      for (const role of ORG_WIDE_SCOPE_ROLES) {
+        const ctx = {
+          organizationId: ORG_A,
+          userId: USER,
+          roles: [role],
+          providerEntityIds: [],
+          locationIds: [],
+          attributes: {},
+        };
+        expect(hasOrgWideScope([role])).toBe(true); // the census lists it
+        const detail = await predicates["admission.scope"]!(ctx, { id: admissionId });
+        const child = await predicates["admission.scope"]!(ctx, {
+          id: periodId,
+          resourceKind: "electionPeriod",
+        });
+        if (!(detail && child)) disagree.push(role);
+      }
+      // The named exceptions are exactly the disagreements: a stale entry fails as loudly as a new gap.
+      expect(disagree.sort()).toEqual(Object.keys(LIST_DETAIL_DISAGREEMENTS).sort());
     });
 
     it("fails closed (null) for an absent id and for a cross-tenant id (RLS-backstopped)", async () => {

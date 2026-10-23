@@ -18,6 +18,7 @@
 import {
   type AbacContext,
   type AbacTarget,
+  BUSINESS_ADMIN_SCOPE_ROLES,
   INTAKE_ROLE_KEYS,
   hasAdmittingClinicianRole,
   registerPredicateIdempotent,
@@ -195,6 +196,10 @@ export function buildAdmissionAbacPredicates(
     facts: { patientId: string; providerEntityId: string | null; createdByUserId?: string | null },
   ): Promise<boolean> => {
     if (hasRole(context, "medical_director")) return true; // org-wide
+    // ADR-0090: administrator / org_admin are org-wide for sited AND unsited admissions (#605) — the census lists
+    // them via hasOrgWideScope, so detail/readiness must open them. NOT hasOrgWideScope: that would also widen
+    // compliance_officer, survey_coordinator and the floor-patient.read roles.
+    if (BUSINESS_ADMIN_SCOPE_ROLES.some((role) => hasRole(context, role))) return true;
     if (
       facts.providerEntityId === null &&
       UNSITED_ADMISSION_ROLES.some((role) => hasRole(context, role))
