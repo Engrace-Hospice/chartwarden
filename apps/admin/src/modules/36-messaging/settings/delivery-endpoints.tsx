@@ -3,7 +3,14 @@
 // email target, confirm the code sent to it, remove it.
 // ponytail: the API has NO list route, so only endpoints registered in this session appear (id + channel +
 // target held in component state). Add a GET /notifications/endpoints list route to show earlier ones.
-import { Button, SelectField, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  SelectField,
+  StatusPill,
+  TextField,
+  focusFirstInvalid,
+  useApiClient,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
@@ -33,6 +40,8 @@ export function DeliveryEndpoints(): JSX.Element {
   const [tokens, setTokens] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const [registerAttempted, setRegisterAttempted] = useState(false);
+  const [verifyAttempted, setVerifyAttempted] = useState<ReadonlySet<string>>(new Set());
   const formRef = useRef<HTMLFormElement>(null);
   // Fields and buttons are disabled while an action is in flight (dropping focus), and a verified row loses its
   // code field; focus goes back to where it was, else to the address field.
@@ -49,6 +58,11 @@ export function DeliveryEndpoints(): JSX.Element {
 
   const register = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
+    setRegisterAttempted(true);
+    if (target.trim() === "") {
+      focusFirstInvalid(formRef.current);
+      return;
+    }
     captureFocus();
     setBusy("register");
     setBanner(null);
@@ -60,10 +74,16 @@ export function DeliveryEndpoints(): JSX.Element {
     if (!result.ok) return fail(result.message, result.forbidden);
     setEndpoints((list) => [...list, { ...result.data, target: target.trim() }]);
     setTarget("");
+    setRegisterAttempted(false);
     setBanner({ ok: true, message: "Endpoint added. Enter the verification code sent to it." });
   };
 
-  const verify = async (endpoint: Endpoint): Promise<void> => {
+  const verify = async (endpoint: Endpoint, row: ParentNode | null): Promise<void> => {
+    setVerifyAttempted((seen) => new Set(seen).add(endpoint.endpointId));
+    if ((tokens[endpoint.endpointId] ?? "").trim() === "") {
+      focusFirstInvalid(row);
+      return;
+    }
     captureFocus();
     setBusy(endpoint.endpointId);
     setBanner(null);
@@ -109,7 +129,7 @@ export function DeliveryEndpoints(): JSX.Element {
         sub="Email, SMS and push targets your alerts are delivered to. Each must be verified."
       />
       <BannerView banner={banner} />
-      <form ref={formRef} className="wx-form-stack" onSubmit={(e) => void register(e)}>
+      <form ref={formRef} noValidate className="wx-form-stack" onSubmit={(e) => void register(e)}>
         <SelectField
           label="Channel"
           options={CHANNEL_OPTIONS}
@@ -124,14 +144,14 @@ export function DeliveryEndpoints(): JSX.Element {
           value={target}
           disabled={busy !== null}
           onChange={(e) => setTarget(e.target.value)}
+          error={
+            registerAttempted && target.trim() === ""
+              ? "Enter the address or device token to register."
+              : undefined
+          }
         />
         <div className="wx-drawer-actions">
-          <Button
-            type="submit"
-            size="lg"
-            loading={busy === "register"}
-            disabled={target.trim() === ""}
-          >
+          <Button type="submit" size="lg" loading={busy === "register"}>
             Add endpoint
           </Button>
         </div>
@@ -157,6 +177,12 @@ export function DeliveryEndpoints(): JSX.Element {
                     maxLength={64}
                     value={tokens[endpoint.endpointId] ?? ""}
                     disabled={busy !== null}
+                    error={
+                      verifyAttempted.has(endpoint.endpointId) &&
+                      (tokens[endpoint.endpointId] ?? "").trim() === ""
+                        ? "Enter the verification code that was sent."
+                        : undefined
+                    }
                     onChange={(e) => {
                       const token = e.target.value;
                       setTokens((t) => ({ ...t, [endpoint.endpointId]: token }));
@@ -166,9 +192,9 @@ export function DeliveryEndpoints(): JSX.Element {
                     tone="secondary"
                     size="lg"
                     loading={busy === endpoint.endpointId}
-                    disabled={busy !== null || (tokens[endpoint.endpointId] ?? "").trim() === ""}
+                    disabled={busy !== null}
                     aria-label={`Verify ${endpoint.target}`}
-                    onClick={() => void verify(endpoint)}
+                    onClick={(e) => void verify(endpoint, e.currentTarget.closest("li"))}
                   >
                     Verify
                   </Button>

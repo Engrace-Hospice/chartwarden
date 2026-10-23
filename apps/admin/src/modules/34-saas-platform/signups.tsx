@@ -7,6 +7,7 @@ import {
   StatusPill,
   type StatusTone,
   TextField,
+  focusFirstInvalid,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -19,7 +20,7 @@ import {
 // Qualify (`new → qualified` → enqueues `tenant.provision`, POST .../{id}/qualify) and Reject
 // (`new → rejected` with a recorded rationale, POST .../{id}/reject). Live-wired over the typed
 // client; imports only @chartwarden/ui leaves + the Foundation tone map.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { SIGNUP_TONE, cap } from "./saas-status";
@@ -304,6 +305,16 @@ function IntentDrawer({
   const actionable = intent.intentStatus === "new";
   const [firstAdminFullName, setFirstAdminFullName] = useState("");
   const [planLabel, setPlanLabel] = useState<PlanLabel>("standard");
+  const [attempted, setAttempted] = useState(false);
+  const triageRef = useRef<HTMLElement>(null);
+  const qualify = (): void => {
+    setAttempted(true);
+    if (firstAdminFullName.trim().length === 0) {
+      focusFirstInvalid(triageRef.current);
+      return;
+    }
+    onQualify(firstAdminFullName, planLabel);
+  };
   return (
     <aside className="wx-admission-drawer" aria-label="Signup intent" {...drawer}>
       <header className="wx-drawer-head">
@@ -357,7 +368,7 @@ function IntentDrawer({
         </section>
 
         {actionable ? (
-          <section className="wx-drawer-card">
+          <section className="wx-drawer-card" ref={triageRef}>
             <h3>Triage</h3>
             <TextField
               label="First admin full name"
@@ -367,6 +378,11 @@ function IntentDrawer({
               autoComplete="name"
               value={firstAdminFullName}
               onChange={(event) => setFirstAdminFullName(event.target.value)}
+              error={
+                attempted && firstAdminFullName.trim().length === 0
+                  ? "Enter the first admin's full name."
+                  : undefined
+              }
             />
             <SelectField
               label="Plan"
@@ -375,10 +391,7 @@ function IntentDrawer({
               onChange={(event) => setPlanLabel(event.target.value as PlanLabel)}
             />
             <div className="wx-drawer-actions">
-              <Button
-                onClick={() => onQualify(firstAdminFullName, planLabel)}
-                disabled={busy || firstAdminFullName.trim().length === 0}
-              >
+              <Button onClick={qualify} disabled={busy}>
                 {busy ? "Working…" : "Qualify"}
               </Button>
               <Button tone="secondary" onClick={onReject} disabled={busy}>

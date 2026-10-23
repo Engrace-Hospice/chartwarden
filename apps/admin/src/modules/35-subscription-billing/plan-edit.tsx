@@ -1,4 +1,11 @@
-import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  TextField,
+  focusFirstInvalid,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plan editor (`/admin/plans/:id/edit`, plan.admin.write).
 // Hydrates from GET /api/admin/plans/:id (M35A-T03 detail GET), then manages the plan's usage meters
@@ -6,7 +13,7 @@ import type { operations } from "@chartwarden/ui";
 // Stripe product/price — the "Sync to Stripe" path, vendor SDK OFF) and Deprecate. Every mutation carries a
 // server-enforced step-up + Idempotency-Key; stale step-up surfaces as a first-class outcome. Redesign frame:
 // the meters in the main column, the plan summary in the right drawer.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { cap, formatCents, idempotencyKey } from "./status";
@@ -80,8 +87,16 @@ export function PlanEdit(): JSX.Element {
     [load],
   );
 
+  const [meterAttempted, setMeterAttempted] = useState(false);
+  const meterRowRef = useRef<HTMLDivElement>(null);
+
   const addMeter = useCallback(() => {
-    if (!id || !meter.eventType.trim()) return;
+    if (!id) return;
+    setMeterAttempted(true);
+    if (!meter.eventType.trim()) {
+      focusFirstInvalid(meterRowRef.current);
+      return;
+    }
     void run(
       () =>
         client.POST("/api/admin/plans/{id}/meters", {
@@ -100,6 +115,7 @@ export function PlanEdit(): JSX.Element {
       "Could not add the meter (check the fields).",
     );
     setMeter({ eventType: "", inclusive: "0", overage: "0", threshold: "80" });
+    setMeterAttempted(false);
   }, [client, id, meter, run]);
 
   const activate = useCallback(() => {
@@ -177,11 +193,19 @@ export function PlanEdit(): JSX.Element {
         ) : (
           <MetersTable meters={plan.meters} currencyCode={plan.currencyCode} />
         )}
-        <div className="grid max-w-3xl items-end gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+        <div
+          ref={meterRowRef}
+          className="grid max-w-3xl items-end gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
+        >
           <TextField
             label="Event type"
             value={meter.eventType}
             onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
+            error={
+              meterAttempted && !meter.eventType.trim()
+                ? "Enter the event type to meter."
+                : undefined
+            }
           />
           <TextField
             label="Included qty"
@@ -201,7 +225,7 @@ export function PlanEdit(): JSX.Element {
             inputMode="numeric"
             onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
           />
-          <Button onClick={addMeter} disabled={busy || !meter.eventType.trim()}>
+          <Button onClick={addMeter} disabled={busy}>
             Add meter
           </Button>
         </div>

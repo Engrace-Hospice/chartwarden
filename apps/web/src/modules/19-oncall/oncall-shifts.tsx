@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
+import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import {
   type CurrentOnCallView,
   type OnCallActor,
@@ -545,11 +546,11 @@ function CreateShiftModal({
           <span>The policy snapshot is pinned by the server when the shift activates.</span>
         </output>
         <div style={fieldGridStyle}>
-          <TextField
-            label="Provider entity id"
+          <ProviderEntityLookupField
+            label="Provider entity"
             value={providerEntityId}
             onChange={onProviderEntityIdChange}
-            mono
+            appearance="modal"
           />
           <TextField
             label="Starts at"

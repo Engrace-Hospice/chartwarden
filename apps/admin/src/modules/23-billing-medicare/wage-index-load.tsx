@@ -8,6 +8,7 @@ import {
   SelectField,
   TextAreaField,
   TextField,
+  focusFirstInvalid,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM WAGE-INDEX LOAD (M23 §4.1 #42, GAP-144). The annual CMS
@@ -25,7 +26,7 @@ import {
 // A stale session gets 403 STEP_UP_REQUIRED: the confirm dialog offers a Re-verify link to the console's /step-up
 // page, which comes back here. The form (table, fiscal year, source reference) is stashed for that round trip
 // (wage-index-load-draft.ts) and restored on mount, so the operator does not have to paste the file again.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
   clearWageIndexDraft,
@@ -87,6 +88,26 @@ export function WageIndexLoad(): JSX.Element {
   const parsed = useMemo(() => parseWageIndexTable(table), [table]);
   const source = sourceReference.trim();
   const ready = parsed.rows.length > 0 && parsed.problems.length === 0 && source.length > 0;
+  const [attempted, setAttempted] = useState(false);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const sourceError = attempted && !source ? "Enter the source reference to load." : undefined;
+  // The per-line problems are listed under the preview; the field itself only points there.
+  const tableError = !attempted
+    ? undefined
+    : parsed.problems.length > 0
+      ? "Fix the lines listed under the preview."
+      : parsed.rows.length === 0
+        ? "Paste or upload at least one row."
+        : undefined;
+
+  function review(): void {
+    setAttempted(true);
+    if (!ready) {
+      focusFirstInvalid(pageRef.current);
+      return;
+    }
+    setConfirming(true);
+  }
 
   async function readFile(file: File | null): Promise<void> {
     setFileError(null);
@@ -101,7 +122,7 @@ export function WageIndexLoad(): JSX.Element {
 
   return (
     <div className="wx-list-drawer">
-      <div className="wx-list-drawer-main">
+      <div className="wx-list-drawer-main" ref={pageRef}>
         <header className="wx-page-head">
           <div>
             <h1>Wage index load</h1>
@@ -178,6 +199,7 @@ export function WageIndexLoad(): JSX.Element {
               value={sourceReference}
               maxLength={SOURCE_REFERENCE_MAX}
               hint="Recorded with every row. The server does not download it."
+              error={sourceError}
               required
               onChange={(e) => {
                 setSourceReference(e.target.value);
@@ -204,6 +226,7 @@ export function WageIndexLoad(): JSX.Element {
               label="Paste the table"
               rows={8}
               value={table}
+              error={tableError}
               placeholder={"CCN,CBSA,Wage Index\n381588,38900,1.0342"}
               onChange={(e) => {
                 setTable(e.target.value);
@@ -218,12 +241,7 @@ export function WageIndexLoad(): JSX.Element {
         {result ? <LoadResult result={result} /> : null}
 
         <div className="flex items-center justify-end gap-3">
-          {!source && parsed.rows.length > 0 ? (
-            <span className="text-sm">Enter the source reference to load.</span>
-          ) : null}
-          <Button disabled={!ready} onClick={() => setConfirming(true)}>
-            Review and load
-          </Button>
+          <Button onClick={review}>Review and load</Button>
         </div>
       </div>
 
