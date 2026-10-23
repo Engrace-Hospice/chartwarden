@@ -212,9 +212,12 @@ export function applyReadAuditCoverage(
       }
       const params = (request.params ?? {}) as Record<string, string>;
       const patientId = resolvePatientId(cfg, params, request.query, binary ? undefined : payload);
+      // The service principal's userId is the literal "system", not a uuid: audit it as no user (#680).
+      const actorUserId = ctx.attributes?.actorKind === "system" ? "" : ctx.userId || "";
       const auditCtx: AuditContext = {
         organizationId: ctx.organizationId,
-        userId: ctx.userId || null,
+        userId: actorUserId || null,
+        ...(ctx.attributes?.actorKind === "system" ? { actorKind: "system" as const } : {}),
         correlationId: ctx.correlationId,
         requestId: request.id,
         sourceIp: ctx.ip,
@@ -222,7 +225,7 @@ export function applyReadAuditCoverage(
       };
       await withOrgContext(
         db,
-        { organizationId: ctx.organizationId, userId: ctx.userId || "" },
+        { organizationId: ctx.organizationId, userId: actorUserId },
         async (tx) => {
           if (cfg.list) {
             const rawListId =
