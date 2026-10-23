@@ -174,7 +174,8 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       locationIds: [],
       // `actorKind` is stamped as soon as the principal is known — BEFORE the org binding — because
       // it describes WHO is calling, not what they are scoped to. A pre-org session is still a user.
-      attributes: { sessionId: "s1", actorKind: "user" },
+      // `orgUnbound` marks the session as awaiting select-organization (#589): a 401 from it means "pick an org".
+      attributes: { sessionId: "s1", actorKind: "user", orgUnbound: true },
     });
   });
 

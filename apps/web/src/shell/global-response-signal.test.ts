@@ -6,9 +6,11 @@
 // route's own lockout counter, which exists to allow `STEP_UP_POLICY.lockoutThreshold` consecutive
 // failures before terminating the session, and the step-up screen's "That code didn't verify. Try
 // again" branch, which no longer had a way to render.
-import { describe, expect, it } from "vitest";
-import { loadDraft, saveDraft } from "./ceremony-drafts";
+import { afterEach, describe, expect, it } from "vitest";
+import { clearAllDrafts, loadDraft, saveDraft } from "./ceremony-drafts";
 import {
+  getGlobalResponseSignal,
+  handleObservedResponse,
   mayCarryTenantRefusal,
   setGlobalResponseSignal,
   signalForStatus,
@@ -25,6 +27,11 @@ describe("signalForStatus", () => {
   it("does NOT sign the user out on a failed step-up verification", () => {
     expect(signalForStatus(401, `${ORIGIN}/api/v1/sessions/step-up`)).toBeNull();
     expect(signalForStatus(401, `${ORIGIN}/api/v1/portal/sessions/step-up`)).toBeNull();
+  });
+
+  it("does NOT sign the user out on a wrong screen-lock password (#589)", () => {
+    // /auth/unlock answers 401 INVALID_CREDENTIALS for a wrong password on a perfectly live session.
+    expect(signalForStatus(401, `${ORIGIN}/api/v1/auth/unlock`)).toBeNull();
   });
 
   it("still signs the user out on a 401 from step-up INITIATE", () => {
@@ -109,5 +116,48 @@ describe("tenant refusals (ADR-0049)", () => {
     expect(mayCarryTenantRefusal(500, `${ORIGIN}/api/v1/patients`)).toBe(false);
     expect(mayCarryTenantRefusal(404, `${ORIGIN}/assets/app.js`)).toBe(false);
     expect(mayCarryTenantRefusal(404)).toBe(false);
+  });
+});
+
+// #589 phase 2 - a 401 ORGANIZATION_NOT_SELECTED is a live session that has not bound an org, not a dead one. It
+// must route to the org picker and KEEP the user's drafts; only a genuine 401 may wipe them.
+describe("org-less 401 (ORGANIZATION_NOT_SELECTED)", () => {
+  const url = `${ORIGIN}/api/v1/patients`;
+  const body401 = (code: string): Response =>
+    new Response(JSON.stringify({ error: { code, message: "x" } }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  afterEach(() => setGlobalResponseSignal(null));
+
+  it("never lets an org-less 401 overwrite a pending session-expired", async () => {
+    setGlobalResponseSignal({ kind: "session-expired" });
+    handleObservedResponse(401, url, body401("ORGANIZATION_NOT_SELECTED"));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "session-expired" });
+  });
+
+  it("signals org-not-selected and keeps drafts", async () => {
+    saveDraft("dde:item-3", { panel: "outcome" });
+    handleObservedResponse(401, url, body401("ORGANIZATION_NOT_SELECTED"));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "org-not-selected" });
+    expect(loadDraft("dde:item-3")).toBeTruthy();
+    clearAllDrafts();
+  });
+
+  it("still treats a plain UNAUTHORIZED 401 as session death and wipes drafts", async () => {
+    saveDraft("dde:item-4", { panel: "outcome" });
+    handleObservedResponse(401, url, body401("UNAUTHORIZED"));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "session-expired" });
+    expect(loadDraft("dde:item-4")).toBeUndefined();
+  });
+
+  it("falls back to session death when the 401 body is not JSON", async () => {
+    handleObservedResponse(401, url, new Response("nope", { status: 401 }));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "session-expired" });
   });
 });

@@ -23,6 +23,7 @@ import {
   createIdentityCredentialAdmin,
   createInMemoryFailedLoginStore,
   createLinkSessionMinter,
+  createPasswordVerifier,
   createTenantOriginMatcher,
   getIdentitySession,
   registerAbacRegistry,
@@ -324,6 +325,7 @@ import {
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
+  createUnlockGuard,
   mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
@@ -4224,6 +4226,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     keyPrefix: "link-redeem",
     onStoreError: onThrottleStoreError,
   });
+  // #589 - the screen-lock unlock's own per-user failed-password budget: reserved atomically BEFORE the hash, no IP
+  // bucket, and fail-CLOSED on a store error (unlike the login-door throttles above). See unlock-guard.ts.
+  const unlockGuard = createUnlockGuard(doorFailureStore, {
+    onStoreError: (err) =>
+      process.stderr.write(`[throttle] screen-unlock counter store unavailable - failing CLOSED (503): ${String(err)}\n`),
+  });
   const portalSignInThrottle = createCredentialThrottle(doorFailureStore, {
     keyPrefix: "portal-signin",
     onStoreError: onThrottleStoreError,
@@ -4727,6 +4735,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(auth ? { linkSessions: createLinkSessionMinter(auth) } : {}),
             ...(linkDelivery ? { linkDelivery } : {}),
             linkRedeemThrottle,
+            ...(auth ? { passwordVerifier: createPasswordVerifier(auth) } : {}),
+            unlockGuard,
             ...(mfaGate ? { mfaGate } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>

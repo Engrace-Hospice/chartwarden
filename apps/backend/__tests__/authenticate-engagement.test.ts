@@ -90,3 +90,36 @@ describe("authenticate hook — engagementId (GAP-093(c))", () => {
     });
   });
 });
+
+// #589 - POST /api/v1/auth/unlock re-proves the session's own password and mints nothing, so it is deliberately
+// reachable by BOTH auditor stages (the lock overlay arms for auditors); no other mutation is.
+describe("authenticate hook - screen unlock for auditor sessions (#589)", () => {
+  const callAs = async (actor: ResolvedActor, method: string, url: string) => {
+    const ctx = {
+      userId: "",
+      organizationId: "",
+      roles: [] as string[],
+      providerEntityIds: [] as string[],
+      locationIds: [] as string[],
+      attributes: {} as Record<string, unknown>,
+    };
+    const hook = createSessionAuthenticate({
+      getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
+      getResolver: () => resolverReturning(actor),
+    });
+    await hook({ context: ctx, headers: {}, method, url } as unknown as FastifyRequest);
+  };
+
+  it("lets an ACTIVE auditor unlock, but still refuses any other write", async () => {
+    await expect(callAs(ACTOR, "POST", "/api/v1/auth/unlock")).resolves.toBeUndefined();
+    await expect(callAs(ACTOR, "POST", "/api/v1/patients")).rejects.toMatchObject({ code: "AUDITOR_READ_ONLY" });
+  });
+
+  it("lets an ENROLMENT-stage auditor unlock, but still refuses the engagement read", async () => {
+    const enrolling = { ...ACTOR, auditorStage: "enrolment" as const };
+    await expect(callAs(enrolling, "POST", "/api/v1/auth/unlock")).resolves.toBeUndefined();
+    await expect(callAs(enrolling, "GET", "/api/v1/patients")).rejects.toMatchObject({
+      code: "AUDITOR_ENROLMENT_REQUIRED",
+    });
+  });
+});

@@ -85,6 +85,8 @@ import {
   PlatformUserDeactivatedResponseSchema as M2PlatformUserDeactivatedResponseSchema,
   RequiredPasswordChangeRequestSchema as M2RequiredPasswordChangeRequestSchema,
   RequiredPasswordChangeResponseSchema as M2RequiredPasswordChangeResponseSchema,
+  ScreenUnlockRequestSchema as M2ScreenUnlockRequestSchema,
+  ScreenUnlockResponseSchema as M2ScreenUnlockResponseSchema,
   SelectOrganizationRequestSchema as M2SelectOrganizationRequestSchema,
   StepUpInitiateRequestSchema as M2StepUpInitiateRequestSchema,
   StepUpInitiateResponseSchema as M2StepUpInitiateResponseSchema,
@@ -6494,6 +6496,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Bind the pre-org session to exactly one org (one-time, §7.2)",
     body: M2SelectOrganizationRequestSchema,
     response: M2OrgBindingResponseSchema,
+  },
+  "POST /api/v1/auth/unlock": {
+    summary: "Unlock the idle screen lock by re-entering the password; keeps the same session (#589)",
+    body: M2ScreenUnlockRequestSchema,
+    response: M2ScreenUnlockResponseSchema,
   },
   "POST /api/v1/platform/organizations/:organizationId/status": {
     summary: "Activate/suspend/close an organization (platform-ops, §11 D19)",

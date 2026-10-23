@@ -43,6 +43,8 @@ const AUDITOR_SAFE_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIO
 const AUDITOR_ALLOWED_MUTATION_PATHS: ReadonlySet<string> = new Set([
   "/api/auth/sign-out",
   "/api/v1/auditors/redeem",
+  // #589 - the idle lock arms for auditors; unlock only re-proves the session's own password and mints/changes nothing.
+  "/api/v1/auth/unlock",
 ]);
 
 /**
@@ -58,6 +60,8 @@ const AUDITOR_ENROLMENT_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/v1/auditors/enrolment/totp/begin",
   "POST /api/v1/auditors/enrolment/totp/confirm",
   "POST /api/v1/auditors/enrolment/verify",
+  // #589 - same as for the active stage: a locked half-enrolled auditor must be able to unlock rather than start over.
+  "POST /api/v1/auth/unlock",
 ]);
 
 /**
@@ -76,6 +80,8 @@ const PASSWORD_CHANGE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/v1/auth/csrf",
   "GET /api/v1/auth/credential-status",
   "POST /api/v1/auth/password/complete-required-change",
+  // #589 - re-proves the session's own password, nothing more; granting it widens no capability.
+  "POST /api/v1/auth/unlock",
 ]);
 
 function assertCredentialStateMayCall(
@@ -218,7 +224,12 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // Global and backend-enforced: this runs before the pre-org return and before tenant resolution,
     // so org switching, passkey sessions, refreshes and direct REST calls cannot bypass rotation.
     assertCredentialStateMayCall(request, snap.passwordChangeRequired);
-    if (!snap.activeOrganizationId) return; // pre-org: org-scoped routes gate on the missing org
+    if (!snap.activeOrganizationId) {
+      // Pre-org: org-scoped routes gate on the missing org. Say so for the error handler (#589): a 401 from THIS
+      // state is "choose an organization", not a dead session - unlike a session whose org no longer resolves below.
+      request.context.attributes.orgUnbound = true;
+      return;
+    }
     const scope: OrgScope = { orgId: snap.activeOrganizationId };
     const actor = await deps.getResolver().resolveActor(scope, snap.sessionId);
     if (!actor) return; // session/org mismatch — no org binding, no roles (no cross-tenant leak)

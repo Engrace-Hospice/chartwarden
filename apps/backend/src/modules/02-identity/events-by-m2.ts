@@ -269,6 +269,19 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m2.session.unlocked",
+    moduleOwner: "m2",
+    description:
+      "A screen-locked session was unlocked by re-entering the password (`POST /api/v1/auth/unlock`). Same session and org: no new session is minted, so this is NOT a `m2.session.created` (it must not count a second billing seat).",
+    payloadSchema: Type.Object({
+      sessionId: nonEmptyString,
+      userId: nonEmptyString,
+      organizationId: orgId,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m2.session.step_up.failed",
     moduleOwner: "m2",
     description: "A step-up verification attempt failed (carries the running failure count).",

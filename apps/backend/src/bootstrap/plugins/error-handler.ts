@@ -56,6 +56,23 @@ export function applyErrorHandler(app: FastifyInstance): void {
           },
         });
       }
+      // #589 - a plain UNAUTHORIZED from a session that exists but has not bound an org yet (the authenticate hook
+      // stamps `orgUnbound` for exactly that state) is not a dead session: it is the sign-in -> select-organization
+      // window. ~170 route/plugin sites throw the ordinary UNAUTHORIZED for "no org", so say so here once rather than
+      // at each. Same 401; only the code differs, and it never changes an authorization decision. A session whose
+      // org no longer resolves (revoked membership) is NOT stamped, so it stays a plain 401. The web shell routes
+      // this to the org picker, not /expired.
+      if (err.code === "UNAUTHORIZED" && request.context?.attributes?.orgUnbound === true) {
+        request.log.info({ errCode: "ORGANIZATION_NOT_SELECTED" }, "handled error");
+        return reply.code(err.statusCode).send({
+          error: {
+            code: "ORGANIZATION_NOT_SELECTED",
+            message: "Select an organization to continue",
+            correlationId,
+            documentationUrl: `${DOCS_BASE}/ORGANIZATION_NOT_SELECTED`,
+          },
+        });
+      }
       // A 5xx ChartWardenError is a SERVER-side condition the platform declared on purpose — a fail-closed
       // unbound infra port answering DEGRADED, say. It is not a caller error and it is not an
       // unhandled fault, and it has to be readable as neither: `warn` with the full error keeps the

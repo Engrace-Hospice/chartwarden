@@ -37,6 +37,13 @@ export function createDbSessionWriter(db: DbClient): SessionWriter {
         .returning({ id: schema.sessions.id });
       return revoked.length;
     },
+    async revokeSession(sessionId) {
+      const revoked = await db
+        .delete(schema.sessions)
+        .where(eq(schema.sessions.id, sessionId))
+        .returning({ id: schema.sessions.id });
+      return revoked.length > 0;
+    },
     async revokeAllForUser(userId) {
       const revoked = await db
         .delete(schema.sessions)
