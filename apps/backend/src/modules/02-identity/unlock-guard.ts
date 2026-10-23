@@ -40,6 +40,8 @@ export interface UnlockGuard {
   reserve(userId: string): Promise<UnlockReservation>;
   /** Refund the budget after a correct password. Best effort: a store error here never fails a good unlock. */
   release(userId: string): Promise<void>;
+  /** Whole seconds until the budget window ends (the real remaining TTL; the full window if the store cannot say). */
+  retryAfterSeconds(userId: string): Promise<number>;
 }
 
 export function createUnlockGuard(
@@ -67,6 +69,15 @@ export function createUnlockGuard(
         );
       }
       return { attempt, allowed: attempt <= limit, last: attempt === limit };
+    },
+    async retryAfterSeconds(userId) {
+      let ms: number | null = null;
+      try {
+        ms = (await store.remainingMs?.(keyOf(userId))) ?? null;
+      } catch (err) {
+        opts.onStoreError?.(err);
+      }
+      return Math.max(1, Math.ceil((ms ?? windowMs) / 1000));
     },
     async release(userId) {
       try {

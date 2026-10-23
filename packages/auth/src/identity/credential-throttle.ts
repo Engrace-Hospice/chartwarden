@@ -34,6 +34,8 @@ export interface FailedLoginStore {
   recordFailure(key: string, windowMs: number): Promise<number>;
   failureCount(key: string): Promise<number>;
   clear(key: string): Promise<void>;
+  /** Milliseconds left in `key`'s window, or null when it has no live window. Optional: callers fall back to the full window. */
+  remainingMs?(key: string): Promise<number | null>;
 }
 
 /** §5.3.1's two budgets. Defaults are the values the spec states. */
@@ -212,6 +214,10 @@ export function createInMemoryFailedLoginStore(now: () => number = Date.now): Fa
     },
     async clear(key) {
       counters.delete(key);
+    },
+    async remainingMs(key) {
+      const row = live(key);
+      return row ? row.windowMs - (now() - row.windowStart) : null;
     },
   };
 }

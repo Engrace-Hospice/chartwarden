@@ -105,6 +105,7 @@ export function createRedisFailedLoginStore(redis: Redis): {
   recordFailure(key: string, windowMs: number): Promise<number>;
   failureCount(key: string): Promise<number>;
   clear(key: string): Promise<void>;
+  remainingMs(key: string): Promise<number | null>;
 } {
   const k = (key: string) => `ratelimit:${key}`;
   return {
@@ -119,6 +120,10 @@ export function createRedisFailedLoginStore(redis: Redis): {
     },
     async clear(key) {
       await redis.del(k(key));
+    },
+    async remainingMs(key) {
+      const ttl = Number(await redis.pttl(k(key)));
+      return ttl > 0 ? ttl : null; // -2 no key, -1 no expiry
     },
   };
 }
