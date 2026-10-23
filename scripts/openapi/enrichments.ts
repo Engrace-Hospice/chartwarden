@@ -10404,7 +10404,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // external partner share (WP 6.6, ADR-0096 PROPOSED)
   "POST /api/v1/messaging/external-shares": {
     summary:
-      "Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location, on_call and dm channels; a care_team, bereavement, announcement or unknown channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day",
+      "Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day",
     body: M36ExtShareCreateBodySchema,
     response: M36ExtShareCreatedResponseSchema,
     status: 201,

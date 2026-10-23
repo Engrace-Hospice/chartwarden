@@ -1,12 +1,13 @@
 // M36 WP 6.6 (ADR-0096, PROPOSED) - "External partners": the staff screen to share ONE conversation read-only with a pharmacy or DME partner and to
 // revoke a share now. Flat rows on the shared kit; state is a word, never colour alone. Creating needs the tenant flag messaging.external_partners
-// (no provider reads as OFF); the list and Revoke never depend on it. The invitation link parts and the code are shown ONCE, with the instruction to
-// give them to the partner through different channels, and are dropped from state when the panel is dismissed. The PARTNER-facing view is not built.
+// (no provider reads as OFF); the list and Revoke never depend on it. The invitation token and the code are shown ONCE, with the instruction to give
+// them to the partner through different channels, and live only in this screen's state: they are dropped when the panel is dismissed or the screen
+// unmounts. The PARTNER-facing view is not built.
+// Known limits: the conversation is entered as a raw id (no picker), a step-up redirect loses what was typed, and Revoke has no confirmation step.
 import {
   type CreatedExternalShareDto,
   EXTERNAL_PARTNERS_FLAG_KEY,
   EXTERNAL_SHARE_DEFAULT_DAYS,
-  EXTERNAL_SHARE_MANAGE_PERMISSION,
   EXTERNAL_SHARE_MAX_DAYS,
   EXTERNAL_SHARE_PARTNER_KINDS,
   type ExternalShareDto,
@@ -25,6 +26,7 @@ import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { LoadGate, formatTime, useFailureText } from "./export-common";
 import { useOnlineStatus } from "./offline-banner";
+import type { ExportResult } from "./use-export";
 import { useExternalShares, usePartnerActions } from "./use-partners";
 import "./export.css";
 
@@ -71,63 +73,74 @@ export function validateShareDraft(draft: Draft): string | null {
   return null;
 }
 
+/** Sentences for a failed share action, specific to partner shares (never the export wording). A stale step-up navigates and says nothing. */
+function useShareFailureText(): (
+  result: ExportResult<unknown>,
+  action: "create" | "revoke",
+) => string | null {
+  const stepUpText = useFailureText();
+  return (result, action) => {
+    switch (result.kind) {
+      case "ok":
+        return null;
+      case "step_up":
+        return stepUpText(result);
+      case "not_available":
+        return action === "create"
+          ? "That conversation cannot be shared. Only team, location and on-call conversations you are a member of can be, and partner sharing must be switched on for your organisation."
+          : "That share is no longer available.";
+      case "limit":
+        return action === "create"
+          ? "Too many partner shares. Revoke one, or try again tomorrow."
+          : "Too many requests. Wait a moment and try again.";
+      case "conflict":
+        return "That share has already been revoked.";
+      case "invalid":
+        return "Check the details and try again.";
+      case "denied":
+        return result.code === 401
+          ? "Your session has ended. Sign in again."
+          : "You do not have permission to manage partner shares.";
+      default:
+        return action === "create"
+          ? "The share could not be created. Nothing was shared; try again."
+          : "The share could not be revoked. It may still be active; check the list and try again.";
+    }
+  };
+}
+
 function CreateDialog({
-  onClose,
-  onCreated,
+  busy,
+  onCancel,
+  submit,
 }: {
-  readonly onClose: () => void;
-  readonly onCreated: (made: CreatedExternalShareDto) => void;
+  readonly busy: boolean;
+  readonly onCancel: () => void;
+  /** Resolves to the sentence to show when it failed, or null. The in-flight state lives in the parent, so a dismissal cannot lose the result. */
+  readonly submit: (draft: Draft) => Promise<string | null>;
 }): JSX.Element {
-  const actions = usePartnerActions();
-  const failureText = useFailureText();
   const online = useOnlineStatus();
-  const inFlight = useRef(false);
   const [draft, setDraft] = useState<Draft>(EMPTY);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<Draft>): void => setDraft((d) => ({ ...d, ...patch }));
 
-  const submit = async (): Promise<void> => {
-    if (inFlight.current) return;
+  const send = async (): Promise<void> => {
+    if (busy) return;
     const problem = validateShareDraft(draft);
     if (problem) {
       setError(problem);
       return;
     }
-    inFlight.current = true;
-    setBusy(true);
     setError(null);
-    const result = await actions.create({
-      channelId: draft.channelId.trim(),
-      partnerName: draft.partnerName.trim(),
-      partnerKind: draft.partnerKind,
-      baaReference: draft.baaReference.trim(),
-      expiresInDays: Number(draft.days),
-    });
-    inFlight.current = false;
-    setBusy(false);
-    if (result.kind === "ok") {
-      onCreated(result.data);
-      return;
-    }
-    if (result.kind === "not_available") {
-      setError(
-        "That conversation cannot be shared. Only team, location, on-call and direct conversations can be, and partner sharing must be switched on for your organisation.",
-      );
-      return;
-    }
-    if (result.kind === "limit") {
-      setError("Too many partner shares. Revoke one, or try again tomorrow.");
-      return;
-    }
-    setError(failureText(result));
+    setError(await submit(draft));
   };
 
   return (
     <Modal
       open
       ariaLabel="Share a conversation with a partner"
-      onClose={() => !inFlight.current && onClose()}
+      // While a create is in flight the dialog cannot be dismissed (Escape does nothing): its outcome would be lost.
+      {...(busy ? {} : { onClose: onCancel })}
       dismissOnScrim={false}
       width="40rem"
     >
@@ -135,15 +148,16 @@ function CreateDialog({
         className="wx-export-dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          void submit();
+          void send();
         }}
       >
         <h2>Share a conversation with a partner</h2>
         <div className="wx-export-notice">
           <p>
             The partner can read this one conversation, read-only, and only messages posted after
-            you share it. Attachments, clinical links, patient or staff mentions and redacted
-            messages are never shown. Do not share a conversation that discusses patients by name.
+            you share it. Attachments, clinical links, patient or staff mentions, urgent messages
+            and redacted messages are never shown. Free text is shown exactly as typed, so do not
+            share a conversation where patients are named or described.
           </p>
         </div>
         <TextField
@@ -192,11 +206,11 @@ function CreateDialog({
           </p>
         ) : null}
         <div className="wx-export-actions">
-          <Button type="button" tone="secondary" size="lg" onClick={onClose}>
+          <Button type="button" tone="secondary" size="lg" disabled={busy} onClick={onCancel}>
             Cancel
           </Button>
           <Button type="submit" tone="primary" size="lg" disabled={busy || !online}>
-            Create share
+            {busy ? "Creating…" : "Create share"}
           </Button>
         </div>
       </form>
@@ -204,19 +218,16 @@ function CreateDialog({
   );
 }
 
-/** Shown ONCE after creating. The parts are kept only in this component's props; closing drops them. */
+/**
+ * Shown ONCE after creating. There is NO onClose: Escape and the scrim do nothing, so the only way out is the explicit button (a stray key must not
+ * destroy the only copy of the secrets). The kit has no copy affordance, so none is offered; the values are selectable text.
+ */
 function Secrets({
   made,
-  onClose,
-}: { readonly made: CreatedExternalShareDto; readonly onClose: () => void }): JSX.Element {
+  onDone,
+}: { readonly made: CreatedExternalShareDto; readonly onDone: () => void }): JSX.Element {
   return (
-    <Modal
-      open
-      ariaLabel="Partner access created"
-      onClose={onClose}
-      dismissOnScrim={false}
-      width="40rem"
-    >
+    <Modal open ariaLabel="Partner access created" dismissOnScrim={false} width="40rem">
       <div className="wx-export-dialog">
         <h2>Partner access created for {made.partnerName}</h2>
         <p>
@@ -226,18 +237,26 @@ function Secrets({
         </p>
         <dl>
           <dt>Organisation id</dt>
-          <dd className="wx-export-mono">{made.organizationId}</dd>
+          <dd className="wx-export-mono" translate="no">
+            {made.organizationId}
+          </dd>
           <dt>Share id</dt>
-          <dd className="wx-export-mono">{made.id}</dd>
+          <dd className="wx-export-mono" translate="no">
+            {made.id}
+          </dd>
           <dt>Invitation token</dt>
-          <dd className="wx-export-mono">{made.inviteToken}</dd>
+          <dd className="wx-export-mono" translate="no">
+            {made.inviteToken}
+          </dd>
           <dt>Verification code</dt>
-          <dd className="wx-export-mono">{made.verificationCode}</dd>
+          <dd className="wx-export-mono" translate="no">
+            {made.verificationCode}
+          </dd>
           <dt>Access ends</dt>
           <dd>{formatTime(made.expiresAt)}</dd>
         </dl>
         <div className="wx-export-actions">
-          <Button type="button" tone="primary" size="lg" onClick={onClose}>
+          <Button type="button" tone="primary" size="lg" onClick={onDone}>
             I have passed these on
           </Button>
         </div>
@@ -256,12 +275,13 @@ function Row({
   readonly onRevoke: (share: ExternalShareDto) => void;
 }): JSX.Element {
   const online = useOnlineStatus();
+  const titleId = `wx-share-${share.id}`;
   const tone =
     share.status === "active" ? "success" : share.status === "revoked" ? "error" : "neutral";
   return (
     <li className="wx-export-row">
       <div className="wx-export-main">
-        <span className="wx-export-title">
+        <span className="wx-export-title" id={titleId}>
           {share.partnerName}{" "}
           <span className="wx-export-detail">({KIND_LABELS[share.partnerKind]})</span>
         </span>
@@ -283,12 +303,13 @@ function Row({
           label={STATUS_LABELS[share.status]}
         />
         {share.status === "active" ? (
+          // The visible text is the whole accessible name (WCAG 2.5.3); the partner is named by the description.
           <Button
             type="button"
             tone="secondary"
             size="lg"
             disabled={busy || !online}
-            aria-label={`Revoke access for ${share.partnerName} now`}
+            aria-describedby={titleId}
             onClick={() => onRevoke(share)}
           >
             Revoke now
@@ -300,29 +321,59 @@ function Row({
 }
 
 export function ExternalPartners(): JSX.Element {
-  const { view, reload } = useExternalShares();
+  const { view, reload, refreshFailed } = useExternalShares();
   const actions = usePartnerActions();
-  const failureText = useFailureText();
+  const failureText = useShareFailureText();
   const flagOn = useFlag(EXTERNAL_PARTNERS_FLAG_KEY);
+  const online = useOnlineStatus();
   const inFlight = useRef(false);
   const statusRef = useRef<HTMLOutputElement>(null);
   const [creating, setCreating] = useState(false);
+  const [creatingBusy, setCreatingBusy] = useState(false);
   const [made, setMade] = useState<CreatedExternalShareDto | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  // `seq` keys the live region so an identical message is announced again.
+  const [message, setMessage] = useState<{ text: string | null; seq: number }>({
+    text: null,
+    seq: 0,
+  });
   const [busy, setBusy] = useState(false);
+  const say = (text: string | null): void => setMessage((m) => ({ text, seq: m.seq + 1 }));
+
+  const create = async (draft: Draft): Promise<string | null> => {
+    if (inFlight.current) return null; // two fast submits before the disabled state paints send one request
+    inFlight.current = true;
+    setCreatingBusy(true);
+    const result = await actions.create({
+      channelId: draft.channelId.trim(),
+      partnerName: draft.partnerName.trim(),
+      partnerKind: draft.partnerKind,
+      baaReference: draft.baaReference.trim(),
+      expiresInDays: Number(draft.days),
+    });
+    inFlight.current = false;
+    setCreatingBusy(false);
+    if (result.kind === "ok") {
+      // The secrets come back exactly once: surface them whatever happened to the dialog.
+      setMade(result.data);
+      setCreating(false);
+      reload();
+      return null;
+    }
+    return failureText(result, "create");
+  };
 
   const revoke = (share: ExternalShareDto): void => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
-    setMessage(null);
+    say(null);
     void actions.revoke(share.id).then((result) => {
       inFlight.current = false;
       setBusy(false);
-      setMessage(
+      say(
         result.kind === "ok"
           ? `Access for ${share.partnerName} ended. Their next request is refused.`
-          : failureText(result),
+          : failureText(result, "revoke"),
       );
       if (result.kind === "ok" || result.kind === "conflict" || result.kind === "not_available")
         reload();
@@ -335,21 +386,38 @@ export function ExternalPartners(): JSX.Element {
       <PageHeader title="External partners" breadcrumb="Messaging">
         <p className="wx-export-detail">
           Share one conversation, read-only, with a pharmacy or equipment partner for a limited
-          time. Every read is logged.{" "}
-          {flagOn
-            ? null
-            : "Partner sharing is switched off for your organisation; existing shares can still be revoked."}
+          time. Every read is logged. Creating a share needs partner sharing to be switched on for
+          your organisation; existing shares can always be revoked.
         </p>
         {flagOn ? (
-          <Button type="button" tone="primary" onClick={() => setCreating(true)}>
+          <Button
+            type="button"
+            tone="primary"
+            disabled={busy || creatingBusy || !online}
+            onClick={() => setCreating(true)}
+          >
             Share a conversation
           </Button>
         ) : null}
       </PageHeader>
       <section className="wx-export" aria-label="External partner shares">
-        <output ref={statusRef} tabIndex={-1} className="wx-export-status" aria-live="polite">
-          {message}
+        <output
+          key={message.seq}
+          ref={statusRef}
+          tabIndex={-1}
+          className="wx-export-status"
+          aria-live="polite"
+        >
+          {message.text}
         </output>
+        {refreshFailed && view.status === "ready" ? (
+          <div className="wx-export-error" role="alert">
+            <p>The list could not be refreshed. The shares shown may be out of date.</p>
+            <Button type="button" tone="secondary" size="lg" onClick={reload}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
         <LoadGate view={view} retry={reload} deniedText="You do not have access to partner shares.">
           {(shares) =>
             shares.length === 0 ? (
@@ -360,7 +428,7 @@ export function ExternalPartners(): JSX.Element {
             ) : (
               <ul className="wx-export-rows" aria-label="Partner shares">
                 {shares.map((s) => (
-                  <Row key={s.id} share={s} busy={busy} onRevoke={revoke} />
+                  <Row key={s.id} share={s} busy={busy || creatingBusy} onRevoke={revoke} />
                 ))}
               </ul>
             )
@@ -369,17 +437,20 @@ export function ExternalPartners(): JSX.Element {
       </section>
       {creating ? (
         <CreateDialog
-          onClose={() => setCreating(false)}
-          onCreated={(m) => {
-            setCreating(false);
-            setMade(m);
-            reload();
+          busy={creatingBusy}
+          onCancel={() => !creatingBusy && setCreating(false)}
+          submit={create}
+        />
+      ) : null}
+      {made ? (
+        <Secrets
+          made={made}
+          onDone={() => {
+            setMade(null);
+            say("Partner access created. The invitation and code are no longer shown.");
           }}
         />
       ) : null}
-      {made ? <Secrets made={made} onClose={() => setMade(null)} /> : null}
     </>
   );
 }
-
-export const EXTERNAL_PARTNERS_PERMISSION = EXTERNAL_SHARE_MANAGE_PERMISSION;

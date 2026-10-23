@@ -12,8 +12,8 @@ export const EXTERNAL_SHARE_MANAGE_STEP_UP_KEY = "messaging.share.manage";
 export const EXTERNAL_SHARE_PARTNER_KINDS = ["pharmacy", "dme", "other"] as const;
 export type ExternalSharePartnerKind = (typeof EXTERNAL_SHARE_PARTNER_KINDS)[number];
 
-/** D1: the only channel kinds that may be shared (no patient subject, no tenant-wide broadcast). */
-export const EXTERNAL_SHARE_CHANNEL_KINDS = ["dm", "discipline", "location", "on_call"] as const;
+/** D1: the only channel kinds that may be shared (no patient subject, no tenant-wide broadcast, no direct message: ADR-0096 D1). */
+export const EXTERNAL_SHARE_CHANNEL_KINDS = ["discipline", "location", "on_call"] as const;
 
 /** CHECK `message_external_session_stage`; enrolment -> active, once. */
 export const EXTERNAL_SESSION_STAGES = ["enrolment", "active"] as const;

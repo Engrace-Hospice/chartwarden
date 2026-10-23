@@ -14972,7 +14972,7 @@ export interface paths {
         /** The tenant's partner shares, newest first (messaging.share.manage; never depends on the flag): ids, partner label, kind, status (active, expired, revoked), instants and whether the invitation was redeemed or the code locked. No token, code or message */
         get: operations["getApiV1MessagingExternalshares"];
         put?: never;
-        /** Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location, on_call and dm channels; a care_team, bereavement, announcement or unknown channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day */
+        /** Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day */
         post: operations["postApiV1MessagingExternalshares"];
         delete?: never;
         options?: never;

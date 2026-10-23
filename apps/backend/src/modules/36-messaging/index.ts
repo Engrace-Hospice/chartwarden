@@ -328,8 +328,8 @@ export function mountMessagingRoutes(
     externalShare?: {
       flags?: _ExternalShareFlagReader | undefined;
       redeemIpLimiter?: _ExternalShareLimiter | undefined;
-      redeemOrgLimiter?: _ExternalShareLimiter | undefined;
       verifyIpLimiter?: _ExternalShareLimiter | undefined;
+      bearerIpLimiter?: _ExternalShareLimiter | undefined;
       readLimiter?: _ExternalShareLimiter | undefined;
     };
   } = {},
@@ -500,6 +500,8 @@ export function mountMessagingRoutes(
         partnerStore: _createDrizzleSharePartnerStore(db),
         outbox: opts.outbox,
         cipher: _createMessageBodyCipher(),
+        // Membership only: the plain visibility predicate, never the break-glass read grant (ADR-0096 D1).
+        canViewChannel: service.canViewChannel,
         ...opts.externalShare,
       }),
     });

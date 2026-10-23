@@ -13,6 +13,7 @@ import {
   EXTERNAL_SHARE_BAA_MAX,
   EXTERNAL_SHARE_CHANNEL_KINDS,
   EXTERNAL_SHARE_DEFAULT_DAYS,
+  EXTERNAL_SHARE_MAX_CODE_ATTEMPTS,
   EXTERNAL_SHARE_MAX_DAYS,
   EXTERNAL_SHARE_MAX_LIVE_PER_TENANT,
   EXTERNAL_SHARE_MAX_PER_CREATOR_DAY,
@@ -70,10 +71,21 @@ export interface ExternalShareServiceDeps {
   readonly flags?: ExternalShareFlagReader | undefined;
   /** The M36 body cipher. Absent => a partner read is refused 503 before anything is recorded. */
   readonly cipher?: Pick<MessageBodyCipher, "open"> | undefined;
-  /** Budgets before any database work (per client address / per organisation). */
+  /**
+   * The creator must be able to VIEW the channel by membership (the predicate the message routes use, WITHOUT the break-glass read grant).
+   * Absent => nobody may share (fail closed, the uniform 404).
+   */
+  readonly canViewChannel?:
+    | ((orgId: string, userId: string, channelId: string) => Promise<boolean>)
+    | undefined;
+  /**
+   * Budgets before any database work, per client address. There is deliberately no per-organisation budget: unauthenticated junk naming a
+   * tenant must not be able to exhaust it (ADR-0096 D10).
+   */
   readonly redeemIpLimiter?: AttemptLimiter | undefined;
-  readonly redeemOrgLimiter?: AttemptLimiter | undefined;
   readonly verifyIpLimiter?: AttemptLimiter | undefined;
+  /** Per client address on the partner state and messages routes, so a wrong bearer cannot be replayed for free. */
+  readonly bearerIpLimiter?: AttemptLimiter | undefined;
   /** Per share, on reads (60/min). */
   readonly readLimiter?: AttemptLimiter | undefined;
 }
@@ -96,17 +108,24 @@ export interface ExternalShareService {
     readonly stage: "enrolment";
     readonly expiresAt: string;
   }>;
-  state(bearer: string | null, shareId: string): Promise<PartnerShareStateDto>;
+  state(
+    bearer: string | null,
+    shareId: string,
+    meta: PartnerRequestMeta,
+  ): Promise<PartnerShareStateDto>;
+  /** `rawBody` is validated only AFTER the bearer resolves, so an unauthenticated caller never gets validation detail (D12). */
   verify(
     bearer: string | null,
     shareId: string,
-    code: string,
+    rawBody: unknown,
     meta: PartnerRequestMeta,
   ): Promise<PartnerShareStateDto>;
+  /** `rawQuery` is validated only AFTER the bearer resolves. */
   messages(
     bearer: string | null,
     shareId: string,
-    query: { readonly cursor?: string | undefined; readonly limit?: number | undefined },
+    rawQuery: unknown,
+    meta: PartnerRequestMeta,
   ): Promise<PartnerMessagesDto>;
 }
 
@@ -133,7 +152,7 @@ function toDto(row: ShareRow): ExternalShareDto {
     createdBy: row.createdBy,
     revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     redeemed: row.redeemed,
-    codeLocked: row.codeAttempts >= 5,
+    codeLocked: row.codeAttempts >= EXTERNAL_SHARE_MAX_CODE_ATTEMPTS,
   };
 }
 
@@ -171,6 +190,31 @@ function validateCreate(body: CreateExternalShareRequest): {
     baaReference,
     expiresInDays,
   };
+}
+
+function codeOf(raw: unknown): string {
+  const code = (raw as { code?: unknown } | null | undefined)?.code;
+  if (typeof code !== "string" || !/^\d{8}$/.test(code)) invalid("code", "the 8-digit code");
+  return code as string;
+}
+
+function pageOf(raw: unknown): {
+  readonly limit: number;
+  readonly after: { createdAtText: string; id: string } | null;
+} {
+  const q = (raw ?? {}) as { cursor?: unknown; limit?: unknown };
+  let limit = EXTERNAL_PARTNER_PAGE_MAX;
+  if (q.limit !== undefined) {
+    const n = typeof q.limit === "number" ? q.limit : Number(q.limit);
+    if (!Number.isInteger(n) || n < 1 || n > EXTERNAL_PARTNER_PAGE_MAX) {
+      invalid("limit", `a whole number from 1 to ${EXTERNAL_PARTNER_PAGE_MAX}`);
+    }
+    limit = n;
+  }
+  if (q.cursor === undefined) return { limit, after: null };
+  const m = typeof q.cursor === "string" ? CURSOR_RE.exec(q.cursor) : null;
+  if (!m) invalid("cursor", "an opaque cursor from a previous page");
+  return { limit, after: { createdAtText: m![1]!, id: m![2]! } };
 }
 
 async function spend(
@@ -224,6 +268,13 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
       const outbox = deps.outbox;
       if (!outbox)
         throw new DegradedError("messaging", "the outbox is not configured; nothing was shared");
+      // Membership first (no break-glass bypass): a non-member holder of the permission gets the SAME 404 as an unknown channel.
+      if (
+        !deps.canViewChannel ||
+        !(await deps.canViewChannel(actor.organizationId, actor.userId, input.channelId))
+      ) {
+        throw new NotFoundError("conversation");
+      }
       const inviteToken = newPartnerToken();
       const verificationCode = newVerificationCode();
       const row = await deps.staffStore.run(actor, async (tx) => {
@@ -289,9 +340,8 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
     },
 
     async redeem(input, meta) {
-      // Budgets BEFORE any database work: a flood costs a counter increment, not a query.
+      // The per-address budget BEFORE any database work: a flood costs a counter increment, not a query.
       await spend(deps.redeemIpLimiter, meta.ip, "invitation attempts");
-      await spend(deps.redeemOrgLimiter, input.organizationId, "invitation attempts");
       if (!(await isEnabled(input.organizationId))) throw shareNotFound();
       const sessionToken = newPartnerToken();
       const result = await deps.partnerStore.run(input.organizationId, async (tx) => {
@@ -309,13 +359,16 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
       };
     },
 
-    async state(bearer, shareId) {
+    async state(bearer, shareId, meta) {
+      await spend(deps.bearerIpLimiter, meta.ip, "requests");
       return withLive(bearer, shareId, async (_tx, live) => stateOf(live, live.stage));
     },
 
-    async verify(bearer, shareId, code, meta) {
+    async verify(bearer, shareId, rawBody, meta) {
       await spend(deps.verifyIpLimiter, meta.ip, "verification attempts");
       const outcome = await withLive(bearer, shareId, async (tx, live) => {
+        // Past this point the caller holds a live bearer, so a validation message is no oracle.
+        const code = codeOf(rawBody);
         if (live.stage === "active") return { ok: true as const, live };
         // The attempt is counted (and committed) BEFORE the code is compared, so a wrong code cannot be retried for free.
         const stored = await tx.takeCodeAttempt(live.shareId);
@@ -330,20 +383,13 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
       return stateOf(outcome.live, "active");
     },
 
-    async messages(bearer, shareId, query) {
-      const cipher = deps.cipher;
-      if (!cipher) throw new DegradedError("messaging", "message decryption is not configured");
-      const limit = Math.min(
-        Math.max(query.limit ?? EXTERNAL_PARTNER_PAGE_MAX, 1),
-        EXTERNAL_PARTNER_PAGE_MAX,
-      );
-      let after: { createdAtText: string; id: string } | null = null;
-      if (query.cursor !== undefined) {
-        const m = CURSOR_RE.exec(query.cursor);
-        if (!m) invalid("cursor", "an opaque cursor from a previous page");
-        after = { createdAtText: m![1]!, id: m![2]! };
-      }
+    async messages(bearer, shareId, rawQuery, meta) {
+      await spend(deps.bearerIpLimiter, meta.ip, "requests");
       return withLive(bearer, shareId, async (tx, live) => {
+        // Validated only now that the bearer is live (D12).
+        const { limit, after } = pageOf(rawQuery);
+        const cipher = deps.cipher;
+        if (!cipher) throw new DegradedError("messaging", "message decryption is not configured");
         // Enrolment-stage sessions read nothing; a channel kind that may never be shared is the same 404 (D1).
         if (live.stage !== "active") throw shareNotFound();
         if (!(EXTERNAL_SHARE_CHANNEL_KINDS as readonly string[]).includes(live.channelKind))

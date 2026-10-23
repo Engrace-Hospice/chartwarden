@@ -5180,8 +5180,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               return {
                 flags: featureFlagReader,
                 redeemIpLimiter: budget("m36-partner-redeem:ip", 20, 15 * 60 * 1000),
-                redeemOrgLimiter: budget("m36-partner-redeem:org", 200, 15 * 60 * 1000),
                 verifyIpLimiter: budget("m36-partner-verify:ip", 30, 15 * 60 * 1000),
+                bearerIpLimiter: budget("m36-partner-bearer:ip", 300, 60 * 1000),
                 readLimiter: budget("m36-partner-read:share", 60, 60 * 1000),
               };
             })(),

@@ -27,13 +27,11 @@ import {
   ExternalShareIdParamsSchema,
   ExternalShareListResponseSchema,
   ExternalShareResponseSchema,
-  PartnerMessagesQuerySchema,
   PartnerMessagesResponseSchema,
   PartnerRedeemBodySchema,
   PartnerRedeemResponseSchema,
   PartnerShareParamsSchema,
   PartnerStateResponseSchema,
-  PartnerVerifyBodySchema,
 } from "./external-share-typebox";
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
@@ -150,7 +148,9 @@ export function registerExternalShareRoutes(
     },
     async (request, reply) => {
       const { shareId } = parse(PartnerShareParamsSchema, request.params);
-      return noStore(reply).send(await service.state(bearerOf(request), shareId));
+      return noStore(reply).send(
+        await service.state(bearerOf(request), shareId, { ip: request.ip || "unknown" }),
+      );
     },
   );
 
@@ -159,9 +159,8 @@ export function registerExternalShareRoutes(
     { preHandler: [SHARE_ID_OK], schema: { response: { 200: PartnerStateResponseSchema } } },
     async (request, reply) => {
       const { shareId } = parse(PartnerShareParamsSchema, request.params);
-      const body = parse(PartnerVerifyBodySchema, request.body);
       return noStore(reply).send(
-        await service.verify(bearerOf(request), shareId, body.code, {
+        await service.verify(bearerOf(request), shareId, request.body, {
           ip: request.ip || "unknown",
         }),
       );
@@ -181,10 +180,13 @@ export function registerExternalShareRoutes(
     },
     async (request, reply) => {
       const { shareId } = parse(PartnerShareParamsSchema, request.params);
-      const query = parse(PartnerMessagesQuerySchema, request.query);
       return noStore(reply)
         .header("X-Content-Type-Options", "nosniff")
-        .send(await service.messages(bearerOf(request), shareId, query));
+        .send(
+          await service.messages(bearerOf(request), shareId, request.query, {
+            ip: request.ip || "unknown",
+          }),
+        );
     },
   );
 }

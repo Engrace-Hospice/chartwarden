@@ -35,17 +35,18 @@ interface ShareList {
 export function useExternalShares(): {
   view: LoadView<readonly ExternalShareDto[]>;
   reload: () => void;
+  refreshFailed: boolean;
 } {
   const fetcher = useCallback<Fetcher<ShareList>>(
     async (c) => typed<ShareList>(await loose(c).GET(BASE)),
     [],
   );
-  const { view, reload } = useRead(fetcher);
+  const { view, reload, refreshFailed } = useRead(fetcher);
   const mapped = useMemo<LoadView<readonly ExternalShareDto[]>>(
     () => (view.status === "ready" ? { status: "ready", data: view.data.shares ?? [] } : view),
     [view],
   );
-  return { view: mapped, reload };
+  return { view: mapped, reload, refreshFailed };
 }
 
 export interface PartnerActions {

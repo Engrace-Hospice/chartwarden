@@ -6,11 +6,13 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   EXTERNAL_SHARE_CHANNEL_KINDS,
+  EXTERNAL_SHARE_MAX_CODE_ATTEMPTS,
   type ExternalSessionStage,
   type ExternalSharePartnerKind,
   type ExternalShareStatus,
 } from "@chartwarden/types";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { activeLiveHolds, anyHoldPredicate } from "../jobs/retention-hold-sql";
 import type { Tx } from "../messaging-write-core";
 
 const S = schema.messageExternalShares;
@@ -315,7 +317,7 @@ export function createDrizzleSharePartnerStore(db: DbClient): SharePartnerStore 
                 and(
                   eq(S.organizationId, organizationId),
                   eq(S.id, shareId),
-                  sql`${S.codeAttempts} < 5`,
+                  sql`${S.codeAttempts} < ${EXTERNAL_SHARE_MAX_CODE_ATTEMPTS}`,
                   isNull(S.revokedAt),
                   sql`${S.expiresAt} > now()`,
                 ),
@@ -337,29 +339,43 @@ export function createDrizzleSharePartnerStore(db: DbClient): SharePartnerStore 
           },
           async visibleMessages(live, after, limit) {
             const cursor = after
-              ? sql`AND (m.created_at, m.id) > (${after.createdAtText}::timestamptz, ${after.id}::uuid)`
+              ? sql`AND (b.created_at, b.id) > (${after.createdAtText}::timestamptz, ${after.id}::uuid)`
               : sql``;
+            // ADR-0096 D2/D8: a legal hold hides what it covers (live criteria, like the export), judged in the same statement.
+            const holds = await activeLiveHolds(tx as unknown as DbClient, organizationId);
+            const held = anyHoldPredicate(holds);
+            // `base` is every message a partner could see on its own; a reply or quote is then shown only when what it points at is in `base` too.
             const res = await tx.execute(sql`
-              SELECT m.id AS "id", u.name AS "authorName", m.body_cipher AS "bodyCipher", m.body_kind::text AS "bodyKind",
-                     m.status::text AS "status", m.created_at::text AS "createdAtText"
-                FROM message m
-                JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
-                LEFT JOIN "user" u ON u.id = m.author_user_id
-               WHERE m.organization_id = ${organizationId}
-                 AND m.channel_id = ${live.channelId}
-                 AND c.channel_kind::text IN (${KIND_LIST})
-                 AND m.created_at >= (SELECT s.shared_from FROM message_external_share s
-                                       WHERE s.organization_id = ${organizationId} AND s.id = ${live.shareId})
-                 AND m.status <> 'deleted'
-                 AND m.author_kind = 'user'
-                 AND m.body_kind::text <> 'system'
-                 AND NOT EXISTS (SELECT 1 FROM message_attachment a WHERE a.organization_id = m.organization_id AND a.message_id = m.id)
-                 AND NOT EXISTS (SELECT 1 FROM clinical_link l WHERE l.organization_id = m.organization_id AND l.message_id = m.id)
-                 AND NOT EXISTS (SELECT 1 FROM message_entity_reference e WHERE e.organization_id = m.organization_id AND e.message_id = m.id)
-                 AND NOT EXISTS (SELECT 1 FROM chart_promotion_request p WHERE p.organization_id = m.organization_id AND p.message_id = m.id)
-                 AND NOT EXISTS (SELECT 1 FROM message_redaction d WHERE d.organization_id = m.organization_id AND d.message_id = m.id)
+              WITH base AS (
+                SELECT m.id, m.parent_message_id, m.quoted_message_id, m.author_user_id, m.body_cipher, m.body_kind, m.status, m.created_at
+                  FROM message m
+                  JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
+                 WHERE m.organization_id = ${organizationId}
+                   AND m.channel_id = ${live.channelId}
+                   AND c.channel_kind::text IN (${KIND_LIST})
+                   AND m.created_at >= (SELECT s.shared_from FROM message_external_share s
+                                         WHERE s.organization_id = ${organizationId} AND s.id = ${live.shareId})
+                   AND m.status <> 'deleted'
+                   AND m.author_kind = 'user'
+                   AND m.body_kind::text <> 'system'
+                   AND m.urgency = 'routine'
+                   AND m.urgent_recipient_user_id IS NULL
+                   AND NOT (${held})
+                   AND NOT EXISTS (SELECT 1 FROM message_attachment a WHERE a.organization_id = m.organization_id AND a.message_id = m.id)
+                   AND NOT EXISTS (SELECT 1 FROM clinical_link l WHERE l.organization_id = m.organization_id AND l.message_id = m.id)
+                   AND NOT EXISTS (SELECT 1 FROM message_entity_reference e WHERE e.organization_id = m.organization_id AND e.message_id = m.id)
+                   AND NOT EXISTS (SELECT 1 FROM chart_promotion_request p WHERE p.organization_id = m.organization_id AND p.message_id = m.id)
+                   AND NOT EXISTS (SELECT 1 FROM message_acknowledgment_request k WHERE k.organization_id = m.organization_id AND k.message_id = m.id)
+                   AND NOT EXISTS (SELECT 1 FROM message_redaction d WHERE d.organization_id = m.organization_id AND d.message_id = m.id)
+              )
+              SELECT b.id AS "id", u.name AS "authorName", b.body_cipher AS "bodyCipher", b.body_kind::text AS "bodyKind",
+                     b.status::text AS "status", b.created_at::text AS "createdAtText"
+                FROM base b
+                LEFT JOIN "user" u ON u.id = b.author_user_id
+               WHERE (b.parent_message_id IS NULL OR b.parent_message_id IN (SELECT id FROM base))
+                 AND (b.quoted_message_id IS NULL OR b.quoted_message_id IN (SELECT id FROM base))
                  ${cursor}
-               ORDER BY m.created_at ASC, m.id ASC
+               ORDER BY b.created_at ASC, b.id ASC
                LIMIT ${limit}`);
             const rows =
               (res as unknown as { rows?: unknown[] }).rows ?? (res as unknown as unknown[]);

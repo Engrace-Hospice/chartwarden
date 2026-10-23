@@ -3,7 +3,7 @@
 - **Status:** **Proposed** (2026-10-23). Nothing is built. No code, no migration, no flag exists for this work yet. The privacy officer and BAA decisions below are NOT recorded.
 - **Date:** 2026-10-23
 - **Phase:** Messaging Hub Phase 6, WP 6.3.
-- **Related:** [ADR-0086](ADR-0086-message-retention-and-legal-hold.md) (retention, hold overlay, attachment-object destruction, redaction), [ADR-0093](ADR-0093-messaging-multilingual-ui-and-templates.md) (ADR style), [ADR-0074](ADR-0074-messaging-lock-screen-privacy.md) (no preview in push), `docs/messaging-hub/04-phases-4-to-6.md` row 6.3, `docs/messaging-hub/10-ui-spec-phases-4-to-6.md` section 6.3, `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md` section 9, `docs/modules/CHARTWARDEN_MODULE_32_AI_PLATFORM_SPEC_v0_2.md`.
+- **Related:** [ADR-0086](ADR-0086-messaging-retention-and-legal-hold.md) (retention, hold overlay, attachment-object destruction, redaction), [ADR-0093](ADR-0093-messaging-multilingual-ui-and-templates.md) (ADR style), [ADR-0074](ADR-0074-messaging-lock-screen-privacy.md) (no preview in push), `docs/messaging-hub/04-phases-4-to-6.md` row 6.3, `docs/messaging-hub/10-ui-spec-phases-4-to-6.md` section 6.3, `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md` section 9, `docs/modules/CHARTWARDEN_MODULE_32_AI_PLATFORM_SPEC_v0_2.md`.
 
 ## Context
 

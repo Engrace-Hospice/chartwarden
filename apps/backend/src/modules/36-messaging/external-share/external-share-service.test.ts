@@ -78,6 +78,7 @@ describe("staff side", () => {
       const svc = createExternalShareService({
         staffStore: store,
         partnerStore: {} as never,
+        canViewChannel: async () => true,
         outbox: outbox(),
         flags: f,
       });
@@ -91,6 +92,7 @@ describe("staff side", () => {
     const svc = createExternalShareService({
       staffStore: store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: outbox(),
       flags: flags(true),
     });
@@ -114,6 +116,7 @@ describe("staff side", () => {
     const svc = createExternalShareService({
       staffStore: store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: ob,
       flags: flags(true),
     });
@@ -133,6 +136,7 @@ describe("staff side", () => {
       const svc = createExternalShareService({
         staffStore: store,
         partnerStore: {} as never,
+        canViewChannel: async () => true,
         outbox: outbox(),
         flags: flags(true),
       });
@@ -153,6 +157,7 @@ describe("staff side", () => {
       const svc = createExternalShareService({
         staffStore: store,
         partnerStore: {} as never,
+        canViewChannel: async () => true,
         outbox: outbox(),
         flags: flags(true),
       });
@@ -169,6 +174,7 @@ describe("staff side", () => {
     const svc = createExternalShareService({
       staffStore: store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       flags: flags(true),
     });
     await expect(svc.create(actor, validBody)).rejects.toMatchObject({ statusCode: 503 });
@@ -181,6 +187,7 @@ describe("staff side", () => {
     const svcA = createExternalShareService({
       staffStore: unknown.store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: outbox(),
       flags: flags(false),
     });
@@ -189,6 +196,7 @@ describe("staff side", () => {
     const svcB = createExternalShareService({
       staffStore: done.store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: outbox(),
       flags: flags(false),
     });
@@ -197,6 +205,7 @@ describe("staff side", () => {
     const svcC = createExternalShareService({
       staffStore: ok.store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: outbox(),
       flags: flags(false),
     });
@@ -261,11 +270,15 @@ describe("partner side", () => {
     await expect(
       svc.redeem({ organizationId: ORG, token: newPartnerToken() }, { ip: "1.1.1.1" }),
     ).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.state(bearerFor(), id)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.verify(bearerFor(), id, CODE, { ip: "x" })).rejects.toMatchObject({
+    await expect(svc.state(bearerFor(), id, { ip: "i" })).rejects.toMatchObject({
       statusCode: 404,
     });
-    await expect(svc.messages(bearerFor(), id, {})).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.verify(bearerFor(), id, { code: CODE }, { ip: "x" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(svc.messages(bearerFor(), id, {}, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
     expect(p.calls.runs).toBe(0);
   });
 
@@ -316,18 +329,24 @@ describe("partner side", () => {
       partnerStore: p.store,
       flags: flags(true),
     });
-    await expect(svc.state(null, own)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.state("garbage", own)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.state(bearerFor(), randomUUID())).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.state(bearerFor(), "not-a-uuid")).rejects.toMatchObject({ statusCode: 404 });
-    expect((await svc.state(bearerFor(), own)).shareId).toBe(own);
+    await expect(svc.state(null, own, { ip: "i" })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.state("garbage", own, { ip: "i" })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.state(bearerFor(), randomUUID(), { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(svc.state(bearerFor(), "not-a-uuid", { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect((await svc.state(bearerFor(), own, { ip: "i" })).shareId).toBe(own);
     const gone = partnerFake(null);
     const svc2 = createExternalShareService({
       staffStore: {} as never,
       partnerStore: gone.store,
       flags: flags(true),
     });
-    await expect(svc2.state(bearerFor(), own)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc2.state(bearerFor(), own, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it("verify: a wrong code is 422 and COUNTED; the right code activates; the sixth attempt is a 404", async () => {
@@ -338,16 +357,24 @@ describe("partner side", () => {
       partnerStore: p.store,
       flags: flags(true),
     });
-    await expect(svc.verify(bearerFor(), shareId, "00000000", { ip: "i" })).rejects.toMatchObject({
+    await expect(
+      svc.verify(bearerFor(), shareId, { code: "00000000" }, { ip: "i" }),
+    ).rejects.toMatchObject({
       statusCode: 422,
       code: "EXTERNAL_SHARE_CODE_INVALID",
     });
     expect(p.calls).toMatchObject({ attempts: 1, activated: 0 });
-    expect((await svc.verify(bearerFor(), shareId, CODE, { ip: "i" })).stage).toBe("active");
+    expect((await svc.verify(bearerFor(), shareId, { code: CODE }, { ip: "i" })).stage).toBe(
+      "active",
+    );
     expect(p.calls.activated).toBe(1);
     for (let i = 0; i < 4; i += 1)
-      await svc.verify(bearerFor(), shareId, "00000000", { ip: "i" }).catch(() => undefined);
-    await expect(svc.verify(bearerFor(), shareId, CODE, { ip: "i" })).rejects.toMatchObject({
+      await svc
+        .verify(bearerFor(), shareId, { code: "00000000" }, { ip: "i" })
+        .catch(() => undefined);
+    await expect(
+      svc.verify(bearerFor(), shareId, { code: CODE }, { ip: "i" }),
+    ).rejects.toMatchObject({
       statusCode: 404,
     });
   });
@@ -360,7 +387,9 @@ describe("partner side", () => {
       partnerStore: p.store,
       flags: flags(true),
     });
-    expect((await svc.verify(bearerFor(), shareId, "00000000", { ip: "i" })).stage).toBe("active");
+    expect((await svc.verify(bearerFor(), shareId, { code: "00000000" }, { ip: "i" })).stage).toBe(
+      "active",
+    );
     expect(p.calls.attempts).toBe(0);
   });
 
@@ -377,7 +406,7 @@ describe("partner side", () => {
         flags: flags(true),
         cipher: { open: async () => "x" },
       });
-      await expect(svc.messages(bearerFor(), shareId, {})).rejects.toMatchObject({
+      await expect(svc.messages(bearerFor(), shareId, {}, { ip: "i" })).rejects.toMatchObject({
         statusCode: 404,
       });
       expect(p.calls.reads).toHaveLength(0);
@@ -405,12 +434,14 @@ describe("partner side", () => {
       flags: flags(true),
       cipher: { open: async (_o, c) => `plain-${c.toString()}` },
     });
-    const page = await svc.messages(bearerFor(), shareId, { limit: 2 });
+    const page = await svc.messages(bearerFor(), shareId, { limit: 2 }, { ip: "i" });
     expect(page.messages.map((m) => m.body)).toEqual(["plain-c1", "plain-c2"]);
     expect(page.messages[1]?.edited).toBe(true);
     expect(page.nextCursor).toBe(`${rows[1]?.createdAtText}|${rows[1]?.id}`);
     expect(p.calls.reads).toEqual([2]);
-    await expect(svc.messages(bearerFor(), shareId, { cursor: "junk" })).rejects.toMatchObject({
+    await expect(
+      svc.messages(bearerFor(), shareId, { cursor: "junk" }, { ip: "i" }),
+    ).rejects.toMatchObject({
       statusCode: 422,
     });
   });
@@ -441,7 +472,9 @@ describe("partner side", () => {
       flags: flags(true),
       cipher,
     });
-    await expect(a.messages(bearerFor(), shareId, {})).rejects.toMatchObject({ statusCode: 404 });
+    await expect(a.messages(bearerFor(), shareId, {}, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
     const broken = partnerFake({ shareId }, { visibleMessages: async () => [msg] });
     const b = createExternalShareService({
       staffStore: {} as never,
@@ -453,7 +486,9 @@ describe("partner side", () => {
         },
       },
     });
-    await expect(b.messages(bearerFor(), shareId, {})).rejects.toMatchObject({ statusCode: 503 });
+    await expect(b.messages(bearerFor(), shareId, {}, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 503,
+    });
     expect(broken.calls.reads).toHaveLength(0);
     const limited = partnerFake({ shareId });
     const c = createExternalShareService({
@@ -463,8 +498,110 @@ describe("partner side", () => {
       cipher,
       readLimiter: { consume: async () => ({ allowed: false }) },
     });
-    await expect(c.messages(bearerFor(), shareId, {})).rejects.toMatchObject({ statusCode: 429 });
+    await expect(c.messages(bearerFor(), shareId, {}, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 429,
+    });
     expect(limited.calls.reads).toHaveLength(0);
     expect(hashPartnerToken("x")).toHaveLength(64);
+  });
+});
+
+describe("ADR-0096 review fixes", () => {
+  it("create needs the creator to view the channel: a non-member (or no predicate) gets the same 404 and nothing is written", async () => {
+    for (const canViewChannel of [async () => false, undefined]) {
+      const { store, inserted } = staffFake();
+      const svc = createExternalShareService({
+        staffStore: store,
+        partnerStore: {} as never,
+        outbox: outbox(),
+        flags: flags(true),
+        ...(canViewChannel ? { canViewChannel } : {}),
+      });
+      await expect(svc.create(actor, validBody)).rejects.toMatchObject({
+        statusCode: 404,
+        message: "conversation not found",
+      });
+      expect(inserted).toHaveLength(0);
+    }
+  });
+
+  it("a direct-message channel is refused like an unknown channel", async () => {
+    const { store, inserted } = staffFake({ channelKind: async () => "dm" });
+    const svc = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      canViewChannel: async () => true,
+      outbox: outbox(),
+      flags: flags(true),
+    });
+    await expect(svc.create(actor, validBody)).rejects.toMatchObject({ statusCode: 404 });
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("an unauthenticated caller never sees validation detail: a bad body or query with no live bearer is the 404", async () => {
+    const gone = partnerFake(null);
+    const svc = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: gone.store,
+      flags: flags(true),
+      cipher: { open: async () => "x" },
+    });
+    const id = randomUUID();
+    await expect(svc.verify(bearerFor(), id, { code: "nope" }, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(svc.verify(null, id, undefined, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(
+      svc.messages(bearerFor(), id, { cursor: "junk", limit: "999" }, { ip: "i" }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      svc.messages("garbage", id, { cursor: "junk" }, { ip: "i" }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("after a live bearer, bad input is a 422 and spends no code attempt", async () => {
+    const shareId = randomUUID();
+    const p = partnerFake({ shareId, stage: "enrolment" });
+    const svc = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: p.store,
+      flags: flags(true),
+      cipher: { open: async () => "x" },
+    });
+    await expect(
+      svc.verify(bearerFor(), shareId, { code: "12" }, { ip: "i" }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(p.calls.attempts).toBe(0);
+    const active = partnerFake({ shareId });
+    const svc2 = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: active.store,
+      flags: flags(true),
+      cipher: { open: async () => "x" },
+    });
+    await expect(
+      svc2.messages(bearerFor(), shareId, { limit: "0" }, { ip: "i" }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("the per-address budget guards the state and messages routes before any database work", async () => {
+    const p = partnerFake({});
+    const svc = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: p.store,
+      flags: flags(true),
+      cipher: { open: async () => "x" },
+      bearerIpLimiter: { consume: async () => ({ allowed: false }) },
+    });
+    const id = randomUUID();
+    await expect(svc.state(bearerFor(), id, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 429,
+    });
+    await expect(svc.messages(bearerFor(), id, {}, { ip: "i" })).rejects.toMatchObject({
+      statusCode: 429,
+    });
+    expect(p.calls.runs).toBe(0);
   });
 });

@@ -90,6 +90,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       outbox: catalogOutbox() as never,
       flags: { forOrg: async () => ({ [EXTERNAL_PARTNERS_FLAG_KEY]: flag && flagOn }) },
       cipher: bodyCipher,
+      canViewChannel: kit.service.canViewChannel,
       ...(readLimiter ? { readLimiter } : {}),
     });
     const server = buildServer({
@@ -176,6 +177,13 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
   };
 
   /** Create a share through the route (fresh manager, step-up fresh). */
+  /** Makes `user` a plain member of `channel` (the creator of a share must be able to view it). */
+  const join = async (user: string, channel: string): Promise<void> => {
+    await kit.admin.query(
+      `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source) VALUES ($1,$2,$3,'member','manual') ON CONFLICT DO NOTHING`,
+      [ORG_A, channel, user],
+    );
+  };
   const mk = async (
     channel: string,
     over: Record<string, unknown> = {},
@@ -183,6 +191,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
   ): Promise<Made> => {
     stepUpFresh = true;
     const mgr = await newManager();
+    await join(mgr, channel);
     const res = await staff(server, "POST", API, mgr, {
       channelId: channel,
       partnerName: "Northside Pharmacy",
@@ -316,7 +325,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       stepUpFresh = true;
     });
 
-    it("a care_team, bereavement or announcement channel and an unknown channel are the SAME 404 (no kind oracle)", async () => {
+    it("a care_team, bereavement or announcement or direct-message channel (creator IS a member) and an unknown channel are the SAME 404 (no kind oracle)", async () => {
       stepUpFresh = true;
       const mgr = await newManager();
       const body = (id: string) => ({
@@ -329,8 +338,10 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         await mkChannel(kit, "care_team", randomUUID(), [author]),
         await rawChannel("bereavement"),
         await rawChannel("announcement"),
+        await rawChannel("dm"),
         randomUUID(),
       ];
+      for (const id of refused.slice(0, -1)) await join(mgr, id);
       const results = await Promise.all(refused.map((id) => staff(on, "POST", API, mgr, body(id))));
       for (const res of results) expect(res.statusCode).toBe(404);
       expect(new Set(results.map((r) => shape(r.body))).size).toBe(1);
@@ -517,7 +528,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
 
     it("pages with a keyset cursor and never repeats or skips a message", async () => {
       await clearShares();
-      const channel = await rawChannel("dm");
+      const channel = await mkChannel(kit, "location", randomUUID(), [author]);
       const made = await mk(channel);
       for (let i = 1; i <= 5; i += 1) await seedMessage(channel, `${MARKER} page-${i}`);
       const bearer = await activate(made);
@@ -577,7 +588,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     });
 
     it("no bearer, a malformed bearer and a forged bearer are the same 404", async () => {
-      const made = await mk(await rawChannel("dm"));
+      const made = await mk(await mkChannel(kit, "location", randomUUID(), [author]));
       const forged = `${ORG_A}.${randomBytes(32).toString("base64url")}`;
       const results = await Promise.all([
         partner(on, "GET", `${PARTNER}/shares/${made.id}/messages`),
@@ -661,6 +672,150 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         status: string;
       }>;
       expect(listed.find((s) => s.id === made.id)?.status).toBe("expired");
+    });
+  });
+
+  // ── review fixes ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+  describe("review fixes", () => {
+    it("create needs MEMBERSHIP: a non-member holder of the permission gets the SAME 404 as an unknown channel, and nothing is written", async () => {
+      await clearShares();
+      stepUpFresh = true;
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const mgr = await newManager(); // holds messaging.share.manage, is NOT a member
+      const body = { partnerName: "P", partnerKind: "dme", baaReference: "B" };
+      const outsiderRes = await staff(on, "POST", API, mgr, { ...body, channelId: channel });
+      const unknownRes = await staff(on, "POST", API, mgr, { ...body, channelId: randomUUID() });
+      expect(outsiderRes.statusCode).toBe(404);
+      expect(shape(outsiderRes.body)).toBe(shape(unknownRes.body));
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message_external_share WHERE channel_id=$1",
+          [channel],
+        ),
+      ).toBe(0);
+      await join(mgr, channel);
+      expect((await staff(on, "POST", API, mgr, { ...body, channelId: channel })).statusCode).toBe(
+        201,
+      );
+    });
+
+    it("a direct-message channel cannot be shared even by a member (404, nothing written)", async () => {
+      await clearShares();
+      stepUpFresh = true;
+      const dm = await rawChannel("dm");
+      const mgr = await newManager();
+      await join(mgr, dm);
+      const res = await staff(on, "POST", API, mgr, {
+        channelId: dm,
+        partnerName: "P",
+        partnerKind: "dme",
+        baaReference: "B",
+      });
+      expect(res.statusCode).toBe(404);
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message_external_share WHERE channel_id=$1",
+          [dm],
+        ),
+      ).toBe(0);
+    });
+
+    it("an unauthenticated caller never sees validation detail: bad body or query with no live bearer is the 404", async () => {
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const forged = `${ORG_A}.${randomBytes(32).toString("base64url")}`;
+      const [a, b, c] = await Promise.all([
+        partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, forged, { code: "nope" }),
+        partner(on, "GET", `${PARTNER}/shares/${made.id}/messages?cursor=junk&limit=9999`, forged),
+        partner(on, "GET", `${PARTNER}/shares/${made.id}/messages?cursor=junk`),
+      ]);
+      for (const res of [a, b, c]) expect(res.statusCode).toBe(404);
+      expect(new Set([a, b, c].map((r) => shape(r.body))).size).toBe(1);
+      // With a live bearer the same bad input is a 422.
+      const bearer = await activate(made);
+      expect((await read(made, bearer, on, "?cursor=junk")).statusCode).toBe(422);
+      expect(
+        (await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, bearer, { code: "nope" }))
+          .statusCode,
+      ).toBe(422);
+    });
+
+    it("hides urgent, targeted, acknowledgment-request, legal-hold, pending/rejected-redaction messages and replies to hidden ones", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const made = await mk(channel);
+      const visible = await seedMessage(channel, `${MARKER} ok-root`);
+      const sealed = await bodyCipher.seal(ORG_A, `${MARKER} urgent`);
+      const urgent = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, urgency, urgent_recipient_user_id)
+           VALUES ($1,$2,$3,'user',$4,$5,'urgent',$6) RETURNING id`,
+          [ORG_A, channel, author, sealed.cipher, sealed.sha256, clinical],
+        )
+      )[0].id;
+      const important = await seedMessage(channel, `${MARKER} important-ack`);
+      const replyToHidden = await seedMessage(channel, `${MARKER} reply-to-urgent`);
+      const replyToVisible = await seedMessage(channel, `${MARKER} reply-to-ok`);
+      await kit.admin.query("UPDATE message SET parent_message_id=$2 WHERE id=$1", [
+        replyToHidden,
+        urgent,
+      ]);
+      await kit.admin.query("UPDATE message SET parent_message_id=$2 WHERE id=$1", [
+        replyToVisible,
+        visible,
+      ]);
+      // An ack request can only exist on a care_team channel (a trigger), which is never shareable; the exclusion is defence in depth, so the
+      // fixture bypasses the trigger (setup only).
+      await kit.admin.query("BEGIN");
+      await kit.admin.query("SET LOCAL session_replication_role = replica");
+      await kit.admin.query(
+        `INSERT INTO message_acknowledgment_request (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, deadline_at)
+         VALUES ($1,$2,$3,$4,'important',$5,$6, now() + interval '1 hour')`,
+        [ORG_A, important, channel, randomUUID(), author, clinical],
+      );
+      await kit.admin.query("COMMIT");
+      const bearer = await activate(made);
+      const got = bodies(await read(made, bearer));
+      expect(got).toEqual([`${MARKER} ok-root`, `${MARKER} reply-to-ok`]);
+    });
+
+    it("a message under an ACTIVE legal hold is hidden from the partner and is shown again once the hold is released", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const made = await mk(channel);
+      await seedMessage(channel, `${MARKER} held-later`);
+      const bearer = await activate(made);
+      expect(bodies(await read(made, bearer))).toEqual([`${MARKER} held-later`]);
+      const hold = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO legal_hold (organization_id, name, criteria, reason) VALUES ($1,'adr96-hold',$2::jsonb,'litigation hold for the test') RETURNING id`,
+          [ORG_A, JSON.stringify({ channelIds: [channel] })],
+        )
+      )[0].id;
+      expect(bodies(await read(made, bearer))).toEqual([]);
+      await kit.admin.query(
+        "UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1",
+        [hold],
+      );
+      expect(bodies(await read(made, bearer))).toEqual([`${MARKER} held-later`]);
+    });
+
+    it("the lockout is a durable audit trail: every wrong attempt and the 5th (locking) one leave an audit row without the code", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const bearer = (await redeem(made)).json().sessionToken as string;
+      const wrong = made.code === "00000000" ? "11111111" : "00000000";
+      for (let i = 0; i < 5; i += 1) {
+        await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, bearer, { code: wrong });
+      }
+      const rows = await q(
+        "SELECT (after->>'code_attempts')::int AS n, after::text AS after FROM audit_event WHERE resource_id::text = $1 AND event_type = 'message_external_share.update' ORDER BY n DESC NULLS LAST",
+        [made.id],
+      );
+      expect(rows.some((r) => Number(r.n) === 5)).toBe(true);
+      for (const r of rows) {
+        expect(String(r.after)).not.toContain(made.code);
+        expect(String(r.after)).not.toContain("code_hash");
+      }
     });
   });
 

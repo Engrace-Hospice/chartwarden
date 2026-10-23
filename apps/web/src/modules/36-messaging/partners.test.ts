@@ -1,9 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { validateShareDraft } from "./partners";
 
 const ok = {
-  channelId: randomUUID(),
+  channelId: "11111111-1111-4111-8111-111111111111",
   partnerName: "Northside",
   partnerKind: "pharmacy" as const,
   baaReference: "BAA-1",
