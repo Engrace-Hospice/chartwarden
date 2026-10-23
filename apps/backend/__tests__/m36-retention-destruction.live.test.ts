@@ -28,6 +28,8 @@ import { randomUUID } from "node:crypto";
 import { audit } from "@chartwarden/audit";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { messagingHoldLockName } from "@chartwarden/types";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readStaffNames } from "../src/modules/02-identity/staff-names";
 import {
@@ -627,6 +629,52 @@ describe.skipIf(!DB_URL)(
       expect(step).toMatchObject({ destroyed: 0, skippedLegalHold: 1 });
       expect(destroyedKeys).toEqual([]);
       expect(await objectStamped(att)).toBe(false);
+    });
+
+    it("a hold placement (EXCLUSIVE hold lock) concurrent with an object destroy waits for the destroy to finish and the stamp: never a destroy after the hold commits", async () => {
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/lockspan.txt");
+      let openGate: () => void = () => undefined;
+      const gate = new Promise<void>((r) => {
+        openGate = r;
+      });
+      let destroyStarted: () => void = () => undefined;
+      const started = new Promise<void>((r) => {
+        destroyStarted = r;
+      });
+      const slowStorage = {
+        destroyObject: async ({ objectKey }: { objectKey: string }) => {
+          destroyStarted();
+          await gate;
+          destroyedKeys.push(objectKey);
+        },
+      } as unknown as AttachmentStoragePort;
+      const service = createAttachmentService({
+        db: kit.handle.db,
+        storage: slowStorage,
+        canViewChannel: async () => false,
+        reaperDb: destroyer.db,
+      });
+      const destroying = service.destroyObjectsForMessages(ORG_A, [msg]);
+      await started;
+      // What applyLegalHoldInTx does: take the per-org hold lock EXCLUSIVE, then commit the hold.
+      let placed = false;
+      const placing = withOrgContext(kit.handle.db, systemOrgContext(ORG_A), async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${messagingHoldLockName(ORG_A)}, 0))`,
+        );
+        placed = true;
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(placed).toBe(false);
+      expect(await objectStamped(att)).toBe(false);
+      openGate();
+      const step = await destroying;
+      await placing;
+      expect(step).toMatchObject({ destroyed: 1, skippedLegalHold: 0 });
+      // The destroy finished and was stamped BEFORE the hold could take the lock.
+      expect(await objectStamped(att)).toBe(true);
+      expect(placed).toBe(true);
     });
 
     it("an object the store refuses to destroy keeps its message (unstamped, retried next run) and the certificate stays open", async () => {

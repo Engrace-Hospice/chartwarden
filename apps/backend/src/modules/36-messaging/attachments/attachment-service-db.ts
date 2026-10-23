@@ -1273,12 +1273,6 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     },
   };
 
-  function isHeldNow(orgId: string, messageId: string): Promise<boolean> {
-    return withOrgContext(db, systemOrgContext(orgId), (rawTx) =>
-      isMessageHeldNow(rawTx as unknown as Tx, orgId, messageId),
-    );
-  }
-
   /**
    * Destroy the OBJECT of rows that must no longer hold bytes but whose row we keep for audit: a quarantined file, and a
    * clean file on a deleted message, once `retentionMs` has passed. Candidates are read under the app role (RLS), the
@@ -1330,10 +1324,12 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
   }
 
   /**
-   * Destroy one retained row's object and stamp it. A hold can land after the candidates were read: look again, in a short tx that takes
-   * the shared hold lock (a concurrent apply waits for it). The lock is released at commit, before destroyObject, so a hold applied after
-   * this check can still lose the bytes: the residual window is up to the storage destroy deadline (REAP_DESTROY_DEADLINE_MS plus abort
-   * grace), accepted as ADR-0086 known limit (g). A failed destroy leaves the row unstamped: retried next run.
+   * Destroy one retained row's object and stamp it. A hold can land after the candidates were read, and object bytes cannot be rolled
+   * back, so the check, the destroy and the stamp all run inside ONE tenant transaction that holds the shared hold lock (taken by
+   * `isMessageHeldNow`). A hold placement takes that lock EXCLUSIVE, so it waits for this object (bounded by the storage destroy
+   * deadline plus abort grace) and then sees the destroyed state; it can never commit between the check and the destroy. If the
+   * destroy fails or times out the transaction rolls back, the row stays unstamped and the message keeps its row: retried next run.
+   * (A hold that waits is the only cost: a stuck store call delays hold placement by at most that deadline.)
    */
   async function destroyRetainedObject(
     orgId: string,
@@ -1343,22 +1339,26 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     const objectKey = row.objectKey;
     if (!objectKey) return "none";
     try {
-      if (row.messageId && (await isHeldNow(orgId, row.messageId))) return "held";
-      await runWithDeadline(
-        (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
-        deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
-        () => new Error("attachment destroy exceeded its deadline"),
-        abortGraceMs,
-      );
-      await withOrgContext(reaperDb, systemOrgContext(orgId), (rawTx) =>
-        (rawTx as unknown as Tx)
-          .update(ATT)
-          .set({ objectDestroyedAt: now() })
-          .where(
-            and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt)),
-          ),
-      );
-      return "destroyed";
+      return await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
+        if (row.messageId && (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))) {
+          return "held" as const;
+        }
+        await runWithDeadline(
+          (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
+          deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
+          () => new Error("attachment destroy exceeded its deadline"),
+          abortGraceMs,
+        );
+        await withOrgContext(reaperDb, systemOrgContext(orgId), (stampTx) =>
+          (stampTx as unknown as Tx)
+            .update(ATT)
+            .set({ objectDestroyedAt: now() })
+            .where(
+              and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt)),
+            ),
+        );
+        return "destroyed" as const;
+      });
     } catch (error) {
       deps.onReapError?.({ attachmentId: row.id }, error);
       return "failed";
