@@ -105,12 +105,6 @@ export interface DocumentSeamStore {
   } | null>;
 }
 
-/**
- * The object-storage PORT the {@link DocumentStorageProvider} impl composes over. Pure key/presign math
- * (./storage.ts in T03) computes the descriptor; this port performs the IO. The real impl is the MinIO
- * client (presign + version-aware delete); the in-memory slice records writes/deletes for tests. The
- * presigned URL is never logged (§4.12) — callers receive it and hand it straight to the client.
- */
 /** #658 — a bounded read of one object's bytes; null means the object is not present. */
 export interface ObjectReaderPort {
   getObject(args: {
@@ -122,6 +116,12 @@ export interface ObjectReaderPort {
   }): Promise<Uint8Array | null>;
 }
 
+/**
+ * The object-storage PORT the {@link DocumentStorageProvider} impl composes over. Pure key/presign math
+ * (./storage.ts in T03) computes the descriptor; this port performs the IO. The real impl is the MinIO
+ * client (presign + version-aware delete); the in-memory slice records writes/deletes for tests. The
+ * presigned URL is never logged (§4.12) — callers receive it and hand it straight to the client.
+ */
 export interface ObjectStorePort {
   /** Write rendered bytes under `bucket/objectKey` and return the content hash (sha256, hex). */
   putObject(args: {
@@ -132,6 +132,8 @@ export interface ObjectStorePort {
      *  When set, the store ALSO enforces the SHA-256 server-side (`x-amz-checksum-sha256`), so the object is
      *  verifiable by `inspectObject` exactly like a presigned upload. */
     readonly mimeType?: string;
+    /** Optional: aborts the request (M25 bounds its in-transaction stage write). Ignored by stores that cannot abort. */
+    readonly signal?: AbortSignal;
   }): Promise<{ readonly sha256Hex: string }>;
   /** Presign a checksum-enforced direct PUT. The returned headers MUST accompany the client upload. */
   presignUpload(args: {

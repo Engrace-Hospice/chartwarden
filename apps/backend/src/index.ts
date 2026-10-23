@@ -3189,30 +3189,33 @@ function buildFirstAdminAcceptanceService(deps: {
  */
 /** Largest raw 835 the post path will read back (a real remittance file is well under 1 MiB). */
 const M25_RAW_835_MAX_BYTES = 16 * 1024 * 1024;
+const M25_RAW_835_IO_TIMEOUT_MS = 15_000;
 
 /**
  * #658 — the raw-835 stage for M25: the tenant's own bucket (same MINIO_* contract and `deriveTenantBucket` as M22),
- * under an `m25-835/` prefix so M25 can neither overwrite nor read an M22 object whatever key the caller names.
+ * under `m25-835/<adviceId>` (server-generated, never the caller's key) so M25 can neither overwrite nor read an M22 object whatever key the caller names.
  * No object store configured = undefined, and `postAdvice` stays fail-closed (retryable X12_835_RAW_UNAVAILABLE).
  */
 function buildM25RawAdviceStore(): M25RawAdviceStore | undefined {
   const config = s3ObjectStoreConfigFromEnv(process.env);
   if (!config) return undefined;
   const store = createS3ObjectStore(config);
-  const keyOf = (objectKey: string): string => `m25-835/${objectKey}`;
+  const keyOf = (adviceId: string): string => `m25-835/${adviceId}`;
   return {
-    async put(organizationId, objectKey, text) {
+    async put(organizationId, adviceId, text) {
       await store.putObject({
         bucket: deriveTenantBucket(organizationId as never),
-        objectKey: keyOf(objectKey),
+        objectKey: keyOf(adviceId),
         bytes: new TextEncoder().encode(text),
+        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
       });
     },
-    async get(organizationId, objectKey) {
+    async get(organizationId, adviceId) {
       const bytes = await store.getObject({
         bucket: deriveTenantBucket(organizationId as never),
-        objectKey: keyOf(objectKey),
+        objectKey: keyOf(adviceId),
         maxBytes: M25_RAW_835_MAX_BYTES,
+        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
       });
       return bytes ? new TextDecoder().decode(bytes) : null;
     },
@@ -5743,6 +5746,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(),
             rawStore: buildM25RawAdviceStore(),
+            onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
             onRetryableParseDegraded: (event) =>
               app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
             outbox: m25OutboxPublisher,
@@ -11874,7 +11878,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
               rawStore: buildM25RawAdviceStore(),
-              onRetryableParseDegraded: (event) =>
+              onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
+            onRetryableParseDegraded: (event) =>
                 app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
               outbox: m25OutboxPublisher,
               claims: {

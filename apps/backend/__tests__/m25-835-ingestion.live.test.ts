@@ -764,11 +764,11 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const raw = buildFullEdi("000000204", "0204", "500.00");
     const objects = new Map<string, string>();
     const rawStore = {
-      async put(org: string, key: string, text: string) {
-        objects.set(`${org}/${key}`, text);
+      async put(org: string, adviceId: string, text: string) {
+        objects.set(`${org}/${adviceId}`, text);
       },
-      async get(org: string, key: string) {
-        return objects.get(`${org}/${key}`) ?? null;
+      async get(org: string, adviceId: string) {
+        return objects.get(`${org}/${adviceId}`) ?? null;
       },
     };
     const service = buildDrizzleM25IngestService(handle.db, {
@@ -789,7 +789,10 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       rawEdi: raw,
     });
     if (received.outcome !== "queued") throw new Error("unreachable");
-    expect(objects.get(`${ORG_A}/${objectKey}`)).toBe(raw);
+    // Keyed by the server-generated advice id, not the caller's key: a second advice naming the same
+    // minioObjectKey cannot overwrite this one's staged text.
+    expect(objects.get(`${ORG_A}/${received.adviceId}`)).toBe(raw);
+    expect(objects.has(`${ORG_A}/${objectKey}`)).toBe(false);
     expect((await service.postAdvice(actor, received.adviceId)).outcome).toBe("posted");
   });
 

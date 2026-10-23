@@ -770,6 +770,23 @@ describe("createS3ObjectStore getObject (mocked fetch, #658)", () => {
         maxBytes: 10,
       }),
     ).rejects.toThrow(/exceeds/);
+    // A chunked body with no content-length is cut off at the cap, not buffered whole.
+    let pulled = 0;
+    const chunked = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled += 1;
+        c.enqueue(new Uint8Array(6));
+        if (pulled > 50) c.close();
+      },
+    });
+    await expect(
+      store(() => new Response(chunked, { status: 200 })).getObject({
+        bucket: "tenant-abc",
+        objectKey: "k",
+        maxBytes: 10,
+      }),
+    ).rejects.toThrow(/exceeds/);
+    expect(pulled).toBeLessThan(10);
     await expect(
       store(() => new Response(null, { status: 500 })).getObject({
         bucket: "b",

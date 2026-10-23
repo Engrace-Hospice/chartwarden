@@ -35,13 +35,13 @@ export interface M25IngestActor {
 }
 
 /**
- * #658 — where the raw 835 lives between `receiveAdvice` and `postAdvice`. The advice row keeps only the object
- * key, so receive stages the text under it and post reads it back. Tenant-scoped by `organizationId` (the
- * adapter picks the tenant bucket); `get` returns null when the object is gone.
+ * #658 — where the raw 835 lives between `receiveAdvice` and `postAdvice`. Keyed by the server-generated advice id,
+ * never the caller's `minioObjectKey`, so two advices cannot overwrite each other's staged text. Tenant-scoped by
+ * `organizationId` (the adapter picks the tenant bucket); `get` returns null when the object is gone.
  */
 export interface RawAdviceStore {
-  put(organizationId: string, objectKey: string, text: string): Promise<void>;
-  get(organizationId: string, objectKey: string): Promise<string | null>;
+  put(organizationId: string, adviceId: string, text: string): Promise<void>;
+  get(organizationId: string, adviceId: string): Promise<string | null>;
 }
 
 export interface ReceiveAdviceInput {

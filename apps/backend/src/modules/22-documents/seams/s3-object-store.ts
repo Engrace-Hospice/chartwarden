@@ -431,7 +431,7 @@ export function createS3ObjectStore(
     new Error(`m22 s3 object store: '${op}' failed with HTTP ${status} for ${bucket}/${objectKey}`);
 
   return {
-    async putObject({ bucket, objectKey, bytes, mimeType }) {
+    async putObject({ bucket, objectKey, bytes, mimeType, signal }) {
       const sha256Hex = sigV4Sha256Hex(bytes);
       const res = await signedFetch({
         method: "PUT",
@@ -439,6 +439,7 @@ export function createS3ObjectStore(
         objectKey,
         query: [],
         payload: bytes,
+        ...(signal ? { signal } : {}),
         extraHeaders: mimeType
           ? {
               "content-type": mimeType,
@@ -529,9 +530,32 @@ export function createS3ObjectStore(
         );
       const declared = Number(res.headers.get("content-length"));
       if (Number.isFinite(declared) && declared > maxBytes) throw tooBig();
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.byteLength > maxBytes) throw tooBig();
-      return bytes;
+      // Stream with a running count so a chunked / header-less body is cut off at the cap, not buffered whole.
+      const reader = res.body?.getReader();
+      if (!reader) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.byteLength > maxBytes) throw tooBig();
+        return bytes;
+      }
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel();
+          throw tooBig();
+        }
+        chunks.push(value);
+      }
+      const out = new Uint8Array(total);
+      let at = 0;
+      for (const c of chunks) {
+        out.set(c, at);
+        at += c.byteLength;
+      }
+      return out;
     },
 
     async inspectObject({ bucket, objectKey, signal }) {

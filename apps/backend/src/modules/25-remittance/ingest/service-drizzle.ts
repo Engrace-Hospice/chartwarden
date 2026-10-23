@@ -12,6 +12,7 @@ import type {
   ClaimMatchCandidateProvider,
   ClaimMatchCandidateProviderByPayer,
   M25IngestActor,
+  RawAdviceStore,
   M25IngestService,
   PostAdviceResult,
   ReceiveAdviceInput,
@@ -20,7 +21,6 @@ import type {
   X12835WorkerClient,
 } from "./service";
 import { DENY_TERMINOLOGY, NO_CLAIM_MATCH_CANDIDATES } from "./service";
-import type { RawAdviceStore } from "./service";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 const DENIAL_CATEGORIES: ReadonlySet<string> = new Set([
@@ -62,6 +62,11 @@ export interface M25IngestDrizzleDeps {
    * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
    * the degraded code only. The composition root points this at a warn log.
    */
+  readonly onStagedReadFailed?: (event: {
+    readonly organizationId: string;
+    readonly adviceId: string;
+    readonly errorName: string;
+  }) => void;
   readonly onRetryableParseDegraded?: (event: {
     readonly organizationId: string;
     readonly adviceId: string;
@@ -537,9 +542,10 @@ export function buildDrizzleM25IngestService(
             if (!dup) throw new Error("m25-ingest: envelope insert conflicted but no row found");
             return { outcome: "duplicate", existingAdviceId: dup.id };
           }
-          // Staged inside the transaction: a store failure rolls the receive back, so nothing is queued whose
-          // raw text cannot be read at post time. A commit failure after this only orphans an object.
-          await deps.rawStore?.put(actor.organizationId, input.minioObjectKey, input.rawEdi);
+          // Staged inside the transaction under the new row's id: a store failure rolls the receive back, so
+          // nothing is queued whose raw text cannot be read at post time. A commit failure after this only
+          // orphans an object nothing references (the id never committed).
+          await deps.rawStore?.put(actor.organizationId, row.id, input.rawEdi);
           await outbox.publish(tx, {
             eventName: "m25.edi.835_received",
             organizationId: actor.organizationId,
@@ -587,8 +593,20 @@ export function buildDrizzleM25IngestService(
       // #658 — read the staged object here (this layer knows the tenant); a read failure leaves `rawEdi` unset so
       // the client degrades to its retryable X12_835_RAW_UNAVAILABLE path and the row is marked failed/replayable.
       const staged = await deps.rawStore
-        ?.get(actor.organizationId, advice.minioObjectKey)
-        .catch(() => null);
+        ?.get(actor.organizationId, adviceId)
+        .catch((err: unknown) => {
+          // Reported without the message (it can carry bucket/key): a 403/5xx/oversize read must not look like "missing".
+          try {
+            deps.onStagedReadFailed?.({
+              organizationId: actor.organizationId,
+              adviceId,
+              errorName: err instanceof Error ? err.name : "unknown",
+            });
+          } catch {
+            // Ops-only hook.
+          }
+          return null;
+        });
       const parsed = await client.parse835({
         minioObjectKey: advice.minioObjectKey,
         payerProgram: advice.payerKind,
