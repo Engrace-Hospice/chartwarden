@@ -95,14 +95,28 @@ const gate = <T,>() => {
   return { promise, resolve };
 };
 
+/** Opens the confirmation for the row button and answers it (the shared ConfirmDialog). */
+async function confirmAction(
+  user: ReturnType<typeof userEvent.setup>,
+  rowButton: "Revoke now" | "Reissue invitation",
+  confirmLabel: "Yes, revoke access" | "Yes, reissue invitation",
+) {
+  await user.click(await screen.findByRole("button", { name: rowButton }));
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: confirmLabel }));
+}
+
 async function fillDialog(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "Share a conversation" }));
   const dialog = await screen.findByRole("dialog", { name: "Share a conversation with a partner" });
-  await user.type(within(dialog).getByLabelText("Conversation id"), CHANNEL);
-  await user.type(within(dialog).getByLabelText("Partner name"), "Northside Pharmacy");
-  await user.type(within(dialog).getByLabelText("Business associate agreement reference"), "BAA-1");
+  await user.type(within(dialog).getByLabelText(/^Conversation id/), CHANNEL);
+  await user.type(within(dialog).getByLabelText(/^Partner name/), "Northside Pharmacy");
+  await user.type(
+    within(dialog).getByLabelText(/^Business associate agreement reference/),
+    "BAA-1",
+  );
   await user.click(
-    within(dialog).getByRole("checkbox", { name: /patient names[\s\S]*NOT filtered/ }),
+    within(dialog).getByRole("checkbox", { name: "I confirm what the partner will see" }),
   );
   return dialog;
 }
@@ -113,7 +127,7 @@ describe("flag off", () => {
     const { DELETE } = mount({}, { flag: false });
     expect(await screen.findByText("Northside Pharmacy")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Share a conversation" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Revoke now" }));
+    await confirmAction(user, "Revoke now", "Yes, revoke access");
     await waitFor(() => expect(DELETE).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/Access for Northside Pharmacy ended/)).toBeTruthy();
   });
@@ -187,9 +201,9 @@ describe("create", () => {
     await user.click(within(dialog).getByRole("button", { name: "Create share" }));
     expect(within(dialog).getByRole("alert").textContent).toMatch(/UUID/);
     expect(POST).not.toHaveBeenCalled();
-    await user.type(within(dialog).getByLabelText("Conversation id"), CHANNEL);
-    await user.type(within(dialog).getByLabelText("Partner name"), "P");
-    await user.type(within(dialog).getByLabelText("Business associate agreement reference"), "B");
+    await user.type(within(dialog).getByLabelText(/^Conversation id/), CHANNEL);
+    await user.type(within(dialog).getByLabelText(/^Partner name/), "P");
+    await user.type(within(dialog).getByLabelText(/^Business associate agreement reference/), "B");
     await user.click(within(dialog).getByRole("button", { name: "Create share" }));
     expect(within(dialog).getByRole("alert").textContent).toMatch(/Confirm the statement/);
     expect(POST).not.toHaveBeenCalled();
@@ -219,10 +233,30 @@ describe("revoke", () => {
     const { DELETE } = mount({ del: () => g.promise });
     const button = await screen.findByRole("button", { name: "Revoke now" });
     expect(button.getAttribute("aria-label")).toBeNull();
-    await user.dblClick(button);
+    await user.click(button);
+    const confirm = within(await screen.findByRole("alertdialog")).getByRole("button", {
+      name: "Yes, revoke access",
+    });
+    expect(DELETE).not.toHaveBeenCalled(); // one click only opens the question
+    await user.dblClick(confirm);
     expect(DELETE).toHaveBeenCalledTimes(1);
     await act(async () => g.resolve(ok(share({ status: "revoked" }))));
     expect(await screen.findByText(/Access for Northside Pharmacy ended/)).toBeTruthy();
+  });
+
+  it("asks first and sends nothing when the question is declined or dismissed with Escape", async () => {
+    const user = userEvent.setup();
+    const { DELETE } = mount();
+    await user.click(await screen.findByRole("button", { name: "Revoke now" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toMatch(/Revoke access for Northside Pharmacy now\?/);
+    await user.click(within(dialog).getByRole("button", { name: "Keep as is" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Revoke now" }));
+    await screen.findByRole("alertdialog");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(DELETE).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -233,7 +267,7 @@ describe("revoke", () => {
   ])("a %i answer is in share wording", async (status, pattern) => {
     const user = userEvent.setup();
     mount({ del: () => fail(status) });
-    await user.click(await screen.findByRole("button", { name: "Revoke now" }));
+    await confirmAction(user, "Revoke now", "Yes, revoke access");
     const text = (await screen.findByText(pattern)).textContent ?? "";
     expect(text).not.toMatch(/export/i);
   });
@@ -248,7 +282,7 @@ describe("loading and refresh", () => {
       del: () => fail(404),
     });
     await screen.findByText("Northside Pharmacy");
-    await user.click(screen.getByRole("button", { name: "Revoke now" }));
+    await confirmAction(user, "Revoke now", "Yes, revoke access");
     expect(await screen.findByText(/could not be refreshed/)).toBeTruthy();
     expect(screen.getByText("Northside Pharmacy")).toBeTruthy();
   });
@@ -266,16 +300,19 @@ describe("reissue", () => {
     const user = userEvent.setup();
     const g = gate<Reply>();
     const { POST } = mount({ post: () => g.promise });
-    const button = await screen.findByRole("button", { name: "Reissue invitation" });
-    await user.dblClick(button);
+    await user.click(await screen.findByRole("button", { name: "Reissue invitation" }));
+    const question = await screen.findByRole("alertdialog");
+    expect(question.textContent).toMatch(/signed out at once/);
+    expect(POST).not.toHaveBeenCalled(); // one click only opens the question
+    await user.dblClick(within(question).getByRole("button", { name: "Yes, reissue invitation" }));
     expect(POST).toHaveBeenCalledTimes(1);
     expect(POST.mock.calls[0]?.[0]).toBe("/api/v1/messaging/external-shares/{id}/reissue");
     await act(async () => g.resolve(ok({ ...created(), verificationCode: "87654321" })));
-    const secrets = await screen.findByRole("dialog", { name: "Partner access created" });
+    const secrets = await screen.findByRole("dialog", { name: "Invitation reissued" });
     expect(within(secrets).getByText("87654321")).toBeTruthy();
     expect(within(secrets).getByRole("heading").textContent).toMatch(/Invitation reissued/);
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog", { name: "Partner access created" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Invitation reissued" })).toBeTruthy();
     await user.click(within(secrets).getByRole("button", { name: "I have passed these on" }));
     expect(screen.queryByText("87654321")).toBeNull();
   });
@@ -283,13 +320,15 @@ describe("reissue", () => {
   it.each([
     [409, /no longer active/],
     [404, /no longer available/],
-    [500, /could not be reissued/],
+    [500, /partner may already be locked out; reissue again/],
   ])("a %i answer is in reissue wording, never export wording", async (status, pattern) => {
     const user = userEvent.setup();
     mount({ post: () => fail(status) });
-    await user.click(await screen.findByRole("button", { name: "Reissue invitation" }));
+    await confirmAction(user, "Reissue invitation", "Yes, reissue invitation");
     const text = (await screen.findByText(pattern)).textContent ?? "";
     expect(text).not.toMatch(/export/i);
+    // The failure never claims the OLD invitation may still work (a failed reissue may have gone through): it says the partner may be locked out.
+    expect(text).not.toMatch(/may still be valid/);
   });
 
   it("is offered only for an active share", async () => {
@@ -297,5 +336,42 @@ describe("reissue", () => {
     await screen.findByText("Northside Pharmacy");
     expect(screen.queryByRole("button", { name: "Reissue invitation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Revoke now" })).toBeNull();
+  });
+});
+
+describe("create form accessibility", () => {
+  it("marks and focuses the failing control, and gives the confirmation a short name with the statement as its description", async () => {
+    const user = userEvent.setup();
+    const { POST } = mount();
+    await user.click(await screen.findByRole("button", { name: "Share a conversation" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Share a conversation with a partner",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Create share" }));
+    const id = within(dialog).getByLabelText(/^Conversation id/);
+    expect(document.activeElement).toBe(id);
+    expect(id.getAttribute("aria-invalid")).toBe("true");
+    expect(id.getAttribute("aria-describedby")).toBeTruthy();
+    await user.type(id, CHANNEL);
+    expect(id.getAttribute("aria-invalid")).toBeNull();
+    await user.type(within(dialog).getByLabelText(/^Partner name/), "Northside Pharmacy");
+    await user.type(
+      within(dialog).getByLabelText(/^Business associate agreement reference/),
+      "BAA-1",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Create share" }));
+    const box = within(dialog).getByRole("checkbox", {
+      name: "I confirm what the partner will see",
+    });
+    expect(document.activeElement).toBe(box);
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    const describedBy = (box.getAttribute("aria-describedby") ?? "").split(" ");
+    expect(describedBy).toHaveLength(2);
+    const text = describedBy.map((i) => document.getElementById(i)?.textContent ?? "").join(" ");
+    expect(text).toMatch(/NOT filtered/);
+    expect(text).toMatch(/Confirm the statement/);
+    expect(POST).not.toHaveBeenCalled();
+    await user.click(box);
+    expect(box.getAttribute("aria-invalid")).toBeNull();
   });
 });

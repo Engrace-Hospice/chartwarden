@@ -83,6 +83,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
   let limited: FastifyInstance;
   let banner: FastifyInstance;
   let bannerOff: FastifyInstance;
+  let bannerNonMember: FastifyInstance;
   let stepUpFresh = true;
   const flagOn = true;
   let readBudget = 1_000;
@@ -114,7 +115,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
   };
 
   /** The messaging routes with the member banner wired (the channel detail), over the same service as the share routes. */
-  const mkBannerServer = (flag: boolean): FastifyInstance => {
+  const mkBannerServer = (flag: boolean, notMember = false): FastifyInstance => {
     const service = mkService(flag);
     const server = buildServer({
       db: kit.handle.db,
@@ -123,7 +124,8 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       idempotencyStore: createDbIdempotencyStore(kit.handle.db),
     });
     registerMessagingRoutes(server, {
-      service: kit.service,
+      // `notMember` models a break-glass reader: the read predicate admits them, plain membership does not.
+      service: notMember ? { ...kit.service, canViewChannel: async () => false } : kit.service,
       announcements: createDbAnnouncementService(kit.handle.db),
       externalShare: { indicator: service.indicator },
     });
@@ -292,12 +294,14 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     limited = mkServer(true, { consume: async () => ({ allowed: --readBudget >= 0 }) });
     banner = mkBannerServer(true);
     bannerOff = mkBannerServer(false);
+    bannerNonMember = mkBannerServer(true, true);
     await Promise.all([
       on.ready(),
       off.ready(),
       limited.ready(),
       banner.ready(),
       bannerOff.ready(),
+      bannerNonMember.ready(),
     ]);
   }, 120_000);
 
@@ -308,6 +312,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       limited?.close(),
       banner?.close(),
       bannerOff?.close(),
+      bannerNonMember?.close(),
     ]);
     await kit?.close();
   });
@@ -1056,6 +1061,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       expect(Number((await shareRow(unredeemed.id)).code_attempts)).toBe(3);
 
       const mgr = await newManager();
+      await join(mgr, channel);
       stepUpFresh = true;
       const res = await staff(on, "POST", REISSUE(unredeemed.id), mgr);
       expect(res.statusCode, res.body).toBe(200);
@@ -1225,10 +1231,43 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       );
     });
 
+    it("S1: a manager who is NOT a member of the channel cannot reissue it: the SAME 404 as an unknown share, and nothing changes", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const made = await mk(channel);
+      const bearer = await activate(made);
+      const before = await shareRow(made.id);
+      const outsiderManager = await newManager(); // holds messaging.share.manage, is NOT in the channel
+      stepUpFresh = true;
+      const denied = await staff(on, "POST", REISSUE(made.id), outsiderManager);
+      const unknown = await staff(on, "POST", REISSUE(randomUUID()), outsiderManager);
+      expect(denied.statusCode).toBe(404);
+      expect(shape(denied.body)).toBe(shape(unknown.body));
+      expect(denied.body).not.toContain("inviteToken");
+      const after = await shareRow(made.id);
+      for (const column of [
+        "invite_generation",
+        "code_attempts",
+        "invite_token_hash",
+        "code_hash",
+        "invite_redeemed_at",
+        "reissued_by",
+      ]) {
+        expect(after[column], column).toEqual(before[column]);
+      }
+      // The partner's session is untouched, and the manager can still REVOKE (it only removes access).
+      expect((await stateOf(made, bearer)).statusCode).toBe(200);
+      expect((await staff(on, "DELETE", `${API}/${made.id}`, outsiderManager)).statusCode).toBe(
+        200,
+      );
+      expect((await stateOf(made, bearer)).statusCode).toBe(404);
+    });
+
     it("reissue is gated: flag off 404, clinical role 403, no step-up 403, a revoked share 409, an unknown share 404", async () => {
       await clearShares();
       const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
       const mgr = await newManager();
+      await join(mgr, made.channel);
       stepUpFresh = true;
       expect((await staff(off, "POST", REISSUE(made.id), mgr)).statusCode).toBe(404);
       expect((await staff(on, "POST", REISSUE(made.id), clinical)).statusCode).toBe(403);
@@ -1363,6 +1402,24 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         ),
       );
       expect((await detail(banner, author, channel)).json().externalShare).toBeUndefined();
+    });
+
+    it("S6: a reader admitted by the read predicate but NOT a member (a break-glass reader) gets no indicator", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await mk(channel);
+      expect((await detail(banner, author, channel)).json().externalShare?.active).toBe(true);
+      const res = await detail(bannerNonMember, author, channel);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().externalShare).toBeUndefined();
+    });
+
+    it("an unredeemed or code-locked share still shows: the banner says access has been GRANTED, not that it is in use", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const made = await mk(channel);
+      expect(Number((await shareRow(made.id)).code_attempts)).toBe(0);
+      expect((await detail(banner, author, channel)).json().externalShare?.active).toBe(true);
     });
 
     it("with two active shares the banner shows the one that ends last", async () => {

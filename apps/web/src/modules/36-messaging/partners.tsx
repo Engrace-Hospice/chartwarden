@@ -3,7 +3,8 @@
 // (no provider reads as OFF); the list and Revoke never depend on it. The invitation token and the code are shown ONCE, with the instruction to give
 // them to the partner through different channels, and live only in this screen's state: they are dropped when the panel is dismissed or the screen
 // unmounts. The PARTNER-facing view is not built.
-// Known limits: the conversation is entered as a raw id (no picker), a step-up redirect loses what was typed, and Revoke has no confirmation step.
+// Revoke and Reissue each ask for a confirmation (the shared ConfirmDialog): one click ends the partner's access. Known limits: the conversation is
+// entered as a raw id (no picker) and a step-up redirect loses what was typed.
 import {
   type CreatedExternalShareDto,
   EXTERNAL_PARTNERS_FLAG_KEY,
@@ -15,6 +16,7 @@ import {
 } from "@chartwarden/types";
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   Modal,
   PageHeader,
@@ -64,18 +66,48 @@ const EMPTY: Draft = {
   acknowledged: false,
 };
 
-/** The first thing wrong with the draft, as a sentence, or null when it can be sent. */
-export function validateShareDraft(draft: Draft): string | null {
-  if (!UUID.test(draft.channelId.trim())) return "Enter the conversation id as a UUID.";
-  if (draft.partnerName.trim() === "") return "Enter the partner's name.";
-  if (draft.baaReference.trim() === "") return "Enter the business associate agreement reference.";
+export type DraftField = "channelId" | "partnerName" | "baaReference" | "days" | "acknowledged";
+export interface DraftProblem {
+  readonly field: DraftField;
+  readonly message: string;
+}
+
+/** The first thing wrong with the draft and WHICH control it is about (so the dialog can mark and focus it), or null when it can be sent. */
+export function validateShareDraftField(draft: Draft): DraftProblem | null {
+  if (!UUID.test(draft.channelId.trim())) {
+    return { field: "channelId", message: "Enter the conversation id as a UUID." };
+  }
+  if (draft.partnerName.trim() === "") {
+    return { field: "partnerName", message: "Enter the partner's name." };
+  }
+  if (draft.baaReference.trim() === "") {
+    return { field: "baaReference", message: "Enter the business associate agreement reference." };
+  }
   const days = Number(draft.days);
   if (!Number.isInteger(days) || days < 1 || days > EXTERNAL_SHARE_MAX_DAYS) {
-    return `Choose 1 to ${EXTERNAL_SHARE_MAX_DAYS} days.`;
+    return { field: "days", message: `Choose 1 to ${EXTERNAL_SHARE_MAX_DAYS} days.` };
   }
-  if (!draft.acknowledged) return "Confirm the statement about what the partner will see.";
+  if (!draft.acknowledged) {
+    return {
+      field: "acknowledged",
+      message: "Confirm the statement about what the partner will see.",
+    };
+  }
   return null;
 }
+
+/** The first thing wrong with the draft, as a sentence, or null when it can be sent. */
+export function validateShareDraft(draft: Draft): string | null {
+  return validateShareDraftField(draft)?.message ?? null;
+}
+
+const FIELD_ID: Record<DraftField, string> = {
+  channelId: "share-channel-id",
+  partnerName: "share-partner-name",
+  baaReference: "share-baa-reference",
+  days: "share-days",
+  acknowledged: "share-acknowledged",
+};
 
 /** Sentences for a failed share action, specific to partner shares (never the export wording). A stale step-up navigates and says nothing. */
 function useShareFailureText(): (
@@ -111,7 +143,7 @@ function useShareFailureText(): (
         return action === "create"
           ? "The share could not be created. Nothing was shared. If this keeps happening, partner access may not be available on this deployment."
           : action === "reissue"
-            ? "The invitation could not be reissued. The old invitation and code may still be valid; check the list and try again."
+            ? "The invitation could not be reissued. The partner may already be locked out; reissue again to get new secrets, or check the list first."
             : "The share could not be revoked. It may still be active; check the list and try again.";
     }
   };
@@ -130,15 +162,24 @@ function CreateDialog({
   const online = useOnlineStatus();
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [error, setError] = useState<string | null>(null);
-  const set = (patch: Partial<Draft>): void => setDraft((d) => ({ ...d, ...patch }));
+  const [problem, setProblem] = useState<DraftProblem | null>(null);
+  const set = (patch: Partial<Draft>): void => {
+    setProblem(null);
+    setDraft((d) => ({ ...d, ...patch }));
+  };
+  const errorFor = (field: DraftField): string | undefined =>
+    problem?.field === field ? problem.message : undefined;
 
   const send = async (): Promise<void> => {
     if (busy) return;
-    const problem = validateShareDraft(draft);
-    if (problem) {
-      setError(problem);
+    const found = validateShareDraftField(draft);
+    if (found) {
+      // Mark the failing control and put the focus on it, so a keyboard or screen-reader user lands where the problem is.
+      setProblem(found);
+      document.getElementById(FIELD_ID[found.field])?.focus();
       return;
     }
+    setProblem(null);
     setError(null);
     setError(await submit(draft));
   };
@@ -169,12 +210,16 @@ function CreateDialog({
           </p>
         </div>
         <TextField
+          id={FIELD_ID.channelId}
           label="Conversation id"
+          error={errorFor("channelId")}
           value={draft.channelId}
           onChange={(e) => set({ channelId: e.target.value })}
         />
         <TextField
+          id={FIELD_ID.partnerName}
           label="Partner name"
+          error={errorFor("partnerName")}
           value={draft.partnerName}
           onChange={(e) => set({ partnerName: e.target.value })}
         />
@@ -192,30 +237,49 @@ function CreateDialog({
           </select>
         </label>
         <TextField
+          id={FIELD_ID.baaReference}
           label="Business associate agreement reference"
+          error={errorFor("baaReference")}
           value={draft.baaReference}
           onChange={(e) => set({ baaReference: e.target.value })}
         />
         <TextField
+          id={FIELD_ID.days}
           label="Days until access ends"
+          error={errorFor("days")}
           hint={`1 to ${EXTERNAL_SHARE_MAX_DAYS}. Access cannot be extended; create a new share instead.`}
           type="number"
           value={draft.days}
           onChange={(e) => set({ days: e.target.value })}
         />
-        <label className="wx-export-choice">
-          <input
-            type="checkbox"
-            checked={draft.acknowledged}
-            onChange={(e) => set({ acknowledged: e.target.checked })}
-          />
-          <span>
-            I understand that an outside party will read this conversation, and that patient names
-            written in the messages are NOT filtered. Messages containing a date of birth, a record,
-            account or phone number, an email or a street address are withheld, but names and
-            indirect details are not detected.
-          </span>
-        </label>
+        <div className="wx-export-choice">
+          <label htmlFor={FIELD_ID.acknowledged}>
+            <input
+              id={FIELD_ID.acknowledged}
+              type="checkbox"
+              checked={draft.acknowledged}
+              aria-invalid={problem?.field === "acknowledged" || undefined}
+              aria-describedby={
+                problem?.field === "acknowledged"
+                  ? "share-ack-statement share-ack-error"
+                  : "share-ack-statement"
+              }
+              onChange={(e) => set({ acknowledged: e.target.checked })}
+            />{" "}
+            I confirm what the partner will see
+          </label>
+          <p id="share-ack-statement" className="wx-export-detail">
+            An outside party will read this conversation, and patient names written in the messages
+            are NOT filtered. Messages containing a date of birth, a record, account or phone
+            number, an email or a street address are withheld, but names and indirect details are
+            not detected.
+          </p>
+          {problem?.field === "acknowledged" ? (
+            <p id="share-ack-error" className="wx-export-error" role="alert">
+              {problem.message}
+            </p>
+          ) : null}
+        </div>
         {!online ? (
           <p className="wx-export-error" role="alert">
             You are offline. Sharing needs a connection and is never queued.
@@ -253,7 +317,12 @@ function Secrets({
   readonly onDone: () => void;
 }): JSX.Element {
   return (
-    <Modal open ariaLabel="Partner access created" dismissOnScrim={false} width="40rem">
+    <Modal
+      open
+      ariaLabel={reissued ? "Invitation reissued" : "Partner access created"}
+      dismissOnScrim={false}
+      width="40rem"
+    >
       <div className="wx-export-dialog">
         <h2>
           {reissued
@@ -384,6 +453,11 @@ export function ExternalPartners(): JSX.Element {
     seq: 0,
   });
   const [busy, setBusy] = useState(false);
+  // One click ends (revoke) or replaces (reissue) the partner's access, so each asks first.
+  const [confirming, setConfirming] = useState<{
+    readonly kind: "revoke" | "reissue";
+    readonly share: ExternalShareDto;
+  } | null>(null);
   const say = (text: string | null): void => setMessage((m) => ({ text, seq: m.seq + 1 }));
 
   const create = async (draft: Draft): Promise<string | null> => {
@@ -500,8 +574,8 @@ export function ExternalPartners(): JSX.Element {
                     key={s.id}
                     share={s}
                     busy={busy || creatingBusy}
-                    onRevoke={revoke}
-                    onReissue={reissue}
+                    onRevoke={(share) => setConfirming({ kind: "revoke", share })}
+                    onReissue={(share) => setConfirming({ kind: "reissue", share })}
                   />
                 ))}
               </ul>
@@ -516,6 +590,42 @@ export function ExternalPartners(): JSX.Element {
           submit={create}
         />
       ) : null}
+      <ConfirmDialog
+        open={confirming !== null}
+        tone="danger"
+        pending={busy}
+        title={
+          confirming?.kind === "reissue"
+            ? `Reissue the invitation for ${confirming.share.partnerName}?`
+            : `Revoke access for ${confirming?.share.partnerName ?? "this partner"} now?`
+        }
+        description={
+          confirming?.kind === "reissue" ? (
+            <p>
+              The partner is signed out at once and the current invitation and code stop working.
+              You will be shown a new invitation and a new code once, to pass on through different
+              channels. The end date does not change.
+            </p>
+          ) : (
+            <p>
+              The partner can no longer read this conversation; their very next request is refused.
+              To give access again you create a new share.
+            </p>
+          )
+        }
+        confirmLabel={
+          confirming?.kind === "reissue" ? "Yes, reissue invitation" : "Yes, revoke access"
+        }
+        cancelLabel="Keep as is"
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => {
+          const target = confirming;
+          setConfirming(null);
+          if (!target) return;
+          if (target.kind === "reissue") reissue(target.share);
+          else revoke(target.share);
+        }}
+      />
       {made ? (
         <Secrets
           made={made.share}

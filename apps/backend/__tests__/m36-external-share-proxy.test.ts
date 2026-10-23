@@ -3,6 +3,7 @@
 // from a TRUSTED peer does. Also: the availability rule and the "partner routes are not mounted" mode.
 import { afterEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { inspectTrustedProxies, parseTrustedProxies } from "../src/bootstrap/trusted-proxies";
 import { partnerAccessAvailability } from "../src/modules/36-messaging/external-share/external-share-proxy";
 import type { ExternalShareService } from "../src/modules/36-messaging/external-share/external-share-service";
 import { registerExternalShareRoutes } from "../src/modules/36-messaging/routes/external-share-routes";
@@ -92,25 +93,115 @@ describe("partner routes not mounted (production without TRUSTED_PROXY_CIDRS)", 
   });
 });
 
+describe("a poisoned TRUSTED_PROXY_CIDRS never reaches Fastify and never makes the key attacker-controlled", () => {
+  it.each([
+    ["0.0.0.0/0"],
+    ["::/0"],
+    ["*"],
+    ["true"],
+    ["1"],
+    ["garbage"],
+    ["10.0.0.0/33"],
+    ["10.0.0.1, 0.0.0.0/0"],
+  ])(
+    "%j: the boot does not throw, nobody is trusted, a spoofed header is ignored",
+    async (value) => {
+      const { server, seen } = build(value);
+      open.push(server);
+      const res = await redeem(server, "10.0.0.5", "198.51.100.7");
+      expect(res.statusCode).toBe(200);
+      expect(seen).toEqual(["10.0.0.5"]);
+    },
+  );
+});
+
+describe("parseTrustedProxies / inspectTrustedProxies", () => {
+  it.each([
+    ["10.0.0.0/8", ["10.0.0.0/8"]],
+    ["10.0.0.1", ["10.0.0.1"]],
+    ["10.0.0.1/32, 172.16.0.0/12", ["10.0.0.1/32", "172.16.0.0/12"]],
+    ["loopback, uniquelocal", ["loopback", "uniquelocal"]],
+    ["2001:db8::/32", ["2001:db8::/32"]],
+    ["fc00::/7", ["fc00::/7"]],
+    ["::1", ["::1"]],
+  ])("accepts %j", (raw, entries) => {
+    expect(parseTrustedProxies(raw)).toEqual(entries);
+    expect(inspectTrustedProxies(raw).valid).toBe(true);
+  });
+
+  it.each([
+    ["0.0.0.0/0", "0.0.0.0/0"],
+    ["::/0", "::/0"],
+    ["10.0.0.0/0", "10.0.0.0/0"],
+    ["*", "*"],
+    ["true", "true"],
+    ["false", "false"],
+    ["1", "1"],
+    ["5", "5"],
+    ["10.0.0.0/33", "10.0.0.0/33"],
+    ["2001:db8::/129", "2001:db8::/129"],
+    ["10.0.0.0/abc", "10.0.0.0/abc"],
+    ["10.0.0.0/", "10.0.0.0/"],
+    ["10.0.0.0/-1", "10.0.0.0/-1"],
+    ["999.1.1.1", "999.1.1.1"],
+    ["garbage", "garbage"],
+    ["10.0.0.1/8/8", "10.0.0.1/8/8"],
+    ["LOOPBACK", "LOOPBACK"],
+  ])("rejects %j and names the entry", (raw, offender) => {
+    const out = inspectTrustedProxies(raw);
+    expect(out.valid).toBe(false);
+    expect(out.invalid).toContain(offender);
+    expect(parseTrustedProxies(raw)).toBe(false);
+  });
+
+  it("one bad entry poisons the whole list (trust nobody), and unset or empty is false", () => {
+    expect(parseTrustedProxies("10.0.0.0/8, 0.0.0.0/0")).toBe(false);
+    expect(inspectTrustedProxies("10.0.0.0/8, 0.0.0.0/0").invalid).toEqual(["0.0.0.0/0"]);
+    for (const empty of [undefined, "", " , ,"]) expect(parseTrustedProxies(empty)).toBe(false);
+  });
+});
+
 describe("partnerAccessAvailability", () => {
   it.each([
+    // explicit local environments are available without a list
+    [{ NODE_ENV: "development", TRUSTED_PROXY_CIDRS: undefined }, true],
+    [{ NODE_ENV: "test", TRUSTED_PROXY_CIDRS: "" }, true],
+    [{ NODE_ENV: "test", TRUSTED_PROXY_CIDRS: "0.0.0.0/0" }, true],
+    // everything else needs a VALID list
     [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: undefined }, false],
     [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "" }, false],
     [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: " , ," }, false],
+    [{ NODE_ENV: undefined, TRUSTED_PROXY_CIDRS: undefined }, false],
+    [{ NODE_ENV: "", TRUSTED_PROXY_CIDRS: undefined }, false],
+    [{ NODE_ENV: "prod", TRUSTED_PROXY_CIDRS: undefined }, false],
+    [{ NODE_ENV: "staging", TRUSTED_PROXY_CIDRS: undefined }, false],
+    [{ NODE_ENV: "Development", TRUSTED_PROXY_CIDRS: undefined }, false],
     [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "10.0.0.0/8" }, true],
-    [{ NODE_ENV: "development", TRUSTED_PROXY_CIDRS: undefined }, true],
-    [{ NODE_ENV: "test", TRUSTED_PROXY_CIDRS: "" }, true],
-    [{ NODE_ENV: undefined, TRUSTED_PROXY_CIDRS: undefined }, true],
+    [{ NODE_ENV: "staging", TRUSTED_PROXY_CIDRS: "10.0.0.0/8" }, true],
+    [{ NODE_ENV: undefined, TRUSTED_PROXY_CIDRS: "loopback" }, true],
+    // invalid or over-broad lists are unavailable
+    [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "0.0.0.0/0" }, false],
+    [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "::/0" }, false],
+    [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "*" }, false],
+    [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "true" }, false],
+    [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "1" }, false],
+    [{ NODE_ENV: "production", TRUSTED_PROXY_CIDRS: "10.0.0.0/8, garbage" }, false],
   ])("%j => available %s", (env, available) => {
     const out = partnerAccessAvailability(env);
     expect(out.available).toBe(available);
     expect(out.warning === null).toBe(available);
   });
 
-  it("the boot warning is one clear line that names the variable and carries no secret", () => {
-    const out = partnerAccessAvailability({ NODE_ENV: "production" });
-    expect(out.warning).toContain("TRUSTED_PROXY_CIDRS");
-    expect(out.warning).toContain("PARTNER_ACCESS_UNAVAILABLE");
-    expect(out.warning?.includes("\n")).toBe(false);
+  it("the boot warning is one clear line that names the variable, the offending entry and the error code", () => {
+    const unset = partnerAccessAvailability({ NODE_ENV: "production" });
+    expect(unset.warning).toContain("TRUSTED_PROXY_CIDRS is unset or empty");
+    expect(unset.warning).toContain("PARTNER_ACCESS_UNAVAILABLE");
+    const bad = partnerAccessAvailability({
+      NODE_ENV: "production",
+      TRUSTED_PROXY_CIDRS: "10.0.0.0/8, 0.0.0.0/0",
+    });
+    expect(bad.warning).toContain('"0.0.0.0/0"');
+    expect(bad.warning).not.toContain('"10.0.0.0/8"');
+    for (const w of [unset.warning, bad.warning]) expect(w?.includes("\n")).toBe(false);
   });
 });

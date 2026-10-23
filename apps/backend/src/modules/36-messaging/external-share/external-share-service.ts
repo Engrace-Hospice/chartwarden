@@ -376,6 +376,16 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
       const outbox = deps.outbox;
       if (!outbox)
         throw new DegradedError("messaging", "the outbox is not configured; nothing was reissued");
+      // The creator rule applies to reissue too (ADR-0096 D1/D14): new credentials re-open a conversation, so the manager must be able to view it by
+      // membership (no break-glass). A non-member gets the SAME 404 as for an unknown share; revoke needs no such check (it only removes access).
+      const target = await deps.staffStore.run(actor, (tx) => tx.getShare(shareId));
+      if (
+        !target ||
+        !deps.canViewChannel ||
+        !(await deps.canViewChannel(actor.organizationId, actor.userId, target.channelId))
+      ) {
+        throw new NotFoundError("share", shareId);
+      }
       const inviteToken = newPartnerToken();
       const verificationCode = newVerificationCode();
       const row = await deps.staffStore.run(actor, async (tx) => {
@@ -402,7 +412,8 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
     },
 
     async indicator(actor, channelId) {
-      // Partner reads stop the moment the flag is off (D11), so the banner follows the same rule: no flag, no banner.
+      // "Access has been granted", not "is being used": a share that is unredeemed or code-locked still counts (D18). Partner reads stop the moment the
+      // flag is off (D11), so the banner follows the same rule: no flag, no banner.
       if (!(await isEnabled(actor.organizationId))) return null;
       const live = await deps.staffStore.run(actor, (tx) => tx.activeIndicator(channelId));
       return live

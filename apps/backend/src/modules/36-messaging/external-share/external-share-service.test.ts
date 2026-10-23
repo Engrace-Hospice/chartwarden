@@ -680,6 +680,7 @@ describe("ADR-0096 D13-D18", () => {
     const svc = createExternalShareService({
       staffStore: store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: ob,
       flags: flags(true),
     });
@@ -695,6 +696,7 @@ describe("ADR-0096 D13-D18", () => {
     const svc2 = createExternalShareService({
       staffStore: dead.store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: outbox(),
       flags: flags(true),
     });
@@ -702,10 +704,55 @@ describe("ADR-0096 D13-D18", () => {
     const off = createExternalShareService({
       staffStore: store,
       partnerStore: {} as never,
+      canViewChannel: async () => true,
       outbox: outbox(),
       flags: flags(false),
     });
     await expect(off.reissue(actor, randomUUID())).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("reissue needs the manager to VIEW the channel (no break-glass): a non-member, or no predicate, gets the SAME 404 as an unknown share and nothing is reissued", async () => {
+    for (const canViewChannel of [async () => false, undefined]) {
+      const reissued: string[] = [];
+      const { store } = staffFake({
+        reissue: async (id) => {
+          reissued.push(id);
+          return row();
+        },
+      });
+      const svc = createExternalShareService({
+        staffStore: store,
+        partnerStore: {} as never,
+        outbox: outbox(),
+        flags: flags(true),
+        ...(canViewChannel ? { canViewChannel } : {}),
+      });
+      const shareId = randomUUID();
+      const denied = await svc.reissue(actor, shareId).catch((e: unknown) => e);
+      const unknown = createExternalShareService({
+        staffStore: staffFake({ getShare: async () => null }).store,
+        partnerStore: {} as never,
+        outbox: outbox(),
+        flags: flags(true),
+        canViewChannel: async () => true,
+      });
+      const missing = await unknown.reissue(actor, shareId).catch((e: unknown) => e);
+      expect(denied).toMatchObject({ statusCode: 404 });
+      expect((denied as Error).message).toBe((missing as Error).message);
+      expect(reissued).toEqual([]);
+    }
+  });
+
+  it("revoke does NOT need channel visibility (it only removes access)", async () => {
+    const { store } = staffFake();
+    const svc = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      outbox: outbox(),
+      flags: flags(true),
+      canViewChannel: async () => false,
+    });
+    expect((await svc.revoke(actor, randomUUID())).status).toBe("revoked");
   });
 
   it("verify ROTATES the bearer: the activation stores a fresh hash and returns a new org-bound token once; an already-active verify rotates nothing", async () => {

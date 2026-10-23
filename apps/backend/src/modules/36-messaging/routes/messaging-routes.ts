@@ -366,7 +366,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const { id } = parse(ChannelParamsSchema, request.params);
       const detail = await service.getChannel(organizationId, userId, id);
       // The route's preHandler already proved the caller may read this channel; the indicator is computed live from the share table every time.
-      const externalShare = await deps.externalShare?.indicator({ organizationId, userId }, id);
+      // A break-glass reader passes the route's read predicate without being a member; the indicator is for MEMBERS (plain visibility, no grant).
+      const isMember = deps.externalShare
+        ? await service.canViewChannel(organizationId, userId, id)
+        : false;
+      const externalShare = isMember
+        ? await deps.externalShare?.indicator({ organizationId, userId }, id)
+        : null;
       return externalShare ? { ...detail, externalShare } : detail;
     },
   );

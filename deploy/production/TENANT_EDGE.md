@@ -44,10 +44,14 @@ the overlay by hand. This environment gets its **own** database, object store an
 | `TRUSTED_PROXY_CIDRS` = the proxy only | `X-Forwarded-Host` is honoured from these peers and nobody else |
 
 `TRUSTED_PROXY_CIDRS` also decides what `request.ip` is, and therefore what every per-address rate budget is keyed on (public signup,
-auditor redeem, **external partner access**). **Messaging external partner access (ADR-0096 D17) fails closed without it:** with
-`NODE_ENV=production` and the variable unset or empty the partner routes are not mounted (one warning is logged at boot) and
-creating or reissuing a partner share answers `PARTNER_ACCESS_UNAVAILABLE` (HTTP 503, "partner access needs trusted proxy
-configuration"). List only the real proxy hops: a hop the caller controls lets a spoofed `X-Forwarded-For` pick its own budget bucket.
+auditor redeem, **external partner access**). The value is validated: IPv4/IPv6 addresses or CIDRs with a prefix of 1 or more, or
+the keywords `loopback`, `linklocal`, `uniquelocal`. **`/0` (`0.0.0.0/0`, `::/0`), `*`, `true`, a bare number and anything malformed
+make the whole list unusable** (Fastify then trusts nobody). **Messaging external partner access (ADR-0096 D17) fails closed:** it is
+available only when `NODE_ENV` is exactly `development` or `test`, or the list is present and valid. In any other case (production,
+staging, `prod`, an unset or mistyped `NODE_ENV`, a missing or invalid list) the partner routes are not mounted, one warning naming the
+offending entry is logged at boot, and creating or reissuing a partner share answers `PARTNER_ACCESS_UNAVAILABLE` (HTTP 503, "partner
+access needs trusted proxy configuration"). List only the real proxy hops: a hop the caller controls lets a spoofed
+`X-Forwarded-For` pick its own budget bucket.
 
 **The reverse proxy must overwrite `X-Forwarded-Host`** (the shipped vhost sets it to `$host`). A proxy that forwards
 the client's value lets a caller choose their own tenant host for every request. The API must not be reachable except

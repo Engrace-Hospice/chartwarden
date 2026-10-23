@@ -1,8 +1,8 @@
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 1.3 - the "Edited" indicator on a message bubble (jsdom). Plain text, never colour alone, not a button;
 // it sits outside the body renderer so it applies to every body kind, own and others' messages, channel and thread.
 // Opening a revision list is Phase 5 (docs/messaging-hub/06-ux-design.md), tied to messaging.history.read.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -172,6 +172,7 @@ describe("edit indicator in the real thread panel", () => {
     };
     // Strict mock: every call the thread makes is answered by path; anything else is recorded and fails the test.
     const unmocked: string[] = [];
+    let detailReads = 0;
     const answer = (method: string, path: string) => {
       if (
         method === "GET" &&
@@ -205,7 +206,8 @@ describe("edit indicator in the real thread panel", () => {
         return { data: undefined, error: {}, response: { status: 404 } };
       }
       if (method === "GET" && path === "/api/v1/messaging/channels/{id}") {
-        // WP 6.6 (ADR-0096 D18): the external-partner banner reads the channel detail; no active share here.
+        // WP 6.6 (ADR-0096 D18): the external-partner banner reads the channel detail (shared with presence); no active share here.
+        detailReads += 1;
         return {
           data: { channelId: "dm-1", members: [] },
           error: undefined,
@@ -258,5 +260,6 @@ describe("edit indicator in the real thread panel", () => {
     expect(within(rootRow).queryByText(/^Edited/)).toBeNull();
     await waitFor(() => expect(api.POST).toHaveBeenCalled());
     expect(unmocked, `unmocked API call: ${unmocked.join(", ")}`).toEqual([]);
+    expect(detailReads, "one channel-detail read per thread open").toBe(1);
   });
 });

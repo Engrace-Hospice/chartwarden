@@ -39,8 +39,9 @@ describe("parseTrustedProxies", () => {
       expect(v).not.toBe(true);
       expect(Array.isArray(v) || v === false).toBe(true);
     }
-    // NOTE: "0.0.0.0/0" IS accepted as a CIDR and would trust everything — that is the operator
-    // explicitly asking for it, which is different from an unset variable defaulting to it.
-    expect(parseTrustedProxies("0.0.0.0/0")).toEqual(["0.0.0.0/0"]);
+    // ADR-0096 D17 (supersedes the earlier "operator explicitly asked for it" reading): a /0 prefix makes request.ip whatever the caller writes in
+    // X-Forwarded-For, so it is REFUSED (and Fastify would throw "invalid range" on it at boot). The whole list is then unusable: trust nobody.
+    expect(parseTrustedProxies("0.0.0.0/0")).toBe(false);
+    expect(parseTrustedProxies("::/0")).toBe(false);
   });
 });

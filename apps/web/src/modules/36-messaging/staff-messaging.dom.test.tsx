@@ -1,5 +1,5 @@
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
@@ -309,6 +309,7 @@ describe("M36 messaging organization switching", () => {
     const oldChannelId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
     const newChannelId = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
     const messageLoads: string[] = [];
+    const detailLoads: string[] = [];
     let channelLoads = 0;
     const api = {
       GET: vi.fn((path: string, options?: { params?: { path?: { id?: string } } }) => {
@@ -325,15 +326,21 @@ describe("M36 messaging organization switching", () => {
           });
         }
         const requestedChannelId = options?.params?.path?.id;
+        // WP 6.6 (ADR-0096 D18): the channel DETAIL read (the external-partner banner and presence share one) is counted on its own below.
+        if (path === "/api/v1/messaging/channels/{id}" && requestedChannelId) {
+          detailLoads.push(requestedChannelId);
+          return Promise.resolve({
+            data: { channelId: requestedChannelId, members: [] },
+            error: undefined,
+          });
+        }
         // WP 2.4/2.5: the pinned-messages bar (/pins) and the own-draft read (/draft) are separate GETs on the same
         // channel id; WP 4.10 adds the header's snooze read (/snooze). This counter is about message loads only.
         if (
           requestedChannelId &&
           !path.endsWith("/pins") &&
           !path.endsWith("/draft") &&
-          !path.endsWith("/snooze") &&
-          // WP 6.6 (ADR-0096 D18): the thread's external-partner banner reads the channel detail once per channel.
-          path !== "/api/v1/messaging/channels/{id}"
+          !path.endsWith("/snooze")
         )
           messageLoads.push(requestedChannelId);
         return Promise.resolve({ data: { messages: [] }, error: undefined });
@@ -374,6 +381,8 @@ describe("M36 messaging organization switching", () => {
     oldSend.resolve({ data: { messageId: "old-message" }, error: undefined });
     await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(1));
     expect(messageLoads.filter((id) => id === oldChannelId)).toHaveLength(1);
+    // A thread open costs exactly ONE channel-detail request, however many things in the thread need it.
+    expect(detailLoads.filter((id) => id === oldChannelId)).toHaveLength(1);
     expect(screen.queryByText("North mutation")).toBeNull();
     expect(
       ((await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement).value,

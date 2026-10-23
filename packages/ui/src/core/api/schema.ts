@@ -15006,7 +15006,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reissue the invitation of an ACTIVE partner share (messaging.share.manage + a fresh step-up; 404 while the tenant flag is off; 409 when the share is revoked or expired; 503 PARTNER_ACCESS_UNAVAILABLE without trusted proxy configuration). A new single-use invitation AND a NEW 8-digit code are returned once; every session and the old code of the earlier invitation are dead, and the attempt counter restarts. This is the only way to reset it. Publishes m36.external_share.reissued (ids only) */
+        /** Reissue the invitation of an ACTIVE partner share (messaging.share.manage + a fresh step-up, and the caller must be a MEMBER of the shared channel, no break-glass: otherwise the same 404 as an unknown share; 404 while the tenant flag is off; 409 when the share is revoked or expired; 503 PARTNER_ACCESS_UNAVAILABLE without trusted proxy configuration). A new single-use invitation AND a NEW 8-digit code are returned once; every session and the old code of the earlier invitation are dead, and the attempt counter restarts. This is the only way to reset it. Publishes m36.external_share.reissued (ids only) */
         post: operations["postApiV1MessagingExternalsharesByIdReissue"];
         delete?: never;
         options?: never;
