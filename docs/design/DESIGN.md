@@ -45,13 +45,13 @@ Three commitments fall out of that:
 2. **The rails are visible, never nagging.** Guards, gates, and deadlines are first-class,
    legible, and *explained* — disabled actions say *why*, blockers say *what to fix*. We make
    compliance feel like a handrail, not a gauntlet.
-3. **Dignity in the details.** A patient is a person with a name and a story, not a row. Warm
+3. **Dignity in the details.** A patient is a person with a name and a story, not a row. Calm
    neutrals, a humanist display voice, and compassionate copy — especially in death,
    discharge, and bereavement surfaces, and across the entire patient/family portal.
 
 Lantern descends from the Apple-minimal "clinical precision + editorial breathability" school,
-but it is **its own identity**: warm paper instead of cool grey, a humanist serif for the
-human moments, a designed *twilight* dark mode, and — because ChartWarden literally is the warden —
+but it is **its own identity**: a humanist voice for the
+human moments, a designed dark mode (deep navy, not inverted), and — because ChartWarden literally is the warden —
 a formalized **Guardrail, Provenance, and Sensitivity** system that no generic design kit ships.
 
 ---
@@ -139,7 +139,14 @@ in this ramp (see the No-Line rule, §10), never from default 1px lines.
 | `surface-container-high` | `#E5E9EF` | `#232E42` | Secondary buttons, active tabs |
 | `surface-container-highest` | `#DCE1E8` | `#2C384E` | Critical/selected emphasis only |
 | `sidebar` | `#F2F5F9` | `#0E1626` | Shell navigation column |
-| `card-border` | `#E4E8EE` | `#222C3E` | Hairline card edge (the redesign uses a hairline, not borderless shadow cards) |
+| `card-border` | `#E4E8EE` | `#222C3E` | Hairline card edge (the redesign uses a hairline, replacing Lantern's borderless shadow cards) |
+
+### 2.5a Data visualization
+
+Chart series use the `viz-*` tokens (never the semantic state colors). Light → dark: blue `#1A56EB` → `#7C9CFF`,
+teal `#0D9488` → `#2DD4BF`, green `#16A34A` → `#4ADE80`, amber `#D97706` → `#FBBF24`, yellow `#EAB308` → `#FACC15`,
+orange `#EA580C` → `#FB923C`, cyan `#0891B2` → `#22D3EE`, violet `#7C3AED` → `#A78BFA`, rose `#E11D48` → `#FB7185`,
+pink `#DB2777` → `#F472B6`.
 
 ### 2.6 Text & border
 
@@ -233,12 +240,12 @@ A patient banner is the name in `headline-md` Fraunces beside `data-md` mono ide
 
 | Token | Value | Usage |
 | :-- | :-- | :-- |
-| `shadow-soft` | `0 4px 24px rgba(28, 27, 26, 0.05)` | Cards, content containers |
-| `shadow-float` | `0 12px 48px rgba(28, 27, 26, 0.10)` | Dropdowns, popovers, ceremonies |
-| `shadow-ambient` | `0 4px 16px rgba(26, 86, 235, 0.06)` | Blue-tinted float (primary surfaces) (primary surfaces) |
+| `shadow-soft` | `0 1px 2px rgba(15, 23, 42, 0.04)` | Cards, content containers |
+| `shadow-float` | `0 12px 40px rgba(15, 23, 42, 0.12)` | Dropdowns, popovers, ceremonies |
+| `shadow-ambient` | `0 4px 16px rgba(26, 86, 235, 0.06)` | Blue-tinted float (primary surfaces) |
 
 **Glassmorphism** — floating chrome only (nav, modals, command palette, toasts, the
-break-glass banner). Warm white glass in light, twilight glass in dark:
+break-glass banner). White glass in light, navy glass in dark:
 
 ```css
 .wx-glass {
@@ -246,7 +253,7 @@ break-glass banner). Warm white glass in light, twilight glass in dark:
   -webkit-backdrop-filter: blur(20px) saturate(1.1);
   backdrop-filter: blur(20px) saturate(1.1);
 }
-.dark .wx-glass { background: rgba(28, 28, 36, 0.72); }
+.dark .wx-glass { background: rgba(17, 24, 39, 0.72); }
 ```
 
 **Shadow budget:** ≤3 shadowed elements per screen. Beyond that, separate with tonal shifts.
@@ -255,7 +262,7 @@ break-glass banner). Warm white glass in light, twilight glass in dark:
 
 ## 5. Iconography
 
-**System:** Google **Material Symbols — Rounded** (softer terminals than Outlined; warmer, more
+**System:** Google **Material Symbols — Rounded** (softer terminals than Outlined; friendlier, more
 humane — a deliberate departure from the legacy-EHR Outlined look).
 
 ```css
@@ -290,7 +297,7 @@ fill, `md` radius. Icon + label; collapsible groups. Distinct from in-screen lef
 ### 6.2 Cards
 
 The **Lantern Card**: `surface-container-lowest` (#FFFFFF), radius `xl`, `shadow-soft`, padding
-≥`5` (24px), sitting on the warm `background`/`surface-container-low`. No border. Header in
+≥`5` (24px), sitting on the `background`/`surface-container-low`. Hairline `card-border` edge (redesign). Header in
 Fraunces `headline-md`; body in Inter.
 
 ### 6.3 KPI / Metric Card
@@ -449,7 +456,7 @@ open question — *AI presentation is its own system, not ad-hoc per screen.*
 
 ```css
 @keyframes wx-ai-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(31, 138, 91, 0.35); }
+  0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); }
   70%  { box-shadow: 0 0 0 10px rgba(31, 138, 91, 0); }
   100% { box-shadow: 0 0 0 0 rgba(31, 138, 91, 0); }
 }
@@ -501,7 +508,7 @@ ChartWarden is **Tailwind v4 (CSS-first `@theme`)** — tokens are CSS custom pr
 config. **HISTORICAL — this adoption step is DONE** (see the header status note): the block below
 was the original hand-off spec, kept as the design-intent record. The live source of truth is
 [`apps/web/src/index.css`](../../apps/web/src/index.css) + `packages/ui/src/core/theme/colors.ts`,
-which extend it (spacing scale, on-emphasis/scrim, `--color-muted: #726d64` per WX-PR-018). Do not
+which extend it (spacing scale, on-emphasis/scrim, `--color-muted` per WX-PR-018 (see §2.6)). Do not
 copy this block over the shipped files:
 
 ```css
