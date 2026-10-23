@@ -54,7 +54,7 @@ rather than appends.
 `web-nginx.conf`, so a deep-link reload never gets the staff document). Build the **real-environment** image with
 `--build-arg VITE_TENANT_BASE_DOMAIN=<base>`: that is what shows the "find my organization" landing at `app.<base>`.
 The value is baked into the bundle, so the demo and the real environment need **separate image builds** (the demo's is
-empty). The release workflow does not build the real-environment image yet.
+empty). Run the manual workflow **Release tenant web image** (`.github/workflows/release-tenant-web.yml`, input `base_domain`): it builds `chartwarden-web-tenant:sha-<sha>` with the build arg, scans it (HIGH/CRITICAL fail) and signs it with cosign. It is manual-only and the real environment is deployed by hand; set `CHARTWARDEN_WEB_IMAGE` to that image.
 
 ## Verify (smoke.sh)
 
