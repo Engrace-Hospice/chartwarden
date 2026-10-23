@@ -33,7 +33,7 @@ describe("parseX12835 clean multi-claim 835", () => {
       transactionSetControlNumber: "0001",
       checkOrEftTraceNumber: "EFT0001",
       paymentMethod: "eft",
-      totalPaymentAmount: 1150,
+      totalPaymentAmount: 1250,
       productionDate: "2026-06-15T00:00:00Z",
     });
     expect(r.value.claims).toHaveLength(3);
@@ -135,8 +135,8 @@ describe("parseX12835 fails closed", () => {
   const ok = wrap835(CLEAN_BODY);
 
   it("rejects an unbalanced BPR02", () => {
-    const body = replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("1150.00", "1150.01"));
-    expectDegraded(wrap835(body), "X12_835_UNBALANCED", "BPR02 1150.01 != sum(CLP04) - sum(PLB) 1150.00");
+    const body = replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("1250.00", "1250.01"));
+    expectDegraded(wrap835(body), "X12_835_UNBALANCED", "BPR02 1250.01 != sum(CLP04) - sum(PLB) 1250.00");
   });
 
   it("rejects a claim whose CLP03-CLP04-CAS does not foot", () => {

@@ -22,9 +22,9 @@
  *     that was fixed on `main` at commit `46414c60` (#75/#76, F-030) well before #250 — the guard now
  *     checks the real, stamped `actorKind === "system"` field and `INTERNAL_SERVICE_TOKEN` verification
  *     is production-wired (`apps/backend/src/index.ts` ~line 3267). The route IS reachable and correctly
- *     gated. M25 stays skipped here for the reason #250 confirmed is the true one: no X12-835 sidecar
- *     (`M25_X12_WORKER_URL`) is configured in any environment and the clearinghouse-pull transport that
- *     would stage an 835 for this route to receive is unbuilt — `denials.routes.ts`/`appeals.routes.ts`
+ *     gated. M25 stays skipped here for the reason #250 confirmed is the true one: the clearinghouse-pull
+ *     transport that would stage an 835 for this route to receive is unbuilt (the 835 parser is in-process
+ *     TypeScript now, #253 / ADR-0037 — there is no sidecar) — `denials.routes.ts`/`appeals.routes.ts`
  *     have no create routes at all, both spawned by that same unreachable ingest worker. There is no
  *     API-reachable seed for M25 today, but not because of an authz bug.
  *   - M24: two prerequisites `assembleClaim` needs that nothing seeds by default:

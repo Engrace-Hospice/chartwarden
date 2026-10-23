@@ -1,9 +1,9 @@
-import { mapParsed277ca } from "./parse-277ca";
 // @chartwarden/x12-835-client — the M25 X12 client. parse835 is IN-PROCESS pure TypeScript (ADR-0037; the
 // Python x12-worker sidecar was cancelled): raw 835 text -> parseX12835, fail-closed. parse277ca still maps
 // a sidecar response over an injected HTTP port (default fails closed) — the 277CA belongs to M23's client
 // (ADR-0029) and is deliberately not parsed here. No network or storage code lives in this package.
 // Imports ONLY from ./types + the ./parse-* mappers — never from ./index — to keep the no-circular rule.
+import { mapParsed277ca } from "./parse-277ca";
 import { parseX12835 } from "./parse-x12-835";
 import {
   type Parsed277ca,
@@ -50,6 +50,8 @@ export interface X12835ClientOptions {
   readonly port?: X12835HttpPort;
   /** Raw-835 reader for requests that carry only an object key. */
   readonly readRaw?: X12RawReader;
+  /** Accept ISA15 = T test interchanges (dev/test only; default rejects them). */
+  readonly allowTestFiles?: boolean;
 }
 
 /** Request to parse a raw 277CA file staged in MinIO. */
@@ -57,7 +59,7 @@ export interface Parse277caRequest {
   readonly minioObjectKey: string;
 }
 
-/** The M25-owned slice of the x12-worker client surface. */
+/** The M25-owned X12 client surface: in-process 835 parsing plus the 277CA sidecar mapper. */
 export interface X12835WorkerClient {
   parse835(input: Parse835Request): Promise<X12WorkerResult<ParsedRemittanceAdvice>>;
   parse277ca(input: Parse277caRequest): Promise<X12WorkerResult<Parsed277ca>>;
@@ -93,12 +95,12 @@ export function createX12835Client(opts: X12835ClientOptions = {}): X12835Worker
         }
         try {
           raw = await opts.readRaw(input.minioObjectKey);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : "object read rejected";
-          return degraded835("X12_835_RAW_READ", reason, "parse835", true);
+        } catch {
+          // Fixed text: a storage error message can carry bucket/endpoint detail and lands in parse_summary.
+          return degraded835("X12_835_RAW_READ", "staged 835 object could not be read", "parse835", true);
         }
       }
-      return parseX12835(raw, input.payerProgram);
+      return parseX12835(raw, input.payerProgram, { allowTestFiles: opts.allowTestFiles ?? false });
     },
 
     async parse277ca(input) {

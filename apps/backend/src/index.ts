@@ -5666,6 +5666,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(),
+            onRetryableParseDegraded: (event) =>
+              app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -11766,6 +11768,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
+              onRetryableParseDegraded: (event) =>
+                app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

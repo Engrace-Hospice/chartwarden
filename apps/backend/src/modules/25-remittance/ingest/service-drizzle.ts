@@ -51,6 +51,16 @@ export interface M25IngestDrizzleDeps {
    * routes a Medicaid 835 against M23's claim table, or vice versa.
    */
   readonly claims?: ClaimMatchCandidateProviderByPayer;
+  /**
+   * Ops-visibility hook: called when `postAdvice` fails on a RETRYABLE degraded parse (e.g. no staged-object
+   * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
+   * the degraded code only. The composition root points this at a warn log.
+   */
+  readonly onRetryableParseDegraded?: (event: {
+    readonly organizationId: string;
+    readonly adviceId: string;
+    readonly code: string;
+  }) => void;
 }
 
 function money(n: number): string {
@@ -570,6 +580,13 @@ export function buildDrizzleM25IngestService(
         payerProgram: advice.payerKind,
       });
       if (!parsed.ok) {
+        if (parsed.degraded.retryable) {
+          deps.onRetryableParseDegraded?.({
+            organizationId: actor.organizationId,
+            adviceId,
+            code: parsed.degraded.code,
+          });
+        }
         await markFailed(actor, adviceId, parsed.degraded.reason);
         return { outcome: "failed", adviceId, reason: parsed.degraded.reason };
       }

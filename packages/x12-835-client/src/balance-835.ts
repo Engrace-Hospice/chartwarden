@@ -1,9 +1,19 @@
 // @chartwarden/x12-835-client — 835 balancing rules. PURE; all arithmetic in integer cents (no float drift).
 // Any imbalance throws an X12_835_UNBALANCED error: a remittance that does not foot is never posted.
+//
+// Current-behavior limits (deliberate; follow-ups, not silent):
+//  - sum(SVC02) = CLP03 is enforced for every claim with service lines (not yet checked against MAC
+//    companion guides);
+//  - CLP05 must equal the PR adjustments exactly (an absent CLP05 counts as 0);
+//  - interest carried inside CLP04 is not modelled separately;
+//  - claim and line CAS are additive in the claim balance.
 import { X12ParseError } from "./x12-tokenizer";
 
-/** CLP02 statuses exempt from balancing: 23 (forwarded to another payer, no adjudication) and 25 (predetermination). */
-const BALANCE_EXEMPT_STATUS: ReadonlySet<number> = new Set([23, 25]);
+/**
+ * CLP02 23 (forwarded to another payer) and 25 (predetermination) are not adjudicated payments: they skip
+ * the charge/CAS balance but MUST carry CLP04 = 0, so an exempt claim can never put money into BPR02.
+ */
+const NO_PAYMENT_STATUS: ReadonlySet<number> = new Set([23, 25]);
 
 export interface CentsAdjustment {
   readonly groupCode: string;
@@ -39,7 +49,10 @@ function unbalanced(message: string): never {
  *  - CLP05 = sum(PR adjustments, claim + line level)
  */
 export function checkClaimBalance(c: ClaimCents, n: number): void {
-  if (BALANCE_EXEMPT_STATUS.has(c.statusCode)) return;
+  if (NO_PAYMENT_STATUS.has(c.statusCode)) {
+    if (c.paid !== 0) unbalanced(`claim ${n} has status ${c.statusCode} but a non-zero CLP04`);
+    return;
+  }
   c.lines.forEach((l, i) => {
     const adj = sum(l.adjustments.map((a) => a.cents));
     if (l.charge - l.paid - adj !== 0) {

@@ -148,8 +148,8 @@ export interface DegradedError {
   readonly code: string;
   /** Human-readable, PHI-free reason. */
   readonly reason: string;
-  /** The integration that degraded — always "x12-worker" for this package. */
-  readonly integration: "x12-worker";
+  /** The integration that degraded: the in-process 835 parser, or the 277CA sidecar port. */
+  readonly integration: "x12-835-parser" | "x12-worker";
   /** The sidecar operation attempted. */
   readonly operation: "parse835" | "parse277ca";
   /** Whether the caller may retry (transport/timeouts) vs. a permanent parse failure. */
@@ -168,5 +168,5 @@ export function degraded835<T>(
   operation: DegradedError["operation"],
   retryable: boolean,
 ): X12WorkerResult<T> {
-  return { ok: false, degraded: { code, reason, integration: "x12-worker", operation, retryable } };
+  return { ok: false, degraded: { code, reason, integration: operation === "parse835" ? "x12-835-parser" : "x12-worker", operation, retryable } };
 }

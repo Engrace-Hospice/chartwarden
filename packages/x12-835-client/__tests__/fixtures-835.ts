@@ -15,6 +15,9 @@ export interface WrapOptions {
   ge01?: string;
   iea02?: string;
   iea01?: string;
+  isa15?: string;
+  gs01?: string;
+  gs08?: string;
 }
 
 /** Build a full interchange around `body` (the segments strictly between ST and SE). */
@@ -41,11 +44,11 @@ export function wrap835(body: readonly string[], o: WrapOptions = {}): string {
     "00501",
     isa13.padEnd(9),
     "0",
-    "P",
+    o.isa15 ?? "P",
     comp,
   ].join(el);
   const segs = [
-    `GS*HP*SYNTHMAC*SYNTHHOSPICE*20260616*1200*${gs06}*X*005010X221A1`,
+    `GS*${o.gs01 ?? "HP"}*SYNTHMAC*SYNTHHOSPICE*20260616*1200*${gs06}*X*${o.gs08 ?? "005010X221A1"}`,
     `ST*${o.st01 ?? "835"}*${st02}`,
     ...body,
     `SE*${o.seCount ?? body.length + 2}*${o.se02 ?? st02}`,
@@ -66,9 +69,9 @@ const HEADER = [
   "LX*1",
 ];
 
-/** BPR02 = sum(CLP04) 1200.00 - sum(PLB) 50.00. */
+/** BPR02 = sum(CLP04) 1200.00 - sum(PLB) (-50.00: WO 25.00 reduces, L6 interest -75.00 increases) = 1250.00. */
 export const CLEAN_BODY: readonly string[] = [
-  "BPR*I*1150.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+  "BPR*I*1250.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
   ...HEADER,
   // claim 1: two service lines, line-level CAS (one SVC with two CAS segments, one with a quantity)
   "CLP*PCN-0001*1*1000.00*800.00*50.00*MC*ICN-A1*11*1",
@@ -94,7 +97,7 @@ export const CLEAN_BODY: readonly string[] = [
   "CLP*PCN-0003*4*300.00*0.00*0.00*MC*ICN-A3",
   "CAS*CO*45*300.00",
   "MOA***MA130",
-  "PLB*1512345678*20261231*WO:REF1*-25.00*L6:REF2*75.00",
+  "PLB*1512345678*20261231*WO:REF1*25.00*L6:REF2*-75.00",
 ];
 
 /** A single denied claim (CLP02=4), no service lines, no PLB. */
