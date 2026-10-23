@@ -70,9 +70,8 @@ function toIsoDate(v: string, field: string): string {
 }
 
 function toNumber(v: string, field: string): number {
-  const n = Number(v);
-  if (v.trim() === "" || !Number.isFinite(n)) return fail(`${field} is not numeric`);
-  return n;
+  if (!/^-?\d+(\.\d+)?$/.test(v.trim())) return fail(`${field} is not numeric`);
+  return Number(v);
 }
 
 interface AdjDraft extends CentsAdjustment {

@@ -581,11 +581,15 @@ export function buildDrizzleM25IngestService(
       });
       if (!parsed.ok) {
         if (parsed.degraded.retryable) {
-          deps.onRetryableParseDegraded?.({
-            organizationId: actor.organizationId,
-            adviceId,
-            code: parsed.degraded.code,
-          });
+          try {
+            deps.onRetryableParseDegraded?.({
+              organizationId: actor.organizationId,
+              adviceId,
+              code: parsed.degraded.code,
+            });
+          } catch {
+            // Ops-only hook: it must never stop the advice being marked failed.
+          }
         }
         await markFailed(actor, adviceId, parsed.degraded.reason);
         return { outcome: "failed", adviceId, reason: parsed.degraded.reason };

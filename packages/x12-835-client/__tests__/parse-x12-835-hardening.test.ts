@@ -159,3 +159,10 @@ describe("staged-object read failures", () => {
     expect(r.degraded.reason).not.toContain("minio");
   });
 });
+
+describe("numeric quantity fields", () => {
+  it.each(["0x10", "1e3"])("rejects a non-decimal CAS quantity (%s)", (qty) => {
+    const raw = wrap835(replaceSeg(CLEAN_BODY, "CAS*CO*45*100.00*1", `CAS*CO*45*100.00*${qty}`));
+    expectDegraded(raw, "X12_835_PARSE_FAILED", "CAS quantity is not numeric");
+  });
+});
