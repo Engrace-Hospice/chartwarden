@@ -69,7 +69,7 @@ function SupervisoryVisitModal({
   const [aideMembershipId, setAide] = useState(plan.aideMembershipId ?? "");
   const [supervisingRnMembershipId, setRn] = useState(plan.supervisingRnMembershipId ?? "");
   const [sourceEncounterId, setEncounter] = useState("");
-  const [supervisoryAt, setAt] = useState(nowLocalInput());
+  const [supervisoryAt, setAt] = useState(nowLocalInput);
   const [attestationMode, setMode] = useState("aide_present");
   const [satisfactory, setSatisfactory] = useState(true);
   const [correctiveActions, setCorrective] = useState("");

@@ -83,7 +83,7 @@ export function AssessmentEditor(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [kind, setKind] = useState("msw_psychosocial");
-  const [capturedAt, setCapturedAt] = useState(nowLocalInput());
+  const [capturedAt, setCapturedAt] = useState(nowLocalInput);
   const [isInitial, setIsInitial] = useState(false);
   const [sudFlag, setSudFlag] = useState(false);
   const [familyViolenceFlag, setFamilyViolenceFlag] = useState(false);
