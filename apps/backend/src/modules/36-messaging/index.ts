@@ -420,6 +420,9 @@ export function mountMessagingRoutes(
         ...(opts.retentionGovernance.staffNames
           ? { staffNames: opts.retentionGovernance.staffNames }
           : {}),
+        ...(opts.retentionGovernance.redactionFallback
+          ? { singleOfficerFallback: opts.retentionGovernance.redactionFallback }
+          : {}),
       }),
     });
   }

@@ -178442,7 +178442,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached",
+        "summary": "Compliance officer: the newest redactions (messaging.redact.request, messaging.redact.approve or messaging.redact.countersign) with status (requested, awaiting_countersign, approved or lapsed), the requester, approver and countersigner ids and display names, instants and whether an active legal hold covers the message now; single_officer_fallback_available says whether the PROVISIONAL self-approve route can be used now (setting on and exactly one eligible approver). Never the message or the reason. Read-audited. Not cached",
         "parameters": [],
         "responses": {
           "200": {
@@ -178452,7 +178452,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "redactions"
+                    "redactions",
+                    "single_officer_fallback_available"
                   ],
                   "properties": {
                     "redactions": {
@@ -178469,6 +178470,10 @@
                           "approved_by",
                           "approved_by_name",
                           "approved_at",
+                          "self_approved",
+                          "countersign_deadline_at",
+                          "countersigned_by",
+                          "countersigned_by_name",
                           "under_legal_hold"
                         ],
                         "properties": {
@@ -178487,7 +178492,15 @@
                                 "type": "string"
                               },
                               {
+                                "const": "awaiting_countersign",
+                                "type": "string"
+                              },
+                              {
                                 "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "lapsed",
                                 "type": "string"
                               }
                             ]
@@ -178538,11 +178551,47 @@
                               }
                             ]
                           },
+                          "self_approved": {
+                            "type": "boolean"
+                          },
+                          "countersign_deadline_at": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "countersigned_by": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "countersigned_by_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "under_legal_hold": {
                             "type": "boolean"
                           }
                         }
                       }
+                    },
+                    "single_officer_fallback_available": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -178581,6 +178630,10 @@
                     "approved_by",
                     "approved_by_name",
                     "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
                     "under_legal_hold"
                   ],
                   "properties": {
@@ -178599,7 +178652,15 @@
                           "type": "string"
                         },
                         {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
                           "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
                           "type": "string"
                         }
                       ]
@@ -178641,6 +178702,39 @@
                       ]
                     },
                     "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -178727,6 +178821,10 @@
                     "approved_by",
                     "approved_by_name",
                     "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
                     "under_legal_hold"
                   ],
                   "properties": {
@@ -178745,7 +178843,15 @@
                           "type": "string"
                         },
                         {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
                           "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
                           "type": "string"
                         }
                       ]
@@ -178787,6 +178893,369 @@
                       ]
                     },
                     "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "under_legal_hold": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/redactions/{id}/countersign": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceRedactionsByIdCountersign",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 403 REDACTION_FALLBACK_UNAVAILABLE when the fallback has since closed (the tenant setting turned off or a second officer added: the row then needs an ordinary two-person approval); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "message_id",
+                    "status",
+                    "requested_by",
+                    "requested_by_name",
+                    "requested_at",
+                    "approved_by",
+                    "approved_by_name",
+                    "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
+                    "under_legal_hold"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "message_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requested_by": {
+                      "type": "string"
+                    },
+                    "requested_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requested_at": {
+                      "type": "string"
+                    },
+                    "approved_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "under_legal_hold": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/redactions/{id}/self-approve": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceRedactionsByIdSelfapprove",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer, PROVISIONAL single-officer fallback (ADR-0055 D9; pending compliance sign-off): approve your OWN redaction request. Needs messaging.redact.approve and a fresh step-up for `messaging.redact.self_approve` (else 403 STEP_UP_REQUIRED), the tenant setting messaging.redaction_single_officer_fallback ON (off by default) and exactly ONE person who can approve (else 403 REDACTION_FALLBACK_UNAVAILABLE); only the requester (403 REDACTION_SELF_APPROVAL_NOT_REQUESTER); 409 REDACTION_ALREADY_APPROVED. NOT final: it masks nothing and the message stays editable-blocked and out of search until a second role countersigns within 72 hours (status awaiting_countersign, then lapsed). Audited by the row's trigger and m36.redaction.self_approved",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "message_id",
+                    "status",
+                    "requested_by",
+                    "requested_by_name",
+                    "requested_at",
+                    "approved_by",
+                    "approved_by_name",
+                    "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
+                    "under_legal_hold"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "message_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requested_by": {
+                      "type": "string"
+                    },
+                    "requested_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requested_at": {
+                      "type": "string"
+                    },
+                    "approved_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
                       "anyOf": [
                         {
                           "type": "string"

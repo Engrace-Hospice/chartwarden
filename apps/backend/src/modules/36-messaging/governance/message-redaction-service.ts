@@ -6,6 +6,12 @@
 // an active legal hold neither blocks a redaction nor is weakened by it, and the integrity job still verifies the body. A REQUEST already
 // takes the message out of search and blocks edits; an APPROVAL masks it for every reader. Approving also deletes the message's blind search
 // tokens in the same transaction.
+//
+// Single-officer fallback (ADR-0055 D9, migration 1165, PROVISIONAL pending compliance sign-off; default OFF per tenant): when the tenant has
+// exactly ONE person who can approve, that person may approve their OWN request (`selfApprove`), but it masks nothing until a second role
+// countersigns (`countersign`) within 72 hours. Everything that decides WHETHER is checked here (flag, exactly one eligible officer, the
+// caller holds the approve permission via the route); everything that decides WHO and WHEN is also enforced by the database guard.
+import { type AuditExecutor, audit } from "@chartwarden/audit";
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -13,13 +19,14 @@ import {
   ChartWardenError,
   MESSAGE_REDACTION_REASON_MAX_LENGTH,
   MESSAGE_REDACTION_REASON_MIN_LENGTH,
+  MESSAGING_REDACT_APPROVE_PERMISSION,
   type MessageRedactionDto,
   type MessageRedactionListDto,
   NotFoundError,
   type RequestMessageRedactionRequest,
   ValidationError,
 } from "@chartwarden/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { type ActiveMessageHold, heldMessageIdsAmong } from "../jobs/retention-hold-sql";
 import { deleteSearchTokens } from "../message-search-tokens";
 import type { Tx } from "../messaging-write-core";
@@ -35,6 +42,19 @@ export const REDACTION_LIST_LIMIT = 100;
 export interface MessageRedactionDeps {
   readonly db: DbClient;
   readonly staffNames?: StaffNamePort;
+  /**
+   * The single-officer fallback's two inputs, bound at the composition root (absent = the fallback does not exist). `enabled` is the tenant flag
+   * (absent = off); `eligibleApprovers` is how many active people in the tenant hold `messaging.redact.approve` (M3's reader).
+   */
+  readonly singleOfficerFallback?: {
+    readonly enabled: (organizationId: string) => Promise<boolean>;
+    readonly eligibleApprovers: (
+      tx: DbClient,
+      organizationId: string,
+      permissionKey: string,
+    ) => Promise<number>;
+  };
+  readonly now?: () => Date;
   /** M4's active holds (live criteria), used only to say whether a listed message is under a hold. */
   readonly activeHolds: (
     tx: DbClient,
@@ -43,6 +63,15 @@ export interface MessageRedactionDeps {
 }
 
 type RedactionRow = typeof RED.$inferSelect;
+
+/** What a row is, from the caller's clock: approved = FINAL (masks); a self-approval is awaiting its countersign until the deadline, then lapsed. */
+export function redactionStatus(row: RedactionRow, now: Date): MessageRedactionDto["status"] {
+  if (row.approvedAt) return "approved";
+  if (!row.selfApprovedAt) return "requested";
+  return row.countersignDeadlineAt && row.countersignDeadlineAt.getTime() >= now.getTime()
+    ? "awaiting_countersign"
+    : "lapsed";
+}
 
 function assertReason(reason: string): void {
   const length = reason.trim().length;
@@ -77,7 +106,7 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
       deps.staffNames,
       tx,
       orgId,
-      rows.flatMap((r) => [r.requestedBy, r.approvedBy]),
+      rows.flatMap((r) => [r.requestedBy, r.approvedBy, r.countersignedBy]),
     );
     const held = await heldMessageIdsAmong(
       tx,
@@ -88,15 +117,56 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
     return rows.map((r) => ({
       id: r.id,
       message_id: r.messageId,
-      status: r.approvedAt ? ("approved" as const) : ("requested" as const),
+      status: redactionStatus(r, (deps.now ?? (() => new Date()))()),
       requested_by: r.requestedBy,
       requested_by_name: nameOrNull(names, r.requestedBy),
       requested_at: r.requestedAt.toISOString(),
       approved_by: r.approvedBy,
       approved_by_name: nameOrNull(names, r.approvedBy),
       approved_at: r.approvedAt ? r.approvedAt.toISOString() : null,
+      self_approved: r.selfApprovedAt !== null,
+      countersign_deadline_at: r.countersignDeadlineAt
+        ? r.countersignDeadlineAt.toISOString()
+        : null,
+      countersigned_by: r.countersignedBy,
+      countersigned_by_name: nameOrNull(names, r.countersignedBy),
       under_legal_hold: held.has(r.messageId),
     }));
+  }
+
+  /** The fallback is usable now: the tenant flag is on and exactly one active person holds the approve permission. */
+  async function fallbackOpen(tx: DbClient, organizationId: string): Promise<boolean> {
+    const fallback = deps.singleOfficerFallback;
+    if (!fallback || !(await fallback.enabled(organizationId))) return false;
+    return (
+      (await fallback.eligibleApprovers(
+        tx,
+        organizationId,
+        MESSAGING_REDACT_APPROVE_PERMISSION,
+      )) === 1
+    );
+  }
+
+  async function assertFallbackOpen(tx: DbClient, actor: GovernanceActor): Promise<void> {
+    if (!(await fallbackOpen(tx, actor.organizationId))) {
+      throw new ChartWardenError(
+        "REDACTION_FALLBACK_UNAVAILABLE",
+        "the single-officer fallback is not available: it needs the tenant setting on and exactly one eligible officer",
+        403,
+      );
+    }
+  }
+
+  /** The row, locked for the rest of the transaction (two concurrent decisions queue, the second sees the first). */
+  async function lockRow(tx: DbClient, actor: GovernanceActor, id: string): Promise<RedactionRow> {
+    const [existing] = await tx
+      .select()
+      .from(RED)
+      .where(and(eq(RED.organizationId, actor.organizationId), eq(RED.id, id)))
+      .for("update")
+      .limit(1);
+    if (!existing) throw new NotFoundError("message_redaction", id);
+    return existing;
   }
 
   return {
@@ -183,6 +253,126 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
       });
     },
 
+    /**
+     * Approve your OWN request: the single-officer fallback. Refused unless the tenant flag is on AND exactly one person can approve (and that is
+     * the caller). Not final: it masks nothing and starts the 72 h countersign period. Audited loudly in addition to the row's own audit trigger.
+     */
+    async selfApprove(actor: GovernanceActor, id: string): Promise<MessageRedactionDto> {
+      return inTx(actor, async (tx) => {
+        const existing = await lockRow(tx, actor, id);
+        if (existing.requestedBy !== actor.userId) {
+          throw new ChartWardenError(
+            "REDACTION_SELF_APPROVAL_NOT_REQUESTER",
+            "only the person who requested a redaction can approve it as the sole officer",
+            403,
+          );
+        }
+        if (existing.approvedAt || existing.selfApprovedAt) {
+          throw new ChartWardenError(
+            "REDACTION_ALREADY_APPROVED",
+            "this redaction is already approved or awaiting its countersign",
+            409,
+          );
+        }
+        await assertFallbackOpen(tx, actor);
+        const [row] = await tx
+          .update(RED)
+          .set({ selfApprovedAt: new Date() })
+          .where(
+            and(
+              eq(RED.organizationId, actor.organizationId),
+              eq(RED.id, id),
+              isNull(RED.approvedAt),
+              isNull(RED.selfApprovedAt),
+            ),
+          )
+          .returning();
+        if (!row) {
+          throw new ChartWardenError(
+            "REDACTION_ALREADY_APPROVED",
+            "this redaction is already approved or awaiting its countersign",
+            409,
+          );
+        }
+        await audit(tx as unknown as AuditExecutor, actor.auditContext, {
+          eventType: "m36.redaction.self_approved",
+          resourceKind: "message_redaction",
+          resourceId: row.id,
+          outcome: "success",
+          context: {
+            redactionId: row.id,
+            messageId: row.messageId,
+            countersignDeadlineAt: row.countersignDeadlineAt?.toISOString() ?? null,
+            provisional: true,
+          },
+        });
+        return (await toDtos(tx, actor.organizationId, [row]))[0] as MessageRedactionDto;
+      });
+    },
+
+    /**
+     * The second role countersigns a self-approved redaction within its 72 h period: the redaction becomes final (masks). Never the requester
+     * (403, and the database refuses it too); after the deadline it is 409 REDACTION_COUNTERSIGN_LAPSED and nothing changes.
+     */
+    async countersign(actor: GovernanceActor, id: string): Promise<MessageRedactionDto> {
+      return inTx(actor, async (tx) => {
+        const existing = await lockRow(tx, actor, id);
+        if (existing.requestedBy === actor.userId) {
+          throw new ChartWardenError(
+            "REDACTION_COUNTERSIGN_SELF",
+            "a redaction is countersigned by a different person than the one who requested it",
+            403,
+          );
+        }
+        const status = redactionStatus(existing, (deps.now ?? (() => new Date()))());
+        if (status === "lapsed") {
+          throw new ChartWardenError(
+            "REDACTION_COUNTERSIGN_LAPSED",
+            "the countersign period has passed; this redaction is not final",
+            409,
+          );
+        }
+        if (status !== "awaiting_countersign") {
+          throw new ChartWardenError(
+            "REDACTION_NOT_AWAITING_COUNTERSIGN",
+            "this redaction is not awaiting a countersign",
+            409,
+          );
+        }
+        // Same gate as the self-approval: a fallback row is completed only while the fallback is still open (flag on, exactly one eligible
+        // approver). Turn the setting off, or add a second officer, and the row must go through the ordinary two-person approval instead.
+        await assertFallbackOpen(tx, actor);
+        const [row] = await tx
+          .update(RED)
+          .set({ countersignedBy: actor.userId, approvedBy: existing.requestedBy })
+          .where(
+            and(
+              eq(RED.organizationId, actor.organizationId),
+              eq(RED.id, id),
+              isNull(RED.approvedAt),
+              isNotNull(RED.selfApprovedAt),
+            ),
+          )
+          .returning();
+        if (!row) {
+          throw new ChartWardenError(
+            "REDACTION_NOT_AWAITING_COUNTERSIGN",
+            "this redaction is not awaiting a countersign",
+            409,
+          );
+        }
+        await deleteSearchTokens(tx as unknown as Tx, actor.organizationId, row.messageId);
+        await audit(tx as unknown as AuditExecutor, actor.auditContext, {
+          eventType: "m36.redaction.countersigned",
+          resourceKind: "message_redaction",
+          resourceId: row.id,
+          outcome: "success",
+          context: { redactionId: row.id, messageId: row.messageId, provisional: true },
+        });
+        return (await toDtos(tx, actor.organizationId, [row]))[0] as MessageRedactionDto;
+      });
+    },
+
     async list(actor: GovernanceActor): Promise<MessageRedactionListDto> {
       return inTx(actor, async (tx) => {
         const rows = await tx
@@ -191,7 +381,10 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
           .where(eq(RED.organizationId, actor.organizationId))
           .orderBy(desc(RED.requestedAt), desc(RED.id))
           .limit(REDACTION_LIST_LIMIT);
-        return { redactions: await toDtos(tx, actor.organizationId, rows) };
+        return {
+          redactions: await toDtos(tx, actor.organizationId, rows),
+          single_officer_fallback_available: await fallbackOpen(tx, actor.organizationId),
+        };
       });
     },
   };

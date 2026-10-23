@@ -20,6 +20,13 @@ export const MESSAGING_GOVERNANCE_HOLD_ORIGIN = "messaging_governance";
  * tenant. ON still means DRY RUN unless the platform also sets `M36_RETENTION_DESTRUCTION_EXECUTE=true` (the second, deployment-wide key).
  */
 export const RETENTION_DESTRUCTION_FLAG_KEY = "messaging.retention_destruction";
+/**
+ * Third tenant ops flag (absent = off): with `messaging.retention_destruction` ALSO on, the executor destroys the attachment OBJECTS of the
+ * messages it is about to delete (same dry-run/live modes, same approved certificate, never a held message). Off: a message that still bears an
+ * undestroyed object is kept, exactly as before. The scan counts such messages toward the certificate only while this flag is on.
+ */
+export const RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY =
+  "messaging.retention_attachment_destruction";
 /** Environment key of the second switch: the executor deletes only when it is exactly "true". */
 export const RETENTION_DESTRUCTION_EXECUTE_ENV = "M36_RETENTION_DESTRUCTION_EXECUTE";
 export const RETENTION_DESTRUCTION_MODES = ["off", "dry_run", "live"] as const;
@@ -136,6 +143,18 @@ export const MESSAGING_REDACT_REQUEST_PERMISSION = "messaging.redact.request";
 /** Approve a redaction another person requested; fresh step-up MESSAGE_REDACT_APPROVE_STEP_UP_KEY. */
 export const MESSAGING_REDACT_APPROVE_PERMISSION = "messaging.redact.approve";
 export const MESSAGE_REDACT_APPROVE_STEP_UP_KEY = "messaging.redact.approve";
+/**
+ * Single-officer fallback (ADR-0055 item 7 / D9, migration 1165). PROVISIONAL: compliance has NOT signed it off, so it is OFF per tenant (absent = off)
+ * behind this ops flag. When on AND the tenant has exactly one eligible approver, that person may approve their own request (fresh step-up
+ * MESSAGE_REDACT_SELF_APPROVE_STEP_UP_KEY); the redaction masks nothing until a SECOND ROLE holding the countersign permission countersigns it
+ * (fresh step-up) within REDACTION_COUNTERSIGN_HOURS; a lapsed one stays non-final.
+ */
+export const REDACTION_SINGLE_OFFICER_FLAG_KEY = "messaging.redaction_single_officer_fallback";
+export const MESSAGING_REDACT_COUNTERSIGN_PERMISSION = "messaging.redact.countersign";
+export const MESSAGE_REDACT_SELF_APPROVE_STEP_UP_KEY = "messaging.redact.self_approve";
+export const MESSAGE_REDACT_COUNTERSIGN_STEP_UP_KEY = "messaging.redact.countersign";
+/** Decided 2026-10-11 by the product owner (ADR-0055); the database guard uses the same 72 hours. */
+export const REDACTION_COUNTERSIGN_HOURS = 72;
 export const MESSAGE_REDACTION_REASON_MIN_LENGTH = 10;
 export const MESSAGE_REDACTION_REASON_MAX_LENGTH = 1000;
 
@@ -149,17 +168,28 @@ export interface RequestMessageRedactionRequest {
 export interface MessageRedactionDto {
   readonly id: string;
   readonly message_id: string;
-  /** requested: masked for nobody yet; approved: masked for every reader. */
-  readonly status: "requested" | "approved";
+  /**
+   * requested: masked for nobody yet; approved: masked for every reader (final);
+   * awaiting_countersign: the sole officer approved their own request, masked for nobody until a second role countersigns by `countersign_deadline_at`;
+   * lapsed: that deadline passed without a countersign, so it is NOT final (a different officer may still approve it the ordinary way).
+   */
+  readonly status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
   readonly requested_by: string;
   readonly requested_by_name: string | null;
   readonly requested_at: string;
   readonly approved_by: string | null;
   readonly approved_by_name: string | null;
   readonly approved_at: string | null;
+  /** True when the approval was the requester's own (the single-officer fallback). */
+  readonly self_approved: boolean;
+  readonly countersign_deadline_at: string | null;
+  readonly countersigned_by: string | null;
+  readonly countersigned_by_name: string | null;
   /** True when an active legal hold currently covers the message: the cipher is retained either way. */
   readonly under_legal_hold: boolean;
 }
 export interface MessageRedactionListDto {
   readonly redactions: readonly MessageRedactionDto[];
+  /** The fallback is usable now: the tenant flag is on AND exactly one person can approve. The screen shows the loud self-approve action only then. */
+  readonly single_officer_fallback_available: boolean;
 }

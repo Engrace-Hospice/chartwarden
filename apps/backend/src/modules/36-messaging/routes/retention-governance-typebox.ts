@@ -92,18 +92,28 @@ export const RequestRedactionBodySchema = Type.Object(
 export const RedactionResponseSchema = Type.Object({
   id: Uuid,
   message_id: Uuid,
-  status: Type.Union([Type.Literal("requested"), Type.Literal("approved")]),
+  status: Type.Union([
+    Type.Literal("requested"),
+    Type.Literal("awaiting_countersign"),
+    Type.Literal("approved"),
+    Type.Literal("lapsed"),
+  ]),
   requested_by: Type.String(),
   requested_by_name: NullableString,
   requested_at: Type.String(),
   approved_by: NullableString,
   approved_by_name: NullableString,
   approved_at: NullableString,
+  self_approved: Type.Boolean(),
+  countersign_deadline_at: NullableString,
+  countersigned_by: NullableString,
+  countersigned_by_name: NullableString,
   under_legal_hold: Type.Boolean(),
 });
 
 export const RedactionListResponseSchema = Type.Object({
   redactions: Type.Array(RedactionResponseSchema),
+  single_officer_fallback_available: Type.Boolean(),
 });
 
 export const ReleasePreviewResponseSchema = Type.Object({

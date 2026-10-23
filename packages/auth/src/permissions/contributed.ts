@@ -389,6 +389,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // WP 5.6 (ADR-0055 D9, migration 1165, PROVISIONAL): the SECOND ROLE that countersigns a sole officer's self-approved redaction within 72 h.
+  //     Org admin (through the full catalog) and the privacy officer; never the compliance officer. A fresh step-up is demanded.
+  "messaging.redact.countersign": {
+    resource: "message_redaction",
+    action: "countersign",
+    category: "compliance",
+    abac: "none",
+  },
   // --- WP 5.8 (ADR-0087, PROPOSED): break-glass. INVOKE opens a self-approved, time-limited, read-only grant on one channel (a fresh step-up and
   //     a written justification are demanded in the route); REVIEW completes the mandatory post-review and is never the grantee's own. Migration
   //     1140 grants invoke to administrator, org_admin and the qualified clinical roles, and review to compliance_officer, administrator, org_admin. ---

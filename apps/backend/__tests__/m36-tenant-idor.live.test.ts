@@ -423,6 +423,7 @@ const REGISTRAR_FILES = [
   // artefact store), so their route-level cross-tenant proof lives in each feature's own live suite, run as chartwarden_app on real RLS.
   "retention-governance-routes.ts", // WP 5.6 legal hold: org-wide, officer-only; foreign/unknown hold is one 404 - m36-retention-governance.live "CROSS-TENANT"
   "retention-governance-typebox.ts", // schemas only
+  "message-redaction-routes.ts", // WP 5.6 redaction request/approve/self-approve/countersign: org-bound; a foreign or unknown id is the same 404 - m36-retention-governance.live "CROSS-TENANT (IDOR)"
   "export-routes.ts", // WP 5.7 restricted export: job get/approve/reject/cancel/download are 404 across orgs - m36-export.live "another organisation"
   "export-typebox.ts", // schemas only
   "break-glass-routes.ts", // WP 5.8 break-glass: open/end/review/complete are the random-id 404 across orgs - m36-break-glass.live "CROSS-TENANT"

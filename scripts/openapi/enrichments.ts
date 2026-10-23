@@ -6515,7 +6515,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M2OrgBindingResponseSchema,
   },
   "POST /api/v1/auth/unlock": {
-    summary: "Unlock the idle screen lock by re-entering the password; keeps the same session (#589)",
+    summary:
+      "Unlock the idle screen lock by re-entering the password; keeps the same session (#589)",
     body: M2ScreenUnlockRequestSchema,
     response: M2ScreenUnlockResponseSchema,
   },
@@ -10265,12 +10266,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/governance/redactions": {
     summary:
-      "Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached",
+      "Compliance officer: the newest redactions (messaging.redact.request, messaging.redact.approve or messaging.redact.countersign) with status (requested, awaiting_countersign, approved or lapsed), the requester, approver and countersigner ids and display names, instants and whether an active legal hold covers the message now; single_officer_fallback_available says whether the PROVISIONAL self-approve route can be used now (setting on and exactly one eligible approver). Never the message or the reason. Read-audited. Not cached",
     response: M36RedactionListResponseSchema,
   },
   "POST /api/v1/messaging/governance/redactions/:id/approve": {
     summary:
       "Compliance officer: approve a redaction (messaging.redact.approve + a fresh step-up for `messaging.redact.approve`, else 403 STEP_UP_REQUIRED). The approver is never the requester (403 REDACTION_SELF_APPROVAL, and the database refuses it too); 409 REDACTION_ALREADY_APPROVED; 404 unknown or another tenant's redaction. From the approval every reader of the message sees an empty body with a redactedAt instant, no attachments, links, poll or mentions, and the message is out of search and exports; the cipher and hash are untouched, so a held message stays retained under the mask",
+    response: M36RedactionResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/redactions/:id/self-approve": {
+    summary:
+      "Compliance officer, PROVISIONAL single-officer fallback (ADR-0055 D9; pending compliance sign-off): approve your OWN redaction request. Needs messaging.redact.approve and a fresh step-up for `messaging.redact.self_approve` (else 403 STEP_UP_REQUIRED), the tenant setting messaging.redaction_single_officer_fallback ON (off by default) and exactly ONE person who can approve (else 403 REDACTION_FALLBACK_UNAVAILABLE); only the requester (403 REDACTION_SELF_APPROVAL_NOT_REQUESTER); 409 REDACTION_ALREADY_APPROVED. NOT final: it masks nothing and the message stays editable-blocked and out of search until a second role countersigns within 72 hours (status awaiting_countersign, then lapsed). Audited by the row's trigger and m36.redaction.self_approved",
+    response: M36RedactionResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/redactions/:id/countersign": {
+    summary:
+      "Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 403 REDACTION_FALLBACK_UNAVAILABLE when the fallback has since closed (the tenant setting turned off or a second officer added: the row then needs an ordinary two-person approval); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off",
     response: M36RedactionResponseSchema,
   },
 
