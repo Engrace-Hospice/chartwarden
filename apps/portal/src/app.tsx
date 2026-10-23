@@ -10,6 +10,7 @@ import type { JSX } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { PORTAL_BASE_PATH } from "./base-path";
+import { PortalNotFound, PortalRouteError } from "./not-found";
 import { PortalAppShell } from "./portal-shell";
 import { createPortalRegistry, portalScreens } from "./screens/registry";
 import type { SessionGuard } from "./session-guard";
@@ -39,15 +40,24 @@ export function PortalApp({
     const chromeless = screens.filter((s) => s.chrome === false);
     const chromed = screens.filter((s) => s.chrome !== false);
     const routes: RouteObject[] = [
-      ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
       {
-        // Pathless layout route: wraps every chromed screen in the portal frame without claiming "/"
-        // itself (the sign-in screen owns "/"). Children carry their own root-relative paths.
-        element: <PortalAppShell />,
-        children: chromed.map((s) => ({
-          path: s.path.replace(/^\//, ""),
-          element: createElement(s.screen),
-        })),
+        // Pathless root: its errorElement catches every route error beneath it (a screen that throws, a loader
+        // failure) and the `*` route catches unknown URLs, so React Router's developer-facing default page
+        // never reaches a family member (#594). Both are chromeless: no patient lookup, no API call.
+        errorElement: <PortalRouteError />,
+        children: [
+          ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
+          {
+            // Pathless layout route: wraps every chromed screen in the portal frame without claiming "/"
+            // itself (the sign-in screen owns "/"). Children carry their own root-relative paths.
+            element: <PortalAppShell />,
+            children: chromed.map((s) => ({
+              path: s.path.replace(/^\//, ""),
+              element: createElement(s.screen),
+            })),
+          },
+          { path: "*", element: <PortalNotFound /> },
+        ],
       },
     ];
     return createBrowserRouter(routes, { basename: PORTAL_BASE_PATH || "/" });
