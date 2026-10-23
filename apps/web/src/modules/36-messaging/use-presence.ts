@@ -13,6 +13,7 @@ import {
   TYPING_THROTTLE_MS,
   displayNameFor,
 } from "./presence-utils";
+import { readChannelDetail } from "./use-channel-detail";
 
 export interface PresenceView {
   /** False while the flag is off or presence has been stopped for this conversation: render nothing. */
@@ -71,22 +72,15 @@ export function usePresence(input: {
     const path = { id: channelId };
 
     // Names: the channel's own member list (display names the viewer may already see). Best effort.
-    void client
-      .GET("/api/v1/messaging/channels/{id}", {
-        params: { path },
-        headers: BACKGROUND_REQUEST_HEADERS,
-      })
-      .then(({ data }) => {
-        if (cancelled || !data) return;
-        const members = (data as { members?: { userId: string; displayName: string | null }[] })
-          .members;
-        setNames(
-          new Map(
-            (members ?? []).flatMap((m) => (m.displayName ? [[m.userId, m.displayName]] : [])),
-          ),
-        );
-      })
-      .catch(() => undefined);
+    // The same request the external-partner banner needs, so a thread open costs ONE (use-channel-detail.ts shares it).
+    void readChannelDetail(client, channelId).then(({ data }) => {
+      if (cancelled || !data) return;
+      const members = (data as { members?: { userId: string; displayName: string | null }[] })
+        .members;
+      setNames(
+        new Map((members ?? []).flatMap((m) => (m.displayName ? [[m.userId, m.displayName]] : []))),
+      );
+    });
 
     const outcomeOf = (status: number | undefined, failed: boolean): LoopOutcome =>
       status !== undefined && STOP_STATUSES.has(status) ? "stop" : failed ? "error" : "ok";

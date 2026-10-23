@@ -67,6 +67,8 @@ export * from "./messaging-oncall";
 export * from "./messaging-thread-grant";
 export * from "./messaging-break-glass";
 export * from "./messaging-export";
+export * from "./messaging-external-share";
+export * from "./external-share-identifiers";
 export * from "./messaging-escalation";
 export * from "./messaging-handoff";
 export * from "./messaging-review";

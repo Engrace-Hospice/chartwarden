@@ -46,6 +46,9 @@ describe("urgent writer is singular", () => {
     "apps/backend/src/modules/36-messaging/ack-requests/role-replay-lookup.ts",
     // WP 5.9 (ADR-0084): offboarding COUNTS urgent messages addressed to a departed user that have no acknowledgment request (select only).
     "apps/backend/src/modules/36-messaging/offboarding/steps-owned-work.ts",
+    // WP 6.6 (ADR-0096): the external partner read query READS urgency and the named recipient to EXCLUDE urgent / targeted messages from what a
+    // partner sees (select only; it writes neither).
+    "apps/backend/src/modules/36-messaging/external-share/external-share-store.ts",
   ]);
   const scanned = ["apps/backend/src", "packages/messaging/src"].flatMap((d) =>
     walk(join(ROOT, d)).map((f) => relative(ROOT, f)),

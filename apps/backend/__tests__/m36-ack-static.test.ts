@@ -167,6 +167,9 @@ describe("one writer of the aggregate's tables", () => {
       // WP 6.2 (ADR-0092): response analytics READS the request and event tables to aggregate latency, escalation and handoff figures. Select only
       // (no insert, update or delete), under RLS, and no row id, user or message leaves the module: the contract carries counts and durations only.
       "apps/backend/src/modules/36-messaging/analytics/response-analytics-reader.ts",
+      // WP 6.6 (ADR-0096): the external partner read query names the request table in a NOT EXISTS to EXCLUDE a message that carries a request from
+      // what a partner sees. Select only (no insert, update or delete), under RLS; nothing from the table leaves the query.
+      "apps/backend/src/modules/36-messaging/external-share/external-share-store.ts",
     ]);
     const offenders = [
       ...walk(join(ROOT, "apps/backend/src")),
