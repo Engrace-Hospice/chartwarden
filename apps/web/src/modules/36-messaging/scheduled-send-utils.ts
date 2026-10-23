@@ -1,6 +1,7 @@
 // WP 2.6 — pure helpers for the scheduled-send UI: the native datetime-local input format, the window the picker
 // offers, and the plain-language texts for server refusals and blocked reasons.
 
+import { toLocalInput } from "@chartwarden/ui";
 import type { ScheduledMessageItem } from "./scheduled-send-types";
 
 /** The server minimum is 1 minute; offer 2 so a time picked "now" is still valid when the request lands. */
@@ -8,12 +9,8 @@ export const SCHEDULE_MIN_LEAD_MINUTES = 2;
 export const SCHEDULE_MAX_DAYS = 30;
 const DEFAULT_LEAD_MINUTES = 60;
 
-const pad = (n: number): string => String(n).padStart(2, "0");
-
 /** `YYYY-MM-DDTHH:mm` in the viewer's local time: the value format of `<input type="datetime-local">`. */
-export function toLocalInputValue(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+export const toLocalInputValue = toLocalInput;
 
 /** The instant a datetime-local value means in the viewer's time zone, or null when empty/malformed. */
 export function fromLocalInputValue(value: string): Date | null {

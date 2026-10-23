@@ -6,6 +6,7 @@ import {
   StatusPill,
   TextAreaField,
   TextField,
+  toLocalInput,
   useApiClient,
 } from "@chartwarden/ui";
 // M31 patient medication view. M13 remains authoritative for orders and caregiver-attested administrations.
@@ -43,16 +44,11 @@ const loading = <T,>(): Resource<T> => ({
   error: null,
 });
 
-function localDateTime(date: Date): string {
-  const n = (value: number): string => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${n(date.getMonth() + 1)}-${n(date.getDate())}T${n(date.getHours())}:${n(date.getMinutes())}`;
-}
-
 /** A datetime-local field represents local wall time, NOT an ISO/UTC instant. */
 function parseAdministeredAt(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || localDateTime(parsed) !== value)
+  if (!Number.isFinite(parsed.getTime()) || toLocalInput(parsed) !== value)
     return null;
   if (parsed.getTime() > Date.now() + 59_999) return null;
   return parsed;
@@ -262,7 +258,7 @@ function RecordAdministrationDialog({
   const [unit, setUnit] = useState("");
   const [route, setRoute] = useState("");
   const [administeredAt, setAdministeredAt] = useState(() =>
-    localDateTime(new Date()),
+    toLocalInput(new Date()),
   );
   const [attestation, setAttestation] = useState("");
   const [review, setReview] = useState(false);
@@ -284,7 +280,7 @@ function RecordAdministrationDialog({
   }, [patientId]);
 
   useEffect(() => {
-    if (open) setAdministeredAt(localDateTime(new Date()));
+    if (open) setAdministeredAt(toLocalInput(new Date()));
   }, [open]);
 
   const selected = medications.find(
@@ -571,7 +567,7 @@ function RecordAdministrationDialog({
                   id="wx-medication-administered-at"
                   type="datetime-local"
                   value={administeredAt}
-                  max={localDateTime(new Date())}
+                  max={toLocalInput(new Date())}
                   onChange={(event) => setAdministeredAt(event.target.value)}
                   required
                 />

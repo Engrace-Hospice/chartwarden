@@ -1,4 +1,4 @@
-import { Button, SelectField, TextField, useApiClient } from "@chartwarden/ui";
+import { Button, SelectField, TextField, nowLocalInput, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the ADR RESPONSE PACKET section of the ADR work panel (hospice ADR/TPE/QIC
 // PRD, milestone 2b). While the case is in assembly the specialist attaches the documents the MAC asked for and
 // ticks the checklist; in review a DIFFERENT person signs off; then the filing made outside ChartWarden is recorded
@@ -53,13 +53,6 @@ interface FilingDraft {
   readonly receiptDocumentId: string;
 }
 
-/** Local `YYYY-MM-DDTHH:mm` for a datetime-local input. */
-const nowLocal = (): string => {
-  const d = new Date();
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
 export interface AdrPacketPanelProps {
   readonly adr: AdrDetail;
   /** Reload the case (and the worklist) after a change. */
@@ -89,7 +82,7 @@ export function AdrPacketPanel({
     restored?.channel ?? "mac_portal",
   );
   const [confirmationRef, setConfirmationRef] = useState(restored?.confirmationRef ?? "");
-  const [filedAt, setFiledAt] = useState(restored?.filedAt ?? nowLocal());
+  const [filedAt, setFiledAt] = useState(restored?.filedAt ?? nowLocalInput());
   const [lateAcknowledged, setLateAcknowledged] = useState(restored?.lateAcknowledged ?? false);
   const [receiptDocumentId, setReceiptDocumentId] = useState(restored?.receiptDocumentId ?? "");
   const [ownBusy, setOwnBusy] = useState(false);
@@ -333,8 +326,8 @@ export function AdrPacketPanel({
         <>
           <h4 className="wx-action-title">Record filing</h4>
           <Hint>
-            Record the response you sent to the MAC. ChartWarden does not send it for you yet. Recording
-            it needs a recent step-up verification and freezes the packet.
+            Record the response you sent to the MAC. ChartWarden does not send it for you yet.
+            Recording it needs a recent step-up verification and freezes the packet.
           </Hint>
           <SelectField
             label="Sent by"

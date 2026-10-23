@@ -4,6 +4,7 @@ import {
   PageHeader,
   StatusPill,
   isoToLocalInput,
+  localInputToIso,
   nowLocalInput,
   t,
   useApiClient,
@@ -133,12 +134,17 @@ export function AssessmentEditor(): JSX.Element {
       setActionError("The assessment content is not valid JSON.");
       return;
     }
+    const capturedAtIso = localInputToIso(capturedAt);
+    if (!capturedAtIso) {
+      setActionError("Enter the date and time the assessment was captured.");
+      return;
+    }
     setActionError(null);
     const res = await client.POST("/api/v1/discipline-plans/{planId}/assessments", {
       params: { path: { planId: plan.planId }, header: writeHeaders() },
       body: {
         kind,
-        capturedAt: new Date(capturedAt).toISOString(),
+        capturedAt: capturedAtIso,
         isInitial,
         sudFlag,
         familyViolenceFlag,
