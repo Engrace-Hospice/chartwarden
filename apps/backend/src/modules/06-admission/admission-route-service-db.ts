@@ -2181,6 +2181,7 @@ export function createDbAdmissionRouteService(
             version: ADM.version,
             patientId: ADM.patientId,
             referralId: ADM.referralId,
+            readmittedFromAdmissionId: ADM.readmittedFromAdmissionId,
             admissionAt: ADM.admissionAt,
             activatedAt: ADM.activatedAt,
             providerEntityId: ADM.providerEntityId,
@@ -2221,6 +2222,7 @@ export function createDbAdmissionRouteService(
           version: Number(adm.version),
           patientId: adm.patientId,
           referralId: adm.referralId,
+          readmittedFromAdmissionId: adm.readmittedFromAdmissionId ?? null,
           admissionAt: adm.admissionAt?.toISOString() ?? null,
           activatedAt: adm.activatedAt?.toISOString() ?? null,
           providerEntityId: adm.providerEntityId ?? null,
@@ -6460,7 +6462,8 @@ export function createDbAdmissionRouteService(
             .update(DE)
             .set({
               status: outcome.dischargeState,
-              medicalDirectorMembershipId: actorUserId,
+              // A decline is not a cosign. The actor is captured by the M4 write audit;
+              // setting only the cosigner id would violate discharge_event_cosign_pair_chk.
               // The reason lives on the audited row (free text, scrubbed by the M4 write-audit trigger).
               narrative: sql`coalesce(${DE.narrative}, '') || E'\n[declined] ' || ${input.declineReason}`,
               version: sql`${DE.version} + 1`,
@@ -6595,6 +6598,32 @@ export function createDbAdmissionRouteService(
               : null,
         },
       };
+    },
+    async getDischargeCosignContext(organizationId, dischargeEventId, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [row] = await tx
+          .select({
+            dischargeEventId: DE.id,
+            admissionId: DE.admissionId,
+            status: DE.status,
+            version: DE.version,
+            dischargeDate: DE.effectiveAt,
+            filedByUserId: DE.filedByUserId,
+          })
+          .from(DE)
+          .innerJoin(ADM, eq(ADM.id, DE.admissionId))
+          .where(and(eq(DE.id, dischargeEventId), eq(ADM.organizationId, organizationId)))
+          .limit(1);
+        if (!row || row.status !== "pending_cosign" || row.filedByUserId === actorUserId)
+          return null;
+        return {
+          dischargeEventId: row.dischargeEventId,
+          admissionId: row.admissionId,
+          status: "pending_cosign" as const,
+          dischargeEventVersion: Number(row.version),
+          dischargeDate: row.dischargeDate,
+        };
+      });
     },
     async listPhysicianSigners(organizationId, admissionId) {
       const patientId = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {

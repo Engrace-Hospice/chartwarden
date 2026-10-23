@@ -50,6 +50,7 @@ import {
   CtiMarkLateSchema,
   CtiSignSchema,
   CtiVoidSchema,
+  DischargeCosignContextResponseSchema,
   DischargeCosignSchema,
   DischargeCreateSchema,
   DischargeDeclineSchema,
@@ -1439,6 +1440,21 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         userId,
       );
       return reply.code(201).send(res);
+    },
+  );
+
+  // Version comes from this exact pending discharge event, after the same permission and signer predicate as writes.
+  app.get(
+    "/api/v1/discharges/:id/cosign-context",
+    {
+      preHandler: [DISCHARGE_COSIGN, ABAC_DISCHARGE_ORDER_SIGNER],
+      schema: { response: { 200: DischargeCosignContextResponseSchema } },
+      config: { auditRead: { resourceKind: "discharge", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const id = idOf(request);
+      return (await service.getDischargeCosignContext(organizationId, id, userId)) ?? notFound(id);
     },
   );
 

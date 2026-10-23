@@ -324,6 +324,15 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     expect(events).not.toContain("m6.admission.discharged");
     expect((await service.getAdmission(ORG, ADMISSION))?.state).toBe("active");
 
+    const context = await service.getDischargeCosignContext(ORG, filed.id, "md_1");
+    expect(context).toMatchObject({
+      dischargeEventId: filed.id,
+      admissionId: ADMISSION,
+      dischargeEventVersion: filed.version,
+    });
+    expect(await service.getDischargeCosignContext(ORG, filed.id, "u1")).toBeNull();
+    expect(await service.getDischargeCosignContext("other_org", filed.id, "md_1")).toBeNull();
+
     const cosigned = await service.cosignDischarge(
       ORG,
       filed.id,
@@ -426,7 +435,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
 }
 
-function makeServer() {
+function makeServer(opts: { cosign?: boolean } = {}) {
   const backend = createInMemoryAdmissionBackend({
     records: [
       {
@@ -448,6 +457,7 @@ function makeServer() {
           enabled: true,
           expiresAt: null,
           permissionKeys: [
+            ...(opts.cosign ? ["admission.read", "discharge.cosign_for_cause"] : []),
             "discharge.no_longer_terminal",
             "discharge.for_cause",
             "discharge.death",
@@ -485,6 +495,46 @@ afterEach(() => {
 });
 
 describe("M6-T09 — route layer (§6.3)", () => {
+  it("exposes the current pending event version only to a different authorized signer", async () => {
+    const { app, backend } = makeServer({ cosign: true });
+    const filed = await backend.service.discharge(
+      ORG,
+      ADMISSION,
+      {
+        reason: "for_cause",
+        dischargeDate: "2026-06-20",
+        narrative: "Synthetic documented cause",
+        forCauseReason: "Synthetic reason with sufficient detail",
+      },
+      "filer_1",
+    );
+    const url = `/api/v1/discharges/${filed.id}/cosign-context`;
+    const authorized = await app.inject({ method: "GET", url, headers: MD });
+    expect(authorized.statusCode).toBe(200);
+    expect(authorized.json()).toEqual({
+      dischargeEventId: filed.id,
+      admissionId: ADMISSION,
+      status: "pending_cosign",
+      dischargeEventVersion: filed.version,
+      dischargeDate: "2026-06-20",
+    });
+    const noPermission = await app.inject({
+      method: "GET",
+      url,
+      headers: { "x-test-user": "filer_1", "x-test-org": ORG, "x-test-roles": "medical_director" },
+    });
+    expect(noPermission.statusCode).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/v1/discharges/missing/cosign-context",
+          headers: MD,
+        })
+      ).statusCode,
+    ).toBe(404);
+    await app.close();
+  });
   it("a too-short no_longer_terminal narrative returns 422 DISCHARGE_NARRATIVE_TOO_SHORT through the chain", async () => {
     const { app } = makeServer();
     const res = await app.inject({

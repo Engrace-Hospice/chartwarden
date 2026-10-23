@@ -719,7 +719,28 @@ describe.skipIf(!DB_URL)(
       );
       expect(filed.state).toBe("pending_cosign");
       expect(filed.requiresMedicalDirectorCosign).toBe(true);
+      expect(await svc.getDischargeCosignContext(ORG_A, filed.id, MD)).toMatchObject({
+        dischargeEventId: filed.id,
+        admissionId,
+        dischargeEventVersion: filed.version,
+      });
+      expect(await svc.getDischargeCosignContext(ORG_A, filed.id, USER)).toBeNull();
+      expect(await svc.getDischargeCosignContext(ORG_B, filed.id, MD)).toBeNull();
       // The admission is NOT discharged yet (D11).
+      expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
+      await expect(
+        svc.cosignDischarge(
+          ORG_A,
+          filed.id,
+          {
+            cosignerName: "Dr. Med Director",
+            cosignerNpi: "1234567893",
+            actorRoleKeys: ["medical_director"],
+          },
+          filed.version + 1,
+          MD,
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
       expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
       const cosigned = await svc.cosignDischarge(
         ORG_A,
@@ -733,6 +754,7 @@ describe.skipIf(!DB_URL)(
         MD,
       );
       expect(cosigned.state).toBe("completed");
+      expect(await svc.getDischargeCosignContext(ORG_A, filed.id, MD)).toBeNull();
       expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("discharged");
       // A second cosign is a no-op conflict (state is no longer pending_cosign).
       await expect(
@@ -748,6 +770,42 @@ describe.skipIf(!DB_URL)(
           MD,
         ),
       ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it("declining a versioned for-cause filing voids the event and preserves the admission", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const filed = await svc.discharge(
+        ORG_A,
+        admissionId,
+        {
+          reason: "for_cause",
+          dischargeDate: new Date().toISOString().slice(0, 10),
+          narrative: "documented safety threat to staff",
+          forCauseReason: "repeated credible threats of violence to visiting nurses",
+        },
+        USER,
+      );
+      const context = await svc.getDischargeCosignContext(ORG_A, filed.id, MD);
+      expect(context?.dischargeEventVersion).toBe(filed.version);
+      const declined = await svc.declineDischarge(
+        ORG_A,
+        filed.id,
+        { declineReason: "The documentation does not support this discharge." },
+        context!.dischargeEventVersion,
+        MD,
+      );
+      expect(declined.state).toBe("voided");
+      const stored = await admin.query(
+        "SELECT status, cosigned_at, medical_director_membership_id FROM discharge_event WHERE id=$1",
+        [filed.id],
+      );
+      expect(stored.rows[0]).toMatchObject({
+        status: "voided",
+        cosigned_at: null,
+        medical_director_membership_id: null,
+      });
+      expect((await svc.getAdmission(ORG_A, admissionId))?.state).toBe("active");
+      expect(await svc.getDischargeCosignContext(ORG_A, filed.id, MD)).toBeNull();
     });
 
     it("revocation → admission discharged, benefit periods completed, revocation facts persisted", async () => {

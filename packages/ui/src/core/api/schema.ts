@@ -8101,6 +8101,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discharges/{id}/cosign-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current pending discharge event and its version for an authorized cosigner */
+        get: operations["getApiV1DischargesByIdCosigncontext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discharges/{id}/cosign-for-cause": {
         parameters: {
             query?: never;
@@ -31134,6 +31151,7 @@ export interface operations {
                         version: number;
                         patientId?: string;
                         referralId?: string | null;
+                        readmittedFromAdmissionId: string | null;
                         admissionAt?: string | null;
                         activatedAt?: string | null;
                         providerEntityId?: string | null;
@@ -31357,11 +31375,19 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        requiresMedicalDirectorCosign: boolean;
+                        reason: "death" | "moved_out_of_service_area" | "no_longer_terminal" | "for_cause" | "other";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32959,11 +32985,18 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        patientId?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33006,11 +33039,18 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        currentElectionPeriodSequence: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33042,11 +33082,18 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        patientId?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -49305,6 +49352,38 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1DischargesByIdCosigncontext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dischargeEventId: string;
+                        admissionId: string;
+                        /** @constant */
+                        status: "pending_cosign";
+                        dischargeEventVersion: number;
+                        /** Format: date */
+                        dischargeDate: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1DischargesByIdCosignforcause: {
         parameters: {
             query?: never;
@@ -49332,7 +49411,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        patientId?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -49361,7 +49447,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        patientId?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

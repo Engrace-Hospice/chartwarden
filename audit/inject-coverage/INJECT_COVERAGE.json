@@ -109,7 +109,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 87,
+      "routes": 88,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -128,7 +128,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 87
+      "directRoutesReferenced": 88
     },
     {
       "module": "07-care-plan",

@@ -11,6 +11,8 @@ import type {
   AdmissionDetail as ServiceAdmissionDetail,
   AdmissionReadinessResult as ServiceAdmissionReadinessResult,
   AdmissionSummary as ServiceAdmissionSummary,
+  DischargeCosignContext as ServiceDischargeCosignContext,
+  DischargeResult as ServiceDischargeResult,
   MutationResult as ServiceMutationResult,
   Page as ServicePage,
   PatientElectionCertificationView as ServicePatientElectionCert,
@@ -685,6 +687,30 @@ export const DischargeOrderResponseSchema = Type.Object({
   ]),
 });
 
+/** Current pending event token, exposed only to an authorized, eligible cosigner. */
+export const DischargeCosignContextResponseSchema = Type.Object({
+  dischargeEventId: Type.String(),
+  admissionId: Type.String(),
+  status: Type.Literal("pending_cosign"),
+  dischargeEventVersion: Type.Integer(),
+  dischargeDate: Type.String({ format: "date" }),
+});
+
+export const TransferInResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  currentElectionPeriodSequence: Type.Integer(),
+});
+
+export const DischargeCreateResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  requiresMedicalDirectorCosign: Type.Boolean(),
+  reason: Type.Union(DISCHARGE_REASONS.map((reason) => Type.Literal(reason))),
+});
+
 /** 42 CFR 418.25(a) — the physician admission recommendation (route `POST /admissions/:id/admission-recommendation`). */
 export const AdmissionRecommendationSchema = Type.Object({
   recommendedByUserId: Uuid(),
@@ -845,6 +871,7 @@ export const AdmissionDetailResponseSchema = Type.Object({
   version: Type.Integer(),
   patientId: Type.Optional(Type.String()),
   referralId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  readmittedFromAdmissionId: Type.Union([Type.String(), Type.Null()]),
   admissionAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   activatedAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   providerEntityId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -1106,6 +1133,18 @@ type _ReferralAccept = Conforms<
 type _AdmissionDetail = Conforms<
   Static<typeof AdmissionDetailResponseSchema>,
   ServiceAdmissionDetail
+>;
+type _DischargeCosignContext = Conforms<
+  Static<typeof DischargeCosignContextResponseSchema>,
+  ServiceDischargeCosignContext
+>;
+type _TransferInResult = Conforms<
+  Static<typeof TransferInResponseSchema>,
+  ServiceMutationResult & { currentElectionPeriodSequence: number }
+>;
+type _DischargeResult = Conforms<
+  Static<typeof DischargeCreateResponseSchema>,
+  ServiceDischargeResult
 >;
 type _AdmissionReadiness = Conforms<
   Static<typeof AdmissionReadinessResponseSchema>,
