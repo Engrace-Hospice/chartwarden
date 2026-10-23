@@ -5812,6 +5812,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // reachable); the deterministic gap view and the review record work with AI off.
             adrReadinessService: buildDrizzleAdrReadinessService(dbHandle.db, {
               outbox: m25OutboxPublisher,
+              onAssistantError: (event) =>
+                app.log.warn(event, "M25 readiness assistant threw; recorded as a failed review"),
             }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the

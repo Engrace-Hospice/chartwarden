@@ -31,6 +31,7 @@ const FindingViewSchema = Type.Object({
   note: Type.String(),
   disposition: NULLABLE_STRING,
   disposedAt: NULLABLE_STRING,
+  disposedByMembershipId: NULLABLE_STRING,
 });
 
 const KeyGapSchema = Type.Object({

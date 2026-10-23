@@ -3,7 +3,7 @@
 // with a human disposition). They sit BESIDE adr_case / adr_case_document and the checklist, never inside them. States
 // are text + CHECK (closed sets mirrored in domain/readiness.ts), so there is no new pgEnum. checklist_key is free text on
 // purpose: the SME-unconfirmed key list lives in code, not in a table constraint. invocation_id is a LOGICAL FK to the M32
-// ai_invocation ledger (NULL while AI is off). The finding note and the unavailable reason are audit-scrubbed.
+// ai_invocation ledger (NULL while AI is off). The finding note is audit-scrubbed.
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { adrCase } from "./adr";
@@ -25,7 +25,7 @@ export const adrReadinessReview = pgTable(
     invocationId: uuid("invocation_id"), // logical FK -> M32 ai_invocation
     promptTemplateVersion: text("prompt_template_version"),
     modelVersionPin: text("model_version_pin"),
-    unavailableReason: text("unavailable_reason"), // denylisted
+    unavailableReason: text("unavailable_reason"), // closed set (CHECK)
     droppedFindingCount: integer("dropped_finding_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

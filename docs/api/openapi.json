@@ -32283,7 +32283,8 @@
                                   "citedDocumentIds",
                                   "note",
                                   "disposition",
-                                  "disposedAt"
+                                  "disposedAt",
+                                  "disposedByMembershipId"
                                 ],
                                 "properties": {
                                   "id": {
@@ -32315,6 +32316,16 @@
                                     ]
                                   },
                                   "disposedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "disposedByMembershipId": {
                                     "anyOf": [
                                       {
                                         "type": "string"

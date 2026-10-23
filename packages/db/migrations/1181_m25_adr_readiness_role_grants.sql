@@ -4,6 +4,9 @@
 --
 -- Readiness is advisory and parallels packet assembly, so the grant mirrors the ADR keys instead of naming roles:
 --   adr.read -> adr.readiness_read          adr.manage -> adr.readiness_request, adr.readiness_dispose
+-- request and dispose are deliberately mirrored from adr.manage: readiness is advisory and gates nothing, so the person who
+-- requested a review may also record its dispositions (no separation of duties is wanted here). No role template and no
+-- external_auditor role holds adr.read, and an auditor session reaches only the enrolment allowlist, so none gets readiness_read.
 -- A tenant tightens by removing a grant from a role it owns; a role with no ADR keys is unchanged. No ABAC override is
 -- copied: an override names a predicate written for adr_case rows. Idempotent.
 INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")

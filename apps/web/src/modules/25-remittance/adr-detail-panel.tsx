@@ -150,7 +150,7 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
             }}
           />
           {adr.state === "in_assembly" || adr.state === "in_review" ? (
-            <AdrReadinessPanel adrId={adrId} packetVersion={adr.version} />
+            <AdrReadinessPanel key={adrId} adrId={adrId} packetVersion={adr.version} />
           ) : null}
           {adr.state === "submitted" || adr.state === "closed" ? (
             <SubmissionPanel key={adrId} kind="adr" subjectId={adrId} />

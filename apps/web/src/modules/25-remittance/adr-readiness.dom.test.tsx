@@ -25,6 +25,13 @@ let calls: Call[] = [];
 let readStatus = 200;
 let caseState = "in_assembly";
 let review: Record<string, unknown> | null = null;
+/** When set, every POST answers with this refusal. */
+let postFailure: { status: number; message: string } | null = null;
+/** When set, POSTs wait on it before answering (to hold an action in flight). */
+let postGate: Promise<void> | null = null;
+/** Per-ADR hold on the GET, to deliver responses out of order. */
+const getGates = new Map<string, Promise<void>>();
+const stateByAdr = new Map<string, string>();
 
 const keyGaps = () =>
   KEYS.map((checklistKey) =>
@@ -61,6 +68,7 @@ const aiReview = (over: Record<string, unknown> = {}) => ({
       note: "Appears on page 2.",
       disposition: null,
       disposedAt: null,
+      disposedByMembershipId: null,
     },
   ],
   ...over,
@@ -74,6 +82,11 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const method = (init?.method ?? req?.method ?? "GET").toUpperCase();
   const path = new URL(req ? req.url : String(input), "http://localhost").pathname;
   if (method !== "GET") {
+    if (postGate) await postGate;
+    if (postFailure) {
+      calls.push({ method, path, body: {} });
+      return json(postFailure.status, { error: { code: "X", message: postFailure.message } });
+    }
     const raw = req ? await req.clone().text() : typeof init?.body === "string" ? init.body : "";
     calls.push({ method, path, body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {} });
     if (path.endsWith("/reviews")) {
@@ -90,10 +103,17 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     }
     return json(200, { id: FINDING, disposition: "disputed" });
   }
+  const adrInPath = /\/adrs\/([^/]+)\/readiness/.exec(path)?.[1] ?? ADR;
+  const gate = getGates.get(adrInPath);
+  if (gate) await gate;
   if (readStatus !== 200) {
     return json(readStatus, { error: { code: "X", message: "not for you" } });
   }
-  return json(200, view());
+  return json(200, {
+    ...view(),
+    adrCaseId: adrInPath,
+    caseState: stateByAdr.get(adrInPath) ?? caseState,
+  });
 }
 
 function mount(): void {
@@ -111,6 +131,10 @@ beforeEach(() => {
   readStatus = 200;
   caseState = "in_assembly";
   review = null;
+  postFailure = null;
+  postGate = null;
+  getGates.clear();
+  stateByAdr.clear();
 });
 afterEach(() => cleanup());
 
@@ -150,7 +174,7 @@ describe("M25 ADR documentation readiness panel", () => {
     mount();
     expect(await screen.findByText(/AI-generated, advisory, and may be wrong/)).toBeTruthy();
     expect(screen.getByText(/Appears on page 2\./)).toBeTruthy();
-    const link = screen.getByRole("link", { name: DOC });
+    const link = screen.getByRole("link", { name: "Document 1" });
     expect(link.getAttribute("href")).toBe(`/documents/${DOC}/versions`);
     fireEvent.click(screen.getByRole("button", { name: "Report as wrong: Plan Of Care" }));
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -179,5 +203,118 @@ describe("M25 ADR documentation readiness panel", () => {
     mount();
     await waitFor(() => expect(screen.queryByText(/Loading documentation readiness/)).toBeNull());
     expect(screen.queryByRole("region", { name: "Documentation readiness" })).toBeNull();
+  });
+
+  it("keeps an action's error on screen after the reload, and clears it on the next action", async () => {
+    postFailure = { status: 409, message: "the packet changed" };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Run the AI check" }));
+    expect(await screen.findByText("the packet changed")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Working…")).toBeNull());
+    expect(screen.getByText("the packet changed")).toBeTruthy();
+    postFailure = null;
+    fireEvent.click(screen.getByRole("button", { name: "Run the AI check" }));
+    await waitFor(() => expect(screen.queryByText("the packet changed")).toBeNull());
+  });
+
+  it("ignores a second click while an action is in flight", async () => {
+    let release: () => void = () => {};
+    postGate = new Promise<void>((r) => {
+      release = r;
+    });
+    mount();
+    const button = await screen.findByRole("button", { name: "Run the AI check" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(await screen.findByText("Working…")).toBeTruthy();
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    release();
+    await waitFor(() => expect(screen.queryByText("Working…")).toBeNull());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("does not let a slow response for one ADR leak into another, and a 403 on one does not hide the next", async () => {
+    const ADR_B = "cccccccc-3333-4333-8333-cccccccccccc";
+    let releaseA: () => void = () => {};
+    getGates.set(
+      ADR,
+      new Promise<void>((r) => {
+        releaseA = r;
+      }),
+    );
+    stateByAdr.set(ADR_B, "submitted");
+    const client = createApiClient({ baseUrl: "http://localhost", fetch: stubFetch });
+    const panel = (id: string) => (
+      <ApiClientProvider client={client}>
+        <MemoryRouter>
+          <AdrReadinessPanel key={id} adrId={id} packetVersion={4} />
+        </MemoryRouter>
+      </ApiClientProvider>
+    );
+    const { rerender } = render(panel(ADR));
+    rerender(panel(ADR_B));
+    await screen.findByRole("list", { name: "Checklist items and attached documents" });
+    releaseA(); // ADR A's older response arrives last
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole("button", { name: /Run the AI check/ })).toBeNull();
+
+    readStatus = 403;
+    rerender(panel(ADR));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Documentation readiness" })).toBeNull(),
+    );
+    readStatus = 200;
+    rerender(panel(ADR_B));
+    expect(await screen.findByRole("region", { name: "Documentation readiness" })).toBeTruthy();
+  });
+
+  it("treats a transient 404 as a retryable error, not a hidden section", async () => {
+    readStatus = 404;
+    mount();
+    expect(await screen.findByText("not for you")).toBeTruthy();
+    readStatus = 200;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("list", { name: "Checklist items and attached documents" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("not for you")).toBeNull();
+  });
+
+  it.each([
+    ["requested", /AI check in progress/],
+    ["failed", /AI check failed/],
+    ["mystery", /AI check not completed/],
+  ])("maps review status %s to its own line and shows no findings", async (status, text) => {
+    review = aiReview({ status });
+    mount();
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "AI findings" })).toBeNull();
+    expect(screen.queryByText(/reported nothing/)).toBeNull();
+  });
+
+  it("shows the advisory warning whenever findings are shown, whatever the source", async () => {
+    review = aiReview({ source: "deterministic" });
+    mount();
+    expect(await screen.findByText(/AI-generated, advisory, and may be wrong/)).toBeTruthy();
+  });
+
+  it("never says the documentation is complete or sufficient", async () => {
+    review = aiReview({ findings: [] });
+    mount();
+    expect(
+      await screen.findByText(/This is not confirmation that the documentation is complete/),
+    ).toBeTruthy();
+    cleanup();
+    review = null;
+    mount();
+    await screen.findByRole("list", { name: "Checklist items and attached documents" });
+    expect(screen.queryByText(/complete\.$/)).toBeNull();
+  });
+
+  it("offers no response on a stale review or an already-answered finding", async () => {
+    review = aiReview({ stale: true });
+    mount();
+    expect(await screen.findByText(/Run the AI check again to record a response/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Report as wrong/ })).toBeNull();
   });
 });

@@ -11,7 +11,7 @@
 // What crosses the port is IDS and the requirement KEYS only. Document text is never handled by M25: whatever reads it
 // does so inside the M32 / M22 boundary under the caller's tenant scope. What comes back is untrusted: the service runs
 // every finding through `acceptAiFindings` (domain/readiness.ts) before anything is stored or shown.
-import type { AdrChecklistKey } from "../domain";
+import type { AdrChecklistKey, ReadinessUnavailableReason } from "../domain";
 
 /** Ids and requirement keys, no free text, no PHI. */
 export interface AdrReadinessAssistInput {
@@ -25,15 +25,7 @@ export interface AdrReadinessAssistInput {
   readonly requirementKeys: readonly AdrChecklistKey[];
 }
 
-export type AdrReadinessUnavailableReason =
-  | "capability_unavailable"
-  | "kill_switch_active"
-  | "tenant_not_opted_in"
-  | "budget_exhausted"
-  | "timeout"
-  | "schema_invalid"
-  /** The port threw: recorded as a failed review. Set by the service, never by an implementation. */
-  | "assistant_error";
+export type AdrReadinessUnavailableReason = ReadinessUnavailableReason;
 
 /** The assistant either answered (with UNTRUSTED findings) or is absent. Absence is a value, never a throw. */
 export type AdrReadinessAssistResult =

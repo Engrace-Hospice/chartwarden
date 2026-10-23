@@ -7,6 +7,7 @@ import {
   acceptAiFindings,
   deterministicGaps,
   isReviewDisposed,
+  normalizeReadinessNote,
 } from "../readiness";
 
 const DOC_A = "11111111-1111-4111-8111-111111111111";
@@ -99,6 +100,27 @@ describe("acceptAiFindings", () => {
     expect(out.dropped[0]?.reason).toBe("CITATION_NOT_IN_PACKET");
   });
 
+  it("drops a presence claim whose citations are in the packet but not attached to that checklist item", () => {
+    const out = accept([
+      finding({ checklistKey: "plan_of_care", status: "looks_present", citedDocumentIds: [DOC_B] }),
+    ]);
+    expect(out.accepted).toEqual([]);
+    expect(out.dropped[0]?.reason).toBe("CITATION_NOT_ON_KEY");
+    const mixed = accept([
+      finding({
+        checklistKey: "plan_of_care",
+        status: "looks_present",
+        citedDocumentIds: [DOC_B, DOC_A],
+      }),
+    ]);
+    expect(mixed.accepted).toHaveLength(1);
+  });
+
+  it("stores a normalized note: no control or bidi-override characters, trimmed", () => {
+    const out = accept([finding({ note: "  a\u202Eb\nc\u0000d\u200Be  " })]);
+    expect(out.accepted[0]?.note).toBe("a b c d e");
+  });
+
   it("drops an uncited presence claim", () => {
     const out = accept([finding({ checklistKey: "plan_of_care", status: "looks_present" })]);
     expect(out.dropped[0]?.reason).toBe("UNCITED_PRESENCE");
@@ -133,6 +155,13 @@ describe("acceptAiFindings", () => {
   it("bounds the note length", () => {
     const out = accept([finding({ note: "x".repeat(MAX_READINESS_NOTE_LENGTH + 1) })]);
     expect(out.dropped[0]?.reason).toBe("NOTE_TOO_LONG");
+  });
+});
+
+describe("normalizeReadinessNote", () => {
+  it("leaves plain text alone and counts the length after normalizing", () => {
+    expect(normalizeReadinessNote("Appears on page 2.")).toBe("Appears on page 2.");
+    expect(normalizeReadinessNote("\u202E\u202E  ")).toBe("");
   });
 });
 

@@ -33764,6 +33764,7 @@ export interface operations {
                                 note: string;
                                 disposition: string | null;
                                 disposedAt: string | null;
+                                disposedByMembershipId: string | null;
                             }[];
                         } | null;
                     };

@@ -57,9 +57,11 @@ describe.skipIf(!DB_URL)("M25 ADR documentation readiness (milestone 8a-1) - LIV
     ) =>
       outbox.publish(tx as Parameters<typeof outbox.publish>[0], { ...input, callerModule: "m25" }),
   };
+  const assistErrors: { errorClass: string; adrCaseId: string }[] = [];
   const svc = (assist?: AdrReadinessAssistPort) =>
     buildDrizzleAdrReadinessService(fx.handle.db, {
       outbox: m25Outbox,
+      onAssistantError: (e) => void assistErrors.push(e),
       ...(assist ? { assist } : {}),
     });
   const A = () => fx.actor();
@@ -342,6 +344,13 @@ describe.skipIf(!DB_URL)("M25 ADR documentation readiness (milestone 8a-1) - LIV
       const adr = await mkAdr();
       const malformed = await svc(fakeAssist("not a list")).requestAdrReadiness(A(), adr);
       expect(malformed).toMatchObject({ status: "failed", source: "ai", findingCount: 0 });
+      expect(
+        (
+          await fx.admin.query("SELECT unavailable_reason FROM adr_readiness_review WHERE id=$1", [
+            malformed.reviewId,
+          ])
+        ).rows[0].unavailable_reason,
+      ).toBe("schema_invalid");
       await ageReviews();
       const thrower: AdrReadinessAssistPort = {
         review: async () => {
@@ -356,6 +365,80 @@ describe.skipIf(!DB_URL)("M25 ADR documentation readiness (milestone 8a-1) - LIV
         ])
       ).rows[0];
       expect(reason.unavailable_reason).toBe("assistant_error");
+      // logged by class only, never the message
+      expect(assistErrors.at(-1)).toEqual({ errorClass: "Error", adrCaseId: adr });
+      const bad = await fx.dbMessage(
+        fx.admin.query(
+          "UPDATE adr_readiness_review SET unavailable_reason='free text' WHERE id=$1",
+          [thrown.reviewId],
+        ),
+      );
+      expect(bad).toMatch(/unavailable_reason/);
+    });
+
+    it("drops a presence claim that cites a packet document attached to a different item", async () => {
+      const adr = await mkAdr();
+      await attach(adr, "plan_of_care");
+      const other = await attach(adr, "visit_notes");
+      const out = await svc(
+        fakeAssist([
+          {
+            checklistKey: "plan_of_care",
+            status: "looks_present",
+            citedDocumentIds: [other],
+            note: "n",
+          },
+        ]),
+      ).requestAdrReadiness(A(), adr);
+      expect(out).toMatchObject({ status: "ready", findingCount: 0 });
+    });
+
+    it("stores a normalized note", async () => {
+      const adr = await mkAdr();
+      await svc(
+        fakeAssist([
+          {
+            checklistKey: "physician_orders",
+            status: "cannot_tell",
+            citedDocumentIds: [],
+            note: " a\u202Eb\nc ",
+          },
+        ]),
+      ).requestAdrReadiness(A(), adr);
+      expect((await svc().getAdrReadiness(A(), adr)).review?.findings[0]?.note).toBe("a b c");
+    });
+
+    it("makes a disposition final, names who recorded it, and refuses one on a stale review", async () => {
+      const gap = {
+        checklistKey: "election_statement",
+        status: "possibly_missing",
+        citedDocumentIds: [],
+        note: "n",
+      };
+      const adr = await mkAdr();
+      await svc(fakeAssist([gap])).requestAdrReadiness(A(), adr);
+      const finding = (await svc().getAdrReadiness(A(), adr)).review?.findings[0]?.id as string;
+      await svc().disposeReadinessFinding(A(), adr, finding, "acknowledged");
+      expect(
+        await fx.refused(svc().disposeReadinessFinding(A(), adr, finding, "dismissed")),
+      ).toMatchObject({
+        code: "READINESS_ALREADY_DISPOSED",
+        statusCode: 409,
+      });
+      expect((await svc().getAdrReadiness(A(), adr)).review?.findings[0]).toMatchObject({
+        disposition: "acknowledged",
+        disposedByMembershipId: fx.memberA,
+      });
+      const adr2 = await mkAdr();
+      await svc(fakeAssist([gap])).requestAdrReadiness(A(), adr2);
+      const f2 = (await svc().getAdrReadiness(A(), adr2)).review?.findings[0]?.id as string;
+      await fx.admin.query("UPDATE adr_case SET version = version + 1 WHERE id=$1", [adr2]);
+      expect(
+        await fx.refused(svc().disposeReadinessFinding(A(), adr2, f2, "dismissed")),
+      ).toMatchObject({
+        code: "READINESS_REVIEW_STALE",
+        statusCode: 409,
+      });
     });
 
     it("flags a review stale once the packet version moves, and a disposition changes nothing but the finding", async () => {
@@ -402,6 +485,22 @@ describe.skipIf(!DB_URL)("M25 ADR documentation readiness (milestone 8a-1) - LIV
       expect(limited).toMatchObject({ code: "READINESS_RATE_LIMITED", statusCode: 429 });
       await ageReviews();
       expect((await svc().requestAdrReadiness(A(), adr)).status).toBe("unavailable");
+    });
+
+    it("lets only one of several concurrent requests through (advisory lock + re-check)", async () => {
+      const adr = await mkAdr();
+      const results = await Promise.all(
+        [1, 2, 3].map(() => fx.refused(svc().requestAdrReadiness(A(), adr))),
+      );
+      expect(results.filter((r) => r === null)).toHaveLength(1);
+      expect(results.filter((r) => r?.code === "READINESS_RATE_LIMITED")).toHaveLength(2);
+      const n = (
+        await fx.admin.query(
+          "SELECT count(*)::int AS n FROM adr_readiness_review WHERE adr_case_id=$1",
+          [adr],
+        )
+      ).rows[0].n;
+      expect(n).toBe(1);
     });
 
     it("refuses a review on a case that is not in assembly or review, and reads as absent for an unknown case", async () => {

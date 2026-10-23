@@ -27,7 +27,26 @@ export type ReadinessReviewStatus = (typeof READINESS_REVIEW_STATUSES)[number];
 export const READINESS_SOURCES = ["deterministic", "ai"] as const;
 export type ReadinessSource = (typeof READINESS_SOURCES)[number];
 
+/** Why no assistant answered. Closed: mirrored by a CHECK on adr_readiness_review.unavailable_reason and the event schema. */
+export const READINESS_UNAVAILABLE_REASONS = [
+  "capability_unavailable",
+  "kill_switch_active",
+  "tenant_not_opted_in",
+  "budget_exhausted",
+  "timeout",
+  "schema_invalid",
+  "assistant_error",
+] as const;
+export type ReadinessUnavailableReason = (typeof READINESS_UNAVAILABLE_REASONS)[number];
+
 export const MAX_READINESS_NOTE_LENGTH = 500;
+
+// Control characters (incl. newlines and tabs), zero-width and bidi-override/isolate characters: a note is one plain line.
+const UNSAFE_NOTE_CHARS = /[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/gu;
+/** Strips control and bidi-override characters (each becomes a space), collapses runs and trims. */
+export function normalizeReadinessNote(note: string): string {
+  return note.replace(UNSAFE_NOTE_CHARS, " ").replace(/ {2,}/g, " ").trim();
+}
 /** At most this many AI findings are read from one result; the rest are dropped (a model cannot flood the panel). */
 export const MAX_READINESS_AI_FINDINGS = ADR_CHECKLIST_KEYS.length * 3;
 /** Minimum gap between two review requests on one case (seconds): the per-case rate limit. */
@@ -96,6 +115,7 @@ export type FindingDropReason =
   | "DUPLICATE_KEY"
   | "NOTE_TOO_LONG"
   | "CITATION_NOT_IN_PACKET"
+  | "CITATION_NOT_ON_KEY"
   | "UNCITED_PRESENCE"
   | "PRESENCE_ON_GAP";
 
@@ -132,11 +152,14 @@ function judge(
   const state = gaps.keys.find((g) => g.checklistKey === key);
   if (state?.status === "marked_not_applicable") return refuse("KEY_NOT_APPLICABLE");
   if (seen.has(key)) return refuse("DUPLICATE_KEY");
-  if (r.note.length > MAX_READINESS_NOTE_LENGTH) return refuse("NOTE_TOO_LONG");
+  const note = normalizeReadinessNote(r.note);
+  if (note.length > MAX_READINESS_NOTE_LENGTH) return refuse("NOTE_TOO_LONG");
   if (!cited.every((c) => packet.has(c))) return refuse("CITATION_NOT_IN_PACKET");
   if (r.status === "looks_present") {
     if (state?.isGap) return refuse("PRESENCE_ON_GAP");
     if (cited.length === 0) return refuse("UNCITED_PRESENCE");
+    // A presence claim must cite a document a person attached to THIS item, not any document in the packet.
+    if (!cited.some((c) => state?.documentIds.includes(c))) return refuse("CITATION_NOT_ON_KEY");
   }
   return {
     ok: true,
@@ -144,7 +167,7 @@ function judge(
       checklistKey: key,
       status: r.status,
       citedDocumentIds: [...new Set(cited)],
-      note: r.note.trim(),
+      note,
     },
   };
 }

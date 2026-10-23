@@ -45,6 +45,7 @@ export interface ReadinessFindingView {
   readonly note: string;
   readonly disposition: string | null;
   readonly disposedAt: string | null;
+  readonly disposedByMembershipId: string | null;
 }
 
 export interface ReadinessReviewView {
@@ -96,6 +97,8 @@ export interface AdrReadinessPorts {
   readonly outbox?: WriteOutboxPort;
   /** Defaults to the deny-stub: no model is reachable until milestone 8b binds one. */
   readonly assist?: AdrReadinessAssistPort;
+  /** Told when the assistant threw. Carries the error CLASS only, never a message (which could hold PHI). */
+  readonly onAssistantError?: (event: { errorClass: string; adrCaseId: string }) => void;
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -133,6 +136,27 @@ export function buildDrizzleAdrReadinessService(
     };
   }
 
+  /** True when a review was stored for this case inside the rate-limit window. */
+  async function requestedRecently(tx: Tx, adrCaseId: string): Promise<boolean> {
+    const recent = await tx
+      .select({ id: REVIEW.id })
+      .from(REVIEW)
+      .where(
+        and(
+          eq(REVIEW.adrCaseId, adrCaseId),
+          sql`${REVIEW.createdAt} > now() - make_interval(secs => ${READINESS_REQUEST_MIN_INTERVAL_SECONDS})`,
+        ),
+      )
+      .limit(1);
+    return recent.length > 0;
+  }
+  const rateLimited = () =>
+    new ChartWardenError(
+      "READINESS_RATE_LIMITED",
+      `a readiness review was requested for this ADR in the last ${READINESS_REQUEST_MIN_INTERVAL_SECONDS} seconds; wait a moment`,
+      429,
+    );
+
   const emit = (
     tx: Tx,
     actor: M25WriteActor,
@@ -161,7 +185,11 @@ export function buildDrizzleAdrReadinessService(
         documents: packet.documents,
         requirementKeys: ADR_CHECKLIST_KEYS,
       });
-    } catch {
+    } catch (err) {
+      ports.onAssistantError?.({
+        errorClass: err instanceof Error ? err.constructor.name : typeof err,
+        adrCaseId,
+      });
       return { available: false, reason: "assistant_error" } as const;
     }
   }
@@ -212,6 +240,7 @@ export function buildDrizzleAdrReadinessService(
                   note: f.note,
                   disposition: f.disposition,
                   disposedAt: f.disposedAt ? iso(f.disposedAt) : null,
+                  disposedByMembershipId: f.disposedByMembershipId,
                 })),
               }
             : null,
@@ -230,25 +259,8 @@ export function buildDrizzleAdrReadinessService(
             409,
           );
         }
-        const recent = await tx
-          .select({ id: REVIEW.id })
-          .from(REVIEW)
-          .where(
-            and(
-              eq(REVIEW.adrCaseId, adrCaseId),
-              sql`${REVIEW.createdAt} > now() - make_interval(secs => ${READINESS_REQUEST_MIN_INTERVAL_SECONDS})`,
-            ),
-          )
-          .limit(1);
-        // ponytail: two truly concurrent requests can both pass this check; the Idempotency-Key middleware covers
-        // retries, and a duplicate review is harmless (advisory, append-only). Add an advisory lock if that ever matters.
-        if (recent[0]) {
-          throw new ChartWardenError(
-            "READINESS_RATE_LIMITED",
-            `a readiness review was requested for this ADR in the last ${READINESS_REQUEST_MIN_INTERVAL_SECONDS} seconds; wait a moment`,
-            429,
-          );
-        }
+        // Early out before any assistant call; the authoritative re-check is under a lock in phase 2.
+        if (await requestedRecently(tx, adrCaseId)) throw rateLimited();
         return { caseVersion: cur.version, packet: await loadPacket(tx, cur) };
       });
 
@@ -275,6 +287,11 @@ export function buildDrizzleAdrReadinessService(
 
       // Phase 2: store the review and the surviving findings, and emit ids-only events.
       return withOrgContext(db, actor, async (tx) => {
+        // Serialize requests per case, then re-check the window, so concurrent requests cannot both pass.
+        // ponytail: per-actor limits are skipped on purpose (a review costs nothing until 8b binds a model); add them
+        // with the token budget then.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${adrCaseId}::text))`);
+        if (await requestedRecently(tx, adrCaseId)) throw rateLimited();
         const inserted = await tx
           .insert(REVIEW)
           .values({
@@ -291,6 +308,7 @@ export function buildDrizzleAdrReadinessService(
                   modelVersionPin: answer.modelVersionPin,
                 }
               : { unavailableReason: answer.reason }),
+            ...(answer.available && unusable ? { unavailableReason: "schema_invalid" } : {}),
             droppedFindingCount: accepted?.dropped.length ?? 0,
           })
           .returning({ id: REVIEW.id });
@@ -327,7 +345,34 @@ export function buildDrizzleAdrReadinessService(
 
     async disposeReadinessFinding(actor, adrCaseId, findingId, disposition) {
       return withOrgContext(db, actor, async (tx) => {
-        await loadCase(tx, actor, adrCaseId); // provider-entity scope: an out-of-scope case reads as absent
+        const cur = await loadCase(tx, actor, adrCaseId); // an out-of-scope case reads as absent
+        const found = await tx
+          .select({
+            reviewId: FINDING.reviewId,
+            disposition: FINDING.disposition,
+            reviewCaseVersion: REVIEW.caseVersion,
+          })
+          .from(FINDING)
+          .innerJoin(REVIEW, eq(REVIEW.id, FINDING.reviewId))
+          .where(and(eq(FINDING.id, findingId), eq(FINDING.adrCaseId, adrCaseId)))
+          .limit(1);
+        const row = found[0];
+        if (!row) throw new NotFoundError("readiness finding");
+        if (row.disposition !== null) {
+          throw new ChartWardenError(
+            "READINESS_ALREADY_DISPOSED",
+            "this finding already has a disposition; it cannot be changed",
+            409,
+          );
+        }
+        if (row.reviewCaseVersion !== cur.version) {
+          throw new ChartWardenError(
+            "READINESS_REVIEW_STALE",
+            "the packet changed after this review ran; request a new review before recording a disposition",
+            409,
+          );
+        }
+        // The IS NULL guard also settles two concurrent dispositions: the loser updates nothing.
         const updated = await tx
           .update(FINDING)
           .set({
@@ -335,16 +380,27 @@ export function buildDrizzleAdrReadinessService(
             disposedByMembershipId: actor.membershipId,
             disposedAt: new Date(),
           })
-          .where(and(eq(FINDING.id, findingId), eq(FINDING.adrCaseId, adrCaseId)))
-          .returning({ id: FINDING.id, reviewId: FINDING.reviewId });
-        const row = updated[0];
-        if (!row) throw new NotFoundError("readiness finding");
+          .where(
+            and(
+              eq(FINDING.id, findingId),
+              eq(FINDING.adrCaseId, adrCaseId),
+              isNull(FINDING.disposition),
+            ),
+          )
+          .returning({ id: FINDING.id });
+        if (!updated[0]) {
+          throw new ChartWardenError(
+            "READINESS_ALREADY_DISPOSED",
+            "this finding already has a disposition; it cannot be changed",
+            409,
+          );
+        }
         await emit(tx, actor, "m25.adr_readiness.finding_disposed", adrCaseId, {
           reviewId: row.reviewId,
           findingId,
           disposition,
         });
-        return { id: row.id, disposition };
+        return { id: findingId, disposition };
       });
     },
   };

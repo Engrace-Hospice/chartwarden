@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS "adr_readiness_review" (
   "invocation_id" uuid,
   "prompt_template_version" text,
   "model_version_pin" text,
-  "unavailable_reason" text,
+  -- Closed set, mirrored in domain/readiness.ts READINESS_UNAVAILABLE_REASONS and the event schema.
+  "unavailable_reason" text CHECK ("unavailable_reason" IN ('capability_unavailable','kill_switch_active','tenant_not_opted_in','budget_exhausted','timeout','schema_invalid','assistant_error')),
   -- How many assistant findings the citation filter refused (a count, never content).
   "dropped_finding_count" integer NOT NULL DEFAULT 0 CHECK ("dropped_finding_count" >= 0),
   "created_at" timestamptz NOT NULL DEFAULT now(),
@@ -83,10 +84,10 @@ GRANT SELECT, INSERT ON "adr_readiness_finding" TO chartwarden_app;--> statement
 GRANT UPDATE ("disposition", "disposed_by_membership_id", "disposed_at") ON "adr_readiness_finding" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "adr_readiness_finding" TO chartwarden_admin;--> statement-breakpoint
 
--- M4 write-audit triggers (the 0084 shape). The assistant's note and the unavailable reason are free text: scrubbed.
+-- M4 write-audit triggers (the 0084 shape). The assistant's note is free text: scrubbed. (The unavailable reason is a closed set and is not.)
 CREATE OR REPLACE FUNCTION audit_phi_write_adr_readiness_review() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['unavailable_reason'];
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY[]::text[];
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;

@@ -12,6 +12,7 @@
 // (HQRP denial-rate), M33 (dashboards), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@chartwarden/types";
+import { READINESS_DISPOSITIONS, READINESS_UNAVAILABLE_REASONS } from "./domain/readiness";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
@@ -320,7 +321,11 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m25",
     description:
       "No assistant answered a readiness review (capability off, killed, failed or unusable); the deterministic gap view is unaffected.",
-    payloadSchema: Type.Object({ adrCaseId: id, reviewId: id, reason: str }),
+    payloadSchema: Type.Object({
+      adrCaseId: id,
+      reviewId: id,
+      reason: Type.Union(READINESS_UNAVAILABLE_REASONS.map((r) => Type.Literal(r))),
+    }),
     declaredConsumers: [],
     isOutboxOnly: true,
   },
@@ -333,7 +338,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       adrCaseId: id,
       reviewId: id,
       findingId: id,
-      disposition: str,
+      disposition: Type.Union(READINESS_DISPOSITIONS.map((d) => Type.Literal(d))),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,
