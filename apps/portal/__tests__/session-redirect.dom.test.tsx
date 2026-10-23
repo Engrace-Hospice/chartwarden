@@ -68,7 +68,12 @@ describe("expired portal session", () => {
   const target = `/p/${PID}/care-plan`;
 
   /** Drives the password form to completion; `granted` is what /sessions/patients answers. */
-  async function passwordSignIn(granted: string[], twoFactor = false, holdAtSignedIn = false) {
+  async function passwordSignIn(
+    granted: string[],
+    twoFactor = false,
+    holdAtSignedIn = false,
+    opts: { selectStatus?: number; patientsStatus?: number; accounts?: number } = {},
+  ) {
     window.history.pushState({}, "", `/portal/?next=${encodeURIComponent(target)}`);
     const posts: string[] = [];
     const handler = (url: string): Response => {
@@ -79,16 +84,19 @@ describe("expired portal session", () => {
         return new Response("{}", { status: 500, headers: { "content-type": "application/json" } });
       if (url.includes("/portal/sign-in/accounts"))
         return Response.json({
-          items: [
-            {
-              portalAccountId: "a1",
-              organizationName: "O",
-              relationship: "x",
-              blockedReason: null,
-            },
-          ],
+          items: Array.from({ length: opts.accounts ?? 1 }, (_, i) => ({
+            portalAccountId: `a${i + 1}`,
+            organizationName: `Org ${i + 1}`,
+            relationship: "x",
+            blockedReason: null,
+          })),
         });
       if (url.includes("/portal/sign-in/establish")) return Response.json({});
+      if (url.includes("/portal/sessions/patients") && opts.patientsStatus)
+        return new Response("{}", {
+          status: opts.patientsStatus,
+          headers: { "content-type": "application/json" },
+        });
       if (url.includes("/portal/sessions/patients"))
         return Response.json({
           items: granted.map((patientId) => ({
@@ -100,6 +108,11 @@ describe("expired portal session", () => {
         });
       if (url.includes("/portal/sessions/select-patient")) {
         posts.push(url);
+        if (opts.selectStatus)
+          return new Response("{}", {
+            status: opts.selectStatus,
+            headers: { "content-type": "application/json" },
+          });
         return Response.json({});
       }
       return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
@@ -134,6 +147,43 @@ describe("expired portal session", () => {
     try {
       await waitFor(() => expect(window.location.pathname).toBe("/portal/patient-picker"));
       expect(posts).toHaveLength(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to the picker, never the patient route, when select-patient fails for a granted patient", async () => {
+    const landed: string[] = [];
+    const { posts, fetchSpy } = await passwordSignIn([PID, OTHER], false, false, {
+      selectStatus: 403,
+    });
+    const track = setInterval(() => landed.push(window.location.pathname), 5);
+    try {
+      await waitFor(() => expect(window.location.pathname).toBe("/portal/patient-picker"));
+      expect(posts).toHaveLength(1);
+      expect(landed.some((p) => p.includes("/p/"))).toBe(false);
+    } finally {
+      clearInterval(track);
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to the picker when the patient list fails", async () => {
+    const { posts, fetchSpy } = await passwordSignIn([PID], false, false, { patientsStatus: 500 });
+    try {
+      await waitFor(() => expect(window.location.pathname).toBe("/portal/patient-picker"));
+      expect(posts).toHaveLength(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("honours next after choosing among several accounts, binding the session", async () => {
+    const { posts, fetchSpy } = await passwordSignIn([PID], false, false, { accounts: 2 });
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: /Org 2/ }));
+      await waitFor(() => expect(window.location.pathname).toBe(`/portal${target}`));
+      expect(posts).toHaveLength(1);
     } finally {
       fetchSpy.mockRestore();
     }

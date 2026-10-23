@@ -76,6 +76,7 @@ export function PortalSignedIn(): JSX.Element {
         if ("error" in list) return false;
         const items = (list.data?.items ?? []) as { patientId: string }[];
         if (!items.some((item) => item.patientId === patientId)) return false;
+        if (!current()) return false;
         const picked = await client.POST("/api/v1/portal/sessions/select-patient", {
           body: { patientId },
         });
