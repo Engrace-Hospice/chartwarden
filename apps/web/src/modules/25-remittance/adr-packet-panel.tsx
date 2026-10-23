@@ -1,4 +1,4 @@
-import { Button, SelectField, TextField, useApiClient, nowLocalInput } from "@chartwarden/ui";
+import { Button, SelectField, TextField, nowLocalInput, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the ADR RESPONSE PACKET section of the ADR work panel (hospice ADR/TPE/QIC
 // PRD, milestone 2b). While the case is in assembly the specialist attaches the documents the MAC asked for and
 // ticks the checklist; in review a DIFFERENT person signs off; then the filing made outside ChartWarden is recorded
@@ -52,7 +52,6 @@ interface FilingDraft {
   readonly lateAcknowledged: boolean;
   readonly receiptDocumentId: string;
 }
-
 
 export interface AdrPacketPanelProps {
   readonly adr: AdrDetail;
@@ -327,8 +326,8 @@ export function AdrPacketPanel({
         <>
           <h4 className="wx-action-title">Record filing</h4>
           <Hint>
-            Record the response you sent to the MAC. ChartWarden does not send it for you yet. Recording
-            it needs a recent step-up verification and freezes the packet.
+            Record the response you sent to the MAC. ChartWarden does not send it for you yet.
+            Recording it needs a recent step-up verification and freezes the packet.
           </Hint>
           <SelectField
             label="Sent by"

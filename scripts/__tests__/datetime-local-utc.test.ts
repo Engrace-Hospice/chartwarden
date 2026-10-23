@@ -9,7 +9,10 @@ const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const UI_SITES = ["apps/web/src", "apps/portal/src", "apps/admin/src", "packages/ui/src"];
 
 function gitGrep(pattern: string, paths: readonly string[]) {
-  const r = spawnSync("git", ["grep", "-nE", pattern, "--", ...paths], { cwd: ROOT, encoding: "utf8" });
+  const r = spawnSync("git", ["grep", "-nE", pattern, "--", ...paths], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
   expect(r.error).toBeUndefined();
   expect(r.status === 0 || r.status === 1, r.stderr).toBe(true); // 128 = git failed, not "no match"
   return r;

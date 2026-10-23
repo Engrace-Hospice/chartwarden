@@ -12,6 +12,7 @@
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
+import { toLocalInput } from "@chartwarden/ui";
 import type {
   EscalationTier,
   MinimizationProfile,
@@ -24,7 +25,6 @@ import type {
   TriageDispositionValue,
   TriageInboundChannel,
 } from "./oncall-api";
-import { toLocalInput } from "@chartwarden/ui";
 
 /**
  * `triage_call_state` (§2.2.1 / D6).
