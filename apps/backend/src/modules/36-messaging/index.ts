@@ -165,6 +165,16 @@ import type {
   ExportPermissionCheck as _ExportPermissionCheck,
 } from "./export/export-ports";
 import { createExportService as _createExportService } from "./export/export-service";
+import {
+  type AttemptLimiter as _ExternalShareLimiter,
+  type ExternalShareFlagReader as _ExternalShareFlagReader,
+  createExternalShareService as _createExternalShareService,
+} from "./external-share/external-share-service";
+import {
+  createDrizzleSharePartnerStore as _createDrizzleSharePartnerStore,
+  createDrizzleShareStaffStore as _createDrizzleShareStaffStore,
+} from "./external-share/external-share-store";
+import { createMessageBodyCipher as _createMessageBodyCipher } from "./messaging-write-core";
 import { createDrizzleExportStore as _createDrizzleExportStore } from "./export/export-store";
 import {
   type GlobalSearchMountOptions,
@@ -201,6 +211,7 @@ import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
+import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
 import type { MedicationQuestionRouteDeps as _MedicationQuestionRouteDeps } from "./routes/medication-question-routes";
@@ -308,6 +319,18 @@ export function mountMessagingRoutes(
       flags?: _ExportFlagReader | undefined;
       holds?: _ExportPermissionCheck | undefined;
       artefactReader?: _ExportArtefactReader | undefined;
+    };
+    /**
+     * WP 6.6 (ADR-0096, PROPOSED): external partner share. `flags` is the M1 reader for `messaging.external_partners` (absent or off => creating a
+     * share and EVERY partner route are the uniform 404; listing and revoking never depend on it). The limiters are the composition root's budgets.
+     * Omitted => not mounted.
+     */
+    externalShare?: {
+      flags?: _ExternalShareFlagReader | undefined;
+      redeemIpLimiter?: _ExternalShareLimiter | undefined;
+      redeemOrgLimiter?: _ExternalShareLimiter | undefined;
+      verifyIpLimiter?: _ExternalShareLimiter | undefined;
+      readLimiter?: _ExternalShareLimiter | undefined;
     };
   } = {},
 ): void {
@@ -465,6 +488,19 @@ export function mountMessagingRoutes(
         flags: opts.messagingExport.flags,
         holds: opts.messagingExport.holds,
         artefactReader: opts.messagingExport.artefactReader,
+      }),
+    });
+  }
+  // WP 6.6 (ADR-0096, PROPOSED) - external partner share: a read-only, expiring, single-conversation grant for a non-workforce partner. Creating is
+  // behind the tenant flag `messaging.external_partners`, and so is every partner route; revoking is not (a share that exists stays revocable).
+  if (opts.externalShare) {
+    _registerExternalShareRoutes(app, {
+      service: _createExternalShareService({
+        staffStore: _createDrizzleShareStaffStore(db),
+        partnerStore: _createDrizzleSharePartnerStore(db),
+        outbox: opts.outbox,
+        cipher: _createMessageBodyCipher(),
+        ...opts.externalShare,
       }),
     });
   }

@@ -14962,6 +14962,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/external-shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's partner shares, newest first (messaging.share.manage; never depends on the flag): ids, partner label, kind, status (active, expired, revoked), instants and whether the invitation was redeemed or the code locked. No token, code or message */
+        get: operations["getApiV1MessagingExternalshares"];
+        put?: never;
+        /** Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location, on_call and dm channels; a care_team, bereavement, announcement or unknown channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day */
+        post: operations["postApiV1MessagingExternalshares"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/external-shares/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a partner share now (messaging.share.manage + a fresh step-up; never depends on the flag). The partner's very next request is a 404 (nothing is cached). 409 when already revoked; publishes m36.external_share.revoked (ids only) */
+        delete: operations["deleteApiV1MessagingExternalsharesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/global-search/settings": {
         parameters: {
             query?: never;
@@ -15404,6 +15439,74 @@ export interface paths {
         get: operations["getApiV1MessagingOncallCoverage"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/partner/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** PARTNER (no user session): redeem the one-time invitation for an enrolment-stage bearer (single use; budgeted per client address and organisation). The bearer reaches only the state and verify routes until the 8-digit code is proven. Every refusal (flag off, unknown, used, revoked, expired invitation, wrong organisation) is the same 404 */
+        post: operations["postApiV1MessagingPartnerRedeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/partner/shares/{shareId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** PARTNER (Authorization: Bearer): the partner's own share state (stage, label, expiry). Any other share id, a revoked or expired share or a bad bearer is the same 404 */
+        get: operations["getApiV1MessagingPartnerSharesByShareId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/partner/shares/{shareId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references or redactions. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned */
+        get: operations["getApiV1MessagingPartnerSharesByShareIdMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/partner/shares/{shareId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** PARTNER (Authorization: Bearer): prove the out-of-band 8-digit code to activate the session. Five wrong attempts lock the share for good (404 afterwards); a wrong code is 422 EXTERNAL_SHARE_CODE_INVALID */
+        post: operations["postApiV1MessagingPartnerSharesByShareIdVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -69728,6 +69831,140 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingExternalshares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        shares: {
+                            id: string;
+                            channelId: string;
+                            channelTitle: string | null;
+                            partnerName: string;
+                            partnerKind: "pharmacy" | "dme" | "other";
+                            status: "active" | "expired" | "revoked";
+                            /** Format: date-time */
+                            sharedFrom: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            createdBy: string;
+                            revokedAt: string | null;
+                            redeemed: boolean;
+                            codeLocked: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingExternalshares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channelId: string;
+                    partnerName: string;
+                    partnerKind: "pharmacy" | "dme" | "other";
+                    baaReference: string;
+                    expiresInDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        channelTitle: string | null;
+                        partnerName: string;
+                        partnerKind: "pharmacy" | "dme" | "other";
+                        status: "active" | "expired" | "revoked";
+                        /** Format: date-time */
+                        sharedFrom: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        createdBy: string;
+                        revokedAt: string | null;
+                        redeemed: boolean;
+                        codeLocked: boolean;
+                        organizationId: string;
+                        inviteToken: string;
+                        verificationCode: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingExternalsharesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        channelTitle: string | null;
+                        partnerName: string;
+                        partnerKind: "pharmacy" | "dme" | "other";
+                        status: "active" | "expired" | "revoked";
+                        /** Format: date-time */
+                        sharedFrom: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        createdBy: string;
+                        revokedAt: string | null;
+                        redeemed: boolean;
+                        codeLocked: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingGlobalsearchSettings: {
         parameters: {
             query?: never;
@@ -71184,6 +71421,142 @@ export interface operations {
                             shift_ends_at: string | null;
                             time_zone: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingPartnerRedeem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    organizationId: string;
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionToken: string;
+                        shareId: string;
+                        /** @constant */
+                        stage: "enrolment";
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingPartnerSharesByShareId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shareId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        shareId: string;
+                        stage: "enrolment" | "active";
+                        partnerName: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingPartnerSharesByShareIdMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shareId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messages: {
+                            messageId: string;
+                            authorName: string | null;
+                            body: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            edited: boolean;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingPartnerSharesByShareIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shareId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        shareId: string;
+                        stage: "enrolment" | "active";
+                        partnerName: string;
+                        /** Format: date-time */
+                        expiresAt: string;
                     };
                 };
             };

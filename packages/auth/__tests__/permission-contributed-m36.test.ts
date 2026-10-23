@@ -44,7 +44,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.oncall.send",
         "messaging.sessions.manage",
         "messaging.offboarding.manage",
-      "messaging.analytics.read",
+        "messaging.analytics.read",
         "messaging.retention.manage",
         "messaging.redact.request",
         "messaging.redact.approve",
@@ -54,6 +54,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.export.request",
         "messaging.export.approve",
         "messaging.export.download",
+        "messaging.share.manage",
         "alert.inbox.self",
       ].sort(),
     );
@@ -95,6 +96,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.export.request",
       "messaging.export.approve",
       "messaging.export.download",
+      "messaging.share.manage",
       "alert.inbox.self",
     ] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[key].abac).toBe("none");
