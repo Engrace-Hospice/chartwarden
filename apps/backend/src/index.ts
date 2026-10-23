@@ -223,6 +223,7 @@ import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolv
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 import { buildM23OverrideAuditPort } from "./m23-override-audit";
+import { buildM25RawAdviceStore } from "./m25-raw-advice-store";
 import { buildM36AttachmentBinding, buildM36AttachmentStorage } from "./m36-attachment-storage";
 import {
   type AuthAuditDb,
@@ -1109,7 +1110,6 @@ import {
   type WorkerAlertPort as M25WorkerAlertPort,
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
-  type RawAdviceStore as M25RawAdviceStore,
   type TerminologyLookupPort,
   buildDrizzleAdrService,
   buildDrizzleDenialRouteService,
@@ -3187,41 +3187,6 @@ function buildFirstAdminAcceptanceService(deps: {
  * organization-name read is the M1 bootstrap reader; the MBI comes from M5's `MbiUnlockReader` seam
  * (resolved lazily per check, so boot registration order never matters).
  */
-/** Largest raw 835 the post path will read back (a real remittance file is well under 1 MiB). */
-const M25_RAW_835_MAX_BYTES = 16 * 1024 * 1024;
-const M25_RAW_835_IO_TIMEOUT_MS = 15_000;
-
-/**
- * #658 — the raw-835 stage for M25: the tenant's own bucket (same MINIO_* contract and `deriveTenantBucket` as M22),
- * under `m25-835/<adviceId>` (server-generated, never the caller's key) so M25 can neither overwrite nor read an M22 object whatever key the caller names.
- * No object store configured = undefined, and `postAdvice` stays fail-closed (retryable X12_835_RAW_UNAVAILABLE).
- */
-function buildM25RawAdviceStore(): M25RawAdviceStore | undefined {
-  const config = s3ObjectStoreConfigFromEnv(process.env);
-  if (!config) return undefined;
-  const store = createS3ObjectStore(config);
-  const keyOf = (adviceId: string): string => `m25-835/${adviceId}`;
-  return {
-    async put(organizationId, adviceId, text) {
-      await store.putObject({
-        bucket: deriveTenantBucket(organizationId as never),
-        objectKey: keyOf(adviceId),
-        bytes: new TextEncoder().encode(text),
-        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
-      });
-    },
-    async get(organizationId, adviceId) {
-      const bytes = await store.getObject({
-        bucket: deriveTenantBucket(organizationId as never),
-        objectKey: keyOf(adviceId),
-        maxBytes: M25_RAW_835_MAX_BYTES,
-        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
-      });
-      return bytes ? new TextDecoder().decode(bytes) : null;
-    },
-  };
-}
-
 function buildM23HetsPort(db: DbClient, config: M23HetsConfig) {
   return buildHetsEligibilityPort({
     transport: createM23HetsTransport(config),
@@ -5763,6 +5728,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             client: createX12835Client(),
             rawStore: buildM25RawAdviceStore(),
             onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
+            onStagedDeleteFailed: (event) =>
+              app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
             onRetryableParseDegraded: (event) =>
               app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
             payeeNpi: m25PayeeNpi,
@@ -11896,6 +11863,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               client: createX12835Client(),
               rawStore: buildM25RawAdviceStore(),
               onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
+            onStagedDeleteFailed: (event) =>
+              app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
               onRetryableParseDegraded: (event) =>
                 app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
               payeeNpi: m25PayeeNpi,

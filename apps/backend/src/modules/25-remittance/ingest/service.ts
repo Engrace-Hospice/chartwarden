@@ -42,6 +42,8 @@ export interface M25IngestActor {
 export interface RawAdviceStore {
   put(organizationId: string, adviceId: string, text: string): Promise<void>;
   get(organizationId: string, adviceId: string): Promise<string | null>;
+  /** Removes the staged text once the advice is posted (#669): it is PHI and nothing reads it again. */
+  delete(organizationId: string, adviceId: string): Promise<void>;
 }
 
 export interface ReceiveAdviceInput {

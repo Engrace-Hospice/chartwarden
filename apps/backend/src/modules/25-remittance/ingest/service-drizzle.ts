@@ -7,6 +7,7 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
+import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
@@ -45,7 +46,10 @@ type AdviceContext = {
   payerKind: ReceiveAdviceInput["payerKind"];
 };
 
-export type PayeeNpiLookup = (organizationId: string, providerEntityId: string) => Promise<string | null>;
+export type PayeeNpiLookup = (
+  organizationId: string,
+  providerEntityId: string,
+) => Promise<string | null>;
 /** Explicit opt-out of the payee check, for tests that are not about it. */
 export const PAYEE_UNCHECKED = "unchecked" as const;
 
@@ -78,6 +82,11 @@ export interface M25IngestDrizzleDeps {
    * the degraded code only. The composition root points this at a warn log.
    */
   readonly onStagedReadFailed?: (event: {
+    readonly organizationId: string;
+    readonly adviceId: string;
+    readonly errorName: string;
+  }) => void;
+  readonly onStagedDeleteFailed?: (event: {
     readonly organizationId: string;
     readonly adviceId: string;
     readonly errorName: string;
@@ -576,6 +585,13 @@ export function buildDrizzleM25IngestService(
           reason: "not a valid X12 envelope (missing ISA/ST segment)",
         };
       }
+      // #668 — the staged text is what gets posted, so the declared hash must describe it.
+      if (
+        createHash("sha256").update(input.rawEdi, "utf8").digest("hex") !==
+        input.fileSha256.toLowerCase()
+      ) {
+        return { outcome: "malformed", reason: "fileSha256 does not match the submitted 835 text" };
+      }
       // One file may hold several ST/SE sets; each is its own advice (its own dedup key and event). Every set is
       // parsed and payee-checked BEFORE anything is stored, so one bad set refuses the whole file.
       const parsedSets: ParsedRemittanceAdvice[] = [];
@@ -758,6 +774,21 @@ export function buildDrizzleM25IngestService(
           },
         );
         if (result.outcome === "already_posted") return { outcome: "already_posted", adviceId };
+        // #669 — the post committed, so the staged raw text (PHI) has no reader left. Best effort: a failure here
+        // must never un-post the advice; it is reported and the object is left for a bucket lifecycle rule.
+        if (staged !== null && staged !== undefined) {
+          await deps.rawStore?.delete(actor.organizationId, adviceId).catch((err: unknown) => {
+            try {
+              deps.onStagedDeleteFailed?.({
+                organizationId: actor.organizationId,
+                adviceId,
+                errorName: err instanceof Error ? err.name : "unknown",
+              });
+            } catch {
+              // Ops-only hook.
+            }
+          });
+        }
         return {
           outcome: result.outcome,
           adviceId,
