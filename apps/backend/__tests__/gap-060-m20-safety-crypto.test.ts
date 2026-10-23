@@ -23,6 +23,18 @@ function keyProvider(active: string) {
 }
 
 describe("createSafetyCiphers", () => {
+  it("turns a key-resolve failure into a typed 503 instead of a bare Error (#596 F-039)", async () => {
+    const { cipher } = createSafetyCiphers({
+      ...keyProvider("v1"),
+      async dekForOrg() {
+        throw new Error("TenantKeyMissing: no tenant key ring for org org-a");
+      },
+    });
+    const err = await cipher.encrypt({ organizationId: "org-a", plaintext: "x" }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "SAFETY_CIPHER_UNBOUND", statusCode: 503 });
+    expect((err as Error).message).not.toContain("org-a");
+  });
+
   it("round-trips plaintext through bytea-shaped ciphertext that is not the plaintext", async () => {
     const { cipher, decipher } = createSafetyCiphers(keyProvider("v1"));
     const sealed = await cipher.encrypt({ organizationId: "org-a", plaintext: "narrative" });
