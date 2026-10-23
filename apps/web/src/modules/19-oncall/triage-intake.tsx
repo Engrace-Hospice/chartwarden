@@ -16,6 +16,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  AdmissionLookupField,
+  PatientLookupField,
+  ProviderEntityLookupField,
+} from "../../shell/entity-lookups";
+import {
   type TriageCallerKind,
   type TriageInboundChannel,
   errorMessage,
@@ -67,7 +72,7 @@ export function TriageIntakeScreen(): JSX.Element {
 
   const validationSummary = useMemo(
     () => [
-      { label: "Provider", valid: peValid, detail: peValid ? "Ready" : "Required UUID" },
+      { label: "Provider", valid: peValid, detail: peValid ? "Ready" : "Required" },
       { label: "Callback", valid: phoneValid, detail: phoneValid ? "Valid" : "Use E.164" },
       {
         label: "Chart link",
@@ -163,14 +168,12 @@ export function TriageIntakeScreen(): JSX.Element {
               />
             </div>
             <div style={fieldGridStyle}>
-              <TextField
-                label="Provider entity id"
+              <ProviderEntityLookupField
+                label="Provider entity"
                 value={providerEntityId}
-                onChange={setProviderEntityId}
-                mono
+                onChange={(id) => setProviderEntityId(id)}
                 required
-                invalid={providerEntityId !== "" && !peValid}
-                hint="Coverage is resolved per ProviderEntity."
+                hint="Coverage is resolved per provider entity."
               />
               <SelectField
                 label="Inbound channel"
@@ -188,9 +191,6 @@ export function TriageIntakeScreen(): JSX.Element {
                 onChange={setCallerKind}
               />
             </div>
-            {providerEntityId !== "" && !peValid ? (
-              <p style={fieldErrorStyle}>That is not a well-formed provider-entity id.</p>
-            ) : null}
           </section>
 
           <section style={sectionStyle}>
@@ -240,25 +240,24 @@ export function TriageIntakeScreen(): JSX.Element {
               />
             </div>
             <div style={fieldGridStyle}>
-              <TextField
-                label="Patient id"
+              <PatientLookupField
+                label="Patient"
                 value={patientId}
-                onChange={setPatientId}
-                mono
-                invalid={patientId !== "" && !UUID_RE.test(patientId)}
+                onChange={(id) => {
+                  setPatientId(id);
+                  setAdmissionId("");
+                }}
               />
-              <TextField
-                label="Admission id"
+              <AdmissionLookupField
+                label="Admission"
                 value={admissionId}
-                onChange={setAdmissionId}
-                mono
-                invalid={admissionId !== "" && !UUID_RE.test(admissionId)}
+                patientId={patientId}
+                onChange={(id) => setAdmissionId(id)}
               />
             </div>
             {!anchorValid ? (
               <p style={fieldErrorStyle}>
-                Patient and admission travel together or not at all; both must be UUIDs when one is
-                supplied.
+                Patient and admission travel together or not at all; choose both or neither.
               </p>
             ) : (
               <p style={hintStyle}>

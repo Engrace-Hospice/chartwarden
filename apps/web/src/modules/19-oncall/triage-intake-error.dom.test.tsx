@@ -1,4 +1,4 @@
-// #596 F-040: a 409 TRIGGER_NO_COVERING_SHIFT carried the reason in `{ error: { message } }`, but the screen read RFC 7807
+// #596 F-040 / #612 F-027: a 409 TRIGGER_NO_COVERING_SHIFT carried the reason in `{ error: { message } }`, but the screen read RFC 7807
 // `detail`/`title`, so the user saw only "The call could not be opened." on a banner above the fold.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -9,9 +9,22 @@ import { TriageIntakeScreen } from "./triage-intake";
 const REASON = "no on-call shift covers 2026-10-22T19:15:00.000Z for provider entity 22222222";
 const PE = "22222222-2222-4222-8222-222222222222";
 
-async function conflict(): Promise<Response> {
+const json = (status: number, body: unknown): Response =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+// The provider entity is chosen from a lookup now (#612), so the stub serves that list and refuses only the POST.
+async function conflict(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const req = input instanceof Request ? input : new Request(String(input), init);
+  if (req.method === "GET") {
+    return json(200, {
+      items: [{ id: PE, legalName: "Cedar Hospice", ccn: "341234", npi: null, status: "active" }],
+      nextCursor: null,
+    });
+  }
   return new Response(
-    JSON.stringify({ error: { code: "TRIGGER_NO_COVERING_SHIFT", message: REASON, correlationId: "c" } }),
+    JSON.stringify({
+      error: { code: "TRIGGER_NO_COVERING_SHIFT", message: REASON, correlationId: "c" },
+    }),
     { status: 409, headers: { "content-type": "application/json" } },
   );
 }
@@ -34,7 +47,8 @@ describe("Take a call — refusal (#596)", () => {
         </MemoryRouter>
       </ApiClientProvider>,
     );
-    fireEvent.change(screen.getByLabelText(/Provider entity id/), { target: { value: PE } });
+    fireEvent.focus(screen.getByLabelText(/^Provider entity/));
+    fireEvent.click(await screen.findByRole("option", { name: /Cedar Hospice/ }));
     fireEvent.click(screen.getByRole("button", { name: "Open the call" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(REASON);

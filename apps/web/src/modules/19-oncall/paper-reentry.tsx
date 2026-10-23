@@ -27,6 +27,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
+import { AdmissionLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import {
   type PaperReentryWorklistView,
   type TriageCallerKind,
@@ -330,12 +331,19 @@ export function PaperReentryWorklistScreen(): JSX.Element {
             value={callerDisplayName}
             onChange={setCallerDisplayName}
           />
-          <TextField label="Patient id (optional)" value={patientId} onChange={setPatientId} mono />
-          <TextField
-            label="Admission id (optional)"
+          <PatientLookupField
+            label="Patient (optional)"
+            value={patientId}
+            onChange={(id) => {
+              setPatientId(id);
+              setAdmissionId("");
+            }}
+          />
+          <AdmissionLookupField
+            label="Admission (optional)"
             value={admissionId}
-            onChange={setAdmissionId}
-            mono
+            patientId={patientId}
+            onChange={(id) => setAdmissionId(id)}
           />
           {!anchorValid ? (
             <p style={alertStyle}>Patient and admission travel together or not at all.</p>
