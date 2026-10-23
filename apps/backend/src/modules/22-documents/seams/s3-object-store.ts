@@ -35,7 +35,7 @@
 import { createHash, createHmac } from "node:crypto";
 import type { IsoInstant, OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { deriveTenantBucket } from "../lifecycle/storage";
-import type { ObjectStorePort } from "./store";
+import type { ObjectReaderPort, ObjectStorePort } from "./store";
 
 // ── config ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -405,7 +405,7 @@ function createS3SignedFetch(
 export function createS3ObjectStore(
   config: S3ObjectStoreConfig,
   deps: S3ObjectStoreDeps = {},
-): ObjectStorePort {
+): ObjectStorePort & ObjectReaderPort {
   const region = config.region?.trim() || DEFAULT_REGION;
   const now = deps.now ?? ((): Date => new Date());
   const signedFetch = createS3SignedFetch(config, deps, "createS3ObjectStore");
@@ -431,7 +431,7 @@ export function createS3ObjectStore(
     new Error(`m22 s3 object store: '${op}' failed with HTTP ${status} for ${bucket}/${objectKey}`);
 
   return {
-    async putObject({ bucket, objectKey, bytes, mimeType }) {
+    async putObject({ bucket, objectKey, bytes, mimeType, signal }) {
       const sha256Hex = sigV4Sha256Hex(bytes);
       const res = await signedFetch({
         method: "PUT",
@@ -439,6 +439,7 @@ export function createS3ObjectStore(
         objectKey,
         query: [],
         payload: bytes,
+        ...(signal ? { signal } : {}),
         extraHeaders: mimeType
           ? {
               "content-type": mimeType,
@@ -510,6 +511,51 @@ export function createS3ObjectStore(
         },
         expiresAt: new Date(at.getTime() + ttlSeconds * 1000).toISOString(),
       };
+    },
+
+    async getObject({ bucket, objectKey, maxBytes, signal }) {
+      const res = await signedFetch({
+        method: "GET",
+        bucket,
+        objectKey,
+        query: [],
+        payload: null,
+        ...(signal ? { signal } : {}),
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw opError("getObject", res.status, bucket, objectKey);
+      const tooBig = (): Error =>
+        new Error(
+          `m22 s3 object store: object exceeds ${maxBytes} bytes at ${bucket}/${objectKey}`,
+        );
+      const declared = Number(res.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > maxBytes) throw tooBig();
+      // Stream with a running count so a chunked / header-less body is cut off at the cap, not buffered whole.
+      const reader = res.body?.getReader();
+      if (!reader) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.byteLength > maxBytes) throw tooBig();
+        return bytes;
+      }
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel();
+          throw tooBig();
+        }
+        chunks.push(value);
+      }
+      const out = new Uint8Array(total);
+      let at = 0;
+      for (const c of chunks) {
+        out.set(c, at);
+        at += c.byteLength;
+      }
+      return out;
     },
 
     async inspectObject({ bucket, objectKey, signal }) {

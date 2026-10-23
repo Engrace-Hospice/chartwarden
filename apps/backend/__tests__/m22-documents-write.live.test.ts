@@ -534,6 +534,27 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     expect(fresh.title).toBe("ok");
   });
 
+  it("#656: a /links write whose admission check saw another admission is refused under the row lock (404)", async () => {
+    const docId = await seedDocument(ORG_A); // admission_id null
+    await expect(
+      svc.linkDocument(
+        ORG_A,
+        ACTOR,
+        docId,
+        { patientId: PATIENT },
+        { expectedAdmissionId: ADMISSION },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    const ok = await svc.linkDocument(
+      ORG_A,
+      ACTOR,
+      docId,
+      { patientId: PATIENT },
+      { expectedAdmissionId: null },
+    );
+    expect(ok.patientId).toBe(PATIENT);
+  });
+
   it("an active legal hold blocks patch/tag mutations (409)", async () => {
     const docId = await seedDocument(ORG_A);
     await admin.query(

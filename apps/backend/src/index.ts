@@ -1109,6 +1109,7 @@ import {
   type WorkerAlertPort as M25WorkerAlertPort,
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
+  type RawAdviceStore as M25RawAdviceStore,
   type TerminologyLookupPort,
   buildDrizzleAdrService,
   buildDrizzleDenialRouteService,
@@ -3186,6 +3187,41 @@ function buildFirstAdminAcceptanceService(deps: {
  * organization-name read is the M1 bootstrap reader; the MBI comes from M5's `MbiUnlockReader` seam
  * (resolved lazily per check, so boot registration order never matters).
  */
+/** Largest raw 835 the post path will read back (a real remittance file is well under 1 MiB). */
+const M25_RAW_835_MAX_BYTES = 16 * 1024 * 1024;
+const M25_RAW_835_IO_TIMEOUT_MS = 15_000;
+
+/**
+ * #658 — the raw-835 stage for M25: the tenant's own bucket (same MINIO_* contract and `deriveTenantBucket` as M22),
+ * under `m25-835/<adviceId>` (server-generated, never the caller's key) so M25 can neither overwrite nor read an M22 object whatever key the caller names.
+ * No object store configured = undefined, and `postAdvice` stays fail-closed (retryable X12_835_RAW_UNAVAILABLE).
+ */
+function buildM25RawAdviceStore(): M25RawAdviceStore | undefined {
+  const config = s3ObjectStoreConfigFromEnv(process.env);
+  if (!config) return undefined;
+  const store = createS3ObjectStore(config);
+  const keyOf = (adviceId: string): string => `m25-835/${adviceId}`;
+  return {
+    async put(organizationId, adviceId, text) {
+      await store.putObject({
+        bucket: deriveTenantBucket(organizationId as never),
+        objectKey: keyOf(adviceId),
+        bytes: new TextEncoder().encode(text),
+        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
+      });
+    },
+    async get(organizationId, adviceId) {
+      const bytes = await store.getObject({
+        bucket: deriveTenantBucket(organizationId as never),
+        objectKey: keyOf(adviceId),
+        maxBytes: M25_RAW_835_MAX_BYTES,
+        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
+      });
+      return bytes ? new TextDecoder().decode(bytes) : null;
+    },
+  };
+}
+
 function buildM23HetsPort(db: DbClient, config: M23HetsConfig) {
   return buildHetsEligibilityPort({
     transport: createM23HetsTransport(config),
@@ -5714,8 +5750,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             },
           };
           // WX-PR-012 — the 835 receive/post pipeline. The 835 is parsed in-process (TypeScript, ADR-0037); no
-          // sidecar. No staged-object reader is wired yet, so `postAdvice` (which holds only the object key)
-          // fails closed with a retryable X12_835_RAW_UNAVAILABLE until one is injected via `readRaw`.
+          // sidecar. `receiveAdvice` stages the raw file in the tenant bucket and `postAdvice` reads it back
+          // through `rawStore` (#658); with no object store configured it fails closed with a retryable
+          // X12_835_RAW_UNAVAILABLE.
           // `claims` binds M23's real ClaimSubmissionReader seam for Medicare advices and
           // M24's real MedicaidClaimMatchProvider seam for Medicaid advices (F-172, #248 m24 group) —
           // routed by each advice's own `payerKind` inside `service-drizzle.ts`; each degrades to "no
@@ -5724,8 +5761,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(),
+            rawStore: buildM25RawAdviceStore(),
+            onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
             onRetryableParseDegraded: (event) =>
-              app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
+              app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
             payeeNpi: m25PayeeNpi,
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
@@ -11855,8 +11894,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
+              rawStore: buildM25RawAdviceStore(),
+              onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
               onRetryableParseDegraded: (event) =>
-                app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
+                app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
               payeeNpi: m25PayeeNpi,
               outbox: m25OutboxPublisher,
               claims: {

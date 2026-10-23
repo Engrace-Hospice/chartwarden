@@ -770,6 +770,94 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     expect(none.rows[0].n).toBe(0);
   });
 
+  it("#658: receive stages the raw 835 in the store and post reads it back (no readRaw on the client)", async () => {
+    const actor: M25IngestActor = { organizationId: ORG_A };
+    const objectKey = "minio/staged-by-receive.835";
+    const raw = buildFullEdi("000000204", "0204", "500.00");
+    const objects = new Map<string, string>();
+    const rawStore = {
+      async put(org: string, adviceId: string, text: string) {
+        objects.set(`${org}/${adviceId}`, text);
+      },
+      async get(org: string, adviceId: string) {
+        return objects.get(`${org}/${adviceId}`) ?? null;
+      },
+    };
+    const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
+      client: createX12835Client(), // no readRaw: the service reads through rawStore
+      rawStore,
+      terminology: fakeTerminology({}),
+      claims: {
+        medicare: fakeClaims({ "ICN-PAID": [{ claimId: CLAIM_PAID, payerIcn: "ICN-PAID" }] }, {}),
+      },
+      outbox: { async publish() {} },
+    });
+    const received = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: objectKey,
+      fileSha256: "d".repeat(64),
+      rawEdi: raw,
+    });
+    if (received.outcome !== "queued") throw new Error("unreachable");
+    // Keyed by the server-generated advice id, not the caller's key: a second advice naming the same
+    // minioObjectKey cannot overwrite this one's staged text.
+    expect(objects.get(`${ORG_A}/${received.adviceId}`)).toBe(raw);
+    expect(objects.has(`${ORG_A}/${objectKey}`)).toBe(false);
+    expect((await service.postAdvice(actor, received.adviceId)).outcome).toBe("posted");
+  });
+
+  it("#658: a failed stage rolls the receive back (nothing queued); a missing object stays retryable", async () => {
+    const actor: M25IngestActor = { organizationId: ORG_A };
+    const raw = buildFullEdi("000000205", "0205", "500.00");
+    const input = (key: string): ReceiveAdviceInput => ({
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: key,
+      fileSha256: "e".repeat(64),
+      rawEdi: raw,
+    });
+    const broken = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
+      client: createX12835Client(),
+      rawStore: {
+        async put() {
+          throw new Error("store down");
+        },
+        async get() {
+          return null;
+        },
+      },
+      outbox: { async publish() {} },
+    });
+    await expect(broken.receiveAdvice(actor, input("minio/never.835"))).rejects.toThrow(
+      /store down/,
+    );
+    const none = await admin.query(
+      "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000205'",
+    );
+    expect(none.rows[0].n).toBe(0);
+
+    const empty = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
+      client: createX12835Client(),
+      rawStore: {
+        async put() {},
+        async get() {
+          return null;
+        },
+      },
+      outbox: { async publish() {} },
+    });
+    const received = await empty.receiveAdvice(actor, input("minio/vanished.835"));
+    if (received.outcome !== "queued") throw new Error("unreachable");
+    const posted = await empty.postAdvice(actor, received.adviceId);
+    expect(posted.outcome).toBe("failed");
+  });
+
   describe("several ST/SE sets in one file, and the payee identity check (#660, #659)", () => {
     const TENANT_NPI = "1234567893";
 
