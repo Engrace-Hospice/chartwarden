@@ -6,7 +6,7 @@
  * `TenantPlatformRouteService.provisionTenant` over `createTenantOrgCreationProvider` (M2's real org writer). Both run on
  * the BYPASSRLS `chartwarden_platform_login` that `scripts/db/provision-runtime-roles.ts` builds (executed here), because
  * that is the credential production binds as `organizationDb`; a missing grant fails here, not in a provisioning. The
- * plain `chartwarden_app` role cannot insert an organization at all (RLS), which the first test pins. This proves:
+ * plain `chartwarden_app` role is refused an organization insert (42501), which the first test pins. This proves:
  *   - a free slug is the organization's slug and is audited in the ledger's `side_effects_recorded`;
  *   - a taken slug, a former (aliased) slug and a slug the label rules refuse are all 409 TENANT_SLUG_UNAVAILABLE, and
  *     a refused request leaves no tenant account behind;
@@ -182,7 +182,7 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
     (await admin.query("SELECT id FROM tenant_account WHERE legal_business_name = $1", [name]))
       .rows;
 
-  it("runs on the BYPASSRLS platform login, not a superuser; the plain app role cannot create an organization", async () => {
+  it("runs on the BYPASSRLS platform login, not a superuser; the plain app role is refused an organization insert", async () => {
     const who = await platformDb.pool.query(
       "SELECT current_user, r.rolsuper, r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user",
     );
