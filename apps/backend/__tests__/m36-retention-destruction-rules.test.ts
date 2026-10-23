@@ -64,3 +64,16 @@ describe("destroyablePredicate", () => {
     expect(DESTRUCTION_MAX_BATCHES_PER_CERTIFICATE).toBeGreaterThan(0);
   });
 });
+
+describe("objectBearingMessagesCountable (scan counts objects only when the executor will destroy them)", () => {
+  const all = { destructionEnabled: true, attachmentDestructionEnabled: true, executorWired: true };
+  it("is true only with both flags on and the executor wired", async () => {
+    const { objectBearingMessagesCountable } = await import(
+      "../src/modules/36-messaging/jobs/retention-scan"
+    );
+    expect(objectBearingMessagesCountable(all)).toBe(true);
+    expect(objectBearingMessagesCountable({ ...all, destructionEnabled: false })).toBe(false);
+    expect(objectBearingMessagesCountable({ ...all, attachmentDestructionEnabled: false })).toBe(false);
+    expect(objectBearingMessagesCountable({ ...all, executorWired: false })).toBe(false);
+  });
+});

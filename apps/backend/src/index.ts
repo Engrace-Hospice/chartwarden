@@ -1560,6 +1560,7 @@ import {
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
 import { countHoldOverlayMessages } from "./modules/36-messaging/jobs/retention-hold-sql";
+import { objectBearingMessagesCountable } from "./modules/36-messaging/jobs/retention-scan";
 import { createMentionActorNameResolver } from "./modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
@@ -9577,10 +9578,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
         messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
-        attachmentObjectsEnabled: async (organizationId: string) =>
-          (await featureFlagReader?.forOrg(organizationId))?.[
-            RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY
-          ] === true,
+        // Counted toward a certificate only when the executor will destroy the objects: both flags on AND the executor wired.
+        attachmentObjectsEnabled: async (organizationId: string) => {
+          const flags = await featureFlagReader?.forOrg(organizationId);
+          return objectBearingMessagesCountable({
+            destructionEnabled: flags?.[RETENTION_DESTRUCTION_FLAG_KEY] === true,
+            attachmentDestructionEnabled: flags?.[RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY] === true,
+            executorWired: destructionDbHandle !== undefined && destructionDbHandle !== null,
+          });
+        },
         // WP 5.6 (ADR-0086): the message destruction executor, after the weekly scan. Needs the destruction credential; off per tenant unless
         // `messaging.retention_destruction` is on, and a DRY RUN unless M36_RETENTION_DESTRUCTION_EXECUTE=true.
         ...(destructionDbHandle

@@ -144,6 +144,19 @@ export async function materialiseHold(
   return inserted;
 }
 
+/**
+ * May the scan count object-bearing messages toward a certificate? Only when the executor will really destroy their objects: both the
+ * destruction flag and the attachment-destruction flag are on AND the executor is wired (destruction credential + attachmentObjects).
+ * Otherwise the executor would refuse them and the certificate's approved count could never be spent.
+ */
+export function objectBearingMessagesCountable(a: {
+  readonly destructionEnabled: boolean;
+  readonly attachmentDestructionEnabled: boolean;
+  readonly executorWired: boolean;
+}): boolean {
+  return a.destructionEnabled && a.attachmentDestructionEnabled && a.executorWired;
+}
+
 const zeroByClass = (): Record<MessageRetentionClass, number> => ({
   care_related: 0,
   bereavement: 0,
