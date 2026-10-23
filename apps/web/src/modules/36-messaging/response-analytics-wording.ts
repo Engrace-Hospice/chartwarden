@@ -1,5 +1,8 @@
 // M36 WP 6.2 (ADR-0092, PROPOSED) - words for the response analytics screen. Plain sentences; figures are aggregates, never people.
+import { ANALYTICS_MAX_PERSON_SHARE, ANALYTICS_MIN_REQUESTS } from "@chartwarden/types";
 import type { AnalyticsGroupBy } from "@chartwarden/types";
+
+const SHARE_PERCENT = Math.round(ANALYTICS_MAX_PERSON_SHARE * 100);
 
 export const TITLE = "Response analytics";
 export const INTRO =
@@ -14,7 +17,7 @@ export const FLAG_OFF = "This feature is not turned on for your organization.";
 export const OFFLINE = "You are offline. This list may be out of date.";
 export const INSUFFICIENT_TITLE = "Not enough data to show";
 export const insufficientText = (min: number): string =>
-  `Figures are shown only when at least ${min} different people stand behind them, so no one person's response can be read from them. Choose a longer range, or check back when more responses have been recorded.`;
+  `Figures are shown only when at least ${min} different people and ${ANALYTICS_MIN_REQUESTS} requests stand behind them, and no one person accounts for more than ${SHARE_PERCENT} percent of them, so no one person's response can be read from them. Choose a longer range, or check back when more responses have been recorded.`;
 
 export const RANGE_LABEL = "Date range";
 export const GROUP_LABEL = "Break down by";
@@ -50,7 +53,7 @@ export const suppressedText = (n: number): string =>
     ? "1 group is not shown because too few people stand behind it."
     : `${n} groups are not shown because too few people stand behind them.`;
 export const provisionalText = (min: number): string =>
-  `Minimum of ${min} people per figure. This threshold is provisional until HR and compliance review it. There is no view of an individual.`;
+  `Minimum of ${min} people and ${ANALYTICS_MIN_REQUESTS} requests per figure, and no one person above ${SHARE_PERCENT} percent. Only requests already acknowledged or resolved before today are counted, so open requests are not in these figures. These thresholds are provisional until HR and compliance review them. There is no view of an individual.`;
 
 const CLASS_WORDS: Record<string, string> = {
   important: "Important",
