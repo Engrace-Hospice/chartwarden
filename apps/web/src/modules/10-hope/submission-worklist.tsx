@@ -8,6 +8,7 @@ import {
   type ReadStatus,
   StatusPill,
   WorkQueueLayout,
+  settleRead,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE submission worklist (M10 §5.1/§5.2, Track B / ADR-0030).
@@ -27,7 +28,7 @@ import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { assembleSubmission } from "./hope-api";
-import { HopeListReadState, classifyHopeListRead } from "./hope-read-state";
+import { HopeListReadState } from "./hope-read-state";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
@@ -110,12 +111,18 @@ export function SubmissionWorklist(): JSX.Element {
     }
   };
 
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
     setLoading(true);
-    const res = await client.GET("/api/v1/hope/submissions", { params: { query: {} } });
-    const status = classifyHopeListRead(res);
-    setReadStatus(status);
-    setItems(status === "ok" ? ((res.data?.submissions ?? []) as SubmissionRow[]) : []);
+    setReadStatus("ok");
+    const { status: readOutcome, res } = await settleRead(
+      client.GET("/api/v1/hope/submissions", { params: { query: {} } }),
+      "denied",
+    );
+    if (mine !== latestLoad.current) return;
+    setReadStatus(readOutcome);
+    setItems(readOutcome === "ok" ? ((res?.data?.submissions ?? []) as SubmissionRow[]) : []);
     setLoading(false);
   }, [client]);
 

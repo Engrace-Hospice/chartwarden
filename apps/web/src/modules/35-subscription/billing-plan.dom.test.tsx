@@ -26,7 +26,11 @@ const failure = (status: number) => ({
 });
 
 function mount(replies: Record<string, unknown>) {
-  const get = vi.fn((path: string) => Promise.resolve(replies[path]));
+  // A reply may be a function (called per request) so a test can reject a request.
+  const get = vi.fn((path: string) => {
+    const reply = replies[path];
+    return typeof reply === "function" ? reply() : Promise.resolve(reply);
+  });
   render(
     <ApiClientProvider client={{ GET: get } as unknown as ApiClient}>
       <MemoryRouter>
@@ -73,5 +77,38 @@ describe("Billing plan read states", () => {
     fireEvent.click(retry);
     await screen.findByText("pro", { selector: "code" });
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("shows a denied state, not 'Unavailable', when the plan catalog is 403", async () => {
+    mount({ [PLANS]: failure(403), [SUB]: ok({ planSlug: "pro" }) });
+    await screen.findByText("You do not have access");
+    expect(screen.queryByText("Unavailable")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows a retryable failure for the plan catalog and recovers", async () => {
+    const replies: Record<string, unknown> = {
+      [PLANS]: failure(500),
+      [SUB]: ok({ planSlug: "pro" }),
+    };
+    mount(replies);
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(screen.queryByText("Unavailable")).toBeNull();
+    replies[PLANS] = ok([PLAN]);
+    fireEvent.click(retry);
+    await screen.findByText("pro", { selector: "code" });
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows a failed state, not a stuck spinner, when a request is rejected", async () => {
+    mount({ [PLANS]: () => Promise.reject(new Error("network")), [SUB]: ok({ planSlug: "pro" }) });
+    await screen.findByRole("button", { name: "Retry" });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("does not throw on a 2xx subscription with an empty body", async () => {
+    mount({ [PLANS]: ok([PLAN]), [SUB]: ok(undefined) });
+    await screen.findByText("Pro");
+    expect(screen.queryByText("Current")).toBeNull();
   });
 });

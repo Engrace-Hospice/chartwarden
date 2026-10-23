@@ -12,6 +12,7 @@ import {
   type ReadStatus,
   StatusPill,
   interactiveRowProps,
+  settleRead,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE timepoint dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
@@ -26,14 +27,14 @@ import {
 // OPEN row now carries Record (the §5.2 capture modal, pinned to that window's RFA and schedule id) and
 // Skip (the §4.1 route-3 ceremony). A terminal row (completed / skipped / expired) offers neither,
 // because the server refuses both — offering a control the server will refuse is the F-007 rule.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
 import { usePatientNames } from "../../shell/patient-names";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
 import type { RfaKind } from "./hope-api";
-import { HopeListReadState, classifyHopeListRead } from "./hope-read-state";
+import { HopeListReadState } from "./hope-read-state";
 import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
@@ -76,12 +77,20 @@ export function HopeDashboard(): JSX.Element {
   const [recording, setRecording] = useState<ScheduleRow | null>(null);
   const [acting, setActing] = useState<{ action: HopeAction; row: ScheduleRow } | null>(null);
 
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
+    // Drop the previous outcome so an old Retry cannot be pressed while this load is in flight.
     setLoading(true);
-    const res = await client.GET("/api/v1/hope/schedules", { params: { query: {} } });
-    const status = classifyHopeListRead(res);
+    setReadStatus("ok");
+    // 404 = deny-as-not-found for a caller who is not org-wide scoped. A rejected request is `failed`.
+    const { status, res } = await settleRead(
+      client.GET("/api/v1/hope/schedules", { params: { query: {} } }),
+      "denied",
+    );
+    if (mine !== latestLoad.current) return;
     setReadStatus(status);
-    setItems(status === "ok" ? ((res.data?.schedules ?? []) as ScheduleRow[]) : []);
+    setItems(status === "ok" ? ((res?.data?.schedules ?? []) as ScheduleRow[]) : []);
     setLoading(false);
   }, [client]);
 

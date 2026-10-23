@@ -24,11 +24,12 @@ import {
   PageHeader,
   type ReadStatus,
   StatusPill,
-  classifyRead,
+  settleRead,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { HospiceCoverageBadge } from "../../shell/hospice-coverage";
@@ -131,39 +132,48 @@ export function SupplyTeamDashboard(): JSX.Element {
   const [par, setPar] = useState<ParStockView[]>([]);
   const [dispatches, setDispatches] = useState<DispatchListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [reqStatus, setReqStatus] = useState<ReadStatus>("ok");
   const [retStatus, setRetStatus] = useState<ReadStatus>("ok");
   const [parStatus, setParStatus] = useState<ReadStatus>("ok");
   const [dispStatus, setDispStatus] = useState<ReadStatus>("ok");
 
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
     setLoading(true);
     // `status` and `openOnly` are mutually exclusive server-side semantics: naming a status IS the filter,
     // so `openOnly` only rides along when no explicit status was picked.
+    // settleRead folds a rejected request (network/timeout) into a failed read, so the spinner always ends.
     const [reqs, rets, shelf, disp] = await Promise.all([
-      listSupplyRequests(client, {
-        limit: QUEUE_PAGE,
-        // `kind`/`status` are always "" or one of REQUEST_KINDS/OPEN_REQUEST_STATUSES — the SelectFields
-        // below offer no other value.
-        ...(kind ? { kind: kind as SupplyRequestKind } : {}),
-        ...(status ? { status: status as SupplyRequestStatus } : { openOnly: true }),
-      }),
-      listReturns(client, { limit: QUEUE_PAGE, openOnly: true }),
-      listParStock(client, { limit: PAR_PAGE, belowThresholdOnly: true }),
-      listDispatches(client, { limit: QUEUE_PAGE }),
+      settleRead(
+        listSupplyRequests(client, {
+          limit: QUEUE_PAGE,
+          // `kind`/`status` are always "" or one of REQUEST_KINDS/OPEN_REQUEST_STATUSES — the SelectFields
+          // below offer no other value.
+          ...(kind ? { kind: kind as SupplyRequestKind } : {}),
+          ...(status ? { status: status as SupplyRequestStatus } : { openOnly: true }),
+        }),
+      ),
+      settleRead(listReturns(client, { limit: QUEUE_PAGE, openOnly: true })),
+      settleRead(listParStock(client, { limit: PAR_PAGE, belowThresholdOnly: true })),
+      settleRead(listDispatches(client, { limit: QUEUE_PAGE })),
     ]);
+    if (mine !== latestLoad.current) return;
     // Each read is gated on ITS OWN permission key, so a coordinator who holds only the request read gets a
     // 403 on the other three. That must not blank the dashboard, and must not read as "nothing here" either:
     // each panel carries its own status, and a tile counts only when every read behind it succeeded.
-    setRequests(reqs.page?.data ?? []);
-    setRequestsTruncated(reqs.page?.has_more ?? false);
-    setReturns(rets.page?.data ?? []);
-    setPar(shelf.page?.data ?? []);
-    setDispatches(disp.page?.data ?? []);
-    setReqStatus(classifyRead(reqs));
-    setRetStatus(classifyRead(rets));
-    setParStatus(classifyRead(shelf));
-    setDispStatus(classifyRead(disp));
+    setRequests(reqs.res?.page?.data ?? []);
+    setRequestsTruncated(reqs.res?.page?.has_more ?? false);
+    setReturns(rets.res?.page?.data ?? []);
+    setPar(shelf.res?.page?.data ?? []);
+    setDispatches(disp.res?.page?.data ?? []);
+    setReqStatus(reqs.status);
+    setRetStatus(rets.status);
+    setParStatus(shelf.status);
+    setDispStatus(disp.status);
+    setLoadedOnce(true);
     setLoading(false);
   }, [client, kind, status]);
 
@@ -171,7 +181,7 @@ export function SupplyTeamDashboard(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  if (!loadedOnce) return <LoadingSpinner />;
 
   const count = (readStatus: ReadStatus, n: number): number | null =>
     readStatus === "ok" ? n : null;
@@ -195,7 +205,13 @@ export function SupplyTeamDashboard(): JSX.Element {
   );
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      aria-busy={loading}
+      className="wx-kit-column"
+      style={{ ...columnStyle, outline: "none" }}
+    >
       <PageHeader
         title={<span style={pageTitleStyle}>Supply team</span>}
         breadcrumb="Supplies, DME & comfort kits"
@@ -456,49 +472,52 @@ export function SupplyTeamDashboard(): JSX.Element {
       </Card>
 
       <Card title="Reconciled with discrepancy">
-        <ReadPanel status={dispStatus} subject="The dispatch list" onRetry={() => void load()}>
-          {discrepancies.length === 0 ? (
-            <span style={mutedStyle}>
-              No dispatch in this page closed with an unexplained controlled-substance shortfall.
-            </span>
-          ) : (
-            <>
-              <Notice tone="error">
-                A reconciliation that closed with a discrepancy has already raised the M30 survey
-                investigation and the M36 high-severity alert. This list is the DISPATCH tail, not
-                the investigation record — that lives in the compliance surface that owns it.
-              </Notice>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Dispatch</th>
-                    <th style={th}>Kit serial</th>
-                    <th style={th}>Patient</th>
-                    <th style={th}>Dispatched</th>
-                    <th style={th}>Status</th>
+        {dispStatus !== "ok" ? (
+          <span style={mutedStyle}>
+            Not shown: the dispatch list could not be read. See the "Comfort kits in the field"
+            panel above.
+          </span>
+        ) : discrepancies.length === 0 ? (
+          <span style={mutedStyle}>
+            No dispatch in this page closed with an unexplained controlled-substance shortfall.
+          </span>
+        ) : (
+          <>
+            <Notice tone="error">
+              A reconciliation that closed with a discrepancy has already raised the M30 survey
+              investigation and the M36 high-severity alert. This list is the DISPATCH tail, not the
+              investigation record — that lives in the compliance surface that owns it.
+            </Notice>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>Dispatch</th>
+                  <th style={th}>Kit serial</th>
+                  <th style={th}>Patient</th>
+                  <th style={th}>Dispatched</th>
+                  <th style={th}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {discrepancies.map((d) => (
+                  <tr key={d.dispatchId} style={rowLine}>
+                    <td style={td}>
+                      <Link to={`/supplies/dispatches/${d.dispatchId}`} style={linkStyle}>
+                        {shortId(d.dispatchId)}
+                      </Link>
+                    </td>
+                    <td style={{ ...td, fontFamily: t.fontMono }}>{d.kitSerialNumber}</td>
+                    <td style={td}>{shortId(d.patientId)}</td>
+                    <td style={td}>{shortDate(d.dispatchedAt)}</td>
+                    <td style={td}>
+                      <StatusPill label="Discrepancy" tone="error" />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {discrepancies.map((d) => (
-                    <tr key={d.dispatchId} style={rowLine}>
-                      <td style={td}>
-                        <Link to={`/supplies/dispatches/${d.dispatchId}`} style={linkStyle}>
-                          {shortId(d.dispatchId)}
-                        </Link>
-                      </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{d.kitSerialNumber}</td>
-                      <td style={td}>{shortId(d.patientId)}</td>
-                      <td style={td}>{shortDate(d.dispatchedAt)}</td>
-                      <td style={td}>
-                        <StatusPill label="Discrepancy" tone="error" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </ReadPanel>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </Card>
     </div>
   );

@@ -1,19 +1,17 @@
 // F-009 (#591) - the Clinical tab never renders a denied or failed read as empty (jsdom).
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import {
-  ClinicalRail,
-  ClinicalTab,
-  classifyClinicalRead,
-  useClinicalData,
-} from "./patient-clinical";
+import { ClinicalRail, ClinicalTab, useClinicalData } from "./patient-clinical";
 import type { PatientChartData, PatientSummary } from "./patient-overview";
 
 const PPS = "/api/v1/patients/{patientId}/scales/{scaleType}/latest";
 const CONSENTS = "/api/v1/patients/{patientId}/consents";
 const DPOA = "/api/v1/patients/{patientId}/dpoa/active-primary";
+const SERIES = "/api/v1/patients/{patientId}/scales/{scaleType}/series";
+const ASSESSMENTS = "/api/v1/patients/{patientId}/assessments";
+const CHANGES = "/api/v1/patients/{patientId}/significant-changes";
 
 const ok = (data: unknown) => ({ data, error: undefined, response: { status: 200 } });
 const fail = (status: number) => ({
@@ -35,7 +33,11 @@ function Harness() {
 }
 
 function mount(replies: Record<string, unknown>) {
-  const get = vi.fn((path: string) => Promise.resolve(replies[path] ?? ok({})));
+  // A reply may be a function so a test can answer the first call and the retry differently.
+  const get = vi.fn((path: string) => {
+    const reply = replies[path];
+    return Promise.resolve(typeof reply === "function" ? reply() : (reply ?? ok({})));
+  });
   render(
     <ApiClientProvider client={{ GET: get } as unknown as ApiClient}>
       <MemoryRouter>
@@ -52,20 +54,11 @@ const base = {
 };
 const NO_DIRECTIVES = /No advance directive or healthcare DPOA on file/;
 
-describe("classifyClinicalRead", () => {
-  it("maps 404 per read kind and defers the rest to classifyRead", () => {
-    expect(classifyClinicalRead(fail(404), "empty")).toBe("ok");
-    expect(classifyClinicalRead(fail(404), "denied")).toBe("denied");
-    expect(classifyClinicalRead(fail(403), "empty")).toBe("denied");
-    expect(classifyClinicalRead(fail(500), "denied")).toBe("failed");
-    expect(classifyClinicalRead(ok({}), "denied")).toBe("ok");
-  });
-});
-
 describe("Clinical tab read states", () => {
-  it("shows loading while the reads are pending", () => {
+  it("shows loading while the reads are pending", async () => {
     mount(base);
     expect(screen.queryByText(NO_DIRECTIVES)).toBeNull();
+    await screen.findByText(NO_DIRECTIVES);
   });
 
   it("shows the empty advance-directive state only when both reads succeed empty", async () => {
@@ -81,7 +74,7 @@ describe("Clinical tab read states", () => {
     mount({ ...base, [path]: fail(404) });
     await screen.findByText(/Advance directives/, { selector: "p" });
     expect(screen.queryByText(NO_DIRECTIVES)).toBeNull();
-    expect(screen.getByRole("alert").textContent).toMatch(/Advance directives/);
+    expect(screen.getByRole("status").textContent).toMatch(/Advance directives/);
   });
 
   it.each([
@@ -89,21 +82,66 @@ describe("Clinical tab read states", () => {
     ["DPOA", DPOA],
   ])("treats a 403 on %s as denied", async (_n, path) => {
     mount({ ...base, [path]: fail(403) });
-    await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole("status").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByText(NO_DIRECTIVES)).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it.each([
-    ["consents", CONSENTS],
-    ["DPOA", DPOA],
-  ])("shows a failed %s read with retry, which refetches", async (_n, path) => {
-    const get = mount({ ...base, [path]: fail(500) });
+    ["consents", CONSENTS, ok({ data: [] })],
+    ["DPOA", DPOA, ok({ data: null })],
+  ])("shows a failed %s read with retry, which recovers", async (_n, path, good) => {
+    let calls = 0;
+    const get = mount({ ...base, [path]: () => (++calls === 1 ? fail(500) : good) });
     const retry = await screen.findByRole("button", { name: "Retry" });
     expect(screen.queryByText(NO_DIRECTIVES)).toBeNull();
-    const before = get.mock.calls.length;
     fireEvent.click(retry);
-    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(before));
+    await screen.findByText(NO_DIRECTIVES);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(get.mock.calls.filter(([p]) => p === path)).toHaveLength(2);
+  });
+
+  it("prefers a retryable failure over a denial in the advance-directives notice", async () => {
+    mount({ ...base, [CONSENTS]: fail(404), [DPOA]: fail(500) });
+    await screen.findByRole("button", { name: "Retry" });
+    expect(screen.getByText(/Advance directives could not be loaded/)).toBeTruthy();
+  });
+
+  it.each([
+    [
+      "significant changes",
+      CHANGES,
+      /Significant-change alerts could not be loaded/,
+      /No open significant-change alerts|^No open changes$/,
+    ],
+    [
+      "ESAS assessments",
+      ASSESSMENTS,
+      /Symptom (assessments|scores) could not be loaded/,
+      /No ESAS-r symptom assessment/,
+    ],
+    [
+      "PPS series",
+      SERIES,
+      /The PPS trend could not be loaded/,
+      /No PPS captured in the last 30 days/,
+    ],
+  ])("shows a failed %s read as failed, never as empty", async (_n, path, failed, empty) => {
+    mount({ ...base, [path]: fail(500) });
+    await screen.findAllByText(failed);
+    expect(screen.queryByText(empty)).toBeNull();
+  });
+
+  it("shows a denied significant-changes read without the green no-changes pill", async () => {
+    mount({ ...base, [CHANGES]: fail(403) });
+    await screen.findByText("Changes unavailable");
+    expect(screen.queryByText("No open changes")).toBeNull();
+  });
+
+  it("shows no open changes only when the read succeeded empty", async () => {
+    mount({ ...base, [CHANGES]: ok({ events: [] }) });
+    await screen.findByText("No open changes");
   });
 
   it("treats a PPS 404 as no PPS recorded, not an error", async () => {
@@ -116,7 +154,7 @@ describe("Clinical tab read states", () => {
   it("shows PPS 403 as denied without retry", async () => {
     mount({ ...base, [PPS]: fail(403) });
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Performance status/),
+      expect(screen.getByRole("status").textContent).toMatch(/Performance status/),
     );
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
@@ -142,5 +180,35 @@ describe("Clinical tab read states", () => {
     );
     await screen.findByRole("button", { name: "Retry" });
     expect(screen.queryByText(NO_DIRECTIVES)).toBeNull();
+  });
+
+  it("does not let a previous patient's late response land on the next patient", async () => {
+    const resolvers: Array<(v: unknown) => void> = [];
+    const get = vi.fn((path: string) =>
+      path === CONSENTS
+        ? new Promise((resolve) => resolvers.push(resolve))
+        : Promise.resolve(base[path as never] ?? ok({})),
+    );
+    const Switcher = ({ id }: { id: string }) => {
+      const clinical = useClinicalData(id, chart, true);
+      return <ClinicalRail patient={patient} data={chart} clinical={clinical} />;
+    };
+    const tree = (id: string) => (
+      <ApiClientProvider client={{ GET: get } as unknown as ApiClient}>
+        <MemoryRouter>
+          <Switcher id={id} />
+        </MemoryRouter>
+      </ApiClientProvider>
+    );
+    const { rerender } = render(tree("p1"));
+    rerender(tree("p2"));
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    // p1's consents reply arrives late with an active directive; p2 is still loading.
+    await act(async () => {
+      resolvers[0]?.(
+        ok({ data: [{ id: "c", typeKey: "advance_directive_acknowledgment", status: "active" }] }),
+      );
+    });
+    expect(screen.queryByText("Advance directive on file")).toBeNull();
   });
 });

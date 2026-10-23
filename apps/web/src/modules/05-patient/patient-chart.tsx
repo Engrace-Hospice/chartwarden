@@ -14,7 +14,9 @@ import {
   cardSurface,
   formatDateOnly,
   humanizeIdentifier,
+  settleRead,
   useApiClient,
+  useReloadFocus,
   useToast,
 } from "@chartwarden/ui";
 
@@ -40,13 +42,7 @@ import type { FormEvent, JSX, ReactNode } from "react";
 
 import { STATUS_TONE, statusLabel } from "./patient-status";
 
-import {
-  ClinicalRail,
-  ClinicalTab,
-  ReadNotice,
-  classifyClinicalRead,
-  useClinicalData,
-} from "./patient-clinical";
+import { ClinicalRail, ClinicalTab, ReadNotice, useClinicalData } from "./patient-clinical";
 import {
   Avatar,
   OverviewRail,
@@ -621,9 +617,7 @@ function DemographicsTab({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [consentsRead, setConsentsRead] = useState<ReadStatus>("ok");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -2669,7 +2663,11 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const [consents, setConsents] = useState<ConsentRecord[] | null>(null);
   const [consentsRead, setConsentsRead] = useState<ReadStatus>("ok");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // The patient the shown data belongs to: a Retry reload keeps the layout (and the keyboard focus), a
+  // different patient never shows the previous patient's flags.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const focusRef = useReloadFocus<HTMLDivElement>(status === "loading");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the fetch on Retry.
   useEffect(() => {
@@ -2677,29 +2675,38 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
     (async () => {
       setStatus("loading");
-      const [privacyResult, consentResult] = await Promise.all([
-        client.GET("/api/v1/patients/{id}/privacy-flags", {
-          params: { path: { id: patientId } },
-        }),
-        client.GET("/api/v1/patients/{patientId}/consents", {
-          params: { path: { patientId } },
-        }),
+      // settleRead: a rejected request (network/timeout) is a failed read, not a stuck spinner.
+      const [privacyRead, consentRead] = await Promise.all([
+        settleRead(
+          client.GET("/api/v1/patients/{id}/privacy-flags", {
+            params: { path: { id: patientId } },
+          }),
+        ),
+        // Consents are ABAC-guarded and answer 404 (not 403) when denied, so 404 is "denied" here.
+        settleRead(
+          client.GET("/api/v1/patients/{patientId}/consents", {
+            params: { path: { patientId } },
+          }),
+          "denied",
+        ),
       ]);
 
       if (!active) return;
 
-      if (privacyResult.error || !privacyResult.data) {
+      const privacyResult = privacyRead.res;
+      if (!privacyResult?.data) {
         setStatus("error");
         return;
       }
 
       setFlags(privacyResult.data as PrivacyFlags);
-      // Consents are ABAC-guarded and answer 404 (not 403) when denied, so 404 is "denied" here.
-      const read = classifyClinicalRead(consentResult, "denied");
-      setConsentsRead(read);
+      setConsentsRead(consentRead.status);
       setConsents(
-        read === "ok" ? ((consentResult.data as { data: ConsentRecord[] }).data ?? []) : [],
+        consentRead.status === "ok"
+          ? ((consentRead.res?.data as { data: ConsentRecord[] } | undefined)?.data ?? [])
+          : [],
       );
+      setLoadedFor(patientId);
       setStatus("ready");
     })();
 
@@ -2708,7 +2715,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
     };
   }, [client, patientId, attempt]);
 
-  if (status === "loading") return <LoadingSpinner />;
+  if (status === "loading" && loadedFor !== patientId) return <LoadingSpinner />;
 
   if (status === "error" || flags === null) {
     return (
@@ -2724,7 +2731,12 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const otherConsents = consents?.filter((consent) => consent.status !== "active") ?? [];
 
   return (
-    <div style={tabPage}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      aria-busy={status === "loading"}
+      style={{ ...tabPage, outline: "none" }}
+    >
       <SectionHeader
         eyebrow="Consent & restrictions"
         title="Privacy Flags"

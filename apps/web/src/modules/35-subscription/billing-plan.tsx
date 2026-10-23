@@ -1,14 +1,17 @@
 import {
   Button,
+  DeniedState,
   EmptyState,
+  ErrorState,
   Glyph,
   LoadingSpinner,
   PageHeader,
   type ReadStatus,
   StatusPill,
   WorkQueueLayout,
-  classifyRead,
+  settleRead,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 plan picker (§5.1 `/billing/plan`).
 // The plan comparison grid over GET /api/v1/plans (the public catalog: tier, cadence, base price, and
@@ -16,7 +19,7 @@ import {
 // GET /api/v1/subscription). "Change plan" is a forward CTA — the mutating POST is a step-up action the
 // server gates (subscription.update); this surface presents the choice. Lantern: No-Line cards,
 // tabular-nums, CSS-var tokens.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { cap, formatCents } from "./billing-status";
@@ -47,28 +50,28 @@ export function BillingPlan(): JSX.Element {
   // The current-plan read is secondary: a refusal or failure must say so, not silently drop the Current chip.
   const [subStatus, setSubStatus] = useState<ReadStatus>("ok");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [plansStatus, setPlansStatus] = useState<ReadStatus>("ok");
+  const latestLoad = useRef(0);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
 
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
     setLoading(true);
-    setError(null);
-    const [plansRes, subRes] = await Promise.all([
-      client.GET("/api/v1/plans"),
-      client.GET("/api/v1/subscription"),
+    // settleRead folds a rejected request (network/timeout) into a failed read, so the spinner always ends.
+    const [plansRead, subRead] = await Promise.all([
+      settleRead(client.GET("/api/v1/plans")),
+      settleRead(client.GET("/api/v1/subscription")),
     ]);
-    if (plansRes.error) {
-      setError("Plan catalog unavailable.");
-      setLoading(false);
-      return;
-    }
-    setPlans((plansRes.data as unknown as Plan[]) ?? []);
-    const nextSubStatus = classifyRead(subRes);
-    setSubStatus(nextSubStatus);
+    if (mine !== latestLoad.current) return;
+    setPlansStatus(plansRead.status);
+    setPlans((plansRead.res?.data as unknown as Plan[] | undefined) ?? []);
+    setSubStatus(subRead.status);
+    // A 2xx with an empty body has no planSlug to read.
     setCurrentSlug(
-      nextSubStatus === "ok"
-        ? ((subRes.data as unknown as { planSlug: string }).planSlug ?? null)
-        : null,
+      (subRead.res?.data as unknown as { planSlug?: string } | undefined)?.planSlug ?? null,
     );
+    setLoadedOnce(true);
     setLoading(false);
   }, [client]);
 
@@ -76,8 +79,22 @@ export function BillingPlan(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  if (!loadedOnce) return <LoadingSpinner />;
+  if (plansStatus !== "ok") {
+    return (
+      <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={{ outline: "none" }}>
+        {plansStatus === "denied" ? (
+          <DeniedState subject="the plan catalog" />
+        ) : (
+          <ErrorState
+            title="The plan catalog could not be loaded"
+            description="Try again in a moment."
+            onRetry={() => void load()}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <WorkQueueLayout
@@ -97,7 +114,12 @@ export function BillingPlan(): JSX.Element {
         </PageHeader>
       }
       filters={
-        <div style={toolbarStyle}>
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          aria-busy={loading}
+          style={{ ...toolbarStyle, outline: "none" }}
+        >
           <div style={toolbarCopyStyle}>
             <Glyph name="sparkle" size={16} />
             <span>Plan changes are submitted through the guarded subscription update flow.</span>
@@ -111,7 +133,7 @@ export function BillingPlan(): JSX.Element {
             </div>
           ) : null}
           {subStatus !== "ok" ? (
-            <div role="alert" style={toolbarCopyStyle}>
+            <div role={subStatus === "failed" ? "alert" : "status"} style={toolbarCopyStyle}>
               <span>
                 {subStatus === "denied"
                   ? "You do not have permission to view your current plan."

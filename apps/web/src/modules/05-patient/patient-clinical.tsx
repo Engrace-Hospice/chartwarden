@@ -9,7 +9,7 @@ import {
   type ReadStatus,
   StatusPill,
   ageYears,
-  classifyRead,
+  settleRead,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -18,7 +18,7 @@ import {
 // PPS + ESAS-r from the M9 scale timeline, vitals + note text from the M8 encounter detail, open
 // significant-change events (M9) as clinical alerts, and advance-directive consents + the active
 // healthcare DPOA (M17). Nothing the platform does not capture (POLST, last BM, orientation) is drawn.
-import { type JSX, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type JSX, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PatientSummaryPanel, medicareTail } from "../../shell/patient-context";
 import {
@@ -102,6 +102,11 @@ export interface ClinicalData {
   dpoa?: Dpoa | null;
   /** Read outcome of the three reads that must not collapse to empty; undefined while loading. */
   ppsLatestRead?: ReadStatus;
+  /** Outcome of the PPS series, ESAS assessments and significant-change reads: a denied or failed one
+   *  must not render as "no PPS", "no ESAS" or the green "No open changes". */
+  ppsRead?: ReadStatus;
+  esasRead?: ReadStatus;
+  changesRead?: ReadStatus;
   consentsRead?: ReadStatus;
   dpoaRead?: ReadStatus;
   /** Re-runs the clinical reads (wired to the failed-read retry buttons). */
@@ -116,32 +121,6 @@ async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promi
     return r.error ? undefined : (r.data as T);
   } catch {
     return undefined;
-  }
-}
-
-/**
- * A read whose outcome matters. `notFound` says what a 404 means for it: "empty" is a true absence
- * (PPS latest 404s when nothing is recorded); "denied" is deny-as-404 (consents / DPOA are ABAC-guarded
- * and answer 404 rather than 403 to hide existence, and return 200 with empty data when there is none).
- */
-export function classifyClinicalRead(
-  res: { error?: unknown; response?: { status: number } },
-  notFound: "empty" | "denied",
-): ReadStatus {
-  if (res.response?.status === 404) return notFound === "denied" ? "denied" : "ok";
-  return classifyRead(res);
-}
-
-async function settleRead<T>(
-  p: Promise<{ data?: unknown; error?: unknown; response?: { status: number } }>,
-  notFound: "empty" | "denied",
-): Promise<{ status: ReadStatus; data?: T }> {
-  try {
-    const r = await p;
-    const status = classifyClinicalRead(r, notFound);
-    return status === "ok" ? { status, data: r.data as T | undefined } : { status };
-  } catch {
-    return { status: "failed" };
   }
 }
 
@@ -182,13 +161,18 @@ export function useClinicalData(
 ): ClinicalData {
   const client: Client = useApiClient();
   const [data, setData] = useState<ClinicalData>({});
-  const alive = useRef(true);
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => {
     setData((d) => ({
       ...d,
+      pps: undefined,
+      ppsRead: undefined,
       ppsLatest: undefined,
       ppsLatestRead: undefined,
+      esas: undefined,
+      esasRead: undefined,
+      changes: undefined,
+      changesRead: undefined,
       consents: undefined,
       consentsRead: undefined,
       dpoa: undefined,
@@ -196,29 +180,47 @@ export function useClinicalData(
     }));
     setAttempt((n) => n + 1);
   }, []);
+  // A different patient must never inherit the previous patient's reads (declared first, so it runs
+  // before the fetch effect below in the same commit).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `patientId` is the trigger, not a read value.
+  useEffect(() => {
+    setData({});
+  }, [patientId]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the fetch on Retry.
   useEffect(() => {
     if (!enabled) return;
-    alive.current = true;
+    // Per-run flag: a late response from a previous patient or attempt is dropped, not merged.
+    let active = true;
     const merge = (patch: ClinicalData): void => {
-      if (alive.current) setData((d) => ({ ...d, ...patch }));
+      if (active) setData((d) => ({ ...d, ...patch }));
     };
     const path = { patientId };
-    void settle<{ points: SeriesPoint[] }>(
+    // A list read's 404 is not "none" (an empty list is a 200), so it stays `failed`.
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/scales/{scaleType}/series", {
         params: {
           path: { patientId, scaleType: "pps" },
           query: { from: daysAgo(30), to: daysAgo(-1) },
         },
       }),
-    ).then((r) => merge({ pps: r?.points ?? [] }));
-    void settleRead<ScaleAssessment>(
+    ).then((r) =>
+      merge({
+        pps: (r.res?.data as { points: SeriesPoint[] } | undefined)?.points ?? [],
+        ppsRead: r.status,
+      }),
+    );
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/scales/{scaleType}/latest", {
         params: { path: { patientId, scaleType: "pps" } },
       }),
       "empty",
-    ).then((r) => merge({ ppsLatest: r.data ?? null, ppsLatestRead: r.status }));
-    void settle<{ assessments: ScaleAssessment[] }>(
+    ).then((r) =>
+      merge({
+        ppsLatest: (r.res?.data as ScaleAssessment | undefined) ?? null,
+        ppsLatestRead: r.status,
+      }),
+    );
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/assessments", {
         params: {
           path,
@@ -227,35 +229,48 @@ export function useClinicalData(
       }),
     ).then((r) =>
       merge({
-        esas: [...(r?.assessments ?? [])].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)),
+        esas: [
+          ...((r.res?.data as { assessments: ScaleAssessment[] } | undefined)?.assessments ?? []),
+        ].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)),
+        esasRead: r.status,
       }),
     );
-    void settle<{ events: SignificantChange[] }>(
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/significant-changes", {
         params: { path },
       }),
     ).then((r) =>
       merge({
-        changes: (r?.events ?? []).filter((e) => e.status !== "acknowledged"),
+        changes: (
+          (r.res?.data as { events: SignificantChange[] } | undefined)?.events ?? []
+        ).filter((e) => e.status !== "acknowledged"),
+        changesRead: r.status,
       }),
     );
-    void settleRead<{ data: Consent[] }>(
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/consents", { params: { path } }),
       "denied",
     ).then((r) =>
       merge({
-        consents: (r.data?.data ?? []).filter((c) => c.status === "active"),
+        consents: ((r.res?.data as { data: Consent[] } | undefined)?.data ?? []).filter(
+          (c) => c.status === "active",
+        ),
         consentsRead: r.status,
       }),
     );
-    void settleRead<{ data: Dpoa | null }>(
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/dpoa/active-primary", {
         params: { path },
       }),
       "denied",
-    ).then((r) => merge({ dpoa: r.data?.data ?? null, dpoaRead: r.status }));
+    ).then((r) =>
+      merge({
+        dpoa: (r.res?.data as { data: Dpoa | null } | undefined)?.data ?? null,
+        dpoaRead: r.status,
+      }),
+    );
     return () => {
-      alive.current = false;
+      active = false;
     };
   }, [client, patientId, enabled, attempt]);
 
@@ -607,7 +622,9 @@ function ClinicalStatusPanel({
       icon="settings"
       className={className}
       action={
-        open === undefined ? null : open.length === 0 ? (
+        open === undefined ? null : clinical.changesRead !== "ok" ? (
+          <StatusPill label="Changes unavailable" tone="neutral" />
+        ) : open.length === 0 ? (
           <StatusPill label="No open changes" tone="success" />
         ) : (
           <StatusPill
@@ -649,18 +666,30 @@ function ClinicalStatusPanel({
               />
             </li>
           )}
-          <StatusRow
-            icon="zap"
-            label="Pain (ESAS-r)"
-            value={pain != null ? `${pain} / 10` : "—"}
-            strong
-          />
-          <StatusRow
-            icon="lungs"
-            label="Dyspnea (ESAS-r)"
-            value={dyspnea != null ? `${dyspnea} / 10` : "—"}
-            strong
-          />
+          {clinical.esasRead === "ok" ? (
+            <>
+              <StatusRow
+                icon="zap"
+                label="Pain (ESAS-r)"
+                value={pain != null ? `${pain} / 10` : "—"}
+                strong
+              />
+              <StatusRow
+                icon="lungs"
+                label="Dyspnea (ESAS-r)"
+                value={dyspnea != null ? `${dyspnea} / 10` : "—"}
+                strong
+              />
+            </>
+          ) : (
+            <li>
+              <ReadNotice
+                status={clinical.esasRead}
+                subject="Symptom scores"
+                onRetry={clinical.retry}
+              />
+            </li>
+          )}
           <StatusRow
             icon="calendar"
             label="Last assessed"
@@ -746,6 +775,12 @@ function SymptomsPanel({
     >
       {list === undefined ? (
         <Loading />
+      ) : clinical.esasRead !== "ok" ? (
+        <ReadNotice
+          status={clinical.esasRead}
+          subject="Symptom assessments"
+          onRetry={clinical.retry}
+        />
       ) : !latest ? (
         <EmptyLine>No ESAS-r symptom assessment in the last 30 days.</EmptyLine>
       ) : (
@@ -984,6 +1019,8 @@ function FunctionalPanel({
     >
       {clinical.pps === undefined ? (
         <Loading />
+      ) : clinical.ppsRead !== "ok" ? (
+        <ReadNotice status={clinical.ppsRead} subject="The PPS trend" onRetry={clinical.retry} />
       ) : points.length === 0 ? (
         <EmptyLine>No PPS captured in the last 30 days.</EmptyLine>
       ) : (
@@ -1195,6 +1232,12 @@ export function ClinicalRail({
           <div style={{ padding: "0 1.125rem" }}>
             <Loading />
           </div>
+        ) : clinical.changesRead !== "ok" ? (
+          <ReadNotice
+            status={clinical.changesRead}
+            subject="Significant-change alerts"
+            onRetry={clinical.retry}
+          />
         ) : changes.length === 0 ? (
           <div style={{ padding: "0 1.125rem 0.75rem" }}>
             <EmptyLine>No open significant-change alerts.</EmptyLine>
@@ -1260,7 +1303,12 @@ export function ClinicalRail({
           <Loading />
         ) : clinical.consentsRead !== "ok" || clinical.dpoaRead !== "ok" ? (
           <ReadNotice
-            status={clinical.consentsRead !== "ok" ? clinical.consentsRead : clinical.dpoaRead}
+            status={
+              // A retryable failure wins over a (static) denial: Retry may still recover the failed half.
+              clinical.consentsRead === "failed" || clinical.dpoaRead === "failed"
+                ? "failed"
+                : "denied"
+            }
             subject="Advance directives"
             onRetry={clinical.retry}
           />

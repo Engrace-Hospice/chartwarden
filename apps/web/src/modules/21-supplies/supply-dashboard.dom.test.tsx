@@ -1,6 +1,6 @@
 // F-022 (#591) - the supply dashboard never renders a denied or failed read as zero/empty (jsdom).
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SupplyTeamDashboard } from "./supply-dashboard";
@@ -34,7 +34,11 @@ const REQUEST_ROW = {
 };
 
 function mount(replies: Record<string, unknown>) {
-  const get = vi.fn((path: string) => Promise.resolve(replies[path]));
+  // A reply may be a function (called per request) so a test can reject or answer a retry differently.
+  const get = vi.fn((path: string) => {
+    const reply = replies[path];
+    return typeof reply === "function" ? reply() : Promise.resolve(reply);
+  });
   const api = { GET: get } as unknown as ApiClient;
   render(
     <ApiClientProvider client={api}>
@@ -76,7 +80,11 @@ describe("Supply team dashboard read states", () => {
   it("shows denied panels with em-dash tiles and no raw permission codes on 403", async () => {
     mount(all({ [PAR]: failure(403), [RETURNS]: failure(403), [DISPATCHES]: failure(403) }));
     await screen.findByText(/Nothing needs supply-team action/);
-    expect(screen.getAllByRole("alert")).toHaveLength(4);
+    // Denied is a static fact (polite status, not an alert); the dispatch denial shows once, the
+    // discrepancy card only points at it.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByRole("status")).toHaveLength(3);
+    expect(screen.getByText(/See the "Comfort kits in the field" panel/)).toBeTruthy();
     expect(screen.queryByText(/par_stock\.read|comfort_kit\.|\.read`/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     for (const label of [
@@ -89,17 +97,44 @@ describe("Supply team dashboard read states", () => {
     expect(within(tile("Awaiting vendor")).getByText("0")).toBeTruthy();
   });
 
-  it("shows a failed panel with retry on 503 and recovers", async () => {
-    const replies = all({ [PAR]: failure(503) });
-    const get = mount(replies);
+  it("shows a failed panel with retry on 503 and recovers, busy in between, keeping focus", async () => {
+    let release: (v: unknown) => void = () => {};
+    let calls = 0;
+    const get = mount(
+      all({
+        [PAR]: () => {
+          calls += 1;
+          if (calls === 1) return Promise.resolve(failure(503));
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+      }),
+    );
     const retry = await screen.findByRole("button", { name: "Retry" });
     expect(within(tile("Shelf critical / empty")).getByText("—")).toBeTruthy();
     expect(screen.queryByText(/at or above its reorder point/)).toBeNull();
-    replies[PAR] = EMPTY;
+    retry.focus();
     fireEvent.click(retry);
+    // Reloading: the layout stays mounted (no spinner swap) and is marked busy; the failure is still shown.
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull());
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    await act(async () => release(EMPTY));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
     expect(get.mock.calls.filter(([p]) => p === PAR)).toHaveLength(2);
     expect(within(tile("Shelf critical / empty")).getByText("0")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    // The Retry button is gone; focus moved to the page region instead of falling to <body>.
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("shows a failed panel (not a stuck spinner) when a request is rejected", async () => {
+    mount(all({ [DISPATCHES]: () => Promise.reject(new Error("network")) }));
+    await screen.findByText(/The dispatch list could not be loaded/);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(within(tile("Discrepancy reconciliations")).getByText("—")).toBeTruthy();
+    // One failure notice, not a duplicate in the discrepancy card.
+    expect(screen.getAllByText(/The dispatch list could not be loaded/)).toHaveLength(1);
   });
 
   it("does not claim an empty action queue when the request read fails", async () => {
