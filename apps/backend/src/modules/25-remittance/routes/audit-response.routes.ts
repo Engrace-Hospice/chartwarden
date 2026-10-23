@@ -1,6 +1,6 @@
 // apps/backend/src/modules/25-remittance/routes/audit-response.routes.ts - M25 milestone 7a-2 routes: the audit response
 // packet. Typing the checklist, attaching documents and the none-stated attestation gate on `audit_request.manage`;
-// sign-off on `audit_request.review` (a different person from whoever sent it to review); recording the filing on
+// sign-off on `audit_request.review` + step-up (a person who did not prepare the packet); recording the filing on
 // `audit_request.submit` + step-up (the operation key is the permission key, guards.ts). Each packet change is If-Match
 // so a sign-off is always on the version the reviewer saw, and every mutation requires an Idempotency-Key. Org, actor
 // and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside ChartWarden.
@@ -55,6 +55,7 @@ export const AuditResponseVersionedResultSchema = Type.Object({
 const IDEMPOTENT = requireIdempotencyKey();
 const MANAGE = P("audit_request.manage");
 const REVIEW = P("audit_request.review");
+const REVIEW_STEPUP = STEP_UP("audit_request.review");
 const SUBMIT = P("audit_request.submit");
 const SUBMIT_STEPUP = STEP_UP("audit_request.submit");
 
@@ -127,7 +128,7 @@ export function registerAuditResponseRoutes(
 
   app.post(
     "/api/v1/audit-requests/:id/sign-off",
-    { preHandler: [REVIEW, IDEMPOTENT] },
+    { preHandler: [REVIEW, REVIEW_STEPUP, IDEMPOTENT] },
     async (request, reply) =>
       reply.send(
         await ops.signOffAudit(writeActorOf(request), auditId(request), ifMatchVersion(request)),

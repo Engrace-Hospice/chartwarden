@@ -47,6 +47,7 @@ export const auditRequest = pgTable(
     sentToReviewByMembershipId: uuid("sent_to_review_by_membership_id"),
     reviewedByMembershipId: uuid("reviewed_by_membership_id"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    signedOffHash: text("signed_off_hash"), // fingerprint of what the reviewer signed off
     deadlineNoneStatedAt: timestamp("deadline_none_stated_at", { withTimezone: true }),
     deadlineNoneStatedByMembershipId: uuid("deadline_none_stated_by_membership_id"),
     responseChannel: text("response_channel"),

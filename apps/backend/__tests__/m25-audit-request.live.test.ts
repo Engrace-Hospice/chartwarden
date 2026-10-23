@@ -358,11 +358,11 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
         (await fx.refused(audit().moveAuditRequest(A(), id, "responded", await v())))?.code,
       ).toBe("INVALID_TRANSITION");
       await audit().moveAuditRequest(A(), id, "in_assembly", await v());
-      await audit().moveAuditRequest(A(), id, "in_review", await v());
-      // Milestone 7a-2: a response is recorded by filing a signed-off packet with its proof, never by a bare move.
+      // Milestone 7a-2: the move to review runs the sign-off packet rules (an empty packet cannot enter review);
+      // the bare move to responded is covered in m25-audit-response.live.test.ts.
       expect(
-        (await fx.refused(audit().moveAuditRequest(A(), id, "responded", await v())))?.code,
-      ).toBe("AUDIT_RESPONSE_REQUIRES_FILING");
+        (await fx.refused(audit().moveAuditRequest(A(), id, "in_review", await v())))?.code,
+      ).toBe("AUDIT_PACKET_EMPTY");
       expect((await fx.refused(audit().moveAuditRequest(A(), id, "in_review", 1)))?.code).toBeTruthy();
       await audit().moveAuditRequest(A(), id, "withdrawn", await v());
       const row = (
@@ -670,7 +670,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
         method: "POST",
         url: `/api/v1/audit-requests/${id}/state`,
         headers: WRITE(1),
-        payload: { to: "in_review" },
+        payload: { to: "withdrawn" },
       });
       expect(stale.statusCode).toBe(409);
       await app.close();

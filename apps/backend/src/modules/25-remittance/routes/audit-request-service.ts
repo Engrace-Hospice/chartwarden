@@ -25,6 +25,7 @@ import type { AppealSourcePorts } from "./appeal-packet-sources";
 import {
   type AuditResponseOps,
   type AuditResponseView,
+  assertReadyForReview,
   buildAuditResponseOps,
   loadAuditResponseView,
 } from "./audit-response-service";
@@ -207,6 +208,20 @@ export function buildDrizzleAuditRequestService(
   function assertOpen(cur: typeof AR.$inferSelect): void {
     if (isAuditTerminal(cur.state as AuditState)) {
       throw new ChartWardenError("AUDIT_FROZEN", `the audit request is ${cur.state}`, 409);
+    }
+  }
+
+  /** The claim set freezes at sign-off (a sign-off covers exactly the claims it saw) and once responded. */
+  function assertClaimsEditable(cur: typeof AR.$inferSelect): void {
+    assertOpen(cur);
+    if (cur.state === "responded" || cur.reviewedAt !== null) {
+      throw new ChartWardenError(
+        "AUDIT_CLAIMS_FROZEN",
+        cur.state === "responded"
+          ? "the response is filed, so the claims can no longer change"
+          : "the packet is signed off, so the claims can no longer change",
+        409,
+      );
     }
   }
 
@@ -519,7 +534,7 @@ export function buildDrizzleAuditRequestService(
     async addClaim(actor, id, input, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
-        assertOpen(cur);
+        assertClaimsEditable(cur);
         const claim = await visibleClaim(tx, actor, input.claimId);
         if (claim.providerEntityId !== cur.providerEntityId) {
           throw unprocessable(
@@ -553,7 +568,7 @@ export function buildDrizzleAuditRequestService(
     async removeClaim(actor, id, claimId, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
-        assertOpen(cur);
+        assertClaimsEditable(cur);
         const attached = await tx
           .select({ id: schema.auditRequestDocument.id })
           .from(schema.auditRequestDocument)
@@ -594,6 +609,9 @@ export function buildDrizzleAuditRequestService(
           );
         }
         const now = new Date();
+        // Milestone 7a-2: the same packet rules as sign-off (minus the reviewer checks) gate the move to review, so a
+        // request never enters a state sign-off cannot leave. There is no way back to assembly.
+        if (to === "in_review") await assertReadyForReview(tx, cur);
         // Milestone 7a-2: a response is recorded by filing a signed-off packet with its proof, never by a bare move
         // (the database guard refuses it too).
         if (to === "responded") {

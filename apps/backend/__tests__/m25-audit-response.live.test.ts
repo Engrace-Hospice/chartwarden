@@ -65,6 +65,8 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
   let fx: M7Fixture;
   let memberR = "";
   let userR = "";
+  let memberS = "";
+  let userS = "";
   let patient1 = "";
   let patient1b = "";
 
@@ -92,6 +94,7 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
     buildDrizzleSubmissionService(fx.handle.db, { sources: buildSeamAppealSourcePorts() });
   const A = () => fx.actor();
   const R = () => ({ ...fx.actor(), userId: userR, membershipId: memberR });
+  const S = () => ({ ...fx.actor(), userId: userS, membershipId: memberS });
   const B = () => fx.actor(ORG_B);
   const ver = (id: string) => fx.ver("audit_request", id);
   const row = async (id: string) =>
@@ -143,11 +146,18 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
   });
 
   /** A request in assembly with a typed checklist and one document under each claim. */
-  async function inAssembly(opts: { deadline?: boolean } = {}): Promise<string> {
+  async function inAssembly(
+    opts: { deadline?: boolean; deadlineOn?: string; attest?: boolean } = {},
+  ): Promise<string> {
     const { id } = await audit().createAuditRequest(A(), intake());
     if (opts.deadline !== false) {
-      await tier().createDeadline(A(), { kind: "audit_request", id }, deadlineInput());
+      await tier().createDeadline(
+        A(),
+        { kind: "audit_request", id },
+        deadlineInput(opts.deadlineOn ? { dueOn: opts.deadlineOn } : {}),
+      );
     }
+    if (opts.attest) await audit().attestNoDeadlineStated(A(), id, await ver(id));
     await audit().moveAuditRequest(A(), id, "in_assembly", await ver(id));
     await audit().setResponseItems(
       A(),
@@ -172,12 +182,16 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
     );
     return id;
   }
-  async function inReview(opts: { deadline?: boolean } = {}): Promise<string> {
+  async function inReview(
+    opts: { deadline?: boolean; deadlineOn?: string; attest?: boolean } = {},
+  ): Promise<string> {
     const id = await inAssembly(opts);
     await audit().moveAuditRequest(A(), id, "in_review", await ver(id));
     return id;
   }
-  async function signedOff(opts: { deadline?: boolean } = {}): Promise<string> {
+  async function signedOff(
+    opts: { deadline?: boolean; deadlineOn?: string; attest?: boolean } = {},
+  ): Promise<string> {
     const id = await inReview(opts);
     await audit().signOffAudit(R(), id, await ver(id));
     return id;
@@ -249,6 +263,15 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
       await fx.admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
         [userR, ORG],
+      )
+    ).rows[0].id as string;
+    userS = (
+      await fx.admin.query(`INSERT INTO "user" (email) VALUES ('m25-aresp-s@x.test') RETURNING id`)
+    ).rows[0].id as string;
+    memberS = (
+      await fx.admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [userS, ORG],
       )
     ).rows[0].id as string;
     const patientOf = async (claim: string) =>
@@ -347,10 +370,9 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
     expect(after.response_filed_late).toBe(false);
     expect(new Date(after.responded_at).toISOString()).toBe(at.toISOString());
     expect(after.packet_manifest.documents).toHaveLength(2);
-    expect(after.packet_manifest.checklist).toEqual([
-      { label: "Orders for the period", state: "ready" },
-      { label: "Visit notes", state: "not_applicable" },
-    ]);
+    // The audited manifest holds counts and ids, never the typed labels.
+    expect(after.packet_manifest.checklist).toEqual({ total: 2, ready: 1, notApplicable: 1 });
+    expect(JSON.stringify(after.packet_manifest)).not.toContain("Orders for the period");
 
     const rows = await outboxFor(id);
     expect(rows).toHaveLength(1);
@@ -570,13 +592,12 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
   });
 
   // ── sign-off and filing gates ────────────────────────────────────────────────────────────────────────────
-  it("refuses sign-off for an empty packet or an unfinished checklist item, and a stale version", async () => {
+  it("the move to review runs the sign-off packet rules: an empty packet or an unfinished item cannot enter review", async () => {
     const empty = (await audit().createAuditRequest(A(), intake())).id;
     await audit().moveAuditRequest(A(), empty, "in_assembly", await ver(empty));
-    await audit().moveAuditRequest(A(), empty, "in_review", await ver(empty));
-    expect((await fx.refused(audit().signOffAudit(R(), empty, await ver(empty))))?.code).toBe(
-      "AUDIT_PACKET_EMPTY",
-    );
+    expect(
+      (await fx.refused(audit().moveAuditRequest(A(), empty, "in_review", await ver(empty))))?.code,
+    ).toBe("AUDIT_PACKET_EMPTY");
 
     const id = await inAssembly();
     await audit().setResponseItems(
@@ -585,13 +606,201 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
       [{ label: "Orders for the period", state: "pending" }],
       await ver(id),
     );
-    await audit().moveAuditRequest(A(), id, "in_review", await ver(id));
-    expect((await fx.refused(audit().signOffAudit(R(), id, await ver(id))))?.code).toBe(
-      "AUDIT_CHECKLIST_INCOMPLETE",
-    );
-    // A stale If-Match loses, on a packet that is otherwise ready to sign off.
+    expect(
+      (await fx.refused(audit().moveAuditRequest(A(), id, "in_review", await ver(id))))?.code,
+    ).toBe("AUDIT_CHECKLIST_INCOMPLETE");
+    expect((await row(id)).state).toBe("in_assembly");
+    // A stale If-Match still loses on a packet that is otherwise ready.
     const ready = await inReview();
     expect((await fx.refused(audit().signOffAudit(R(), ready, 1)))?.statusCode).toBe(409);
+  });
+
+  it("preparer != approver: the sender, a document attacher and the checklist author cannot sign off; a packet is signed off once", async () => {
+    const id = await inReview();
+    expect((await fx.refused(audit().signOffAudit(A(), id, await ver(id))))?.code).toBe(
+      "AUDIT_REVIEWER_IS_ASSEMBLER",
+    );
+    expect(
+      await fx.dbMessage(
+        fx.admin.query(
+          "UPDATE audit_request SET reviewed_by_membership_id = sent_to_review_by_membership_id, reviewed_at = now(), signed_off_hash = 'x' WHERE id=$1",
+          [id],
+        ),
+      ),
+    ).toMatch(/audit_request_reviewer_not_preparer/);
+
+    // Another actor who attached a live document is refused (self-approval through a different hat).
+    const attacher = (await audit().createAuditRequest(A(), intake())).id;
+    await tier().createDeadline(A(), { kind: "audit_request", id: attacher }, deadlineInput());
+    await audit().moveAuditRequest(A(), attacher, "in_assembly", await ver(attacher));
+    await audit().setResponseItems(
+      A(),
+      attacher,
+      [{ label: "Orders", state: "ready" }],
+      await ver(attacher),
+    );
+    await audit().attachAuditDocument(
+      R(),
+      attacher,
+      { claimId: fx.claim1, documentId: await newDoc("1", "Attached by R") },
+      await ver(attacher),
+    );
+    await audit().moveAuditRequest(A(), attacher, "in_review", await ver(attacher));
+    expect((await fx.refused(audit().signOffAudit(R(), attacher, await ver(attacher))))?.code).toBe(
+      "AUDIT_REVIEWER_IS_PREPARER",
+    );
+
+    // Another actor who typed the checklist is refused too.
+    const author = (await audit().createAuditRequest(A(), intake())).id;
+    await tier().createDeadline(A(), { kind: "audit_request", id: author }, deadlineInput());
+    await audit().moveAuditRequest(A(), author, "in_assembly", await ver(author));
+    await audit().setResponseItems(
+      R(),
+      author,
+      [{ label: "Orders", state: "ready" }],
+      await ver(author),
+    );
+    await audit().attachAuditDocument(
+      A(),
+      author,
+      { claimId: fx.claim1, documentId: await newDoc("1", "Attached by A") },
+      await ver(author),
+    );
+    await audit().moveAuditRequest(A(), author, "in_review", await ver(author));
+    expect((await fx.refused(audit().signOffAudit(R(), author, await ver(author))))?.code).toBe(
+      "AUDIT_REVIEWER_IS_PREPARER",
+    );
+    await audit().signOffAudit(S(), author, await ver(author));
+
+    // A second sign-off is refused, and the database keeps the first.
+    expect((await fx.refused(audit().signOffAudit(R(), author, await ver(author))))?.code).toBe(
+      "AUDIT_ALREADY_SIGNED_OFF",
+    );
+    expect(
+      await fx.dbMessage(
+        fx.admin.query("UPDATE audit_request SET reviewed_by_membership_id=$2 WHERE id=$1", [
+          author,
+          memberR,
+        ]),
+      ),
+    ).toMatch(/M25_AUDIT_SIGNOFF_IMMUTABLE/);
+  });
+
+  it("a sign-off needs a recorded deadline or the attestation first (they freeze at sign-off)", async () => {
+    const id = await inReview({ deadline: false });
+    expect((await fx.refused(audit().signOffAudit(R(), id, await ver(id))))?.code).toBe(
+      "AUDIT_DEADLINE_OR_ATTESTATION_REQUIRED",
+    );
+    await audit().attestNoDeadlineStated(A(), id, await ver(id));
+    await audit().signOffAudit(R(), id, await ver(id));
+  });
+
+  it("freezes what was signed off, and a packet moved behind the service's back voids the sign-off", async () => {
+    const id = await signedOff();
+    expect(
+      (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim2 }, await ver(id))))?.code,
+    ).toBeTruthy();
+    expect((await fx.refused(audit().removeClaim(A(), id, fx.claim1b, await ver(id))))?.code).toBe(
+      "AUDIT_CLAIMS_FROZEN",
+    );
+    expect(
+      (await fx.refused(tier().createDeadline(A(), { kind: "audit_request", id }, deadlineInput())))
+        ?.code,
+    ).toBe("DEADLINE_SUBJECT_SIGNED_OFF");
+    const d = (await tier().listDeadlines(A(), { kind: "audit_request", id })).items[0]!;
+    expect(
+      (
+        await fx.refused(
+          tier().updateDeadline(
+            A(),
+            { kind: "audit_request", id },
+            d.id,
+            { label: "x" },
+            d.version,
+          ),
+        )
+      )?.code,
+    ).toBe("DEADLINE_SUBJECT_SIGNED_OFF");
+    expect(
+      (
+        await fx.refused(
+          tier().satisfyDeadline(A(), { kind: "audit_request", id }, d.id, undefined, d.version),
+        )
+      )?.code,
+    ).toBe("DEADLINE_SUBJECT_SIGNED_OFF");
+    expect((await fx.refused(audit().attestNoDeadlineStated(A(), id, await ver(id))))?.code).toBe(
+      "AUDIT_SIGNED_OFF",
+    );
+    expect(
+      await fx.dbMessage(
+        fx.asApp((tx) =>
+          tx.execute(
+            sql`INSERT INTO audit_request_claim (organization_id, audit_request_id, claim_id) VALUES (${ORG}, ${id}, ${fx.claim2})`,
+          ),
+        ),
+      ),
+    ).toMatch(/M25_AUDIT_SIGNED_OFF/);
+    // A writer that skips the service changes the checklist: the fingerprint no longer matches, filing refuses.
+    await fx.admin.query(
+      `UPDATE audit_request SET response_items = '[{"label":"Orders for the period","state":"not_applicable"}]'::jsonb WHERE id=$1`,
+      [id],
+    );
+    expect(
+      (await fx.refused(audit().submitAuditResponse(R(), id, filing(), await ver(id))))?.code,
+    ).toBe("AUDIT_SIGNOFF_STALE");
+    expect((await row(id)).state).toBe("in_review");
+  });
+
+  it("claims also freeze once the response is filed, while marking a deadline satisfied stays allowed", async () => {
+    const id = await signedOff();
+    await audit().submitAuditResponse(R(), id, filing(), await ver(id));
+    expect(
+      (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim2 }, await ver(id))))?.code,
+    ).toBeTruthy();
+    expect((await fx.refused(audit().removeClaim(A(), id, fx.claim1b, await ver(id))))?.code).toBe(
+      "AUDIT_CLAIMS_FROZEN",
+    );
+    const d = (await tier().listDeadlines(A(), { kind: "audit_request", id })).items[0]!;
+    await tier().satisfyDeadline(A(), { kind: "audit_request", id }, d.id, undefined, d.version);
+  });
+
+  it("a document hangs under a LIVE claim of the request, enforced by the database", async () => {
+    const id = (await audit().createAuditRequest(A(), intake({ claimIds: [fx.claim1] }))).id;
+    await audit().moveAuditRequest(A(), id, "in_assembly", await ver(id));
+    expect(
+      await fx.dbMessage(
+        fx.admin.query(
+          `INSERT INTO audit_request_document (organization_id, audit_request_id, claim_id, document_id) VALUES ($1,$2,$3,$4)`,
+          [ORG, id, fx.claim1b, randomUUID()],
+        ),
+      ),
+    ).toMatch(/M25_AUDIT_DOCUMENT_CLAIM/);
+  });
+
+  it("a response cannot be sent before the packet was signed off", async () => {
+    const id = await signedOff();
+    const reviewedAt = new Date((await row(id)).reviewed_at);
+    const r = await fx.refused(
+      audit().submitAuditResponse(
+        R(),
+        id,
+        filing({ filedAt: new Date(reviewedAt.getTime() - 3_600_000).toISOString() }),
+        await ver(id),
+      ),
+    );
+    expect(r?.code).toBe("AUDIT_FILED_BEFORE_REVIEW");
+  });
+
+  it("turns an unrenderable packet (a document with no title) into a typed 422 and records nothing", async () => {
+    const id = await signedOff();
+    await fx.admin.query(
+      `UPDATE document SET title='' WHERE id IN (SELECT document_id FROM audit_request_document WHERE audit_request_id=$1)`,
+      [id],
+    );
+    const r = await fx.refused(audit().submitAuditResponse(R(), id, filing(), await ver(id)));
+    expect(r?.statusCode).toBe(422);
+    expect((await row(id)).state).toBe("in_review");
+    expect(await outboxFor(id)).toHaveLength(0);
   });
 
   it("will not file without sign-off, a real channel, proof, a past time, or the deadline/attestation", async () => {
@@ -625,20 +834,13 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
     expect(await outboxFor(id)).toHaveLength(0);
   });
 
-  it("needs a recorded deadline OR the explicit none-stated attestation before it files", async () => {
-    const id = await signedOff({ deadline: false });
-    expect(
-      (await fx.refused(audit().submitAuditResponse(R(), id, filing(), await ver(id))))?.code,
-    ).toBe("AUDIT_DEADLINE_OR_ATTESTATION_REQUIRED");
-    expect((await audit().getAuditRequest(A(), id))?.dueState).toBe("no_deadline_recorded");
-
-    await audit().attestNoDeadlineStated(A(), id, await ver(id));
+  it("files with the none-stated attestation, immutable, and the packet says so", async () => {
+    const id = await signedOff({ deadline: false, attest: true });
     const detail = await audit().getAuditRequest(A(), id);
     expect(detail?.dueState).toBe("none_stated");
     expect(detail?.response.deadlineNoneStatedAt).not.toBeNull();
-    // A second attestation is refused; the database also keeps the first immutable.
     expect((await fx.refused(audit().attestNoDeadlineStated(A(), id, await ver(id))))?.code).toBe(
-      "AUDIT_ALREADY_ATTESTED",
+      "AUDIT_SIGNED_OFF",
     );
     expect(
       await fx.dbMessage(
@@ -649,8 +851,6 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
         ),
       ),
     ).toMatch(/M25_AUDIT_ATTESTATION_IMMUTABLE/);
-
-    // A sign-off after the attestation does not move it; filing now succeeds and the packet says so.
     await audit().submitAuditResponse(R(), id, filing(), await ver(id));
     const packet = (await outboxFor(id))[0].payload.payload;
     expect(packet).toMatchObject({
@@ -658,6 +858,13 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
       deadlines: [],
       filedLate: false,
     });
+  });
+
+  it("a second attestation before sign-off is refused as already attested", async () => {
+    const id = await inAssembly({ deadline: false, attest: true });
+    expect((await fx.refused(audit().attestNoDeadlineStated(A(), id, await ver(id))))?.code).toBe(
+      "AUDIT_ALREADY_ATTESTED",
+    );
   });
 
   it("refuses the attestation once a deadline is recorded, and an attestation by the database pair rule", async () => {
@@ -675,19 +882,13 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
   });
 
   it("a filing after a typed deadline needs the late acknowledgement, and records it as late", async () => {
-    const id = await signedOff({ deadline: false });
-    await tier().createDeadline(
-      A(),
-      { kind: "audit_request", id },
-      deadlineInput({ dueOn: daysAgo(2), label: "Records due" }),
-    );
+    const id = await signedOff({ deadlineOn: daysAgo(2) });
     expect(
       (await fx.refused(audit().submitAuditResponse(R(), id, filing(), await ver(id))))?.code,
     ).toBe("AUDIT_LATE_ACKNOWLEDGEMENT_REQUIRED");
     await audit().submitAuditResponse(R(), id, filing({ lateAcknowledged: true }), await ver(id));
     expect((await row(id)).response_filed_late).toBe(true);
     expect((await outboxFor(id))[0].payload.payload.filedLate).toBe(true);
-    // The late flag lives in the frozen record.
     expect(
       await fx.dbMessage(
         fx.asApp((tx) =>
@@ -698,13 +899,15 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
   });
 
   it("a satisfied deadline still counts as recorded and cannot make the filing late", async () => {
-    const id = await signedOff({ deadline: false });
+    const id = await inAssembly({ deadline: false });
     const d = await tier().createDeadline(
       A(),
       { kind: "audit_request", id },
       deadlineInput({ dueOn: daysAgo(2) }),
     );
     await tier().satisfyDeadline(A(), { kind: "audit_request", id }, d.id, undefined, d.version);
+    await audit().moveAuditRequest(A(), id, "in_review", await ver(id));
+    await audit().signOffAudit(R(), id, await ver(id));
     await audit().submitAuditResponse(R(), id, filing(), await ver(id));
     expect((await row(id)).response_filed_late).toBe(false);
   });
@@ -968,12 +1171,32 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
       "audit_request.review",
       "audit_request.submit",
     ]);
-    // Same person who sent it to review: the route reaches the rule and the rule refuses.
-    const own = await full.inject({
+    // Sign-off needs a recent step-up on top of the key.
+    const signNoStepUp = await full.inject({
       method: "POST",
       url: `/api/v1/audit-requests/${id}/sign-off`,
       headers: WRITE(await v()),
     });
+    expect(signNoStepUp.statusCode).toBe(403);
+    expect((signNoStepUp.json() as { error: { code: string } }).error.code).toBe(
+      "STEP_UP_REQUIRED",
+    );
+    const withStepUp = makeApp(
+      [
+        "audit_request.read",
+        "audit_request.manage",
+        "audit_request.review",
+        "audit_request.submit",
+      ],
+      true,
+    );
+    // Same person who sent it to review: the route reaches the rule and the rule refuses.
+    const own = await withStepUp.inject({
+      method: "POST",
+      url: `/api/v1/audit-requests/${id}/sign-off`,
+      headers: WRITE(await v()),
+    });
+    await withStepUp.close();
     expect(own.statusCode).toBe(409);
     expect((own.json() as { error: { code: string } }).error.code).toBe(
       "AUDIT_REVIEWER_IS_ASSEMBLER",
@@ -1001,8 +1224,8 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
     await full.close();
   });
 
-  it("files through the full route stack with a step-up: attestation, sign-off by a different person is the service rule", async () => {
-    const id = await signedOff({ deadline: false });
+  it("files through the full route stack with a step-up: attestation before sign-off, then the filing", async () => {
+    const id = await inReview({ deadline: false });
     const app = makeApp(
       [
         "audit_request.read",
@@ -1019,19 +1242,17 @@ describe.skipIf(!DB_URL)("M25 audit response packet (milestone 7a-2) - LIVE Post
       payload: filing(),
     });
     expect(noKey.statusCode).toBe(400);
-    const refusedNoDeadline = await app.inject({
-      method: "POST",
-      url: `/api/v1/audit-requests/${id}/submit`,
-      headers: WRITE(await fx.ver("audit_request", id)),
-      payload: filing(),
-    });
-    expect(refusedNoDeadline.statusCode).toBe(422);
+    // Sign-off needs the deadline or the attestation first.
+    expect(
+      (await fx.refused(audit().signOffAudit(R(), id, await fx.ver("audit_request", id))))?.code,
+    ).toBe("AUDIT_DEADLINE_OR_ATTESTATION_REQUIRED");
     const attest = await app.inject({
       method: "POST",
       url: `/api/v1/audit-requests/${id}/deadline-none-stated`,
       headers: WRITE(await fx.ver("audit_request", id)),
     });
     expect(attest.statusCode).toBe(200);
+    await audit().signOffAudit(R(), id, await fx.ver("audit_request", id));
     const filed = await app.inject({
       method: "POST",
       url: `/api/v1/audit-requests/${id}/submit`,

@@ -14,6 +14,12 @@
 //     here) and emits `m25.audit_response_packet.render_requested` in the same transaction, so M22 files the
 //     cover-and-index PDF as the retained copy. Database triggers keep the manifest, the filing facts and the
 //     enclosure list immutable afterwards.
+//   - The render payload carries the typed checklist labels, deadline labels and document titles (the PDF is rendered
+//     FROM it; M22 has no seam to resolve M25's typed packet itself, the ADR and appeal packets work the same way).
+//     It lives only in the tenant-RLS `outbox_event` row, the dispatcher logs the event name, row id and the
+//     consumer's error text (a schema path, never a value), and the audited columns hold counts and ids only.
+//   - A sign-off stores a fingerprint of what was signed off (claims, checklist, documents, deadlines, attestation);
+//     filing recomputes it and refuses a packet that moved (AUDIT_SIGNOFF_STALE).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
@@ -33,7 +39,9 @@ import {
   canAttestNoDeadlineStated,
   checkAuditFiling,
   checkAuditSignOff,
+  checkReadyForReview,
   checkResponseItems,
+  signOffFingerprint,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import {
@@ -136,6 +144,10 @@ const REFUSAL_MESSAGE: Readonly<Record<Refusal, string>> = {
   ITEM_LABEL_DUPLICATE: "two checklist items have the same label",
   ITEM_STATE_INVALID: "a checklist item must be pending, ready or not applicable",
   REVIEWER_IS_ASSEMBLER: "the person who sent this packet to review cannot sign it off",
+  REVIEWER_IS_PREPARER:
+    "a person who attached a document to this packet or typed its checklist cannot sign it off",
+  ALREADY_SIGNED_OFF: "this packet is already signed off",
+  FILED_BEFORE_REVIEW: "the response cannot be sent before the packet was signed off",
   PACKET_EMPTY: "attach at least one document before sign-off",
   CHECKLIST_INCOMPLETE: "every checklist item must be marked ready or not applicable",
   NOT_SIGNED_OFF: "the packet has not been signed off",
@@ -147,7 +159,12 @@ const REFUSAL_MESSAGE: Readonly<Record<Refusal, string>> = {
   LATE_ACKNOWLEDGEMENT_REQUIRED:
     "a recorded due date has passed; acknowledge that it was filed late to record it",
 };
-const CONFLICT_REFUSALS = new Set<Refusal>(["REVIEWER_IS_ASSEMBLER", "NOT_SIGNED_OFF"]);
+const CONFLICT_REFUSALS = new Set<Refusal>([
+  "REVIEWER_IS_ASSEMBLER",
+  "REVIEWER_IS_PREPARER",
+  "ALREADY_SIGNED_OFF",
+  "NOT_SIGNED_OFF",
+]);
 
 function refuse(code: Refusal): never {
   throw new ChartWardenError(
@@ -167,6 +184,23 @@ const itemsOf = (value: unknown): AuditResponseItem[] =>
           : [],
       )
     : [];
+
+/**
+ * The move to review runs the same packet rules as sign-off (minus the reviewer checks), so a request can never enter
+ * a state that sign-off cannot leave. Called by the state move inside its transaction.
+ */
+export async function assertReadyForReview(tx: Tx, row: Row): Promise<void> {
+  const DOC = schema.auditRequestDocument;
+  const live = await tx
+    .select({ id: DOC.id })
+    .from(DOC)
+    .where(and(eq(DOC.auditRequestId, row.id), isNull(DOC.removedAt)));
+  const refusal = checkReadyForReview({
+    items: itemsOf(row.responseItems),
+    attachedCount: live.length,
+  });
+  if (refusal) refuse(refusal);
+}
 
 /** The packet facts shown on the request, read inside the caller's transaction. */
 export async function loadAuditResponseView(tx: Tx, row: Row): Promise<AuditResponseView> {
@@ -263,6 +297,22 @@ export function buildAuditResponseOps(
       eventPayload: eventPayload ?? null,
       actorMembershipId: actor.membershipId,
     });
+
+  /** The fingerprint of everything a reviewer signs off, read inside the caller's transaction. */
+  async function fingerprintOf(tx: Tx, cur: Row): Promise<string> {
+    const docs = await tx
+      .select({ documentId: DOC.documentId, claimId: DOC.claimId })
+      .from(DOC)
+      .where(and(eq(DOC.auditRequestId, cur.id), isNull(DOC.removedAt)));
+    const deadlines = await tx.select().from(RD).where(eq(RD.auditRequestId, cur.id));
+    return signOffFingerprint({
+      claimIds: await liveClaimIds(tx, cur.id),
+      items: itemsOf(cur.responseItems),
+      documents: docs,
+      deadlines: deadlines.map((d) => ({ id: d.id, dueOn: d.dueOn, satisfiedOn: d.satisfiedOn })),
+      noDeadlineStatedAttested: cur.deadlineNoneStatedAt !== null,
+    });
+  }
 
   async function liveClaimIds(tx: Tx, id: string): Promise<string[]> {
     const rows = await tx
@@ -386,6 +436,13 @@ export function buildAuditResponseOps(
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadRequest(tx, actor, id);
         requireState(cur, "received", "in_assembly", "in_review");
+        if (cur.reviewedAt !== null) {
+          throw new ChartWardenError(
+            "AUDIT_SIGNED_OFF",
+            "the packet is signed off, so the attestation can no longer change",
+            409,
+          );
+        }
         const deadlines = await tx.select({ id: RD.id }).from(RD).where(eq(RD.auditRequestId, id));
         const refusal = canAttestNoDeadlineStated({
           recordedDeadlineCount: deadlines.length,
@@ -421,17 +478,32 @@ export function buildAuditResponseOps(
         if (!cur.sentToReviewByMembershipId) {
           throw new ChartWardenError(
             "AUDIT_ASSEMBLER_UNKNOWN",
-            "who sent this packet to review is not recorded; send it to review again",
+            "this request was moved to review before the preparer was recorded, so it cannot be signed off; withdraw it and log a new request",
             409,
           );
         }
         const live = await tx
-          .select({ id: DOC.id })
+          .select({ id: DOC.id, by: DOC.attachedByMembershipId })
           .from(DOC)
           .where(and(eq(DOC.auditRequestId, id), isNull(DOC.removedAt)));
+        const checklistSetters = await tx
+          .select({ by: EV.actorMembershipId })
+          .from(EV)
+          .where(and(eq(EV.auditRequestId, id), eq(EV.eventKind, "response_items_set")));
+        const signOffDeadlines = await tx
+          .select({ id: RD.id })
+          .from(RD)
+          .where(eq(RD.auditRequestId, id));
+        const preparers = [...live.map((d) => d.by), ...checklistSetters.map((e) => e.by)].filter(
+          (m): m is string => m !== null,
+        );
         const refusal = checkAuditSignOff({
           assemblerMembershipId: cur.sentToReviewByMembershipId,
           reviewerMembershipId: actor.membershipId,
+          preparerMembershipIds: preparers,
+          alreadySignedOff: cur.reviewedByMembershipId !== null,
+          recordedDeadlineCount: signOffDeadlines.length,
+          noDeadlineStatedAttested: cur.deadlineNoneStatedAt !== null,
           items: itemsOf(cur.responseItems),
           attachedCount: live.length,
         });
@@ -439,6 +511,7 @@ export function buildAuditResponseOps(
         const result = await bump(tx, cur, ifMatch, {
           reviewedByMembershipId: actor.membershipId,
           reviewedAt: new Date(),
+          signedOffHash: await fingerprintOf(tx, cur),
         });
         await event(tx, actor, id, "signed_off");
         return result;
@@ -478,6 +551,7 @@ export function buildAuditResponseOps(
           channel: input.channel,
           confirmationRef: input.confirmationRef,
           filedAt,
+          reviewedAt: cur.reviewedAt as Date,
           now,
           recordedDeadlineCount: deadlines.length,
           noDeadlineStatedAttested: cur.deadlineNoneStatedAt !== null,
@@ -485,6 +559,14 @@ export function buildAuditResponseOps(
           lateAcknowledged: input.lateAcknowledged === true,
         });
         if (refusal) refuse(refusal);
+        // What was signed off is what is filed: anything that moved since sign-off voids it.
+        if ((await fingerprintOf(tx, cur)) !== cur.signedOffHash) {
+          throw new ChartWardenError(
+            "AUDIT_SIGNOFF_STALE",
+            "the packet changed after it was signed off; it must be signed off again before filing",
+            409,
+          );
+        }
 
         // Re-validate everything being filed NOW (a document can have been superseded or reclassified since it was
         // attached, a claim removed), then freeze exactly that list.
@@ -531,7 +613,11 @@ export function buildAuditResponseOps(
         }
         const filedLate = openDue !== null && filedAt.getTime() > openDue.getTime();
         const items = itemsOf(cur.responseItems);
-        const packet = buildAuditResponsePacketRenderPayload({
+        // The payload is what M22 renders as the retained copy: a document with no title (or any other invalid
+        // fact) is a typed refusal here, never a render that fails later.
+        let packet: ReturnType<typeof buildAuditResponsePacketRenderPayload>;
+        try {
+          packet = buildAuditResponsePacketRenderPayload({
           auditRequestId: id,
           authorityKind: cur.authorityKind,
           authorityName: cur.authorityName,
@@ -556,10 +642,22 @@ export function buildAuditResponseOps(
           claims,
           enclosures,
         });
+        } catch (e) {
+          throw new ChartWardenError(
+            "AUDIT_PACKET_INVALID",
+            `the packet cannot be rendered: ${e instanceof Error ? e.message : "invalid packet"}`,
+            422,
+          );
+        }
         const manifest = {
           version: 1,
           frozenAt: iso(now),
-          checklist: packet.checklist,
+          // Counts and ids only: the typed labels live in the retained PDF, not in this audited column.
+          checklist: {
+            total: items.length,
+            ready: items.filter((i) => i.state === "ready").length,
+            notApplicable: items.filter((i) => i.state === "not_applicable").length,
+          },
           documents: live.map((d) => ({ documentId: d.documentId, claimId: d.claimId })),
           deadlines: deadlines.map((d) => ({ id: d.id, dueOn: d.dueOn })),
           noDeadlineStatedAttested: cur.deadlineNoneStatedAt !== null,

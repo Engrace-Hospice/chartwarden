@@ -1,4 +1,3 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/submission.routes.ts - M25 milestone 6a routes: the submission attempt of
 // an ADR response, an appeal (incl. a QIC escalation request) and a reopening request. Reading gates on each subject's
 // own read key; recording a receipt gates on the subject's submit key + step-up (the operation key is the permission
@@ -6,6 +5,7 @@ import { NotFoundError } from "@chartwarden/types";
 // stale) and requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
 // Nothing here sends anything outside ChartWarden: there is no send route in 6a.
 import { Type } from "@sinclair/typebox";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";

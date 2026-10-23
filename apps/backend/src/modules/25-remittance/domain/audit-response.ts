@@ -8,6 +8,8 @@
 //     late acknowledgement.
 // Refusals are reason codes the service turns into typed errors; none carries content.
 
+import { createHash } from "node:crypto";
+
 export const AUDIT_RESPONSE_ITEM_STATES = ["pending", "ready", "not_applicable"] as const;
 export type AuditResponseItemState = (typeof AUDIT_RESPONSE_ITEM_STATES)[number];
 
@@ -30,13 +32,20 @@ export type AuditItemsRefusal =
   | "ITEM_LABEL_DUPLICATE"
   | "ITEM_STATE_INVALID";
 
-export type AuditSignOffRefusal = "REVIEWER_IS_ASSEMBLER" | "PACKET_EMPTY" | "CHECKLIST_INCOMPLETE";
+export type AuditReadyRefusal = "PACKET_EMPTY" | "CHECKLIST_INCOMPLETE";
+export type AuditSignOffRefusal =
+  | AuditReadyRefusal
+  | "REVIEWER_IS_ASSEMBLER"
+  | "REVIEWER_IS_PREPARER"
+  | "ALREADY_SIGNED_OFF"
+  | "DEADLINE_OR_ATTESTATION_REQUIRED";
 
 export type AuditFilingRefusal =
   | "NOT_SIGNED_OFF"
   | "CHANNEL_INVALID"
   | "PROOF_REQUIRED"
   | "FILED_IN_FUTURE"
+  | "FILED_BEFORE_REVIEW"
   | "DEADLINE_OR_ATTESTATION_REQUIRED"
   | "LATE_ACKNOWLEDGEMENT_REQUIRED";
 
@@ -57,18 +66,70 @@ export function checkResponseItems(items: readonly AuditResponseItem[]): AuditIt
   return null;
 }
 
-/** Preparer != approver: whoever sent the packet to review cannot sign it off. */
-export function checkAuditSignOff(input: {
-  readonly assemblerMembershipId: string;
-  readonly reviewerMembershipId: string;
+/**
+ * What a packet needs to leave assembly: at least one document and every typed item done. The move to review and the
+ * sign-off both ask it, so a request can never enter a state that sign-off cannot leave.
+ */
+export function checkReadyForReview(input: {
   readonly items: readonly AuditResponseItem[];
   readonly attachedCount: number;
-}): AuditSignOffRefusal | null {
-  if (input.reviewerMembershipId === input.assemblerMembershipId) return "REVIEWER_IS_ASSEMBLER";
+}): AuditReadyRefusal | null {
   if (input.attachedCount < 1) return "PACKET_EMPTY";
   return input.items.every((i) => i.state === "ready" || i.state === "not_applicable")
     ? null
     : "CHECKLIST_INCOMPLETE";
+}
+
+/**
+ * Preparer != approver: whoever sent the packet to review, attached one of its documents or typed its checklist cannot
+ * sign it off, and a packet is signed off once.
+ */
+export function checkAuditSignOff(input: {
+  readonly assemblerMembershipId: string;
+  readonly reviewerMembershipId: string;
+  /** Everyone who attached a live document or set the checklist. */
+  readonly preparerMembershipIds: readonly string[];
+  readonly alreadySignedOff: boolean;
+  /** Recorded deadlines of any status, and whether the none-stated attestation was made: a sign-off covers one of them. */
+  readonly recordedDeadlineCount: number;
+  readonly noDeadlineStatedAttested: boolean;
+  readonly items: readonly AuditResponseItem[];
+  readonly attachedCount: number;
+}): AuditSignOffRefusal | null {
+  if (input.alreadySignedOff) return "ALREADY_SIGNED_OFF";
+  if (input.reviewerMembershipId === input.assemblerMembershipId) return "REVIEWER_IS_ASSEMBLER";
+  if (input.preparerMembershipIds.includes(input.reviewerMembershipId)) return "REVIEWER_IS_PREPARER";
+  const ready = checkReadyForReview(input);
+  if (ready) return ready;
+  // Deadlines and the attestation freeze at sign-off, so a sign-off without either could never be filed.
+  return input.recordedDeadlineCount === 0 && !input.noDeadlineStatedAttested
+    ? "DEADLINE_OR_ATTESTATION_REQUIRED"
+    : null;
+}
+
+/**
+ * A fingerprint of everything a reviewer signs off: the claims, the typed checklist, the documents, the recorded
+ * deadlines and the attestation. Filing recomputes it; a difference means the packet moved after sign-off.
+ */
+export function signOffFingerprint(input: {
+  readonly claimIds: readonly string[];
+  readonly items: readonly AuditResponseItem[];
+  readonly documents: readonly { readonly documentId: string; readonly claimId: string }[];
+  readonly deadlines: readonly {
+    readonly id: string;
+    readonly dueOn: string;
+    readonly satisfiedOn: string | null;
+  }[];
+  readonly noDeadlineStatedAttested: boolean;
+}): string {
+  const canonical = JSON.stringify({
+    c: [...input.claimIds].sort(),
+    i: input.items.map((i) => [i.label, i.state]),
+    d: input.documents.map((d) => [d.documentId, d.claimId]).sort(),
+    t: input.deadlines.map((d) => [d.id, d.dueOn, d.satisfiedOn]).sort(),
+    a: input.noDeadlineStatedAttested,
+  });
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 export function checkAuditFiling(input: {
@@ -76,6 +137,7 @@ export function checkAuditFiling(input: {
   readonly channel: string;
   readonly confirmationRef: string;
   readonly filedAt: Date;
+  readonly reviewedAt: Date;
   readonly now: Date;
   /** Recorded deadlines of any status (a satisfied one still proves a date was recorded). */
   readonly recordedDeadlineCount: number;
@@ -90,6 +152,7 @@ export function checkAuditFiling(input: {
   }
   if (input.confirmationRef.trim() === "") return "PROOF_REQUIRED";
   if (input.filedAt.getTime() > input.now.getTime()) return "FILED_IN_FUTURE";
+  if (input.filedAt.getTime() < input.reviewedAt.getTime()) return "FILED_BEFORE_REVIEW";
   if (input.recordedDeadlineCount === 0 && !input.noDeadlineStatedAttested) {
     return "DEADLINE_OR_ATTESTATION_REQUIRED";
   }

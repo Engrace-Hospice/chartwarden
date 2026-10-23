@@ -8,7 +8,9 @@ import {
   canAttestNoDeadlineStated,
   checkAuditFiling,
   checkAuditSignOff,
+  checkReadyForReview,
   checkResponseItems,
+  signOffFingerprint,
 } from "../audit-response";
 import { SUBMISSION_PURPOSES, purposeSubject } from "../submission";
 
@@ -18,6 +20,7 @@ const filing = {
   channel: "mail",
   confirmationRef: "TRK-1",
   filedAt: new Date("2026-03-09T12:00:00Z"),
+  reviewedAt: new Date("2026-03-08T12:00:00Z"),
   now: NOW,
   recordedDeadlineCount: 1,
   noDeadlineStatedAttested: false,
@@ -54,6 +57,10 @@ describe("checkAuditSignOff (preparer is not the approver)", () => {
   const ok = {
     assemblerMembershipId: "m-1",
     reviewerMembershipId: "m-2",
+    preparerMembershipIds: ["m-1", "m-3"] as readonly string[],
+    alreadySignedOff: false,
+    recordedDeadlineCount: 1,
+    noDeadlineStatedAttested: false,
     items: [{ label: "A", state: "ready" as const }],
     attachedCount: 1,
   };
@@ -66,6 +73,13 @@ describe("checkAuditSignOff (preparer is not the approver)", () => {
   it("refuses the assembler, an empty packet and an unticked item", () => {
     expect(checkAuditSignOff({ ...ok, reviewerMembershipId: "m-1" })).toBe("REVIEWER_IS_ASSEMBLER");
     expect(checkAuditSignOff({ ...ok, attachedCount: 0 })).toBe("PACKET_EMPTY");
+    // Anyone who attached a document or typed the checklist is a preparer too, and a packet is signed off once.
+    expect(checkAuditSignOff({ ...ok, reviewerMembershipId: "m-3" })).toBe("REVIEWER_IS_PREPARER");
+    expect(checkAuditSignOff({ ...ok, alreadySignedOff: true })).toBe("ALREADY_SIGNED_OFF");
+    // Deadlines freeze at sign-off, so it needs a recorded deadline or the attestation first.
+    const none = { ...ok, recordedDeadlineCount: 0 };
+    expect(checkAuditSignOff(none)).toBe("DEADLINE_OR_ATTESTATION_REQUIRED");
+    expect(checkAuditSignOff({ ...none, noDeadlineStatedAttested: true })).toBeNull();
     expect(checkAuditSignOff({ ...ok, items: [{ label: "A", state: "pending" }] })).toBe(
       "CHECKLIST_INCOMPLETE",
     );
@@ -82,6 +96,11 @@ describe("checkAuditFiling", () => {
     expect(checkAuditFiling({ ...filing, confirmationRef: "  " })).toBe("PROOF_REQUIRED");
     expect(checkAuditFiling({ ...filing, filedAt: new Date("2026-03-11T00:00:00Z") })).toBe(
       "FILED_IN_FUTURE",
+    );
+  });
+  it("cannot be sent before the packet was signed off", () => {
+    expect(checkAuditFiling({ ...filing, filedAt: new Date("2026-03-07T12:00:00Z") })).toBe(
+      "FILED_BEFORE_REVIEW",
     );
   });
   it("needs a recorded deadline or the explicit none-stated attestation", () => {
@@ -138,5 +157,40 @@ describe("the audit_response submission purpose", () => {
   it("is a purpose whose subject is the audit request", () => {
     expect(SUBMISSION_PURPOSES).toContain("audit_response");
     expect(purposeSubject("audit_response")).toBe("audit_request");
+  });
+});
+
+describe("checkReadyForReview (the move to review asks what sign-off asks, minus the reviewer)", () => {
+  it("needs a document and every typed item done", () => {
+    const ready = { items: [{ label: "A", state: "ready" as const }], attachedCount: 1 };
+    expect(checkReadyForReview(ready)).toBeNull();
+    expect(checkReadyForReview({ ...ready, attachedCount: 0 })).toBe("PACKET_EMPTY");
+    expect(checkReadyForReview({ ...ready, items: [{ label: "A", state: "pending" }] })).toBe(
+      "CHECKLIST_INCOMPLETE",
+    );
+  });
+});
+
+describe("signOffFingerprint", () => {
+  const base = {
+    claimIds: ["c2", "c1"],
+    items: [{ label: "A", state: "ready" as const }],
+    documents: [{ documentId: "d1", claimId: "c1" }],
+    deadlines: [{ id: "x", dueOn: "2026-03-20", satisfiedOn: null as string | null }],
+    noDeadlineStatedAttested: false,
+  };
+  it("is stable under ordering and moves with any signed-off fact", () => {
+    const h = signOffFingerprint(base);
+    expect(signOffFingerprint({ ...base, claimIds: ["c1", "c2"] })).toBe(h);
+    for (const changed of [
+      { claimIds: ["c1"] },
+      { items: [{ label: "A", state: "not_applicable" as const }] },
+      { documents: [{ documentId: "d2", claimId: "c1" }] },
+      { deadlines: [{ id: "x", dueOn: "2026-03-21", satisfiedOn: null }] },
+      { deadlines: [{ id: "x", dueOn: "2026-03-20", satisfiedOn: "2026-03-10" }] },
+      { noDeadlineStatedAttested: true },
+    ]) {
+      expect(signOffFingerprint({ ...base, ...changed })).not.toBe(h);
+    }
   });
 });

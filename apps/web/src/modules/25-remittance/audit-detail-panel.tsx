@@ -109,13 +109,14 @@ export function AuditDetailPanel({
   }, []);
 
   // A failed reload keeps the last good request on screen; the error shows inline (Retry only when nothing loaded yet).
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
     const res = await loadAuditRequest(client, auditId);
-    if (!mounted.current) return;
+    if (!mounted.current) return false;
     if (res.ok) {
       setAudit(res.value);
       setLoadError(null);
     } else setLoadError(res.message);
+    return res.ok;
   }, [client, auditId]);
 
   // A remounted claim picker (and a collapsed move form) drops focus to <body>: hand it to the section heading.
@@ -144,9 +145,11 @@ export function AuditDetailPanel({
     void load();
   }, [load]);
 
-  async function refresh(): Promise<void> {
-    await load();
+  /** Reload the request and tell the worklist; true when the reload succeeded (the packet panel disables on false). */
+  async function refresh(): Promise<boolean> {
+    const ok = await load();
     onChanged();
+    return ok;
   }
 
   async function addClaim(claimId: string): Promise<void> {

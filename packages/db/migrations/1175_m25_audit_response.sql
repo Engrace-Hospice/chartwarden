@@ -21,6 +21,7 @@ ALTER TABLE "audit_request"
   ADD COLUMN IF NOT EXISTS "sent_to_review_by_membership_id" uuid,
   ADD COLUMN IF NOT EXISTS "reviewed_by_membership_id" uuid,
   ADD COLUMN IF NOT EXISTS "reviewed_at" timestamptz,
+  ADD COLUMN IF NOT EXISTS "signed_off_hash" text,
   ADD COLUMN IF NOT EXISTS "deadline_none_stated_at" timestamptz,
   ADD COLUMN IF NOT EXISTS "deadline_none_stated_by_membership_id" uuid,
   ADD COLUMN IF NOT EXISTS "response_channel" text,
@@ -40,8 +41,22 @@ ALTER TABLE "audit_request" ADD CONSTRAINT "audit_request_manifest_has_filing"
   CHECK ("packet_manifest" IS NULL OR ("reviewed_by_membership_id" IS NOT NULL AND "response_channel" IS NOT NULL
     AND "response_confirmation_ref" IS NOT NULL AND btrim("response_confirmation_ref") <> '' AND "responded_at" IS NOT NULL));--> statement-breakpoint
 
+-- Preparer != approver at the database too: the sign-off needs a recorded sender and a different reviewer, and a
+-- sign-off always carries the fingerprint of what was signed off (filing refuses when the packet moved since).
+ALTER TABLE "audit_request" DROP CONSTRAINT IF EXISTS "audit_request_reviewer_not_preparer";--> statement-breakpoint
+ALTER TABLE "audit_request" ADD CONSTRAINT "audit_request_reviewer_not_preparer"
+  CHECK ("reviewed_by_membership_id" IS NULL
+    OR ("sent_to_review_by_membership_id" IS NOT NULL AND "reviewed_by_membership_id" <> "sent_to_review_by_membership_id"));--> statement-breakpoint
+ALTER TABLE "audit_request" DROP CONSTRAINT IF EXISTS "audit_request_signoff_pair";--> statement-breakpoint
+ALTER TABLE "audit_request" ADD CONSTRAINT "audit_request_signoff_pair"
+  CHECK (("reviewed_by_membership_id" IS NULL) = ("signed_off_hash" IS NULL) AND ("reviewed_by_membership_id" IS NULL) = ("reviewed_at" IS NULL));--> statement-breakpoint
+
+-- Legacy 7a-1 requests that are already in_review have NO sent_to_review_by (7a-1 did not record it). They are NOT
+-- backfilled (prod and dev data are demo data): such a request can be withdrawn, never signed off, because nobody can
+-- show who prepared it. New moves to in_review always record the sender.
+
 -- Progress columns the 7a-1 grant did not cover. Anchor columns stay out of the grant.
-GRANT UPDATE ("response_items", "sent_to_review_by_membership_id", "reviewed_by_membership_id", "reviewed_at",
+GRANT UPDATE ("response_items", "sent_to_review_by_membership_id", "reviewed_by_membership_id", "reviewed_at", "signed_off_hash",
   "deadline_none_stated_at", "deadline_none_stated_by_membership_id", "response_channel", "response_confirmation_ref",
   "response_filed_late", "packet_manifest") ON "audit_request" TO chartwarden_app;--> statement-breakpoint
 
@@ -88,7 +103,7 @@ CREATE TRIGGER "trg_audit_audit_request_document" AFTER INSERT OR UPDATE OR DELE
 -- along with the 1171 columns.
 CREATE OR REPLACE FUNCTION audit_phi_write_audit_request() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['authority_name','request_reference','scope_note','response_items','response_confirmation_ref'];
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['authority_name','request_reference','scope_note','response_items','response_confirmation_ref','packet_manifest'];
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
@@ -97,6 +112,20 @@ BEGIN
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_audit_request() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
+
+-- submission_attempt audit trigger: the packet manifest (document ids, counts) joins the scrubbed columns.
+CREATE OR REPLACE FUNCTION audit_phi_write_submission_attempt() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE v_before jsonb; v_after jsonb;
+  v_cols text[] := ARRAY['confirmation_ref','failure_reason','needs_manual_reason','destination','receipt_amendments','packet_manifest'];
+BEGIN
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
+  VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'submission_attempt.' || lower(TG_OP), 'submission_attempt', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, jsonb_build_object('provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), '')), 'compliance');
+  RETURN COALESCE(NEW, OLD);
+END $$;--> statement-breakpoint
+ALTER FUNCTION audit_phi_write_submission_attempt() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 
 -- The state-machine guard (1171) plus the 7a-2 rules:
 --   - in_review -> responded only with a frozen packet manifest (a response without its retained packet is not recorded);
@@ -125,14 +154,39 @@ BEGIN
     OR NEW.response_filed_late IS DISTINCT FROM OLD.response_filed_late
     OR NEW.responded_at IS DISTINCT FROM OLD.responded_at
     OR NEW.reviewed_by_membership_id IS DISTINCT FROM OLD.reviewed_by_membership_id
-    OR NEW.reviewed_at IS DISTINCT FROM OLD.reviewed_at
     OR NEW.response_items IS DISTINCT FROM OLD.response_items) THEN
     RAISE EXCEPTION 'M25_AUDIT_FILING_IMMUTABLE: audit_request % has been filed; the filing record cannot change', OLD.id;
+  END IF;
+  IF OLD.reviewed_by_membership_id IS NOT NULL AND (
+       NEW.reviewed_by_membership_id IS DISTINCT FROM OLD.reviewed_by_membership_id
+    OR NEW.reviewed_at IS DISTINCT FROM OLD.reviewed_at
+    OR NEW.signed_off_hash IS DISTINCT FROM OLD.signed_off_hash) THEN
+    RAISE EXCEPTION 'M25_AUDIT_SIGNOFF_IMMUTABLE: audit_request % is already signed off', OLD.id;
   END IF;
   IF OLD.deadline_none_stated_at IS NOT NULL AND (
        NEW.deadline_none_stated_at IS DISTINCT FROM OLD.deadline_none_stated_at
     OR NEW.deadline_none_stated_by_membership_id IS DISTINCT FROM OLD.deadline_none_stated_by_membership_id) THEN
     RAISE EXCEPTION 'M25_AUDIT_ATTESTATION_IMMUTABLE: audit_request % already carries the none-stated attestation', OLD.id;
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+
+-- The claim set freezes at sign-off: a finished, responded or signed-off request takes no claim and loses none (a
+-- sign-off covers exactly the claims it saw). Cross-tenant parents still fail closed.
+CREATE OR REPLACE FUNCTION m25_audit_request_claim_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE v_state text; v_reviewed uuid;
+BEGIN
+  SELECT state, reviewed_by_membership_id INTO v_state, v_reviewed FROM audit_request
+   WHERE id = NEW.audit_request_id AND organization_id = NEW.organization_id;
+  IF v_state IS NULL THEN
+    RAISE EXCEPTION 'M25_AUDIT_CLAIM_PARENT: audit_request % is not visible to this organization', NEW.audit_request_id;
+  END IF;
+  IF v_state IN ('withdrawn','closed','responded') THEN
+    RAISE EXCEPTION 'M25_AUDIT_FROZEN: audit_request % is % and its claims cannot change', NEW.audit_request_id, v_state;
+  END IF;
+  IF v_reviewed IS NOT NULL THEN
+    RAISE EXCEPTION 'M25_AUDIT_SIGNED_OFF: audit_request % is signed off and its claims cannot change', NEW.audit_request_id;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
@@ -153,6 +207,13 @@ BEGIN
   END IF;
   IF v_state IN ('withdrawn','closed') THEN
     RAISE EXCEPTION 'M25_AUDIT_FROZEN: audit_request % is % and its documents cannot change', NEW.audit_request_id, v_state;
+  END IF;
+  -- A document hangs under a LIVE claim of the request. (A composite FK to audit_request_claim cannot express this:
+  -- a claim is soft-removed and may be re-added, so (audit_request_id, claim_id) is not unique there.)
+  IF TG_OP = 'INSERT' AND NOT EXISTS (
+       SELECT 1 FROM audit_request_claim c
+        WHERE c.audit_request_id = NEW.audit_request_id AND c.claim_id = NEW.claim_id AND c.removed_at IS NULL) THEN
+    RAISE EXCEPTION 'M25_AUDIT_DOCUMENT_CLAIM: claim % is not a live claim of audit_request %', NEW.claim_id, NEW.audit_request_id;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint

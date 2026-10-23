@@ -152,6 +152,13 @@ const DEADLINE_MESSAGES: Readonly<Record<RecordedDeadlineRefusal, string>> = {
   SOURCE_NOTE_TOO_LONG: "the source note is too long",
 };
 
+const signedOffFrozen = () =>
+  new ChartWardenError(
+    "DEADLINE_SUBJECT_SIGNED_OFF",
+    "the packet is signed off, so its deadlines can no longer change",
+    409,
+  );
+
 const subjectFinished = () =>
   new ChartWardenError(
     "DEADLINE_SUBJECT_FINISHED",
@@ -205,6 +212,8 @@ export function buildDrizzleLaterTierService(
       return {
         providerEntityId: a.providerEntityId,
         finished: a.state === "closed" || a.state === "withdrawn",
+        signedOff: false,
+        state: a.state,
         claimId: a.claimId as string | null,
         claimIds: [a.claimId] as readonly string[],
       };
@@ -229,6 +238,9 @@ export function buildDrizzleLaterTierService(
     return {
       providerEntityId: rows[0].providerEntityId,
       finished: rows[0].state === "closed" || rows[0].state === "withdrawn",
+      // An audit packet's sign-off covers the deadlines it saw (see audit-response-service's fingerprint).
+      signedOff: rows[0].reviewedAt !== null,
+      state: rows[0].state,
       claimId: live.length === 1 ? (live[0]?.claimId ?? null) : null,
       claimIds: live.map((l) => l.claimId) as readonly string[],
     };
@@ -423,6 +435,7 @@ export function buildDrizzleLaterTierService(
       return withOrgContext(db, actor, async (tx) => {
         const s = await loadSubject(tx, actor, subject);
         if (s.finished) throw subjectFinished();
+        if (s.signedOff) throw signedOffFrozen();
         await checkNoticeDocument(
           actor.organizationId,
           subject,
@@ -455,6 +468,7 @@ export function buildDrizzleLaterTierService(
       return withOrgContext(db, actor, async (tx) => {
         const s = await loadSubject(tx, actor, subject);
         if (s.finished) throw subjectFinished();
+        if (s.signedOff) throw signedOffFrozen();
         const cur = await loadDeadline(tx, subject, deadlineId);
         if (cur.satisfiedOn !== null) {
           throw new ChartWardenError(
@@ -515,6 +529,8 @@ export function buildDrizzleLaterTierService(
       return withOrgContext(db, actor, async (tx) => {
         const s = await loadSubject(tx, actor, subject);
         if (s.finished) throw subjectFinished();
+        // Satisfying is history once the response is filed; between sign-off and filing it would void the sign-off.
+        if (s.signedOff && s.state === "in_review") throw signedOffFrozen();
         const cur = await loadDeadline(tx, subject, deadlineId);
         if (cur.satisfiedOn !== null) {
           throw new ChartWardenError(

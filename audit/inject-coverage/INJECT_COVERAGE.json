@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1732,
     "coveredRoutes": 1732,
-    "directRoutesReferenced": 1600
+    "directRoutesReferenced": 1602
   },
   "modules": [
     {
@@ -179,7 +179,7 @@
         "apps/backend/__tests__/m8-chart-promotion.test.ts",
         "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts"
       ],
-      "directRoutesReferenced": 35
+      "directRoutesReferenced": 37
     },
     {
       "module": "09-assessments",
