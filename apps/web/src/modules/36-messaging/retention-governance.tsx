@@ -9,7 +9,7 @@ import type {
   RetentionOverviewDto,
 } from "@chartwarden/types";
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { useSession } from "../../shell/session";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
@@ -22,64 +22,14 @@ import {
   readResume,
   releaseDraftKey,
 } from "./legal-hold-drafts";
+import { REDACTION_ACTIONS, readRedactionResume } from "./redaction-drafts";
+import { TAB_REDACTIONS } from "./redaction-wording";
+import { RedactionsPanel } from "./redactions-panel";
+import { LoadGate, formatTime } from "./retention-load-gate";
 import * as W from "./retention-wording";
-import {
-  type LoadView,
-  useLegalHoldActions,
-  useLegalHolds,
-  useRetentionOverview,
-} from "./use-retention";
+import { useLegalHoldActions, useLegalHolds, useRetentionOverview } from "./use-retention";
 import { UUID_RE } from "./uuid";
 import "./retention.css";
-
-const formatTime = (iso: string): string => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-};
-
-function RetryAlert({ retry }: { readonly retry: () => void }): JSX.Element {
-  return (
-    <div className="wx-retention-error" role="alert">
-      <p>{W.LOAD_FAILED}</p>
-      <Button type="button" tone="secondary" size="sm" onClick={retry}>
-        {W.RETRY_LABEL}
-      </Button>
-    </div>
-  );
-}
-
-function LoadGate<T>({
-  view,
-  retry,
-  refreshFailed = false,
-  children,
-}: {
-  readonly view: LoadView<T>;
-  readonly retry: () => void;
-  /** A reload failed but the last good data is still shown: say so inline, never replace the data. */
-  readonly refreshFailed?: boolean;
-  readonly children: (data: T) => JSX.Element;
-}): JSX.Element {
-  switch (view.status) {
-    case "loading":
-      return <LoadingSpinner />;
-    case "error":
-      return <RetryAlert retry={retry} />;
-    case "denied":
-      return (
-        <p className="wx-retention-error" role="alert">
-          {view.code === 401 ? W.SIGN_IN : W.DENIED}
-        </p>
-      );
-    case "ready":
-      return (
-        <>
-          {refreshFailed ? <RetryAlert retry={retry} /> : null}
-          {children(view.data)}
-        </>
-      );
-  }
-}
 
 function ClassRow({
   row,
@@ -303,17 +253,25 @@ function RetentionTab(): JSX.Element {
 const TABS = [
   { id: "retention", label: W.TAB_RETENTION },
   { id: "holds", label: W.TAB_HOLDS },
+  { id: "redactions", label: TAB_REDACTIONS },
 ] as const;
+const RESUME_ACTIONS: readonly string[] = [...HOLD_ACTIONS, ...REDACTION_ACTIONS];
 type TabId = (typeof TABS)[number]["id"];
 
 export function RetentionGovernance(): JSX.Element {
   // Back from the step-up page with a stashed place/release: land on the Legal holds tab, where that dialog reopens.
   // A draft left by an abandoned step-up is discarded, never reopened.
   const owner = useStepUpOwner();
-  const returning = useStepUpReturn(owner, HOLD_ACTIONS);
+  const returning = useStepUpReturn(owner, RESUME_ACTIONS);
   const [resume] = useState<HoldResume>(() => (returning ? readResume(owner) : NO_RESUME));
+  const [redactionResume, setRedactionResume] = useState(() => (returning ? readRedactionResume(owner) : null));
+  const consumeRedactionResume = useCallback(() => setRedactionResume(null), []);
   const [tab, setTab] = useState<TabId>(() =>
-    resume.create !== null || resume.release !== null ? "holds" : "retention",
+    redactionResume !== null
+      ? "redactions"
+      : resume.create !== null || resume.release !== null
+        ? "holds"
+        : "retention",
   );
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
     const here = TABS.findIndex((t) => t.id === tab);
@@ -365,7 +323,13 @@ export function RetentionGovernance(): JSX.Element {
           tabIndex={0}
           className="wx-retention-panel"
         >
-          {tab === "retention" ? <RetentionTab /> : <HoldsPanel resume={resume} />}
+          {tab === "retention" ? (
+            <RetentionTab />
+          ) : tab === "holds" ? (
+            <HoldsPanel resume={resume} />
+          ) : (
+            <RedactionsPanel resume={redactionResume} onResumeConsumed={consumeRedactionResume} />
+          )}
         </div>
       </section>
     </>

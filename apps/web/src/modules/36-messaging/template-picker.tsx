@@ -5,6 +5,9 @@
 import { Glyph } from "@chartwarden/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FocusEvent, JSX, KeyboardEvent, RefObject } from "react";
+import { type Locale, translate } from "./i18n/catalog";
+import { pickTemplateText } from "./i18n/template-translations";
+import { EnTag, Txt, currentLocale } from "./i18n/use-messaging-locale";
 import { CATEGORY_LABEL, SCOPE_LABEL, type SavedReply } from "./saved-replies-types";
 import { useSavedReplies } from "./use-saved-replies";
 import "./saved-replies.css";
@@ -21,15 +24,21 @@ export interface TemplatePickerProps {
   readonly onOpened?: () => void;
   /** The toggle button, so the SBAR form can hand focus back to it. */
   readonly toggleRef?: RefObject<HTMLButtonElement>;
+  /** WP 6.4: override the resolved locale (tests); default is the user preference, then the browser. */
+  readonly locale?: Locale;
 }
 
-export function matchesQuery(reply: SavedReply, query: string): boolean {
+export function matchesQuery(
+  reply: SavedReply,
+  query: string,
+  locale: Locale = "en",
+  translations?: Parameters<typeof pickTemplateText>[2],
+): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return (
-    reply.title.toLowerCase().includes(needle) ||
-    reply.body.toLowerCase().includes(needle) ||
-    CATEGORY_LABEL[reply.category].toLowerCase().includes(needle)
+  const shown = pickTemplateText(reply, locale, translations); // what the user reads, not only the English source
+  return [reply.title, reply.body, shown.title, shown.body, CATEGORY_LABEL[reply.category]].some(
+    (text) => text.toLowerCase().includes(needle),
   );
 }
 
@@ -47,8 +56,13 @@ export function TemplatePicker({
   onChooseSbar,
   onOpened,
   toggleRef,
+  locale: localeProp,
 }: TemplatePickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [detected] = useState(currentLocale);
+  const locale = localeProp ?? detected;
+  const tr = (key: Parameters<typeof translate>[1]): string => translate(locale, key).text;
+  const trLang = (key: Parameters<typeof translate>[1]): string => translate(locale, key).lang;
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const replies = useSavedReplies(open);
@@ -58,8 +72,8 @@ export function TemplatePicker({
   const popoverId = useId();
 
   const visible = useMemo(
-    () => replies.items.filter((reply) => matchesQuery(reply, query)),
-    [replies.items, query],
+    () => replies.items.filter((reply) => matchesQuery(reply, query, locale)),
+    [replies.items, query, locale],
   );
   // The SBAR item is entry 0 while it is offered and matches the search; replies follow.
   const sbarShown = Boolean(onChooseSbar) && matchesSbar(query);
@@ -111,7 +125,7 @@ export function TemplatePicker({
   function choose(reply: SavedReply | undefined): void {
     if (!reply) return;
     setOpen(false);
-    onInsert(reply.body);
+    onInsert(pickTemplateText(reply, locale).body);
   }
 
   function onSearchKey(event: KeyboardEvent<HTMLInputElement>): void {
@@ -146,10 +160,14 @@ export function TemplatePicker({
   const activeDescendant = sbarActive ? `${listId}-sbar` : active ? optionId(active) : undefined;
   const statusText =
     replies.status === "error"
-      ? "Saved replies could not be loaded."
+      ? tr("picker.loadFailed")
       : replies.status === "loading" && replies.items.length === 0
-        ? "Loading saved replies"
-        : `${visible.length} saved ${visible.length === 1 ? "reply" : "replies"}`;
+        ? tr("picker.loading")
+        : translate(locale, visible.length === 1 ? "picker.count.one" : "picker.count.other", {
+            n: visible.length,
+          }).text;
+  const statusLang =
+    translate(locale, "picker.count.other").lang;
 
   return (
     <div className="wx-template-picker" ref={rootRef} onBlur={onPickerBlur}>
@@ -163,7 +181,7 @@ export function TemplatePicker({
         disabled={disabled}
         onClick={() => (open ? closePicker() : openPicker())}
       >
-        <Glyph name="scroll" size={16} /> <span>Saved replies</span>
+        <Glyph name="scroll" size={16} /> <Txt k="picker.toggle" locale={locale} />
       </button>
       {open ? (
         <div
@@ -171,7 +189,8 @@ export function TemplatePicker({
           className="wx-template-popover"
           // biome-ignore lint/a11y/useSemanticElements: a non-modal anchored popover; <dialog> adds top-layer and backdrop semantics
           role="dialog"
-          aria-label="Saved replies"
+          aria-label={tr("picker.toggle")}
+          lang={trLang("picker.toggle")}
           onKeyDown={onPopoverKey}
         >
           <input
@@ -179,12 +198,13 @@ export function TemplatePicker({
             className="wx-template-search"
             type="text"
             role="combobox"
-            aria-label="Search saved replies"
+            lang={trLang("picker.search")}
+            aria-label={tr("picker.search")}
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={activeDescendant}
-            placeholder="Search saved replies"
+            placeholder={tr("picker.search")}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -192,12 +212,12 @@ export function TemplatePicker({
             }}
             onKeyDown={onSearchKey}
           />
-          <output className="wx-template-status" aria-live="polite">
+          <output className="wx-template-status" aria-live="polite" lang={statusLang}>
             {statusText}
           </output>
           {replies.status === "error" ? (
             <button type="button" className="wx-template-retry" onClick={replies.reload}>
-              Try again
+              <Txt k="picker.retry" locale={locale} />
             </button>
           ) : null}
           {/* biome-ignore lint/a11y/useFocusableInteractive: focus stays in the search box; arrow keys drive the active option (combobox pattern) */}
@@ -206,7 +226,8 @@ export function TemplatePicker({
             id={listId}
             // biome-ignore lint/a11y/useSemanticElements: a native select cannot render the title, scope and preview of each reply
             role="listbox"
-            aria-label="Saved replies"
+            lang={trLang("picker.toggle")}
+            aria-label={tr("picker.toggle")}
           >
             {sbarShown ? (
               <button
@@ -224,7 +245,9 @@ export function TemplatePicker({
                 <span>{SBAR_DESCRIPTION}</span>
               </button>
             ) : null}
-            {visible.map((reply) => (
+            {visible.map((reply) => {
+              const text = pickTemplateText(reply, locale);
+              return (
               <button
                 key={reply.id}
                 id={optionId(reply)}
@@ -240,19 +263,21 @@ export function TemplatePicker({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => choose(reply)}
               >
-                <strong>{reply.title}</strong>
+                <strong lang={text.lang}>
+                  {text.title}
+                  {text.fallback ? <EnTag /> : null}
+                </strong>
                 <small>
                   {SCOPE_LABEL[reply.scope]} · {CATEGORY_LABEL[reply.category]}
                 </small>
-                <span>{reply.body}</span>
+                <span lang={text.lang}>{text.body}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
           {replies.status === "ready" && visible.length === 0 ? (
             <p className="wx-template-empty">
-              {query.trim()
-                ? "No saved reply matches that search."
-                : "No saved replies yet. Add some on the Saved replies page."}
+              <Txt k={query.trim() ? "picker.noMatch" : "picker.none"} locale={locale} />
             </p>
           ) : null}
         </div>

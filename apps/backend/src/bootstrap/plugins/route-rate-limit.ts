@@ -39,6 +39,14 @@ export const M14_PACKET_BUILD_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/** M36 `GET /messaging/analytics/response` (ADR-0092): a modest cap, 12/min/user and 60/min/org. Fail-open: it is not the privacy control (see D6). */
+export const ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 12,
+  perOrg: 60,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 export interface RouteRateLimitOptions {
   readonly store: RateLimitStore;
   readonly limit: RouteRateLimit;

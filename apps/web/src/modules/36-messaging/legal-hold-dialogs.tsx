@@ -27,7 +27,7 @@ const splitIds = (text: string): string[] =>
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-function useStepUpNavigation(): (error: unknown) => boolean {
+export function useStepUpNavigation(): (error: unknown) => boolean {
   const navigate = useNavigate();
   const location = useLocation();
   return useCallback(
@@ -55,7 +55,7 @@ const EMPTY_DRAFT: CreateDraft = {
 };
 
 /** True while mounted: an answer that lands after the dialog is gone must not navigate, announce or clear a draft. */
-function useAlive(): { readonly current: boolean } {
+export function useAlive(): { readonly current: boolean } {
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;

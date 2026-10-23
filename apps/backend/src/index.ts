@@ -72,6 +72,8 @@ import {
   ChartWardenError,
   DegradedError,
   type Npi,
+  REDACTION_SINGLE_OFFICER_FLAG_KEY,
+  RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY,
   RETENTION_DESTRUCTION_EXECUTE_ENV,
   RETENTION_DESTRUCTION_FLAG_KEY,
   retentionDestructionModeOf,
@@ -291,12 +293,14 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@chartwarden/terminology-loader";
+import { buildActivePermissionHolderCounter } from "./bootstrap/active-permission-holders";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
 } from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
+  ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
@@ -1467,6 +1471,7 @@ import {
 } from "./modules/35-subscription/index";
 import { createDeliveryRouteReader } from "./modules/36-messaging/ack-delivery-failure/delivery-route-reader-db";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
+import { createResponseAnalyticsReader } from "./modules/36-messaging/analytics/response-analytics-reader";
 import {
   invalidateMessageBodyKeys,
   setMessageBodyKeyProvider,
@@ -1556,6 +1561,7 @@ import {
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
 import { countHoldOverlayMessages } from "./modules/36-messaging/jobs/retention-hold-sql";
+import { objectBearingMessagesCountable } from "./modules/36-messaging/jobs/retention-scan";
 import { createMentionActorNameResolver } from "./modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
@@ -1806,6 +1812,11 @@ export function wireModuleSeams(
             ...(deps.messageBodyCipher ? { cipher: deps.messageBodyCipher } : {}),
           }),
           ...(deps.promotionSource ? { promotionSource: deps.promotionSource } : {}),
+          // WP 6.2 (ADR-0092): aggregate response analytics for M33's route; the tenant flag is read per call.
+          responseAnalytics: createResponseAnalyticsReader({
+            db: deps.db,
+            flags: createDrizzleFeatureFlagReader(deps.db),
+          }),
         }
       : {},
   );
@@ -5130,6 +5141,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               auditQuery: createDbAuditQuery(dbHandle.db),
               // "placed by" / redaction people: M2's by-id directory reader (M36 reads no identity table).
               staffNames: readStaffNames,
+              // The single-officer redaction fallback (PROVISIONAL, off per tenant): the tenant flag and M3's count of people who can approve.
+              redactionFallback: {
+                enabled: async (organizationId: string) =>
+                  (await featureFlagReader?.forOrg(organizationId))?.[
+                    REDACTION_SINGLE_OFFICER_FLAG_KEY
+                  ] === true,
+                eligibleApprovers: buildActivePermissionHolderCounter(
+                  createMembershipsHoldingPermissionReader(dbHandle.db),
+                ),
+              },
               // The destruction executor's mode for the screen: the tenant ops flag, then the deployment's execute switch.
               destructionMode: async (organizationId) =>
                 m36RetentionDestructionWired
@@ -5198,6 +5219,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36SnoozeReminders
               ? { snoozeReminders: { service: m36SnoozeReminders.service } }
               : {}),
+            // WP 6.1 (ADR-0091) - smart work inbox (read-only); off unless the tenant flag `messaging.smart_inbox` is on.
+            smartInbox: { flags: featureFlagReader },
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
@@ -5348,6 +5371,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               db: dbHandle.db,
               enqueue: m33ReadEnqueue.enqueue,
             }).service,
+            {
+              // ADR-0092: modest per-route cap on the response-analytics read (not the privacy control; see D6).
+              analyticsRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
+                keyPrefix: "m36-analytics",
+              }),
+            },
           );
           // M33 — bind the catalog-validating tx outbox publisher (callerModule `m33`) so the §4.10
           // `m33.report_definition.published` / `report_view.shared_org` / `report_schedule.created`
@@ -9543,6 +9574,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
         messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
+        // Counted toward a certificate only when the executor will destroy the objects: both flags on AND the executor wired.
+        attachmentObjectsEnabled: async (organizationId: string) => {
+          const flags = await featureFlagReader?.forOrg(organizationId);
+          return objectBearingMessagesCountable({
+            destructionEnabled: flags?.[RETENTION_DESTRUCTION_FLAG_KEY] === true,
+            attachmentDestructionEnabled: flags?.[RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY] === true,
+            executorWired: destructionDbHandle !== undefined && destructionDbHandle !== null,
+          });
+        },
         // WP 5.6 (ADR-0086): the message destruction executor, after the weekly scan. Needs the destruction credential; off per tenant unless
         // `messaging.retention_destruction` is on, and a DRY RUN unless M36_RETENTION_DESTRUCTION_EXECUTE=true.
         ...(destructionDbHandle
@@ -9570,6 +9610,25 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     RETENTION_DESTRUCTION_FLAG_KEY
                   ] === true,
                 execute: process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true",
+                // The attachment-object step reuses the reaper's deadline-bound destroy and the destruction credential's stamp.
+                attachmentObjects: {
+                  isEnabled: async (organizationId: string) =>
+                    (await featureFlagReader?.forOrg(organizationId))?.[
+                      RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY
+                    ] === true,
+                  destroyObjectsForMessages: createAttachmentService({
+                    db: dbHandle.db,
+                    storage: m36AttachmentBinding.storage,
+                    scanner: m36AttachmentBinding.scanner,
+                    canViewChannel: async () => false,
+                    reaperDb: destructionDbHandle.db,
+                    onReapError: (context, err) =>
+                      app.log.warn(
+                        { ...context, reason: err instanceof Error ? err.message : "unknown" },
+                        "M36 retention attachment-object destroy deferred (row and object kept)",
+                      ),
+                  }).destroyObjectsForMessages,
+                },
               },
             }
           : {}),

@@ -31,7 +31,14 @@ export const messageRedactions = pgTable(
     reason: text("reason").notNull(),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     approvedBy: uuid("approved_by").references(() => users.id),
+    // approved_at = FINAL (the mask applies from here). Migration 1165 (single-officer fallback, PROVISIONAL): a requester may approve their own
+    // request when they are the tenant's only eligible officer; that sets self_approved_at and a 72 h deadline, masks nothing, and becomes
+    // final only when a second role countersigns (then approved_by = requested_by and countersigned_by/at are set).
     approvedAt: timestamp("approved_at", { withTimezone: true }),
+    selfApprovedAt: timestamp("self_approved_at", { withTimezone: true }),
+    countersignDeadlineAt: timestamp("countersign_deadline_at", { withTimezone: true }),
+    countersignedBy: uuid("countersigned_by").references(() => users.id),
+    countersignedAt: timestamp("countersigned_at", { withTimezone: true }),
   },
   (t) => ({
     messageFk: foreignKey({
@@ -58,8 +65,31 @@ export const messageRedactions = pgTable(
     ),
     twoPeople: check(
       "message_redaction_two_people",
-      sql`${t.approvedBy} IS NULL OR ${t.approvedBy} <> ${t.requestedBy}`,
+      sql`${t.approvedBy} IS NULL OR ${t.approvedBy} <> ${t.requestedBy} OR ${t.selfApprovedAt} IS NOT NULL`,
     ),
+    selfApprovalPair: check(
+      "message_redaction_self_approval_pair",
+      sql`(${t.selfApprovedAt} IS NULL) = (${t.countersignDeadlineAt} IS NULL)`,
+    ),
+    countersignPair: check(
+      "message_redaction_countersign_pair",
+      sql`(${t.countersignedBy} IS NULL) = (${t.countersignedAt} IS NULL)`,
+    ),
+    countersignNeedsSelfApproval: check(
+      "message_redaction_countersign_needs_self_approval",
+      sql`${t.countersignedBy} IS NULL OR ${t.selfApprovedAt} IS NOT NULL`,
+    ),
+    countersignerIsAnother: check(
+      "message_redaction_countersigner_is_another",
+      sql`${t.countersignedBy} IS NULL OR ${t.countersignedBy} <> ${t.requestedBy}`,
+    ),
+    selfFinalNeedsCountersign: check(
+      "message_redaction_self_final_needs_countersign",
+      sql`${t.approvedBy} IS NULL OR ${t.approvedBy} <> ${t.requestedBy} OR ${t.countersignedBy} IS NOT NULL`,
+    ),
+    byCountersignedBy: index("message_redaction_countersigned_by_idx")
+      .on(t.countersignedBy)
+      .where(sql`${t.countersignedBy} IS NOT NULL`),
   }),
 );
 

@@ -3,6 +3,9 @@
 //   POST /api/v1/messaging/governance/redactions                 request (messaging.redact.request; message_id + reason >= 10)
 //   GET  /api/v1/messaging/governance/redactions                 list (either permission)
 //   POST /api/v1/messaging/governance/redactions/:id/approve     approve (messaging.redact.approve + fresh step-up; never the requester)
+//   POST /api/v1/messaging/governance/redactions/:id/self-approve   single-officer fallback (PROVISIONAL, off by default per tenant): the sole
+//                                                                 eligible officer approves their own request; masks nothing yet
+//   POST /api/v1/messaging/governance/redactions/:id/countersign   a SECOND role (messaging.redact.countersign + fresh step-up) makes it final within 72 h
 //
 // A redaction masks the message for every reader once approved and never destroys the cipher, so an active legal hold does not block it.
 // Org, officer and session are the server-side request context; an unknown or another tenant's message or redaction is the same 404. The
@@ -11,7 +14,10 @@ import { requirePermission, requireStepUp, resolveActorPermissions } from "@char
 import {
   ForbiddenError,
   MESSAGE_REDACT_APPROVE_STEP_UP_KEY,
+  MESSAGE_REDACT_COUNTERSIGN_STEP_UP_KEY,
+  MESSAGE_REDACT_SELF_APPROVE_STEP_UP_KEY,
   MESSAGING_REDACT_APPROVE_PERMISSION,
+  MESSAGING_REDACT_COUNTERSIGN_PERMISSION,
   MESSAGING_REDACT_REQUEST_PERMISSION,
   UnauthorizedError,
 } from "@chartwarden/types";
@@ -31,18 +37,22 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 const REQUEST = requirePermission(MESSAGING_REDACT_REQUEST_PERMISSION) as PreHandler;
 const APPROVE = requirePermission(MESSAGING_REDACT_APPROVE_PERMISSION) as PreHandler;
 const APPROVE_STEP_UP = requireStepUp(MESSAGE_REDACT_APPROVE_STEP_UP_KEY) as PreHandler;
+const SELF_APPROVE_STEP_UP = requireStepUp(MESSAGE_REDACT_SELF_APPROVE_STEP_UP_KEY) as PreHandler;
+const COUNTERSIGN = requirePermission(MESSAGING_REDACT_COUNTERSIGN_PERMISSION) as PreHandler;
+const COUNTERSIGN_STEP_UP = requireStepUp(MESSAGE_REDACT_COUNTERSIGN_STEP_UP_KEY) as PreHandler;
 
-/** Either permission may read the list (a requester follows their own request; an approver works the queue). */
+/** Any of the three permissions may read the list (a requester follows their own request; an approver works the queue; a countersigner finds what awaits them). */
 const EITHER: PreHandler = async (request) => {
   const ctx = request.context;
   if (!ctx?.organizationId) throw new UnauthorizedError();
   const granted = await resolveActorPermissions(ctx);
   if (
     !granted.has(MESSAGING_REDACT_REQUEST_PERMISSION) &&
-    !granted.has(MESSAGING_REDACT_APPROVE_PERMISSION)
+    !granted.has(MESSAGING_REDACT_APPROVE_PERMISSION) &&
+    !granted.has(MESSAGING_REDACT_COUNTERSIGN_PERMISSION)
   ) {
     throw new ForbiddenError(
-      `requires permission '${MESSAGING_REDACT_REQUEST_PERMISSION}' or '${MESSAGING_REDACT_APPROVE_PERMISSION}'`,
+      `requires permission '${MESSAGING_REDACT_REQUEST_PERMISSION}', '${MESSAGING_REDACT_APPROVE_PERMISSION}' or '${MESSAGING_REDACT_COUNTERSIGN_PERMISSION}'`,
     );
   }
 };
@@ -107,6 +117,30 @@ export function registerMessageRedactionRoutes(
     async (request, reply) => {
       const { id } = parse(RedactionParamsSchema, request.params);
       return noStore(reply).send(await service.approve(actorOf(request), id));
+    },
+  );
+
+  app.post(
+    "/api/v1/messaging/governance/redactions/:id/self-approve",
+    {
+      preHandler: [APPROVE, SELF_APPROVE_STEP_UP],
+      schema: { response: { 200: RedactionResponseSchema } },
+    },
+    async (request, reply) => {
+      const { id } = parse(RedactionParamsSchema, request.params);
+      return noStore(reply).send(await service.selfApprove(actorOf(request), id));
+    },
+  );
+
+  app.post(
+    "/api/v1/messaging/governance/redactions/:id/countersign",
+    {
+      preHandler: [COUNTERSIGN, COUNTERSIGN_STEP_UP],
+      schema: { response: { 200: RedactionResponseSchema } },
+    },
+    async (request, reply) => {
+      const { id } = parse(RedactionParamsSchema, request.params);
+      return noStore(reply).send(await service.countersign(actorOf(request), id));
     },
   );
 }

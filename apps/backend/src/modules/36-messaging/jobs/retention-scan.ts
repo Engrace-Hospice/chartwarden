@@ -42,6 +42,12 @@ export interface RetentionScanDeps {
   readonly newRunId?: () => string;
   /** Overlay statements per hold per run. Defaults to {@link MATERIALISE_MAX_BATCHES_PER_HOLD}; 0 simulates a lagging materialiser (tests). */
   readonly materialiseMaxBatches?: number;
+  /**
+   * WP 5.6: true when the tenant has `messaging.retention_attachment_destruction` on. Then a message whose attachment objects are still
+   * stored counts toward the certificate's approved figure (the executor destroys the objects before deleting it). Absent = off = such
+   * messages are not counted (they are kept). Never read inside the scan's transaction.
+   */
+  readonly attachmentObjectsEnabled?: (organizationId: string) => Promise<boolean>;
 }
 
 export interface RetentionScanRunResult {
@@ -138,6 +144,19 @@ export async function materialiseHold(
   return inserted;
 }
 
+/**
+ * May the scan count object-bearing messages toward a certificate? Only when the executor will really destroy their objects: both the
+ * destruction flag and the attachment-destruction flag are on AND the executor is wired (destruction credential + attachmentObjects).
+ * Otherwise the executor would refuse them and the certificate's approved count could never be spent.
+ */
+export function objectBearingMessagesCountable(a: {
+  readonly destructionEnabled: boolean;
+  readonly attachmentDestructionEnabled: boolean;
+  readonly executorWired: boolean;
+}): boolean {
+  return a.destructionEnabled && a.attachmentDestructionEnabled && a.executorWired;
+}
+
 const zeroByClass = (): Record<MessageRetentionClass, number> => ({
   care_related: 0,
   bereavement: 0,
@@ -151,6 +170,10 @@ export async function runRetentionScanForOrg(
 ): Promise<RetentionScanRunResult> {
   const runId = (deps.newRunId ?? randomUUID)();
   const now = (deps.now ?? (() => new Date()))();
+  const objectsOn = deps.attachmentObjectsEnabled
+    ? await deps.attachmentObjectsEnabled(orgId)
+    : false;
+  const pendingObjectClause = objectsOn ? sql`TRUE` : sql`NOT ${HAS_PENDING_OBJECT}`;
   return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
     const tx = txRaw as unknown as DbClient;
     const holds = await deps.messageHolds.activeHolds(tx, orgId);
@@ -165,7 +188,7 @@ export async function runRetentionScanForOrg(
 
     const heldNow = sql`(${overlayHeldPredicate(holds)} OR ${anyHoldPredicate(holds)})`;
     const eligibleByClass = zeroByClass();
-    // The EXACT number the destruction executor could remove for a class (held, object-bearing and still-referenced rows excluded; NOT capped
+    // The EXACT number the destruction executor could remove for a class (held and still-referenced rows excluded, and object-bearing ones unless the attachment-destruction flag is on; NOT capped
     // like the id list). It is the approver's number and the executor's ceiling: the plan list is capped at RETENTION_SCAN_BATCH_LIMIT, this is not.
     const destroyableByClass = zeroByClass();
     const heldByClass = zeroByClass();
@@ -186,7 +209,7 @@ export async function runRetentionScanForOrg(
       eligibleByClass[cls] = page.length;
       destroyableByClass[cls] = await count(
         tx,
-        sql`${base} AND NOT ${heldNow} AND NOT ${HAS_PENDING_OBJECT} AND NOT ${IS_REFERENCED}`,
+        sql`${base} AND NOT ${heldNow} AND ${pendingObjectClause} AND NOT ${IS_REFERENCED}`,
       );
       toDestroyMessageIds.push(...page.map((r) => r.id));
       if (holds.length === 0) continue;

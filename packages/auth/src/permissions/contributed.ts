@@ -366,6 +366,15 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 6.2 (ADR-0092, PROPOSED): read the AGGREGATE response analytics (ack latency, escalation rate, handoff acceptance, per-discipline
+  //     response). Aggregates only, small groups withheld; there is no individual-level key (HR/compliance review first). Migration 1170
+  //     grants it to compliance_officer, administrator and org_admin. ---
+  "messaging.analytics.read": {
+    resource: "response_analytics",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
   // --- WP 5.6 (ADR-0086, PROPOSED): apply and release a legal hold on messages and read the retention view (compliance officer). Apply and
   //     release each demand a fresh step-up and a written reason; migration 1138 grants it to compliance_officer, administrator and org_admin. ---
   "messaging.retention.manage": {
@@ -386,6 +395,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
   "messaging.redact.approve": {
     resource: "message_redaction",
     action: "approve",
+    category: "compliance",
+    abac: "none",
+  },
+  // WP 5.6 (ADR-0055 D9, migration 1165, PROVISIONAL): the SECOND ROLE that countersigns a sole officer's self-approved redaction within 72 h.
+  //     Org admin (through the full catalog) and the privacy officer; never the compliance officer. A fresh step-up is demanded.
+  "messaging.redact.countersign": {
+    resource: "message_redaction",
+    action: "countersign",
     category: "compliance",
     abac: "none",
   },

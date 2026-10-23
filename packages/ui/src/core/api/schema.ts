@@ -13762,6 +13762,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/analytics/response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance / operations: aggregate response analytics (messaging.analytics.read; 404 while the tenant flag messaging.response_analytics is off). Acknowledgment latency (median), share acknowledged before the deadline, escalation rate and handoff acceptance for a window of at most 92 days (default 30); from and to are snapped by the server to COMPLETED whole UTC days (from floored to its day start, to = the start of the day after its day, capped at the start of the current UTC day, so today is never served; the default is the 30 completed days before today; a window with no completed day answers insufficient_data) and the snapped values are echoed, with a breakdown by ack class or by clinical discipline (the assignee's clinical role key, never the person). AGGREGATES ONLY: no person, patient or message content in the body. A group with fewer than minCohort (provisional 5) distinct people is withheld, and the combined hidden residual must itself involve at least minCohort distinct people, else the next-smallest visible group is withheld too (suppressedGroups counts them, never names them); if that cannot be reached the breakdown is withheld (breakdownWithheld true); fewer than minCohort people in the whole organisation is status insufficient_data. Handoff figures are null under the same floor. There is no individual-level view. Not cached */
+        get: operations["getApiV1MessagingAnalyticsResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/announce": {
         parameters: {
             query?: never;
@@ -15056,7 +15073,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached */
+        /** Compliance officer: the newest redactions (messaging.redact.request, messaging.redact.approve or messaging.redact.countersign) with status (requested, awaiting_countersign, approved or lapsed), the requester, approver and countersigner ids and display names, instants and whether an active legal hold covers the message now; single_officer_fallback_available says whether the PROVISIONAL self-approve route can be used now (setting on and exactly one eligible approver). Never the message or the reason. Read-audited. Not cached */
         get: operations["getApiV1MessagingGovernanceRedactions"];
         put?: never;
         /** Compliance officer: ask for a message to be redacted (messaging.redact.request; message_id and a reason of 10 to 1000 characters, 422). No channel membership is needed and the requester never sees the body. The request already takes the message out of search and blocks edits (409 MESSAGE_REDACTED); nothing is masked until a DIFFERENT person approves. One request per message (409 REDACTION_EXISTS); an unknown or another tenant's message is 404. A legal hold does not block it: a redaction only masks, the cipher is retained. Audited by the table's trigger (the reason text is left out) */
@@ -15078,6 +15095,40 @@ export interface paths {
         put?: never;
         /** Compliance officer: approve a redaction (messaging.redact.approve + a fresh step-up for `messaging.redact.approve`, else 403 STEP_UP_REQUIRED). The approver is never the requester (403 REDACTION_SELF_APPROVAL, and the database refuses it too); 409 REDACTION_ALREADY_APPROVED; 404 unknown or another tenant's redaction. From the approval every reader of the message sees an empty body with a redactedAt instant, no attachments, links, poll or mentions, and the message is out of search and exports; the cipher and hash are untouched, so a held message stays retained under the mask */
         post: operations["postApiV1MessagingGovernanceRedactionsByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/redactions/{id}/countersign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 403 REDACTION_FALLBACK_UNAVAILABLE when the fallback has since closed (the tenant setting turned off or a second officer added: the row then needs an ordinary two-person approval); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off */
+        post: operations["postApiV1MessagingGovernanceRedactionsByIdCountersign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/redactions/{id}/self-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compliance officer, PROVISIONAL single-officer fallback (ADR-0055 D9; pending compliance sign-off): approve your OWN redaction request. Needs messaging.redact.approve and a fresh step-up for `messaging.redact.self_approve` (else 403 STEP_UP_REQUIRED), the tenant setting messaging.redaction_single_officer_fallback ON (off by default) and exactly ONE person who can approve (else 403 REDACTION_FALLBACK_UNAVAILABLE); only the requester (403 REDACTION_SELF_APPROVAL_NOT_REQUESTER); 409 REDACTION_ALREADY_APPROVED. NOT final: it masks nothing and the message stays editable-blocked and out of search until a second role countersigns within 72 hours (status awaiting_countersign, then lapsed). Audited by the row's trigger and m36.redaction.self_approved */
+        post: operations["postApiV1MessagingGovernanceRedactionsByIdSelfapprove"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15266,6 +15317,23 @@ export interface paths {
         put?: never;
         /** Open work for the chosen caseload patients (WP 3.5; messaging.send + patient.read; 404 while the flag is off). A pure READ: nothing is written or published. 1 to 50 patients, every one on the caller's caseload (else 422 HANDOFF_ITEM_INVALID). Per patient the offerable items (the patient itself, the next visit within 48 hours, pending refill requests, open symptom follow-ups, the caller's active tasks) and `unavailable_sources`: item kinds whose owning module could not be read, which are NOT included. Callbacks are not offered in this version */
         post: operations["postApiV1MessagingHandoffsPrefill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The smart work inbox (WP 6.1, ADR-0091; messaging.read): ONE read-only ranked queue of the caller's OWN waiting work: acknowledgment requests assigned to them, handoffs awaiting their answer, their active tasks, unread care-team conversations with mentions first. Ranking is a fixed rule table (band, then sub-rank, then soonest clock, then key), never a model, and every row carries the reason it ranks where it does. Urgent rows are never cut by `limit` (default 50, max 100); `band_counts` cover the whole list and `unavailable_sources` names any source that failed to read. Rows carry generic titles, ids and instants, never message text or a patient name; a request in a conversation the caller cannot open is a restricted row with no ids. 200 {enabled:false} while the tenant flag `messaging.smart_inbox` is off. Acts on nothing: every row points at the screen that owns the item. Never cached. */
+        get: operations["getApiV1MessagingInbox"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -65788,6 +65856,63 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAnalyticsResponse: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                groupBy?: "class" | "discipline";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "insufficient_data";
+                        minCohort: number;
+                    } | {
+                        /** @constant */
+                        status: "ok";
+                        from: string;
+                        to: string;
+                        minCohort: number;
+                        groupBy: "class" | "discipline";
+                        kpis: {
+                            requests: number;
+                            acknowledged: number;
+                            ackedBeforeDeadlineRate: number | null;
+                            escalationRate: number | null;
+                            medianAckSeconds: number | null;
+                            handoffsOffered: number | null;
+                            handoffsAccepted: number | null;
+                            medianHandoffAcceptSeconds: number | null;
+                        };
+                        cells: {
+                            group: string;
+                            requests: number;
+                            acknowledged: number;
+                            ackedBeforeDeadlineRate: number | null;
+                            escalationRate: number | null;
+                            medianAckSeconds: number | null;
+                        }[];
+                        suppressedGroups: number;
+                        breakdownWithheld: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingAnnounce: {
         parameters: {
             query?: never;
@@ -69968,15 +70093,20 @@ export interface operations {
                         redactions: {
                             id: string;
                             message_id: string;
-                            status: "requested" | "approved";
+                            status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                             requested_by: string;
                             requested_by_name: string | null;
                             requested_at: string;
                             approved_by: string | null;
                             approved_by_name: string | null;
                             approved_at: string | null;
+                            self_approved: boolean;
+                            countersign_deadline_at: string | null;
+                            countersigned_by: string | null;
+                            countersigned_by_name: string | null;
                             under_legal_hold: boolean;
                         }[];
+                        single_officer_fallback_available: boolean;
                     };
                 };
             };
@@ -70009,13 +70139,17 @@ export interface operations {
                     "application/json": {
                         id: string;
                         message_id: string;
-                        status: "requested" | "approved";
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
                         requested_by_name: string | null;
                         requested_at: string;
                         approved_by: string | null;
                         approved_by_name: string | null;
                         approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
                         under_legal_hold: boolean;
                     };
                 };
@@ -70044,13 +70178,95 @@ export interface operations {
                     "application/json": {
                         id: string;
                         message_id: string;
-                        status: "requested" | "approved";
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
                         requested_by_name: string | null;
                         requested_at: string;
                         approved_by: string | null;
                         approved_by_name: string | null;
                         approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
+                        under_legal_hold: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceRedactionsByIdCountersign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        message_id: string;
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
+                        requested_by: string;
+                        requested_by_name: string | null;
+                        requested_at: string;
+                        approved_by: string | null;
+                        approved_by_name: string | null;
+                        approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
+                        under_legal_hold: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceRedactionsByIdSelfapprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        message_id: string;
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
+                        requested_by: string;
+                        requested_by_name: string | null;
+                        requested_at: string;
+                        approved_by: string | null;
+                        approved_by_name: string | null;
+                        approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
                         under_legal_hold: boolean;
                     };
                 };
@@ -70712,6 +70928,60 @@ export interface operations {
                             }[];
                             unavailable_sources: ("patient" | "visit" | "refill_request" | "symptom_followup" | "task")[];
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingInbox: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        items: {
+                            key: string;
+                            band: "urgent_ack" | "handoff_awaiting" | "task_assigned" | "mention" | "care_team_unread";
+                            rank: number;
+                            title: string;
+                            reasons: {
+                                code: "ack_failed_unreachable" | "ack_overdue" | "ack_waiting" | "handoff_expires_soon" | "handoff_waiting" | "task_overdue" | "task_clinical_concern" | "task_due" | "task_open" | "mention_unread" | "care_team_unread";
+                                text: string;
+                            }[];
+                            /** Format: date-time */
+                            since: string;
+                            due_at: string | null;
+                            channel_id: string | null;
+                            target: "acknowledgment_request" | "task" | "handoff" | "conversation";
+                            target_id: string | null;
+                            restricted: boolean;
+                            count: number | null;
+                        }[];
+                        band_counts: {
+                            urgent_ack: number;
+                            handoff_awaiting: number;
+                            task_assigned: number;
+                            mention: number;
+                            care_team_unread: number;
+                        };
+                        complete: boolean;
+                        urgent_complete: boolean;
+                        unavailable_sources: ("urgent_ack" | "handoff_awaiting" | "task_assigned" | "mention" | "care_team_unread")[];
                     };
                 };
             };

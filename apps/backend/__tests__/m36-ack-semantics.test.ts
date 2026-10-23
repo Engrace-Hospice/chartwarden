@@ -120,6 +120,22 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 5.9 (ADR-0084) the offboarding checklist's words: requests waiting on a departed person; nothing is acknowledged here",
   "apps/web/src/modules/36-messaging/offboarding-workflow.tsx":
     "WP 5.9 (ADR-0084) the offboarding checklist: it links an unmoved request to the supervisors' queue and acknowledges nothing",
+  "apps/backend/src/modules/36-messaging/routes/inbox-routes.ts":
+    "WP 6.1 (ADR-0091) the read-only smart work inbox route: it lists the caller's waiting acknowledgment requests and acknowledges nothing",
+  "apps/backend/src/modules/36-messaging/routes/inbox-typebox.ts":
+    "WP 6.1 (ADR-0091) the smart work inbox response schema: names the acknowledgment-request band and target; no receipt is labelled",
+  "apps/web/src/modules/36-messaging/smart-inbox.tsx":
+    "WP 6.1 (ADR-0091) the work inbox screen: it shows the urgent acknowledgment band and has no acknowledge control",
+  "apps/web/src/modules/36-messaging/smart-inbox-wording.ts":
+    "WP 6.1 (ADR-0091) the work inbox wording for the urgent acknowledgment band; nothing is acknowledged here",
+  "apps/backend/src/modules/36-messaging/analytics/response-analytics-reader.ts":
+    "WP 6.2 (ADR-0092) response analytics: aggregate figures ABOUT acknowledgments (counts, medians, rates); it reads and reports, and acknowledges nothing",
+  "apps/web/src/modules/36-messaging/response-analytics-wording.ts":
+    "WP 6.2 (ADR-0092) response analytics: aggregate figures ABOUT acknowledgments (counts, medians, rates); it reads and reports, and acknowledges nothing",
+  "apps/web/src/modules/36-messaging/response-analytics.tsx":
+    "WP 6.2 (ADR-0092) response analytics: aggregate figures ABOUT acknowledgments (counts, medians, rates); it reads and reports, and acknowledges nothing",
+  "apps/web/src/modules/36-messaging/redaction-dialogs.tsx":
+    "WP 5.6 (ADR-0086) the sole-officer redaction dialog: the 'acknowledgement' is the officer ticking that they accept the provisional-fallback warning, not an acknowledgment request or a receipt",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };
@@ -143,6 +159,8 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
     "WP 4.12 (ADR-0080) the read-only on-call directory: it imports the escalation router guard from the ack-escalation directory and never writes or labels an acknowledgment",
   "apps/backend/src/modules/36-messaging/ack-escalation/":
     "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
+  "apps/backend/src/modules/36-messaging/inbox/":
+    "WP 6.1 (ADR-0091) the read-only smart work inbox: it ranks the caller's own waiting acknowledgment requests among other work and writes or labels no acknowledgment",
   "apps/backend/src/modules/36-messaging/offboarding/":
     "WP 5.9 (ADR-0084) workforce offboarding: it moves the waiting acknowledgment requests of a departed person through the supervisor reassign and counts the acknowledged ones; it acknowledges nothing and labels no receipt",
 };

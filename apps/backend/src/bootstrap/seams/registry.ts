@@ -13,7 +13,10 @@
 // check-fitness-gaps.ts (seam-registry sub-check) scans it: the `REQUIRED_SEAMS = [...]`
 // literal and registerSeam/getSeam are the tokens it keys on.
 
-import type { ChartPromotionSourceReader } from "@chartwarden/types";
+import type {
+  ChartPromotionSourceReader,
+  MessagingResponseAnalyticsReader,
+} from "@chartwarden/types";
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
   admissionCensusReaderDenyStub,
@@ -195,6 +198,16 @@ export class SeamError extends Error {
 }
 
 const registry = new Map<SeamName, unknown>();
+
+/** M36 WP 6.2: every call throws, so an unwired reader serves no analytics (fail closed). */
+const messagingResponseAnalyticsReaderDenyStub: MessagingResponseAnalyticsReader = {
+  async enabled() {
+    throw new NotImplementedError("MessagingResponseAnalyticsReader");
+  },
+  async report() {
+    throw new NotImplementedError("MessagingResponseAnalyticsReader");
+  },
+};
 
 /** M36 WP 3.7: every call throws, so an unwired reader shows a reviewer nothing (no pending list, no quoted text). */
 const chartPromotionSourceReaderDenyStub: ChartPromotionSourceReader = {
@@ -457,6 +470,14 @@ export const REQUIRED_SEAMS = [
     ownerModule: 36,
     phi: true,
     denyStub: chartPromotionSourceReaderDenyStub,
+  },
+  // M36 WP 6.2 (ADR-0092) - aggregate-only response analytics (counts, rates, durations; no content, no patient, no person), served by
+  // M33's route. Not a PHI surface. M36 registers the real reader in registerMessagingSeams; until then every call throws (fail closed).
+  {
+    key: "MessagingResponseAnalyticsReader",
+    ownerModule: 36,
+    phi: false,
+    denyStub: messagingResponseAnalyticsReaderDenyStub,
   },
   // M40 (MDM) — the master-data read surface (physician/facility/payer; merge-aware, §4.5) every
   // clinical/billing/interop module consumes. Canonical reference data + this-tenant overlay, not a

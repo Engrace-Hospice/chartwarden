@@ -42,6 +42,32 @@ describe("matchesQuery", () => {
   });
 });
 
+describe("matchesQuery with a translated display", () => {
+  const platform = {
+    id: "2",
+    scope: "platform",
+    templateKey: "scheduling.running_late",
+    category: "scheduling",
+    title: "Running late",
+    body: "I will arrive soon.",
+    customized: false,
+  } as const;
+  const es = [
+    {
+      templateKey: "scheduling.running_late",
+      locale: "es",
+      title: "Llego tarde",
+      body: "Voy retrasado.",
+      review: { state: "clinician_reviewed" },
+    },
+  ] as unknown as Parameters<typeof matchesQuery>[3];
+  it("matches the text the user sees as well as the English source", () => {
+    expect(matchesQuery(platform, "llego", "es", es)).toBe(true);
+    expect(matchesQuery(platform, "late", "es", es)).toBe(true);
+    expect(matchesQuery(platform, "llego", "en", es)).toBe(false);
+  });
+});
+
 describe("savedReplyErrorText", () => {
   it("joins the server's reasons after its message", () => {
     expect(

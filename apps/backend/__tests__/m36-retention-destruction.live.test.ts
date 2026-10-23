@@ -28,6 +28,8 @@ import { randomUUID } from "node:crypto";
 import { audit } from "@chartwarden/audit";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { messagingHoldLockName } from "@chartwarden/types";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readStaffNames } from "../src/modules/02-identity/staff-names";
 import {
@@ -41,6 +43,8 @@ import {
   reserveMessageCertificateCount,
   settleMessageCertificateCount,
 } from "../src/modules/04-audit/messaging-hold-workflow";
+import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
+import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
 import { createMessageRedactionService } from "../src/modules/36-messaging/governance/message-redaction-service";
 import type { GovernanceActor } from "../src/modules/36-messaging/governance/retention-governance-service";
 import {
@@ -74,6 +78,16 @@ describe.skipIf(!DB_URL)(
     let channelR: string;
     let flagOn = true;
     let execute = true;
+    let attachmentFlagOn = true;
+    /** Object keys the fake store was asked to destroy, and keys it should refuse (a store outage). */
+    const destroyedKeys: string[] = [];
+    const failingKeys = new Set<string>();
+    const fakeStorage = {
+      destroyObject: async ({ objectKey }: { objectKey: string }) => {
+        if (failingKeys.has(objectKey)) throw new Error("store unavailable");
+        destroyedKeys.push(objectKey);
+      },
+    } as unknown as AttachmentStoragePort;
 
     const messageHolds: MessageDestructionHoldPort = {
       activeHolds: activeLegalHolds,
@@ -93,6 +107,15 @@ describe.skipIf(!DB_URL)(
       messageHolds,
       isEnabled: async () => flagOn,
       execute,
+      attachmentObjects: {
+        isEnabled: async () => attachmentFlagOn,
+        destroyObjectsForMessages: createAttachmentService({
+          db: kit.handle.db,
+          storage: fakeStorage,
+          canViewChannel: async () => false,
+          reaperDb: destroyer.db,
+        }).destroyObjectsForMessages,
+      },
       ...over,
     });
     const run = (org = ORG_A, over: Partial<RetentionDestructionDeps> = {}) =>
@@ -262,6 +285,9 @@ describe.skipIf(!DB_URL)(
     beforeEach(async () => {
       flagOn = true;
       execute = true;
+      attachmentFlagOn = false;
+      destroyedKeys.length = 0;
+      failingKeys.clear();
       // Each test starts from a clean slate: no certificates, holds or messages (the superuser bypasses RLS and the hold guard has no holds left).
       await kit.admin.query("DELETE FROM message_destruction_batch");
       await kit.admin.query("DELETE FROM destruction_certificate");
@@ -496,6 +522,221 @@ describe.skipIf(!DB_URL)(
       const second = await run();
       expect(second.destroyed).toBe(1);
       expect(await exists(withFile)).toBe(false);
+    });
+
+    // ---------------------------------------------------------------- 4b. ATTACHMENT OBJECTS (WP 5.6, flag messaging.retention_attachment_destruction)
+
+    const withObject = async (messageId: string, key: string) =>
+      (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, scan_state, scanned_at, completed_at)
+         VALUES ($1,$2,$3,$4,'text/plain',10,'f.txt',$5,repeat('a',64),'clean', now(), now()) RETURNING id`,
+          [ORG_A, channel, messageId, author, key],
+        )
+      )[0].id;
+    const objectStamped = async (attachmentId: string) =>
+      (
+        await kit.one<{ s: boolean }>(
+          "SELECT object_destroyed_at IS NOT NULL AS s FROM message_attachment WHERE id=$1",
+          [attachmentId],
+        )
+      )[0]?.s === true;
+
+    it("attachment flag off (the default): the object is never touched and the message is kept, as before", async () => {
+      const msg = await aged(ORG_A, channel, 8);
+      await withObject(msg, "k/off.txt");
+      await certificate(ORG_A, "approved");
+      const result = await run();
+      expect(result.destroyed).toBe(0);
+      expect(result.certificates[0]?.attachmentObjects).toBeNull();
+      expect(destroyedKeys).toEqual([]);
+      expect(await exists(msg)).toBe(true);
+    });
+
+    it("attachment flag on, DRY RUN: reports the objects it would destroy and touches neither store nor rows", async () => {
+      attachmentFlagOn = true;
+      execute = false;
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/dry.txt");
+      await certificate(ORG_A, "approved");
+      const result = await run();
+      expect(result.mode).toBe("dry_run");
+      expect(result.certificates[0]).toMatchObject({
+        eligible: 1,
+        destroyed: 0,
+        attachmentObjects: { wouldDestroy: 1, destroyed: 0 },
+      });
+      expect(destroyedKeys).toEqual([]);
+      expect(await objectStamped(att)).toBe(false);
+      expect(await exists(msg)).toBe(true);
+      expect(
+        (await auditRows("m36.retention_destruction.attachments_destroyed", result.runId)).length,
+      ).toBe(0);
+    });
+
+    it("attachment flag on, LIVE: destroys the object, then the message, closes the certificate and audits ids only", async () => {
+      attachmentFlagOn = true;
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/live.txt");
+      const cert = await certificate(ORG_A, "approved");
+      const result = await run();
+      expect(result.destroyed).toBe(1);
+      expect(result.certificates[0]).toMatchObject({
+        destroyed: 1,
+        certificateExecuted: true,
+        attachmentObjects: { destroyed: 1, failed: 0, skippedLegalHold: 0 },
+      });
+      expect(destroyedKeys).toEqual(["k/live.txt"]);
+      expect(await exists(msg)).toBe(false);
+      expect(await certStatus(cert)).toBe("executed");
+      const rows = await auditRows("m36.retention_destruction.attachments_destroyed", result.runId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.context).toMatchObject({ destroyed: 1, destroyedAttachmentIds: [att] });
+      expect(JSON.stringify(rows[0]?.context)).not.toContain("k/live.txt");
+      expect((await countsOf(cert)).destroyed).toBe(1);
+    });
+
+    it("a HELD message's attachment object survives (store untouched, row unstamped); releasing the hold restores eligibility and the next run destroys both", async () => {
+      attachmentFlagOn = true;
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/held.txt");
+      await certificate(ORG_A, "approved");
+      const holdId = await hold({ channelIds: [channel] });
+      const first = await run();
+      expect(first.destroyed).toBe(0);
+      expect(first.certificates[0]?.heldRefused).toBe(1);
+      expect(destroyedKeys).toEqual([]);
+      expect(await objectStamped(att)).toBe(false);
+      expect(await exists(msg)).toBe(true);
+      await setHold(holdId, "released");
+      const second = await run();
+      expect(second.destroyed).toBe(1);
+      expect(destroyedKeys).toEqual(["k/held.txt"]);
+      expect(await exists(msg)).toBe(false);
+    });
+
+    it("the object step re-checks holds itself: asked directly to destroy a held message's object it skips it (the hold landed after the plan)", async () => {
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/race.txt");
+      await hold({ channelIds: [channel] });
+      const service = createAttachmentService({
+        db: kit.handle.db,
+        storage: fakeStorage,
+        canViewChannel: async () => false,
+        reaperDb: destroyer.db,
+      });
+      const step = await service.destroyObjectsForMessages(ORG_A, [msg]);
+      expect(step).toMatchObject({ destroyed: 0, skippedLegalHold: 1 });
+      expect(destroyedKeys).toEqual([]);
+      expect(await objectStamped(att)).toBe(false);
+    });
+
+    it("a hold placement (EXCLUSIVE hold lock) concurrent with an object destroy waits for the destroy to finish and the stamp: never a destroy after the hold commits", async () => {
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/lockspan.txt");
+      let openGate: () => void = () => undefined;
+      const gate = new Promise<void>((r) => {
+        openGate = r;
+      });
+      let destroyStarted: () => void = () => undefined;
+      const started = new Promise<void>((r) => {
+        destroyStarted = r;
+      });
+      const slowStorage = {
+        destroyObject: async ({ objectKey }: { objectKey: string }) => {
+          destroyStarted();
+          await gate;
+          destroyedKeys.push(objectKey);
+        },
+      } as unknown as AttachmentStoragePort;
+      const service = createAttachmentService({
+        db: kit.handle.db,
+        storage: slowStorage,
+        canViewChannel: async () => false,
+        reaperDb: destroyer.db,
+      });
+      const destroying = service.destroyObjectsForMessages(ORG_A, [msg]);
+      await started;
+      // What applyLegalHoldInTx does: take the per-org hold lock EXCLUSIVE, then commit the hold.
+      let placed = false;
+      const placing = withOrgContext(kit.handle.db, systemOrgContext(ORG_A), async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${messagingHoldLockName(ORG_A)}, 0))`,
+        );
+        placed = true;
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(placed).toBe(false);
+      expect(await objectStamped(att)).toBe(false);
+      openGate();
+      const step = await destroying;
+      await placing;
+      expect(step).toMatchObject({ destroyed: 1, skippedLegalHold: 0 });
+      // The destroy finished and was stamped BEFORE the hold could take the lock.
+      expect(await objectStamped(att)).toBe(true);
+      expect(placed).toBe(true);
+    });
+
+    it("an object the store refuses to destroy keeps its message (unstamped, retried next run) and the certificate stays open", async () => {
+      attachmentFlagOn = true;
+      const msg = await aged(ORG_A, channel, 8);
+      const good = await aged(ORG_A, channel, 8);
+      await withObject(msg, "k/fail.txt");
+      await withObject(good, "k/ok.txt");
+      failingKeys.add("k/fail.txt");
+      const cert = await certificate(ORG_A, "approved");
+      const first = await run();
+      expect(first.certificates[0]).toMatchObject({
+        destroyed: 1,
+        certificateExecuted: false,
+        attachmentObjects: { destroyed: 1, failed: 1 },
+      });
+      expect(await exists(msg)).toBe(true);
+      expect(await exists(good)).toBe(false);
+      failingKeys.clear();
+      const second = await run();
+      expect(second.destroyed).toBe(1);
+      expect(await exists(msg)).toBe(false);
+      expect(await certStatus(cert)).toBe("executed");
+    });
+
+    it("the scan counts object-bearing messages toward the certificate only while the attachment flag is on", async () => {
+      const msg = await aged(ORG_A, channel, 8);
+      await withObject(msg, "k/scan.txt");
+      const off = await runRetentionScanForOrg({ db: kit.handle.db, messageHolds }, ORG_A);
+      expect(off.certificates).toHaveLength(0);
+      const on = await runRetentionScanForOrg(
+        { db: kit.handle.db, messageHolds, attachmentObjectsEnabled: async () => true },
+        ORG_A,
+      );
+      expect(on.certificates).toHaveLength(1);
+      const [row] = await kit.one<{ record_count: number }>(
+        "SELECT record_count FROM destruction_certificate WHERE id=$1",
+        [on.certificates[0]?.certificateId],
+      );
+      expect(row?.record_count).toBe(1);
+    });
+
+    it("tenancy: another organisation's attachment objects are never touched by org A's run", async () => {
+      attachmentFlagOn = true;
+      const mine = await aged(ORG_A, channel, 8);
+      await withObject(mine, "k/mine.txt");
+      const theirs = (
+        await kit.one<{ id: string }>(
+          `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         VALUES ($1,$2,$3,'user', $4::bytea, repeat('0',64), now() - interval '9 years') RETURNING id`,
+          [ORG_B, channelB, outsider, BODY_CIPHER_FAKE],
+        )
+      )[0].id;
+      await kit.admin.query(
+        `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, scan_state, scanned_at, completed_at)
+         VALUES ($1,$2,$3,$4,'text/plain',10,'f.txt','k/theirs.txt',repeat('a',64),'clean', now(), now())`,
+        [ORG_B, channelB, theirs, outsider],
+      );
+      await certificate(ORG_A, "approved");
+      await run();
+      expect(destroyedKeys).toEqual(["k/mine.txt"]);
+      expect(await exists(theirs)).toBe(true);
     });
 
     it("takes the message's subtree with it under the destruction credential (receipt, reaction, mention, search tokens) and leaves a sibling's untouched", async () => {
@@ -1293,7 +1534,7 @@ describe.skipIf(!DB_URL)(
       const reply = await aged(ORG_A, channel, 8, doomed); // the parent outlives its reply: both go, reply first
       const released = await hold({ channelIds: [] }, "released");
       const { rows: classRows } = await kit.admin.query(
-        "SELECT enumlabel FROM pg_enum WHERE enumtypid='message_ack_class'::regtype LIMIT 1",
+        "SELECT enumlabel FROM pg_enum WHERE enumtypid='message_ack_class'::regtype AND enumlabel = 'important'",
       );
       const ackClass = classRows[0].enumlabel as string;
       const ins = (sql: string, params: unknown[]) => kit.admin.query(sql, params);

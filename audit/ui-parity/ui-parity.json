@@ -2247,6 +2247,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.inbox",
+      "path": "/messaging/inbox",
+      "permission": "messaging.read"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.unacknowledged",
       "path": "/messaging/unacknowledged",
       "permission": "messaging.review"
@@ -2298,6 +2306,14 @@
       "id": "messaging.retention",
       "path": "/messaging/governance/retention",
       "permission": "messaging.retention.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.response-analytics",
+      "path": "/messaging/analytics",
+      "permission": "messaging.analytics.read"
     },
     {
       "app": "web",

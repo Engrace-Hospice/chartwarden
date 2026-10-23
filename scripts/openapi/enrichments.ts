@@ -28,6 +28,10 @@ import {
  * path end-to-end). Wiring the remaining modules' bodies/responses is the
  * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
  */
+import {
+  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
+  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
@@ -1556,6 +1560,11 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+// M36 WP 6.1 smart work inbox.
+import {
+  InboxQuerySchema as M36InboxQuerySchema,
+  InboxResponseSchema as M36InboxResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 4.9 supervisor unacknowledged queue.
 import {
   UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
@@ -6515,7 +6524,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M2OrgBindingResponseSchema,
   },
   "POST /api/v1/auth/unlock": {
-    summary: "Unlock the idle screen lock by re-entering the password; keeps the same session (#589)",
+    summary:
+      "Unlock the idle screen lock by re-entering the password; keeps the same session (#589)",
     body: M2ScreenUnlockRequestSchema,
     response: M2ScreenUnlockResponseSchema,
   },
@@ -9875,6 +9885,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
   },
+  "GET /api/v1/messaging/inbox": {
+    summary:
+      "The smart work inbox (WP 6.1, ADR-0091; messaging.read): ONE read-only ranked queue of the caller's OWN waiting work: acknowledgment requests assigned to them, handoffs awaiting their answer, their active tasks, unread care-team conversations with mentions first. Ranking is a fixed rule table (band, then sub-rank, then soonest clock, then key), never a model, and every row carries the reason it ranks where it does. Urgent rows are never cut by `limit` (default 50, max 100); `band_counts` cover the whole list and `unavailable_sources` names any source that failed to read. Rows carry generic titles, ids and instants, never message text or a patient name; a request in a conversation the caller cannot open is a restricted row with no ids. 200 {enabled:false} while the tenant flag `messaging.smart_inbox` is off. Acts on nothing: every row points at the screen that owns the item. Never cached.",
+    query: M36InboxQuerySchema,
+    response: M36InboxResponseSchema,
+  },
   "GET /api/v1/messaging/oncall/coverage": {
     summary:
       "Who is covering now for a role (WP 4.12, ADR-0080; messaging.read + messaging.oncall.read + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see or outside the organisation is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.oncall_directory` is off). Read-only: nothing is paged or sent. Asks the M19 EscalationRouter tier by tier (at most 4) for the role and the given patient's team, as of the server clock. `status` is covered, coverage_gap (the ladder has tier 1 and nobody covers it now: stated, never silent), roster_not_connected (no M19 router is bound: coverage is UNKNOWN, not empty) or not_configured (no ladder for the role). Each tier has display names only (null when a name cannot be found; no user id, contact detail or patient data), the roster's IANA `time_zone` (render times in it), and `shift_ends_at` only when the roster supplied a valid future instant, else null. A role outside the closed list, a malformed patient id or an unknown key is a 422. Responses are never cached. Read-audited against `patient_id` (it discloses the patient's care-team coverage)",
@@ -10225,6 +10241,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36OffboardingResponseSchema,
   },
 
+  // response analytics (WP 6.2, ADR-0092 PROPOSED), served by M33 over the M36 seam
+  "GET /api/v1/messaging/analytics/response": {
+    summary:
+      "Compliance / operations: aggregate response analytics (messaging.analytics.read; 404 while the tenant flag messaging.response_analytics is off). Acknowledgment latency (median), share acknowledged before the deadline, escalation rate and handoff acceptance for a window of at most 92 days (default 30); from and to are snapped by the server to COMPLETED whole UTC days (from floored to its day start, to = the start of the day after its day, capped at the start of the current UTC day, so today is never served; the default is the 30 completed days before today; a window with no completed day answers insufficient_data) and the snapped values are echoed, with a breakdown by ack class or by clinical discipline (the assignee's clinical role key, never the person). AGGREGATES ONLY: no person, patient or message content in the body. A group with fewer than minCohort (provisional 5) distinct people is withheld, and the combined hidden residual must itself involve at least minCohort distinct people, else the next-smallest visible group is withheld too (suppressedGroups counts them, never names them); if that cannot be reached the breakdown is withheld (breakdownWithheld true); fewer than minCohort people in the whole organisation is status insufficient_data. Handoff figures are null under the same floor. There is no individual-level view. Not cached",
+    query: M36ResponseAnalyticsQuerySchema,
+    response: M36ResponseAnalyticsResponseSchema,
+  },
+
   // message retention and legal hold (WP 5.6, ADR-0086 PROPOSED)
   "GET /api/v1/messaging/governance/retention": {
     summary:
@@ -10265,12 +10289,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/governance/redactions": {
     summary:
-      "Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached",
+      "Compliance officer: the newest redactions (messaging.redact.request, messaging.redact.approve or messaging.redact.countersign) with status (requested, awaiting_countersign, approved or lapsed), the requester, approver and countersigner ids and display names, instants and whether an active legal hold covers the message now; single_officer_fallback_available says whether the PROVISIONAL self-approve route can be used now (setting on and exactly one eligible approver). Never the message or the reason. Read-audited. Not cached",
     response: M36RedactionListResponseSchema,
   },
   "POST /api/v1/messaging/governance/redactions/:id/approve": {
     summary:
       "Compliance officer: approve a redaction (messaging.redact.approve + a fresh step-up for `messaging.redact.approve`, else 403 STEP_UP_REQUIRED). The approver is never the requester (403 REDACTION_SELF_APPROVAL, and the database refuses it too); 409 REDACTION_ALREADY_APPROVED; 404 unknown or another tenant's redaction. From the approval every reader of the message sees an empty body with a redactedAt instant, no attachments, links, poll or mentions, and the message is out of search and exports; the cipher and hash are untouched, so a held message stays retained under the mask",
+    response: M36RedactionResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/redactions/:id/self-approve": {
+    summary:
+      "Compliance officer, PROVISIONAL single-officer fallback (ADR-0055 D9; pending compliance sign-off): approve your OWN redaction request. Needs messaging.redact.approve and a fresh step-up for `messaging.redact.self_approve` (else 403 STEP_UP_REQUIRED), the tenant setting messaging.redaction_single_officer_fallback ON (off by default) and exactly ONE person who can approve (else 403 REDACTION_FALLBACK_UNAVAILABLE); only the requester (403 REDACTION_SELF_APPROVAL_NOT_REQUESTER); 409 REDACTION_ALREADY_APPROVED. NOT final: it masks nothing and the message stays editable-blocked and out of search until a second role countersigns within 72 hours (status awaiting_countersign, then lapsed). Audited by the row's trigger and m36.redaction.self_approved",
+    response: M36RedactionResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/redactions/:id/countersign": {
+    summary:
+      "Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 403 REDACTION_FALLBACK_UNAVAILABLE when the fallback has since closed (the tenant setting turned off or a second officer added: the row then needs an ordinary two-person approval); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off",
     response: M36RedactionResponseSchema,
   },
 

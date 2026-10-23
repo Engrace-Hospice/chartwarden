@@ -6,6 +6,7 @@
 // single composition-root entry (the M34 `mountTenantPlatformRoutes` precedent); the individual plugins
 // are exported so route tests can mount one group over a fresh in-memory backend.
 import type { FastifyInstance } from "fastify";
+import type { PreHandler } from "./actor";
 import { registerReportingAdminRoutes } from "./admin.routes";
 import { registerBaseMetricRoutes } from "./bases-metrics.routes";
 import { registerDashboardTileRoutes } from "./dashboards-tiles.routes";
@@ -13,6 +14,7 @@ import { registerDefinitionRoutes } from "./definitions.routes";
 import { registerDrilldownRoutes } from "./drilldown.routes";
 import type { M33ExportDrilldownRouteService } from "./export-drilldown-service";
 import { registerExportRoutes } from "./exports.routes";
+import { registerMessagingResponseAnalyticsRoutes } from "./messaging-response-analytics.routes";
 import { registerMetricsSeamRoutes } from "./metrics-seam.routes";
 import type { M33ReadRouteService } from "./read-service";
 import { registerScheduleRoutes } from "./schedules.routes";
@@ -131,11 +133,18 @@ export {
  * Drizzle-backed service from `createDrizzleM33ReadBackend`). The composition root calls this when a DB
  * client is present, behind the same authenticate/security/error chain (the M34 mount precedent).
  */
-export function mountM33ReadRoutes(app: FastifyInstance, service: M33ReadRouteService): void {
+export function mountM33ReadRoutes(
+  app: FastifyInstance,
+  service: M33ReadRouteService,
+  opts: { readonly analyticsRateLimit?: PreHandler } = {},
+): void {
   registerDashboardTileRoutes(app, { service });
   registerBaseMetricRoutes(app, { service });
   registerReportingAdminRoutes(app, { service });
   registerMetricsSeamRoutes(app, { service });
+  registerMessagingResponseAnalyticsRoutes(app, {
+    ...(opts.analyticsRateLimit ? { rateLimit: opts.analyticsRateLimit } : {}),
+  }); // M36 WP 6.2 (ADR-0092): aggregate response analytics over the M36 seam
 }
 
 /**

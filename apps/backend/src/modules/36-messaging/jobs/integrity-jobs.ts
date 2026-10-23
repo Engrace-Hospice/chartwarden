@@ -49,6 +49,8 @@ export interface M36IntegrityJobDeps {
   readonly cipher: MessageBodyCipher;
   /** M4's message-hold seam (active holds + pending certificates), bound at the composition root. */
   readonly messageHolds: MessageHoldPort;
+  /** WP 5.6: the tenant flag `messaging.retention_attachment_destruction` (absent = off); see RetentionScanDeps. */
+  readonly attachmentObjectsEnabled?: (organizationId: string) => Promise<boolean>;
   readonly now?: () => Date;
   readonly newRunId?: () => string;
   /** Rotation and recent-pass rows per table per run. Defaults to {@link HASH_VERIFY_SAMPLE_LIMIT}; tests inject small ones. */

@@ -21,6 +21,8 @@ export interface UnacknowledgedFilters {
   readonly overdue?: boolean | undefined;
   readonly cursor?: string | undefined;
   readonly limit?: number | undefined;
+  /** WP 6.1: service-level only (the route does not expose it): only the requests assigned to this user. */
+  readonly assignedUserId?: string | undefined;
 }
 
 export interface UnacknowledgedService {
@@ -83,6 +85,7 @@ export function createUnacknowledgedService(
         cursor: filters.cursor ?? null,
         limit: clampLimit(filters.limit),
         now,
+        assignedUserId: filters.assignedUserId,
       });
       const visible = await visibleChannels(actor, page.rows);
       const names = await namesOf(actor, page.rows);

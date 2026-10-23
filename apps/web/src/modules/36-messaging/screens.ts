@@ -14,6 +14,7 @@ const GlobalSearchSettings = lazy(() =>
 const StaffMessaging = lazy(() =>
   import("./staff-messaging").then((m) => ({ default: m.StaffMessaging })),
 );
+const SmartInbox = lazy(() => import("./smart-inbox").then((m) => ({ default: m.SmartInbox })));
 const UnacknowledgedQueue = lazy(() =>
   import("./unacknowledged-queue").then((m) => ({ default: m.UnacknowledgedQueue })),
 );
@@ -34,6 +35,9 @@ const OffboardingWorkflow = lazy(() =>
 );
 const RetentionGovernance = lazy(() =>
   import("./retention-governance").then((m) => ({ default: m.RetentionGovernance })),
+);
+const ResponseAnalytics = lazy(() =>
+  import("./response-analytics").then((m) => ({ default: m.ResponseAnalytics })),
 );
 const BreakGlassReview = lazy(() =>
   import("./break-glass-review").then((m) => ({ default: m.BreakGlassReview })),
@@ -57,6 +61,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.read",
       screen: StaffMessaging,
+    },
+    {
+      // WP 6.1 (ADR-0091): the caller's own ranked work. The screen says "not turned on" while the tenant flag `messaging.smart_inbox` is off.
+      id: "messaging.inbox",
+      path: "/messaging/inbox",
+      title: "Work inbox",
+      navGroup: "General",
+      requiredPermission: "messaging.read",
+      screen: SmartInbox,
     },
     {
       // WP 4.9 (ADR-0076): the supervisor's queue of requests still waiting for a human; the API demands messaging.review as well.
@@ -119,6 +132,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.retention.manage",
       screen: RetentionGovernance,
+    },
+    {
+      // WP 6.2 (ADR-0092, proposed): aggregate response analytics. Hidden (404 -> "not turned on") until the tenant flag messaging.response_analytics is on.
+      id: "messaging.response-analytics",
+      path: "/messaging/analytics",
+      title: "Response analytics",
+      navGroup: "Admin",
+      requiredPermission: "messaging.analytics.read",
+      screen: ResponseAnalytics,
     },
     {
       // WP 5.8 (ADR-0087, proposed): the compliance review of break-glass access (queue, detail, complete). Reviews never depend on the tenant flag.

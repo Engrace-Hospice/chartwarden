@@ -35,6 +35,8 @@ export interface QueueQuery {
   readonly cursor: string | null;
   readonly limit: number;
   readonly now: Date;
+  /** WP 6.1: narrow to the requests assigned to this user (the smart inbox's "mine"). Absent = the supervisor's whole-org view. */
+  readonly assignedUserId?: string | undefined;
 }
 
 export interface QueueRow {
@@ -201,11 +203,12 @@ export function queueRowsQuery(
 /** The filters every queue statement shares (organisation, the waiting set, the two narrowing filters). */
 export function queueFilters(
   orgId: string,
-  q: Pick<QueueQuery, "status" | "overdueOnly" | "now">,
+  q: Pick<QueueQuery, "status" | "overdueOnly" | "now" | "assignedUserId">,
 ): SQL[] {
   return [
     eq(R.organizationId, orgId),
     WAITING,
+    ...(q.assignedUserId ? [eq(R.assignedUserId, q.assignedUserId)] : []),
     ...(q.status ? [eq(R.status, q.status)] : []),
     ...(q.overdueOnly ? [lte(R.deadlineAt, q.now)] : []),
   ];

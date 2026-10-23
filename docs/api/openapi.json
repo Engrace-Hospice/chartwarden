@@ -161514,6 +161514,270 @@
         }
       }
     },
+    "/api/v1/messaging/analytics/response": {
+      "get": {
+        "operationId": "getApiV1MessagingAnalyticsResponse",
+        "tags": [
+          "33-reporting"
+        ],
+        "summary": "Compliance / operations: aggregate response analytics (messaging.analytics.read; 404 while the tenant flag messaging.response_analytics is off). Acknowledgment latency (median), share acknowledged before the deadline, escalation rate and handoff acceptance for a window of at most 92 days (default 30); from and to are snapped by the server to COMPLETED whole UTC days (from floored to its day start, to = the start of the day after its day, capped at the start of the current UTC day, so today is never served; the default is the 30 completed days before today; a window with no completed day answers insufficient_data) and the snapped values are echoed, with a breakdown by ack class or by clinical discipline (the assignee's clinical role key, never the person). AGGREGATES ONLY: no person, patient or message content in the body. A group with fewer than minCohort (provisional 5) distinct people is withheld, and the combined hidden residual must itself involve at least minCohort distinct people, else the next-smallest visible group is withheld too (suppressedGroups counts them, never names them); if that cannot be reached the breakdown is withheld (breakdownWithheld true); fewer than minCohort people in the whole organisation is status insufficient_data. Handoff figures are null under the same floor. There is no individual-level view. Not cached",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "class",
+                  "type": "string"
+                },
+                {
+                  "const": "discipline",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "minCohort"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "insufficient_data",
+                          "type": "string"
+                        },
+                        "minCohort": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "from",
+                        "to",
+                        "minCohort",
+                        "groupBy",
+                        "kpis",
+                        "cells",
+                        "suppressedGroups",
+                        "breakdownWithheld"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "minCohort": {
+                          "type": "integer"
+                        },
+                        "groupBy": {
+                          "anyOf": [
+                            {
+                              "const": "class",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discipline",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "kpis": {
+                          "type": "object",
+                          "required": [
+                            "requests",
+                            "acknowledged",
+                            "ackedBeforeDeadlineRate",
+                            "escalationRate",
+                            "medianAckSeconds",
+                            "handoffsOffered",
+                            "handoffsAccepted",
+                            "medianHandoffAcceptSeconds"
+                          ],
+                          "properties": {
+                            "requests": {
+                              "type": "integer"
+                            },
+                            "acknowledged": {
+                              "type": "integer"
+                            },
+                            "ackedBeforeDeadlineRate": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "escalationRate": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "medianAckSeconds": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "handoffsOffered": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "handoffsAccepted": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "medianHandoffAcceptSeconds": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "cells": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "group",
+                              "requests",
+                              "acknowledged",
+                              "ackedBeforeDeadlineRate",
+                              "escalationRate",
+                              "medianAckSeconds"
+                            ],
+                            "properties": {
+                              "group": {
+                                "type": "string"
+                              },
+                              "requests": {
+                                "type": "integer"
+                              },
+                              "acknowledged": {
+                                "type": "integer"
+                              },
+                              "ackedBeforeDeadlineRate": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "escalationRate": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "medianAckSeconds": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "suppressedGroups": {
+                          "type": "integer"
+                        },
+                        "breakdownWithheld": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/announce": {
       "post": {
         "operationId": "postApiV1MessagingAnnounce",
@@ -178442,7 +178706,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached",
+        "summary": "Compliance officer: the newest redactions (messaging.redact.request, messaging.redact.approve or messaging.redact.countersign) with status (requested, awaiting_countersign, approved or lapsed), the requester, approver and countersigner ids and display names, instants and whether an active legal hold covers the message now; single_officer_fallback_available says whether the PROVISIONAL self-approve route can be used now (setting on and exactly one eligible approver). Never the message or the reason. Read-audited. Not cached",
         "parameters": [],
         "responses": {
           "200": {
@@ -178452,7 +178716,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "redactions"
+                    "redactions",
+                    "single_officer_fallback_available"
                   ],
                   "properties": {
                     "redactions": {
@@ -178469,6 +178734,10 @@
                           "approved_by",
                           "approved_by_name",
                           "approved_at",
+                          "self_approved",
+                          "countersign_deadline_at",
+                          "countersigned_by",
+                          "countersigned_by_name",
                           "under_legal_hold"
                         ],
                         "properties": {
@@ -178487,7 +178756,15 @@
                                 "type": "string"
                               },
                               {
+                                "const": "awaiting_countersign",
+                                "type": "string"
+                              },
+                              {
                                 "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "lapsed",
                                 "type": "string"
                               }
                             ]
@@ -178538,11 +178815,47 @@
                               }
                             ]
                           },
+                          "self_approved": {
+                            "type": "boolean"
+                          },
+                          "countersign_deadline_at": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "countersigned_by": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "countersigned_by_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "under_legal_hold": {
                             "type": "boolean"
                           }
                         }
                       }
+                    },
+                    "single_officer_fallback_available": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -178581,6 +178894,10 @@
                     "approved_by",
                     "approved_by_name",
                     "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
                     "under_legal_hold"
                   ],
                   "properties": {
@@ -178599,7 +178916,15 @@
                           "type": "string"
                         },
                         {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
                           "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
                           "type": "string"
                         }
                       ]
@@ -178641,6 +178966,39 @@
                       ]
                     },
                     "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -178727,6 +179085,10 @@
                     "approved_by",
                     "approved_by_name",
                     "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
                     "under_legal_hold"
                   ],
                   "properties": {
@@ -178745,7 +179107,15 @@
                           "type": "string"
                         },
                         {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
                           "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
                           "type": "string"
                         }
                       ]
@@ -178787,6 +179157,369 @@
                       ]
                     },
                     "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "under_legal_hold": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/redactions/{id}/countersign": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceRedactionsByIdCountersign",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 403 REDACTION_FALLBACK_UNAVAILABLE when the fallback has since closed (the tenant setting turned off or a second officer added: the row then needs an ordinary two-person approval); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "message_id",
+                    "status",
+                    "requested_by",
+                    "requested_by_name",
+                    "requested_at",
+                    "approved_by",
+                    "approved_by_name",
+                    "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
+                    "under_legal_hold"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "message_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requested_by": {
+                      "type": "string"
+                    },
+                    "requested_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requested_at": {
+                      "type": "string"
+                    },
+                    "approved_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "under_legal_hold": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/redactions/{id}/self-approve": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceRedactionsByIdSelfapprove",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer, PROVISIONAL single-officer fallback (ADR-0055 D9; pending compliance sign-off): approve your OWN redaction request. Needs messaging.redact.approve and a fresh step-up for `messaging.redact.self_approve` (else 403 STEP_UP_REQUIRED), the tenant setting messaging.redaction_single_officer_fallback ON (off by default) and exactly ONE person who can approve (else 403 REDACTION_FALLBACK_UNAVAILABLE); only the requester (403 REDACTION_SELF_APPROVAL_NOT_REQUESTER); 409 REDACTION_ALREADY_APPROVED. NOT final: it masks nothing and the message stays editable-blocked and out of search until a second role countersigns within 72 hours (status awaiting_countersign, then lapsed). Audited by the row's trigger and m36.redaction.self_approved",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "message_id",
+                    "status",
+                    "requested_by",
+                    "requested_by_name",
+                    "requested_at",
+                    "approved_by",
+                    "approved_by_name",
+                    "approved_at",
+                    "self_approved",
+                    "countersign_deadline_at",
+                    "countersigned_by",
+                    "countersigned_by_name",
+                    "under_legal_hold"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "message_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_countersign",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lapsed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requested_by": {
+                      "type": "string"
+                    },
+                    "requested_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requested_at": {
+                      "type": "string"
+                    },
+                    "approved_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_by_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "self_approved": {
+                      "type": "boolean"
+                    },
+                    "countersign_deadline_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "countersigned_by_name": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -181941,6 +182674,313 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/inbox": {
+      "get": {
+        "operationId": "getApiV1MessagingInbox",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The smart work inbox (WP 6.1, ADR-0091; messaging.read): ONE read-only ranked queue of the caller's OWN waiting work: acknowledgment requests assigned to them, handoffs awaiting their answer, their active tasks, unread care-team conversations with mentions first. Ranking is a fixed rule table (band, then sub-rank, then soonest clock, then key), never a model, and every row carries the reason it ranks where it does. Urgent rows are never cut by `limit` (default 50, max 100); `band_counts` cover the whole list and `unavailable_sources` names any source that failed to read. Rows carry generic titles, ids and instants, never message text or a patient name; a request in a conversation the caller cannot open is a restricted row with no ids. 200 {enabled:false} while the tenant flag `messaging.smart_inbox` is off. Acts on nothing: every row points at the screen that owns the item. Never cached.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "items",
+                    "band_counts",
+                    "complete",
+                    "urgent_complete",
+                    "unavailable_sources"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "band",
+                          "rank",
+                          "title",
+                          "reasons",
+                          "since",
+                          "due_at",
+                          "channel_id",
+                          "target",
+                          "target_id",
+                          "restricted",
+                          "count"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "band": {
+                            "anyOf": [
+                              {
+                                "const": "urgent_ack",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoff_awaiting",
+                                "type": "string"
+                              },
+                              {
+                                "const": "task_assigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "mention",
+                                "type": "string"
+                              },
+                              {
+                                "const": "care_team_unread",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rank": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "reasons": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "text"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ack_failed_unreachable",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_overdue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_waiting",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "handoff_expires_soon",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "handoff_waiting",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_overdue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_clinical_concern",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_due",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_open",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "mention_unread",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_team_unread",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "since": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "due_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channel_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "target": {
+                            "anyOf": [
+                              {
+                                "const": "acknowledgment_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "task",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoff",
+                                "type": "string"
+                              },
+                              {
+                                "const": "conversation",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "target_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "restricted": {
+                            "type": "boolean"
+                          },
+                          "count": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "band_counts": {
+                      "type": "object",
+                      "required": [
+                        "urgent_ack",
+                        "handoff_awaiting",
+                        "task_assigned",
+                        "mention",
+                        "care_team_unread"
+                      ],
+                      "properties": {
+                        "urgent_ack": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "handoff_awaiting": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "task_assigned": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "mention": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "care_team_unread": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "urgent_complete": {
+                      "type": "boolean"
+                    },
+                    "unavailable_sources": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "urgent_ack",
+                            "type": "string"
+                          },
+                          {
+                            "const": "handoff_awaiting",
+                            "type": "string"
+                          },
+                          {
+                            "const": "task_assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "mention",
+                            "type": "string"
+                          },
+                          {
+                            "const": "care_team_unread",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
