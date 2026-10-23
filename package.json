@@ -591,7 +591,7 @@
     "test:db:client:live": "vitest run packages/db/__tests__/client.live.test.ts",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
-    "typecheck:tests": "tsc -p tsconfig.tests.json --pretty && tsc -p tsconfig.tests.dom.json --pretty"
+    "typecheck:tests": "NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.json --pretty && NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.dom.json --pretty"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

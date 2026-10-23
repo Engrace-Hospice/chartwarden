@@ -1,7 +1,7 @@
 # Per-tenant subdomains — implementation plan
 
 Mechanism: [ADR-0049](./adr/ADR-0049-tenant-subdomains.md) (Accepted). Base domain and environments:
-[ADR-0088](./adr/ADR-0088-tenant-base-domain-and-environments.md). Status: **approved 2026-10-21; phases 1–3 built on branch `feat/tenant-subdomains-a`, phases 4–6 not yet.**
+[ADR-0088](./adr/ADR-0088-tenant-base-domain-and-environments.md). Status: **approved 2026-10-21; phases 1–6 built and merged to `main` (#538, #553, #634, #638, #646, #654). What remains is operational: DNS, the wildcard certificate and Pangolin for `chartwarden.com`, then the first tenant on its own host (see "Done when").**
 This plan only sequences the work; every design question is answered in those two ADRs, and where this file
 and an ADR disagree, **the ADR wins**.
 
@@ -44,8 +44,13 @@ Hospice tenants of the real-data environment are served at `<slug>.chartwarden.c
   `bootstrap/tenant-host.ts` (`TENANT_BASE_DOMAIN`, host classification, guard, caching resolver);
   `tenant-host-resolver-db.ts`; the guard is registered right after `authenticate`; `select-organization` pins the org
   to the host; the cache is evicted when M2's organization lifecycle suspends, closes or activates an org; env rule
-  `PASSKEY_RP_ID == TENANT_BASE_DOMAIN`. The org-offboarding path in M34 does not evict, so a closed tenant is served for
-  up to the 60 s TTL there.
+  `PASSKEY_RP_ID == TENANT_BASE_DOMAIN`. **Open decision:** the host guard reads `organization.status`, and the only code
+  that writes it is M2's organization-lifecycle route (checked by grep, 2026-10-23). M34's suspend / offboard transitions
+  write `tenant_account.status` and revoke sessions, but do not touch `organization.status` (a deliberate separation,
+  per the comment on the `session_cascade` effect in `service-drizzle.ts`). So a tenant suspended or offboarded only in M34
+  keeps resolving as `active` on its host, and nothing is evicted because nothing changed. Making M34 offboarding close the
+  organization (or having the operator also close it through M2) is a product decision; wiring cache eviction alone would
+  change nothing.
 - **Phase 3** — origin matching and host-only cookies. `classifyTenantHost` moved into `@chartwarden/types` so
   `packages/auth` shares it without importing the backend. `packages/auth/src/identity/tenant-origin.ts` is the matcher
   (https, default port, bare origin, tenant host, org not suspended/closed; resolver injected as a port). Better Auth's
@@ -215,7 +220,7 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
   already on `/tenant-unavailable`. `handleObservedResponse` (shell) is the one `onResponseStatus` handler; tests cover the
   Response reaching it and a 410 body routing to `/tenant-unavailable` end to end.
 
-### Phase 5 — edge and environment (PR B)
+### Phase 5 — edge and environment (PR B) — code done; DNS, certificate and Pangolin pending
 - Confirm quillwardhealth.com controls `chartwarden.com` DNS; add the wildcard record and DNS-01 credentials.
 - Pangolin wildcard resource plus exact-host resources for reserved names (they take precedence).
 - Real-environment env file (`TENANT_BASE_DOMAIN`, `PASSKEY_RP_ID`, `BETTER_AUTH_URL`, `TRUSTED_PROXY_CIDRS`),
@@ -245,8 +250,23 @@ to the `storage.` host in the tenant image; the demo image keeps the shared snip
 `validateTenantSlug` (422 `INVALID_TENANT_SLUG`, reason in the message); it reaches M2's `TenantOrgCreationProvider` as
 `intent.slug` (absent: the old name-derived slug); a slug that is taken or was ever another organization's is refused
 409 `TENANT_SLUG_UNAVAILABLE` (the 1144 trigger is the authority; the app maps 23505/23514). The chosen slug is recorded
-in the `tenant_status_event` row's `sideEffectsRecorded`. Still open: choosing the slug in the admin provisioning form,
-and a live suite for the 409 path on the real role.
+in the `tenant_status_event` row's `sideEffectsRecorded`. The admin "New tenant" form has an optional Subdomain field
+(client-side format, punycode and reserved checks; a server 409 / 422 is shown on the field) (#646). A live suite
+(`test:m34:tenant-slug:live`, #654) drives `provisionTenant` on the real BYPASSRLS platform login (the credential
+production binds as `organizationDb`) and pins: taken, aliased and label-rule slugs are 409 with no tenant account left
+behind; a re-provision cannot swap the slug; a free slug is audited. The plain `chartwarden_app` role cannot create an
+organization at all (RLS), so it is not the credential for that write.
+
+### Browser-pass follow-ups (closed)
+The Phase 4 browser pass left four items; three are closed and one is the open decision under Phase 2.
+- The picker's "Try again" reloaded the page, and a reload before an organization is bound ended on `/expired`; it now re-runs
+  the load in place.
+- The wrong-organization message said "your account is not a member of it", which is false for a two-org user who picked
+  the other tenant on this host; it now says only the host's members can work there.
+- A reset or magic link that stays on its own origin (recipient not a member of the requested tenant) still carried the
+  requester's origin in `callbackURL`, so a forged `Origin` naming a real tenant would steer that token to its host after the
+  reset; in tenant mode those callbacks are now pinned to the link's origin.
+- `typecheck:tests` exhausted the default Node heap; the script now sets `--max-old-space-size=8192` for both programs.
 
 ## Tests and gates
 
@@ -280,7 +300,9 @@ and a live suite for the 409 path on the real role.
 
 ## Done when
 
-- [ ] PR A and PR B merged with review findings addressed; all gates and the live suite green.
+- [x] PR A and PR B merged with review findings addressed (#538, #553, #634, #638, #646, #654).
+- [ ] All gates and the live suites green on `main` after the last merge (the full matrix is debounced; confirm the run for the newest commit).
 - [ ] A test tenant answers at `<slug>.chartwarden.com` with its own sign-in and is refused on another tenant's host.
-- [ ] Architecture §19 / System Design §6.1 carry the ADR-0049 amendment (already present) and the ops runbook
-      documents the wildcard DNS, Pangolin and ingress setup.
+- [x] Architecture §19 / System Design §6.1 carry the ADR-0049 amendment (already present) and the ops runbook
+      documents the wildcard DNS, Pangolin and ingress setup (`deploy/production/TENANT_EDGE.md`).
+- [ ] Decide whether M34 suspend / offboard must also set `organization.status` (see Phase 2), so the host answers 403 / 410.

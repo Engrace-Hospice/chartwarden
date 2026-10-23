@@ -24,7 +24,10 @@ const MEMBERSHIP = {
   defaultLocationIds: [],
 };
 
-function clientWith(tenant: "tenant" | "suspended" | "none" | "throws", memberships = [MEMBERSHIP]) {
+function clientWith(
+  tenant: "tenant" | "suspended" | "none" | "throws",
+  memberships = [MEMBERSHIP],
+) {
   const post = vi.fn(async () => ({ data: undefined, error: undefined }));
   const client = {
     GET: vi.fn(async (path: string) => {
@@ -103,15 +106,36 @@ describe("OrganizationSelect on a tenant host", () => {
 
   it("explains a wrong-organization refusal, names the host's organization and offers sign-out and retry", async () => {
     const { client, post } = clientWith("tenant");
-    post.mockResolvedValueOnce({ data: undefined, error: { error: { code: "TENANT_HOST_MISMATCH" } } } as never);
+    post.mockResolvedValueOnce({
+      data: undefined,
+      error: { error: { code: "TENANT_HOST_MISMATCH" } },
+    } as never);
     const assign = vi.fn();
     vi.stubGlobal("location", { ...window.location, assign });
     withClient(client, <OrganizationSelect />);
     expect(await screen.findByText(/belongs to Cedar Ridge Hospice/)).toBeTruthy();
+    // True for a non-member and for a member of another organization alike: it must not claim the account is no member at all.
+    expect(screen.queryByText(/not a member/)).toBeNull();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/login"));
     expect(assign).not.toHaveBeenCalledWith("/");
+  });
+
+  it("Try again re-runs the load in place instead of reloading the page (a reload ended on /expired)", async () => {
+    const { client, post } = clientWith("tenant");
+    post.mockResolvedValueOnce({
+      data: undefined,
+      error: { error: { code: "TENANT_HOST_MISMATCH" } },
+    } as never);
+    const assign = vi.fn();
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign, reload });
+    withClient(client, <OrganizationSelect />);
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("shows an error with actions when the load itself throws", async () => {
@@ -128,7 +152,9 @@ describe("OrganizationSelect on a tenant host", () => {
     expect(await screen.findByRole("button", { name: /Cedar Ridge Hospice/ })).toBeTruthy();
     expect(post).not.toHaveBeenCalled();
     const calls = (client.GET as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-    expect(calls.indexOf("/api/v1/public/tenant")).toBeGreaterThan(calls.indexOf("/api/v1/auth/credential-status"));
+    expect(calls.indexOf("/api/v1/public/tenant")).toBeGreaterThan(
+      calls.indexOf("/api/v1/auth/credential-status"),
+    );
   });
 
   it("keeps the picker on the demo host", async () => {

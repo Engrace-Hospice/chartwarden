@@ -36,7 +36,12 @@ export function createTenantOriginMatcher(deps: {
         return false;
       }
       // `origin` must already be a bare origin: https, default port, no path / query / userinfo.
-      if (parsed.protocol !== "https:" || parsed.port !== "" || parsed.origin !== origin.toLowerCase().replace(/\/$/, "")) return false;
+      if (
+        parsed.protocol !== "https:" ||
+        parsed.port !== "" ||
+        parsed.origin !== origin.toLowerCase().replace(/\/$/, "")
+      )
+        return false;
       const host = classifyTenantHost(parsed.hostname, baseDomain);
       if (host.kind !== "tenant") return false;
       const resolved = await resolver.resolve(host.label);
@@ -49,7 +54,12 @@ export function createTenantOriginMatcher(deps: {
  * Phase 4 — Better Auth builds reset / magic-link URLs on its one `baseURL`. On a tenant host the link must open on
  * the host the person asked from, so swap the origin for the request's own — but only when that origin is a tenant
  * origin the matcher trusts AND is the very host the request arrived on (a forged `Origin` naming another tenant, or
- * any look-alike, or a tenant the recipient does not belong to, leaves the link untouched). Never throws: any doubt returns the URL unchanged.
+ * any look-alike, or a tenant the recipient does not belong to, leaves the link on its own origin). Never throws: any doubt
+ * returns the URL unchanged.
+ *
+ * A link that stays on its own origin must not carry the requester's origin in its `callbackURL`: the token is delivered to
+ * that callback after the reset, so a forged `Origin` naming a real tenant would otherwise steer a non-member's reset
+ * token to that tenant's host. In tenant mode those callbacks are pinned to the link's origin.
  */
 export async function rewriteLinkToRequestOrigin(
   url: string,
@@ -58,17 +68,57 @@ export async function rewriteLinkToRequestOrigin(
   email: string,
   mayUseHost: ((email: string, host: string) => Promise<boolean>) | undefined,
 ): Promise<string> {
+  if (!matcher) return url;
+  return (
+    (await rewriteOntoRequestHost(url, request, matcher, email, mayUseHost)) ??
+    pinCallbacksToLinkOrigin(url)
+  );
+}
+
+async function rewriteOntoRequestHost(
+  url: string,
+  request: Request | undefined,
+  matcher: TenantOriginMatcher,
+  email: string,
+  mayUseHost: ((email: string, host: string) => Promise<boolean>) | undefined,
+): Promise<string | null> {
   const origin = request?.headers.get("origin");
-  if (!request || !origin || !matcher || !mayUseHost) return url;
+  if (!request || !origin || !mayUseHost) return null;
   try {
     const requestHost = request.headers.get("host")?.toLowerCase();
-    if (!requestHost || new URL(origin).host !== requestHost) return url;
-    if (!(await matcher.isTrusted(origin))) return url;
+    if (!requestHost || new URL(origin).host !== requestHost) return null;
+    if (!(await matcher.isTrusted(origin))) return null;
     // The link goes to the recipient's own tenant, never to a host the requester merely named: the recipient must
     // hold an active membership there (a forged Origin for another real tenant cannot steer someone else's link).
-    if (!(await mayUseHost(email, requestHost))) return url;
+    if (!(await mayUseHost(email, requestHost))) return null;
     const link = new URL(url);
     return `${new URL(origin).origin}${link.pathname}${link.search}${link.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+const CALLBACK_PARAMS = ["callbackURL", "errorCallbackURL"] as const;
+
+/** The URL with any absolute `callbackURL` / `errorCallbackURL` moved onto the link's own origin; the same string when nothing needs moving. */
+function pinCallbacksToLinkOrigin(url: string): string {
+  try {
+    const link = new URL(url);
+    let changed = false;
+    for (const key of CALLBACK_PARAMS) {
+      const value = link.searchParams.get(key);
+      if (!value) continue;
+      let target: URL;
+      try {
+        target = new URL(value);
+      } catch {
+        continue; // a relative callback resolves against the link's own origin
+      }
+      if (target.origin === link.origin) continue;
+      link.searchParams.set(key, `${link.origin}${target.pathname}${target.search}${target.hash}`);
+      changed = true;
+    }
+    return changed ? link.toString() : url;
   } catch {
     return url;
   }
