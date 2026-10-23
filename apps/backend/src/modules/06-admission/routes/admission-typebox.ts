@@ -865,11 +865,22 @@ const ActivationGapSchema = Type.Union([
 ]);
 
 /** Route 10 — the admission aggregate: summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
+const AdmissionPatientIdentityResponseSchema = Type.Union([
+  Type.Object({
+    id: Type.String(),
+    firstName: Type.String(),
+    lastName: Type.String(),
+    mrn: Type.String(),
+  }),
+  Type.Null(),
+]);
+
 export const AdmissionDetailResponseSchema = Type.Object({
   id: Type.String(),
   state: Type.String(),
   version: Type.Integer(),
   patientId: Type.Optional(Type.String()),
+  patient: AdmissionPatientIdentityResponseSchema,
   referralId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   readmittedFromAdmissionId: Type.Union([Type.String(), Type.Null()]),
   admissionAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -1058,6 +1069,7 @@ export const AdmissionSummaryResponseSchema = Type.Object({
   state: Type.String(),
   version: Type.Integer(),
   patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  patient: AdmissionPatientIdentityResponseSchema,
   holdReason: Type.Union([Type.String(), Type.Null()]),
   holdAt: Type.Union([Type.String(), Type.Null()]),
   releasedAt: Type.Union([Type.String(), Type.Null()]),

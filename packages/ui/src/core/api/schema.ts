@@ -31034,6 +31034,12 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            patient: {
+                                id: string;
+                                firstName: string;
+                                lastName: string;
+                                mrn: string;
+                            } | null;
                             holdReason: string | null;
                             holdAt: string | null;
                             releasedAt: string | null;
@@ -31460,6 +31466,12 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string;
+                        patient: {
+                            id: string;
+                            firstName: string;
+                            lastName: string;
+                            mrn: string;
+                        } | null;
                         referralId?: string | null;
                         readmittedFromAdmissionId: string | null;
                         admissionAt?: string | null;
