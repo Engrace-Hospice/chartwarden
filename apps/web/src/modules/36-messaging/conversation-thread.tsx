@@ -33,6 +33,7 @@ import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
+import { ExternalShareBanner } from "./external-share-banner";
 import { ThreadNotices } from "./thread-notices";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
@@ -737,6 +738,7 @@ function ConversationThreadView({
         ) : null}
       </div>
 
+      <ExternalShareBanner channelId={channel.channelId} />
       <ThreadNotices
         newMessageCount={newMessageCount}
         onShowLatest={showLatest}

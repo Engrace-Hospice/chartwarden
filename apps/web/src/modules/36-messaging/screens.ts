@@ -43,6 +43,9 @@ const BreakGlassReview = lazy(() =>
   import("./break-glass-review").then((m) => ({ default: m.BreakGlassReview })),
 );
 const ExportMine = lazy(() => import("./export-mine").then((m) => ({ default: m.ExportMine })));
+const ExternalPartners = lazy(() =>
+  import("./partners").then((m) => ({ default: m.ExternalPartners })),
+);
 const ExportApprovals = lazy(() =>
   import("./export-approvals").then((m) => ({ default: m.ExportApprovals })),
 );
@@ -168,6 +171,16 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.export.approve",
       screen: ExportApprovals,
+    },
+    {
+      // WP 6.6 (ADR-0096, proposed): share one conversation read-only with a pharmacy / DME partner, and revoke a share now. Creating also needs the
+      // tenant flag messaging.external_partners; listing and revoking never do. The partner-facing view is not built.
+      id: "messaging.partners",
+      path: "/messaging/partners",
+      title: "External partners",
+      navGroup: "Admin",
+      requiredPermission: "messaging.share.manage",
+      screen: ExternalPartners,
     },
     {
       id: "messaging.saved-replies",
