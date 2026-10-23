@@ -33,6 +33,7 @@ function screenLockApplies(sessionClass: string | null | undefined): boolean {
 const UNLOCK_MESSAGES: Readonly<Record<string, string>> = {
   INVALID_CREDENTIALS: "That password didn’t match. Try again.",
   UNLOCK_LOCKED_OUT: "Too many failed attempts. This session has ended - sign in again.",
+  UNLOCK_NO_PASSWORD: "This account signs in without a password. Sign out and sign in again.",
   TOO_MANY_FAILED_ATTEMPTS: "Too many failed attempts. Wait a few minutes before trying again.",
   default: "Couldn’t unlock just now. Try again, or sign out and sign in again.",
 };
@@ -49,6 +50,7 @@ export function ScreenLock(): JSX.Element | null {
   const [applies, setApplies] = useState<boolean | undefined>(undefined);
   const [locked, setLocked] = useState(false);
   const [identity, setIdentity] = useState<{ value: string } | null>(null);
+  const [noPassword, setNoPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -121,7 +123,9 @@ export function ScreenLock(): JSX.Element | null {
       if ((status === 401 && (code === "UNAUTHORIZED" || code === "SESSION_EXPIRED")) || status === 423) {
         setGlobalResponseSignal({ kind: "session-expired" });
       }
-      setError((code && UNLOCK_MESSAGES[code]) || UNLOCK_MESSAGES.default);
+      // An account with no password can never unlock: stop offering the form, leave "Sign out instead" as the way out.
+      if (code === "UNLOCK_NO_PASSWORD") setNoPassword(true);
+      setError((code && UNLOCK_MESSAGES[code]) || UNLOCK_MESSAGES.default || null);
       passwordInput.current?.focus(); // the field was just cleared; keep the keyboard user in the dialog
       return;
     }
@@ -169,7 +173,7 @@ export function ScreenLock(): JSX.Element | null {
             {error}
           </p>
         ) : null}
-        <button type="submit" disabled={busy || !password} style={primaryBtn}>
+        <button type="submit" disabled={busy || !password || noPassword} style={primaryBtn}>
           {busy ? "Unlocking…" : "Unlock"}
         </button>
         <button

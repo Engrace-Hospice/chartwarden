@@ -14,17 +14,23 @@
 //
 // The key holds no identifier: the user id is SHA-256'd (same `credentialKey` as login).
 //
-// The budget is per USER, not per session, deliberately: it must not be dodged by minting sessions. Two consequences
-// are accepted. Typos on one device share the budget with the user's other sessions. And a lockout does NOT clear the
-// counter: requests already in flight when the session is revoked would otherwise reserve fresh attempts, so a parallel
-// burst could get every one of its guesses hashed. The price is that the user's next session, if it screen-locks within
-// the 10-minute window, is told to wait (429) - a nuisance that heals itself, against a brute force that does not.
+// The budget is per USER, not per session, deliberately: it must not be dodged by minting sessions. Typos on one
+// device share the budget with the user's other sessions.
+//
+// A lockout is held by a per-SESSION marker, not by the shared counter (#602). The marker is written BEFORE the revoke
+// and checked both before and AFTER a request reserves its attempt, so the counter can be cleared at lockout: a
+// request in flight when the session dies reserves a fresh attempt, then sees the marker and is refused before it
+// hashes. That keeps the user's next session from inheriting a 429, and it closes the revoke-failure gap: if the revoke
+// throws, the session stays alive but every further unlock is refused 423 (and retries the revoke) rather than being
+// handed a fresh budget when the window ends. The marker outlives any session (`UNLOCK_LOCK_MARKER_MS`).
 import { type FailedLoginStore, credentialKey } from "@chartwarden/auth";
 import { ChartWardenError } from "@chartwarden/types";
 
 /** Failed unlock attempts a session gets before it is ended (mirrors step-up's discipline, but per user, 10 minutes). */
 export const UNLOCK_ATTEMPT_LIMIT = 5;
 export const UNLOCK_WINDOW_MS = 600_000;
+/** How long a locked-out session stays refused if its revoke failed: longer than any session can live. */
+export const UNLOCK_LOCK_MARKER_MS = 86_400_000;
 
 export interface UnlockReservation {
   /** 1-based count of attempts in this window, including this one (past the limit when refused). */
@@ -38,6 +44,10 @@ export interface UnlockReservation {
 export interface UnlockGuard {
   /** Atomically take one attempt for `userId`. Throws 503 UNLOCK_UNAVAILABLE if the counter store cannot be reached. */
   reserve(userId: string): Promise<UnlockReservation>;
+  /** Mark `sessionId` locked out, BEFORE its revoke is attempted: the marker (not the shared counter) is what keeps it refused. */
+  lockSession(sessionId: string): Promise<void>;
+  /** True once `sessionId` was locked out. Fails CLOSED (503) like `reserve`. */
+  isSessionLocked(sessionId: string): Promise<boolean>;
   /** Refund the budget after a correct password. Best effort: a store error here never fails a good unlock. */
   release(userId: string): Promise<void>;
   /** Whole seconds until the budget window ends (the real remaining TTL; the full window if the store cannot say). */
@@ -49,12 +59,22 @@ export function createUnlockGuard(
   opts: {
     limit?: number;
     windowMs?: number;
+    lockMarkerMs?: number;
     onStoreError?: (err: unknown) => void;
   } = {},
 ): UnlockGuard {
   const limit = opts.limit ?? UNLOCK_ATTEMPT_LIMIT;
   const windowMs = opts.windowMs ?? UNLOCK_WINDOW_MS;
+  const markerMs = opts.lockMarkerMs ?? UNLOCK_LOCK_MARKER_MS;
   const keyOf = (userId: string): string => `screen-unlock:user:${credentialKey(userId)}`;
+  const lockKeyOf = (sessionId: string): string =>
+    `screen-unlock:locked:${credentialKey(sessionId)}`;
+  const unavailable = (): ChartWardenError =>
+    new ChartWardenError(
+      "UNLOCK_UNAVAILABLE",
+      "screen unlock is temporarily unavailable; sign out and sign in again",
+      503,
+    );
   return {
     async reserve(userId) {
       let attempt: number;
@@ -62,13 +82,25 @@ export function createUnlockGuard(
         attempt = await store.recordFailure(keyOf(userId), windowMs);
       } catch (err) {
         opts.onStoreError?.(err);
-        throw new ChartWardenError(
-          "UNLOCK_UNAVAILABLE",
-          "screen unlock is temporarily unavailable; sign out and sign in again",
-          503,
-        );
+        throw unavailable();
       }
       return { attempt, allowed: attempt <= limit, last: attempt === limit };
+    },
+    async lockSession(sessionId) {
+      try {
+        await store.recordFailure(lockKeyOf(sessionId), markerMs);
+      } catch (err) {
+        opts.onStoreError?.(err);
+        throw unavailable();
+      }
+    },
+    async isSessionLocked(sessionId) {
+      try {
+        return (await store.failureCount(lockKeyOf(sessionId))) > 0;
+      } catch (err) {
+        opts.onStoreError?.(err);
+        throw unavailable();
+      }
     },
     async retryAfterSeconds(userId) {
       let ms: number | null = null;
