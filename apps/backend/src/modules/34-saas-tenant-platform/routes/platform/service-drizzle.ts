@@ -552,7 +552,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           // 23505 = the slug is, or once was, another organization's (never reused); 23514 = the DB's own slug rule.
           const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code;
           if (args.slug !== undefined && (code === "23505" || code === "23514")) {
-            throw new ChartWardenError("TENANT_SLUG_UNAVAILABLE", "that slug is taken or was used by another organization", 409);
+            throw new ChartWardenError("TENANT_SLUG_UNAVAILABLE", "that slug is taken or was used by another organization (an earlier failed provisioning attempt can also hold it)", 409);
           }
           throw err;
         }
