@@ -424,12 +424,19 @@ spoof detector open through the same cipher.
 - **F-025.** Nav hiding (`canSeeScreen`) did not stop a typed URL opening a create form. `isScreenDenied` + the shell's
   `RequireScreenPermission` render a denied state for a chromed screen whose `requiredPermission` the actor is KNOWN not
   to hold (unknown permission set renders; the server stays the enforcer). The server held on every probed endpoint.
-- **Accepted residual.** The metadata WRITE routes (`PATCH /documents/:id`, `POST /:id/links`, `POST /:id/tags`) are
-  not caseload-scoped: they need `documents.edit_metadata` (a separate grant), and an unlinked intake document has no
-  patient to scope by — linking it is the point of `/links`, so scoping by its current patient would block that
-  workflow. Their responses do return the document's metadata to an editor who knows the id.
-- **Not done.** The Compliance Auditor's claims / triage-intake / paper-re-entry endpoints were not probed over HTTP;
-  by code each is guarded by the same `requirePermission` key as its web screen (`billing.claim.assemble`,
-  `medicaid.claim.assemble`, `triage.open`, `triage.paper_reentry`) and no default role template holds them. The SQL
-  list scope is proven on real Postgres as the NOBYPASSRLS role (`m22-documents-read-service.live.test.ts`); the
-  route-level caseload resolution is covered by in-memory route tests only.
+- **Metadata writes, closed in #611.** `PATCH /documents/:id`, `POST /:id/links`, `POST|DELETE /:id/tags` now run a
+  `SCOPE_WRITE` pre-handler (before the legal-hold ABAC, so an out-of-scope id gets a 404, never a 403 that confirms a hold)
+  that applies the same caseload scope as the reads. A document with no patient (unlinked intake) is deliberately not
+  scoped by patient — linking it is the point of `/links` and `documents.edit_metadata` is the explicit key for that path;
+  instead `/links` refuses a target patient outside the caseload (404). Org-wide actors are unchanged.
+- **Verified live (#611).** On a local backend against the dev Postgres with the real M5 `CaseloadProvider`: an NP with
+  an empty caseload went from 200/201 on every write to 404 on every linked-document write, while the RN with the full
+  caseload and the admin still got 200. Seeded caseloads are all-or-nothing (6 or 0 patients), so a strict-subset caseload
+  is covered by the in-memory route tests only.
+- **Auditor probe (#611).** Seeded Compliance Auditor over HTTP: `POST /billing/claims/assemble`, `/medicaid-claims` and
+  `/triage-calls` answer 403 FORBIDDEN. `POST /triage-calls/paper-reentry` answers 403 STEP_UP_REQUIRED, i.e. the
+  permission guard PASSED: the dev auditor role takes every `compliance`-category key and `triage.paper_reentry` is
+  categorised `compliance` (M19 decision 3). It is a back-dating write, so whether an auditor should hold it is a policy
+  question (tracked in a follow-up), not a route bug.
+- **Not done.** A permanent live suite for route-level caseload resolution (needs a CI job row); the in-memory route
+  tests and the manual run above stand in for it.

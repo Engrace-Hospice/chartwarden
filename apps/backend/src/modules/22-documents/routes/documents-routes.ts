@@ -264,6 +264,32 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     throw new NotFoundError("document");
   }
 
+  /**
+   * #611 — the metadata WRITE routes (`PATCH /:id`, `POST /:id/links`, `POST|DELETE /:id/tags`) answer with, or act
+   * on, a document the actor names by id, so they honour the same caseload scope as the reads. Runs BEFORE the
+   * legal-hold ABAC so an out-of-scope id cannot learn "this document exists and is on hold" from a 403.
+   *
+   * A document with NO patient (an unlinked intake document) is deliberately not scoped by patient: linking it to a
+   * patient is the point of `/links`, and the `documents.edit_metadata` grant is the explicit key for that path. The
+   * patient it is linked TO is scoped instead (see `assertLinkTargetInScope`).
+   */
+  const SCOPE_WRITE: PreHandler = async (request) => {
+    const { organizationId } = actorOf(request as FastifyRequest);
+    const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
+    if (doc.patientId === null && doc.aggregateType !== "referral") return;
+    await assertDocumentInScope(request as FastifyRequest, doc);
+  };
+
+  /** #611 — `/links` may not attach a document to a patient outside the actor's caseload (and read it back). */
+  async function assertLinkTargetInScope(
+    request: FastifyRequest,
+    patientId: string,
+  ): Promise<void> {
+    const scope = await metadataScopeOf(request);
+    if (scope === null || scope.includes(patientId)) return;
+    throw new NotFoundError("patient");
+  }
+
   // 1 — upload new document (creates document + version v1).
   app.post(
     "/api/v1/documents",
@@ -412,22 +438,27 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   );
 
   // 8 — edit metadata (legal_hold_aware ABAC denies while a hold is active, §4.7).
-  app.patch("/api/v1/documents/:id", { preHandler: [EDIT, ABAC_LEGAL_HOLD] }, async (request) => {
-    const { organizationId, actor } = actorOf(request);
-    const body = parse(PatchDocumentRequest, request.body);
-    return service.patchDocument(organizationId, actor, docIdOf(request), {
-      title: body.title,
-      patientFacing: body.patientFacing,
-      attachToDisclosures: body.attachToDisclosures,
-    });
-  });
+  app.patch(
+    "/api/v1/documents/:id",
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
+    async (request) => {
+      const { organizationId, actor } = actorOf(request);
+      const body = parse(PatchDocumentRequest, request.body);
+      return service.patchDocument(organizationId, actor, docIdOf(request), {
+        title: body.title,
+        patientFacing: body.patientFacing,
+        attachToDisclosures: body.attachToDisclosures,
+      });
+    },
+  );
 
   app.post(
     "/api/v1/documents/:id/links",
-    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(LinkDocumentRequest, request.body);
+      if (body.patientId) await assertLinkTargetInScope(request, body.patientId);
       return service.linkDocument(organizationId, actor, docIdOf(request), {
         patientId: body.patientId,
         admissionId: body.admissionId,
@@ -457,7 +488,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 9 — add tag.
   app.post(
     "/api/v1/documents/:id/tags",
-    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(AddTagRequest, request.body);
@@ -473,7 +504,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 10 — remove tag.
   app.delete(
     "/api/v1/documents/:id/tags/:tagId",
-    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const { id, tagId } = parse(TagParamsSchema, request.params);

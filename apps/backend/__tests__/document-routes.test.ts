@@ -82,6 +82,10 @@ const CAND_HIGH = "e0000000-0000-4000-8000-0000000000e1";
 const CAND_LOW = "e0000000-0000-4000-8000-0000000000e2";
 const CAND_OTHER_BATCH = "e0000000-0000-4000-8000-0000000000e3";
 const PATIENT_OFF = "22222222-2222-4222-8222-222222222222";
+// #611 — documents the metadata WRITE routes are probed against.
+const DOC_OFF_CASELOAD = "c0000000-0000-4000-8000-0000000000f1";
+const DOC_OFF_CASELOAD_HOLD = "c0000000-0000-4000-8000-0000000000f2";
+const DOC_UNLINKED = "c0000000-0000-4000-8000-0000000000f3";
 
 /** Everything an intake reviewer needs at the RBAC layer, shared by the three reviewer personas so a
  *  403 in the §4.7 cases below can only ever come from the LICENSURE predicate (F-030). */
@@ -121,6 +125,12 @@ const PERMISSION_SEED = [
   // F-023 — documents.read without any caseload, and the same with the view-only org-wide key.
   { userId: "nocase_1", permissions: ["documents.read"] },
   { userId: "him_1", permissions: ["documents.read", "documents.read_org_wide"] },
+  // #611 — editors: one with no caseload, one with the view-only org-wide key.
+  { userId: "editnocase_1", permissions: ["documents.read", "documents.edit_metadata"] },
+  {
+    userId: "hedit_1",
+    permissions: ["documents.read", "documents.edit_metadata", "documents.read_org_wide"],
+  },
   { userId: "platform_1", permissions: ["documents.publish_template"] },
   { userId: "orgadmin_1", permissions: ["documents.manage_overlay", "documents.read_templates"] },
   { userId: "exporter_1", permissions: ["documents.export_phi_bundle"] },
@@ -139,6 +149,14 @@ const sharedBackend = createInMemoryDocumentBackend({
     },
     { id: DOC_B, organizationId: ORG_B, patientId: PATIENT },
     { id: DOC_HOLD, organizationId: ORG, patientId: PATIENT, legalHoldActive: true },
+    { id: DOC_OFF_CASELOAD, organizationId: ORG, patientId: PATIENT_OFF },
+    {
+      id: DOC_OFF_CASELOAD_HOLD,
+      organizationId: ORG,
+      patientId: PATIENT_OFF,
+      legalHoldActive: true,
+    },
+    { id: DOC_UNLINKED, organizationId: ORG, patientId: null },
   ],
   batches: [{ id: BATCH, organizationId: ORG, patientId: PATIENT }],
   // F-237 — the stored risk tier the eligibility predicate loads (never the request's say-so).
@@ -1322,8 +1340,10 @@ describe("F-023 — GET /documents lists the actor's caseload, not the whole org
     return app;
   }
 
-  const listed = async (app: Awaited<ReturnType<typeof seedTwoPatients>>, headers: Record<string, string>) =>
-    (await app.inject({ method: "GET", url: "/api/v1/documents", headers })).json().items;
+  const listed = async (
+    app: Awaited<ReturnType<typeof seedTwoPatients>>,
+    headers: Record<string, string>,
+  ) => (await app.inject({ method: "GET", url: "/api/v1/documents", headers })).json().items;
 
   it("a clinician sees only documents for patients on their caseload", async () => {
     const items = await listed(await seedTwoPatients(), RN);
@@ -1401,8 +1421,13 @@ describe("F-023 — GET /documents lists the actor's caseload, not the whole org
     const MISSING_DOC = "c0000000-0000-4000-8000-0000000000ee";
     const open = makeServer();
     expect(
-      (await open.app.inject({ method: "GET", url: `/api/v1/documents/${REFERRAL_DOC}`, headers: RN }))
-        .statusCode,
+      (
+        await open.app.inject({
+          method: "GET",
+          url: `/api/v1/documents/${REFERRAL_DOC}`,
+          headers: RN,
+        })
+      ).statusCode,
     ).toBe(200);
 
     const denied = makeServer(sharedBackend.service, {
@@ -1429,6 +1454,86 @@ describe("F-023 — GET /documents lists the actor's caseload, not the whole org
   });
 
   it("an org-wide oversight role lists the whole org without needing the key", async () => {
-    expect(await listed(await seedTwoPatients(), as("nocase_1", "director_of_nursing"))).toHaveLength(2);
+    expect(
+      await listed(await seedTwoPatients(), as("nocase_1", "director_of_nursing")),
+    ).toHaveLength(2);
+  });
+});
+
+describe("#611 — metadata WRITE routes honour the caseload", () => {
+  const as = (user: string, roles: string) => ({
+    "x-test-user": user,
+    "x-test-org": ORG,
+    "x-test-roles": roles,
+    "idempotency-key": `w611-${Math.random()}`,
+  });
+  const tag = { tagKind: "free", tagKey: "note", tagValue: "x" };
+  const calls = (id: string) =>
+    [
+      { method: "PATCH", url: `/api/v1/documents/${id}`, payload: { title: "renamed" } },
+      { method: "POST", url: `/api/v1/documents/${id}/links`, payload: { patientId: PATIENT } },
+      { method: "POST", url: `/api/v1/documents/${id}/tags`, payload: tag },
+      {
+        method: "DELETE",
+        url: `/api/v1/documents/${id}/tags/c0000000-0000-4000-8000-0000000000a9`,
+        payload: undefined,
+      },
+    ] as const;
+
+  it("a clinician cannot edit, link or tag a document for a patient off their caseload (404)", async () => {
+    const { app } = makeServer();
+    for (const c of calls(DOC_OFF_CASELOAD)) {
+      const res = await app.inject({ ...c, headers: as("rn_1", "rn") });
+      expect([c.method, c.url, res.statusCode]).toEqual([c.method, c.url, 404]);
+    }
+  });
+
+  it("the same writes on an in-caseload document are not refused for scope", async () => {
+    const { app } = makeServer();
+    const patch = await app.inject({ ...calls(DOC)[0], headers: as("rn_1", "rn") });
+    expect(patch.statusCode).toBe(200);
+    const tagged = await app.inject({ ...calls(DOC)[2], headers: as("rn_1", "rn") });
+    expect(tagged.statusCode).toBe(201);
+  });
+
+  it("an editor with no caseload is refused on a patient's document", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ ...calls(DOC)[0], headers: as("editnocase_1", "clinical") });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("an off-caseload document under legal hold answers 404, not a 403 that confirms the hold", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      ...calls(DOC_OFF_CASELOAD_HOLD)[0],
+      headers: as("rn_1", "rn"),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("the org-wide key widens the write scope to the whole org", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ ...calls(DOC_OFF_CASELOAD)[0], headers: as("hedit_1", "him") });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("an unlinked intake document can still be edited and linked to a patient on the caseload", async () => {
+    const { app } = makeServer();
+    const edit = await app.inject({ ...calls(DOC_UNLINKED)[0], headers: as("rn_1", "rn") });
+    expect(edit.statusCode).toBe(200);
+    const link = await app.inject({ ...calls(DOC_UNLINKED)[1], headers: as("rn_1", "rn") });
+    expect(link.statusCode).toBe(200);
+  });
+
+  it("linking an unlinked document to a patient OFF the caseload is refused (404) and attaches nothing", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC_UNLINKED}/links`,
+      headers: as("rn_1", "rn"),
+      payload: { patientId: PATIENT_OFF },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain(PATIENT_OFF);
   });
 });
