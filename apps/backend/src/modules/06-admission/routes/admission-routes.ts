@@ -23,7 +23,11 @@ import {
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
-import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
+import {
+  type AdmissionScopeResourceKind,
+  M6_ROLE_PREDICATE_NAMES,
+  admissionScopeAccessOf,
+} from "../abac-predicates";
 import { soleSiteOf } from "../actor-site";
 import {
   type DischargeDetailBodyIssue,
@@ -292,14 +296,11 @@ const admissionScope = (
 ): PreHandler =>
   requireAbac(action, "admission.scope", {
     notFoundOnDeny: true,
-    ...(resourceKind === "admission"
-      ? {}
-      : {
-          getTarget: (request) => ({
-            ...(typeof request.params === "object" && request.params ? request.params : {}),
-            resourceKind,
-          }),
-        }),
+    getTarget: (request) => ({
+      ...(typeof request.params === "object" && request.params ? request.params : {}),
+      ...(resourceKind === "admission" ? {} : { resourceKind }),
+      access: admissionScopeAccessOf(action),
+    }),
   }) as PreHandler;
 
 /**

@@ -6956,6 +6956,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(CW)
           .innerJoin(ADM, eq(CW.admissionId, ADM.id))
@@ -6967,6 +6968,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -6985,6 +6987,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(EP)
           .innerJoin(ADM, eq(EP.admissionId, ADM.id))
@@ -6995,6 +6998,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -7006,6 +7010,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(ES)
           .innerJoin(EP, eq(ES.electionPeriodId, EP.id))
@@ -7017,6 +7022,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -7028,6 +7034,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(CTI)
           .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
@@ -7039,6 +7046,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -7050,6 +7058,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(F2F)
           .innerJoin(EP, eq(F2F.electionPeriodId, EP.id))
@@ -7061,6 +7070,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });
@@ -7072,6 +7082,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
             patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             createdByUserId: ADM.createdByUserId,
+            locationId: ADM.locationId,
           })
           .from(LOC)
           .innerJoin(ADM, eq(LOC.admissionId, ADM.id))
@@ -7082,6 +7093,7 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
               createdByUserId: r.createdByUserId ?? null,
+              locationId: r.locationId ?? null,
             }
           : null;
       });

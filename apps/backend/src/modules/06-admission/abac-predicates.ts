@@ -21,6 +21,7 @@ import {
   BUSINESS_ADMIN_SCOPE_ROLES,
   INTAKE_ROLE_KEYS,
   hasAdmittingClinicianRole,
+  hasOrgWideScope,
   registerPredicateIdempotent,
 } from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
@@ -130,6 +131,15 @@ export type AdmissionScopeResourceKind =
   | "f2f"
   | "loc"
   | "complianceWindow";
+
+/**
+ * Whether an `admission.scope` check guards a READ or a write. Set by the route guard (server-side, after the path
+ * params, so a client cannot supply it) from the action name: `<resource>.read` is a read. Org-wide oversight roles
+ * (`hasOrgWideScope`, the census's own rule) open any admission for a read (#613) but gain nothing for a write.
+ */
+export type AdmissionScopeAccess = "read" | "write";
+export const admissionScopeAccessOf = (action: string): AdmissionScopeAccess =>
+  action.endsWith(".read") ? "read" : "write";
 
 function resourceKindOf(target: AbacTarget): AdmissionScopeResourceKind {
   const kind = target.resourceKind;
@@ -260,6 +270,8 @@ export function buildAdmissionAbacPredicates(
         }
       })();
       if (!facts) return false; // fail-closed (absent / cross-tenant)
+      // #613: the census lists these roles every admission (readScopeOf → hasOrgWideScope), so a read must open it.
+      if (target.access === "read" && hasOrgWideScope(context.roles)) return true;
       return admissionScopeFor(context, facts);
     },
     // The identity halves of the two CTI sign gates compare `context.userId` (a Better Auth user
