@@ -21,6 +21,7 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import { FormatRegistry } from "@sinclair/typebox";
+import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -44,7 +45,7 @@ const NEW_TABLES = ["audit_request", "audit_request_claim", "audit_request_event
 describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", () => {
   let fx: M7Fixture;
 
-  const providerZones = (tx: never, pe: string) =>
+  const providerZones = (tx: DbClient, pe: string) =>
     buildFoundationSiteReader().providerEntityTimezones(tx, pe);
   const audit = () =>
     buildDrizzleAuditRequestService(fx.handle.db, {
@@ -482,7 +483,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       ).toBe(404);
       for (const table of NEW_TABLES) {
         const rows = await fx.asApp((tx) => tx.execute(sql.raw(`SELECT id FROM ${table}`)), ORG_B);
-        expect(rows.rows ?? rows, table).toHaveLength(0);
+        expect((rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown[]), table).toHaveLength(0);
       }
       const kinds = (
         await fx.admin.query(

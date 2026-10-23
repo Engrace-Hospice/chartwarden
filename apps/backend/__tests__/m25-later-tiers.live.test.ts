@@ -24,6 +24,7 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import { FormatRegistry } from "@sinclair/typebox";
+import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -62,7 +63,7 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
     ) =>
       outbox.publish(tx as Parameters<typeof outbox.publish>[0], { ...input, callerModule: "m25" }),
   };
-  const providerZones = (tx: never, pe: string) =>
+  const providerZones = (tx: DbClient, pe: string) =>
     buildFoundationSiteReader().providerEntityTimezones(tx, pe);
   const tier = () =>
     buildDrizzleLaterTierService(fx.handle.db, {
@@ -632,7 +633,7 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
       ).toBe(404);
       for (const table of NEW_TABLES) {
         const rows = await fx.asApp((tx) => tx.execute(sql.raw(`SELECT id FROM ${table}`)), ORG_B);
-        expect(rows.rows ?? rows, table).toHaveLength(0);
+        expect((rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown[]), table).toHaveLength(0);
       }
       // a writer that skips the service still cannot point at another tenant's case
       const msg = await fx.dbMessage(
