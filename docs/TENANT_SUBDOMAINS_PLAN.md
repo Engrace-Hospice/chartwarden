@@ -228,6 +228,15 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
   fallback. `smoke.sh` probes a deep `/portal/` path and asserts the portal document (not the staff one) comes back.
 - Pass `VITE_TENANT_BASE_DOMAIN` (= `TENANT_BASE_DOMAIN`) as a build arg to `Dockerfile.web` so `app.<base>` shows the landing.
 
+**Phase 5 build notes (code and config done; DNS/certificate/Pangolin pending the DNS-control confirmation).**
+`Dockerfile.web` now builds and ships the portal under `/portal/` (the production stack had no portal at all before);
+`web-nginx.conf` gives it its own fallback (verified against the built image: deep link, `/portal/signed-in`, a missing
+asset 404, `/portal` 308). `nginx/chartwarden-tenant.conf` is the apex + wildcard vhost (overwrites `X-Forwarded-Host`).
+`.env.tenant.example` + an optional `TENANT_BASE_DOMAIN` mode in `bootstrap-vps.sh`, `smoke.sh` tenant probes, and
+`deploy/production/TENANT_EDGE.md` (runbook). Open: the real-environment release workflow (the build arg is baked, so it
+needs its own image build), and the CSP `img-src`/`connect-src` tightening - the shared snippet still allows `https:`
+for presigned previews, and narrowing it to `'self'` + the `storage.` host needs the real-environment image variant.
+
 ### Phase 6 — provisioning (PR B)
 - M34 tenant provisioning validates the slug (Phase 1 rules) and audits the action. No per-tenant DNS,
   certificate, Pangolin or ingress change.

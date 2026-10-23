@@ -11,6 +11,9 @@ RUN bun install --frozen-lockfile
 ARG VITE_TENANT_BASE_DOMAIN=""
 ENV VITE_TENANT_BASE_DOMAIN=${VITE_TENANT_BASE_DOMAIN}
 RUN bun run --cwd apps/web build:app
+# ADR-0049 Phase 5: the patient/family portal ships in this image under /portal/ (its default Vite base), so one
+# web tier answers every tenant host. Staff app at /, portal at /portal/ - see web-nginx.conf.
+RUN bun run --cwd apps/portal build:app
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 
@@ -23,5 +26,6 @@ USER nginx
 COPY deploy/production/web-nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/production/web-security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/apps/web/dist/app /usr/share/nginx/html
+COPY --from=build /app/apps/portal/dist/app /usr/share/nginx/html/portal
 
 EXPOSE 8080

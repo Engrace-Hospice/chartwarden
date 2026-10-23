@@ -46,6 +46,9 @@ TLS automation. The application reaches MinIO over the Compose network (`http://
 uses `STORAGE_PUBLIC_ORIGIN` only for browser-facing presigned URLs. The public origin must resolve
 for clients, but `/ready` does not depend on a host-network hairpin through Nginx/TLS.
 
+The real, per-tenant-subdomain environment (`*.chartwarden.com`) has its own edge, env overlay and smoke probes:
+see [`TENANT_EDGE.md`](./TENANT_EDGE.md).
+
 ### Nginx logging (PHI)
 
 The stock `combined` access-log format records the full request URI, so patient search terms

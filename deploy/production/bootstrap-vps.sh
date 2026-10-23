@@ -10,9 +10,21 @@ set -eu
 
 DEPLOY_DIR=${DEPLOY_DIR:-/opt/chartwarden}
 SOURCE_DIR=${SOURCE_DIR:-deploy/production}
-FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-app.chartwarden.cloud}
-BACKEND_DOMAIN=${BACKEND_DOMAIN:-api.chartwarden.cloud}
+TENANT_BASE_DOMAIN=${TENANT_BASE_DOMAIN:-}
+if [ -n "$TENANT_BASE_DOMAIN" ]; then
+  # Lowercase labels only: the value is substituted into sed scripts that run as root.
+  case $TENANT_BASE_DOMAIN in
+    *[!a-z0-9.-]* | .* | *. | *..*) echo "TENANT_BASE_DOMAIN must be a bare lowercase domain (e.g. chartwarden.com)" >&2; exit 64 ;;
+  esac
+  FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-app.$TENANT_BASE_DOMAIN}
+  BACKEND_DOMAIN=${BACKEND_DOMAIN:-app.$TENANT_BASE_DOMAIN}
+else
+  FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-app.chartwarden.cloud}
+  BACKEND_DOMAIN=${BACKEND_DOMAIN:-api.chartwarden.cloud}
+fi
 STORAGE_DOMAIN=${STORAGE_DOMAIN:-storage.chartwarden.cloud}
+# ADR-0049: set to the base domain (e.g. chartwarden.com) to build the real per-tenant-subdomain environment. Unset = the
+# single-host demo, byte-for-byte as before. See TENANT_EDGE.md.
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "run as root, or with sudo" >&2
@@ -38,6 +50,7 @@ install -m 0755 "$SOURCE_DIR/deploy.sh" "$DEPLOY_DIR/deploy.sh"
 install -m 0755 "$SOURCE_DIR/preflight.sh" "$DEPLOY_DIR/preflight.sh"
 
 if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
+  umask 077
   tmp_env=$(mktemp "$DEPLOY_DIR/.env.production.XXXXXX")
   chmod 600 "$tmp_env"
   # Every REPLACE_WITH_* token gets its OWN freshly generated secret (a shared value would make e.g. the
@@ -68,6 +81,17 @@ if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
     -e "s#^PASSKEY_RP_ID=.*#PASSKEY_RP_ID=$FRONTEND_DOMAIN#" \
     -e "s#^WEBAUTHN_RP_ID=.*#WEBAUTHN_RP_ID=$FRONTEND_DOMAIN#" \
     >"$tmp_env"
+  if [ -n "$TENANT_BASE_DOMAIN" ]; then
+    # Overlay the tenant settings: replace a key already present, append one that is not.
+    sed "s#chartwarden\\.com#$TENANT_BASE_DOMAIN#g" "$SOURCE_DIR/.env.tenant.example" | grep -E '^[A-Z][A-Z0-9_]*=' | while IFS= read -r line; do
+      key=${line%%=*}
+      if grep -q "^$key=" "$tmp_env"; then
+        grep -v "^$key=" "$tmp_env" >"$tmp_env.next" && mv "$tmp_env.next" "$tmp_env"
+      fi
+      printf '%s\n' "$line" >>"$tmp_env"
+    done
+    chmod 600 "$tmp_env"
+  fi
   mv "$tmp_env" "$DEPLOY_DIR/.env.production"
   echo "created $DEPLOY_DIR/.env.production with generated secrets"
   echo "edit CHARTWARDEN_IMAGE, CHARTWARDEN_WEB_IMAGE, GHCR owner/SHA, and provider gateway URLs before full app deploy"
@@ -81,6 +105,11 @@ if command -v nginx >/dev/null 2>&1; then
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-log-format.conf" /etc/nginx/conf.d/chartwarden-log-format.conf
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-storage.conf" /etc/nginx/sites-available/chartwarden-storage.conf
   ln -sfn /etc/nginx/sites-available/chartwarden-storage.conf /etc/nginx/sites-enabled/chartwarden-storage.conf
+  if [ -n "$TENANT_BASE_DOMAIN" ]; then
+    sed "s#chartwarden\\.com#$TENANT_BASE_DOMAIN#g" "$SOURCE_DIR/nginx/chartwarden-tenant.conf" >/etc/nginx/sites-available/chartwarden-tenant.conf
+    chmod 0644 /etc/nginx/sites-available/chartwarden-tenant.conf
+    ln -sfn /etc/nginx/sites-available/chartwarden-tenant.conf /etc/nginx/sites-enabled/chartwarden-tenant.conf
+  fi
   nginx -t
   systemctl reload nginx || systemctl restart nginx
 else

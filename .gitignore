@@ -31,6 +31,7 @@ dist/
 # The production template is the contract for bootstrap-vps.sh / DR rebuilds (GAP-176); a real
 # .env.production never has the `.example` suffix and stays ignored by the glob above.
 !deploy/production/.env.production.example
+!deploy/production/.env.tenant.example
 
 # Local dev credentials written by `bun run db:seed` (never commit secrets).
 CREDENTIALS.local.md
