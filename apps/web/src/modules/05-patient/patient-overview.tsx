@@ -597,6 +597,15 @@ function periodDay(p: Period): string | null {
 
 const muted = { color: t.onSurfaceVariant, fontSize: "0.8125rem" } as const;
 
+// WCAG 2.5.8 (#648): every chart-overview link is at least 24 x 24 CSS px.
+export const TARGET_24 = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: "1.5rem",
+  minHeight: "1.5rem",
+} as const;
+
 export function EmptyLine({ children }: { children: ReactNode }): JSX.Element {
   return <p style={{ ...muted, margin: "0.25rem 0 0.5rem" }}>{children}</p>;
 }
@@ -619,18 +628,7 @@ export function PanelLink({
   arrow?: boolean;
 }): JSX.Element {
   return (
-    <Link
-      to={to}
-      style={{
-        display: "inline-flex",
-
-        alignItems: "center",
-
-        gap: "0.3rem",
-
-        fontWeight: 500,
-      }}
-    >
+    <Link to={to} style={{ ...TARGET_24, gap: "0.3rem", fontWeight: 500 }}>
       {children}
 
       {arrow ? <Glyph name="arrow-right" size={14} /> : null}
@@ -1062,6 +1060,7 @@ function ClinicalSnapshotPanel({
               <Link
                 to={`/admissions/${data.election.admission.id}`}
                 style={{
+                  ...TARGET_24,
                   color: "var(--color-primary)",
 
                   fontWeight: 650,
@@ -1177,9 +1176,13 @@ function CareTeamPanel({
                   </div>
                 </div>
 
-                <span style={{ display: "flex", gap: "0.625rem", color: t.primary }}>
+                <span style={{ display: "flex", gap: "0.25rem", color: t.primary }}>
                   {m?.email ? (
-                    <a href={`mailto:${m.email}`} aria-label={`Email ${name ?? roleLabel(a.role)}`}>
+                    <a
+                      href={`mailto:${m.email}`}
+                      aria-label={`Email ${name ?? roleLabel(a.role)}`}
+                      style={TARGET_24}
+                    >
                       <Glyph name="mail" size={16} strokeWidth={1.75} />
                     </a>
                   ) : null}
@@ -1188,6 +1191,7 @@ function CareTeamPanel({
                     patientId={patientId}
                     conversation={conversation}
                     aria-label={`Message ${name ?? roleLabel(a.role)}`}
+                    style={TARGET_24}
                   >
                     <Glyph name="message-square" size={16} strokeWidth={1.75} />
                   </PatientConversationLink>

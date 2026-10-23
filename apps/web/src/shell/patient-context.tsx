@@ -296,7 +296,15 @@ export function ActiveDiagnosesPanel({ patientId }: { patientId: string }): JSX.
       icon="shield-check"
       action={
         problems && problems.length > 0 ? (
-          <Link to={`/patients/${patientId}/care-plan`} style={{ fontWeight: 500 }}>
+          <Link
+            to={`/patients/${patientId}/care-plan`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: "1.5rem",
+              fontWeight: 500,
+            }}
+          >
             View all
           </Link>
         ) : null

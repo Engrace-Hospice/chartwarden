@@ -234,31 +234,29 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
           <div style={toolbarStyle}>
             <div style={toolbarTitleStyle}>
               <span style={toolbarEyebrowStyle}>Subscription ledger</span>
-              <strong>Filter by clinician or supervisor membership id</strong>
+              <strong>Filter by clinician or supervisor</strong>
             </div>
             <div style={controlGroupStyle}>
-              <input
-                type="text"
-                value={clinicianFilter}
-                onChange={(event) => {
-                  setClinicianFilter(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Clinician membership id"
-                aria-label="Clinician membership id"
-                style={monoInputStyle}
-              />
-              <input
-                type="text"
-                value={supervisorFilter}
-                onChange={(event) => {
-                  setSupervisorFilter(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Supervisor membership id"
-                aria-label="Supervisor membership id"
-                style={monoInputStyle}
-              />
+              <div style={lookupFilterStyle}>
+                <MembershipLookupField
+                  label="Filter by clinician"
+                  value={clinicianFilter}
+                  onChange={(id) => {
+                    setClinicianFilter(id);
+                    setPage(1);
+                  }}
+                />
+              </div>
+              <div style={lookupFilterStyle}>
+                <MembershipLookupField
+                  label="Filter by supervisor"
+                  value={supervisorFilter}
+                  onChange={(id) => {
+                    setSupervisorFilter(id);
+                    setPage(1);
+                  }}
+                />
+              </div>
               <Button size="sm" tone="secondary" onClick={() => void load()} loading={loading}>
                 Apply
               </Button>
@@ -597,12 +595,7 @@ const controlGroupStyle = {
   gap: "0.5rem",
   flexWrap: "wrap" as const,
 };
-const monoInputStyle = {
-  minWidth: "15rem",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  fontFamily: "var(--font-mono)",
-};
+const lookupFilterStyle = { minWidth: "15rem" };
 const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
