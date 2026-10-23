@@ -57,6 +57,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
   const client = useApiClient();
   const [rows, setRows] = useState<SafetySubscriptionView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clinicianFilter, setClinicianFilter] = useState("");
   const [supervisorFilter, setSupervisorFilter] = useState("");
@@ -95,6 +96,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       setError(null);
     }
     setLoading(false);
+    setLoadedOnce(true);
   }, [client, clinicianFilter, supervisorFilter]);
 
   useEffect(() => {
@@ -177,7 +179,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
     setPage(1);
   };
 
-  if (loading && rows.length === 0) {
+  if (loading && !loadedOnce) {
     return (
       <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
         <LoadingSpinner />
