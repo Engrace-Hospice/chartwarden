@@ -907,7 +907,10 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       { organizationId: ORG_A, adviceId: received.adviceId, errorName: "Error" },
     ]);
     expect(objects.has(received.adviceId)).toBe(true); // left behind for the lifecycle rule
+    // A redelivery of the same event retries the delete that failed.
     failDelete = false;
+    expect((await service.postAdvice(actor, received.adviceId)).outcome).toBe("already_posted");
+    expect(deleted).toEqual([received.adviceId]);
   });
 
   it("#658: a failed stage rolls the receive back (nothing queued); a missing object stays retryable", async () => {

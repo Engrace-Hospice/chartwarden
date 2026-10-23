@@ -51,7 +51,7 @@ function fakeS3() {
     }
     return new Response(null, { status: 405 });
   }) as typeof fetch;
-  return { fetchImpl, calls, objects };
+  return { fetchImpl, calls, objects, dropBucket: () => (bucketExists = false) };
 }
 
 describe("M25 raw advice store", () => {
@@ -72,6 +72,16 @@ describe("M25 raw advice store", () => {
     await store.delete(ORG, "advice-1");
     expect(await store.get(ORG, "advice-1")).toBeNull();
     expect(await store.get(ORG, "advice-2")).toBe("ISA*other"); // a neighbour is untouched
+  });
+
+  it("re-creates a tenant bucket that vanished after it was memoized, then retries the stage once", async () => {
+    const s3 = fakeS3();
+    const store = buildM25RawAdviceStore(ENV, { fetchImpl: s3.fetchImpl });
+    if (!store) throw new Error("unreachable");
+    await store.put(ORG, "a", "one");
+    s3.dropBucket();
+    await store.put(ORG, "b", "two");
+    expect(await store.get(ORG, "b")).toBe("two");
   });
 
   it("refuses non-UTF-8 staged bytes instead of posting replacement characters", async () => {

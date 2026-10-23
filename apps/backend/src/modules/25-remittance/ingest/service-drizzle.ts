@@ -571,6 +571,24 @@ export function buildDrizzleM25IngestService(
     return { outcome: "queued", adviceId: row.id };
   }
 
+  /**
+   * #669 — once an advice is posted the staged raw text (PHI) has no reader left. Best effort: a failure must
+   * never un-post the advice; it is reported, and the next redelivery (or a bucket lifecycle rule) retries.
+   */
+  async function dropStagedRaw(organizationId: string, adviceId: string): Promise<void> {
+    await deps.rawStore?.delete(organizationId, adviceId).catch((err: unknown) => {
+      try {
+        deps.onStagedDeleteFailed?.({
+          organizationId,
+          adviceId,
+          errorName: err instanceof Error ? err.name : "unknown",
+        });
+      } catch {
+        // Ops-only hook.
+      }
+    });
+  }
+
   return {
     async receiveAdvice(
       actor: M25IngestActor,
@@ -660,6 +678,9 @@ export function buildDrizzleM25IngestService(
       const advice = current[0];
       if (!advice) return { outcome: "not_found", adviceId };
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed") {
+        // A redelivery retries a delete that failed after the original post (delete is idempotent).
+        if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted")
+          await dropStagedRaw(actor.organizationId, adviceId);
         return { outcome: "already_posted", adviceId };
       }
 
@@ -773,22 +794,11 @@ export function buildDrizzleM25IngestService(
             return { outcome: finalStatus, postedLineCount, unmatchedLineCount };
           },
         );
-        if (result.outcome === "already_posted") return { outcome: "already_posted", adviceId };
-        // #669 — the post committed, so the staged raw text (PHI) has no reader left. Best effort: a failure here
-        // must never un-post the advice; it is reported and the object is left for a bucket lifecycle rule.
-        if (staged !== null && staged !== undefined) {
-          await deps.rawStore?.delete(actor.organizationId, adviceId).catch((err: unknown) => {
-            try {
-              deps.onStagedDeleteFailed?.({
-                organizationId: actor.organizationId,
-                adviceId,
-                errorName: err instanceof Error ? err.name : "unknown",
-              });
-            } catch {
-              // Ops-only hook.
-            }
-          });
+        if (result.outcome === "already_posted") {
+          await dropStagedRaw(actor.organizationId, adviceId);
+          return { outcome: "already_posted", adviceId };
         }
+        await dropStagedRaw(actor.organizationId, adviceId);
         return {
           outcome: result.outcome,
           adviceId,

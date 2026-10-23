@@ -31,16 +31,27 @@ export function buildM25RawAdviceStore(
   const ensured = new Set<string>();
   return {
     async put(organizationId, adviceId, text) {
+      const stage = (): Promise<unknown> =>
+        store.putObject({
+          bucket: bucketOf(organizationId),
+          objectKey: keyOf(adviceId),
+          bytes: new TextEncoder().encode(text),
+          signal: signal(),
+        });
       if (!ensured.has(organizationId)) {
         await provisioner.ensureTenantPrefixes({ organizationId, prefixes: [] });
         ensured.add(organizationId);
       }
-      await store.putObject({
-        bucket: bucketOf(organizationId),
-        objectKey: keyOf(adviceId),
-        bytes: new TextEncoder().encode(text),
-        signal: signal(),
-      });
+      try {
+        await stage();
+      } catch (err) {
+        // The bucket can vanish after it was memoized (tenant erasure/recreation): re-ensure once and retry.
+        if (!(err instanceof Error) || !/HTTP 404/.test(err.message)) throw err;
+        ensured.delete(organizationId);
+        await provisioner.ensureTenantPrefixes({ organizationId, prefixes: [] });
+        ensured.add(organizationId);
+        await stage();
+      }
     },
     async get(organizationId, adviceId) {
       const bytes = await store.getObject({

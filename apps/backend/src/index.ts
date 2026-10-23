@@ -11863,8 +11863,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               client: createX12835Client(),
               rawStore: buildM25RawAdviceStore(),
               onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
-            onStagedDeleteFailed: (event) =>
-              app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
+              onStagedDeleteFailed: (event) =>
+                app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
               onRetryableParseDegraded: (event) =>
                 app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
               payeeNpi: m25PayeeNpi,
