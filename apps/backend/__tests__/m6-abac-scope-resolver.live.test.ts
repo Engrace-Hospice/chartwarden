@@ -203,9 +203,12 @@ describe.skipIf(!DB_URL)(
     const LIST_DETAIL_DISAGREEMENTS: Readonly<Record<string, string>> = {
       // Deliberately NOT widened by #605 (ADR-0090 names only administrator / org_admin for M6). Each is listed by
       // the census but refused detail/readiness on a sited admission outside its caseload — a follow-up decision.
-      compliance_officer: "oversight role: census lists all, admission.scope only grants window overrides",
-      director_of_nursing: "floor patient.read role: census lists all, admission.scope needs caseload/site",
-      survey_coordinator: "oversight role: census lists all, admission.scope needs caseload/site",
+      // Facts: the census lists each via hasOrgWideScope; admission.scope has no role arm for any of them (only
+      // medical_director, administrator/org_admin, and the UNSITED-only roles), so a SITED admission opens only
+      // via a provider-entity match or a caseload row, neither of which these test contexts hold. See #613.
+      compliance_officer: "census lists all via hasOrgWideScope; admission.scope has no org-wide arm for it and no entity/caseload match (#613)",
+      director_of_nursing: "floor patient.read role: census lists all via hasOrgWideScope; admission.scope has no org-wide arm and no entity/caseload match (#613)",
+      survey_coordinator: "census lists all via hasOrgWideScope; admission.scope has no org-wide arm for it and no entity/caseload match (#613)",
     };
 
     it("every ORG_WIDE_SCOPE_ROLES role that the census lists an admission to can open it (or is named)", async () => {

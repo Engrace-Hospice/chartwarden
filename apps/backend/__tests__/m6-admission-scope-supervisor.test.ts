@@ -152,27 +152,44 @@ describe("admission.scope — org_admin / administrator are org-wide (ADR-0090, 
       expect(await scopeFor(kind)(["administrator"])).toBe(true);
     });
     it(`keeps compliance_officer, survey_coordinator, clinical_supervisor, rn denied via ${kind}`, async () => {
-      for (const role of ["compliance_officer", "survey_coordinator", "clinical_supervisor", "rn"])
+      for (const role of [
+        "compliance_officer",
+        "survey_coordinator",
+        "director_of_nursing",
+        "clinical_supervisor",
+        "rn",
+      ])
         expect(await scopeFor(kind)([role])).toBe(false);
     });
   }
 
-  it("still fails closed when the facts are absent (cross-tenant / missing)", async () => {
+  it("still fails closed when the facts are absent (cross-tenant / missing), for every resource kind", async () => {
+    const none = async () => null;
     const predicates = buildAdmissionAbacPredicates({
-      resolver: { loadAdmission: async () => null } as never,
+      resolver: {
+        loadAdmission: none,
+        loadElectionPeriodScope: none,
+        loadElectionStatementScope: none,
+        loadCtiScope: none,
+        loadF2fScope: none,
+        loadLocScope: none,
+        loadComplianceWindow: none,
+      } as never,
       isInCaseload: async () => true,
     });
-    const allowed = await predicates["admission.scope"]!(
-      {
-        organizationId: ORG,
-        userId: "u1",
-        roles: ["org_admin", "administrator"],
-        providerEntityIds: [],
-        locationIds: [],
-        attributes: {},
-      },
-      { id: "adm_1" },
-    );
-    expect(allowed).toBe(false);
+    for (const kind of KINDS) {
+      const allowed = await predicates["admission.scope"]!(
+        {
+          organizationId: ORG,
+          userId: "u1",
+          roles: ["org_admin", "administrator"],
+          providerEntityIds: [],
+          locationIds: [],
+          attributes: {},
+        },
+        { id: "r1", resourceKind: kind },
+      );
+      expect(allowed).toBe(false);
+    }
   });
 });
