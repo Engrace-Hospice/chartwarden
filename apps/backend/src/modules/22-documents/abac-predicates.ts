@@ -76,13 +76,13 @@ const targetId = (target: AbacTarget, field: string): string | null => {
 };
 
 /** The scope-bypass roles that may read any document regardless of caseload (§4.7). */
-const SCOPE_BYPASS_ROLES = [
+export const SCOPE_BYPASS_ROLES: readonly string[] = [
   "compliance_officer",
   "medical_director",
   "survey_auditor",
   "org_admin",
   "qa",
-] as const;
+];
 const isScopeBypass = (context: AbacContext): boolean =>
   SCOPE_BYPASS_ROLES.some((r) => hasRole(context, r));
 

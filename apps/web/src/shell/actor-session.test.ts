@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ActorContextResponse,
   canSeeScreen,
+  isScreenDenied,
   guardChromedRoute,
   needsOrgSelection,
   toSession,
@@ -102,6 +103,25 @@ describe("FB-T15 canSeeScreen — role-scoped nav/tile gating", () => {
     expect(canSeeScreen({ requiredPermission: "audit.read" }, null)).toBe(false);
     const noPerms: Session = { userId: "u", organizationId: "org_a" };
     expect(canSeeScreen({ requiredPermission: "audit.read" }, noPerms)).toBe(false);
+  });
+});
+
+describe("isScreenDenied — direct-URL gating (#592 F-025)", () => {
+  const session: Session = toSession(ORG_BOUND);
+
+  it("denies a gated screen the actor is known not to hold, so a typed URL cannot open its form", () => {
+    expect(isScreenDenied({ requiredPermission: "audit.read" }, session)).toBe(true);
+  });
+
+  it("allows a gated screen the actor holds, and any ungated screen", () => {
+    expect(isScreenDenied({ requiredPermission: "patient.read" }, session)).toBe(false);
+    expect(isScreenDenied({}, session)).toBe(false);
+  });
+
+  it("does not deny while the permission set is unknown — the server stays the enforcer", () => {
+    const noPerms: Session = { userId: "u", organizationId: "org_a" };
+    expect(isScreenDenied({ requiredPermission: "audit.read" }, noPerms)).toBe(false);
+    expect(isScreenDenied({ requiredPermission: "audit.read" }, null)).toBe(false);
   });
 });
 

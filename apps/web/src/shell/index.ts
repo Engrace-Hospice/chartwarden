@@ -12,7 +12,7 @@ export type {
   SessionState,
   SessionStatus,
 } from "./session";
-export { canSeeScreen, guardChromedRoute, toSession } from "./actor-session";
+export { canSeeScreen, guardChromedRoute, isScreenDenied, toSession } from "./actor-session";
 export type { ActorContextResponse, RouteGuardOutcome } from "./actor-session";
 export {
   handleObservedResponse,

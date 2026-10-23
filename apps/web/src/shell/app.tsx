@@ -2,6 +2,7 @@ import type { ScreenRegistry } from "@chartwarden/types";
 import {
   ApiClientProvider,
   CorrelationIdProvider,
+  DeniedState,
   ErrorBoundary,
   LoadingSpinner,
   SystemStatusProvider,
@@ -23,7 +24,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
-import { guardChromedRoute } from "./actor-session";
+import { guardChromedRoute, isScreenDenied } from "./actor-session";
 import { AlertInboxProvider } from "./alert-inbox";
 import { clearAllDrafts } from "./ceremony-drafts";
 import {
@@ -86,6 +87,28 @@ function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
     return <Navigate to={tenantReason ? `/tenant-unavailable?reason=${tenantReason}` : "/offline"} replace />;
   }
   return <>{children}</>;
+}
+
+/**
+ * Route-level counterpart of the nav's `canSeeScreen` (#592 F-025): a typed URL must not open a screen
+ * (e.g. a create form) whose `requiredPermission` the actor is known not to hold. Shows a denied state
+ * instead of the form; the server still refuses the write either way.
+ */
+function RequireScreenPermission({
+  screen,
+  children,
+}: {
+  screen: { requiredPermission?: string; title: string };
+  children: ReactNode;
+}): JSX.Element {
+  const { session } = useSessionState();
+  if (!isScreenDenied(screen, session)) return <>{children}</>;
+  return (
+    <>
+      <h1 className="sr-only">{screen.title}</h1>
+      <DeniedState subject="this page" />
+    </>
+  );
 }
 
 /** Suspense boundary for a lazily-loaded route screen (TASK-033 route-level code-splitting). */
@@ -212,7 +235,16 @@ export function AppShell({
               ...(chromelessOwnsRoot ? [] : [{ index: true, element: <RoleHome screens={chromed} /> }]),
               ...chromed.map((s) => ({
                 path: s.path.replace(/^\//, ""),
-                element: withSuspense(createElement(s.screen)),
+                // Param-path screens (`/x/:id`) are reached by links, and their descriptor key was only ever a
+                // nav key — it may differ from what the screen's own API call requires — so hard-blocking them
+                // could deny a user the server would serve. The guard covers static paths (the create forms).
+                element: s.path.includes(":") ? (
+                  withSuspense(createElement(s.screen))
+                ) : (
+                  <RequireScreenPermission screen={s}>
+                    {withSuspense(createElement(s.screen))}
+                  </RequireScreenPermission>
+                ),
               })),
             ],
           },

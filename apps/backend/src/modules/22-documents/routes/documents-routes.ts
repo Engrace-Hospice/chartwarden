@@ -7,7 +7,13 @@
 // SignedUrlService (T03 plan + T04 presign port + §4.12 BAA gate); the overlay PUT layers `If-Match`
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 import { DegradedError, NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -63,6 +69,8 @@ import {
   VersionParamsSchema,
   parse,
 } from "./documents-typebox";
+import { getSeam } from "../../../bootstrap/index";
+import { ORG_WIDE_LIST_PERMISSION, resolveDocumentListScope } from "./list-scope";
 import { decodeBase64Content } from "./server-upload";
 import type { DocumentRouteService, DocumentWriteActor } from "./service";
 import type { SignedUrlService } from "./signed-url-service";
@@ -208,6 +216,54 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     if (!ok) throw new NotFoundError("referral");
   }
 
+  /** F-023 — the actor's patient scope for document METADATA reads (`null` = org-wide). */
+  function metadataScopeOf(request: FastifyRequest): Promise<readonly string[] | null> {
+    const { organizationId, actor, roles } = actorOf(request);
+    return resolveDocumentListScope({
+      organizationId,
+      userId: actor.userId,
+      roles,
+      hasOrgWideKey: async () =>
+        (await resolveActorPermissions({ organizationId, userId: actor.userId })).has(
+          ORG_WIDE_LIST_PERMISSION,
+        ),
+      resolveCaseload: (c) => getSeam("CaseloadProvider").caseloadPatientIds(c),
+      onLookupError: (stage, err) =>
+        request.log.warn({ err, stage }, "document scope lookup failed; failing closed"),
+    });
+  }
+
+  /**
+   * F-023 — by-id metadata reads honour the same scope as the list, so a document id learned from a link or an
+   * audit row does not reveal a title, patient id or tag outside the caseload. Out of scope is a non-leaking
+   * 404. A referral's documents are authorised against that one referral, exactly as in the list.
+   */
+  async function assertDocumentInScope(
+    request: FastifyRequest,
+    doc: { patientId: string | null; aggregateType: string; aggregateId: string | null },
+  ): Promise<void> {
+    if (doc.aggregateType === "referral") {
+      const { organizationId, actor } = actorOf(request);
+      try {
+        await assertReferralReadAllowed(
+          organizationId,
+          actor.userId,
+          "referral",
+          doc.aggregateId ?? undefined,
+        );
+      } catch (error) {
+        // Same body as a missing document, so an id probe cannot tell "a referral document" from "no such document".
+        if (error instanceof NotFoundError) throw new NotFoundError("document");
+        throw error;
+      }
+      return;
+    }
+    const scope = await metadataScopeOf(request);
+    if (scope === null) return;
+    if (doc.patientId !== null && scope.includes(doc.patientId)) return;
+    throw new NotFoundError("document");
+  }
+
   // 1 — upload new document (creates document + version v1).
   app.post(
     "/api/v1/documents",
@@ -249,9 +305,14 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const { organizationId, actor } = actorOf(request);
       const q = parse(DocumentListQuerySchema, request.query);
       await assertReferralReadAllowed(organizationId, actor.userId, q.aggregateType, q.aggregateId);
+      // F-023 — `documents.read` alone listed the whole org to a clinician; narrow to the caseload.
+      // A referral's documents have no patient yet and were already authorised against that one referral
+      // above, so a patient scope would only hide them from the intake users it admitted.
+      const patientScope = q.aggregateType === "referral" ? null : await metadataScopeOf(request);
       return service.listDocuments(
         organizationId,
         {
+          patientScope,
           patientId: q.patientId,
           aggregateType: q.aggregateType,
           aggregateId: q.aggregateId,
@@ -294,6 +355,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(VersionListQuerySchema, request.query);
+      await assertDocumentInScope(request, await service.getDocument(organizationId, docIdOf(request)));
       return service.listVersions(organizationId, docIdOf(request), q.cursor, q.limit);
     },
   );
@@ -329,6 +391,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id, versionId } = parse(VersionParamsSchema, request.params);
+      await assertDocumentInScope(request, await service.getDocument(organizationId, id));
       return service.getVersion(organizationId, id, versionId);
     },
   );
@@ -342,7 +405,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.getDocument(organizationId, docIdOf(request));
+      const doc = await service.getDocument(organizationId, docIdOf(request));
+      await assertDocumentInScope(request, doc);
+      return doc;
     },
   );
 
@@ -384,6 +449,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(TagListQuerySchema, request.query);
+      await assertDocumentInScope(request, await service.getDocument(organizationId, docIdOf(request)));
       return service.listTags(organizationId, docIdOf(request), q.cursor, q.limit);
     },
   );

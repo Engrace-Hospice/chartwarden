@@ -1865,6 +1865,7 @@ M22 contributes these keys to M3's permission catalog (`packages/auth/src/permis
 |---|---|---|
 | `documents.upload` | clinical_admin, intake_nurse, clinical_manager, all clinical disciplines | upload new document (covers direct chart attach) |
 | `documents.read` | clinical_*, compliance_officer, org_admin | read document metadata + list patient documents |
+| `documents.read_org_wide` | none by default; granted per tenant to roles that list every document (HIM, intake, billing review) | view-only: lists and reads document METADATA across the whole org instead of the actor's caseload. `documents.read` alone is caseload-scoped (#592 F-023). Content stays behind `documents.read_phi_content` |
 | `documents.read_history` | clinical_admin, clinical_manager, compliance_officer, privacy_officer, rn_case_mgr (assigned), billing, qa | view full version history (incl. superseded versions) |
 | `documents.read_access_log` | org_admin, compliance_officer, privacy_officer, qa | view the per-document access log |
 | `documents.read_phi_content` | clinical_* (within caseload), compliance_officer, medical_director, org_admin | mint signed URL / download |

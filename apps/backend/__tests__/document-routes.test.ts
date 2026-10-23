@@ -23,6 +23,7 @@ import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type DocumentRouteService,
   type SignedUrlObjectResolver,
@@ -117,6 +118,9 @@ const PERMISSION_SEED = [
   { userId: "pa_1", permissions: REVIEWER_PERMISSIONS },
   { userId: "aide_1", permissions: REVIEWER_PERMISSIONS },
   { userId: "viewer_1", permissions: ["documents.read_templates"] },
+  // F-023 — documents.read without any caseload, and the same with the view-only org-wide key.
+  { userId: "nocase_1", permissions: ["documents.read"] },
+  { userId: "him_1", permissions: ["documents.read", "documents.read_org_wide"] },
   { userId: "platform_1", permissions: ["documents.publish_template"] },
   { userId: "orgadmin_1", permissions: ["documents.manage_overlay", "documents.read_templates"] },
   { userId: "exporter_1", permissions: ["documents.export_phi_bundle"] },
@@ -253,11 +257,19 @@ const PLATFORM_OPS_STALE = {
 beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
+  // F-023 — the document list narrows to the actor's caseload through the M5 seam.
+  registerSeam("CaseloadProvider", {
+    isInCaseload,
+    async caseloadPatientIds({ userId }: { userId: string }) {
+      return REVIEWERS.includes(userId) ? [PATIENT] : [];
+    },
+  } as never);
 });
 afterEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
 });
 
 /** GAP-068 — the bytes every upload now carries (a tiny PDF; the in-memory backend ignores them). */
@@ -1279,5 +1291,144 @@ describe("GAP-140 — M22 writes persist (or honestly refuse) what the request c
     });
     expect(res.statusCode).toBe(501);
     expect(res.json()).toMatchObject({ error: { code: "NOT_IMPLEMENTED" } });
+  });
+});
+
+describe("F-023 — GET /documents lists the actor's caseload, not the whole org", () => {
+  const OTHER_PATIENT = "99999999-9999-4999-8999-999999999999";
+  const as = (user: string, roles: string) => ({
+    "x-test-user": user,
+    "x-test-org": ORG,
+    "x-test-roles": roles,
+  });
+
+  async function seedTwoPatients() {
+    const backend = createInMemoryDocumentBackend({});
+    const { app } = makeServer(backend.service);
+    for (const [i, patientId] of [PATIENT, OTHER_PATIENT].entries()) {
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/documents",
+        headers: { ...RN, "idempotency-key": `f023-${i}` },
+        payload: {
+          ...UPLOAD_CONTENT,
+          retentionClass: "clinical_record",
+          aggregateType: "encounter",
+          title: `doc ${i}`,
+          patientId,
+        },
+      });
+    }
+    return app;
+  }
+
+  const listed = async (app: Awaited<ReturnType<typeof seedTwoPatients>>, headers: Record<string, string>) =>
+    (await app.inject({ method: "GET", url: "/api/v1/documents", headers })).json().items;
+
+  it("a clinician sees only documents for patients on their caseload", async () => {
+    const items = await listed(await seedTwoPatients(), RN);
+    expect(items.map((d: { patientId: string }) => d.patientId)).toEqual([PATIENT]);
+  });
+
+  it("an actor with documents.read but no caseload sees nothing", async () => {
+    expect(await listed(await seedTwoPatients(), as("nocase_1", "clinical"))).toEqual([]);
+  });
+
+  it("the view-only documents.read_org_wide key lists the whole org", async () => {
+    expect(await listed(await seedTwoPatients(), as("him_1", "him"))).toHaveLength(2);
+  });
+
+  it("a patientId filter outside the caseload cannot widen the list", async () => {
+    const app = await seedTwoPatients();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents?patientId=${OTHER_PATIENT}`,
+      headers: RN,
+    });
+    expect(res.json().items).toEqual([]);
+  });
+
+  it("aggregateType=referral without an aggregateId is refused, never an unscoped list", async () => {
+    const app = await seedTwoPatients();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents?aggregateType=referral",
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("by-id metadata reads honour the same scope: out of caseload is a 404, in caseload is 200", async () => {
+    const backend = createInMemoryDocumentBackend({});
+    const { app } = makeServer(backend.service);
+    const ids: string[] = [];
+    for (const [i, patientId] of [PATIENT, OTHER_PATIENT].entries()) {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/documents",
+        headers: { ...RN, "idempotency-key": `f023-id-${i}` },
+        payload: {
+          ...UPLOAD_CONTENT,
+          retentionClass: "clinical_record",
+          aggregateType: "encounter",
+          title: `doc ${i}`,
+          patientId,
+        },
+      });
+      ids.push(created.json().id);
+    }
+    const [inScope, outOfScope] = ids;
+    for (const suffix of ["", "/versions", "/tags"]) {
+      const get = (id: string, headers: Record<string, string>) =>
+        app.inject({ method: "GET", url: `/api/v1/documents/${id}${suffix}`, headers });
+      expect((await get(inScope, RN)).statusCode).toBe(200);
+      expect((await get(outOfScope, RN)).statusCode).toBe(404);
+      expect((await get(outOfScope, as("him_1", "him"))).statusCode).toBe(200);
+    }
+  });
+
+  it("GET /documents/:id/versions/:versionId is scoped too", async () => {
+    const { app } = makeServer();
+    const url = `/api/v1/documents/${DOC}/versions/${VERSION}`;
+    expect((await app.inject({ method: "GET", url, headers: RN })).statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url, headers: as("nocase_1", "clinical") })).statusCode,
+    ).toBe(404);
+  });
+
+  it("a referral document is authorised against its referral, and a denied one looks like a missing document", async () => {
+    const REFERRAL_DOC = "c0000000-0000-4000-8000-0000000000dd";
+    const MISSING_DOC = "c0000000-0000-4000-8000-0000000000ee";
+    const open = makeServer();
+    expect(
+      (await open.app.inject({ method: "GET", url: `/api/v1/documents/${REFERRAL_DOC}`, headers: RN }))
+        .statusCode,
+    ).toBe(200);
+
+    const denied = makeServer(sharedBackend.service, {
+      async canAccessReferral() {
+        return false;
+      },
+    });
+    const refDenied = await denied.app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${REFERRAL_DOC}`,
+      headers: RN,
+    });
+    const missing = await denied.app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${MISSING_DOC}`,
+      headers: RN,
+    });
+    expect(refDenied.statusCode).toBe(404);
+    expect(missing.statusCode).toBe(404);
+    // Identical but for the per-request correlation id.
+    const { correlationId: _a, ...deniedError } = refDenied.json().error;
+    const { correlationId: _b, ...missingError } = missing.json().error;
+    expect(deniedError).toEqual(missingError);
+  });
+
+  it("an org-wide oversight role lists the whole org without needing the key", async () => {
+    expect(await listed(await seedTwoPatients(), as("nocase_1", "director_of_nursing"))).toHaveLength(2);
   });
 });

@@ -260,6 +260,9 @@ export interface DocumentRouteService {
   listDocuments(
     organizationId: OrgId,
     filter: {
+      /** F-023 — patients the actor may see; `null`/absent is org-wide, `[]` lists nothing. Org-level
+       *  documents (no patient) are visible only on the org-wide arm. */
+      patientScope?: readonly string[] | null;
       patientId?: string;
       aggregateType?: string;
       aggregateId?: string;
@@ -738,6 +741,9 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       const rows = desc(
         [...docs.values()]
           .filter((r) => r.organizationId === organizationId)
+          .filter((r) =>
+            filter.patientScope ? r.patientId !== null && filter.patientScope.includes(r.patientId) : true,
+          )
           .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
           .filter((r) => (filter.aggregateType ? r.aggregateType === filter.aggregateType : true))
           .filter((r) => (filter.aggregateId ? r.aggregateId === filter.aggregateId : true))

@@ -408,3 +408,28 @@ spoof detector open through the same cipher.
   unsealed. Proof: `m18-evv-dek-rotation.test.ts` (selection, batching/resume, idempotency, lost CAS, failure
   isolation, consumer envelope check) and `test:m18:dek-rotation:live` (v1 rows readable under v2, other tenant and
   legacy untouched, re-run no-op, direct app-role UPDATE still refused, cross-tenant id is a no-op, audit scrubbed).
+
+## #592 (browser audit F-023 / F-025) — M22 document list is caseload-scoped; web routes honour `requiredPermission`
+
+- **F-023.** `GET /api/v1/documents` was gated by `documents.read` alone, so a Clinician listed every document in the org
+  while the patient-name lookup (caseload-scoped) 404'd. The list and the by-id metadata reads (`/:id`, `/:id/versions`,
+  `/:id/versions/:versionId`, `/:id/tags`) now narrow to the actor's caseload (`routes/list-scope.ts`, M5
+  `CaseloadProvider`); an unresolvable caseload fails closed to empty and is logged. Org-wide: `hasOrgWideScope` roles,
+  the M22 `SCOPE_BYPASS_ROLES`, or the new **view-only** key `documents.read_org_wide` (migration 1160). A referral's
+  documents are authorised against that one referral instead (they have no patient yet).
+- **Rollout.** No default role template is granted `documents.read` (it is tenant-configured), and 1160 grants the new
+  key to nobody: a tenant role that listed the whole org through `documents.read` alone now sees its caseload until an
+  admin grants `documents.read_org_wide`. Prod is demo data, so a reseed covers it; the DocLens dev-seed role gets the key
+  by its `documents.read*` prefix.
+- **F-025.** Nav hiding (`canSeeScreen`) did not stop a typed URL opening a create form. `isScreenDenied` + the shell's
+  `RequireScreenPermission` render a denied state for a chromed screen whose `requiredPermission` the actor is KNOWN not
+  to hold (unknown permission set renders; the server stays the enforcer). The server held on every probed endpoint.
+- **Accepted residual.** The metadata WRITE routes (`PATCH /documents/:id`, `POST /:id/links`, `POST /:id/tags`) are
+  not caseload-scoped: they need `documents.edit_metadata` (a separate grant), and an unlinked intake document has no
+  patient to scope by — linking it is the point of `/links`, so scoping by its current patient would block that
+  workflow. Their responses do return the document's metadata to an editor who knows the id.
+- **Not done.** The Compliance Auditor's claims / triage-intake / paper-re-entry endpoints were not probed over HTTP;
+  by code each is guarded by the same `requirePermission` key as its web screen (`billing.claim.assemble`,
+  `medicaid.claim.assemble`, `triage.open`, `triage.paper_reentry`) and no default role template holds them. The SQL
+  list scope is proven on real Postgres as the NOBYPASSRLS role (`m22-documents-read-service.live.test.ts`); the
+  route-level caseload resolution is covered by in-memory route tests only.
