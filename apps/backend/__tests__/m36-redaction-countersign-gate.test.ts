@@ -63,3 +63,30 @@ describe("countersign is gated like the self-approval", () => {
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+describe("countersign at the 72 h deadline (app and database clocks disagree)", () => {
+  const lapsedByTrigger = Object.assign(
+    new Error("message_redaction_lapsed: the countersign period has passed"),
+    { code: "23514" },
+  );
+  const failingUpdate = (error: unknown) => ({
+    set: () => ({ where: () => ({ returning: () => Promise.reject(error) }) }),
+  });
+
+  it("maps the trigger's message_redaction_lapsed check violation (also when wrapped) to 409 REDACTION_COUNTERSIGN_LAPSED", async () => {
+    for (const error of [lapsedByTrigger, new Error("query failed", { cause: lapsedByTrigger })]) {
+      update.mockReset();
+      update.mockReturnValue(failingUpdate(error));
+      await expect(service(true, 1).countersign(actor, "r1")).rejects.toMatchObject({
+        code: "REDACTION_COUNTERSIGN_LAPSED",
+        statusCode: 409,
+      });
+    }
+  });
+
+  it("does not hide other database errors", async () => {
+    update.mockReset();
+    update.mockReturnValue(failingUpdate(Object.assign(new Error("boom"), { code: "23514" })));
+    await expect(service(true, 1).countersign(actor, "r1")).rejects.toThrow("boom");
+  });
+});

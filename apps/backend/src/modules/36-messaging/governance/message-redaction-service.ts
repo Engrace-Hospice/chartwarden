@@ -89,6 +89,22 @@ function assertReason(reason: string): void {
   }
 }
 
+/** The migration 1165 trigger raises `message_redaction_lapsed` (check_violation 23514); drizzle may wrap it, so look through `cause`. */
+function isRedactionLapsedViolation(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 4; depth += 1) {
+    const { message, code, cause } = e as { message?: unknown; code?: unknown; cause?: unknown };
+    if (
+      code === "23514" &&
+      typeof message === "string" &&
+      message.includes("message_redaction_lapsed")
+    ) {
+      return true;
+    }
+    e = cause;
+  }
+  return false;
+}
+
 export function createMessageRedactionService(deps: MessageRedactionDeps) {
   const inTx = <T>(actor: GovernanceActor, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext<DbClient, T>(
@@ -342,6 +358,7 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
         // Same gate as the self-approval: a fallback row is completed only while the fallback is still open (flag on, exactly one eligible
         // approver). Turn the setting off, or add a second officer, and the row must go through the ordinary two-person approval instead.
         await assertFallbackOpen(tx, actor);
+        // The app clock and the database clock can disagree at the 72 h deadline: the trigger is the authority, so its refusal is the same 409.
         const [row] = await tx
           .update(RED)
           .set({ countersignedBy: actor.userId, approvedBy: existing.requestedBy })
@@ -353,7 +370,17 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
               isNotNull(RED.selfApprovedAt),
             ),
           )
-          .returning();
+          .returning()
+          .catch((error: unknown) => {
+            if (isRedactionLapsedViolation(error)) {
+              throw new ChartWardenError(
+                "REDACTION_COUNTERSIGN_LAPSED",
+                "the countersign period has passed; this redaction is not final",
+                409,
+              );
+            }
+            throw error;
+          });
         if (!row) {
           throw new ChartWardenError(
             "REDACTION_NOT_AWAITING_COUNTERSIGN",
