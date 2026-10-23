@@ -60,6 +60,7 @@ import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-requests/open-request-lookup";
 import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
 import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
+import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
@@ -258,6 +259,8 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/channels/:id/role-send": { kind: "idor" },
   // WP 4.9 supervisor queue: no id to guess - the caller's organisation is the only scope (proved below and in m36-unacknowledged.live).
   "GET /api/v1/messaging/escalations/unacknowledged": { kind: "scoped" },
+  // WP 6.1 smart work inbox: no id to guess - the caller's own assigned work in the caller's organisation is the only scope.
+  "GET /api/v1/messaging/inbox": { kind: "scoped" },
   "POST /api/v1/messaging/escalations": { kind: "idor" },
   "GET /api/v1/messaging/escalations/:id": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/escalations": { kind: "idor" },
@@ -401,6 +404,8 @@ const REGISTRAR_FILES = [
   "delivery-target-routes.ts", // WP 4.8 deep-link resolver, mounted by registerMessagingRoutes
   "delivery-target-typebox.ts", // schemas only
   "unacknowledged-routes.ts", // WP 4.9 supervisor unacknowledged queue, mounted by registerMessagingRoutes
+  "inbox-routes.ts", // WP 6.1 smart work inbox, mounted by registerMessagingRoutes
+  "inbox-typebox.ts", // schemas only
   "snooze-reminder-routes.ts", // WP 4.10 snooze and reminders, mounted by registerMessagingRoutes
   "snooze-reminder-typebox.ts", // schemas only
   "unacknowledged-typebox.ts", // schemas only
@@ -838,6 +843,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       security: { rateLimitEnabled: false },
       idempotencyStore: createDbIdempotencyStore(handle.db),
     });
+    const unackQueueService = createUnacknowledgedService({
+      read: createDbUnacknowledgedReader(handle.db),
+      canViewChannel: service.canViewChannel,
+      displayName: async () => null,
+    });
     registerMessagingRoutes(app, {
       service,
       announcements: createDbAnnouncementService(handle.db),
@@ -912,11 +922,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Set(["messaging.read", "messaging.send", "patient.read", "messaging.urgent.receive"]),
         careTeamMembers: async () => [],
       }),
-      unacknowledged: {
-        service: createUnacknowledgedService({
-          read: createDbUnacknowledgedReader(handle.db),
-          canViewChannel: service.canViewChannel,
-          displayName: async () => null,
+      unacknowledged: { service: unackQueueService },
+      inbox: {
+        service: buildSmartInboxService({
+          isEnabled: async () => true,
+          unacknowledged: unackQueueService,
+          listChannels: service.listChannels,
         }),
       },
       oncall: {
@@ -2449,6 +2460,37 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           expect(res.json().counts.unfiltered).toBe(0);
         }
         expectNoLeak(res.body, attacker, `${attacker.name} unacknowledged queue`);
+        expect(res.body).not.toContain(requestId);
+      }
+    });
+    it("WP 6.1: the smart inbox lists only the caller's own assigned work; org B, the requester and non-members get none of A's ids", async () => {
+      const route = "GET /api/v1/messaging/inbox";
+      const sent = await service.sendMessage(orgA, {
+        channelId: careTeamA,
+        authorUserId: u1.userId,
+        body: `${SECRET_BODY} inbox`,
+      });
+      const requestId = (
+        await admin.query(
+          `INSERT INTO message_acknowledgment_request
+             (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
+           VALUES ($1,$2,$3,$4,'important',$5,$6,now(),now(), now() + interval '60 minutes') RETURNING id`,
+          [orgA, sent.messageId, careTeamA, patientA, u1.userId, u2.userId],
+        )
+      ).rows[0].id as string;
+      // the assignee sees it (the attacks are not vacuous); no message text.
+      const own = await call(route, u2);
+      expect(own.statusCode, own.body).toBe(200);
+      expect(own.json().items.map((i: { key: string }) => i.key)).toContain(`ack:${requestId}`);
+      expect(own.body).not.toContain(SECRET_BODY);
+      // the requester is not the assignee: it is not their work.
+      const requester = await call(route, u1);
+      expect(requester.statusCode, requester.body).toBe(200);
+      expect(requester.body).not.toContain(requestId);
+      for (const attacker of [bUser, adminB, reviewerB, outsider]) {
+        const res = await call(route, attacker);
+        expect(res.statusCode, `${attacker.name}: ${res.body}`).toBeLessThan(500);
+        expectNoLeak(res.body, attacker, `${attacker.name} smart inbox`);
         expect(res.body).not.toContain(requestId);
       }
     });

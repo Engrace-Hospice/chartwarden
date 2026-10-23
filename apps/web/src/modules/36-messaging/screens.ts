@@ -14,6 +14,7 @@ const GlobalSearchSettings = lazy(() =>
 const StaffMessaging = lazy(() =>
   import("./staff-messaging").then((m) => ({ default: m.StaffMessaging })),
 );
+const SmartInbox = lazy(() => import("./smart-inbox").then((m) => ({ default: m.SmartInbox })));
 const UnacknowledgedQueue = lazy(() =>
   import("./unacknowledged-queue").then((m) => ({ default: m.UnacknowledgedQueue })),
 );
@@ -57,6 +58,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.read",
       screen: StaffMessaging,
+    },
+    {
+      // WP 6.1 (ADR-0100): the caller's own ranked work. The screen says "not turned on" while the tenant flag `messaging.smart_inbox` is off.
+      id: "messaging.inbox",
+      path: "/messaging/inbox",
+      title: "Work inbox",
+      navGroup: "General",
+      requiredPermission: "messaging.read",
+      screen: SmartInbox,
     },
     {
       // WP 4.9 (ADR-0076): the supervisor's queue of requests still waiting for a human; the API demands messaging.review as well.

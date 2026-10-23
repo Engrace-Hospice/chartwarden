@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1702,
-    "coveredRoutes": 1702,
-    "directRoutesReferenced": 1572
+    "routes": 1703,
+    "coveredRoutes": 1703,
+    "directRoutesReferenced": 1573
   },
   "modules": [
     {
@@ -515,7 +515,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 155,
+      "routes": 156,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -574,6 +574,7 @@
         "apps/backend/__tests__/m36-sbar.live.test.ts",
         "apps/backend/__tests__/m36-scheduled-send-routes.test.ts",
         "apps/backend/__tests__/m36-session-device-controls.live.test.ts",
+        "apps/backend/__tests__/m36-smart-inbox.live.test.ts",
         "apps/backend/__tests__/m36-snooze-reminder-routes.test.ts",
         "apps/backend/__tests__/m36-snooze-reminder.live.test.ts",
         "apps/backend/__tests__/m36-task-routes.test.ts",
@@ -591,7 +592,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 135
+      "directRoutesReferenced": 136
     },
     {
       "module": "37-ipu",

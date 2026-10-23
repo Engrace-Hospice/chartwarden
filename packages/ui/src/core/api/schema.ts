@@ -15272,6 +15272,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The smart work inbox (WP 6.1, ADR-0100; messaging.read): ONE read-only ranked queue of the caller's OWN waiting work: acknowledgment requests assigned to them, handoffs awaiting their answer, their active tasks, unread care-team conversations with mentions first. Ranking is a fixed rule table (band, then sub-rank, then soonest clock, then key), never a model, and every row carries the reason it ranks where it does. Urgent rows are never cut by `limit` (default 50, max 100); `band_counts` cover the whole list and `unavailable_sources` names any source that failed to read. Rows carry generic titles, ids and instants, never message text or a patient name; a request in a conversation the caller cannot open is a restricted row with no ids. 200 {enabled:false} while the tenant flag `messaging.smart_inbox` is off. Acts on nothing: every row points at the screen that owns the item. Never cached. */
+        get: operations["getApiV1MessagingInbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/messages/{id}": {
         parameters: {
             query?: never;
@@ -70712,6 +70729,60 @@ export interface operations {
                             }[];
                             unavailable_sources: ("patient" | "visit" | "refill_request" | "symptom_followup" | "task")[];
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingInbox: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        items: {
+                            key: string;
+                            band: "urgent_ack" | "handoff_awaiting" | "task_assigned" | "mention" | "care_team_unread";
+                            rank: number;
+                            title: string;
+                            reasons: {
+                                code: "ack_failed_unreachable" | "ack_overdue" | "ack_waiting" | "handoff_expires_soon" | "handoff_waiting" | "task_overdue" | "task_clinical_concern" | "task_due" | "task_open" | "mention_unread" | "care_team_unread";
+                                text: string;
+                            }[];
+                            /** Format: date-time */
+                            since: string;
+                            due_at: string | null;
+                            channel_id: string | null;
+                            target: "acknowledgment_request" | "task" | "handoff" | "conversation";
+                            target_id: string | null;
+                            restricted: boolean;
+                            count: number | null;
+                        }[];
+                        band_counts: {
+                            urgent_ack: number;
+                            handoff_awaiting: number;
+                            task_assigned: number;
+                            mention: number;
+                            care_team_unread: number;
+                        };
+                        complete: boolean;
+                        urgent_complete: boolean;
+                        unavailable_sources: ("urgent_ack" | "handoff_awaiting" | "task_assigned" | "mention" | "care_team_unread")[];
                     };
                 };
             };

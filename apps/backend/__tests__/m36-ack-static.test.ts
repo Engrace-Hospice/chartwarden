@@ -130,6 +130,8 @@ describe("only an explicit transition writes an acknowledgment", () => {
         "apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts",
         // ADR-0079 (G-5): the unreachable watch reads the aggregate's store port (a list of unreachable requests); it writes nothing.
         "apps/backend/src/modules/36-messaging/ack-escalation/unreachable-watch.ts",
+        // WP 6.1 (ADR-0100): the smart inbox types the aggregate's unacknowledged service (the assignee-narrowed read); it writes nothing.
+        "apps/backend/src/modules/36-messaging/inbox/binding.ts",
         "apps/backend/src/modules/36-messaging/index.ts",
         "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-escalation-notifications.ts",

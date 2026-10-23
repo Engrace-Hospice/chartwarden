@@ -29,6 +29,7 @@ export const MESSAGING_FLAGS = [
   "messaging.idg",
   "messaging.urgent_clinical",
   "messaging.break_glass",
+  "messaging.smart_inbox",
 ] as const;
 
 const ADMIN_ROLE_KEY = "administrator";
