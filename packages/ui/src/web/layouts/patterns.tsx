@@ -306,7 +306,7 @@ export function PatientWorkspaceLayout({
   // runs the full height beside the banner + workspace column, as in the mockups.
   return (
     <div className="wx-patient-workspace" style={{ ...fillColumn, flexDirection: "row" }}>
-      <div style={{ ...fillColumn, flex: 1, minWidth: 0 }}>
+      <div className="wx-patient-workspace-main" style={{ ...fillColumn, flex: 1, minWidth: 0 }}>
         {banner}
         {contextHeader}
         <div
