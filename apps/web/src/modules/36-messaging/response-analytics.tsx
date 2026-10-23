@@ -116,6 +116,7 @@ export function ResponseAnalytics(): JSX.Element {
     <main className="wx-analytics" aria-label={W.TITLE}>
       <PageHeader title={W.TITLE} />
       <p className="wx-analytics-note">{W.INTRO}</p>
+      <p className="wx-analytics-note">{W.TODAY_NOTE}</p>
       {online ? null : <p className="wx-analytics-banner">{W.OFFLINE}</p>}
       {view.status === "flag_off" ? (
         <p className="wx-analytics-state">{W.FLAG_OFF}</p>

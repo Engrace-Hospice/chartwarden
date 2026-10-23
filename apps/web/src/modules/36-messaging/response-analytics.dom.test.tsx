@@ -67,6 +67,11 @@ describe("Response analytics screen", () => {
     expect(screen.getByText("Loading response analytics")).toBeTruthy();
   });
 
+  it("says today is not included until the day ends", async () => {
+    mount(() => ok(REPORT));
+    expect(await screen.findByText(/Today is not included until the day ends/)).toBeTruthy();
+  });
+
   it("shows the KPIs, the table twin, the suppressed-groups note and the provisional threshold", async () => {
     const { GET } = mount(() => ok(REPORT));
     expect(await screen.findByText("Median time to acknowledge")).toBeTruthy();

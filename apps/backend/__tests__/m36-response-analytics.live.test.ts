@@ -346,6 +346,34 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     expect(a.json().to).toMatch(/T00:00:00\.000Z$/);
   });
 
+  it("serves completed UTC days only: the response `to` is the start of today, and a request made today never changes the answer", async () => {
+    const todayStart = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
+    const before = await get(viewer, ORG_A, "?groupBy=class");
+    expect(before.json().to).toBe(todayStart);
+    // a `to` in the future is capped the same way
+    const future = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    expect((await get(viewer, ORG_A, `?to=${future}`)).json().to).toBe(todayStart);
+    // a request opened right now (today) is not in the figures, so polling through the day reveals nothing
+    const fresh = await clinician(ORG_A, "rn", 99);
+    await request({
+      org: ORG_A,
+      channel: channelA,
+      requester: requesterA,
+      assignee: fresh,
+      daysAgo: 0,
+      ackSeconds: 5,
+    });
+    const after = await get(viewer, ORG_A, "?groupBy=class");
+    expect(after.json()).toEqual(before.json());
+  });
+
+  it("answers insufficient_data for a window that holds no completed day (only today)", async () => {
+    const todayStart = `${new Date().toISOString().slice(0, 10)}T00:00:00Z`;
+    const res = await get(viewer, ORG_A, `?from=${todayStart}&to=${new Date().toISOString()}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "insufficient_data", minCohort: ANALYTICS_MIN_COHORT });
+  });
+
   it("measures the 92-day cap on the snapped window", async () => {
     const at = (days: number, time: string) => {
       const d = new Date(Date.now() - days * 86_400_000);

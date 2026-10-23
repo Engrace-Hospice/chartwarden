@@ -4,6 +4,7 @@ import type { AnalyticsGroupBy } from "@chartwarden/types";
 export const TITLE = "Response analytics";
 export const INTRO =
   "How quickly messages that ask for a response are answered, across the organisation. Counts and times only: no message, patient or person is shown.";
+export const TODAY_NOTE = "Today is not included until the day ends. Ranges are whole UTC days.";
 export const LOADING = "Loading response analytics";
 export const LOAD_FAILED = "Response analytics could not be loaded.";
 export const RETRY_LABEL = "Try again";
