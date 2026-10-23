@@ -80194,6 +80194,7 @@ export interface operations {
                     /** Format: uuid */
                     signupIntentId?: string;
                     legalBusinessName: string;
+                    slug?: string;
                     /** Format: email */
                     billingContactEmail: string;
                     /** Format: email */

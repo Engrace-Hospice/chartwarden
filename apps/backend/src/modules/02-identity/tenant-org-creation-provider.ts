@@ -62,7 +62,7 @@ export function createTenantOrgCreationProvider(
       if (existing[0]) return confirmed(existing[0].id);
 
       // Phase-3 self-serve create path: mint the org spine with a deterministic, collision-free slug.
-      const slug = `${slugify(intent.legalBusinessName)}-${intent.organizationId.slice(0, 8)}`;
+      const slug = intent.slug ?? `${slugify(intent.legalBusinessName)}-${intent.organizationId.slice(0, 8)}`;
       const inserted = await db
         .insert(schema.organizations)
         .values({

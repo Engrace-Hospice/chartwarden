@@ -1015,6 +1015,8 @@ export interface TenantOrgCreationIntent {
   readonly tenantAccountId: string;
   readonly organizationId: string;
   readonly legalBusinessName: string;
+  /** Operator-chosen tenant host label (ADR-0049 D3), already validated by the caller. Absent: derived from the legal name. */
+  readonly slug?: string;
 }
 
 /** The discriminated result of an org-creation request. `available` carries the created/confirmed M2 org

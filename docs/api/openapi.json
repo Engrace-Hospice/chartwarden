@@ -221602,6 +221602,11 @@
                     "maxLength": 300,
                     "type": "string"
                   },
+                  "slug": {
+                    "minLength": 1,
+                    "maxLength": 63,
+                    "type": "string"
+                  },
                   "billingContactEmail": {
                     "format": "email",
                     "type": "string"

@@ -366,6 +366,39 @@ describe("M34-saas-tenant-platform-inject — auth gating", () => {
   });
 });
 
+// ── ADR-0049 D3: an operator-chosen slug is validated before anything is created ────────────────────
+describe("M34-saas-tenant-platform-inject — provisioning slug (POST /api/v1/platform/tenants)", () => {
+  const body = {
+    legalBusinessName: "Sunrise Hospice",
+    billingContactEmail: "billing@sunrise.test",
+    breachNotificationContactEmail: "breach@sunrise.test",
+    firstAdminEmail: "admin@sunrise.test",
+    firstAdminFullName: "Ada Admin",
+    planLabel: "standard",
+  };
+  const post = async (slug?: string) => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: slug === undefined ? body : { ...body, slug },
+    });
+    await app.close();
+    return res;
+  };
+
+  it.each(["api", "xn--sunrise", "ab", "Sunrise", "-sunrise", "sun_rise"])("refuses slug %s with 422 INVALID_TENANT_SLUG", async (slug) => {
+    const res = await post(slug);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_TENANT_SLUG");
+  });
+
+  it("accepts a valid slug", async () => {
+    expect((await post("sunrise")).statusCode).toBe(202);
+  });
+});
+
 // ── platform-ops: tenants.ts (7 routes) ──────────────────────────────────────────────────────────────
 describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (tenants.ts)", () => {
   it("list, provision, read overview, transition status, offboard, shred, dek-rotate", async () => {

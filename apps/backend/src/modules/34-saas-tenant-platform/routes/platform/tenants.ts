@@ -15,7 +15,7 @@
 // §4.3 worker job through the service's injected enqueue port + emit the outbox descriptor; the live
 // BullMQ worker construction is Phase 2D (see service.ts TODO).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { UnauthorizedError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError, validateTenantSlug } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   DekRotateRequest,
@@ -114,9 +114,15 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = actorOf(request);
       const body = parse(ProvisionTenantRequest, request.body);
+      // ADR-0049 D3: the host label follows the rules the database enforces, refused here with an actionable reason.
+      const checked = body.slug === undefined ? null : validateTenantSlug(body.slug);
+      if (checked && !checked.ok) {
+        throw new ChartWardenError("INVALID_TENANT_SLUG", `slug is not a valid tenant host label (${checked.reason})`, 422);
+      }
       const res = await service.provisionTenant(membershipId, {
         signupIntentId: body.signupIntentId ?? null,
         legalBusinessName: body.legalBusinessName,
+        slug: body.slug,
         billingContactEmail: body.billingContactEmail,
         breachNotificationContactEmail: body.breachNotificationContactEmail,
         firstAdminEmail: body.firstAdminEmail,
