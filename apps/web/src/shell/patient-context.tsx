@@ -140,9 +140,12 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
 export function ChartBanner({
   identity,
   actions,
+  nameAsHeading,
 }: {
   identity: ChartIdentity;
   actions?: ReactNode;
+  /** The page has no other `<h1>`, so the patient name is it. */
+  nameAsHeading?: boolean;
 }): JSX.Element {
   const { patient, sex, medicare } = identity;
   const age = ageYears(patient.dob);
@@ -176,6 +179,7 @@ export function ChartBanner({
         </span>
       }
       actions={actions}
+      nameAsHeading={nameAsHeading}
     />
   );
 }
@@ -184,9 +188,11 @@ export function ChartBanner({
 export function ChartPatientBanner({
   patientId,
   actions,
+  nameAsHeading,
 }: {
   patientId: string | undefined;
   actions?: ReactNode;
+  nameAsHeading?: boolean;
 }): JSX.Element {
   const identity = useChartIdentity(patientId);
   if (!identity) {
@@ -198,7 +204,7 @@ export function ChartPatientBanner({
       />
     );
   }
-  return <ChartBanner identity={identity} actions={actions} />;
+  return <ChartBanner identity={identity} actions={actions} nameAsHeading={nameAsHeading} />;
 }
 
 // ---------- rail ----------

@@ -287,6 +287,7 @@ export function PatientMedications(): JSX.Element {
       banner={
         identity ? (
           <ChartBanner
+            nameAsHeading
             identity={identity}
             actions={
               <>

@@ -230,7 +230,6 @@ export function GateStepper({
                   fontSize: "0.875rem",
                   fontWeight: 500,
                   color: t.onSurface,
-                  textDecoration: item.status === "complete" ? "line-through" : undefined,
                 }}
               >
                 {item.label}

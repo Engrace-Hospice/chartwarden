@@ -162,50 +162,52 @@ export function RemittanceWorklist(): JSX.Element {
           </PageHeader>
         }
         kpis={
-          <KpiStrip>
-            <KpiCard
-              label="835 Advices"
-              value={loading || error ? "—" : advices.length}
-              detail="Received envelopes"
-              tone="info"
-              accentColor="var(--color-primary)"
-            />
-            <KpiCard
-              label="Posted"
-              value={loading || error ? "—" : posted}
-              detail="Parsed and posted"
-              tone="success"
-              accentColor="var(--color-success)"
-            />
-            <KpiCard
-              label="Unmatched Lines"
-              value={loading || error ? "—" : unmatched.length}
-              detail="Manual-match backlog"
-              tone={unmatched.length > 0 ? "warning" : "neutral"}
-              accentColor={
-                unmatched.length > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-              }
-            />
-            <KpiCard
-              label="Failed Parses"
-              value={loading || error ? "—" : failed}
-              detail="Need file review"
-              tone={failed > 0 ? "danger" : "neutral"}
-              accentColor={failed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-              selected={parseFilter === "failed"}
-              onSelect={() => {
-                setParseFilter("failed");
-                setAdvicePage(1);
-              }}
-            />
-            <KpiCard
-              label="Paid"
-              value={loading || error ? "—" : money(totalPaid)}
-              detail="Advice total"
-              tone="neutral"
-              accentColor="var(--color-outline-variant)"
-            />
-          </KpiStrip>
+          error ? undefined : (
+            <KpiStrip>
+              <KpiCard
+                label="835 Advices"
+                value={loading || error ? "—" : advices.length}
+                detail="Received envelopes"
+                tone="info"
+                accentColor="var(--color-primary)"
+              />
+              <KpiCard
+                label="Posted"
+                value={loading || error ? "—" : posted}
+                detail="Parsed and posted"
+                tone="success"
+                accentColor="var(--color-success)"
+              />
+              <KpiCard
+                label="Unmatched Lines"
+                value={loading || error ? "—" : unmatched.length}
+                detail="Manual-match backlog"
+                tone={unmatched.length > 0 ? "warning" : "neutral"}
+                accentColor={
+                  unmatched.length > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+                }
+              />
+              <KpiCard
+                label="Failed Parses"
+                value={loading || error ? "—" : failed}
+                detail="Need file review"
+                tone={failed > 0 ? "danger" : "neutral"}
+                accentColor={failed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+                selected={parseFilter === "failed"}
+                onSelect={() => {
+                  setParseFilter("failed");
+                  setAdvicePage(1);
+                }}
+              />
+              <KpiCard
+                label="Paid"
+                value={loading || error ? "—" : money(totalPaid)}
+                detail="Advice total"
+                tone="neutral"
+                accentColor="var(--color-outline-variant)"
+              />
+            </KpiStrip>
+          )
         }
         filters={
           <div style={filterPanelStyle}>
@@ -262,10 +264,12 @@ export function RemittanceWorklist(): JSX.Element {
                   Clear
                 </Button>
               ) : null}
-              <span style={mutedStyle}>
-                {filteredAdvices.length} of {advices.length} advices · {filteredBacklog.length} of{" "}
-                {unmatched.length} unmatched
-              </span>
+              {error ? null : (
+                <span style={mutedStyle}>
+                  {filteredAdvices.length} of {advices.length} advices · {filteredBacklog.length} of{" "}
+                  {unmatched.length} unmatched
+                </span>
+              )}
             </div>
           </div>
         }
