@@ -5227,6 +5227,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36SnoozeReminders
               ? { snoozeReminders: { service: m36SnoozeReminders.service } }
               : {}),
+            // WP 6.1 (ADR-0100) - smart work inbox (read-only); off unless the tenant flag `messaging.smart_inbox` is on.
+            smartInbox: { flags: featureFlagReader },
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.

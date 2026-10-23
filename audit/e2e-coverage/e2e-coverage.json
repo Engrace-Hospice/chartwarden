@@ -797,6 +797,14 @@
       "axeReached": true
     },
     {
+      "id": "messaging.inbox",
+      "module": "36-messaging",
+      "path": "/messaging/inbox",
+      "permission": "messaging.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.on-call",
       "module": "36-messaging",
       "path": "/messaging/on-call",
@@ -2333,6 +2341,14 @@
       "module": "36-messaging",
       "path": "/messaging/governance/sessions",
       "permission": "messaging.sessions.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.inbox",
+      "module": "36-messaging",
+      "path": "/messaging/inbox",
+      "permission": "messaging.read",
       "e2eReached": false,
       "axeReached": true
     },

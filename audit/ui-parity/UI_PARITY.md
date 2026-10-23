@@ -302,6 +302,7 @@
 | web | 35-subscription | `billing.dunning` | `/subscription/dunning` | `subscription.read` | ✅ |
 | web | 35-subscription | `billing.promos` | `/subscription/promos` | `subscription.read` | ✅ |
 | web | 36-messaging | `messaging.staff` | `/messaging` | `messaging.read` | ✅ |
+| web | 36-messaging | `messaging.inbox` | `/messaging/inbox` | `messaging.read` | ✅ |
 | web | 36-messaging | `messaging.unacknowledged` | `/messaging/unacknowledged` | `messaging.review` | ✅ |
 | web | 36-messaging | `messaging.preferences` | `/messaging/preferences` | `messaging.read` | ✅ |
 | web | 36-messaging | `messaging.on-call` | `/messaging/on-call` | `messaging.oncall.read` | ✅ |

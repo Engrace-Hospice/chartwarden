@@ -1560,6 +1560,11 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+// M36 WP 6.1 smart work inbox.
+import {
+  InboxQuerySchema as M36InboxQuerySchema,
+  InboxResponseSchema as M36InboxResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 4.9 supervisor unacknowledged queue.
 import {
   UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
@@ -9879,6 +9884,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
+  },
+  "GET /api/v1/messaging/inbox": {
+    summary:
+      "The smart work inbox (WP 6.1, ADR-0100; messaging.read): ONE read-only ranked queue of the caller's OWN waiting work: acknowledgment requests assigned to them, handoffs awaiting their answer, their active tasks, unread care-team conversations with mentions first. Ranking is a fixed rule table (band, then sub-rank, then soonest clock, then key), never a model, and every row carries the reason it ranks where it does. Urgent rows are never cut by `limit` (default 50, max 100); `band_counts` cover the whole list and `unavailable_sources` names any source that failed to read. Rows carry generic titles, ids and instants, never message text or a patient name; a request in a conversation the caller cannot open is a restricted row with no ids. 200 {enabled:false} while the tenant flag `messaging.smart_inbox` is off. Acts on nothing: every row points at the screen that owns the item. Never cached.",
+    query: M36InboxQuerySchema,
+    response: M36InboxResponseSchema,
   },
   "GET /api/v1/messaging/oncall/coverage": {
     summary:

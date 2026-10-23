@@ -107,6 +107,7 @@
 | `messaging.export-approvals` | 36-messaging | `/messaging/governance/export-approvals` | messaging.export.approve |
 | `messaging.retention` | 36-messaging | `/messaging/governance/retention` | messaging.retention.manage |
 | `messaging.session-governance` | 36-messaging | `/messaging/governance/sessions` | messaging.sessions.manage |
+| `messaging.inbox` | 36-messaging | `/messaging/inbox` | messaging.read |
 | `messaging.on-call` | 36-messaging | `/messaging/on-call` | messaging.oncall.read |
 | `messaging.preferences` | 36-messaging | `/messaging/preferences` | messaging.read |
 | `messaging.saved-replies` | 36-messaging | `/messaging/saved-replies` | messaging.send |

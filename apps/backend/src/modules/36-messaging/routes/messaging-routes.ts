@@ -117,6 +117,7 @@ import {
   type SnoozeReminderRouteDeps,
   registerSnoozeReminderRoutes,
 } from "./snooze-reminder-routes";
+import { DISABLED_INBOX, type InboxRouteDeps, registerInboxRoutes } from "./inbox-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import {
   DISABLED_UNACKNOWLEDGED,
@@ -171,6 +172,8 @@ export interface MessagingRouteDeps {
   unacknowledged?: UnacknowledgedRouteDeps;
   /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
   snoozeReminders?: SnoozeReminderRouteDeps;
+  /** WP 6.1 (ADR-0100): the smart work inbox (read-only; tenant flag `messaging.smart_inbox`). Omitted => reads as off. */
+  inbox?: InboxRouteDeps;
   /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
   oncall?: OnCallRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
@@ -505,6 +508,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   registerUnacknowledgedRoutes(app, deps.unacknowledged ?? DISABLED_UNACKNOWLEDGED, {
     read: READ,
   });
+
+  // --- WP 6.1: the smart work inbox (read-only ranked queue over the caller's own work) ---
+  registerInboxRoutes(app, deps.inbox ?? DISABLED_INBOX, { read: READ });
 
   // --- WP 4.12: the on-call directory (read-only; flag-gated in the service) ---
   registerOnCallRoutes(app, deps.oncall ?? DISABLED_ONCALL, { read: READ });

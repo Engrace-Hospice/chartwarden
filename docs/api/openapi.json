@@ -182678,6 +182678,313 @@
         }
       }
     },
+    "/api/v1/messaging/inbox": {
+      "get": {
+        "operationId": "getApiV1MessagingInbox",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The smart work inbox (WP 6.1, ADR-0100; messaging.read): ONE read-only ranked queue of the caller's OWN waiting work: acknowledgment requests assigned to them, handoffs awaiting their answer, their active tasks, unread care-team conversations with mentions first. Ranking is a fixed rule table (band, then sub-rank, then soonest clock, then key), never a model, and every row carries the reason it ranks where it does. Urgent rows are never cut by `limit` (default 50, max 100); `band_counts` cover the whole list and `unavailable_sources` names any source that failed to read. Rows carry generic titles, ids and instants, never message text or a patient name; a request in a conversation the caller cannot open is a restricted row with no ids. 200 {enabled:false} while the tenant flag `messaging.smart_inbox` is off. Acts on nothing: every row points at the screen that owns the item. Never cached.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "items",
+                    "band_counts",
+                    "complete",
+                    "urgent_complete",
+                    "unavailable_sources"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "band",
+                          "rank",
+                          "title",
+                          "reasons",
+                          "since",
+                          "due_at",
+                          "channel_id",
+                          "target",
+                          "target_id",
+                          "restricted",
+                          "count"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "band": {
+                            "anyOf": [
+                              {
+                                "const": "urgent_ack",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoff_awaiting",
+                                "type": "string"
+                              },
+                              {
+                                "const": "task_assigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "mention",
+                                "type": "string"
+                              },
+                              {
+                                "const": "care_team_unread",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rank": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "reasons": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "text"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ack_failed_unreachable",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_overdue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_waiting",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "handoff_expires_soon",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "handoff_waiting",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_overdue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_clinical_concern",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_due",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task_open",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "mention_unread",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_team_unread",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "since": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "due_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channel_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "target": {
+                            "anyOf": [
+                              {
+                                "const": "acknowledgment_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "task",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoff",
+                                "type": "string"
+                              },
+                              {
+                                "const": "conversation",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "target_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "restricted": {
+                            "type": "boolean"
+                          },
+                          "count": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "band_counts": {
+                      "type": "object",
+                      "required": [
+                        "urgent_ack",
+                        "handoff_awaiting",
+                        "task_assigned",
+                        "mention",
+                        "care_team_unread"
+                      ],
+                      "properties": {
+                        "urgent_ack": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "handoff_awaiting": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "task_assigned": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "mention": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "care_team_unread": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "urgent_complete": {
+                      "type": "boolean"
+                    },
+                    "unavailable_sources": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "urgent_ack",
+                            "type": "string"
+                          },
+                          {
+                            "const": "handoff_awaiting",
+                            "type": "string"
+                          },
+                          {
+                            "const": "task_assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "mention",
+                            "type": "string"
+                          },
+                          {
+                            "const": "care_team_unread",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/messages/{id}": {
       "delete": {
         "operationId": "deleteApiV1MessagingMessagesById",

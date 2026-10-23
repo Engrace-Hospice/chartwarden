@@ -148,6 +148,7 @@ import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
+import { buildSmartInboxService as _buildSmartInboxService, smartInboxFlag as _smartInboxFlag } from "./inbox/binding";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
@@ -268,6 +269,8 @@ export function mountMessagingRoutes(
     ackRequests?: _AckRouteDeps;
     /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
     snoozeReminders?: _SnoozeReminderRouteDeps;
+    /** WP 6.1 (ADR-0100): the smart work inbox. `flags` is the platform flag reader for `messaging.smart_inbox`; omitted => off. */
+    smartInbox?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
@@ -318,6 +321,11 @@ export function mountMessagingRoutes(
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   const announcements = _createDbAnnouncementService(db);
+  const unacknowledged = _createUnacknowledgedService({
+    read: _createDbUnacknowledgedReader(db),
+    canViewChannel: service.canViewChannel,
+    displayName: _createMentionActorNameResolver(db),
+  });
   _registerMessagingRoutes(app, {
     service,
     announcements,
@@ -333,11 +341,15 @@ export function mountMessagingRoutes(
     ...(opts.snoozeReminders ? { snoozeReminders: opts.snoozeReminders } : {}),
     ...(opts.oncall ? { oncall: opts.oncall } : {}),
     // WP 4.9: the supervisor's unacknowledged queue (read-only; self-contained over `db`, no flag: with no requests it is empty).
-    unacknowledged: {
-      service: _createUnacknowledgedService({
-        read: _createDbUnacknowledgedReader(db),
-        canViewChannel: service.canViewChannel,
-        displayName: _createMentionActorNameResolver(db),
+    unacknowledged: { service: unacknowledged },
+    // WP 6.1: read-only aggregation over the unacknowledged queue (narrowed to the caller), tasks, handoffs and the channel list.
+    inbox: {
+      service: _buildSmartInboxService({
+        isEnabled: _smartInboxFlag(opts.smartInbox?.flags),
+        unacknowledged,
+        tasks: opts.tasks,
+        handoffs: opts.handoffs,
+        listChannels: service.listChannels,
       }),
     },
     deliveryTarget: {
