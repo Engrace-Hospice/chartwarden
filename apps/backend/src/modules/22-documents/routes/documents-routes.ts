@@ -344,21 +344,53 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     body: { patientId?: string | null; admissionId?: string | null },
   ): Promise<void> {
     const doc = await service.getDocument(organizationId, docId);
-    const patientId = body.patientId !== undefined ? body.patientId : doc.patientId;
-    const admissionId = body.admissionId !== undefined ? body.admissionId : doc.admissionId;
+    await assertAdmissionBelongsTo(
+      organizationId,
+      body.admissionId !== undefined ? body.admissionId : doc.admissionId,
+      body.patientId !== undefined ? body.patientId : doc.patientId,
+    );
+  }
+
+  async function assertAdmissionBelongsTo(
+    organizationId: string,
+    admissionId: string | null | undefined,
+    patientId: string | null | undefined,
+  ): Promise<void> {
     if (!admissionId) return;
     const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
       organizationId,
       admissionId as never,
     );
     if (!care) throw new NotFoundError("admission");
-    if (care.patientId !== patientId) {
+    if (care.patientId !== (patientId ?? null)) {
       throw new ChartWardenError(
         "VALIDATION_FAILED",
         "the admission does not belong to the document's patient",
         422,
       );
     }
+  }
+
+  /**
+   * #655 — `POST /documents` names a patient and an admission with no FK behind either, so it holds them to the same
+   * rules as `/links`: a caseload-scoped uploader may only file for a patient on their caseload (and not for an
+   * admission with no patient), and the admission must be that patient's. The patient existing in the org is checked
+   * by the service, in its own transaction.
+   */
+  async function assertUploadTargetAllowed(
+    request: FastifyRequest,
+    body: { patientId?: string | null; admissionId?: string | null },
+  ): Promise<void> {
+    const scope = await metadataScopeOf(request, "write");
+    if (scope !== null) {
+      if (body.patientId ? !scope.includes(body.patientId) : !!body.admissionId)
+        throw new NotFoundError("patient");
+    }
+    await assertAdmissionBelongsTo(
+      actorOf(request).organizationId,
+      body.admissionId,
+      body.patientId,
+    );
   }
 
   // 1 — upload new document (creates document + version v1).
@@ -368,6 +400,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(UploadDocumentRequest, request.body);
+      await assertUploadTargetAllowed(request, body);
       const res = await service.uploadDocument(organizationId, actor, {
         patientId: body.patientId ?? null,
         admissionId: body.admissionId ?? null,

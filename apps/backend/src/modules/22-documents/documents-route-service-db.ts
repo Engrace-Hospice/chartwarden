@@ -720,7 +720,13 @@ export function createDbDocumentRouteService(
 
     // ── Document writes (append-only version ledger; no producer outbox) ─────────────────────────────
     async uploadDocument(organizationId, actor, args) {
-      const committed = await requireUploads().createDocument(organizationId, actor, args);
+      const uploads = requireUploads();
+      // #655 — the patient the upload is filed for exists in this org (no FK behind the column).
+      if (args.patientId)
+        await withOrgAs(db, organizationId, actor, (tx) =>
+          assertLinkPatient(tx, organizationId, args.patientId),
+        );
+      const committed = await uploads.createDocument(organizationId, actor, args);
       return service.getDocument(organizationId, committed.documentId);
     },
     async uploadVersion(organizationId, actor, documentId, args) {

@@ -1039,6 +1039,27 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     );
   });
 
+  it("#655: a single-request upload for a patient that does not exist in the org is refused (404), storing nothing", async () => {
+    const mem = createInMemoryObjectStore();
+    const uploads = createServerUploadService({ db: handle.db, objects: mem.store });
+    const backend = createDbDocumentBackend(handle.db, {}, uploads).service;
+    const ghost = "99999999-9999-4999-8999-999999999999";
+    await expect(
+      backend.uploadDocument(ORG_A as never, ACTOR, {
+        patientId: ghost,
+        admissionId: null,
+        retentionClass: "clinical_record",
+        aggregateType: "other",
+        aggregateId: null,
+        title: "ghost patient",
+        patientFacing: false,
+        tags: [],
+        content: { bytes: new TextEncoder().encode("%PDF-1.7 655"), mimeType: "application/pdf" },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(mem.objects.size).toBe(0);
+  });
+
   it("GAP-068: single-request upload stores the object and commits document + v1 + v2 with verified size/hash", async () => {
     const mem = createInMemoryObjectStore();
     const uploads = createServerUploadService({ db: handle.db, objects: mem.store });
