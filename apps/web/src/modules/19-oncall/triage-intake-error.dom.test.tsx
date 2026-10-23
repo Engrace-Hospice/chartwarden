@@ -3,7 +3,7 @@
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TriageIntakeScreen } from "./triage-intake";
 
 const REASON = "no on-call shift covers 2026-10-22T19:15:00.000Z for provider entity 22222222";
@@ -16,7 +16,13 @@ async function conflict(): Promise<Response> {
   );
 }
 
+const originalScroll = Element.prototype.scrollIntoView;
+
 describe("Take a call — refusal (#596)", () => {
+  afterEach(() => {
+    Element.prototype.scrollIntoView = originalScroll;
+  });
+
   it("shows the server's reason and brings it into view", async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
