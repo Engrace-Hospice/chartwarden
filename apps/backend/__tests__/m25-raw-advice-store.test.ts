@@ -99,7 +99,7 @@ describe("M25 raw advice store", () => {
     await store.put(ORG, "b", "y");
     expect(s3.lifecycle()).toContain("<Prefix>m25-835/</Prefix>");
     expect(s3.lifecycle()).toContain("<Days>30</Days>");
-    expect(s3.calls.filter((c) => c.includes("?lifecycle"))).toHaveLength(2); // one GET + one PUT, then memoized
+    expect(s3.calls.filter((c) => c.includes("?lifecycle"))).toHaveLength(3); // GET + PUT + verify GET, then memoized
 
     const failing: unknown[] = [];
     const broken = fakeS3();

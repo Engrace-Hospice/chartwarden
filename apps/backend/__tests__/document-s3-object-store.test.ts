@@ -607,19 +607,25 @@ describe("createS3TenantStorageProvisioner (mocked fetch)", () => {
       new TextDecoder().decode(c.body ?? new Uint8Array());
 
     it("PUTs one prefix-scoped expiry rule (with Content-MD5) when the bucket has no lifecycle config", async () => {
-      const { fetchImpl, calls } = mockFetch((call) =>
-        call.method === "GET"
+      let stored: string | null = null;
+      const { fetchImpl, calls } = mockFetch((call) => {
+        if (call.method === "PUT") {
+          stored = new TextDecoder().decode(call.body ?? new Uint8Array());
+          return new Response(null, { status: 200 });
+        }
+        return stored === null
           ? new Response(noSuchConfig, { status: 404 })
-          : new Response(null, { status: 200 }),
-      );
+          : new Response(stored, { status: 200 });
+      });
       const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
       await expect(storage.ensurePrefixExpiry(input)).resolves.toEqual({ applied: true });
       expect(calls.map((c) => `${c.method} ${new URL(c.url).search}`)).toEqual([
         "GET ?lifecycle=",
         "PUT ?lifecycle=",
+        "GET ?lifecycle=",
       ]);
       const xml = bodyText(calls[1] as never);
-      expect(xml).toContain("<ID>cw-expire-m25-835</ID>");
+      expect(xml).toContain("<ID>cw-expire:m25-835/</ID>");
       expect(xml).toContain("<Prefix>m25-835/</Prefix>");
       expect(xml).toContain("<Days>30</Days>");
       expect(xml).toContain("<NoncurrentDays>30</NoncurrentDays>");
@@ -629,31 +635,93 @@ describe("createS3TenantStorageProvisioner (mocked fetch)", () => {
     it("keeps the bucket's other rules when adding ours (PUT replaces the whole config)", async () => {
       const other =
         "<LifecycleConfiguration><Rule><ID>other</ID><Status>Enabled</Status><Filter><Prefix>x/</Prefix></Filter><Expiration><Days>5</Days></Expiration></Rule></LifecycleConfiguration>";
-      const { fetchImpl, calls } = mockFetch((call) =>
-        call.method === "GET"
-          ? new Response(other, { status: 200 })
-          : new Response(null, { status: 200 }),
-      );
+      let current = other;
+      const { fetchImpl, calls } = mockFetch((call) => {
+        if (call.method === "PUT") {
+          current = new TextDecoder().decode(call.body ?? new Uint8Array());
+          return new Response(null, { status: 200 });
+        }
+        return new Response(current, { status: 200 });
+      });
       const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
       await storage.ensurePrefixExpiry(input);
       const xml = bodyText(calls[1] as never);
       expect(xml).toContain("<ID>other</ID>");
-      expect(xml).toContain("<ID>cw-expire-m25-835</ID>");
+      expect(xml).toContain("<ID>cw-expire:m25-835/</ID>");
       expect(xml.endsWith("</LifecycleConfiguration>")).toBe(true);
     });
 
-    it("is a no-op when our rule is already present", async () => {
-      const mine = `<LifecycleConfiguration><Rule><ID>cw-expire-m25-835</ID><Status>Enabled</Status></Rule></LifecycleConfiguration>`;
-      const { fetchImpl, calls } = mockFetch(() => new Response(mine, { status: 200 }));
-      const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
+    const mine = (days: number, prefix = "m25-835/"): string =>
+      `<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ID>cw-expire:${prefix}</ID><Status>Enabled</Status><Filter><Prefix>${prefix}</Prefix></Filter><Expiration><Days>${days}</Days></Expiration><NoncurrentVersionExpiration><NoncurrentDays>${days}</NoncurrentDays></NoncurrentVersionExpiration></Rule></LifecycleConfiguration>`;
+    const provisioner = (responder: Parameters<typeof mockFetch>[0]) => {
+      const m = mockFetch(responder);
+      return {
+        ...m,
+        storage: createS3TenantStorageProvisioner(testConfig, {
+          fetchImpl: m.fetchImpl,
+          now: fixedNow,
+        }),
+      };
+    };
+
+    it("is a no-op when our rule is already present with the same prefix and window", async () => {
+      const { storage, calls } = provisioner(() => new Response(mine(30), { status: 200 }));
       await expect(storage.ensurePrefixExpiry(input)).resolves.toEqual({ applied: false });
       expect(calls.map((c) => c.method)).toEqual(["GET"]);
+    });
+
+    it("replaces only OUR rule when the configured window changed, keeping others", async () => {
+      let stored = mine(7).replace(
+        "</LifecycleConfiguration>",
+        "<Rule><ID>keep</ID><Status>Enabled</Status></Rule></LifecycleConfiguration>",
+      );
+      const { storage, calls } = provisioner((call) => {
+        if (call.method === "PUT") {
+          stored = new TextDecoder().decode(call.body ?? new Uint8Array());
+          return new Response(null, { status: 200 });
+        }
+        return new Response(stored, { status: 200 });
+      });
+      await expect(storage.ensurePrefixExpiry(input)).resolves.toEqual({ applied: true });
+      expect(stored).toContain("<Days>30</Days>");
+      expect(stored).not.toContain("<Days>7</Days>");
+      expect(stored).toContain("<ID>keep</ID>");
+      expect(calls.map((c) => c.method)).toEqual(["GET", "PUT", "GET"]); // verified after the write
+    });
+
+    it("treats a self-closing/empty config as empty, but refuses to overwrite one it cannot recognise", async () => {
+      let put = "";
+      const ok = provisioner((call) => {
+        if (call.method === "PUT") {
+          put = new TextDecoder().decode(call.body ?? new Uint8Array());
+          return new Response(null, { status: 200 });
+        }
+        return new Response(put || '<LifecycleConfiguration xmlns="x"/>', { status: 200 });
+      });
+      await expect(ok.storage.ensurePrefixExpiry(input)).resolves.toEqual({ applied: true });
+      expect(put).toContain("<ID>cw-expire:m25-835/</ID>");
+
+      const odd = provisioner(() => new Response("<html>proxy error</html>", { status: 200 }));
+      await expect(odd.storage.ensurePrefixExpiry(input)).rejects.toThrow(/refusing to overwrite/);
+      expect(odd.calls.map((c) => c.method)).toEqual(["GET"]); // never PUT
+    });
+
+    it("fails (so the next stage retries) when the rule is not there after the write", async () => {
+      const { storage } = provisioner((call) =>
+        call.method === "GET"
+          ? new Response(noSuchConfig, { status: 404 })
+          : new Response(null, { status: 200 }),
+      );
+      await expect(storage.ensurePrefixExpiry(input)).rejects.toThrow(/verifyLifecycle/);
     });
 
     it("fails loudly on an unexpected status and rejects a non-positive window", async () => {
       const { fetchImpl } = mockFetch(() => new Response(null, { status: 403 }));
       const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
       await expect(storage.ensurePrefixExpiry(input)).rejects.toThrow(/getLifecycle.*403/);
+      await expect(storage.ensurePrefixExpiry({ ...input, prefix: "a<b" })).rejects.toThrow(
+        /prefix/,
+      );
       await expect(storage.ensurePrefixExpiry({ ...input, days: 0 })).rejects.toThrow(/days/);
     });
   });

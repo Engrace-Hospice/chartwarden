@@ -3,8 +3,8 @@
  * ChartWarden — create the per-tenant object-store bucket (`tenant-<orgId>`) for every organization that lacks it.
  *
  * M34 provisions the bucket at onboarding, but orgs that predate that (the dev demo org, older tenants) have none, so
- * the first object write 404s. Idempotent (HEAD, then PUT; an "already exists" 409 is success); also applies the m25-835/ expiry rule: safe to re-run, and
- * the compose `migrate` step runs it on every `up`. Needs DATABASE_ADMIN_URL (or DATABASE_URL) and MINIO_*.
+ * the first object write 404s. Idempotent (HEAD, then PUT; an "already exists" 409 is success): safe to re-run, and
+ * the compose `migrate` step runs it on every `up`. It also applies the `m25-835/` staging expiry rule (#675). Needs DATABASE_ADMIN_URL (or DATABASE_URL) and MINIO_*.
  *
  * Run:   bun run scripts/backfill-tenant-buckets.ts
  */
@@ -12,7 +12,7 @@ import { createDbClient, schema } from "@chartwarden/db";
 import {
   M25_STAGED_EXPIRY_DAYS,
   M25_STAGED_PREFIX,
-} from "../apps/backend/src/m25-raw-advice-store";
+} from "../apps/backend/src/m25-staged-835-config";
 import {
   createS3TenantStorageProvisioner,
   s3ObjectStoreConfigFromEnv,
