@@ -56,3 +56,33 @@ export function formatDateOnly(
   const d = parseLocalDateOnly(dateOnly);
   return d ? new Intl.DateTimeFormat(undefined, options).format(d) : dateOnly;
 }
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/**
+ * Format a Date as the viewer's LOCAL wall time for `<input type="datetime-local">` (`YYYY-MM-DDTHH:mm`).
+ * Never `toISOString().slice(0, 16)`: that is the UTC wall time, which the field (and `new Date(value)`) then
+ * reads as local, shifting the stored instant by the viewer's UTC offset (#595).
+ */
+export function toLocalInput(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** Local "now" for a datetime-local default. */
+export function nowLocalInput(): string {
+  return toLocalInput(new Date());
+}
+
+/** A server instant (ISO string) shown in a datetime-local field in the viewer's zone; "" if unparseable. */
+export function isoToLocalInput(iso: unknown): string {
+  if (typeof iso !== "string" || iso === "") return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : toLocalInput(d);
+}
+
+/** A datetime-local value (local wall time) as a UTC ISO instant; "" if empty or unparseable. */
+export function localInputToIso(value: string): string {
+  if (!value) return "";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}

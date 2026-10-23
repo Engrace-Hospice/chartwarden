@@ -1,4 +1,4 @@
-import { CodeSearchInput } from "@chartwarden/ui";
+import { CodeSearchInput, isoToLocalInput } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 type Kind =
@@ -146,7 +146,7 @@ export function CanonicalOrderFields({ kind, value, onChange, errors = {} }: Pro
         <Field label="Effective at" error={errors.effectiveAt}>
           <input
             type="datetime-local"
-            value={local(value.effectiveAt)}
+            value={isoToLocalInput(value.effectiveAt)}
             onChange={(e) =>
               set("effectiveAt", e.target.value ? new Date(e.target.value).toISOString() : "")
             }
@@ -293,7 +293,6 @@ function Field({
 }
 
 const levels = ["rhc", "irc", "chc", "gip"] as const;
-const local = (v: unknown) => (typeof v === "string" ? v.slice(0, 16) : "");
 const fieldset = {
   margin: 0,
   padding: "1rem",
