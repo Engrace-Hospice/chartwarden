@@ -33,7 +33,6 @@ const TAG_BYTES = 16;
 const aadFor = (organizationId: string): Buffer =>
   Buffer.from(`m20:field_safety:cipher:${organizationId}`, "utf8");
 
-/** Build the write-side cipher and read-side decipher over one tenant key provider. */
 /**
  * A tenant with no key ring (`TenantKeyMissing`), a destroyed one, or an unbound KEK adapter threw a plain Error from
  * deep inside M34, which the error handler renders as a generic 500 "An unexpected error occurred" (#596, F-039). All
@@ -56,6 +55,7 @@ async function resolveDek(
   }
 }
 
+/** Build the write-side cipher and read-side decipher over one tenant key provider. */
 export function createSafetyCiphers(keys: SafetyTenantKeyProvider): {
   readonly cipher: SafetyCipherPort;
   readonly decipher: SafetyDecipherPort;
