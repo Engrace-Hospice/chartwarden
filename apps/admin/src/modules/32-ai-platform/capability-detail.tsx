@@ -5,6 +5,7 @@ import {
   StatusPill,
   TextAreaField,
   TextField,
+  focusFirstInvalid,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -22,7 +23,7 @@ import type { operations } from "@chartwarden/ui";
 // the service decides WHICH edges require a `linkedEvaluationRunId` and refuses without one. The dialog
 // therefore surfaces the fields and lets the server be the authority — a client-side checklist that
 // disagreed with it would either block a legal transition or promise an illegal one.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { InvocationSearch } from "./invocations";
@@ -458,8 +459,19 @@ function TransitionDialog({
   const [rationale, setRationale] = useState("");
   const [runId, setRunId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const rationaleError =
+    attempted && rationale.trim().length === 0
+      ? "Give a rationale; it is recorded in the approval ledger."
+      : undefined;
 
   async function submit(): Promise<void> {
+    setAttempted(true);
+    if (!toState || rationale.trim().length === 0) {
+      focusFirstInvalid(bodyRef.current);
+      return;
+    }
     setBusy(true);
     const res = await client.POST("/api/v1/ai/capabilities/{capabilityId}/transitions", {
       params: { path: { capabilityId: detail.capability.id } },
@@ -485,7 +497,7 @@ function TransitionDialog({
 
   return (
     <Modal open ariaLabel="Transition capability" onClose={onClose} width="34rem">
-      <div className="wx-modal-body">
+      <div className="wx-modal-body" ref={bodyRef}>
         <h2>
           Transition <span className="wx-data-md">{detail.capability.capabilityKey}</span>
         </h2>
@@ -518,6 +530,7 @@ function TransitionDialog({
           label="Rationale"
           value={rationale}
           onChange={(e) => setRationale(e.target.value)}
+          error={rationaleError}
           rows={4}
           placeholder="Why this capability may move to that state."
         />
@@ -525,11 +538,7 @@ function TransitionDialog({
           <Button tone="tertiary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void submit()}
-            loading={busy}
-            disabled={busy || !toState || rationale.trim().length === 0}
-          >
+          <Button onClick={() => void submit()} loading={busy} disabled={busy || !toState}>
             {busy ? "Recording…" : "Record transition"}
           </Button>
         </div>

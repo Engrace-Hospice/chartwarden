@@ -2,6 +2,7 @@ import {
   Button,
   Panel,
   TextField,
+  focusFirstInvalid,
   stashStepUpDraft,
   useApiClient,
   useStepUpDraft,
@@ -10,7 +11,7 @@ import {
 // (`/admin/subscriptions/:id/apply_promo`, promo.admin.apply). POST /api/admin/subscriptions/:id/apply_promo
 // (step-up + Idempotency-Key + the §4.8 `promo_applicable_to_subscription` ABAC gate, enforced server-side).
 // The server's 4xx (inapplicable promo / stale step-up) surfaces as a first-class outcome — no client authz.
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
@@ -28,10 +29,17 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const [code, setCode] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const submit = useCallback(async () => {
     const promoCode = code.trim();
-    if (!id || !promoCode) return;
+    setAttempted(true);
+    if (!promoCode) {
+      focusFirstInvalid(panelRef.current);
+      return;
+    }
+    if (!id) return;
     setBusy(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/subscriptions/{id}/apply_promo", {
@@ -73,12 +81,13 @@ export function SubscriptionApplyPromo(): JSX.Element {
         ) : (
           <div className="max-w-xl">
             <Panel title="Promo" icon="receipt">
-              <div className="grid gap-4">
+              <div className="grid gap-4" ref={panelRef}>
                 <TextField
                   id="promo-code"
                   label="Promo code"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
+                  error={attempted && !code.trim() ? "Enter the promo code to apply." : undefined}
                   placeholder="e.g. LAUNCH25"
                 />
                 {outcome ? (
@@ -88,7 +97,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
                   <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
                     Cancel
                   </Button>
-                  <Button loading={busy} disabled={!code.trim()} onClick={() => void submit()}>
+                  <Button loading={busy} onClick={() => void submit()}>
                     Apply promo
                   </Button>
                 </div>

@@ -30,6 +30,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
+import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import {
   type OncallModel,
   type OncallPolicyView,
@@ -196,11 +197,10 @@ export function OnCallPolicyScreen(): JSX.Element {
       filters={
         <div style={filterShellStyle}>
           <Card title="Provider entity">
-            <TextField
-              label="Provider entity id"
+            <ProviderEntityLookupField
+              label="Provider entity"
               value={providerEntityId}
               onChange={setProviderEntityId}
-              mono
               hint="The policy row is per (organization, provider entity). Coverage obligations are per CCN, so the ladder is too."
             />
           </Card>

@@ -6,6 +6,7 @@ import {
   Modal,
   SelectField,
   TextAreaField,
+  focusFirstInvalid,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -32,7 +33,7 @@ import type { operations } from "@chartwarden/ui";
 // but R7 is keyed on a single `:capabilityId` and there is no bulk route. Rather than fan out N writes
 // from the browser — where a partial failure would leave half the platform stopped and no record of the
 // intent — this activates one capability at a time and says so.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
@@ -292,8 +293,19 @@ function ActivateDialog({
   const [actorKind, setActorKind] = useState<string>("ai_safety_owner");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const messageError =
+    attempted && message.trim().length === 0
+      ? "Describe what happened so the audit trail explains the pause."
+      : undefined;
 
   async function submit(): Promise<void> {
+    setAttempted(true);
+    if (!capabilityId || message.trim().length === 0) {
+      focusFirstInvalid(bodyRef.current);
+      return;
+    }
     setBusy(true);
     const res = await client.POST("/api/v1/ai/capabilities/{capabilityId}/kill-switch", {
       params: { path: { capabilityId } },
@@ -310,7 +322,7 @@ function ActivateDialog({
 
   return (
     <Modal open ariaLabel="Activate kill switch" onClose={onClose} width="34rem">
-      <div className="wx-modal-body">
+      <div className="wx-modal-body" ref={bodyRef}>
         <h2>Activate kill switch</h2>
         <SelectField
           id="ks-capability"
@@ -351,6 +363,7 @@ function ActivateDialog({
           label="Narrative (no PHI)"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
+          error={messageError}
           rows={4}
           placeholder="What happened, and what a reader six months from now needs to know."
         />
@@ -362,7 +375,7 @@ function ActivateDialog({
             tone="danger"
             onClick={() => void submit()}
             loading={busy}
-            disabled={busy || !capabilityId || message.trim().length === 0}
+            disabled={busy || !capabilityId}
           >
             {busy ? "Activating…" : "Activate"}
           </Button>
@@ -396,10 +409,21 @@ function KillSwitchDrawer({
   const [narrative, setNarrative] = useState("");
   const [actorKind, setActorKind] = useState<string>("ai_safety_owner");
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const narrativeError =
+    attempted && narrative.trim().length === 0
+      ? "Describe what was fixed; the route requires a resolution narrative."
+      : undefined;
   const scope: "platform" | "tenant" = killSwitch?.organizationId === null ? "platform" : "tenant";
 
   async function submit(): Promise<void> {
     if (!killSwitch) return;
+    setAttempted(true);
+    if (narrative.trim().length === 0) {
+      focusFirstInvalid(bodyRef.current);
+      return;
+    }
     setBusy(true);
     const res = await client.DELETE("/api/v1/ai/capabilities/{capabilityId}/kill-switch", {
       params: { path: { capabilityId: killSwitch.capabilityId } },
@@ -425,7 +449,7 @@ function KillSwitchDrawer({
           <Glyph name="close" size={16} />
         </Button>
       </header>
-      <div className="wx-drawer-body">
+      <div className="wx-drawer-body" ref={bodyRef}>
         {killSwitch === null ? (
           loading ? (
             <LoadingSpinner label="Loading kill switch…" />
@@ -481,15 +505,12 @@ function KillSwitchDrawer({
                 label="Resolution narrative"
                 value={narrative}
                 onChange={(e) => setNarrative(e.target.value)}
+                error={narrativeError}
                 rows={4}
                 placeholder="What was fixed, and why it is safe to resume."
               />
               <div className="wx-drawer-actions">
-                <Button
-                  onClick={() => void submit()}
-                  loading={busy}
-                  disabled={busy || narrative.trim().length === 0}
-                >
+                <Button onClick={() => void submit()} loading={busy} disabled={busy}>
                   {busy ? "Resuming…" : "Resume capability"}
                 </Button>
               </div>

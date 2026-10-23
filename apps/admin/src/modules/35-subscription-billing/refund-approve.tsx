@@ -4,6 +4,7 @@ import {
   Panel,
   StatusPill,
   TextAreaField,
+  focusFirstInvalid,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -14,7 +15,7 @@ import type { operations } from "@chartwarden/ui";
 // first-class outcome — REFUND_FOUR_EYES (403 approver == requester) and a stale step-up are distinct, named
 // messages, not a generic error. Hydrates the refund from GET /api/admin/refunds/:id (M35A-T03 detail GET).
 // Redesign frame: the decision in the main column, the refund summary in the right drawer.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
@@ -57,6 +58,8 @@ export function RefundApprove(): JSX.Element {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [denyReason, setDenyReason] = useState("");
+  const [denyAttempted, setDenyAttempted] = useState(false);
+  const decisionRef = useRef<HTMLDivElement>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const guard = useRequestGuard();
@@ -106,7 +109,12 @@ export function RefundApprove(): JSX.Element {
   }, [client, id, navigate]);
 
   const deny = useCallback(async () => {
-    if (!id || denyReason.trim().length === 0) return;
+    if (!id) return;
+    setDenyAttempted(true);
+    if (denyReason.trim().length === 0) {
+      focusFirstInvalid(decisionRef.current);
+      return;
+    }
     setBusy(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds/{id}/deny", {
@@ -168,7 +176,7 @@ export function RefundApprove(): JSX.Element {
             </p>
           ) : (
             <Panel title="Decision" icon="scale">
-              <div className="grid gap-4">
+              <div className="grid gap-4" ref={decisionRef}>
                 <div className="wx-action-row">
                   <Button loading={busy} onClick={() => void approve()}>
                     Approve refund
@@ -179,15 +187,16 @@ export function RefundApprove(): JSX.Element {
                   label="Deny reason"
                   value={denyReason}
                   onChange={(e) => setDenyReason(e.target.value)}
+                  error={
+                    denyAttempted && denyReason.trim().length === 0
+                      ? "Say why this refund is being denied."
+                      : undefined
+                  }
                   rows={3}
                   placeholder="Why is this refund being denied?"
                 />
                 <div className="wx-action-row">
-                  <Button
-                    tone="secondary"
-                    onClick={() => void deny()}
-                    disabled={busy || denyReason.trim().length === 0}
-                  >
+                  <Button tone="secondary" onClick={() => void deny()} disabled={busy}>
                     Deny refund
                   </Button>
                 </div>

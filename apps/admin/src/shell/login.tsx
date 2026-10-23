@@ -1,4 +1,10 @@
-import { Button, CenteredCardLayout, InlineAlert, TextField } from "@chartwarden/ui";
+import {
+  Button,
+  CenteredCardLayout,
+  InlineAlert,
+  TextField,
+  focusFirstInvalid,
+} from "@chartwarden/ui";
 // apps/admin/src/shell — Sign in (M1/M34, ADR-0030). Adapted from
 // apps/web/src/modules/02-identity/sign-in.tsx: email + password through Better Auth's own client
 // (@chartwarden/auth/client, NOT the generated REST client); on success the session cookie is set and we
@@ -7,7 +13,7 @@ import { Button, CenteredCardLayout, InlineAlert, TextField } from "@chartwarden
 // and platform-ops accounts are provisioned by hand, not self-registered. Whether the signed-in account
 // may use the console (platform_ops only) is decided after org selection by RequireChrome, not here.
 // Laid out like the console's step-up page (the shared StepUpCard): brand lockup above the card, kit fields.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "./auth-client";
@@ -19,9 +25,16 @@ export function Login(): JSX.Element {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
+    setAttempted(true);
+    if (!email.trim() || !password) {
+      focusFirstInvalid(formRef.current);
+      return;
+    }
     setBusy(true);
     setError(null);
     const { error: err } = await authClient.signIn.email({ email, password });
@@ -35,7 +48,7 @@ export function Login(): JSX.Element {
 
   return (
     <CenteredCardLayout brand={<BrandLockup />}>
-      <form onSubmit={submit} className="flex flex-col gap-4">
+      <form onSubmit={submit} ref={formRef} noValidate className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-lg font-semibold">Sign in</h1>
           <p className="m-0 text-sm text-[var(--color-muted)]">
@@ -50,6 +63,7 @@ export function Login(): JSX.Element {
           required
           value={email}
           onChange={(ev) => setEmail(ev.target.value)}
+          error={attempted && !email.trim() ? "Enter your email address." : undefined}
         />
         <TextField
           label="Password"
@@ -59,9 +73,10 @@ export function Login(): JSX.Element {
           required
           value={password}
           onChange={(ev) => setPassword(ev.target.value)}
+          error={attempted && !password ? "Enter your password." : undefined}
         />
         {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-        <Button type="submit" size="lg" loading={busy} disabled={!email || !password}>
+        <Button type="submit" size="lg" loading={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>

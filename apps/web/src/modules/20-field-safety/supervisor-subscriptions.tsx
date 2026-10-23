@@ -17,6 +17,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  LocationLookupField,
+  MembershipLookupField,
+  ProviderEntityLookupField,
+} from "../../shell/entity-lookups";
+import {
   type SafetySubscriptionAlertKind,
   type SafetySubscriptionScopeKind,
   type SafetySubscriptionView,
@@ -42,7 +47,6 @@ import {
   Modal,
   Notice,
   SelectField,
-  TextField,
   disabledButtonStyle,
   primaryButtonStyle,
 } from "./safety-ui";
@@ -65,6 +69,8 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
   const [clinician, setClinician] = useState("");
   const [locationId, setLocationId] = useState("");
   const [providerEntityId, setProviderEntityId] = useState("");
+  // The provider entity that scopes the location picker; it is not part of the row.
+  const [locationEntityId, setLocationEntityId] = useState("");
   const [alertKinds, setAlertKinds] = useState<string[]>([...ALERT_KINDS]);
   const [forwarding, setForwarding] = useState(false);
   const [forwardTo, setForwardTo] = useState("");
@@ -108,9 +114,14 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
     const res = await createSubscription(client, {
       supervisorMembershipId: supervisor.trim(),
       scopeKind: scopeKind as SafetySubscriptionScopeKind,
-      ...(clinician.trim() ? { clinicianMembershipId: clinician.trim() } : {}),
-      ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
-      ...(providerEntityId.trim() ? { providerEntityId: providerEntityId.trim() } : {}),
+      // Only the selector the chosen scope names: a value left from a previously picked scope must not ride along.
+      ...(selector === "clinician" && clinician.trim()
+        ? { clinicianMembershipId: clinician.trim() }
+        : {}),
+      ...(selector === "location" && locationId.trim() ? { locationId: locationId.trim() } : {}),
+      ...(selector === "providerEntity" && providerEntityId.trim()
+        ? { providerEntityId: providerEntityId.trim() }
+        : {}),
       alertKinds: alertKinds as SafetySubscriptionAlertKind[],
       isVacationForwarding: forwarding,
       ...(forwarding && forwardTo.trim()
@@ -134,6 +145,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
     locationId,
     providerEntityId,
     scopeKind,
+    selector,
     supervisor,
   ]);
 
@@ -345,11 +357,11 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                 </button>
               }
             >
-              <TextField
-                label="Supervisor membership id"
+              <MembershipLookupField
+                label="Supervisor"
                 value={supervisor}
                 onChange={setSupervisor}
-                mono
+                appearance="modal"
               />
               <SelectField
                 label="Scope"
@@ -361,23 +373,40 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                 onChange={setScopeKind}
               />
               {selector === "clinician" ? (
-                <TextField
-                  label="Clinician membership id"
+                <MembershipLookupField
+                  label="Clinician"
                   value={clinician}
                   onChange={setClinician}
-                  mono
+                  appearance="modal"
                   hint="A supervisor may not subscribe to herself."
                 />
               ) : null}
               {selector === "location" ? (
-                <TextField label="Location id" value={locationId} onChange={setLocationId} mono />
+                <>
+                  <ProviderEntityLookupField
+                    label="Provider entity"
+                    value={locationEntityId}
+                    onChange={(id) => {
+                      setLocationEntityId(id);
+                      setLocationId("");
+                    }}
+                    appearance="modal"
+                  />
+                  <LocationLookupField
+                    label="Location"
+                    value={locationId}
+                    providerEntityId={locationEntityId}
+                    onChange={setLocationId}
+                    appearance="modal"
+                  />
+                </>
               ) : null}
               {selector === "providerEntity" ? (
-                <TextField
-                  label="Provider entity id"
+                <ProviderEntityLookupField
+                  label="Provider entity"
                   value={providerEntityId}
                   onChange={setProviderEntityId}
-                  mono
+                  appearance="modal"
                 />
               ) : null}
               {selector === null ? (
@@ -407,11 +436,11 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                 onChange={(value) => setForwarding(value === "yes")}
               />
               {forwarding ? (
-                <TextField
-                  label="Forward to (membership id)"
+                <MembershipLookupField
+                  label="Forward to"
                   value={forwardTo}
                   onChange={setForwardTo}
-                  mono
+                  appearance="modal"
                   hint="Cannot be the same supervisor."
                 />
               ) : null}
