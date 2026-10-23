@@ -35,4 +35,19 @@ describe("#627 F-027 supervisor subscription ids are picked, not pasted", () => 
     expect(screen.getByRole("combobox", { name: /Provider entity/ })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: /Supervisor/ })).toBeTruthy();
   });
+
+  // #649: the ledger filters pick staff by name instead of taking a pasted membership id.
+  it("the ledger filters offer staff lookups, not membership-id boxes", async () => {
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stub })}>
+          <SupervisorSubscriptionsScreen />
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("button", { name: "Add subscription" });
+    expect(screen.queryByRole("textbox", { name: /membership id/i })).toBeNull();
+    expect(screen.getByRole("combobox", { name: /Filter by clinician/ })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: /Filter by supervisor/ })).toBeTruthy();
+  });
 });
