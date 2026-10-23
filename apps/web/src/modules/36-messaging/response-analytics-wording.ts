@@ -40,6 +40,8 @@ export const COL_REQUESTS = "Requests";
 export const COL_MEDIAN = "Median to acknowledge";
 export const COL_IN_TIME = "Before deadline";
 export const COL_ESCALATED = "Escalated";
+export const BREAKDOWN_WITHHELD =
+  "This breakdown is not shown: too few people stand behind the groups that would be left out, so showing the rest would reveal them.";
 export const NO_GROUPS = "No group has enough people to be shown separately.";
 
 export const suppressedText = (n: number): string =>

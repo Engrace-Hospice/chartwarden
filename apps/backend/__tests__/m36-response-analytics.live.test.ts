@@ -290,7 +290,8 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     expect(rn.medianAckSeconds).toBe(60);
   });
 
-  it("shows every group that reaches the minimum once two are hidden", async () => {
+  it("two hidden groups whose COMBINED distinct people are under the floor also withhold the next-smallest visible group", async () => {
+    // sw (2 people) + chaplain (1 person) = 3 distinct people < 5, so "total minus shown" would isolate them: md is withheld too.
     const chaplain = await clinician(ORG_A, "chaplain", 1);
     await request({
       org: ORG_A,
@@ -301,8 +302,58 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
       ackSeconds: 30,
     });
     const body = (await get(viewer, ORG_A, "?groupBy=discipline")).json();
+    expect(body.cells.map((c: { group: string }) => c.group)).toEqual(["rn"]);
+    expect(body.suppressedGroups).toBe(3);
+    expect(body.breakdownWithheld).toBe(false);
+  });
+
+  it("shows both groups once the hidden groups together involve at least 5 distinct people", async () => {
+    for (const n of [2, 3, 4]) {
+      const extra = await clinician(ORG_A, "chaplain", n);
+      await request({
+        org: ORG_A,
+        channel: channelA,
+        requester: requesterA,
+        assignee: extra,
+        daysAgo: 3,
+        ackSeconds: 30,
+      });
+    }
+    // sw 2 + chaplain 4 are still separate hidden groups, but together 6 distinct people: chaplain (4) is hidden, residual = 6 >= 5.
+    const body = (await get(viewer, ORG_A, "?groupBy=discipline")).json();
     expect(body.cells.map((c: { group: string }) => c.group).sort()).toEqual(["md", "rn"]);
     expect(body.suppressedGroups).toBe(2);
+  });
+
+  it("snaps the window to whole UTC days: two windows that differ by under a day return identical results", async () => {
+    const day = (offset: number, time: string) => {
+      const d = new Date(Date.now() - offset * 86_400_000);
+      return `${d.toISOString().slice(0, 10)}T${time}Z`;
+    };
+    const a = await get(
+      viewer,
+      ORG_A,
+      `?from=${day(10, "00:00:00.000")}&to=${day(0, "00:00:00.000")}`,
+    );
+    const b = await get(
+      viewer,
+      ORG_A,
+      `?from=${day(10, "23:59:59.999")}&to=${day(0, "23:59:59.999")}`,
+    );
+    expect(a.statusCode).toBe(200);
+    expect(b.json()).toEqual(a.json());
+    expect(a.json().from).toMatch(/T00:00:00\.000Z$/);
+    expect(a.json().to).toMatch(/T00:00:00\.000Z$/);
+  });
+
+  it("measures the 92-day cap on the snapped window", async () => {
+    const at = (days: number, time: string) => {
+      const d = new Date(Date.now() - days * 86_400_000);
+      return `${d.toISOString().slice(0, 10)}T${time}Z`;
+    };
+    // 91 days and 2 hours apart as instants, 93 whole days after snapping: refused.
+    const res = await get(viewer, ORG_A, `?from=${at(93, "23:00:00")}&to=${at(1, "01:00:00")}`);
+    expect([400, 422]).toContain(res.statusCode);
   });
 
   it("answers insufficient_data when fewer than the minimum number of people stand behind the whole report", async () => {

@@ -59,6 +59,8 @@ export type ResponseAnalyticsReport =
       readonly cells: readonly ResponseAnalyticsCell[];
       /** Groups left out because fewer than `minCohort` people stand behind them (never named, never sized). */
       readonly suppressedGroups: number;
+      /** True when no breakdown can be shown without exposing a residual under the floor (the KPIs above still stand). */
+      readonly breakdownWithheld: boolean;
     };
 
 /** M36's published read (seam `MessagingResponseAnalyticsReader`); M33 serves it. `enabled` is the tenant flag. */

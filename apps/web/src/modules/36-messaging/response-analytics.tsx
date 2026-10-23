@@ -62,7 +62,9 @@ function Breakdown({ report }: { readonly report: OkReport }): JSX.Element {
   const most = Math.max(1, ...report.cells.map((c) => c.requests));
   return (
     <>
-      {report.cells.length === 0 ? (
+      {report.breakdownWithheld ? (
+        <p className="wx-analytics-state">{W.BREAKDOWN_WITHHELD}</p>
+      ) : report.cells.length === 0 ? (
         <p className="wx-analytics-state">{W.NO_GROUPS}</p>
       ) : (
         <table className="wx-analytics-table">

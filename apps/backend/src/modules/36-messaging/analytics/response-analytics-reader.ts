@@ -25,7 +25,7 @@ export interface ResponseAnalyticsFlagReader {
 
 interface GroupSqlRow extends Record<string, unknown> {
   grp: string;
-  people: string | number;
+  members: string[];
   requests: string | number;
   acknowledged: string | number;
   in_time: string | number;
@@ -92,7 +92,7 @@ async function disciplineMap(tx: Tx, orgId: string): Promise<string> {
 }
 
 const AGGREGATES = sql`
-  count(DISTINCT assigned_user_id) AS people,
+  array_agg(DISTINCT assigned_user_id) AS members,
   count(*) AS requests,
   count(acknowledged_at) AS acknowledged,
   count(*) FILTER (WHERE acknowledged_at IS NOT NULL AND acknowledged_at <= deadline_at) AS in_time,
@@ -104,7 +104,7 @@ function toRaw(r: GroupSqlRow): RawGroupRow {
   const requests = num(r.requests);
   return {
     group: r.grp,
-    people: num(r.people),
+    members: r.members,
     requests,
     acknowledged: num(r.acknowledged),
     ackedBeforeDeadlineRate: rate(num(r.in_time), requests),
@@ -145,7 +145,7 @@ export function createResponseAnalyticsReader(deps: {
           WITH ${requestsCte(organizationId, fromIso, toIso, NO_DISCIPLINES)}
           SELECT 'all' AS grp, ${AGGREGATES} FROM req`);
         const all = total.rows[0] ? toRaw(total.rows[0]) : null;
-        const totalPeople = total.rows[0] ? num(total.rows[0].people) : 0;
+        const totalPeople = new Set(total.rows[0]?.members ?? []).size;
         // The whole report is held back when the organisation-wide cohort is itself too small to be anything but an individual's record.
         if (!all || totalPeople < ANALYTICS_MIN_COHORT) {
           return { status: "insufficient_data", minCohort: ANALYTICS_MIN_COHORT } as const;
@@ -189,6 +189,7 @@ export function createResponseAnalyticsReader(deps: {
           kpis,
           cells: floored.cells,
           suppressedGroups: floored.suppressedGroups,
+          breakdownWithheld: floored.withheld,
         } as const;
       });
     },

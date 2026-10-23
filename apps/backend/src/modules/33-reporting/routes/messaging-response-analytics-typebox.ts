@@ -42,5 +42,6 @@ export const ResponseAnalyticsResponseSchema = Type.Union([
     kpis: KpisSchema,
     cells: Type.Array(CellSchema),
     suppressedGroups: Type.Integer(),
+    breakdownWithheld: Type.Boolean(),
   }),
 ]);

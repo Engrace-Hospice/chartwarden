@@ -38,6 +38,7 @@ const REPORT: ResponseAnalyticsReport = {
     },
   ],
   suppressedGroups: 2,
+  breakdownWithheld: false,
 };
 
 function mount(replies: () => Reply) {
@@ -80,6 +81,13 @@ describe("Response analytics screen", () => {
     expect(screen.getByText(/provisional until HR and compliance review/)).toBeTruthy();
     const [path] = GET.mock.calls[0] as [string];
     expect(path).toBe("/api/v1/messaging/analytics/response");
+  });
+
+  it("says the breakdown is withheld (and still shows the KPIs) when it cannot be shown without exposing a small residual", async () => {
+    mount(() => ok({ ...REPORT, cells: [], breakdownWithheld: true }));
+    expect(await screen.findByText("Median time to acknowledge")).toBeTruthy();
+    expect(screen.getByText(/breakdown is not shown/)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("withholds the handoff figure in words when the server sent none", async () => {
