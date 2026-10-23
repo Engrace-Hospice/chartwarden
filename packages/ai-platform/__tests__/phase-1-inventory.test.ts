@@ -99,8 +99,9 @@ describe("§2.3 backend inventory", () => {
 
 describe("§2.4 capability inventory", () => {
   it("registers eighteen: the seventeen the architecture catalog reconciles to, plus adr_documentation_readiness", () => {
-    // §2.4 arrives at 18 by counting mortality and decline separately; the architecture's enforced
-    // catalog joins them into one `mortality-decline-prediction`, and architecture wins on conflict.
+    // Historical: §2.4's own arithmetic reached 18 for the spec-era set by counting mortality and decline separately; the architecture's enforced
+    // catalog joins them into one `mortality-decline-prediction` (architecture wins), giving 17; the 18th
+    // here is the later-added adr_documentation_readiness, unrelated to that arithmetic.
     expect(AI_PHASE_1_CAPABILITIES).toHaveLength(18);
     expect(new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.capabilityKey)).size).toBe(18);
     expect(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).toContain(
