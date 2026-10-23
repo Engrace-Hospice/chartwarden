@@ -5112,6 +5112,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ...(m36Export ? { artefactReader: m36Export.artefactReader } : {}),
             },
             // ── end WP 5.7 export mount
+            // ── WP 6.6 (ADR-0096, PROPOSED) external partner share. Flag `messaging.external_partners` (absent = off) gates creating a share and every
+            // partner route; revoke never. The partner redeem/verify budgets are per client address and per organisation, before any database work;
+            // reads are budgeted per share (60/min). Shared Valkey store when there is one (in-memory only on a single instance without it).
+            externalShare: (() => {
+              const store = rateLimitStore ?? createInMemoryRateLimitStore();
+              const budget = (keyPrefix: string, limit: number, windowMs: number) =>
+                createBudgetedRateLimiter(store, {
+                  limit,
+                  windowMs,
+                  keyPrefix,
+                  onStoreError: (err) =>
+                    app.log.warn({ err }, "external partner share rate-limit store error"),
+                });
+              return {
+                flags: featureFlagReader,
+                redeemIpLimiter: budget("m36-partner-redeem:ip", 20, 15 * 60 * 1000),
+                redeemOrgLimiter: budget("m36-partner-redeem:org", 200, 15 * 60 * 1000),
+                verifyIpLimiter: budget("m36-partner-verify:ip", 30, 15 * 60 * 1000),
+                readLimiter: budget("m36-partner-read:share", 60, 60 * 1000),
+              };
+            })(),
+            // ── end WP 6.6 external partner share mount
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {
               flags: featureFlagReader,

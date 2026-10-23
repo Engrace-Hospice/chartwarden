@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 191 statically-routable `web` screen(s) — 20/191 E2E-reached, 181/191 axe-reached.
+**Coverage:** 192 statically-routable `web` screen(s) — 20/192 E2E-reached, 182/192 axe-reached.
 
 ## Zero E2E coverage
 
@@ -109,6 +109,7 @@
 | `messaging.session-governance` | 36-messaging | `/messaging/governance/sessions` | messaging.sessions.manage |
 | `messaging.inbox` | 36-messaging | `/messaging/inbox` | messaging.read |
 | `messaging.on-call` | 36-messaging | `/messaging/on-call` | messaging.oncall.read |
+| `messaging.partners` | 36-messaging | `/messaging/partners` | messaging.share.manage |
 | `messaging.preferences` | 36-messaging | `/messaging/preferences` | messaging.read |
 | `messaging.saved-replies` | 36-messaging | `/messaging/saved-replies` | messaging.send |
 | `messaging.global-search-settings` | 36-messaging | `/messaging/search-settings` | messaging.global_search.manage |

@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 191,
+  "totalStaticWebScreens": 192,
   "e2eReachedCount": 20,
-  "axeReachedCount": 181,
+  "axeReachedCount": 182,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -809,6 +809,14 @@
       "module": "36-messaging",
       "path": "/messaging/on-call",
       "permission": "messaging.oncall.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.partners",
+      "module": "36-messaging",
+      "path": "/messaging/partners",
+      "permission": "messaging.share.manage",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2357,6 +2365,14 @@
       "module": "36-messaging",
       "path": "/messaging/on-call",
       "permission": "messaging.oncall.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.partners",
+      "module": "36-messaging",
+      "path": "/messaging/partners",
+      "permission": "messaging.share.manage",
       "e2eReached": false,
       "axeReached": true
     },
