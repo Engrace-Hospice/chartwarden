@@ -37,7 +37,7 @@ function Kpis({ report }: { readonly report: OkReport }): JSX.Element {
       <KpiCard
         label={W.KPI_MEDIAN}
         value={W.duration(k.medianAckSeconds)}
-        detail={`${k.acknowledged} of ${k.requests} requests acknowledged`}
+        detail={W.ackedDetail(k.acknowledged, k.requests)}
       />
       <KpiCard label={W.KPI_IN_TIME} value={W.percent(k.ackedBeforeDeadlineRate)} />
       <KpiCard label={W.KPI_ESCALATION} value={W.percent(k.escalationRate)} />
@@ -51,7 +51,7 @@ function Kpis({ report }: { readonly report: OkReport }): JSX.Element {
         detail={
           k.handoffsOffered === null
             ? undefined
-            : `${k.handoffsAccepted ?? 0} of ${k.handoffsOffered} accepted`
+            : W.acceptedDetail(k.handoffsAccepted ?? 0, k.handoffsOffered)
         }
       />
     </KpiStrip>
@@ -113,7 +113,7 @@ export function ResponseAnalytics(): JSX.Element {
   const online = useOnline();
 
   return (
-    <main className="wx-analytics" aria-label={W.TITLE}>
+    <section className="wx-analytics" aria-label={W.TITLE}>
       <PageHeader title={W.TITLE} />
       <p className="wx-analytics-note">{W.INTRO}</p>
       <p className="wx-analytics-note">{W.TODAY_NOTE}</p>
@@ -154,7 +154,7 @@ export function ResponseAnalytics(): JSX.Element {
           <div aria-live="polite">
             {view.status === "loading" ? <SkeletonRows label={W.LOADING} /> : null}
             {view.status === "error" ? (
-              <div className="wx-analytics-state" role="alert">
+              <div className="wx-analytics-state">
                 <p>{W.LOAD_FAILED}</p>
                 <Button type="button" tone="secondary" size="sm" onClick={reload}>
                   {W.RETRY_LABEL}
@@ -177,6 +177,6 @@ export function ResponseAnalytics(): JSX.Element {
           </div>
         </>
       )}
-    </main>
+    </section>
   );
 }

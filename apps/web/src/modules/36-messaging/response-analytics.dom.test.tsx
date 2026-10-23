@@ -45,7 +45,9 @@ function mount(replies: () => Reply) {
   const GET = vi.fn((_path: string, _init?: unknown): Promise<Reply> => Promise.resolve(replies()));
   const view = render(
     <ApiClientProvider client={{ GET } as unknown as ApiClient}>
-      <ResponseAnalytics />
+      <main id="wx-main">
+        <ResponseAnalytics />
+      </main>
     </ApiClientProvider>,
   );
   return { GET, ...view };
@@ -136,8 +138,11 @@ describe("Response analytics screen", () => {
   it("shows an alert with Try again on a server error, and retries", async () => {
     let calls = 0;
     const { GET } = mount(() => (++calls === 1 ? fail(500) : ok(REPORT)));
-    expect(await screen.findByRole("alert")).toBeTruthy();
+    const message = await screen.findByText("Response analytics could not be loaded.");
+    expect(screen.queryByRole("alert")).toBeNull(); // the polite live region announces it once
+    expect(message.closest("[aria-live]")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByText("Loading response analytics")).toBeTruthy(); // retry shows feedback
     expect(await screen.findByText("Median time to acknowledge")).toBeTruthy();
     expect(GET).toHaveBeenCalledTimes(2);
   });
@@ -160,12 +165,21 @@ describe("Response analytics screen", () => {
     online.mockRestore();
   });
 
+  it("adds no second main landmark inside the shell's main", async () => {
+    mount(() => ok(REPORT));
+    await screen.findByText("Median time to acknowledge");
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(screen.getByRole("region", { name: "Response analytics" })).toBeTruthy();
+  });
+
   it("has no serious or critical accessibility violations in the ready state", async () => {
     const { container } = mount(() => ok(REPORT));
     await screen.findByText("Median time to acknowledge");
     const result = await axe.run(container);
     expect(
-      result.violations.filter((v) => v.impact === "serious" || v.impact === "critical"),
+      result.violations.filter(
+        (v) => v.impact === "serious" || v.impact === "critical" || v.id.startsWith("landmark-"),
+      ),
     ).toEqual([]);
   });
 });

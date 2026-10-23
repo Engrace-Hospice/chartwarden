@@ -52,5 +52,9 @@ export function useResponseAnalytics(
     };
   }, [load]);
 
-  return { view, reload: () => void load() };
+  const reload = (): void => {
+    setView({ status: "loading" });
+    void load();
+  };
+  return { view, reload };
 }

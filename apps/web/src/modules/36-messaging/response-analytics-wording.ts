@@ -73,3 +73,8 @@ export function duration(seconds: number | null): string {
   const hours = minutes / 60;
   return hours < 48 ? `${hours.toFixed(1)} h` : `${(hours / 24).toFixed(1)} days`;
 }
+
+export const ackedDetail = (acknowledged: number, requests: number): string =>
+  `${acknowledged} of ${requests} requests acknowledged`;
+export const acceptedDetail = (accepted: number, offered: number): string =>
+  `${accepted} of ${offered} accepted`;
