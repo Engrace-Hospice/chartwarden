@@ -44,6 +44,7 @@ export {
   type WriteOutboxPort,
   type OutboxEmission,
   type TerminologyLookupPort,
+  buildDrizzleAdrReadinessService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
   buildDrizzleCaseViewService,
@@ -57,6 +58,20 @@ export {
   buildDrizzleM25WriteService,
 } from "./routes/index";
 export { mountM25Routes } from "./routes/mount";
+
+// Milestone 8a-1 - advisory ADR documentation readiness: the deny-stubbed assistant port (no M32 import) and the AI
+// prohibited-zone boot validator (run in the composition root's db-present onReady hook).
+export {
+  type AdrReadinessAssistPort,
+  denyStubAdrReadinessAssist,
+  resolveAdrReadinessAssist,
+} from "./ai/adr-readiness-capability";
+export {
+  REMITTANCE_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
+  RemittanceAIBlockViolation,
+  type RemittanceAiPromptRegistryPort,
+  validateRemittanceAIBlock,
+} from "./ai/ai-block";
 export { buildSeamAppealSourcePorts } from "./routes/appeal-packet-sources";
 
 // §4.8 platform tenancy — the cron job id + the PLATFORM_CONTEXT_ALLOWLIST registration the active-org

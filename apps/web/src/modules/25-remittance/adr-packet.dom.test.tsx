@@ -88,6 +88,17 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   if (path === "/api/v1/adrs") return json(200, { items: [summary()] });
   if (path === `/api/v1/adrs/${ADR}`) return json(200, detail());
+  // The readiness section loads beside the packet; an empty, AI-off view is all this suite needs from it.
+  if (path === `/api/v1/adrs/${ADR}/readiness`) {
+    return json(200, {
+      adrCaseId: ADR,
+      caseState: state,
+      caseVersion: 4,
+      generatedAt: "2026-02-01T00:00:00.000Z",
+      gaps: { keys: [], unmappedDocumentIds: [] },
+      review: null,
+    });
+  }
   return json(200, {});
 }
 

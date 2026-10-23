@@ -32072,6 +32072,438 @@
         }
       }
     },
+    "/api/v1/adrs/{id}/readiness": {
+      "get": {
+        "operationId": "getApiV1AdrsByIdReadiness",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Documentation readiness: the deterministic gap view (no model) plus the latest stored advisory review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "adrCaseId",
+                    "caseState",
+                    "caseVersion",
+                    "generatedAt",
+                    "gaps",
+                    "review"
+                  ],
+                  "properties": {
+                    "adrCaseId": {
+                      "type": "string"
+                    },
+                    "caseState": {
+                      "type": "string"
+                    },
+                    "caseVersion": {
+                      "type": "integer"
+                    },
+                    "generatedAt": {
+                      "type": "string"
+                    },
+                    "gaps": {
+                      "type": "object",
+                      "required": [
+                        "keys",
+                        "unmappedDocumentIds"
+                      ],
+                      "properties": {
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "checklistKey",
+                              "status",
+                              "documentIds",
+                              "isGap"
+                            ],
+                            "properties": {
+                              "checklistKey": {
+                                "anyOf": [
+                                  {
+                                    "const": "certification_of_terminal_illness",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "election_statement",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "plan_of_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "physician_orders",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit_notes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "medical_records_cover",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "documents_attached",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_document_attached",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "marked_not_applicable",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "documentIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "isGap": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "unmappedDocumentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "review": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "status",
+                            "source",
+                            "requestedAt",
+                            "requestedByMembershipId",
+                            "stale",
+                            "unavailableReason",
+                            "droppedFindingCount",
+                            "modelVersionPin",
+                            "promptTemplateVersion",
+                            "allDisposed",
+                            "findings"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByMembershipId": {
+                              "type": "string"
+                            },
+                            "stale": {
+                              "type": "boolean"
+                            },
+                            "unavailableReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "droppedFindingCount": {
+                              "type": "integer"
+                            },
+                            "modelVersionPin": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "promptTemplateVersion": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "allDisposed": {
+                              "type": "boolean"
+                            },
+                            "findings": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "checklistKey",
+                                  "status",
+                                  "citedDocumentIds",
+                                  "note",
+                                  "disposition",
+                                  "disposedAt",
+                                  "disposedByMembershipId"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "checklistKey": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "citedDocumentIds": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "note": {
+                                    "type": "string"
+                                  },
+                                  "disposition": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "disposedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "disposedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/readiness/findings/{findingId}/disposition": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdReadinessFindingsByFindingIdDisposition",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Acknowledge, dismiss or dispute an advisory readiness finding",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "findingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "disposition"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "disposition": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "disposition"
+                ],
+                "properties": {
+                  "disposition": {
+                    "anyOf": [
+                      {
+                        "const": "acknowledged",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dismissed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "disputed",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/readiness/reviews": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdReadinessReviews",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Request an advisory readiness review; with the AI check unavailable the review is recorded as such and nothing else changes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reviewId",
+                    "status",
+                    "source",
+                    "findingCount"
+                  ],
+                  "properties": {
+                    "reviewId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "findingCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/adrs/{id}/sign-off": {
       "post": {
         "operationId": "postApiV1AdrsByIdSignoff",

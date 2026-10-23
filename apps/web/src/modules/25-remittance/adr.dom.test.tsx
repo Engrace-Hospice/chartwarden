@@ -68,6 +68,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   if (path === "/api/v1/adrs") return json(200, { items: [summary()] });
   if (path === `/api/v1/adrs/${ADR}`) return json(200, detail());
   if (path === "/api/v1/mac-rules") return json(200, { items: [] });
+  // The advisory readiness section is not under test here: this user may not read it, so it renders nothing.
+  if (path === `/api/v1/adrs/${ADR}/readiness`) {
+    return json(403, { error: { code: "FORBIDDEN", message: "requires permission" } });
+  }
   return json(200, {});
 }
 
