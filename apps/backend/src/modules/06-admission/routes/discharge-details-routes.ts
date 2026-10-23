@@ -17,6 +17,7 @@
 import { requireAbac, requirePermission } from "@chartwarden/auth";
 import { DegradedError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { admissionScopeAccessOf } from "../abac-predicates";
 import { IdParamsSchema, parse } from "./admission-typebox";
 import type { DischargeDetailsService } from "./discharge-details-service";
 import {
@@ -59,7 +60,7 @@ function owningAdmissionScope(
     await (
       requireAbac(action, "admission.scope", {
         notFoundOnDeny: true,
-        getTarget: () => ({ id: admissionId }),
+        getTarget: () => ({ id: admissionId, access: admissionScopeAccessOf(action) }),
       }) as PreHandler
     )(request, reply);
   };
@@ -67,6 +68,10 @@ function owningAdmissionScope(
 
 const ADMISSION_SCOPE_READ = requireAbac("admission.read", "admission.scope", {
   notFoundOnDeny: true,
+  getTarget: (request) => ({
+    ...(typeof request.params === "object" && request.params ? request.params : {}),
+    access: admissionScopeAccessOf("admission.read"),
+  }),
 }) as PreHandler;
 
 export function registerDischargeDetailsRoutes(

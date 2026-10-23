@@ -200,18 +200,13 @@ describe.skipIf(!DB_URL)(
     // (`readScopeOf` → hasOrgWideScope), so the detail + readiness reads (`admission.scope`, real resolver, real
     // NOBYPASSRLS connection) must open that admission too — unless the role is NAMED below with a reason.
     // A role with no site match and no caseload row, on a SITED admission, is the failing shape.
-    const LIST_DETAIL_DISAGREEMENTS: Readonly<Record<string, string>> = {
-      // Deliberately NOT widened by #605 (ADR-0090 names only administrator / org_admin for M6). Each is listed by
-      // the census but refused detail/readiness on a sited admission outside its caseload — a follow-up decision.
-      // Facts: the census lists each via hasOrgWideScope; admission.scope has no role arm for any of them (only
-      // medical_director, administrator/org_admin, and the UNSITED-only roles), so a SITED admission opens only
-      // via a provider-entity match or a caseload row, neither of which these test contexts hold. See #613.
-      compliance_officer: "census lists all via hasOrgWideScope; admission.scope has no org-wide arm for it and no entity/caseload match (#613)",
-      director_of_nursing: "floor patient.read role: census lists all via hasOrgWideScope; admission.scope has no org-wide arm and no entity/caseload match (#613)",
-      survey_coordinator: "census lists all via hasOrgWideScope; admission.scope has no org-wide arm for it and no entity/caseload match (#613)",
-    };
+    // #613 closed the three named exceptions: every census role now opens an admission for a READ (target.access
+    // "read", set by the route guard from a `.read` action). A WRITE keeps the narrow scope, asserted below.
+    // Roles with a scope arm of their own for a sited admission outside any caseload (medical_director, ADR-0090).
+    const WRITE_SCOPED_ROLES = new Set(["medical_director", "administrator", "org_admin"]);
+    const LIST_DETAIL_DISAGREEMENTS: Readonly<Record<string, string>> = {};
 
-    it("every ORG_WIDE_SCOPE_ROLES role that the census lists an admission to can open it (or is named)", async () => {
+    it("every ORG_WIDE_SCOPE_ROLES role that the census lists an admission to can open it for a READ (or is named)", async () => {
       const { admissionId, periodId } = await activeAdmission(randomUUID());
       const facts = await resolver.loadAdmission(ORG_A, admissionId);
       expect(facts?.providerEntityId).not.toBeNull(); // SITED — the shape #605 broke
@@ -227,12 +222,16 @@ describe.skipIf(!DB_URL)(
           attributes: {},
         };
         expect(hasOrgWideScope([role])).toBe(true); // the census lists it
-        const detail = await predicates["admission.scope"]!(ctx, { id: admissionId });
+        const detail = await predicates["admission.scope"]!(ctx, { id: admissionId, access: "read" });
         const child = await predicates["admission.scope"]!(ctx, {
           id: periodId,
           resourceKind: "electionPeriod",
+          access: "read",
         });
         if (!(detail && child)) disagree.push(role);
+        // ...but oversight is not authority to write: only the roles with a real scope arm may mutate.
+        const write = await predicates["admission.scope"]!(ctx, { id: admissionId, access: "write" });
+        if (!WRITE_SCOPED_ROLES.has(role)) expect(write).toBe(false);
       }
       // The named exceptions are exactly the disagreements: a stale entry fails as loudly as a new gap.
       expect(disagree.sort()).toEqual(Object.keys(LIST_DETAIL_DISAGREEMENTS).sort());

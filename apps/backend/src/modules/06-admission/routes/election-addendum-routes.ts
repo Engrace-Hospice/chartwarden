@@ -15,6 +15,7 @@
 import { requireAbac, requirePermission } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { admissionScopeAccessOf } from "../abac-predicates";
 import type { ElectionAddendumService } from "../election-addendum/service";
 import { IdParamsSchema, parse } from "./admission-typebox";
 import {
@@ -40,7 +41,13 @@ const ADDENDUM_WRITE = P("election_addendum.write");
 const ADDENDUM_ACK = P("election_addendum.acknowledge");
 /** `admission.scope` on the path's admission id (404 on deny — the §2.2 existence non-leak). */
 const scope = (action: string): PreHandler =>
-  requireAbac(action, "admission.scope", { notFoundOnDeny: true }) as PreHandler;
+  requireAbac(action, "admission.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      ...(typeof request.params === "object" && request.params ? request.params : {}),
+      access: admissionScopeAccessOf(action),
+    }),
+  }) as PreHandler;
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;

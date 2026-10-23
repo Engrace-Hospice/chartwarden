@@ -252,6 +252,7 @@ export interface ComplianceWindowFacts {
   readonly admissionId: string;
   readonly patientId: string;
   readonly providerEntityId: string | null;
+  readonly locationId?: string | null;
   readonly createdByUserId?: string | null;
 }
 /** `admission_intake_scope` — the facts about a patient of the caller's org that decide intake reach. */
