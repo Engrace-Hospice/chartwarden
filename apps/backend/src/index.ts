@@ -1124,7 +1124,6 @@ import {
   buildM25WorkerDeps,
   buildSeamAppealSourcePorts,
   createDrizzleRemittanceEraseStore,
-  m25X12WorkerPortFromEnv,
   mountM25Routes,
   registerM25AbacPredicates,
   registerM25CronWorkers,
@@ -3477,10 +3476,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
     onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
   });
-  // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
-  // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
-  // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
-  const m25X12Port = m25X12WorkerPortFromEnv(process.env);
   const m23SubmissionQueues =
     queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
   // F-153 (#248) — the `revalidate.consumer` producer, unlike submission, needs no MAC/X12 launch
@@ -5660,18 +5655,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             },
           };
-          // WX-PR-012 — the 835 receive/post pipeline. `m25X12Port` is undefined (fail-closed
-          // `NO_X12_835_PORT`) unless M25_X12_WORKER_URL is configured — no Python x12-worker sidecar is
-          // deployed anywhere yet, so this stays unreachable in every environment today, same as M23's own
-          // `x12-837-client` transport; the CODE is real and will call out for real once ops points it at a
-          // live sidecar. `claims` binds M23's real ClaimSubmissionReader seam for Medicare advices and
+          // WX-PR-012 — the 835 receive/post pipeline. The 835 is parsed in-process (TypeScript, ADR-0037); no
+          // sidecar. No staged-object reader is wired yet, so `postAdvice` (which holds only the object key)
+          // fails closed with a retryable X12_835_RAW_UNAVAILABLE until one is injected via `readRaw`.
+          // `claims` binds M23's real ClaimSubmissionReader seam for Medicare advices and
           // M24's real MedicaidClaimMatchProvider seam for Medicaid advices (F-172, #248 m24 group) —
           // routed by each advice's own `payerKind` inside `service-drizzle.ts`; each degrades to "no
           // candidates"/"no patient id" — never fabricates or cross-routes a match — until its owning
           // module registers it, which now happens automatically at this same boot via
           // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
-            client: createX12835Client(m25X12Port),
+            client: createX12835Client(),
+            onRetryableParseDegraded: (event) =>
+              app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -11766,12 +11762,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // WX-PR-012 — the LIVE `m25.parse-and-post` consumer: M25 self-pulls (no other module produces
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same
-          // env-gated `m25X12Port` posture as the routes-mount binding above; the terminology lookup and
+          // same in-process `createX12835Client()` as the routes-mount binding above; the terminology lookup and
           // the M23/M24 claim-match adapters are all reconstructed here (each resolves its seam lazily
           // per call, so a duplicate binding across two composition-root scopes is harmless).
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
-              client: createX12835Client(m25X12Port),
+              client: createX12835Client(),
+              onRetryableParseDegraded: (event) =>
+                app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

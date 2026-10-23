@@ -1,15 +1,10 @@
-import { mapParsed277ca } from "./parse-277ca";
-// @chartwarden/x12-835-client — the X12_835WorkerClient SHAPE + a fail-closed factory.
-//
-// Implements the parse-835 / parse-277ca contract over an injected raw HTTP transport
-// ({@link X12835HttpPort}) to the Python `x12-worker` sidecar. It performs NO direct network I/O and
-// imports no SDK / no pyx12 shim; in Phase 1 no transport is wired, so the default port fails closed and
-// every method returns a degraded envelope (never throws, never silently succeeds). The real sidecar
-// request-building lands when the backend composition root injects a live port (Phase 3 wiring); it stays
-// confined to THIS package per the architecture §25.14 adapter mandate.
-//
+// @chartwarden/x12-835-client — the M25 X12 client. parse835 is IN-PROCESS pure TypeScript (ADR-0037; the
+// Python x12-worker sidecar was cancelled): raw 835 text -> parseX12835, fail-closed. parse277ca still maps
+// a sidecar response over an injected HTTP port (default fails closed) — the 277CA belongs to M23's client
+// (ADR-0029) and is deliberately not parsed here. No network or storage code lives in this package.
 // Imports ONLY from ./types + the ./parse-* mappers — never from ./index — to keep the no-circular rule.
-import { mapParsed835 } from "./parse-835";
+import { mapParsed277ca } from "./parse-277ca";
+import { parseX12835 } from "./parse-x12-835";
 import {
   type Parsed277ca,
   type ParsedRemittanceAdvice,
@@ -22,7 +17,7 @@ import {
 /** A single sidecar HTTP exchange. The transport is injected so this package holds no network code. */
 export interface X12835HttpRequest {
   readonly method: "POST";
-  readonly path: "/parse835" | "/parse277ca";
+  readonly path: "/parse277ca";
   readonly body: unknown;
 }
 
@@ -32,7 +27,7 @@ export interface X12835HttpResponse {
   readonly body: unknown;
 }
 
-/** The injected raw transport port to the `x12-worker` sidecar. A live port is wired at Phase 3. */
+/** The injected raw transport port to the 277CA sidecar endpoint (no live port is wired). */
 export interface X12835HttpPort {
   request(req: X12835HttpRequest): Promise<X12835HttpResponse>;
 }
@@ -43,6 +38,20 @@ export interface Parse835Request {
   readonly minioObjectKey: string;
   /** The program the M25 puller pulled this 835 over (echoed onto the parsed envelope). */
   readonly payerProgram: PayerProgram;
+  /** The raw 835 text, when the caller already holds it (receive path). Otherwise read via `readRaw`. */
+  readonly rawEdi?: string;
+}
+
+/** Reads the staged raw 835 by object key (injected: this package holds no storage code). */
+export type X12RawReader = (minioObjectKey: string) => Promise<string>;
+
+export interface X12835ClientOptions {
+  /** Sidecar transport — used ONLY by `parse277ca`. 835 parsing is in-process TypeScript (ADR-0037). */
+  readonly port?: X12835HttpPort;
+  /** Raw-835 reader for requests that carry only an object key. */
+  readonly readRaw?: X12RawReader;
+  /** Accept ISA15 = T test interchanges (dev/test only; default rejects them). */
+  readonly allowTestFiles?: boolean;
 }
 
 /** Request to parse a raw 277CA file staged in MinIO. */
@@ -50,7 +59,7 @@ export interface Parse277caRequest {
   readonly minioObjectKey: string;
 }
 
-/** The M25-owned slice of the x12-worker client surface. */
+/** The M25-owned X12 client surface: in-process 835 parsing plus the 277CA sidecar mapper. */
 export interface X12835WorkerClient {
   parse835(input: Parse835Request): Promise<X12WorkerResult<ParsedRemittanceAdvice>>;
   parse277ca(input: Parse277caRequest): Promise<X12WorkerResult<Parsed277ca>>;
@@ -70,29 +79,28 @@ export const NO_X12_835_PORT: X12835HttpPort = {
  * Build an {@link X12835WorkerClient} over an injected transport (default: fail-closed). Sidecar transport
  * or parse errors surface as degraded envelopes; only a well-formed 2xx body is mapped to a parsed value.
  */
-export function createX12835Client(port: X12835HttpPort = NO_X12_835_PORT): X12835WorkerClient {
+export function createX12835Client(opts: X12835ClientOptions = {}): X12835WorkerClient {
+  const port = opts.port ?? NO_X12_835_PORT;
   return {
     async parse835(input) {
-      let res: X12835HttpResponse;
-      try {
-        res = await port.request({
-          method: "POST",
-          path: "/parse835",
-          body: { minioObjectKey: input.minioObjectKey, payerProgram: input.payerProgram },
-        });
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : "transport rejected";
-        return degraded835("X12_835_TRANSPORT", reason, "parse835", true);
+      let raw = input.rawEdi;
+      if (raw === undefined) {
+        if (!opts.readRaw) {
+          return degraded835(
+            "X12_835_RAW_UNAVAILABLE",
+            "raw 835 not supplied and no object reader is wired",
+            "parse835",
+            true,
+          );
+        }
+        try {
+          raw = await opts.readRaw(input.minioObjectKey);
+        } catch {
+          // Fixed text: a storage error message can carry bucket/endpoint detail and lands in parse_summary.
+          return degraded835("X12_835_RAW_READ", "staged 835 object could not be read", "parse835", true);
+        }
       }
-      if (res.status < 200 || res.status >= 300) {
-        return degraded835(
-          "X12_835_TRANSPORT",
-          `sidecar returned status ${res.status}`,
-          "parse835",
-          res.status >= 500,
-        );
-      }
-      return mapParsed835(res.body, input.payerProgram);
+      return parseX12835(raw, input.payerProgram, { allowTestFiles: opts.allowTestFiles ?? false });
     },
 
     async parse277ca(input) {

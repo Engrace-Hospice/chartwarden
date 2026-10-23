@@ -4,8 +4,8 @@
  * Proves the real `receiveAdvice`/`postAdvice` pair (apps/backend/src/modules/25-remittance/ingest/
  * service-drizzle.ts) over real Postgres + RLS: dedup-at-insert, a genuinely transactional multi-claim
  * post (all-or-nothing), denial/PR-ledger seeding, posting-outcome classification, and cross-tenant
- * isolation. The X12835WorkerClient is a controllable FAKE (no real x12-worker sidecar exists in this
- * environment) — the local ISA/ST envelope-header extraction (@chartwarden/x12-835-client
+ * isolation. The X12835WorkerClient is a controllable FAKE in most cases (one case uses the real in-process
+ * TypeScript parser, ADR-0037 — there is no sidecar) — the local ISA/ST envelope-header extraction (@chartwarden/x12-835-client
  * `parseX12EnvelopeHeader`) is real and exercised directly by the "malformed" case.
  *
  * F-128 (#251) — the whole file used to drive `receiveAdvice`/`postAdvice` over the bare superuser
@@ -35,7 +35,7 @@ import type {
   X12WorkerResult,
   X12835WorkerClient,
 } from "@chartwarden/x12-835-client";
-import { degraded835 } from "@chartwarden/x12-835-client";
+import { createX12835Client, degraded835 } from "@chartwarden/x12-835-client";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
@@ -85,7 +85,7 @@ function buildRawEdi(isa13: string, st02: string): string {
     "00501",
     isa13.padStart(9, "0").slice(0, 9),
     "0",
-    "T",
+    "P",
     ":",
   ];
   const isaBody = `ISA${sep}${elems.join(sep)}`;
@@ -687,6 +687,165 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     });
     const replayed = await replayService.postAdvice(actor, received.adviceId);
     expect(replayed.outcome).toBe("posted");
+  });
+
+  /** A complete, balanced 835 (ISA..IEA) around the existing fixed-width header; no sidecar involved. */
+  function buildFullEdi(isa13: string, st02: string, bpr02: string): string {
+    const body = [
+      `BPR*I*${bpr02}*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`,
+      "TRN*1*EFT-RAW*1512345678",
+      "N1*PR*SYNTHETIC MAC",
+      "N1*PE*SYNTH HOSPICE",
+      "CLP*PCN-RAW*1*500.00*500.00*0.00*MC*ICN-PAID",
+      "SVC*HC:T1005*500.00*500.00",
+    ];
+    // ST..SE inclusive = body + ST + SE
+    return `${buildRawEdi(isa13, st02)}${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~GE*1*1~IEA*1*${isa13.padStart(9, "0")}~`;
+  }
+
+  it("RAW 835 text flows receive -> post through the in-process TypeScript parser (no sidecar configured)", async () => {
+    const actor: M25IngestActor = { organizationId: ORG_A };
+    const objectKey = "minio/raw-ts-parser.835";
+    const raw = buildFullEdi("000000202", "0202", "500.00");
+    const service = buildDrizzleM25IngestService(handle.db, {
+      // Real client: NO port, NO sidecar. `postAdvice` re-reads the staged object through `readRaw`.
+      client: createX12835Client({ readRaw: async (key) => (key === objectKey ? raw : "") }),
+      terminology: fakeTerminology({}),
+      claims: {
+        medicare: fakeClaims({ "ICN-PAID": [{ claimId: CLAIM_PAID, payerIcn: "ICN-PAID" }] }, {}),
+      },
+      outbox: { async publish() {} },
+    });
+    const received = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: objectKey,
+      fileSha256: "b".repeat(64),
+      rawEdi: raw,
+    });
+    expect(received.outcome).toBe("queued");
+    if (received.outcome !== "queued") throw new Error("unreachable");
+    const posted = await service.postAdvice(actor, received.adviceId);
+    expect(posted.outcome).toBe("posted");
+    const row = await admin.query(
+      "SELECT clp04_total_payment_amount::text AS paid, match_state FROM remittance_line WHERE remittance_advice_id=$1",
+      [received.adviceId],
+    );
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].paid).toBe("500.00");
+    expect(row.rows[0].match_state).toBe("posted");
+
+    // An 835 whose BPR02 does not foot fails closed at receive: nothing persisted.
+    const bad = buildFullEdi("000000203", "0203", "499.99");
+    const rejected = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: "minio/unbalanced.835",
+      fileSha256: "c".repeat(64),
+      rawEdi: bad,
+    });
+    expect(rejected.outcome).toBe("malformed");
+    const none = await admin.query(
+      "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000203'",
+    );
+    expect(none.rows[0].n).toBe(0);
+  });
+
+  describe("postAdvice reaction to a degraded parse (retryable vs not)", () => {
+    const receiveInput = (objectKey: string, raw: string, sha: string): ReceiveAdviceInput => ({
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: objectKey,
+      fileSha256: sha.repeat(64),
+      rawEdi: raw,
+    });
+
+    it("retryable X12_835_RAW_UNAVAILABLE: advice marked failed AND the ops hook fires (ids + code only)", async () => {
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const events: unknown[] = [];
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client(), // no readRaw wired
+        onRetryableParseDegraded: (e) => events.push(e),
+        outbox: { async publish() {} },
+      });
+      const received = await service.receiveAdvice(
+        actor,
+        receiveInput("minio/unavail.835", buildFullEdi("000090301", "9301", "500.00"), "d"),
+      );
+      if (received.outcome !== "queued") throw new Error(JSON.stringify(received));
+      const posted = await service.postAdvice(actor, received.adviceId);
+      expect(posted.outcome).toBe("failed");
+      expect(events).toEqual([
+        { organizationId: ORG_A, adviceId: received.adviceId, code: "X12_835_RAW_UNAVAILABLE" },
+      ]);
+      const row = await admin.query("SELECT parse_status FROM remittance_advice WHERE id=$1", [
+        received.adviceId,
+      ]);
+      expect(row.rows[0].parse_status).toBe("failed");
+    });
+
+    it("retryable X12_835_RAW_READ with a leaky storage error: fixed reason stored, hook fires", async () => {
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const events: Array<{ code: string }> = [];
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({
+          readRaw: () => Promise.reject(new Error("https://minio.internal:9000/secret-bucket")),
+        }),
+        onRetryableParseDegraded: (e) => events.push(e),
+        outbox: { async publish() {} },
+      });
+      const received = await service.receiveAdvice(
+        actor,
+        receiveInput("minio/readfail.835", buildFullEdi("000090302", "9302", "500.00"), "e"),
+      );
+      if (received.outcome !== "queued") throw new Error("unreachable");
+      await service.postAdvice(actor, received.adviceId);
+      expect(events.map((e) => e.code)).toEqual(["X12_835_RAW_READ"]);
+      const row = await admin.query("SELECT parse_summary FROM remittance_advice WHERE id=$1", [
+        received.adviceId,
+      ]);
+      expect(JSON.stringify(row.rows[0].parse_summary)).not.toContain("minio");
+    });
+
+    it("non-retryable parse failure at post time: advice marked failed, hook does NOT fire", async () => {
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const events: unknown[] = [];
+      const staged = buildFullEdi("000090303", "9303", "499.99"); // unbalanced BPR02
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({ readRaw: async () => staged }),
+        onRetryableParseDegraded: (e) => events.push(e),
+        outbox: { async publish() {} },
+      });
+      const received = await service.receiveAdvice(
+        actor,
+        // receive with a balanced copy (same control numbers) so the row exists; the staged object is bad
+        receiveInput("minio/badstaged.835", buildFullEdi("000090303", "9303", "500.00"), "f"),
+      );
+      if (received.outcome !== "queued") throw new Error("unreachable");
+      const posted = await service.postAdvice(actor, received.adviceId);
+      expect(posted.outcome).toBe("failed");
+      expect(events).toHaveLength(0);
+    });
+
+    it("a retryable degrade at RECEIVE persists nothing (no advice row to fail)", async () => {
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: fakeClient(new Map()), // fakeClient degrades every key
+        outbox: { async publish() {} },
+      });
+      const r = await service.receiveAdvice(
+        actor,
+        receiveInput("minio/none.835", buildFullEdi("000090304", "9304", "500.00"), "a"),
+      );
+      expect(r.outcome).toBe("malformed");
+      const n = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000090304'",
+      );
+      expect(n.rows[0].n).toBe(0);
+    });
   });
 
   describe("the real M23 ClaimSubmissionReader bridge (F-128, #251)", () => {

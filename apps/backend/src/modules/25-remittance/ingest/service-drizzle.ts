@@ -51,6 +51,16 @@ export interface M25IngestDrizzleDeps {
    * routes a Medicaid 835 against M23's claim table, or vice versa.
    */
   readonly claims?: ClaimMatchCandidateProviderByPayer;
+  /**
+   * Ops-visibility hook: called when `postAdvice` fails on a RETRYABLE degraded parse (e.g. no staged-object
+   * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
+   * the degraded code only. The composition root points this at a warn log.
+   */
+  readonly onRetryableParseDegraded?: (event: {
+    readonly organizationId: string;
+    readonly adviceId: string;
+    readonly code: string;
+  }) => void;
 }
 
 function money(n: number): string {
@@ -447,7 +457,7 @@ export function buildDrizzleM25IngestService(
       actor: M25IngestActor,
       input: ReceiveAdviceInput,
     ): Promise<ReceiveAdviceResult> {
-      // Cheap, real, local pre-flight (no sidecar round-trip) — a genuinely malformed file (not X12, no
+      // Cheap, real, local pre-flight — a genuinely malformed file (not X12, no
       // ISA/ST segment) is rejected with NOTHING persisted before we ever call the parser.
       const header = parseX12EnvelopeHeader(input.rawEdi);
       if (!header) {
@@ -459,6 +469,7 @@ export function buildDrizzleM25IngestService(
       const parsed = await client.parse835({
         minioObjectKey: input.minioObjectKey,
         payerProgram: input.payerKind,
+        rawEdi: input.rawEdi,
       });
       if (!parsed.ok) {
         return { outcome: "malformed", reason: parsed.degraded.reason };
@@ -469,7 +480,7 @@ export function buildDrizzleM25IngestService(
       ) {
         return {
           outcome: "malformed",
-          reason: "sidecar envelope control numbers disagree with the local ISA/ST header",
+          reason: "parsed envelope control numbers disagree with the local ISA/ST header",
         };
       }
 
@@ -569,6 +580,17 @@ export function buildDrizzleM25IngestService(
         payerProgram: advice.payerKind,
       });
       if (!parsed.ok) {
+        if (parsed.degraded.retryable) {
+          try {
+            deps.onRetryableParseDegraded?.({
+              organizationId: actor.organizationId,
+              adviceId,
+              code: parsed.degraded.code,
+            });
+          } catch {
+            // Ops-only hook: it must never stop the advice being marked failed.
+          }
+        }
         await markFailed(actor, adviceId, parsed.degraded.reason);
         return { outcome: "failed", adviceId, reason: parsed.degraded.reason };
       }

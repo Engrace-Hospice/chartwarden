@@ -252,6 +252,8 @@ application code. Nothing was built here for either reason, deliberately: a stub
 fabricated parsed-835 data, or a guessed SFTP/API integration shape nothing in this codebase specifies,
 would both be worse than the honest absence — financial remittance and denial data posted from invented
 input is a materially different risk than the honest `null`s this session's other findings default to.
+> Note (#253): the sidecar HTTP transport named below was removed; the 835 is now parsed in-process in TypeScript (ADR-0037).
+
 **What the checking DID find: the TypeScript side of the pipeline — everything on THIS side of "the raw
 835 is already staged in MinIO" — is real, and one of its cross-module bridges had never been proven, plus
 the whole file proving the rest of it had been running on a superuser connection.** `receiveAdvice` (route

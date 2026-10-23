@@ -573,7 +573,7 @@ apps/backend/src/modules/25-remittance/
 │   └── system.ts                       # GET denial-aging-bucket counts (internal seam endpoint)
 ├── services/
 │   ├── ingest-835.ts                   # consumer of M25's own m25.edi.835_received (payerProgram=medicare|medicaid)
-│   ├── parse-835.ts                    # invokes packages/x12-worker-client.parse835
+│   ├── parse-835.ts                    # parses in-process via packages/x12-835-client (parseX12835, ADR-0037)
 │   ├── post-remittance.ts              # the central posting algorithm
 │   ├── auto-match.ts                   # the three-strategy match algorithm
 │   ├── apply-adjustments.ts            # CO/PI auto-post, PR ledger, OA flag, denial seed
@@ -608,7 +608,7 @@ apps/backend/src/modules/25-remittance/
 packages/x12-worker-client/             # adapter (M25-owned slice; M23 owns its own slice)
 ├── src/
 │   ├── client.ts                       # HTTP client to the Python x12-worker
-│   ├── parse-835.ts                    # POST /parse835 -> typed envelope
+│   ├── parse-835.ts                    # in-process TypeScript 835 parse -> typed envelope (no sidecar, ADR-0037)
 │   ├── parse-277ca.ts                  # POST /parse277ca -> typed acknowledgment (used by M23)
 │   └── types.ts                        # ParsedRemittanceAdvice, ParsedClaim835, ParsedAdjustment, ParsedRemark
 └── package.json                        # vendor-adapter package; only this package may import pyx12 client internals

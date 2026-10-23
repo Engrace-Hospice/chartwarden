@@ -1,9 +1,8 @@
-// @chartwarden/x12-835-client — the M25-owned slice of the X12 sidecar adapter (architecture §25.14): the
-// parse-835 / parse-277ca surface that fronts the Python `x12-worker`. Pure mapping + a fail-closed
-// injected-transport client; no network code, no pyx12 shim, no PHI logging. M23 owns the disjoint
-// 837-generation / 999 slice in @chartwarden/x12-837-client.
+// @chartwarden/x12-835-client — the M25-owned X12 remittance adapter (architecture §25.14): an in-process,
+// fail-closed TypeScript 835 parser (ADR-0037) plus the 277CA sidecar-port mapper. No network or storage
+// code, no PHI logging. M23 owns the disjoint 837-generation / 999 slice in @chartwarden/x12-837-client.
 export * from "./types";
-export * from "./parse-835";
+export { parseX12835, type ParseX12835Options } from "./parse-x12-835";
 export * from "./parse-277ca";
 export * from "./client";
 export * from "./envelope-header";

@@ -2,13 +2,12 @@
 //
 // Extracted into their own leaf so client.ts / parse-*.ts / index.ts import them WITHOUT closing an
 // index↔client import cycle (the no-circular fitness rule; an M27/M23 gotcha). This package is the
-// M25-owned slice of the X12 sidecar adapter (spec §3.1 / §25.14): it fronts the Python `x12-worker`'s
-// /parse835 and /parse277ca endpoints and maps the wire JSON into the typed parsed structures the M25
-// posting pipeline consumes. M23 owns the disjoint 837-generation / 999-277CA-ack slice.
+// M25-owned slice of the X12 adapter (spec §3.1 / §25.14): it parses the 835 in-process (ADR-0037) and maps
+// the 277CA sidecar JSON into the typed parsed structures the M25 posting pipeline consumes. M23 owns the disjoint 837-generation / 999-277CA-ack slice.
 //
 // Conventions enforced across this boundary:
-//   - X12 wire-format parsing happens in the Python `x12-worker` sidecar (pyx12, architecture §12),
-//     reached only over the injected HTTP port. Nothing else in the repo speaks HTTP to the sidecar.
+//   - 835 wire-format parsing is pure TypeScript (parse-x12-835.ts); only the 277CA mapper still fronts a
+//     sidecar response, reached only over the injected HTTP port.
 //   - Monetary amounts are decimal dollars as `number` (mirrors the spec §4.2 Type.Number() seam shape
 //     and the numeric(12,2) DB columns). The parser is the single rounding boundary.
 //   - No PHI is logged or persisted by this package — it maps a response and returns it; the caller
@@ -149,8 +148,8 @@ export interface DegradedError {
   readonly code: string;
   /** Human-readable, PHI-free reason. */
   readonly reason: string;
-  /** The integration that degraded — always "x12-worker" for this package. */
-  readonly integration: "x12-worker";
+  /** The integration that degraded: the in-process 835 parser, or the 277CA sidecar port. */
+  readonly integration: "x12-835-parser" | "x12-worker";
   /** The sidecar operation attempted. */
   readonly operation: "parse835" | "parse277ca";
   /** Whether the caller may retry (transport/timeouts) vs. a permanent parse failure. */
@@ -169,5 +168,5 @@ export function degraded835<T>(
   operation: DegradedError["operation"],
   retryable: boolean,
 ): X12WorkerResult<T> {
-  return { ok: false, degraded: { code, reason, integration: "x12-worker", operation, retryable } };
+  return { ok: false, degraded: { code, reason, integration: operation === "parse835" ? "x12-835-parser" : "x12-worker", operation, retryable } };
 }
