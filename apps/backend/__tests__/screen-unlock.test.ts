@@ -244,6 +244,49 @@ describe("#589 POST /api/v1/auth/unlock", () => {
     await h.app.close();
   });
 
+  it("if the marker AND the revoke both fail, the spent budget is kept so the live session is not handed a fresh one (#602)", async () => {
+    let failMarkers = false;
+    const base = createInMemoryFailedLoginStore();
+    const store: FailedLoginStore = {
+      ...base,
+      async recordFailure(key, windowMs) {
+        if (failMarkers && key.startsWith("screen-unlock:locked:")) throw new Error("valkey blip");
+        return base.recordFailure(key, windowMs);
+      },
+    };
+    const h = makeServer({ store, revokeFailsOnce: true });
+    for (let i = 0; i < 4; i += 1) await unlock(h.app, { password: "nope" });
+    failMarkers = true;
+    expect((await unlock(h.app, { password: "nope" })).statusCode).toBe(500);
+    failMarkers = false;
+    const hashed = h.verifyCalls.length;
+
+    const next = await unlock(h.app, { password: GOOD_PASSWORD });
+
+    expect(next.statusCode).toBe(429); // the counter is still spent
+    expect(h.verifyCalls.length).toBe(hashed);
+    expect(h.sessions.revokedSessions()).toEqual([]); // the session really is alive and unmarked
+    await h.app.close();
+  });
+
+  it("if only the marker fails, the revoke still ends the session and the budget is refunded (#602)", async () => {
+    let failMarkers = false;
+    const base = createInMemoryFailedLoginStore();
+    const store: FailedLoginStore = {
+      ...base,
+      async recordFailure(key, windowMs) {
+        if (failMarkers && key.startsWith("screen-unlock:locked:")) throw new Error("valkey blip");
+        return base.recordFailure(key, windowMs);
+      },
+    };
+    const h = makeServer({ store });
+    for (let i = 0; i < 4; i += 1) await unlock(h.app, { password: "nope" });
+    failMarkers = true;
+    expect((await unlock(h.app, { password: "nope" })).statusCode).toBe(423);
+    expect(h.sessions.revokedSessions()).toEqual(["sess_1"]);
+    await h.app.close();
+  });
+
   it("a passwordless account gets 409 UNLOCK_NO_PASSWORD and spends no attempts (#602)", async () => {
     const h = makeServer({ hasPassword: false });
     for (let i = 0; i < 8; i += 1) {

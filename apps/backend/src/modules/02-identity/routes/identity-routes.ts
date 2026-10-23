@@ -383,11 +383,26 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         } catch (err) {
           markerError = err;
         }
-        await deps.unlockGuard.release(actor.userId);
-        await deps.sessions.revokeSession(actor.sessionId);
+        let revokeError: unknown;
+        try {
+          await deps.sessions.revokeSession(actor.sessionId);
+        } catch (err) {
+          revokeError = err;
+        }
+        // Refund the shared budget only once the session is known locked (marker) or dead (revoke). If both failed it
+        // is alive and unmarked, so the spent counter is all that still stands between it and a fresh budget.
         if (markerError) {
           request.log.error({ err: markerError, sessionId: actor.sessionId }, "unlock lock marker write failed");
         }
+        if (!markerError || !revokeError) {
+          try {
+            await deps.unlockGuard.release(actor.userId);
+          } catch (err) {
+            // Fail closed: the counter stays spent. It must not hide the lockout outcome or its audit rows.
+            request.log.error({ err, sessionId: actor.sessionId }, "unlock budget refund failed");
+          }
+        }
+        if (revokeError) throw revokeError;
         try {
           await record("failed");
           await record("locked_out");
