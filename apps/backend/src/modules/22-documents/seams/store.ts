@@ -105,6 +105,17 @@ export interface DocumentSeamStore {
   } | null>;
 }
 
+/** #658 — a bounded read of one object's bytes; null means the object is not present. */
+export interface ObjectReaderPort {
+  getObject(args: {
+    readonly bucket: string;
+    readonly objectKey: string;
+    /** Refuses (throws) an object larger than this, so a hostile or runaway object cannot exhaust memory. */
+    readonly maxBytes: number;
+    readonly signal?: AbortSignal;
+  }): Promise<Uint8Array | null>;
+}
+
 /**
  * The object-storage PORT the {@link DocumentStorageProvider} impl composes over. Pure key/presign math
  * (./storage.ts in T03) computes the descriptor; this port performs the IO. The real impl is the MinIO
@@ -121,6 +132,8 @@ export interface ObjectStorePort {
      *  When set, the store ALSO enforces the SHA-256 server-side (`x-amz-checksum-sha256`), so the object is
      *  verifiable by `inspectObject` exactly like a presigned upload. */
     readonly mimeType?: string;
+    /** Optional: aborts the request (M25 bounds its in-transaction stage write). Ignored by stores that cannot abort. */
+    readonly signal?: AbortSignal;
   }): Promise<{ readonly sha256Hex: string }>;
   /** Presign a checksum-enforced direct PUT. The returned headers MUST accompany the client upload. */
   presignUpload(args: {

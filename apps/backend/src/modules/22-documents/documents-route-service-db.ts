@@ -282,6 +282,8 @@ export function createDbDocumentRouteService(
     const doc = await loadDocRow(tx, organizationId, documentId); // 404
     if (basis?.expectedPatientId !== undefined && doc.patientId !== basis.expectedPatientId)
       throw new NotFoundError("document");
+    if (basis?.expectedAdmissionId !== undefined && doc.admissionId !== basis.expectedAdmissionId)
+      throw new NotFoundError("document");
     return doc;
   }
 

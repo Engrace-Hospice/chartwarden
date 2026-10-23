@@ -34,6 +34,16 @@ export interface M25IngestActor {
   readonly organizationId: string;
 }
 
+/**
+ * #658 — where the raw 835 lives between `receiveAdvice` and `postAdvice`. Keyed by the server-generated advice id,
+ * never the caller's `minioObjectKey`, so two advices cannot overwrite each other's staged text. Tenant-scoped by
+ * `organizationId` (the adapter picks the tenant bucket); `get` returns null when the object is gone.
+ */
+export interface RawAdviceStore {
+  put(organizationId: string, adviceId: string, text: string): Promise<void>;
+  get(organizationId: string, adviceId: string): Promise<string | null>;
+}
+
 export interface ReceiveAdviceInput {
   readonly providerEntityId: string;
   readonly payerId: string;
@@ -42,7 +52,7 @@ export interface ReceiveAdviceInput {
   readonly payerKind: "medicare" | "medicaid" | "commercial";
   readonly minioObjectKey: string;
   readonly fileSha256: string;
-  /** The raw 835 text — used ONLY to derive the ISA13/ST02 dedup key locally; never persisted verbatim. */
+  /** The raw 835 text — parsed locally for the ISA13/ST02 dedup key and staged in the `RawAdviceStore`; never stored in the database. */
   readonly rawEdi: string;
 }
 

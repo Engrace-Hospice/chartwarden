@@ -47,6 +47,8 @@ export interface UploadedContent {
  */
 export interface WriteBasis {
   readonly expectedPatientId?: string | null;
+  /** #656 — the admission the `/links` route checked against the patient; same compare, same 404. */
+  readonly expectedAdmissionId?: string | null;
 }
 
 export interface UploadVersionArgs extends WriteBasis {
@@ -624,6 +626,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
   function loadDocForWrite(organizationId: OrgId, id: string, basis?: WriteBasis): DocumentRecord {
     const r = loadDoc(organizationId, id);
     if (basis?.expectedPatientId !== undefined && r.patientId !== basis.expectedPatientId)
+      throw new NotFoundError("document");
+    if (basis?.expectedAdmissionId !== undefined && r.admissionId !== basis.expectedAdmissionId)
       throw new NotFoundError("document");
     return r;
   }

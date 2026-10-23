@@ -1028,7 +1028,32 @@ describe("#641 — /links keeps the admission and the patient consistent", () =>
       "x-test-roles": "compliance_officer",
     };
     expect((await link(backend, { patientId: PATIENT }, wide)).statusCode).toBe(200);
-    expect((await link(backend, { patientId: null }, wide)).statusCode).toBe(422);
+    const detach = await link(backend, { patientId: null }, wide);
+    expect(detach.statusCode).toBe(422);
+    // #656: say how to detach, not just that the pair disagrees.
+    expect(detach.json().error.message).toMatch(/admissionId: null/);
+  });
+
+  it("#656: a /links write whose admission check saw another admission is refused under the lock (404)", async () => {
+    const backend = fresh(); // admissionId null
+    const actor = { userId: "u", membershipId: "m" } as never;
+    await expect(
+      backend.service.linkDocument(
+        ORG as never,
+        actor,
+        DOC,
+        { admissionId: ADMISSION },
+        { expectedAdmissionId: ADMISSION_OFF },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    const ok = await backend.service.linkDocument(
+      ORG as never,
+      actor,
+      DOC,
+      { admissionId: ADMISSION },
+      { expectedAdmissionId: null },
+    );
+    expect(ok.admissionId).toBe(ADMISSION);
   });
 
   it("accepts the patient's own admission", async () => {
