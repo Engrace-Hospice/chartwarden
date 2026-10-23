@@ -406,6 +406,28 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     expect(ok.headers["cache-control"]).toBe("no-store");
   });
 
+  it("answers insufficient_data when one person owns more than 80 percent of the organisation's requests in the window", async () => {
+    const owners = [];
+    for (let n = 1; n <= 6; n++) owners.push(await clinician(ORG_A, "dominance", n));
+    for (let i = 0; i < 30; i++) {
+      await request({
+        org: ORG_A,
+        channel: channelA,
+        requester: requesterA,
+        assignee: i < 25 ? (owners[0] as string) : (owners[(i % 5) + 1] as string),
+        daysAgo: 20,
+        ackSeconds: 30,
+      });
+    }
+    const day = (n: number) => {
+      const d = new Date(Date.now() - n * 86_400_000);
+      return `${d.toISOString().slice(0, 10)}T00:00:00Z`;
+    };
+    const res = await get(viewer, ORG_A, `?from=${day(20)}&to=${day(20)}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "insufficient_data", minCohort: ANALYTICS_MIN_COHORT });
+  });
+
   it("answers insufficient_data for a window that holds no completed day (only today)", async () => {
     const todayStart = `${new Date().toISOString().slice(0, 10)}T00:00:00Z`;
     const res = await get(viewer, ORG_A, `?from=${todayStart}&to=${new Date().toISOString()}`);

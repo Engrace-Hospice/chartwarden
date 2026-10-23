@@ -4,8 +4,9 @@
 //   1. a group is shown only when at least `minCohort` distinct people AND `minRequests` requests stand behind it, and no single person
 //      owns more than `maxShare` of its requests (a one-person cell in all but name);
 //   2. complementary suppression: "organisation-wide figures minus the shown groups" is exactly the combined hidden residual, so that
-//      residual must itself clear BOTH floors, people counted over the UNION of the hidden groups' members (one person in several hidden
-//      groups counts once; per-group counts must never be added) and requests summed. While the residual is under either floor the
+//      residual must itself clear the SAME floors as a cell: people over the UNION of the hidden groups' members (one person in several
+//      hidden groups counts once; per-group counts must never be added), requests summed, and no one person owning more than `maxShare`
+//      of the merged requests. While the residual fails any of them the
 //      smallest remaining visible group (fewest requests, then name) is withheld too;
 //   3. if no visible group is left and the residual is still under a floor, the whole breakdown is withheld (`withheld`).
 // Members are opaque ids used only inside this module and never returned. Only the NUMBER of hidden groups is returned.
@@ -27,10 +28,16 @@ function toCell({ members: _members, ...cell }: RawGroupRow): ResponseAnalyticsC
   return cell;
 }
 
-const distinct = (rows: readonly RawGroupRow[]): number =>
-  new Set(rows.flatMap((r) => r.members)).size;
-const requestsOf = (rows: readonly RawGroupRow[]): number =>
-  rows.reduce((sum, r) => sum + r.requests, 0);
+/** The hidden groups as ONE synthetic row (members concatenated, requests summed): what "total minus shown" describes. */
+const residualOf = (rows: readonly RawGroupRow[]): RawGroupRow => ({
+  group: "residual",
+  members: rows.flatMap((r) => r.members),
+  requests: rows.reduce((sum, r) => sum + r.requests, 0),
+  acknowledged: 0,
+  ackedBeforeDeadlineRate: null,
+  escalationRate: null,
+  medianAckSeconds: null,
+});
 
 /** The largest number of requests any one person owns in the group. */
 function topPersonRequests(row: RawGroupRow): number {
@@ -46,7 +53,7 @@ export interface FloorLimits {
   readonly maxPersonShare: number;
 }
 
-const clearsFloor = (row: RawGroupRow, l: FloorLimits): boolean =>
+export const clearsFloor = (row: RawGroupRow, l: FloorLimits): boolean =>
   new Set(row.members).size >= l.minCohort &&
   row.requests >= l.minRequests &&
   topPersonRequests(row) <= l.maxPersonShare * row.requests;
@@ -54,10 +61,8 @@ const clearsFloor = (row: RawGroupRow, l: FloorLimits): boolean =>
 export function applyCohortFloor(rows: readonly RawGroupRow[], limits: FloorLimits): FlooredGroups {
   let visible = rows.filter((r) => clearsFloor(r, limits));
   let hidden = rows.filter((r) => !clearsFloor(r, limits));
-  while (
-    hidden.length > 0 &&
-    (distinct(hidden) < limits.minCohort || requestsOf(hidden) < limits.minRequests)
-  ) {
+  // The merged residual must clear the FULL floor: people, requests and the one-person share rule.
+  while (hidden.length > 0 && !clearsFloor(residualOf(hidden), limits)) {
     const smallest = [...visible].sort(
       (a, b) => a.requests - b.requests || a.group.localeCompare(b.group),
     )[0];

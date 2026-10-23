@@ -20,7 +20,7 @@ import {
 } from "@chartwarden/types";
 import { type SQL, and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
-import { type RawGroupRow, applyCohortFloor } from "./cohort-floor";
+import { type RawGroupRow, applyCohortFloor, clearsFloor } from "./cohort-floor";
 
 export interface ResponseAnalyticsFlagReader {
   forOrg(organizationId: string): Promise<Record<string, boolean>>;
@@ -72,6 +72,12 @@ function requestsCte(orgId: string, from: string, to: string, disciplines: strin
                             AND e2.created_at >= ${SETTLED_BEFORE})
     )`;
 }
+
+const FLOOR_LIMITS = {
+  minCohort: ANALYTICS_MIN_COHORT,
+  minRequests: ANALYTICS_MIN_REQUESTS,
+  maxPersonShare: ANALYTICS_MAX_PERSON_SHARE,
+} as const;
 
 const NO_DISCIPLINES = "[]";
 
@@ -160,9 +166,8 @@ export function createResponseAnalyticsReader(deps: {
           WITH ${requestsCte(organizationId, fromIso, toIso, NO_DISCIPLINES)}
           SELECT 'all' AS grp, ${AGGREGATES} FROM req`);
         const all = total.rows[0] ? toRaw(total.rows[0]) : null;
-        const totalPeople = new Set(total.rows[0]?.members ?? []).size;
-        // The whole report is held back when the organisation-wide cohort is itself too small to be anything but an individual's record.
-        if (!all || totalPeople < ANALYTICS_MIN_COHORT || all.requests < ANALYTICS_MIN_REQUESTS) {
+        // The whole report is held back when the organisation-wide cohort fails the cell floor (people, requests, one-person share) and so is too small to be anything but an individual's record.
+        if (!all || !clearsFloor(all, FLOOR_LIMITS)) {
           return { status: "insufficient_data", minCohort: ANALYTICS_MIN_COHORT } as const;
         }
         const handoff = await tx.execute<{
@@ -194,11 +199,7 @@ export function createResponseAnalyticsReader(deps: {
         };
         const floored = applyCohortFloor(
           await groups(tx, organizationId, fromIso, toIso, groupBy),
-          {
-            minCohort: ANALYTICS_MIN_COHORT,
-            minRequests: ANALYTICS_MIN_REQUESTS,
-            maxPersonShare: ANALYTICS_MAX_PERSON_SHARE,
-          },
+          FLOOR_LIMITS,
         );
         return {
           status: "ok",

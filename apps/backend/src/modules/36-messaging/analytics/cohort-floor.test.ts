@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type RawGroupRow, applyCohortFloor } from "./cohort-floor";
+import { type RawGroupRow, applyCohortFloor, clearsFloor } from "./cohort-floor";
 
 /** A group made of `n` distinct people named `${prefix}1..n` (so two groups with the same prefix share people). */
 const people = (prefix: string, n: number): readonly string[] =>
@@ -122,8 +122,36 @@ describe("applyCohortFloor", () => {
       members: [...Array.from({ length: 25 }, () => "b1"), ...people("b", 6).slice(1)],
     };
     const out = floor([row("rn", people("a", 9)), dominated, row("sw", people("s", 6))]);
-    expect(out.cells.map((c) => c.group)).toEqual(["rn", "sw"]);
-    expect(out.suppressedGroups).toBe(1);
+    expect(out.cells.map((c) => c.group)).toEqual(["rn"]);
+    // the dominated cell is itself the residual, so it fails the share rule and the smallest visible group joins it
+    expect(out.suppressedGroups).toBe(2);
+  });
+
+  it("applies the one-person share rule to the merged hidden residual", () => {
+    // sw (6 people, 30 requests) is hidden by dominance of s1; ch (6 people, 30 requests) is hidden by dominance of s1 too. The residual
+    // is 60 requests of which s1 owns 50: it fails the share rule, so md is pulled in (md has 30 requests, spread).
+    const dom = (g: string, tag: string): RawGroupRow => ({
+      ...row(g, people(tag, 6), 30),
+      members: [...Array.from({ length: 25 }, () => `${tag}1`), ...people(tag, 6).slice(1)],
+    });
+    const same = (g: string): RawGroupRow => ({ ...dom(g, "s") });
+    const out = floor([
+      row("rn", people("a", 9)),
+      row("md", people("b", 6), 30),
+      same("sw"),
+      same("ch"),
+    ]);
+    expect(out.cells.map((c) => c.group)).toEqual(["rn"]);
+    expect(out.suppressedGroups).toBe(3);
+  });
+
+  it("clearsFloor rejects a total dominated by one person", () => {
+    const total = {
+      ...row("all", people("a", 6), 30),
+      members: [...Array.from({ length: 25 }, () => "a1"), ...people("a", 6).slice(1)],
+    };
+    expect(clearsFloor(total, LIMITS)).toBe(false);
+    expect(clearsFloor(row("all", people("a", 6), 30), LIMITS)).toBe(true);
   });
 
   it("counts a threshold of exactly the minimum as visible", () => {
