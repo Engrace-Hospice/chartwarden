@@ -217,3 +217,68 @@ describe("HQRP compliance ok-but-empty body", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+// The "Refreshing…" cue (dim + label + aria-busy) is for a reload while rows are already on screen. Only the
+// schedules screen can reload with data present (a Record/Skip modal calls load() on success). The submissions
+// and compliance screens load on mount and via Retry, and both clear their data before any Retry is possible,
+// so they carry no such cue and only mark the region busy during the load.
+const SCHEDULE_ROW = {
+  id: "cccccccc-3333-4333-8333-cccccccccccc",
+  patientId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+  admissionId: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+  rfaKind: "02_huv1",
+  status: "open",
+  windowOpensAt: "2000-01-01T00:00:00.000Z",
+  windowClosesAt: "2999-01-01T00:00:00.000Z",
+  lateDeadlineAt: "2999-02-01T00:00:00.000Z",
+  generatedBy: "system",
+  completedByAssessmentId: null,
+};
+
+describe("HOPE schedules Refreshing cue", () => {
+  it("dims, labels and marks the region busy during a post-write reload, then clears", async () => {
+    let release: (r: Response) => void = () => {};
+    mount(SCREENS[0] as Screen, [
+      () => json({ schedules: [SCHEDULE_ROW] }),
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    ]);
+    const region = await screen.findByRole("group", { name: "HOPE schedules" });
+    await waitFor(() => expect(region.getAttribute("aria-busy")).toBe("false"));
+    expect(region.style.opacity).toBe("1");
+    expect(screen.queryByText("Refreshing…")).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Skip window" }));
+
+    await waitFor(() => expect(region.getAttribute("aria-busy")).toBe("true"));
+    expect(region.style.opacity).toBe("0.6");
+    expect(screen.getByText("Refreshing…")).toBeTruthy();
+    expect(screen.getByText("1 of 1 schedules")).toBeTruthy();
+
+    await act(async () => release(json({ schedules: [SCHEDULE_ROW] })));
+    await waitFor(() => expect(region.getAttribute("aria-busy")).toBe("false"));
+    expect(region.style.opacity).toBe("1");
+    expect(screen.queryByText("Refreshing…")).toBeNull();
+  });
+});
+
+describe.each([SCREENS[1], SCREENS[2]] as Screen[])("$name busy region", (def) => {
+  it("is busy only while loading and never shows a Refreshing cue", async () => {
+    let release: (r: Response) => void = () => {};
+    mount(def, [
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    ]);
+    const region = await screen.findByRole("group", { name: def.groupName });
+    expect(region.getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByText("Refreshing…")).toBeNull();
+    await act(async () => release(json(def.emptyBody)));
+    await waitFor(() => expect(region.getAttribute("aria-busy")).toBe("false"));
+    expect(region.style.opacity).toBe("");
+  });
+});

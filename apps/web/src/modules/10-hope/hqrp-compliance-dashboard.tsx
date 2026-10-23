@@ -176,11 +176,8 @@ export function HqrpComplianceDashboard(): JSX.Element {
           role="group"
           aria-label="HQRP compliance"
           aria-busy={loading}
-          style={{ outline: "none", opacity: loading && row !== null ? 0.6 : 1 }}
+          style={{ outline: "none" }}
         >
-          {loading && row !== null ? (
-            <div style={{ fontSize: "0.75rem", padding: "0.25rem 1rem" }}>Refreshing…</div>
-          ) : null}
           {readStatus !== "ok" ? (
             <div style={{ padding: "2rem 1.5rem" }}>
               <HopeListReadState

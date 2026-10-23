@@ -299,11 +299,8 @@ export function SubmissionWorklist(): JSX.Element {
           role="group"
           aria-label="HOPE submissions"
           aria-busy={loading}
-          style={{ outline: "none", opacity: loading && items.length > 0 ? 0.6 : 1 }}
+          style={{ outline: "none" }}
         >
-          {loading && items.length > 0 ? (
-            <div style={{ fontSize: "0.75rem", padding: "0.25rem 1rem" }}>Refreshing…</div>
-          ) : null}
           {readStatus !== "ok" ? (
             <div style={{ padding: "2rem 1.5rem" }}>
               <HopeListReadState
