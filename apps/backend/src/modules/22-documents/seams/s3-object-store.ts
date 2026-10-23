@@ -704,6 +704,16 @@ export function createS3TenantStorageProvisioner(
     readonly organizationId: string;
     readonly prefixes: readonly string[];
   }): Promise<TenantStorageEnsureResult>;
+  /**
+   * Idempotently expire every object (and noncurrent version) under `prefix` after `days`. Used for transient PHI
+   * staging prefixes (M25 `m25-835/`) so an orphan cannot outlive a bounded window. S3's PUT replaces the whole
+   * lifecycle config, so the bucket's existing rules are read and kept; our rule is added only when absent.
+   */
+  ensurePrefixExpiry(input: {
+    readonly organizationId: string;
+    readonly prefix: string;
+    readonly days: number;
+  }): Promise<{ readonly applied: boolean }>;
 } {
   const signedFetch = createS3SignedFetch(config, deps, "createS3TenantStorageProvisioner");
 
@@ -733,6 +743,47 @@ export function createS3TenantStorageProvisioner(
       if (!created.ok && created.status !== 409)
         throw opError("createBucket", created.status, bucket);
       return { bucket, created: created.ok, prefixesEnsured: [...prefixes] };
+    },
+
+    async ensurePrefixExpiry({ organizationId, prefix, days }) {
+      if (!Number.isInteger(days) || days < 1)
+        throw new Error("ensurePrefixExpiry: days must be a positive integer");
+      if (!/^[A-Za-z0-9._\-/]+$/.test(prefix)) throw new Error("ensurePrefixExpiry: unsafe prefix");
+      const bucket = deriveTenantBucket(organizationId as OrgId);
+      const ruleId = `cw-expire-${prefix.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+      const got = await signedFetch({
+        method: "GET",
+        bucket,
+        objectKey: null,
+        query: [["lifecycle", ""]],
+        payload: null,
+      });
+      let existing = "";
+      if (got.ok) existing = await got.text();
+      else if (got.status !== 404) throw opError("getLifecycle", got.status, bucket);
+      if (existing.includes(`<ID>${ruleId}</ID>`)) return { applied: false };
+      const rule =
+        `<Rule><ID>${ruleId}</ID><Status>Enabled</Status><Filter><Prefix>${prefix}</Prefix></Filter>` +
+        `<Expiration><Days>${days}</Days></Expiration>` +
+        `<NoncurrentVersionExpiration><NoncurrentDays>${days}</NoncurrentDays></NoncurrentVersionExpiration></Rule>`;
+      const xml = existing.includes("</LifecycleConfiguration>")
+        ? existing.replace("</LifecycleConfiguration>", `${rule}</LifecycleConfiguration>`)
+        : `<LifecycleConfiguration>${rule}</LifecycleConfiguration>`;
+      const body = new TextEncoder().encode(xml);
+      const put = await signedFetch({
+        method: "PUT",
+        bucket,
+        objectKey: null,
+        query: [["lifecycle", ""]],
+        payload: body,
+        // S3 requires an integrity header on PutBucketLifecycle; Content-MD5 is accepted by AWS and MinIO.
+        extraHeaders: {
+          "content-md5": createHash("md5").update(body).digest("base64"),
+          "content-type": "application/xml",
+        },
+      });
+      if (!put.ok) throw opError("putLifecycle", put.status, bucket);
+      return { applied: true };
     },
   };
 }

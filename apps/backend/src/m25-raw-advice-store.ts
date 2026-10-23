@@ -13,22 +13,41 @@ import {
 /** Largest raw 835 the post path will read back (a real remittance file is well under 1 MiB). */
 export const M25_RAW_835_MAX_BYTES = 16 * 1024 * 1024;
 const IO_TIMEOUT_MS = 15_000;
+/** Orphans (a rolled-back receive, a delete that was never retried) expire after this; a normal stage lives minutes. */
+export const M25_STAGED_EXPIRY_DAYS = 30;
+export const M25_STAGED_PREFIX = "m25-835/";
 
 /** No object store configured = undefined, and `postAdvice` stays fail-closed (retryable X12_835_RAW_UNAVAILABLE). */
 export function buildM25RawAdviceStore(
   env: Record<string, string | undefined> = process.env,
   deps: S3ObjectStoreDeps = {},
+  /** Ops sink for a lifecycle-rule failure (never PHI). Staging proceeds: the rule is a safety net, not a gate. */
+  onLifecycleError: (error: unknown) => void = () => {},
 ): RawAdviceStore | undefined {
   const config = s3ObjectStoreConfigFromEnv(env);
   if (!config) return undefined;
   const store = createS3ObjectStore(config, deps);
   const provisioner = createS3TenantStorageProvisioner(config, deps);
-  const keyOf = (adviceId: string): string => `m25-835/${adviceId}`;
+  const keyOf = (adviceId: string): string => `${M25_STAGED_PREFIX}${adviceId}`;
   const bucketOf = (organizationId: string): string => deriveTenantBucket(organizationId as never);
   const signal = (): AbortSignal => AbortSignal.timeout(IO_TIMEOUT_MS);
   // Tenants onboarded before bucket provisioning (the dev demo org, older tenants) have none: create it on first
   // stage rather than failing every receive. Memoized per process; a failure is not cached.
   const ensured = new Set<string>();
+  const expiryApplied = new Set<string>();
+  const ensureExpiry = async (organizationId: string): Promise<void> => {
+    if (expiryApplied.has(organizationId)) return;
+    try {
+      await provisioner.ensurePrefixExpiry({
+        organizationId,
+        prefix: M25_STAGED_PREFIX,
+        days: M25_STAGED_EXPIRY_DAYS,
+      });
+      expiryApplied.add(organizationId);
+    } catch (error) {
+      onLifecycleError(error); // retried on the next stage for this tenant
+    }
+  };
   return {
     async put(organizationId, adviceId, text) {
       const stage = (): Promise<unknown> =>
@@ -42,6 +61,7 @@ export function buildM25RawAdviceStore(
         await provisioner.ensureTenantPrefixes({ organizationId, prefixes: [] });
         ensured.add(organizationId);
       }
+      await ensureExpiry(organizationId);
       try {
         await stage();
       } catch (err) {

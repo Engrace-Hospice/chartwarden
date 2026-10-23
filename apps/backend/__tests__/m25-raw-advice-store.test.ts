@@ -15,6 +15,7 @@ function fakeS3() {
   const calls: string[] = [];
   const objects = new Map<string, Uint8Array>();
   let bucketExists = false;
+  let lifecycle: string | null = null;
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
@@ -22,6 +23,16 @@ function fakeS3() {
     const [, bucket, ...rest] = url.pathname.split("/");
     const key = rest.join("/");
     if (bucket !== BUCKET) return new Response(null, { status: 403 });
+    if (!key && url.searchParams.has("lifecycle")) {
+      if (method === "GET")
+        return lifecycle
+          ? new Response(lifecycle, { status: 200 })
+          : new Response("<Error><Code>NoSuchLifecycleConfiguration</Code></Error>", {
+              status: 404,
+            });
+      lifecycle = new TextDecoder().decode(init?.body as Uint8Array);
+      return new Response(null, { status: 200 });
+    }
     if (!key) {
       if (method === "HEAD") return new Response(null, { status: bucketExists ? 200 : 404 });
       if (method === "PUT") {
@@ -51,7 +62,13 @@ function fakeS3() {
     }
     return new Response(null, { status: 405 });
   }) as typeof fetch;
-  return { fetchImpl, calls, objects, dropBucket: () => (bucketExists = false) };
+  return {
+    fetchImpl,
+    calls,
+    objects,
+    lifecycle: () => lifecycle,
+    dropBucket: () => (bucketExists = false),
+  };
 }
 
 describe("M25 raw advice store", () => {
@@ -72,6 +89,29 @@ describe("M25 raw advice store", () => {
     await store.delete(ORG, "advice-1");
     expect(await store.get(ORG, "advice-1")).toBeNull();
     expect(await store.get(ORG, "advice-2")).toBe("ISA*other"); // a neighbour is untouched
+  });
+
+  it("puts a 30-day expiry on the m25-835/ prefix once per tenant, and still stages if the rule fails", async () => {
+    const s3 = fakeS3();
+    const store = buildM25RawAdviceStore(ENV, { fetchImpl: s3.fetchImpl });
+    if (!store) throw new Error("unreachable");
+    await store.put(ORG, "a", "x");
+    await store.put(ORG, "b", "y");
+    expect(s3.lifecycle()).toContain("<Prefix>m25-835/</Prefix>");
+    expect(s3.lifecycle()).toContain("<Days>30</Days>");
+    expect(s3.calls.filter((c) => c.includes("?lifecycle"))).toHaveLength(2); // one GET + one PUT, then memoized
+
+    const failing: unknown[] = [];
+    const broken = fakeS3();
+    const failFetch = (async (input: string | URL | Request, init?: RequestInit) =>
+      String(input).includes("lifecycle")
+        ? new Response(null, { status: 500 })
+        : broken.fetchImpl(input, init)) as typeof fetch;
+    const tolerant = buildM25RawAdviceStore(ENV, { fetchImpl: failFetch }, (e) => failing.push(e));
+    if (!tolerant) throw new Error("unreachable");
+    await tolerant.put(ORG, "c", "z");
+    expect(await tolerant.get(ORG, "c")).toBe("z");
+    expect(failing).toHaveLength(1);
   });
 
   it("re-creates a tenant bucket that vanished after it was memoized, then retries the stage once", async () => {
