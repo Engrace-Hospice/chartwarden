@@ -43,6 +43,10 @@ export function PortalSignIn(): JSX.Element {
   const linkProblem =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).has("link");
+  // Set by the expired-session redirect (#593); a plain flag, never a server code.
+  const sessionExpired =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("reason") === "expired";
 
   // A validated return path from the expired-session redirect (#593); anything else is dropped silently.
   const returnTo =
@@ -244,6 +248,11 @@ export function PortalSignIn(): JSX.Element {
               title="Sign in"
               description="Visit updates, care information, and secure messages shared by your hospice team."
             />
+            {sessionExpired && !linkProblem ? (
+              <InlineAlert tone="info">
+                Your session ended. Please sign in again.
+              </InlineAlert>
+            ) : null}
             {linkProblem ? (
               <InlineAlert tone="error">
                 That sign-in link can't be used. Request a new one below.

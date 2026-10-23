@@ -22,6 +22,31 @@ describe("portal auth-http", () => {
     expect(calls[0]?.body.errorCallbackURL).toBe("https://portal.test/portal/?link=invalid");
   });
 
+  it("puts a validated next on callbackURL and errorCallbackURL, and nothing for an invalid or absent one", async () => {
+    const capture = async (next: string | null) => {
+      let body: Record<string, string> = {};
+      await requestMagicLink(
+        "a@b.test",
+        "https://portal.test",
+        async (_url, init) => {
+          body = JSON.parse(String(init?.body));
+          return reply(200);
+        },
+        next,
+      );
+      return body;
+    };
+    const enc = encodeURIComponent("/account");
+    const ok = await capture("/account?x=1&y=2");
+    expect(ok.callbackURL).toBe(`https://portal.test/portal/signed-in?next=${enc}`);
+    expect(ok.errorCallbackURL).toBe(`https://portal.test/portal/?link=invalid&next=${enc}`);
+    for (const bad of ["//evil.com", "https://evil.com", "/", null]) {
+      const body = await capture(bad);
+      expect(body.callbackURL).toBe("https://portal.test/portal/signed-in");
+      expect(body.errorCallbackURL).toBe("https://portal.test/portal/?link=invalid");
+    }
+  });
+
   it("maps 429 to rate_limited and any other failure to failed", async () => {
     expect(await requestMagicLink("a@b.test", "o", async () => reply(429))).toBe("rate_limited");
     expect(await requestMagicLink("a@b.test", "o", async () => reply(500))).toBe("failed");

@@ -7,6 +7,7 @@
 // and a failed password sign-in is one calm outcome whatever the reason.
 
 import { PORTAL_BASE_PATH } from "./base-path";
+import { validateNext } from "./session-guard";
 
 export type SignInOutcome = "ok" | "two_factor" | "failed" | "rate_limited";
 
@@ -30,9 +31,10 @@ export async function requestMagicLink(
   fetchImpl: FetchLike = fetch,
   next: string | null = null,
 ): Promise<"sent" | "rate_limited" | "failed"> {
-  // `next` is a validated app-relative return path (session-guard#validateNext); it rides the emailed link so it
-  // survives opening the link in another tab/device, where sessionStorage would be empty.
-  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
+  // `next` is re-validated here (path-only, allow-listed); it rides the emailed link so it survives opening the
+  // link in another tab/device, where sessionStorage would be empty. `reason` never rides the link.
+  const safeNext = validateNext(next);
+  const nextQuery = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
   const res = await post(fetchImpl, "/api/auth/sign-in/magic-link", {
     email,
     callbackURL: `${origin}${PORTAL_BASE_PATH}/signed-in${nextQuery}`,
