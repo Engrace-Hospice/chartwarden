@@ -496,3 +496,14 @@ spoof detector open through the same cipher.
   incident create still refuses both (the narrative is never stored in the clear).
 - **Not done.** Clinical-safety reviewer sign-off on storing SOS / check-ins without a location is a human decision
   and stays open on #666's second point.
+
+## #672 — DSAR queue patient lookup
+
+- The admin DSAR queue (`dsar-queue.tsx`) gains a "Find patient" name / MRN lookup (`patient-finder.tsx`, the shared
+  `EntityLookupField` over `GET /api/v1/patients/messaging-search`) that fills the existing raw "Patient id" filter,
+  which stays as the fallback. No new backend route: the search is tenant-scoped in SQL, caseload-narrowed for
+  non-org-wide roles, returns id / name / MRN only, and is list-audited. Seeing a patient there grants nothing.
+- A DSAR handler without `patient.read`, or whose caseload excludes the patient, gets "Lookup unavailable." or "No match
+  among the patients you can see. Paste the patient id below." A DSAR-permission-authorized search route is the next
+  step only if that fallback proves common.
+- **Not done.** The browser re-measure of `/patients/:id` target sizes (needs an authenticated session on a merged build).
