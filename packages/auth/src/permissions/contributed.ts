@@ -442,6 +442,15 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 6.6 (ADR-0096, PROPOSED): external partner share. MANAGE creates, lists and revokes a read-only, single-conversation, expiring
+  //     share for a pharmacy / DME partner (a fresh step-up on create and revoke). Migration 1180 grants it to compliance_officer,
+  //     administrator, org_admin only; no clinical or aide role holds it. The tenant flag messaging.external_partners is off by default. ---
+  "messaging.share.manage": {
+    resource: "message_external_share",
+    action: "manage",
+    category: "compliance",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---

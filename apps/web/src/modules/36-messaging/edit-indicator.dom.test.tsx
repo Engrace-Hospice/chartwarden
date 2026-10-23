@@ -172,6 +172,7 @@ describe("edit indicator in the real thread panel", () => {
     };
     // Strict mock: every call the thread makes is answered by path; anything else is recorded and fails the test.
     const unmocked: string[] = [];
+    let detailReads = 0;
     const answer = (method: string, path: string) => {
       if (
         method === "GET" &&
@@ -203,6 +204,15 @@ describe("edit indicator in the real thread panel", () => {
       ) {
         // WP 4.10: the header snooze control and the message "Remind me" trigger each ask once whether the tenant has them on; off here.
         return { data: undefined, error: {}, response: { status: 404 } };
+      }
+      if (method === "GET" && path === "/api/v1/messaging/channels/{id}") {
+        // WP 6.6 (ADR-0096 D18): the external-partner banner reads the channel detail (shared with presence); no active share here.
+        detailReads += 1;
+        return {
+          data: { channelId: "dm-1", members: [] },
+          error: undefined,
+          response: { status: 200 },
+        };
       }
       if (method === "GET" && path === "/api/v1/messaging/channels/{id}/draft") {
         return { data: { draft: null }, error: undefined, response: { status: 200 } };
@@ -250,5 +260,6 @@ describe("edit indicator in the real thread panel", () => {
     expect(within(rootRow).queryByText(/^Edited/)).toBeNull();
     await waitFor(() => expect(api.POST).toHaveBeenCalled());
     expect(unmocked, `unmocked API call: ${unmocked.join(", ")}`).toEqual([]);
+    expect(detailReads, "one channel-detail read per thread open").toBe(1);
   });
 });

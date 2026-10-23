@@ -340,6 +340,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "messaging.export.request",
       "messaging.export.approve",
       "messaging.export.download",
+      // WP 6.6 (ADR-0096): the compliance officer manages external partner shares (migration 1180 covers existing roles).
+      "messaging.share.manage",
       // WP 5.6 (ADR-0055 item 7): request and approve a message redaction (two different people; migration 1156 covers existing roles).
       "messaging.redact.request",
       "messaging.redact.approve",

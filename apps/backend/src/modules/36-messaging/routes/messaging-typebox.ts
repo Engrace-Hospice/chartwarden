@@ -320,6 +320,12 @@ const ChannelMemberViewSchema = Type.Object({
 export const ChannelMembersResponseSchema = Type.Object({
   members: Type.Array(ChannelMemberViewSchema),
 });
+/** D18 (ADR-0096): present on the channel detail only while an ACTIVE external partner share exists and partner access is on. */
+export const ExternalShareIndicatorSchema = Type.Object({
+  active: Type.Literal(true),
+  partnerKind: Type.Union([Type.Literal("pharmacy"), Type.Literal("dme"), Type.Literal("other")]),
+  expiresAt: Type.String({ format: "date-time" }),
+});
 export const ChannelDetailResponseSchema = Type.Object({
   channelId: Type.String(),
   kind: ChannelKindSchema,
@@ -341,6 +347,7 @@ export const ChannelDetailResponseSchema = Type.Object({
   ]),
   patientId: NullableString(),
   members: Type.Array(ChannelMemberViewSchema),
+  externalShare: Type.Optional(ExternalShareIndicatorSchema),
 });
 const MessageAttachmentViewSchema = Type.Object({
   attachmentId: Type.String(),

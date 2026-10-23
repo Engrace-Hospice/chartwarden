@@ -687,4 +687,50 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+
+  // WP 6.6 (ADR-0096, PROPOSED): external partner share. PHI-free by construction: ids and instants only; never a partner name, a BAA reference,
+  // a channel title, a token or a message. Each is published in the same transaction as the write.
+  {
+    eventName: "m36.external_share.created",
+    moduleOwner: "m36",
+    description:
+      "A read-only, expiring, single-conversation share was created for an external partner (WP 6.6, ADR-0096). The share id, the channel id, the creator and two instants; never the partner or the invitation. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        shareId: id,
+        channelId: id,
+        createdBy: id,
+        expiresAt: isoInstant,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.external_share.reissued",
+    moduleOwner: "m36",
+    description:
+      "An external partner share's invitation and verification code were replaced by staff (WP 6.6, ADR-0096 D14); every session of the older invitation is dead and the attempt counter restarted. The share id, the channel id, the actor and one instant; never the invitation or the code. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, shareId: id, channelId: id, reissuedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.external_share.revoked",
+    moduleOwner: "m36",
+    description:
+      "An external partner share was revoked (WP 6.6, ADR-0096); the partner's very next request is refused. The share id, the channel id, the revoker and one instant. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, shareId: id, channelId: id, revokedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

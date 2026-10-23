@@ -2351,6 +2351,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.partners",
+      "path": "/messaging/partners",
+      "permission": "messaging.share.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"
