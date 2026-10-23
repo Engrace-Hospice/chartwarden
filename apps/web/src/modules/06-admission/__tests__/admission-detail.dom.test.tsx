@@ -108,6 +108,7 @@ function clientFor(readinessResponse = readiness()): ApiClient {
           status: "pending",
           version: 4,
           patientId: "patient-1",
+          patient: { id: "patient-1", firstName: "Elena", lastName: "Rivera", mrn: "MRN-1001" },
           referralId: "referral-1",
           admissionAt: "2026-08-28T10:00:00.000Z",
           activatedAt: null,
@@ -657,6 +658,7 @@ describe("Admission intake workspace", () => {
     );
     renderWithShell(client);
     await screen.findByTestId("patient-unavailable");
+    expect(screen.getAllByText("Elena Rivera").length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: "Complete admission details" })[0]!);
 
     expect(screen.queryByRole("link", { name: "Open patient addresses" })).toBeNull();
