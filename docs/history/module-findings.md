@@ -465,3 +465,23 @@ spoof detector open through the same cipher.
   patient's (422, via M6's `AdmissionStatusReader`); the service checks the patient exists in the org (404, before
   anything is stored). Two route-test fixtures had seeded an off-caseload patient's document as a scoped nurse; they
   now seed as an org-wide uploader.
+
+## #659 / #660 / #664 — M25 835 payee check and multiple ST/SE; chart target-size follow-ups
+
+- **Payee identity (#659).** `receiveAdvice` and `postAdvice` compare the 835 payee (N1*PE, N103 = XX) with the
+  provider entity's NPI and refuse on a mismatch, a payee with no NPI, or a provider entity with none on file
+  (fail closed; `receiveAdvice` stores nothing, `postAdvice` marks the advice `failed` with a PHI-free reason).
+  The NPI arrives through the injected `payeeNpi` dep, bound in both composition roots to the foundation site
+  reader; an unbound dep skips the check (tests only). The TIN is sealed per tenant in M2 and there is no PTAN
+  column, so neither is compared yet.
+- **Several ST/SE sets in one file (#660).** The parser still takes one ISA and one GS/GE group, but splits any number
+  of ST/SE sets inside it: each is validated and balanced on its own, GE01 must equal the set count, ST02 must be
+  unique, and nothing may sit between two sets. `parse835` takes an optional `transactionSetControlNumber`; a
+  multi-set file without one is refused rather than guessed. `receiveAdvice` parses and payee-checks every set
+  before storing any, then queues one advice (and one `m25.edi.835_received`) per set; `postAdvice` parses the set
+  its row names. The response reports the first queued set (or the first duplicate).
+- **Not done (blocked on real files or the companion guide).** Validating the strict balance rules against real MAC
+  hospice 835s, SVC01 qualifier retention, the BPR02 = 0 / BPR04 rule, multiple GS or ISA per file, and 277CA, which
+  ADR-0029 places with M23's client.
+- **#664.** `TARGET_24` now lives in `apps/web/src/shell/target-size.ts` (the patient-context "View all" link uses it).
+  Added the Care Team link size render test and the ledger staff-filter request test.

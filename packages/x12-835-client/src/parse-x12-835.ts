@@ -5,7 +5,8 @@
 // Money is parsed from the decimal text into integer cents (no float math) and emitted as cents/100.
 //
 // Current-behavior limits (deliberate; tracked as follow-ups, not silent):
-//  - one ST/SE transaction set per file (a second one is rejected);
+//  - one ISA and one GS/GE group per file; several ST/SE transaction sets inside that group are split, each
+//    balanced on its own, and selected by ST02 (a second ISA or GS is rejected);
 //  - SVC01 qualifier is validated only (modifiers and SVC06 are surfaced);
 //  - the production date is BPR16, falling back to DTM*405 (label not reconciled with the spec);
 //  - BPR02 = 0 does not force BPR04 = NON;
@@ -255,11 +256,16 @@ const toClaim = (c: ClaimDraft): ParsedClaim835 => ({
   serviceLines: c.lines.map(toLine),
 });
 
-/** Validate ISA..IEA / GS..GE / ST..SE; returns the segments strictly between ST and SE. */
+interface TransactionSet {
+  readonly st02: string;
+  readonly body: readonly X12Segment[];
+}
+
+/** Validate ISA..IEA / GS..GE and every ST..SE; returns each transaction set's segments between ST and SE. */
 function unwrapEnvelope(
   segs: readonly X12Segment[],
   opts: ParseX12835Options,
-): { isa13: string; st02: string; body: readonly X12Segment[] } {
+): { isa13: string; sets: readonly TransactionSet[] } {
   const ids = segs.map(segId);
   const pos = (id: string): number[] => ids.flatMap((x, i) => (x === id ? [i] : []));
   if (ids[0] !== "ISA" || ids[ids.length - 1] !== "IEA")
@@ -273,31 +279,48 @@ function unwrapEnvelope(
   only("IEA", "expected exactly one ISA/IEA");
   const gsAt = only("GS", "expected exactly one GS/GE functional group");
   const geAt = only("GE", "expected exactly one GS/GE functional group");
-  const stAt = only("ST", "expected exactly one ST/SE transaction set per file");
-  const seAt = only("SE", "expected exactly one ST/SE transaction set per file");
-  if (!(gsAt < stAt && stAt < seAt && seAt < geAt && geAt < segs.length - 1)) {
-    fail("envelope segments are out of order");
-  }
-  const [isa, gs, st, se, ge, iea] = [0, gsAt, stAt, seAt, geAt, segs.length - 1].map(
-    (i) => segs[i] as X12Segment,
-  ) as [X12Segment, X12Segment, X12Segment, X12Segment, X12Segment, X12Segment];
+  const stAts = pos("ST");
+  const seAts = pos("SE");
+  if (stAts.length === 0 || stAts.length !== seAts.length)
+    fail("ST and SE segments are not paired");
+  const inOrder = stAts.every(
+    (st, i) =>
+      st < (seAts[i] as number) &&
+      (i === 0 ? gsAt < st : (seAts[i - 1] as number) + 1 === st) &&
+      (i < stAts.length - 1 || (seAts[i] as number) < geAt),
+  );
+  if (!(inOrder && geAt < segs.length - 1)) fail("envelope segments are out of order");
+  const [isa, gs, ge, iea] = [0, gsAt, geAt, segs.length - 1].map((i) => segs[i] as X12Segment) as [
+    X12Segment,
+    X12Segment,
+    X12Segment,
+    X12Segment,
+  ];
   const isa13 = elem(isa, 13);
-  const st02 = elem(st, 2);
   if (!isa13) fail("missing ISA13 interchange control number");
-  if (!st02) fail("missing ST02 transaction set control number");
   if (!opts.allowTestFiles && elem(isa, 15) !== "P")
     fail("interchange is not flagged production (ISA15 != P)");
   if (elem(gs, 1) !== "HP") fail("functional group is not a health care payment (GS01 != HP)");
   if (!elem(gs, 8).startsWith("005010X221")) fail("GS08 is not a 005010X221 (5010 835) version");
-  if (elem(st, 1) !== "835") fail("transaction set is not an 835");
-  if (elem(se, 2) !== st02) fail("SE02 does not match ST02");
-  if (elem(se, 1) !== String(seAt - stAt + 1))
-    fail("SE01 segment count does not match the transaction set");
   if (elem(gs, 6) === "" || elem(ge, 2) !== elem(gs, 6)) fail("GE02 does not match GS06");
-  if (elem(ge, 1) !== "1") fail("GE01 transaction-set count is not 1");
+  if (elem(ge, 1) !== String(stAts.length)) fail("GE01 transaction-set count does not match");
   if (elem(iea, 2) !== isa13) fail("IEA02 does not match ISA13");
   if (elem(iea, 1) !== "1") fail("IEA01 functional-group count is not 1");
-  return { isa13, st02, body: segs.slice(stAt + 1, seAt) };
+  const sets = stAts.map((stAt, i): TransactionSet => {
+    const seAt = seAts[i] as number;
+    const st = segs[stAt] as X12Segment;
+    const se = segs[seAt] as X12Segment;
+    const st02 = elem(st, 2);
+    if (!st02) fail("missing ST02 transaction set control number");
+    if (elem(st, 1) !== "835") fail("transaction set is not an 835");
+    if (elem(se, 2) !== st02) fail("SE02 does not match ST02");
+    if (elem(se, 1) !== String(seAt - stAt + 1))
+      fail("SE01 segment count does not match the transaction set");
+    return { st02, body: segs.slice(stAt + 1, seAt) };
+  });
+  if (new Set(sets.map((x) => x.st02)).size !== sets.length)
+    fail("two transaction sets share an ST02");
+  return { isa13, sets };
 }
 
 function parsePlb(seg: X12Segment): number[] {
@@ -407,9 +430,18 @@ function build(
   raw: string,
   payerProgram: PayerProgram,
   opts: ParseX12835Options,
+  transactionSetControlNumber?: string,
 ): ParsedRemittanceAdvice {
   const doc = tokenizeX12(raw);
-  const { isa13, st02, body } = unwrapEnvelope(doc.segments, opts);
+  const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+  const chosen =
+    transactionSetControlNumber === undefined
+      ? sets.length === 1
+        ? sets[0]
+        : fail("the file holds several transaction sets; select one by ST02")
+      : sets.find((x) => x.st02 === transactionSetControlNumber);
+  if (!chosen) return fail("no transaction set with that ST02 in the file");
+  const { st02, body } = chosen;
   const b = walkBody(body, doc.componentSeparator);
   const method = PAYMENT_METHODS[elem(b.bpr, 4)];
   if (!method) fail("BPR04 is not a supported payment method");
@@ -440,9 +472,10 @@ export function parseX12835(
   raw: string,
   payerProgram: PayerProgram,
   opts: ParseX12835Options = {},
+  transactionSetControlNumber?: string,
 ): X12WorkerResult<ParsedRemittanceAdvice> {
   try {
-    return { ok: true, value: build(raw, payerProgram, opts) };
+    return { ok: true, value: build(raw, payerProgram, opts, transactionSetControlNumber) };
   } catch (err) {
     if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);
     return degraded835("X12_835_PARSE_FAILED", "unexpected parser failure", "parse835", false);

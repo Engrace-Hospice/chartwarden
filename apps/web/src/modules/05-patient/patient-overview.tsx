@@ -41,6 +41,7 @@ import {
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
 import { useSession } from "../../shell/session";
+import { TARGET_24 } from "../../shell/target-size";
 import { WristbandAction } from "./wristband-action";
 
 // The shared identity helpers now live in the shell (chart tabs span modules); re-exported so this
@@ -596,15 +597,6 @@ function periodDay(p: Period): string | null {
 // ---------- shared bits ----------
 
 const muted = { color: t.onSurfaceVariant, fontSize: "0.8125rem" } as const;
-
-// WCAG 2.5.8 (#648): every chart-overview link is at least 24 x 24 CSS px.
-export const TARGET_24 = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minWidth: "1.5rem",
-  minHeight: "1.5rem",
-} as const;
 
 export function EmptyLine({ children }: { children: ReactNode }): JSX.Element {
   return <p style={{ ...muted, margin: "0.25rem 0 0.5rem" }}>{children}</p>;

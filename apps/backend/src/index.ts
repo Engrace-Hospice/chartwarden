@@ -5710,6 +5710,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             client: createX12835Client(),
             onRetryableParseDegraded: (event) =>
               app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
+            payeeNpi: (organizationId, providerEntityId) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: "" },
+                async (tx) =>
+                  (await buildFoundationSiteReader().providerEntityIdentifiers(tx, organizationId, providerEntityId))
+                    ?.npi ?? null,
+              ),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -11840,6 +11848,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               client: createX12835Client(),
               onRetryableParseDegraded: (event) =>
                 app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
+              payeeNpi: (organizationId, providerEntityId) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: "" },
+                async (tx) =>
+                  (await buildFoundationSiteReader().providerEntityIdentifiers(tx, organizationId, providerEntityId))
+                    ?.npi ?? null,
+              ),
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

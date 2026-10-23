@@ -2,7 +2,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { PanelLink, TARGET_24 } from "./patient-overview";
+import { TARGET_24 } from "../../shell/target-size";
+import { PanelLink } from "./patient-overview";
 
 afterEach(cleanup);
 

@@ -58,6 +58,18 @@ export function wrap835(body: readonly string[], o: WrapOptions = {}): string {
   return isa + term + segs.map((s) => s + term).join("");
 }
 
+/** One interchange / one GS group holding several ST/SE sets: `sets` is [ST02, body] in file order. */
+export function wrap835Sets(sets: readonly (readonly [string, readonly string[]])[]): string {
+  const first = wrap835(sets[0]?.[1] ?? [], { st02: sets[0]?.[0] });
+  const open = first.slice(0, first.indexOf("ST*"));
+  const tail = first.slice(first.indexOf("GE*"));
+  const mid = sets
+    .map(([st02, body]) => [`ST*835*${st02}`, ...body, `SE*${body.length + 2}*${st02}`])
+    .map((segs) => segs.map((x) => `${x}~`).join(""))
+    .join("");
+  return open + mid + tail.replace("GE*1*", `GE*${sets.length}*`);
+}
+
 const HEADER = [
   "TRN*1*EFT0001*1512345678",
   "REF*EV*RECV01",

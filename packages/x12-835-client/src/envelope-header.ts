@@ -42,3 +42,20 @@ export function parseX12EnvelopeHeader(raw: string): X12EnvelopeHeader | null {
 
   return { interchangeControlNumber, transactionSetControlNumber };
 }
+
+/**
+ * Every ST02 in the document, in file order (an 835 file may hold several ST/SE sets, each its own dedup key).
+ * Empty when malformed. The first entry equals {@link parseX12EnvelopeHeader}'s `transactionSetControlNumber`.
+ */
+export function parseX12TransactionSetControlNumbers(raw: string): readonly string[] {
+  const head = parseX12EnvelopeHeader(raw);
+  if (!head) return [];
+  const elementSep = raw[3] as string;
+  const segmentTerm = raw[ISA_SEGMENT_LENGTH - 1] as string;
+  return raw
+    .slice(ISA_SEGMENT_LENGTH)
+    .split(segmentTerm)
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith(`ST${elementSep}`))
+    .map((s) => s.split(elementSep)[2]?.trim() ?? "");
+}

@@ -8,6 +8,7 @@ import {
   replaceSeg,
   type WrapOptions,
   wrap835,
+  wrap835Sets,
 } from "./fixtures-835";
 
 const parse = (raw: string) => parseX12835(raw, "medicare");
@@ -204,9 +205,9 @@ describe("parseX12835 fails closed", () => {
     expectDegraded(wrap835(replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("*C*", "*D*"))), "X12_835_PARSE_FAILED", "BPR03");
   });
 
-  it("rejects a file carrying two transaction sets", () => {
-    const two = ok.replace("SE*", "SE*").replace(/~GE\*/, "~ST*835*0002~SE*2*0002~GE*");
-    expectDegraded(two, "X12_835_PARSE_FAILED", "exactly one ST/SE");
+  it("rejects two transaction sets when GE01 still says one", () => {
+    const two = ok.replace(/~GE\*/, "~ST*835*0002~SE*2*0002~GE*");
+    expectDegraded(two, "X12_835_PARSE_FAILED", "GE01");
   });
 
   it("never throws and keeps reasons free of patient/claim identifiers", () => {
@@ -243,5 +244,65 @@ describe("createX12835Client.parse835 (in-process, no sidecar)", () => {
     const client = createX12835Client({ readRaw: () => Promise.reject(new Error("boom")) });
     const r = await client.parse835({ minioObjectKey: "k", payerProgram: "medicare" });
     expect(!r.ok && r.degraded.code).toBe("X12_835_RAW_READ");
+  });
+});
+
+describe("several ST/SE transaction sets in one file (#660)", () => {
+  const two = wrap835Sets([
+    ["0001", CLEAN_BODY],
+    ["0002", DENIAL_BODY],
+  ]);
+  const pick = (raw: string, st02?: string) => parseX12835(raw, "medicare", {}, st02);
+
+  it("parses each set on its own, balanced on its own", () => {
+    const a = pick(two, "0001");
+    const b = pick(two, "0002");
+    expect(a.ok && [a.value.transactionSetControlNumber, a.value.claims.length]).toEqual([
+      "0001",
+      3,
+    ]);
+    expect(b.ok && [b.value.transactionSetControlNumber, b.value.totalPaymentAmount]).toEqual([
+      "0002",
+      0,
+    ]);
+  });
+
+  it("refuses to guess which set when none is selected, or when the selector is unknown", () => {
+    expectDegraded(two, "X12_835_PARSE_FAILED", "select one by ST02");
+    const r = pick(two, "9999");
+    expect(!r.ok && r.degraded.reason).toContain("no transaction set");
+  });
+
+  it("rejects a duplicate ST02, a wrong GE01 and a wrong SE01 in the second set", () => {
+    const dup = wrap835Sets([
+      ["0001", CLEAN_BODY],
+      ["0001", DENIAL_BODY],
+    ]);
+    expect(!pick(dup, "0001").ok).toBe(true);
+    expectDegraded(two.replace("GE*2*", "GE*3*"), "X12_835_PARSE_FAILED", "GE01");
+    expectDegraded(two.replace(/SE\*\d+\*0002/, "SE*99*0002"), "X12_835_PARSE_FAILED", "SE01");
+  });
+
+  it("rejects a segment smuggled between two sets", () => {
+    expectDegraded(
+      two.replace("~ST*835*0002", "~N1*XX*SMUGGLED~ST*835*0002"),
+      "X12_835_PARSE_FAILED",
+      "out of order",
+    );
+  });
+
+  it("an unbalanced second set fails only that set", () => {
+    const bad = wrap835Sets([
+      ["0001", CLEAN_BODY],
+      ["0002", replaceSeg(DENIAL_BODY, "CAS*CO*45*250.00", "CAS*CO*45*100.00")],
+    ]);
+    expect(pick(bad, "0001").ok).toBe(true);
+    expect(pick(bad, "0002").ok).toBe(false);
+  });
+
+  it("a single-set file still parses with or without the selector", () => {
+    expect(pick(wrap835(CLEAN_BODY)).ok).toBe(true);
+    expect(pick(wrap835(CLEAN_BODY), "0001").ok).toBe(true);
+    expect(pick(wrap835(CLEAN_BODY), "0002").ok).toBe(false);
   });
 });
