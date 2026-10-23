@@ -366,7 +366,7 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
-  // --- WP 6.2 (ADR-0110, PROPOSED): read the AGGREGATE response analytics (ack latency, escalation rate, handoff acceptance, per-discipline
+  // --- WP 6.2 (ADR-0092, PROPOSED): read the AGGREGATE response analytics (ack latency, escalation rate, handoff acceptance, per-discipline
   //     response). Aggregates only, small groups withheld; there is no individual-level key (HR/compliance review first). Migration 1170
   //     grants it to compliance_officer, administrator and org_admin. ---
   "messaging.analytics.read": {

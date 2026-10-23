@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/routes/inbox-typebox.ts - WP 6.1 (ADR-0100) schemas for the smart work inbox. The query takes
+// apps/backend/src/modules/36-messaging/routes/inbox-typebox.ts - WP 6.1 (ADR-0091) schemas for the smart work inbox. The query takes
 // only `limit` (an unknown key is a 422). The response is generic titles, codes, ids and instants: no message text, no patient name.
 import {
   SMART_INBOX_BANDS,

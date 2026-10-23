@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/routes/inbox-routes.ts - WP 6.1 (ADR-0100): the smart work inbox.
+// apps/backend/src/modules/36-messaging/routes/inbox-routes.ts - WP 6.1 (ADR-0091): the smart work inbox.
 //
 //   GET /api/v1/messaging/inbox?limit   one ranked queue of the caller's own waiting work (messaging.read)
 //

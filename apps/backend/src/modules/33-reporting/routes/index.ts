@@ -137,7 +137,7 @@ export function mountM33ReadRoutes(app: FastifyInstance, service: M33ReadRouteSe
   registerBaseMetricRoutes(app, { service });
   registerReportingAdminRoutes(app, { service });
   registerMetricsSeamRoutes(app, { service });
-  registerMessagingResponseAnalyticsRoutes(app); // M36 WP 6.2 (ADR-0110): aggregate response analytics over the M36 seam
+  registerMessagingResponseAnalyticsRoutes(app); // M36 WP 6.2 (ADR-0092): aggregate response analytics over the M36 seam
 }
 
 /**

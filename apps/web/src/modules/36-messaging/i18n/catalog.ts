@@ -1,6 +1,6 @@
 // M36 WP 6.4 - messaging UI strings as i18n keys. English is the source of truth and the fallback. A missing key in
 // another locale NEVER renders blank: translate() returns the English text flagged `fallback`, and the UI shows it
-// with lang="en" and a visible EN tag (WCAG 3.1.2). ADR-0120.
+// with lang="en" and a visible EN tag (WCAG 3.1.2). ADR-0093.
 //
 // SPANISH IS PROVISIONAL: these strings are chrome only (labels, status lines), written without a translator and not
 // clinician-reviewed. They carry `provisional: true` until a reviewer signs off (docs/messaging-hub/brief-clinical-lead-signoff.md).

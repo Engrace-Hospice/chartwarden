@@ -1,4 +1,4 @@
-# ADR-0100 — Messaging smart work inbox: one read-only, deterministically ranked queue of the caller's own work
+# ADR-0091 — Messaging smart work inbox: one read-only, deterministically ranked queue of the caller's own work
 
 - **Status:** **Proposed** (2026-10-23). Built behind the tenant flag `messaging.smart_inbox` (default off). Decisions D1 to D8 are the build team's defaults; the clinical lead has not confirmed the band order or the handoff "expiring soon" threshold.
 - **Date:** 2026-10-23

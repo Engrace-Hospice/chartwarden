@@ -1810,7 +1810,7 @@ export function wireModuleSeams(
             ...(deps.messageBodyCipher ? { cipher: deps.messageBodyCipher } : {}),
           }),
           ...(deps.promotionSource ? { promotionSource: deps.promotionSource } : {}),
-          // WP 6.2 (ADR-0110): aggregate response analytics for M33's route; the tenant flag is read per call.
+          // WP 6.2 (ADR-0092): aggregate response analytics for M33's route; the tenant flag is read per call.
           responseAnalytics: createResponseAnalyticsReader({
             db: deps.db,
             flags: createDrizzleFeatureFlagReader(deps.db),
@@ -5227,7 +5227,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36SnoozeReminders
               ? { snoozeReminders: { service: m36SnoozeReminders.service } }
               : {}),
-            // WP 6.1 (ADR-0100) - smart work inbox (read-only); off unless the tenant flag `messaging.smart_inbox` is on.
+            // WP 6.1 (ADR-0091) - smart work inbox (read-only); off unless the tenant flag `messaging.smart_inbox` is on.
             smartInbox: { flags: featureFlagReader },
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),

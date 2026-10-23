@@ -1,4 +1,4 @@
--- M36 WP 6.2 (ADR-0110, PROPOSED) - response analytics. One permission; no table, no column, no flag row.
+-- M36 WP 6.2 (ADR-0092, PROPOSED) - response analytics. One permission; no table, no column, no flag row.
 --   messaging.analytics.read: read the AGGREGATE response figures (acknowledgment latency, escalation rate, handoff acceptance time,
 --   per-discipline response) over a date range. Granted to compliance_officer, administrator and org_admin only (mirrors 1138); the tenant
 --   decides who else, but an individual-level view needs HR/compliance review and has no key and no route at all.

@@ -1,4 +1,4 @@
-// M36 WP 6.1 (ADR-0100) - the smart work inbox's words. Every state is said in words; a quiet list is never shown for a broken read.
+// M36 WP 6.1 (ADR-0091) - the smart work inbox's words. Every state is said in words; a quiet list is never shown for a broken read.
 import type { SmartInboxBand } from "@chartwarden/types";
 
 export const INBOX_TITLE = "Work inbox";

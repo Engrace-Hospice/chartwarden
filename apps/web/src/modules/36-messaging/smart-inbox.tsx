@@ -1,4 +1,4 @@
-// apps/web/src/modules/36-messaging - WP 6.1 (ADR-0100): the smart work inbox. Read-only: one ranked list of the caller's own waiting work,
+// apps/web/src/modules/36-messaging - WP 6.1 (ADR-0091): the smart work inbox. Read-only: one ranked list of the caller's own waiting work,
 // grouped by the server's bands in the server's order (the web never re-ranks). Every row shows the reason the server gave. It has no
 // acknowledge / accept / complete button: those stay on the screens that own the item. Loading, off, empty, error (with retry), stale
 // and a missing source are each said in words.

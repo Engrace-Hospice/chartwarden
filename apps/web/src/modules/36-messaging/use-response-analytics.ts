@@ -1,4 +1,4 @@
-// M36 WP 6.2 (ADR-0110, PROPOSED) - reads GET /api/v1/messaging/analytics/response through the typed client. The server answers 404 while
+// M36 WP 6.2 (ADR-0092, PROPOSED) - reads GET /api/v1/messaging/analytics/response through the typed client. The server answers 404 while
 // the tenant flag is off (shown as the "not turned on" panel), 401/403 as no access. A newer request supersedes an older one.
 import type { AnalyticsGroupBy, ResponseAnalyticsReport } from "@chartwarden/types";
 import { useCallback, useEffect, useRef, useState } from "react";

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/inbox/inbox-service.ts - WP 6.1 (ADR-0100): the smart work inbox.
+// apps/backend/src/modules/36-messaging/inbox/inbox-service.ts - WP 6.1 (ADR-0091): the smart work inbox.
 //
 // A read-only aggregator over the sources M36 already owns (the acknowledgment queue of ADR-0076 narrowed to the caller, tasks, handoffs
 // awaiting the caller, conversation unread/mention counts). It reads, ranks and explains; it writes nothing and acknowledges nothing.

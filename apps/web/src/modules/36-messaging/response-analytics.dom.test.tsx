@@ -1,4 +1,4 @@
-// M36 WP 6.2 (ADR-0110, PROPOSED) - the response analytics screen against a mocked network boundary: every S0 state (loading, flag off, no access,
+// M36 WP 6.2 (ADR-0092, PROPOSED) - the response analytics screen against a mocked network boundary: every S0 state (loading, flag off, no access,
 // error with retry, insufficient data, offline), the KPI strip, the table twin, the suppressed-groups note, no person anywhere, keyboard and axe.
 import type { ResponseAnalyticsReport } from "@chartwarden/types";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";

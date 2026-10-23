@@ -1,4 +1,4 @@
-// apps/backend/src/modules/33-reporting/routes/messaging-response-analytics.routes.ts - M33 serving M36 WP 6.2 (ADR-0110).
+// apps/backend/src/modules/33-reporting/routes/messaging-response-analytics.routes.ts - M33 serving M36 WP 6.2 (ADR-0092).
 //
 //   GET /api/v1/messaging/analytics/response?from&to&groupBy=class|discipline   (messaging.analytics.read)
 // The window is snapped server-side to COMPLETED whole UTC days (analytics-window.ts): sub-day input cannot isolate a few requests and

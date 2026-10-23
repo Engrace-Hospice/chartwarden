@@ -63,7 +63,7 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       screen: StaffMessaging,
     },
     {
-      // WP 6.1 (ADR-0100): the caller's own ranked work. The screen says "not turned on" while the tenant flag `messaging.smart_inbox` is off.
+      // WP 6.1 (ADR-0091): the caller's own ranked work. The screen says "not turned on" while the tenant flag `messaging.smart_inbox` is off.
       id: "messaging.inbox",
       path: "/messaging/inbox",
       title: "Work inbox",
@@ -134,7 +134,7 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       screen: RetentionGovernance,
     },
     {
-      // WP 6.2 (ADR-0110, proposed): aggregate response analytics. Hidden (404 -> "not turned on") until the tenant flag messaging.response_analytics is on.
+      // WP 6.2 (ADR-0092, proposed): aggregate response analytics. Hidden (404 -> "not turned on") until the tenant flag messaging.response_analytics is on.
       id: "messaging.response-analytics",
       path: "/messaging/analytics",
       title: "Response analytics",

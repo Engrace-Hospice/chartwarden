@@ -1,4 +1,4 @@
-// apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox.ts - M33 serving M36 WP 6.2 (ADR-0110).
+// apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox.ts - M33 serving M36 WP 6.2 (ADR-0092).
 // Query and response shapes for GET /api/v1/messaging/analytics/response. The response has no person, patient or content field by design.
 import { ANALYTICS_GROUP_BY } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";

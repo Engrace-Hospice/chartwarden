@@ -172,7 +172,7 @@ export interface MessagingRouteDeps {
   unacknowledged?: UnacknowledgedRouteDeps;
   /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
   snoozeReminders?: SnoozeReminderRouteDeps;
-  /** WP 6.1 (ADR-0100): the smart work inbox (read-only; tenant flag `messaging.smart_inbox`). Omitted => reads as off. */
+  /** WP 6.1 (ADR-0091): the smart work inbox (read-only; tenant flag `messaging.smart_inbox`). Omitted => reads as off. */
   inbox?: InboxRouteDeps;
   /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
   oncall?: OnCallRouteDeps;

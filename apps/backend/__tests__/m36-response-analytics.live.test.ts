@@ -1,5 +1,5 @@
 /**
- * M36 WP 6.2 (ADR-0110) - response analytics, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
+ * M36 WP 6.2 (ADR-0092) - response analytics, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, M33's route, the M1 seam registry) over the REAL M36 reader. Rows are seeded by the
  * superuser connection (history needs timestamps in the past, so the guard triggers are bypassed with session_replication_role); every

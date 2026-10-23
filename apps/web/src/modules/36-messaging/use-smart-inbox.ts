@@ -1,4 +1,4 @@
-// M36 WP 6.1 (ADR-0100) - reads the smart work inbox. A failed refresh keeps the last answer and says it may be stale; 401/403 end the
+// M36 WP 6.1 (ADR-0091) - reads the smart work inbox. A failed refresh keeps the last answer and says it may be stale; 401/403 end the
 // reads (fail closed, no retry); the safety-net poll re-reads because a request can become overdue with nobody touching the page.
 import type { SmartInboxResponse } from "@chartwarden/types";
 import { useCallback, useEffect, useRef, useState } from "react";

@@ -1,4 +1,4 @@
-// M36 WP 6.1 (ADR-0100) - the smart work inbox: ONE read-only, ranked queue of the work waiting on the caller. It stores nothing and
+// M36 WP 6.1 (ADR-0091) - the smart work inbox: ONE read-only, ranked queue of the work waiting on the caller. It stores nothing and
 // acts on nothing: every row points at the surface that already owns the item (acknowledgment request, task, handoff, conversation),
 // and the ranking is a fixed rule table, not a model. Behind the ops flag `messaging.smart_inbox` (default off, absent = off).
 

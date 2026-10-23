@@ -4,7 +4,7 @@
 //  - the emergency-floor template (general.after_hours_emergency, required phrases "call 911" / "on-call line") has NO
 //    translation here: the floor cannot be verified across languages, so it stays English until a reviewer adds one;
 //  - a template with a tenant overlay (`customized`) is the tenant's own wording, so the platform translation is skipped;
-//  - no machine translation. A tenant-flagged "Machine translated, check original" mode is NOT built (ADR-0120).
+//  - no machine translation. A tenant-flagged "Machine translated, check original" mode is NOT built (ADR-0093).
 // The Spanish rows below are DRAFTS: review.state "unreviewed", so nothing is offered until a clinician signs and the
 // reviewer/date are filled in.
 import { DEFAULT_LOCALE, type Locale } from "./catalog";

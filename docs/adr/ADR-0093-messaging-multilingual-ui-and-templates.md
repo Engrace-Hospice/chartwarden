@@ -1,4 +1,4 @@
-# ADR-0120 — Messaging multilingual UI and reviewed template translations
+# ADR-0093 — Messaging multilingual UI and reviewed template translations
 
 - **Status:** **Proposed** (2026-10-23). Mechanism built for the saved-reply picker; Spanish is provisional and no clinician sign-off is recorded.
 - **Date:** 2026-10-23

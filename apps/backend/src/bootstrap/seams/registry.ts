@@ -471,7 +471,7 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: chartPromotionSourceReaderDenyStub,
   },
-  // M36 WP 6.2 (ADR-0110) - aggregate-only response analytics (counts, rates, durations; no content, no patient, no person), served by
+  // M36 WP 6.2 (ADR-0092) - aggregate-only response analytics (counts, rates, durations; no content, no patient, no person), served by
   // M33's route. Not a PHI surface. M36 registers the real reader in registerMessagingSeams; until then every call throws (fail closed).
   {
     key: "MessagingResponseAnalyticsReader",

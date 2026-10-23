@@ -1,4 +1,4 @@
-// M36 WP 6.2 (ADR-0110, PROPOSED) - words for the response analytics screen. Plain sentences; figures are aggregates, never people.
+// M36 WP 6.2 (ADR-0092, PROPOSED) - words for the response analytics screen. Plain sentences; figures are aggregates, never people.
 import type { AnalyticsGroupBy } from "@chartwarden/types";
 
 export const TITLE = "Response analytics";

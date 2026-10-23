@@ -1,5 +1,5 @@
 /**
- * M36 WP 6.1 (ADR-0100) - the smart work inbox, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
+ * M36 WP 6.1 (ADR-0091) - the smart work inbox, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `messaging.read`, the DB unacknowledged reader narrowed to the assignee, the DB task
  * service, the DB channel list, read-audit) over rows seeded through the real insert guards.

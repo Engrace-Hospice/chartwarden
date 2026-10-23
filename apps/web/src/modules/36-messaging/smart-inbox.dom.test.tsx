@@ -1,4 +1,4 @@
-// M36 WP 6.1 (ADR-0100) - the work inbox screen: loading, rows in the server's band order with the server's reason, restricted rows with no
+// M36 WP 6.1 (ADR-0091) - the work inbox screen: loading, rows in the server's band order with the server's reason, restricted rows with no
 // link, flag off, empty, error with retry, a missing source and an incomplete urgent list said in words, no write controls, axe clean.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SmartInboxItemDto, SmartInboxResponse } from "@chartwarden/types";

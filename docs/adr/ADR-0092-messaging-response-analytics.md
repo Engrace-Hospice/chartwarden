@@ -1,4 +1,4 @@
-# ADR-0110 — Messaging response analytics: aggregate-only figures over M33, small cells withheld, no individual view
+# ADR-0092 — Messaging response analytics: aggregate-only figures over M33, small cells withheld, no individual view
 
 - **Status:** **Proposed** (2026-10-23). Built (see Implementation status). The minimum cohort of 5 and the whole question of who may see which figure are the build team's defaults; HR and compliance concurrence is not recorded and is required before the threshold is treated as settled or any individual-level view is even considered.
 - **Date:** 2026-10-23

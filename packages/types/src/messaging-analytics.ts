@@ -1,4 +1,4 @@
-// M36 WP 6.2 (ADR-0110, PROPOSED) - response analytics. AGGREGATES ONLY: counts, rates and durations of acknowledgment requests and
+// M36 WP 6.2 (ADR-0092, PROPOSED) - response analytics. AGGREGATES ONLY: counts, rates and durations of acknowledgment requests and
 // handoffs; no message content, no patient, no user id. There is deliberately NO per-person field anywhere in this contract.
 // M36 owns the numbers (it owns the tables); M33 serves the HTTP route over the `MessagingResponseAnalyticsReader` seam.
 
@@ -9,7 +9,7 @@ export const RESPONSE_ANALYTICS_FLAG_KEY = "messaging.response_analytics";
 export const RESPONSE_ANALYTICS_PERMISSION = "messaging.analytics.read";
 
 /**
- * PROVISIONAL minimum cohort (ADR-0110): a figure is shown only when at least this many DISTINCT people stand behind it. Counting people,
+ * PROVISIONAL minimum cohort (ADR-0092): a figure is shown only when at least this many DISTINCT people stand behind it. Counting people,
  * not requests, because five requests answered by one clinician is that clinician's record. The value is a placeholder for the HR/compliance
  * decision (11-decision-sheet); lowering it needs that sign-off, raising it does not.
  */
@@ -18,7 +18,7 @@ export const ANALYTICS_MIN_COHORT = 5;
 /** Longest window a single read may cover (live query over indexed tables; an MV-backed longer range is a follow-up). */
 export const ANALYTICS_MAX_RANGE_DAYS = 92;
 
-/** Breakdown dimensions. `discipline` is the assignee's clinical role key, never the person. Team and shift are not built (ADR-0110). */
+/** Breakdown dimensions. `discipline` is the assignee's clinical role key, never the person. Team and shift are not built (ADR-0092). */
 export const ANALYTICS_GROUP_BY = ["class", "discipline"] as const;
 export type AnalyticsGroupBy = (typeof ANALYTICS_GROUP_BY)[number];
 

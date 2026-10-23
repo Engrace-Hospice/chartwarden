@@ -269,7 +269,7 @@ export function mountMessagingRoutes(
     ackRequests?: _AckRouteDeps;
     /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
     snoozeReminders?: _SnoozeReminderRouteDeps;
-    /** WP 6.1 (ADR-0100): the smart work inbox. `flags` is the platform flag reader for `messaging.smart_inbox`; omitted => off. */
+    /** WP 6.1 (ADR-0091): the smart work inbox. `flags` is the platform flag reader for `messaging.smart_inbox`; omitted => off. */
     smartInbox?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/inbox/binding.ts - WP 6.1 (ADR-0100): wires the smart inbox over the services M36 already built.
+// apps/backend/src/modules/36-messaging/inbox/binding.ts - WP 6.1 (ADR-0091): wires the smart inbox over the services M36 already built.
 // Nothing here queries a table: the urgent source is the ADR-0076 service narrowed to the caller, tasks and handoffs are their own
 // services' list calls, and the conversation counts are the channel list's. Each source honours its OWN tenant flag (tasks off => no task
 // rows), so the inbox can never show what the owning screen would hide.

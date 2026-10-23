@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/analytics/response-analytics-reader.ts - WP 6.2 (ADR-0110): the aggregate response analytics M36
+// apps/backend/src/modules/36-messaging/analytics/response-analytics-reader.ts - WP 6.2 (ADR-0092): the aggregate response analytics M36
 // publishes as the `MessagingResponseAnalyticsReader` seam (M33 serves the route).
 //
 // Reads only M36's own tables (acknowledgment request/event, clinical_handoff) inside the caller's tenant context (FORCE RLS plus an

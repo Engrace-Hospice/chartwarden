@@ -1,4 +1,4 @@
-// apps/backend/src/modules/33-reporting/routes/analytics-window.ts - M33 serving M36 WP 6.2 (ADR-0110): the window rule.
+// apps/backend/src/modules/33-reporting/routes/analytics-window.ts - M33 serving M36 WP 6.2 (ADR-0092): the window rule.
 //
 // `from` and `to` are caller-chosen instants. Two overlapping windows that differ by a small slice would isolate the few requests in that
 // slice (difference the two answers), and a window that includes the current, still-growing day would let a poller difference successive
@@ -8,7 +8,7 @@
 // Any two requests whose endpoints fall on the same UTC days get byte-identical windows, and a request made at 01:00 and one at 23:00 on the
 // same UTC day see the same data (today is never included). The 92-day cap is measured on the final window. A window with no completed day
 // in it (only today, or the future) is `null`: the route answers insufficient_data. Windows that differ by one or more WHOLE days still
-// difference (documented residue, ADR-0110 D6). `now` is injected so the rule is testable.
+// difference (documented residue, ADR-0092 D6). `now` is injected so the rule is testable.
 import { ANALYTICS_MAX_RANGE_DAYS, ValidationError } from "@chartwarden/types";
 
 export const DAY_MS = 86_400_000;

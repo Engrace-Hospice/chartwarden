@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/analytics/cohort-floor.ts - WP 6.2 (ADR-0110): small-cell suppression, pure.
+// apps/backend/src/modules/36-messaging/analytics/cohort-floor.ts - WP 6.2 (ADR-0092): small-cell suppression, pure.
 //
 // Rules (provisional minimum `minCohort`, counted in DISTINCT people):
 //   1. a group is shown only when at least `minCohort` distinct people stand behind it;

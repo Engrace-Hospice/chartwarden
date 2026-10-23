@@ -1,4 +1,4 @@
-// M36 WP 6.2 (ADR-0110, PROPOSED) - "Response analytics" for compliance and operations. KPI strip plus a breakdown by kind of request or by
+// M36 WP 6.2 (ADR-0092, PROPOSED) - "Response analytics" for compliance and operations. KPI strip plus a breakdown by kind of request or by
 // discipline, all on the shared kit. AGGREGATES ONLY: the server never sends a person, patient or message, and withholds any group with fewer
 // than the minimum number of distinct people; this screen says so rather than showing a hole. Every bar has its figure in the table beside it
 // (the table is the chart's twin); nothing is conveyed by colour alone. There is no view of an individual.
