@@ -29,22 +29,20 @@ function toCell({ members: _members, ...cell }: RawGroupRow): ResponseAnalyticsC
 }
 
 /** The hidden groups as ONE synthetic row (members concatenated, requests summed): what "total minus shown" describes. */
-const residualOf = (rows: readonly RawGroupRow[]): RawGroupRow => ({
-  group: "residual",
+const residualOf = (rows: readonly RawGroupRow[]): FloorSubject => ({
   members: rows.flatMap((r) => r.members),
   requests: rows.reduce((sum, r) => sum + r.requests, 0),
-  acknowledged: 0,
-  ackedBeforeDeadlineRate: null,
-  escalationRate: null,
-  medianAckSeconds: null,
 });
 
 /** The largest number of requests any one person owns in the group. */
-function topPersonRequests(row: RawGroupRow): number {
+function topPersonRequests(row: FloorSubject): number {
   const counts = new Map<string, number>();
   for (const m of row.members) counts.set(m, (counts.get(m) ?? 0) + 1);
   return Math.max(0, ...counts.values());
 }
+
+/** What the floor judges: one assignee id per request, and the request count. */
+export type FloorSubject = Pick<RawGroupRow, "members" | "requests">;
 
 export interface FloorLimits {
   readonly minCohort: number;
@@ -53,7 +51,7 @@ export interface FloorLimits {
   readonly maxPersonShare: number;
 }
 
-export const clearsFloor = (row: RawGroupRow, l: FloorLimits): boolean =>
+export const clearsFloor = (row: FloorSubject, l: FloorLimits): boolean =>
   new Set(row.members).size >= l.minCohort &&
   row.requests >= l.minRequests &&
   topPersonRequests(row) <= l.maxPersonShare * row.requests;
