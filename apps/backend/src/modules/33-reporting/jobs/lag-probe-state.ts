@@ -4,11 +4,7 @@
 // a single boolean key on the SAME Valkey connection the M33 BullMQ workers already use is the right shape —
 // no new infra, no DB table (the state is disposable: a lost/reset key just re-arms the hysteresis at
 // `consecutiveOver=0`, which self-corrects within a couple of 30s ticks).
-import type {
-  LagProbeState,
-  LagProbeStatePort,
-  ReplicaLagAdvisoryPort,
-} from "@chartwarden/reporting";
+import type { LagProbeState, LagProbeStatePort, ReplicaLagAdvisoryPort } from "@chartwarden/reporting";
 import type Redis from "ioredis";
 
 const STATE_KEY = "m33:lag_probe:state";
