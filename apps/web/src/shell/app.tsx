@@ -122,11 +122,28 @@ function GlobalResponseWatcher(): null {
     if (status === "anonymous") clearAllDrafts();
   }, [status]);
   useEffect(() => {
+    // Heading to sign in again means the next expiry is a new one: `status` stays "authenticated" until a fresh
+    // sign-in settles, so without this a second dead session (e.g. an unlock lockout) would be swallowed silently.
+    if (pathname.startsWith("/login")) alreadyExpiredRef.current = false;
+  }, [pathname]);
+  useEffect(() => {
     if (!signal) return;
     if (signal.kind === "session-expired") {
       if (status === "authenticated" && !alreadyExpiredRef.current) {
         alreadyExpiredRef.current = true;
         navigate("/expired");
+      }
+    } else if (signal.kind === "org-not-selected") {
+      // A live session with no bound org (#589): pick one. Drafts stay - nothing here ended the session.
+      // Only for a signed-in user: an anonymous visitor on a public page is not "between sign-in and org pick".
+      // Not after an expiry: a late org-less 401 from the same dead session must not pull the user off /expired.
+      if (
+        status === "authenticated" &&
+        !alreadyExpiredRef.current &&
+        pathname !== "/expired" &&
+        !pathname.startsWith("/login")
+      ) {
+        navigate("/login/organization", { replace: true });
       }
     } else if (signal.kind === "tenant-unavailable") {
       // Already there (the page's own requests may be refused too): re-navigating would only churn history/state.

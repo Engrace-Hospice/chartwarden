@@ -45,6 +45,7 @@ export {
   registerAuditorRedeemRoutes,
 } from "./routes/auditor-redeem";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
+export { type UnlockGuard, createUnlockGuard } from "./unlock-guard";
 // F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
 // termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`
 // stays unbound). Exported for composition-root wiring + the live test.
@@ -484,6 +485,8 @@ export function mountIdentityRoutes(
     linkDelivery?: IdentityRouteDeps["linkDelivery"];
     /** The failed-redemption budget (per IP). */
     linkRedeemThrottle?: IdentityRouteDeps["linkRedeemThrottle"];
+    passwordVerifier?: IdentityRouteDeps["passwordVerifier"];
+    unlockGuard?: IdentityRouteDeps["unlockGuard"];
     /** M5's minimum decedent read for `GET /funeral/case`. */
     funeralCases?: IdentityRouteDeps["funeralCases"];
     /** GAP-005 - the MFA matrix gate `select-organization` consults before binding an organization. */
@@ -527,6 +530,8 @@ export function mountIdentityRoutes(
     ...(invite?.linkSessions ? { linkSessions: invite.linkSessions } : {}),
     ...(invite?.linkDelivery ? { linkDelivery: invite.linkDelivery } : {}),
     ...(invite?.linkRedeemThrottle ? { linkRedeemThrottle: invite.linkRedeemThrottle } : {}),
+    ...(invite?.passwordVerifier ? { passwordVerifier: invite.passwordVerifier } : {}),
+    ...(invite?.unlockGuard ? { unlockGuard: invite.unlockGuard } : {}),
     ...(invite?.funeralCases ? { funeralCases: invite.funeralCases } : {}),
     ...(invite?.mfaGate ? { mfaGate: invite.mfaGate } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),

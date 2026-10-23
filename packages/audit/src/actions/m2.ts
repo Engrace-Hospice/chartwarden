@@ -86,6 +86,16 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   ),
   compliance("m2.session.step_up.completed", "A step-up (re-auth) challenge was completed."),
   compliance("m2.session.step_up.failed", "A step-up (re-auth) challenge failed."),
+  compliance("m2.session.unlocked", "A locked screen was unlocked by re-entering the password (same session)."),
+  compliance("m2.session.unlock_failed", "A screen unlock attempt presented a wrong password."),
+  compliance(
+    "m2.session.unlock_throttled",
+    "A screen unlock attempt was refused unchecked because the session's failed-password budget was already spent.",
+  ),
+  compliance(
+    "m2.session.terminated_unlock_lockout",
+    "A session was ended after its final allowed failed screen-unlock attempt.",
+  ),
   compliance(
     "m2.session.terminated_step_up_lockout",
     "A session was terminated after step-up lockout.",

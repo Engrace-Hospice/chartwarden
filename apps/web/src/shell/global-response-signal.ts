@@ -12,6 +12,7 @@ export type TenantUnavailableReason = "closed" | "suspended" | "unknown";
 export type GlobalResponseSignal =
   | { kind: "session-expired" | "service-unavailable" }
   | { kind: "tenant-unavailable"; reason: TenantUnavailableReason }
+  | { kind: "org-not-selected" }
   | null;
 
 type Listener = () => void;
@@ -31,7 +32,12 @@ const listeners = new Set<Listener>();
  * FIRST mistake, which made the lockout counter unreachable — attempts 2 and 3 could never happen —
  * and made the screen's own "That code didn't verify. Try again" branch dead code.
  */
-const NOT_SESSION_DEATH_ON_401 = ["/api/v1/sessions/step-up", "/api/v1/portal/sessions/step-up"];
+const NOT_SESSION_DEATH_ON_401 = [
+  "/api/v1/sessions/step-up",
+  "/api/v1/portal/sessions/step-up",
+  // #589 - a wrong screen-lock password is 401 INVALID_CREDENTIALS on a perfectly live session.
+  "/api/v1/auth/unlock",
+];
 
 /** Map an observed HTTP status (and the URL it came from) to a shell-level signal, or null. */
 export function signalForStatus(status: number, url?: string): GlobalResponseSignal {
@@ -75,6 +81,21 @@ export async function tenantSignalFromResponse(response: Response): Promise<Glob
   }
 }
 
+/**
+ * True for a 401 whose body is `{ error: { code: "ORGANIZATION_NOT_SELECTED" } }`: a live session that has not bound an
+ * organization (#589). Not session death - the user goes to the org picker and keeps their drafts. Reads a clone; any
+ * unreadable or different body is false, so the caller keeps treating the 401 as a dead session (fail safe).
+ */
+export async function isOrgNotSelectedResponse(response: Response): Promise<boolean> {
+  try {
+    if (!response.headers.get("content-type")?.includes("json")) return false;
+    const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
+    return body?.error?.code === "ORGANIZATION_NOT_SELECTED";
+  } catch {
+    return false;
+  }
+}
+
 /** The pathname of an observed response URL, or undefined when there is nothing parseable. */
 function pathOf(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -91,7 +112,17 @@ function pathOf(url: string | undefined): string | undefined {
  */
 export function handleObservedResponse(status: number, url: string | undefined, response: Response): void {
   const signal = signalForStatus(status, url);
-  if (signal) {
+  if (signal?.kind === "session-expired") {
+    // A 401 is only session death once its body says so: an org-less session gets the same status (#589).
+    void isOrgNotSelectedResponse(response).then((orgLess) => {
+      // Two 401s can be in flight; a genuine session death must never be overwritten by the milder org-less signal.
+      if (orgLess && getGlobalResponseSignal()?.kind !== "session-expired") {
+        setGlobalResponseSignal({ kind: "org-not-selected" });
+      } else {
+        setGlobalResponseSignal(signal);
+      }
+    });
+  } else if (signal) {
     setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx
   } else if (mayCarryTenantRefusal(status, url)) {
     void tenantSignalFromResponse(response).then((tenantSignal) => {

@@ -78,6 +78,10 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     producer:
       "authenticate hook — set to the SessionTimeoutEnforcer verdict (expired_idle / expired_absolute / revoked) when it ends the session; read by the error handler to answer 401 SESSION_EXPIRED (GAP-002, bootstrap/plugins/authenticate.ts).",
   },
+  orgUnbound: {
+    producer:
+      "authenticate hook — set true for a session that exists but has not bound an organization yet (the sign-in -> select-organization window); read by the error handler to answer a plain 401 as ORGANIZATION_NOT_SELECTED so the web shell routes to the org picker instead of /expired (#589, bootstrap/plugins/authenticate.ts).",
+  },
   sessionId: {
     producer:
       "authenticate hook — the real Better Auth session id, from the session snapshot (bootstrap/plugins/authenticate.ts).",

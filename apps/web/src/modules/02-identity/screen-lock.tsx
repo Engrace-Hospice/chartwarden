@@ -1,5 +1,5 @@
 import { SESSION_POLICY } from "@chartwarden/types";
-import { Modal } from "@chartwarden/ui";
+import { Modal, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Idle Screen-Lock overlay (M2 Auth, AUTH polish).
 // Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
 // re-auth (password); the SESSION STAYS ALIVE (lifecycle active → screen_locked → active, M2 §2.2.4).
@@ -7,15 +7,17 @@ import { Modal } from "@chartwarden/ui";
 // module-free), so it covers only the authenticated frame — the chromeless /login flow is never locked.
 //
 // The idle interval is the platform floor SESSION_POLICY.screenLockSec (one source of truth, §11 D1).
-// Unlock soft-re-auths the SAME user (email when present, otherwise the session username), which the
-// server is the authoritative enforcer of. The screen-lock pgEnum/lifecycle is server-tracked; this is
-// the client surface. The lock applies only to the classes in SESSION_POLICY.screenLockClasses
+// Unlock re-proves the password for the SAME session (POST /api/v1/auth/unlock, #589): the server verifies it
+// for the session's own user and mints nothing, so the session id, bound organization and step-up freshness
+// survive. It must NOT call sign-in: that creates a second session with no organization (the org binds only in
+// select-organization), and the next org-scoped request 401s. The screen-lock pgEnum/lifecycle is
+// server-tracked; this is the client surface. The lock applies only to the classes in SESSION_POLICY.screenLockClasses
 // (staff/auditor — §2.2.4 screenLockApplies); external-collaborator / funeral-home magic-link windows
 // are never screen-locked. An unknown/absent class fails SAFE (the lock applies).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { clearAllDrafts } from "../../shell/ceremony-drafts";
-import { clearPendingNotificationLink } from "../../shell/pending-deep-link";
+import { setGlobalResponseSignal } from "../../shell/global-response-signal";
 import { authClient } from "./auth-client";
 
 const IDLE_MS = SESSION_POLICY.screenLockSec * 1000;
@@ -27,19 +29,31 @@ function screenLockApplies(sessionClass: string | null | undefined): boolean {
   return (SESSION_POLICY.screenLockClasses as readonly string[]).includes(sessionClass);
 }
 
+/** What the overlay says for each refusal code; anything else gets `default`. */
+const UNLOCK_MESSAGES: Readonly<Record<string, string>> = {
+  INVALID_CREDENTIALS: "That password didn’t match. Try again.",
+  UNLOCK_LOCKED_OUT: "Too many failed attempts. This session has ended - sign in again.",
+  TOO_MANY_FAILED_ATTEMPTS: "Too many failed attempts. Wait a few minutes before trying again.",
+  default: "Couldn’t unlock just now. Try again, or sign out and sign in again.",
+};
+
+/** The envelope code of a refused response (`{ error: { code } }`), if it carries one. */
+function refusalCode(error: unknown): string | undefined {
+  const code = (error as { error?: { code?: unknown } } | null)?.error?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
 export function ScreenLock(): JSX.Element | null {
+  const client = useApiClient();
   // `applies` is undefined until the session resolves; null-render until then (don't arm prematurely).
   const [applies, setApplies] = useState<boolean | undefined>(undefined);
   const [locked, setLocked] = useState(false);
-  const [identity, setIdentity] = useState<{
-    kind: "email" | "username";
-    value: string;
-    userId: string;
-  } | null>(null);
+  const [identity, setIdentity] = useState<{ value: string } | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const passwordInput = useRef<HTMLInputElement | null>(null);
 
   // Resolve the session once: capture the email (so unlock only needs the password) and decide whether
   // the lock applies to this class. No session ⇒ the lock is inert (the authenticated frame should
@@ -48,11 +62,8 @@ export function ScreenLock(): JSX.Element | null {
     let alive = true;
     void authClient.getSession().then(({ data }) => {
       if (!alive) return;
-      const resolved = data?.user?.email
-        ? { kind: "email" as const, value: data.user.email, userId: data.user.id }
-        : data?.user?.username
-          ? { kind: "username" as const, value: data.user.username, userId: data.user.id }
-          : null;
+      const label = data?.user?.email || data?.user?.username;
+      const resolved = label ? { value: label } : null;
       if (!resolved) {
         setApplies(false);
         return;
@@ -84,35 +95,36 @@ export function ScreenLock(): JSX.Element | null {
 
   async function unlock(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!identity) return;
     setBusy(true);
     setError(null);
-    const { data, error: err } =
-      identity.kind === "email"
-        ? await authClient.signIn.email({ email: identity.value, password })
-        : await authClient.signIn.username({ username: identity.value, password });
-    if (err) {
-      setBusy(false);
-      setError("That password didn’t match. Try again.");
-      setPassword("");
-      return;
+    let ok = false;
+    let status = 0;
+    let refused: unknown;
+    try {
+      // The verdict is the HTTP status, never the truthiness of `error`: openapi-fetch hands back the raw body text
+      // for a non-JSON error, which is "" for a bodiless 502 from a gateway - falsy, and not a successful unlock.
+      const result = await client.POST("/api/v1/auth/unlock", { body: { password } });
+      ok = result.response.ok;
+      status = result.response.status;
+      refused = result.error;
+    } catch {
+      refused = undefined; // network failure: stays locked with the generic message
     }
-    if (data?.twoFactorRedirect) {
-      setBusy(false);
-      setError("Two-factor verification is required. Sign out and complete a full sign-in.");
-      setPassword("");
-      return;
-    }
-    const refreshed = await authClient.getSession();
     setBusy(false);
-    if (refreshed.data?.user.id !== identity.userId) {
-      await authClient.signOut().catch(() => undefined);
-      clearAllDrafts();
-      clearPendingNotificationLink();
-      window.location.assign("/login");
+    setPassword("");
+    if (!ok) {
+      const code = refusalCode(refused);
+      // /auth/unlock is exempt from the blanket 401 -> expired rule (a wrong password is a 401 too), so a session
+      // that is truly gone (UNAUTHORIZED, or SESSION_EXPIRED once the idle/absolute timeout fired) is reported here.
+      // 423 UNLOCK_LOCKED_OUT: the final failed attempt, after which the server has already ended the session.
+      // A 401 only counts when it says so: a bodiless/odd 401 from a proxy on a live session must not wipe drafts.
+      if ((status === 401 && (code === "UNAUTHORIZED" || code === "SESSION_EXPIRED")) || status === 423) {
+        setGlobalResponseSignal({ kind: "session-expired" });
+      }
+      setError((code && UNLOCK_MESSAGES[code]) || UNLOCK_MESSAGES.default);
+      passwordInput.current?.focus(); // the field was just cleared; keep the keyboard user in the dialog
       return;
     }
-    setPassword("");
     setLocked(false); // re-arms the idle timer via the effect above
   }
 
@@ -140,13 +152,22 @@ export function ScreenLock(): JSX.Element | null {
           type="password"
           autoComplete="current-password"
           aria-label="Password"
+          ref={passwordInput}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "screen-lock-error" : undefined}
           required
           value={password}
           onChange={(ev) => setPassword(ev.target.value)}
           style={field}
         />
         {error ? (
-          <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+          <p
+            id="screen-lock-error"
+            role="alert"
+            style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}
+          >
+            {error}
+          </p>
         ) : null}
         <button type="submit" disabled={busy || !password} style={primaryBtn}>
           {busy ? "Unlocking…" : "Unlock"}
@@ -154,10 +175,14 @@ export function ScreenLock(): JSX.Element | null {
         <button
           type="button"
           onClick={() => {
-            void authClient.signOut().then(() => {
-              clearAllDrafts();
-              window.location.href = "/login";
-            });
+            // Leave even if the sign-out call fails: the lock must never be a dead end.
+            void authClient
+              .signOut()
+              .catch(() => undefined)
+              .then(() => {
+                clearAllDrafts();
+                window.location.href = "/login";
+              });
           }}
           style={linkBtn}
         >

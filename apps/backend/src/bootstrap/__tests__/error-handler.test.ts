@@ -204,4 +204,26 @@ describe("applyErrorHandler — diagnosable failures reach the caller (F-022 / #
     expect(plain.json().error.code).toBe("UNAUTHORIZED");
     await app.close();
   });
+
+  it("#589: a plain 401 from a signed-in session with no org answers ORGANIZATION_NOT_SELECTED, wherever it was thrown", async () => {
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      // `orgUnbound` is what the authenticate hook stamps for a session that has not bound an org yet.
+      (request as { context?: unknown }).context = {
+        correlationId: "cid-test",
+        attributes: request.headers["x-org-unbound"] ? { orgUnbound: true } : {},
+      };
+    });
+    app.get("/guarded", async () => {
+      throw new ChartWardenError("UNAUTHORIZED", "Authentication required", 401);
+    });
+
+    const orgLess = await app.inject({ url: "/guarded", headers: { "x-org-unbound": "1" } });
+    expect(orgLess.statusCode).toBe(401);
+    expect(orgLess.json().error.code).toBe("ORGANIZATION_NOT_SELECTED");
+    // Any other 401 (no session, or a session whose org no longer resolves) stays the plain UNAUTHORIZED.
+    expect((await app.inject({ url: "/guarded" })).json().error.code).toBe("UNAUTHORIZED");
+    await app.close();
+  });
 });

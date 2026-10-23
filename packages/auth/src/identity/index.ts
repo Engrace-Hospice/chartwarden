@@ -212,6 +212,12 @@ export {
 } from "./link-session";
 
 export {
+  type PasswordVerifier,
+  type PasswordVerifierCapableAuth,
+  createPasswordVerifier,
+} from "./password-verifier";
+
+export {
   type TenantOriginMatcher,
   type TenantOriginResolver,
   createTenantOriginMatcher,

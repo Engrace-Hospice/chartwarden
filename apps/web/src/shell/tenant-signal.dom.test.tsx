@@ -66,3 +66,25 @@ describe("tenant refusal end to end", () => {
     expect(screen.getByRole("heading", { name: /suspended/i })).toBeTruthy();
   });
 });
+
+// #589 phase 2 - the shell sends a signed-in-but-org-less 401 to the org picker rather than /expired.
+describe("org-less 401 end to end", () => {
+  it("routes a 401 ORGANIZATION_NOT_SELECTED body to /login/organization, not /expired", async () => {
+    const client = mount(refusal("ORGANIZATION_NOT_SELECTED", 401), "/");
+    await client.GET("/api/v1/patients" as never, {} as never);
+    await waitFor(() => expect(window.location.pathname).toBe("/login/organization"));
+    expect(getGlobalResponseSignal()).toBeNull(); // consumed
+  });
+
+  it("does not pull the user off /expired when a late org-less 401 follows a genuine one", async () => {
+    let code = "UNAUTHORIZED";
+    const client = mount(async () => refusal(code, 401)(), "/");
+    await client.GET("/api/v1/patients" as never, {} as never);
+    await waitFor(() => expect(window.location.pathname).toBe("/expired"));
+
+    code = "ORGANIZATION_NOT_SELECTED";
+    await client.GET("/api/v1/patients" as never, {} as never);
+    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull());
+    expect(window.location.pathname).toBe("/expired");
+  });
+});

@@ -32,7 +32,38 @@ export const IDENTITY_AUDIT_EVENTS = {
   organizationActivated: "m2.organization.activated",
   organizationSuspended: "m2.organization.suspended",
   organizationClosed: "m2.organization.closed",
+  sessionUnlocked: "m2.session.unlocked",
+  sessionUnlockFailed: "m2.session.unlock_failed",
+  sessionUnlockThrottled: "m2.session.unlock_throttled",
+  sessionTerminatedUnlockLockout: "m2.session.terminated_unlock_lockout",
 } as const;
+
+/** What an unlock attempt came to (#589). `locked_out` is the final failure that ends the session. */
+export type SessionUnlockOutcome = "unlocked" | "failed" | "throttled" | "locked_out";
+
+const UNLOCK_AUDIT: Record<SessionUnlockOutcome, { eventType: string; outcome: "success" | "failure" }> = {
+  unlocked: { eventType: IDENTITY_AUDIT_EVENTS.sessionUnlocked, outcome: "success" },
+  failed: { eventType: IDENTITY_AUDIT_EVENTS.sessionUnlockFailed, outcome: "failure" },
+  throttled: { eventType: IDENTITY_AUDIT_EVENTS.sessionUnlockThrottled, outcome: "failure" },
+  locked_out: { eventType: IDENTITY_AUDIT_EVENTS.sessionTerminatedUnlockLockout, outcome: "failure" },
+};
+
+/** Record a screen-lock unlock attempt (#589): a re-authentication of the SAME session. Never carries the password. */
+export async function auditSessionUnlock(
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: { sessionId: string; organizationId: string; result: SessionUnlockOutcome },
+): Promise<void> {
+  const { eventType, outcome } = UNLOCK_AUDIT[input.result];
+  await audit(tx, ctx, {
+    eventType,
+    resourceKind: "session",
+    resourceId: input.sessionId,
+    outcome,
+    retentionClass: "compliance",
+    after: { organizationId: input.organizationId },
+  });
+}
 
 /** Record an org invitation being minted (token never enters the payload; email redacted). */
 export async function auditUserInvited(

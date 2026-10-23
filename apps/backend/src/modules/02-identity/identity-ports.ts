@@ -251,6 +251,8 @@ export interface SessionWriter {
   revokeForMembership(membershipId: string): Promise<number> | number;
   /** Revoke every session belonging to a user (full deactivation §7.5). Returns # revoked. */
   revokeAllForUser(userId: string): Promise<number> | number;
+  /** Revoke ONE session (the unlock lockout, #589). Returns whether a session was revoked. */
+  revokeSession(sessionId: string): Promise<boolean> | boolean;
 }
 
 /** A pending org invitation as the routes need it (M2-owned `organization_invitation`). */
@@ -605,9 +607,21 @@ export interface FuneralCaseReader {
   ): Promise<{ decedentName: string; dateOfDeath: string } | null>;
 }
 
+/**
+ * #589 - proves a password for a KNOWN user without creating a session. The screen-lock unlock is a
+ * re-authentication of the current session, so it must not go through sign-in (which mints a new, org-less one).
+ */
+export interface PasswordVerifier {
+  verify(input: { userId: string; password: string }): Promise<boolean>;
+}
+
 /** The full injection surface for `registerIdentityRoutes`. */
 export interface IdentityRouteDeps {
   actors: ActorResolver;
+  /** #589 - unbound -> `POST /auth/unlock` answers 503 `UNLOCK_UNAVAILABLE` (fail closed). */
+  passwordVerifier?: PasswordVerifier;
+  /** #589 - the per-user failed-unlock budget. Required alongside `passwordVerifier`: unbound -> 503 (fail closed). */
+  unlockGuard?: import("./unlock-guard").UnlockGuard;
   memberships: MembershipRepository;
   sessions: SessionWriter;
   invitations: InvitationStore;
@@ -800,10 +814,12 @@ export function createInMemorySessionWriter(): {
   boundOrg(sessionId: string): string | undefined;
   revokedMemberships(): string[];
   revokedUsers(): string[];
+  revokedSessions(): string[];
 } {
   const bound = new Map<string, string>();
   const revokedMemberships: string[] = [];
   const revokedUsers: string[] = [];
+  const revokedSessions: string[] = [];
   const writer: SessionWriter = {
     bindOrganization({ sessionId, organizationId, organizationName }) {
       bound.set(sessionId, organizationId);
@@ -821,12 +837,17 @@ export function createInMemorySessionWriter(): {
       revokedUsers.push(userId);
       return 1;
     },
+    revokeSession(sessionId) {
+      revokedSessions.push(sessionId);
+      return true;
+    },
   };
   return {
     writer,
     boundOrg: (sessionId) => bound.get(sessionId),
     revokedMemberships: () => revokedMemberships,
     revokedUsers: () => revokedUsers,
+    revokedSessions: () => revokedSessions,
   };
 }
 

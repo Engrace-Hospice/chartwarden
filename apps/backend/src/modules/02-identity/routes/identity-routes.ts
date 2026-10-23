@@ -36,11 +36,14 @@ import {
   resolveActorPermissions,
 } from "@chartwarden/auth";
 import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import { CredentialThrottleError } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
+  type SessionUnlockOutcome,
   auditInvitationRescinded,
   auditMembershipAccepted,
   auditMembershipRevoked,
+  auditSessionUnlock,
   auditMembershipStatusChanged,
   auditRolesAttachedOnAccept,
   auditUserDeactivated,
@@ -56,6 +59,7 @@ import {
   type MembershipView,
 } from "../identity-ports";
 import { mfaEnrolmentRequired } from "../mfa-enrolment-gate";
+import { UNLOCK_ATTEMPT_LIMIT, UNLOCK_WINDOW_MS } from "../unlock-guard";
 import { registerLinkRoutes } from "./link-routes";
 import {
   auditContextFor,
@@ -91,6 +95,8 @@ const lastAdminLockout = () =>
     "refusing to leave the org with zero active admins (platform_ops override required)",
     409,
   );
+
+const MAX_UNLOCK_PASSWORD_LENGTH = 256;
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
@@ -287,6 +293,82 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       aggregateId: actor.sessionId,
     });
     return reply.code(200).send(binding);
+  });
+
+  // #589 - screen-lock unlock: re-authenticate the CURRENT session. Verifies the password for the session's own user
+  // and mints nothing, so the session id, active org and step-up freshness all survive. Going through Better Auth's
+  // sign-in instead created a second, org-less session whose first org-scoped call 401'd (-> /expired, drafts wiped).
+  //
+  // Brute force: this sits behind an already-stolen cookie in the worst case, so the budget is strict (unlock-guard.ts):
+  // each attempt is RESERVED before the hash (parallel guesses cannot overdraw it), a correct password refunds it, the
+  // final failed attempt ENDS the session (as step-up does), and a counter-store outage fails closed.
+  app.post("/api/v1/auth/unlock", async (request, reply) => {
+    const actor = await resolveActor(deps, request);
+    const password = readString(request.body, "password");
+    // Better Auth caps passwords at 128; anything longer is no real password and must not reach the scrypt hash.
+    if (password.length > MAX_UNLOCK_PASSWORD_LENGTH) {
+      throw new ValidationError("invalid password", [
+        { field: "password", code: "TOO_LONG", message: "password is too long" },
+      ]);
+    }
+    if (!deps.passwordVerifier || !deps.unlockGuard) {
+      throw unavailable("UNLOCK_UNAVAILABLE", "screen unlock is not available in this deployment");
+    }
+    // A session that never bound an org has no tenant to audit against; it cannot be screen-locked in practice.
+    const record = async (result: SessionUnlockOutcome): Promise<void> => {
+      if (!actor.organizationId) return;
+      await auditSessionUnlock(
+        deps.audit,
+        auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
+        { sessionId: actor.sessionId, organizationId: actor.organizationId, result },
+      );
+    };
+
+    const attempt = await deps.unlockGuard.reserve(actor.userId);
+    if (!attempt.allowed) {
+      // One audit row per window, not per request: a held cookie hammering past the limit must not amplify into
+      // unbounded compliance rows (the lockout row already records the event that matters).
+      if (attempt.attempt === UNLOCK_ATTEMPT_LIMIT + 1) await record("throttled");
+      reply.header("Retry-After", String(Math.ceil(UNLOCK_WINDOW_MS / 1000)));
+      throw new CredentialThrottleError(Math.ceil(UNLOCK_WINDOW_MS / 1000));
+    }
+
+    const ok = await deps.passwordVerifier.verify({ userId: actor.userId, password });
+    if (!ok) {
+      if (attempt.last) {
+        // Kill the session FIRST: it is the only consequence of repeated failures, so an audit-store hiccup must not be
+        // able to skip it. The audit rows are still written, but a failure there is logged, not allowed to hide the 423.
+        await deps.sessions.revokeSession(actor.sessionId);
+        // The counter is deliberately NOT cleared here: requests already in flight when the session dies would reserve
+        // fresh attempts and the lockout would be worth nothing against a parallel burst (see unlock-guard.ts).
+        try {
+          await record("failed");
+          await record("locked_out");
+        } catch (err) {
+          request.log.error({ err, sessionId: actor.sessionId }, "unlock lockout audit write failed");
+        }
+        throw new ChartWardenError(
+          "UNLOCK_LOCKED_OUT",
+          "too many failed unlock attempts; this session has ended - sign in again",
+          423,
+        );
+      }
+      await record("failed");
+      throw new ChartWardenError("INVALID_CREDENTIALS", "that password did not match", 401);
+    }
+
+    await deps.unlockGuard.release(actor.userId);
+    await record("unlocked");
+    if (actor.organizationId) {
+      await publishM2(deps, {
+        eventName: "m2.session.unlocked",
+        payload: { sessionId: actor.sessionId, userId: actor.userId, organizationId: actor.organizationId },
+        organizationId: actor.organizationId,
+        aggregateKind: "session",
+        aggregateId: actor.sessionId,
+      });
+    }
+    return reply.code(200).send({ sessionId: actor.sessionId, activeOrganizationId: actor.organizationId });
   });
 
   // --- §7.1 Invite & onboard a clinician -------------------------------------------------

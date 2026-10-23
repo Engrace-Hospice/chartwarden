@@ -73,6 +73,8 @@ describe("PASSWORD_CHANGE_REQUIRED authenticate boundary", () => {
     ["GET", "/api/v1/auth/csrf"],
     ["GET", "/api/v1/auth/credential-status"],
     ["POST", "/api/v1/auth/password/complete-required-change"],
+    // #589 - unlock only re-proves a password and mints nothing, so a limited session may use it too.
+    ["POST", "/api/v1/auth/unlock"],
   ])("allows only the exact limited-session route %s %s", async (method, url) => {
     const req = request(method, url);
     await expect(hook(true, null)(req)).resolves.toBeUndefined();

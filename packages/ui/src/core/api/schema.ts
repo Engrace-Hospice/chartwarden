@@ -3944,6 +3944,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock the idle screen lock by re-entering the password; keeps the same session (#589) */
+        post: operations["postApiV1AuthUnlock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/availability": {
         parameters: {
             query?: never;
@@ -36555,6 +36572,37 @@ export interface operations {
                         activeOrganizationId: string;
                         organizationName: string;
                         expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuthUnlock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        activeOrganizationId: string | null;
                     };
                 };
             };

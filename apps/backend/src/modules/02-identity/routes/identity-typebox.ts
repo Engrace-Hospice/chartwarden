@@ -42,6 +42,11 @@ export const SelectOrganizationRequestSchema = Type.Object({
   organizationId: Type.String({ minLength: 1 }),
 });
 
+/** POST /api/v1/auth/unlock — re-enter the password to lift the idle screen lock (#589). */
+export const ScreenUnlockRequestSchema = Type.Object({
+  password: Type.String({ minLength: 1, maxLength: 256 }),
+});
+
 /** POST /api/v1/orgs/:id/invitations — invite a user to the org (§7.1). */
 export const OrgInvitationCreateRequestSchema = Type.Object({
   email: Type.String({ minLength: 1, maxLength: 320 }),
@@ -176,6 +181,12 @@ export const OrgBindingResponseSchema = Type.Object({
   activeOrganizationId: Type.String(),
   organizationName: Type.String(),
   expiresAt: Type.String(),
+});
+
+/** POST /api/v1/auth/unlock (200) — the SAME session, still bound to its org (nothing is re-minted). */
+export const ScreenUnlockResponseSchema = Type.Object({
+  sessionId: Type.String(),
+  activeOrganizationId: Type.Union([Type.String(), Type.Null()]),
 });
 
 /**
