@@ -424,11 +424,13 @@ spoof detector open through the same cipher.
 - **F-025.** Nav hiding (`canSeeScreen`) did not stop a typed URL opening a create form. `isScreenDenied` + the shell's
   `RequireScreenPermission` render a denied state for a chromed screen whose `requiredPermission` the actor is KNOWN not
   to hold (unknown permission set renders; the server stays the enforcer). The server held on every probed endpoint.
-- **Metadata writes, closed in #611.** `PATCH /documents/:id`, `POST /:id/links`, `POST|DELETE /:id/tags` now run a
-  `SCOPE_WRITE` pre-handler (before the legal-hold ABAC, so an out-of-scope id gets a 404, never a 403 that confirms a hold)
-  that applies the same caseload scope as the reads. A document with no patient (unlinked intake) is deliberately not
-  scoped by patient — linking it is the point of `/links` and `documents.edit_metadata` is the explicit key for that path;
-  instead `/links` refuses a target patient outside the caseload (404). Org-wide actors are unchanged.
+- **Document writes by id, closed in #611.** `PATCH /documents/:id`, `POST /:id/links`, `POST /:id/versions` and
+  `POST|DELETE /:id/tags` run a `SCOPE_WRITE` pre-handler (before the legal-hold ABAC, so an out-of-scope id gets a 404,
+  never a 403 that confirms a hold) that applies the same caseload scope as the reads. A document with no patient
+  (unlinked intake) has no caseload to test, so only an org-wide actor may edit, tag or version it; `/links` alone
+  admits a scoped actor, because attaching it to a patient is the point. `/links` refuses a target patient outside the
+  caseload (404), and a scoped actor may not detach a linked document (`patientId: null`) or set an admission on an
+  unlinked one. Org-wide actors are unchanged. Not done: `admissionId` is not checked to belong to `patientId`.
 - **Verified live (#611).** On a local backend against the dev Postgres with the real M5 `CaseloadProvider`: an NP with
   an empty caseload went from 200/201 on every write to 404 on every linked-document write, while the RN with the full
   caseload and the admin still got 200. Seeded caseloads are all-or-nothing (6 or 0 patients), so a strict-subset caseload

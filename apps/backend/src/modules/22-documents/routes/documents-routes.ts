@@ -265,29 +265,50 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   }
 
   /**
-   * #611 — the metadata WRITE routes (`PATCH /:id`, `POST /:id/links`, `POST|DELETE /:id/tags`) answer with, or act
-   * on, a document the actor names by id, so they honour the same caseload scope as the reads. Runs BEFORE the
-   * legal-hold ABAC so an out-of-scope id cannot learn "this document exists and is on hold" from a 403.
+   * #611 — the document WRITE routes keyed by id (`PATCH /:id`, `POST /:id/links`, `POST /:id/versions`,
+   * `POST|DELETE /:id/tags`) answer with, or act on, a document the actor names by id, so they honour the same
+   * caseload scope as the reads. Runs BEFORE the legal-hold ABAC so an out-of-scope id cannot learn "this
+   * document exists and is on hold" from a 403.
    *
-   * A document with NO patient (an unlinked intake document) is deliberately not scoped by patient: linking it to a
-   * patient is the point of `/links`, and the `documents.edit_metadata` grant is the explicit key for that path. The
-   * patient it is linked TO is scoped instead (see `assertLinkTargetInScope`).
+   * A document with NO patient (an unlinked intake document) has no caseload to test, so only an org-wide actor
+   * may touch it — except through `/links` (`allowUnlinked`), whose whole purpose is to attach it to a patient
+   * (and that patient is scoped instead, see `assertLinkTargetInScope`).
    */
-  const SCOPE_WRITE: PreHandler = async (request) => {
-    const { organizationId } = actorOf(request as FastifyRequest);
-    const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
-    if (doc.patientId === null && doc.aggregateType !== "referral") return;
-    await assertDocumentInScope(request as FastifyRequest, doc);
-  };
+  const scopeWrite =
+    (allowUnlinked: boolean): PreHandler =>
+    async (request) => {
+      const { organizationId } = actorOf(request as FastifyRequest);
+      const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
+      if (doc.patientId === null && doc.aggregateType !== "referral") {
+        if (allowUnlinked || (await metadataScopeOf(request as FastifyRequest)) === null) return;
+        throw new NotFoundError("document");
+      }
+      await assertDocumentInScope(request as FastifyRequest, doc);
+    };
+  const SCOPE_WRITE = scopeWrite(false);
+  const SCOPE_WRITE_LINK = scopeWrite(true);
 
-  /** #611 — `/links` may not attach a document to a patient outside the actor's caseload (and read it back). */
+  /**
+   * #611 — `/links` may not attach a document to a patient outside the actor's caseload, and a scoped actor may
+   * not detach a linked document (`patientId: null`) or set an admission with no patient to test: either would
+   * leave a document that no caseload-bound reader can see, or that every scoped editor can adopt.
+   */
   async function assertLinkTargetInScope(
     request: FastifyRequest,
-    patientId: string,
+    docId: string,
+    body: { patientId?: string | null; admissionId?: string | null },
   ): Promise<void> {
     const scope = await metadataScopeOf(request);
-    if (scope === null || scope.includes(patientId)) return;
-    throw new NotFoundError("patient");
+    if (scope === null) return;
+    if (body.patientId) {
+      if (scope.includes(body.patientId)) return;
+      throw new NotFoundError("patient");
+    }
+    const { organizationId } = actorOf(request);
+    const doc = await service.getDocument(organizationId, docId);
+    const detaching = body.patientId === null && doc.patientId !== null;
+    const orphanAdmission = !!body.admissionId && doc.patientId === null;
+    if (detaching || orphanAdmission) throw new NotFoundError("patient");
   }
 
   // 1 — upload new document (creates document + version v1).
@@ -355,7 +376,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 2 — upload new version of an existing document.
   app.post(
     "/api/v1/documents/:id/versions",
-    { preHandler: [UPLOAD, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+    { preHandler: [UPLOAD, SCOPE_WRITE, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(UploadVersionRequest, request.body);
@@ -454,11 +475,11 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   app.post(
     "/api/v1/documents/:id/links",
-    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE_LINK, ABAC_LEGAL_HOLD] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(LinkDocumentRequest, request.body);
-      if (body.patientId) await assertLinkTargetInScope(request, body.patientId);
+      await assertLinkTargetInScope(request, docIdOf(request), body);
       return service.linkDocument(organizationId, actor, docIdOf(request), {
         patientId: body.patientId,
         admissionId: body.admissionId,

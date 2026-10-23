@@ -1517,12 +1517,54 @@ describe("#611 — metadata WRITE routes honour the caseload", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("an unlinked intake document can still be edited and linked to a patient on the caseload", async () => {
+  it("a scoped actor cannot detach a linked document or set an admission on an unlinked one", async () => {
     const { app } = makeServer();
-    const edit = await app.inject({ ...calls(DOC_UNLINKED)[0], headers: as("rn_1", "rn") });
-    expect(edit.statusCode).toBe(200);
+    const detach = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC}/links`,
+      headers: as("rn_1", "rn"),
+      payload: { patientId: null },
+    });
+    expect(detach.statusCode).toBe(404);
+    const orphan = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC_UNLINKED}/links`,
+      headers: as("rn_1", "rn"),
+      payload: { admissionId: "d0000000-0000-4000-8000-000000000001" },
+    });
+    expect(orphan.statusCode).toBe(404);
+  });
+
+  it("an unlinked intake document can be linked to a caseload patient, but only an org-wide actor edits or tags it", async () => {
+    const { app } = makeServer();
+    for (const k of [0, 2, 3]) {
+      const res = await app.inject({ ...calls(DOC_UNLINKED)[k], headers: as("rn_1", "rn") });
+      expect(res.statusCode).toBe(404);
+    }
+    const wide = await app.inject({ ...calls(DOC_UNLINKED)[0], headers: as("hedit_1", "him") });
+    expect(wide.statusCode).toBe(200);
+    // Last: the fixture store is shared, and linking leaves the document attached to the patient.
     const link = await app.inject({ ...calls(DOC_UNLINKED)[1], headers: as("rn_1", "rn") });
     expect(link.statusCode).toBe(200);
+  });
+
+  it("uploading a new version is scoped like the other writes, and a missing document is a 404", async () => {
+    const { app } = makeServer();
+    const payload = { contentBase64: "aGk=", mimeType: "text/plain" };
+    const off = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC_OFF_CASELOAD}/versions`,
+      headers: as("rn_1", "rn"),
+      payload,
+    });
+    expect(off.statusCode).toBe(404);
+    const missing = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents/c0000000-0000-4000-8000-0000000000ee/versions",
+      headers: as("rn_1", "rn"),
+      payload,
+    });
+    expect(missing.statusCode).toBe(404);
   });
 
   it("linking an unlinked document to a patient OFF the caseload is refused (404) and attaches nothing", async () => {
