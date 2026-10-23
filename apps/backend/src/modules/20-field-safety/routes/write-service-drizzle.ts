@@ -46,6 +46,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { normalizeE164 } from "@chartwarden/shared/phone";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   type IsoInstant,
   NotFoundError,
   SAFETY_INCIDENT_CLOSED_STATES,
@@ -54,7 +55,6 @@ import {
   type SafetyPolicyEffectiveDto,
   type SafetyPolygonRings,
   type SafetySosLifecycleState,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
@@ -85,6 +85,7 @@ import {
   raiseSosEffects,
   resolveSos as resolveSosDecision,
 } from "../lifecycle/sos-alert";
+import { encryptOrNull } from "../safety-crypto";
 import { EMERGENCY_CONTACT_DEFAULT_REGION } from "../terminus/contact";
 import type { M20WriteActor } from "./actor";
 import { providerEntityOf } from "./actor";
@@ -350,11 +351,26 @@ export function buildDrizzleM20WriteService(
         },
       };
     }
+    const sealed = await encryptOrNull(port, {
+      organizationId: actor.organizationId,
+      plaintext: encodeCoordinates(input),
+    });
+    // #622 — a bound cipher over a tenant with no usable key ring must not cost the alert: same degradation
+    // as "no cipher bound". Incident create (`seal()`) deliberately keeps refusing.
+    if (sealed === null) {
+      return {
+        cipher: SAFETY_NO_COORDINATE_SENTINEL,
+        accuracyM: 0,
+        consentAt: at,
+        warning: {
+          code: "COORDINATES_DROPPED_NO_CIPHER",
+          message:
+            "this organization's encryption key is not available, so the location was discarded rather than stored in the clear; the alert still went out",
+        },
+      };
+    }
     return {
-      cipher: await port.encrypt({
-        organizationId: actor.organizationId,
-        plaintext: encodeCoordinates(input),
-      }),
+      cipher: sealed,
       accuracyM: input.accuracyM,
       consentAt: at,
       warning: null,
@@ -503,7 +519,11 @@ export function buildDrizzleM20WriteService(
    */
   function assertPolygonValid(polygon: SafetyPolygonRings): void {
     if (polygon.length === 0) {
-      throw new ChartWardenError("POLYGON_INVALID", "a high-risk area needs at least one ring", 422);
+      throw new ChartWardenError(
+        "POLYGON_INVALID",
+        "a high-risk area needs at least one ring",
+        422,
+      );
     }
     polygon.forEach((ring, i) => {
       if (ring.length < 4) {
@@ -586,12 +606,21 @@ export function buildDrizzleM20WriteService(
                 "no per-tenant encryption key is bound, so the location was discarded rather than stored in the clear",
             });
           } else {
-            coordinateCipher = await deps.cipher.encrypt({
+            coordinateCipher = await encryptOrNull(deps.cipher, {
               organizationId: actor.organizationId,
               plaintext: encodeCoordinates(input.postedCoordinates),
             });
-            accuracyM = input.postedCoordinates.accuracyM;
-            consentAt = at;
+            if (coordinateCipher === null) {
+              // #622 — keyless tenant: the check-in is still recorded, without a location.
+              warnings.push({
+                code: "COORDINATES_DROPPED_NO_CIPHER",
+                message:
+                  "this organization's encryption key is not available, so the location was discarded rather than stored in the clear",
+              });
+            } else {
+              accuracyM = input.postedCoordinates.accuracyM;
+              consentAt = at;
+            }
           }
         }
 
