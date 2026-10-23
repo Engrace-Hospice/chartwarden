@@ -6,6 +6,7 @@ import {
   Modal,
   PatientBanner,
   PatientWorkspaceLayout,
+  type ReadStatus,
   SealedBlock,
   StatusPill,
   type StatusTone,
@@ -13,7 +14,9 @@ import {
   cardSurface,
   formatDateOnly,
   humanizeIdentifier,
+  settleRead,
   useApiClient,
+  useReloadFocus,
   useToast,
 } from "@chartwarden/ui";
 
@@ -39,7 +42,7 @@ import type { FormEvent, JSX, ReactNode } from "react";
 
 import { STATUS_TONE, statusLabel } from "./patient-status";
 
-import { ClinicalRail, ClinicalTab, useClinicalData } from "./patient-clinical";
+import { ClinicalRail, ClinicalTab, ReadNotice, useClinicalData } from "./patient-clinical";
 import {
   Avatar,
   OverviewRail,
@@ -191,6 +194,7 @@ export function PatientChart(): JSX.Element {
 
   return (
     <PatientChartReady
+      key={state.patient.id}
       patient={state.patient}
       section={currentSection}
       updatePatient={updatePatient}
@@ -2658,44 +2662,61 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const canAdministerPrivacy = useSession()?.permissions?.includes("privacy.admin") ?? false;
   const [flags, setFlags] = useState<PrivacyFlags | null>(null);
   const [consents, setConsents] = useState<ConsentRecord[] | null>(null);
+  const [consentsRead, setConsentsRead] = useState<ReadStatus>("ok");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // The patient the shown data belongs to: a Retry reload keeps the layout (and the keyboard focus), a
+  // different patient never shows the previous patient's flags.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const focusRef = useReloadFocus<HTMLDivElement>(status === "loading");
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the fetch on Retry.
   useEffect(() => {
     let active = true;
 
     (async () => {
       setStatus("loading");
-      const [privacyResult, consentResult] = await Promise.all([
-        client.GET("/api/v1/patients/{id}/privacy-flags", {
-          params: { path: { id: patientId } },
-        }),
-        client.GET("/api/v1/patients/{patientId}/consents", {
-          params: { path: { patientId } },
-        }),
+      // settleRead: a rejected request (network/timeout) is a failed read, not a stuck spinner.
+      const [privacyRead, consentRead] = await Promise.all([
+        settleRead(
+          client.GET("/api/v1/patients/{id}/privacy-flags", {
+            params: { path: { id: patientId } },
+          }),
+        ),
+        // Consents are ABAC-guarded and answer 404 (not 403) when denied, so 404 is "denied" here.
+        settleRead(
+          client.GET("/api/v1/patients/{patientId}/consents", {
+            params: { path: { patientId } },
+          }),
+          "denied",
+        ),
       ]);
 
       if (!active) return;
 
-      if (privacyResult.error || !privacyResult.data) {
+      const privacyResult = privacyRead.res;
+      if (!privacyResult?.data) {
         setStatus("error");
         return;
       }
 
       setFlags(privacyResult.data as PrivacyFlags);
+      setConsentsRead(consentRead.status);
       setConsents(
-        consentResult.error || !consentResult.data
-          ? []
-          : ((consentResult.data as { data: ConsentRecord[] }).data ?? []),
+        consentRead.status === "ok"
+          ? ((consentRead.res?.data as { data: ConsentRecord[] } | undefined)?.data ?? [])
+          : [],
       );
+      setLoadedFor(patientId);
       setStatus("ready");
     })();
 
     return () => {
       active = false;
     };
-  }, [client, patientId]);
+  }, [client, patientId, attempt]);
 
-  if (status === "loading") return <LoadingSpinner />;
+  if (status === "loading" && loadedFor !== patientId) return <LoadingSpinner />;
 
   if (status === "error" || flags === null) {
     return (
@@ -2711,7 +2732,12 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const otherConsents = consents?.filter((consent) => consent.status !== "active") ?? [];
 
   return (
-    <div style={tabPage}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      aria-busy={status === "loading"}
+      style={{ ...tabPage, outline: "none" }}
+    >
       <SectionHeader
         eyebrow="Consent & restrictions"
         title="Privacy Flags"
@@ -2730,7 +2756,10 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
       <div style={overviewStrip}>
         <InfoField label="Active restrictions" value={flags.flags.length} />
-        <InfoField label="Active consents" value={activeConsents.length} />
+        <InfoField
+          label="Active consents"
+          value={consentsRead === "ok" ? activeConsents.length : "Unavailable"}
+        />
         <InfoField
           label="Part 2 status"
           value={
@@ -2809,64 +2838,76 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
 
       <Card title="Consents">
-        <SubsectionHeader
-          title="Active consents"
-          description="Consent records currently in force."
-          count={activeConsents.length}
-        />
-
-        {activeConsents.length === 0 ? (
-          <EmptyPanel
-            title="No active consents"
-            description="No active consent record is currently available."
+        {consentsRead !== "ok" ? (
+          <ReadNotice
+            status={consentsRead}
+            subject="consent records"
+            onRetry={() => setAttempt((n) => n + 1)}
           />
         ) : (
-          <div style={recordList}>
-            {activeConsents.map((consent) => (
-              <div key={consent.id} style={recordRow}>
-                <div style={recordRowMain}>
-                  <div style={recordTitleRow}>
-                    <strong style={recordTitle}>{titleCase(consent.typeKey)}</strong>
-                    <StatusPill
-                      label={titleCase(consent.status)}
-                      tone={consentTone(consent.status)}
-                    />
-                  </div>
-                  <div style={recordMeta}>
-                    Effective {dateOnly(consent.effectiveAt)}
-                    {consent.expiresAt
-                      ? ` · expires ${dateOnly(consent.expiresAt)}`
-                      : " · no expiry"}
-                    {consent.grantorKind ? ` · ${titleCase(consent.grantorKind)}` : ""}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+          <>
+            <SubsectionHeader
+              title="Active consents"
+              description="Consent records currently in force."
+              count={activeConsents.length}
+            />
 
-        {otherConsents.length > 0 ? (
-          <details style={{ ...detailsBlock, marginTop: "1rem" }}>
-            <summary style={detailsSummary}>Other consent records ({otherConsents.length})</summary>
-            <div style={{ ...recordList, marginTop: "0.75rem" }}>
-              {otherConsents.map((consent) => (
-                <div key={consent.id} style={recordRowMuted}>
-                  <div>
-                    <strong>{titleCase(consent.typeKey)}</strong>
-                    <div style={recordMeta}>
-                      Effective {dateOnly(consent.effectiveAt)}
-                      {consent.expiresAt ? ` · expires ${dateOnly(consent.expiresAt)}` : ""}
+            {activeConsents.length === 0 ? (
+              <EmptyPanel
+                title="No active consents"
+                description="No active consent record is currently available."
+              />
+            ) : (
+              <div style={recordList}>
+                {activeConsents.map((consent) => (
+                  <div key={consent.id} style={recordRow}>
+                    <div style={recordRowMain}>
+                      <div style={recordTitleRow}>
+                        <strong style={recordTitle}>{titleCase(consent.typeKey)}</strong>
+                        <StatusPill
+                          label={titleCase(consent.status)}
+                          tone={consentTone(consent.status)}
+                        />
+                      </div>
+                      <div style={recordMeta}>
+                        Effective {dateOnly(consent.effectiveAt)}
+                        {consent.expiresAt
+                          ? ` · expires ${dateOnly(consent.expiresAt)}`
+                          : " · no expiry"}
+                        {consent.grantorKind ? ` · ${titleCase(consent.grantorKind)}` : ""}
+                      </div>
                     </div>
                   </div>
-                  <StatusPill
-                    label={titleCase(consent.status)}
-                    tone={consentTone(consent.status)}
-                  />
+                ))}
+              </div>
+            )}
+
+            {otherConsents.length > 0 ? (
+              <details style={{ ...detailsBlock, marginTop: "1rem" }}>
+                <summary style={detailsSummary}>
+                  Other consent records ({otherConsents.length})
+                </summary>
+                <div style={{ ...recordList, marginTop: "0.75rem" }}>
+                  {otherConsents.map((consent) => (
+                    <div key={consent.id} style={recordRowMuted}>
+                      <div>
+                        <strong>{titleCase(consent.typeKey)}</strong>
+                        <div style={recordMeta}>
+                          Effective {dateOnly(consent.effectiveAt)}
+                          {consent.expiresAt ? ` · expires ${dateOnly(consent.expiresAt)}` : ""}
+                        </div>
+                      </div>
+                      <StatusPill
+                        label={titleCase(consent.status)}
+                        tone={consentTone(consent.status)}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </details>
-        ) : null}
+              </details>
+            ) : null}
+          </>
+        )}
       </Card>
 
       {canAdministerPrivacy ? (

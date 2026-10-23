@@ -70,3 +70,32 @@ export function ErrorState({
     </div>
   );
 }
+
+export interface DeniedStateProps {
+  /** What the person cannot see, in plain language ("par stock"). Never a permission code. */
+  subject?: string;
+}
+
+/** A read the server refused (403). Not an error to retry and not "nothing here": the data exists, this
+ *  person may not see it. A static, non-retryable fact, so `role="status"` (polite), not ErrorState's alert. */
+export function DeniedState({ subject = "this information" }: DeniedStateProps): JSX.Element {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: <output> is phrasing-only; this holds block content.
+    <div role="status" style={{ textAlign: "center", padding: "2rem", color: t.onSurfaceVariant }}>
+      <p
+        style={{
+          fontFamily: t.fontDisplay,
+          fontSize: "1.375rem",
+          fontWeight: 500,
+          margin: 0,
+          color: t.onSurface,
+        }}
+      >
+        You do not have access
+      </p>
+      <p style={{ margin: "0.5rem 0 0" }}>
+        {`You do not have permission to view ${subject}. Ask an administrator if you need it.`}
+      </p>
+    </div>
+  );
+}

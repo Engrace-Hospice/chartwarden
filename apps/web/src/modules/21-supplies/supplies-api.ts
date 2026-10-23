@@ -223,16 +223,23 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** The HTTP response of a list read, kept so a screen can tell a 403 from a 5xx (`classifyRead`). */
+type ReadResponse = { status: number };
+
 // ── reads ──────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Row 2 — the supply-request worklist. The server scopes it; a request out of reach is simply absent. */
 export async function listSupplyRequests(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1SuppliesSupplyrequests"]> = {},
-): Promise<{ page: CursorPage<SupplyRequestListItem> | null; error: unknown }> {
+): Promise<{
+  page: CursorPage<SupplyRequestListItem> | null;
+  error: unknown;
+  response: ReadResponse;
+}> {
   const res = await client.GET("/api/v1/supplies/supply-requests", { params: { query } });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  if (res.error) return { page: null, error: res.error, response: res.response };
+  return { page: res.data, error: null, response: res.response };
 }
 
 /** Row 3 — the full request. A 404 is "absent OR out of reach", deliberately indistinguishable. */
@@ -274,20 +281,24 @@ export async function getSupplyItem(
 export async function listComfortKitTemplates(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1SuppliesComfortkittemplates"]> = {},
-): Promise<{ page: CursorPage<ComfortKitTemplateView> | null; error: unknown }> {
+): Promise<{
+  page: CursorPage<ComfortKitTemplateView> | null;
+  error: unknown;
+  response: ReadResponse;
+}> {
   const res = await client.GET("/api/v1/supplies/comfort-kit-templates", { params: { query } });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  if (res.error) return { page: null, error: res.error, response: res.response };
+  return { page: res.data, error: null, response: res.response };
 }
 
 /** Row 21 — dispatches, per patient / per Location / per IPU room (the D17 stock-kit view). */
 export async function listDispatches(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1SuppliesComfortkitdispatches"]> = {},
-): Promise<{ page: CursorPage<DispatchListItem> | null; error: unknown }> {
+): Promise<{ page: CursorPage<DispatchListItem> | null; error: unknown; response: ReadResponse }> {
   const res = await client.GET("/api/v1/supplies/comfort-kit-dispatches", { params: { query } });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  if (res.error) return { page: null, error: res.error, response: res.response };
+  return { page: res.data, error: null, response: res.response };
 }
 
 /** Row 22 — the dispatch with its full per-line manifest. */
@@ -322,10 +333,10 @@ export async function getPerpetualLog(
 export async function listReturns(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1SuppliesComfortkitreturns"]> = {},
-): Promise<{ page: CursorPage<ReturnListItem> | null; error: unknown }> {
+): Promise<{ page: CursorPage<ReturnListItem> | null; error: unknown; response: ReadResponse }> {
   const res = await client.GET("/api/v1/supplies/comfort-kit-returns", { params: { query } });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  if (res.error) return { page: null, error: res.error, response: res.response };
+  return { page: res.data, error: null, response: res.response };
 }
 
 /** Row 26 — the return with its per-line accounting and the disposal record. */
@@ -355,10 +366,10 @@ export async function listVendorRoutingRules(
 export async function listParStock(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1SuppliesParstock"]> = {},
-): Promise<{ page: CursorPage<ParStockView> | null; error: unknown }> {
+): Promise<{ page: CursorPage<ParStockView> | null; error: unknown; response: ReadResponse }> {
   const res = await client.GET("/api/v1/supplies/par-stock", { params: { query } });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  if (res.error) return { page: null, error: res.error, response: res.response };
+  return { page: res.data, error: null, response: res.response };
 }
 
 // ── supply-request writes (rows 1, 4–10) ───────────────────────────────────────────────────────────────

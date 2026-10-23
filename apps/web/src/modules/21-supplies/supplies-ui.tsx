@@ -486,10 +486,13 @@ export function ParSeverityPill({ severity }: { severity: string }): JSX.Element
   );
 }
 
-/** A count chip row — the §5.2 KPI tiles (COUNTS, never rates). */
+/** A count chip row — the §5.2 KPI tiles (COUNTS, never rates). `value: null` renders an em dash: the read
+ *  behind the count did not succeed, so the count is unknown, not 0. */
 export function CountGrid({
   entries,
-}: { entries: readonly { label: string; value: number; tone?: StatusTone }[] }): JSX.Element {
+}: {
+  entries: readonly { label: string; value: number | null; tone?: StatusTone }[];
+}): JSX.Element {
   return (
     <div
       style={{
@@ -520,7 +523,7 @@ export function CountGrid({
               color: t.onSurface,
             }}
           >
-            {e.value}
+            {e.value ?? "—"}
           </span>
         </div>
       ))}

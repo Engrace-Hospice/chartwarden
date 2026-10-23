@@ -1,20 +1,25 @@
 import {
   CountBadge,
+  DeniedState,
+  ErrorState,
   Glyph,
   type GlyphName,
   InfoRows,
   Panel,
+  type ReadStatus,
   StatusPill,
   ageYears,
+  settleRead,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — the patient chart's Clinical tab (2026-09-25 redesign, mockup
 // "Patient Chart — Clinical"). Every panel reads a real endpoint: diagnoses from the M7 plan of care,
 // PPS + ESAS-r from the M9 scale timeline, vitals + note text from the M8 encounter detail, open
 // significant-change events (M9) as clinical alerts, and advance-directive consents + the active
 // healthcare DPOA (M17). Nothing the platform does not capture (POLST, last BM, orientation) is drawn.
-import { type JSX, type ReactNode, useEffect, useRef, useState } from "react";
+import { type JSX, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PatientSummaryPanel, medicareTail } from "../../shell/patient-context";
 import {
@@ -96,6 +101,17 @@ export interface ClinicalData {
   notes?: EncounterDetail[];
   consents?: Consent[];
   dpoa?: Dpoa | null;
+  /** Read outcome of the three reads that must not collapse to empty; undefined while loading. */
+  ppsLatestRead?: ReadStatus;
+  /** Outcome of the PPS series, ESAS assessments and significant-change reads: a denied or failed one
+   *  must not render as "no PPS", "no ESAS" or the green "No open changes". */
+  ppsRead?: ReadStatus;
+  esasRead?: ReadStatus;
+  changesRead?: ReadStatus;
+  consentsRead?: ReadStatus;
+  dpoaRead?: ReadStatus;
+  /** Re-runs the clinical reads (wired to the failed-read retry buttons). */
+  retry?: () => void;
 }
 
 type Client = ReturnType<typeof useApiClient>;
@@ -109,12 +125,37 @@ async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promi
   }
 }
 
+/** Denied / failed notice for a read that did not return data; renders nothing for "ok". */
+export function ReadNotice({
+  status,
+  subject,
+  onRetry,
+}: {
+  status: ReadStatus | undefined;
+  subject: string;
+  onRetry?: () => void;
+}): JSX.Element | null {
+  if (status === "denied") return <DeniedState subject={subject} />;
+  if (status === "failed") {
+    return (
+      <ErrorState
+        title={`${subject.charAt(0).toUpperCase()}${subject.slice(1)} could not be loaded`}
+        description="Try again in a moment."
+        onRetry={onRetry}
+      />
+    );
+  }
+  return null;
+}
+
 const daysAgo = (n: number): string =>
   new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 
 /**
  * The Clinical tab's own sources, fetched in parallel; the encounter details follow the chart's list.
  * Called once by the chart (the tab and its rail share it) and idle until the tab is shown.
+ * The caller MUST key the component that calls this by patient id: a new patient remounts, so state resets and
+ * in-flight reads of the previous patient are dropped by the effect cleanups (no reset-in-effect flash).
  */
 export function useClinicalData(
   patientId: string,
@@ -123,28 +164,60 @@ export function useClinicalData(
 ): ClinicalData {
   const client: Client = useApiClient();
   const [data, setData] = useState<ClinicalData>({});
-  const alive = useRef(true);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setData((d) => ({
+      ...d,
+      pps: undefined,
+      ppsRead: undefined,
+      ppsLatest: undefined,
+      ppsLatestRead: undefined,
+      esas: undefined,
+      esasRead: undefined,
+      changes: undefined,
+      changesRead: undefined,
+      consents: undefined,
+      consentsRead: undefined,
+      dpoa: undefined,
+      dpoaRead: undefined,
+    }));
+    setAttempt((n) => n + 1);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the fetch on Retry.
   useEffect(() => {
     if (!enabled) return;
-    alive.current = true;
+    // Per-run flag: a late response from a previous patient or attempt is dropped, not merged.
+    let active = true;
     const merge = (patch: ClinicalData): void => {
-      if (alive.current) setData((d) => ({ ...d, ...patch }));
+      if (active) setData((d) => ({ ...d, ...patch }));
     };
     const path = { patientId };
-    void settle<{ points: SeriesPoint[] }>(
+    // A list read's 404 is not "none" (an empty list is a 200), so it stays `failed`.
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/scales/{scaleType}/series", {
         params: {
           path: { patientId, scaleType: "pps" },
           query: { from: daysAgo(30), to: daysAgo(-1) },
         },
       }),
-    ).then((r) => merge({ pps: r?.points ?? [] }));
-    void settle<ScaleAssessment>(
+    ).then((r) =>
+      merge({
+        pps: (r.res?.data as { points: SeriesPoint[] } | undefined)?.points ?? [],
+        ppsRead: r.status,
+      }),
+    );
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/scales/{scaleType}/latest", {
         params: { path: { patientId, scaleType: "pps" } },
       }),
-    ).then((r) => merge({ ppsLatest: r ?? null }));
-    void settle<{ assessments: ScaleAssessment[] }>(
+      "empty",
+    ).then((r) =>
+      merge({
+        ppsLatest: (r.res?.data as ScaleAssessment | undefined) ?? null,
+        ppsLatestRead: r.status,
+      }),
+    );
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/assessments", {
         params: {
           path,
@@ -153,30 +226,50 @@ export function useClinicalData(
       }),
     ).then((r) =>
       merge({
-        esas: [...(r?.assessments ?? [])].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)),
+        esas: [
+          ...((r.res?.data as { assessments: ScaleAssessment[] } | undefined)?.assessments ?? []),
+        ].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)),
+        esasRead: r.status,
       }),
     );
-    void settle<{ events: SignificantChange[] }>(
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/significant-changes", {
         params: { path },
       }),
     ).then((r) =>
       merge({
-        changes: (r?.events ?? []).filter((e) => e.status !== "acknowledged"),
+        changes: (
+          (r.res?.data as { events: SignificantChange[] } | undefined)?.events ?? []
+        ).filter((e) => e.status !== "acknowledged"),
+        changesRead: r.status,
       }),
     );
-    void settle<{ data: Consent[] }>(
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/consents", { params: { path } }),
-    ).then((r) => merge({ consents: (r?.data ?? []).filter((c) => c.status === "active") }));
-    void settle<{ data: Dpoa | null }>(
+      "denied",
+    ).then((r) =>
+      merge({
+        consents: ((r.res?.data as { data: Consent[] } | undefined)?.data ?? []).filter(
+          (c) => c.status === "active",
+        ),
+        consentsRead: r.status,
+      }),
+    );
+    void settleRead(
       client.GET("/api/v1/patients/{patientId}/dpoa/active-primary", {
         params: { path },
       }),
-    ).then((r) => merge({ dpoa: r?.data ?? null }));
+      "denied",
+    ).then((r) =>
+      merge({
+        dpoa: (r.res?.data as { data: Dpoa | null } | undefined)?.data ?? null,
+        dpoaRead: r.status,
+      }),
+    );
     return () => {
-      alive.current = false;
+      active = false;
     };
-  }, [client, patientId, enabled]);
+  }, [client, patientId, enabled, attempt]);
 
   // Vitals and note text live only on the encounter detail — read the few most recent ones.
   const encounters = chart.encounters;
@@ -208,7 +301,7 @@ export function useClinicalData(
     };
   }, [client, encounters, enabled]);
 
-  return data;
+  return { ...data, retry };
 }
 
 // ---------- helpers ----------
@@ -375,8 +468,24 @@ export function ClinicalTab({
   data: PatientChartData;
   clinical: ClinicalData;
 }): JSX.Element {
+  // Loading until every clinical read has settled; Retry clears them, so a reload keeps focus on this region.
+  const loading = [
+    clinical.ppsRead,
+    clinical.ppsLatestRead,
+    clinical.esasRead,
+    clinical.changesRead,
+    clinical.consentsRead,
+    clinical.dpoaRead,
+  ].some((read) => read === undefined);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   return (
-    <div className="wx-overview-grid">
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      aria-busy={loading}
+      className="wx-overview-grid"
+      style={{ outline: "none" }}
+    >
       <ClinicalOverviewPanel patientId={patient.id} data={data} className="wx-c15" />
       <ClinicalStatusPanel clinical={clinical} className="wx-c9" />
       <SymptomsPanel clinical={clinical} className="wx-c24" />
@@ -526,7 +635,9 @@ function ClinicalStatusPanel({
       icon="settings"
       className={className}
       action={
-        open === undefined ? null : open.length === 0 ? (
+        open === undefined ? null : clinical.changesRead !== "ok" ? (
+          <StatusPill label="Changes unavailable" tone="neutral" />
+        ) : open.length === 0 ? (
           <StatusPill label="No open changes" tone="success" />
         ) : (
           <StatusPill
@@ -540,34 +651,58 @@ function ClinicalStatusPanel({
         <Loading />
       ) : (
         <ul className="wx-status-rows">
-          <StatusRow
-            icon="bar-chart"
-            label="PPS"
-            value={pps?.score != null ? `${pps.score}%` : "—"}
-            strong
-          />
-          <StatusRow
-            icon="user"
-            label="Self-care"
-            value={PPS_SELF_CARE[String(pps?.data.selfCare)] ?? "—"}
-          />
-          <StatusRow
-            icon="globe"
-            label="Consciousness"
-            value={PPS_CONSCIOUSNESS[String(pps?.data.consciousness)] ?? "—"}
-          />
-          <StatusRow
-            icon="zap"
-            label="Pain (ESAS-r)"
-            value={pain != null ? `${pain} / 10` : "—"}
-            strong
-          />
-          <StatusRow
-            icon="lungs"
-            label="Dyspnea (ESAS-r)"
-            value={dyspnea != null ? `${dyspnea} / 10` : "—"}
-            strong
-          />
+          {clinical.ppsLatestRead === "ok" ? (
+            <>
+              <StatusRow
+                icon="bar-chart"
+                label="PPS"
+                value={pps?.score != null ? `${pps.score}%` : "—"}
+                strong
+              />
+              <StatusRow
+                icon="user"
+                label="Self-care"
+                value={PPS_SELF_CARE[String(pps?.data.selfCare)] ?? "—"}
+              />
+              <StatusRow
+                icon="globe"
+                label="Consciousness"
+                value={PPS_CONSCIOUSNESS[String(pps?.data.consciousness)] ?? "—"}
+              />
+            </>
+          ) : (
+            <li>
+              <ReadNotice
+                status={clinical.ppsLatestRead}
+                subject="performance status"
+                onRetry={clinical.retry}
+              />
+            </li>
+          )}
+          {clinical.esasRead === "ok" ? (
+            <>
+              <StatusRow
+                icon="zap"
+                label="Pain (ESAS-r)"
+                value={pain != null ? `${pain} / 10` : "—"}
+                strong
+              />
+              <StatusRow
+                icon="lungs"
+                label="Dyspnea (ESAS-r)"
+                value={dyspnea != null ? `${dyspnea} / 10` : "—"}
+                strong
+              />
+            </>
+          ) : (
+            <li>
+              <ReadNotice
+                status={clinical.esasRead}
+                subject="symptom scores"
+                onRetry={clinical.retry}
+              />
+            </li>
+          )}
           <StatusRow
             icon="calendar"
             label="Last assessed"
@@ -653,6 +788,12 @@ function SymptomsPanel({
     >
       {list === undefined ? (
         <Loading />
+      ) : clinical.esasRead !== "ok" ? (
+        <ReadNotice
+          status={clinical.esasRead}
+          subject="symptom assessments"
+          onRetry={clinical.retry}
+        />
       ) : !latest ? (
         <EmptyLine>No ESAS-r symptom assessment in the last 30 days.</EmptyLine>
       ) : (
@@ -891,6 +1032,8 @@ function FunctionalPanel({
     >
       {clinical.pps === undefined ? (
         <Loading />
+      ) : clinical.ppsRead !== "ok" ? (
+        <ReadNotice status={clinical.ppsRead} subject="the PPS trend" onRetry={clinical.retry} />
       ) : points.length === 0 ? (
         <EmptyLine>No PPS captured in the last 30 days.</EmptyLine>
       ) : (
@@ -1102,6 +1245,12 @@ export function ClinicalRail({
           <div style={{ padding: "0 1.125rem" }}>
             <Loading />
           </div>
+        ) : clinical.changesRead !== "ok" ? (
+          <ReadNotice
+            status={clinical.changesRead}
+            subject="significant-change alerts"
+            onRetry={clinical.retry}
+          />
         ) : changes.length === 0 ? (
           <div style={{ padding: "0 1.125rem 0.75rem" }}>
             <EmptyLine>No open significant-change alerts.</EmptyLine>
@@ -1163,8 +1312,19 @@ export function ClinicalRail({
         icon="shield-check"
         action={<PanelLink to={`/patients/${patient.id}?view=privacy`}>Edit</PanelLink>}
       >
-        {clinical.consents === undefined || clinical.dpoa === undefined ? (
+        {clinical.consentsRead === undefined || clinical.dpoaRead === undefined ? (
           <Loading />
+        ) : clinical.consentsRead !== "ok" || clinical.dpoaRead !== "ok" ? (
+          <ReadNotice
+            status={
+              // A retryable failure wins over a (static) denial: Retry may still recover the failed half.
+              clinical.consentsRead === "failed" || clinical.dpoaRead === "failed"
+                ? "failed"
+                : "denied"
+            }
+            subject="advance directives"
+            onRetry={clinical.retry}
+          />
         ) : directives.length === 0 && !clinical.dpoa ? (
           <EmptyLine>No advance directive or healthcare DPOA on file.</EmptyLine>
         ) : (

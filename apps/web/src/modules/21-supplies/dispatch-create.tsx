@@ -23,8 +23,19 @@
 // The per-line lot / expiration fields stay OPTIONAL in the form exactly as they are in §4.2's TypeBox: the
 // DOMAIN raises `M21_LOT_NUMBER_REQUIRED` with its own code on a controlled line, and letting the boundary
 // pre-empt it with a generic "required field" would hide which rule actually refused.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import {
+  DeniedState,
+  ErrorState,
+  LoadingSpinner,
+  PageHeader,
+  type ReadStatus,
+  StatusPill,
+  settleRead,
+  t,
+  useApiClient,
+  useReloadFocus,
+} from "@chartwarden/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -86,6 +97,8 @@ interface LineDraft extends DispatchLineInput {
   controlledSubstanceSchedule: string | null;
 }
 
+const focusRootStyle = { outline: "none" } as const;
+
 export function ComfortKitDispatchCreate(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -94,7 +107,10 @@ export function ComfortKitDispatchCreate(): JSX.Element {
   const [requests, setRequests] = useState<SupplyRequestListItem[]>([]);
   const [templates, setTemplates] = useState<ComfortKitTemplateView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const latestLoad = useRef(0);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
+  const [loadStatus, setLoadStatus] = useState<ReadStatus>("ok");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -113,26 +129,29 @@ export function ComfortKitDispatchCreate(): JSX.Element {
   const [lines, setLines] = useState<LineDraft[]>([]);
 
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
     setLoading(true);
-    setLoadError(null);
-    const [reqs, tmpls] = await Promise.all([
+    // settleRead folds a rejected request (network/timeout) into a failed read, so the spinner always ends.
+    const [deploys, replenishes, tmpls] = await Promise.all([
       // Only the two kit kinds can produce a dispatch (§2.1). Two reads rather than one unfiltered page:
       // the list route filters by a SINGLE kind, and scanning an unfiltered page client-side would drop
       // kit requests that fell past the cap behind a wall of DME.
-      Promise.all([
+      settleRead(
         listSupplyRequests(client, { kind: "comfort_kit_deploy", openOnly: true, limit: 100 }),
+      ),
+      settleRead(
         listSupplyRequests(client, { kind: "comfort_kit_replenish", openOnly: true, limit: 100 }),
-      ]),
-      listComfortKitTemplates(client, { includePlatformFloor: true, limit: 100 }),
+      ),
+      settleRead(listComfortKitTemplates(client, { includePlatformFloor: true, limit: 100 })),
     ]);
-    const [deploys, replenishes] = reqs;
-    if (deploys.error) {
-      setLoadError(errorMessage(deploys.error, "Open comfort-kit requests could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setRequests([...(deploys.page?.data ?? []), ...(replenishes.page?.data ?? [])]);
-    setTemplates(tmpls.page?.data ?? []);
+    if (mine !== latestLoad.current) return;
+    // The kit requests and the templates are both needed to build a dispatch: if either read was refused or
+    // failed, say so rather than present a form with an empty request or template picker.
+    const blocked = [deploys, replenishes, tmpls].map((r) => r.status).find((r) => r !== "ok");
+    setLoadStatus(blocked ?? "ok");
+    setRequests([...(deploys.res?.page?.data ?? []), ...(replenishes.res?.page?.data ?? [])]);
+    setTemplates(tmpls.res?.page?.data ?? []);
+    setLoadedOnce(true);
     setLoading(false);
   }, [client]);
 
@@ -162,8 +181,26 @@ export function ComfortKitDispatchCreate(): JSX.Element {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   };
 
-  if (loading) return <LoadingSpinner />;
-  if (loadError) return <EmptyState title="Unavailable" description={loadError} />;
+  // A retry after a refused/failed read shows the loading cue, not the stale error with a live Retry.
+  if (!loadedOnce || (loading && loadStatus !== "ok")) return <LoadingSpinner />;
+  if (loadStatus === "denied") {
+    return (
+      <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={focusRootStyle}>
+        <DeniedState subject="comfort-kit dispatches" />
+      </div>
+    );
+  }
+  if (loadStatus === "failed") {
+    return (
+      <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={focusRootStyle}>
+        <ErrorState
+          title="Open comfort-kit requests could not be loaded"
+          description="Try again in a moment."
+          onRetry={() => void load()}
+        />
+      </div>
+    );
+  }
 
   const selectedRequest = requests.find((r) => r.supplyRequestId === supplyRequestId);
   const needsFacility = deploymentSite !== "home";
@@ -223,7 +260,13 @@ export function ComfortKitDispatchCreate(): JSX.Element {
   };
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      aria-busy={loading}
+      className="wx-kit-column"
+      style={{ ...columnStyle, ...focusRootStyle }}
+    >
       <PageHeader
         title={<span style={pageTitleStyle}>Dispatch a comfort kit</span>}
         breadcrumb="Supplies — comfort kits"

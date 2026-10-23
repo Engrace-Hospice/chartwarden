@@ -5,9 +5,12 @@ import {
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   WorkQueueLayout,
+  settleRead,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE submission worklist (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Work Queue."
@@ -26,6 +29,7 @@ import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { assembleSubmission } from "./hope-api";
+import { HopeListReadState } from "./hope-read-state";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
@@ -58,7 +62,9 @@ export function SubmissionWorklist(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [error, setError] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
   const canGenerate = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
   const [providerEntities, setProviderEntities] = useState<ProviderEntityOption[]>([]);
   const [providerEntityId, setProviderEntityId] = useState("");
@@ -107,18 +113,18 @@ export function SubmissionWorklist(): JSX.Element {
     }
   };
 
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/hope/submissions", {
-      params: { query: {} },
-    });
-    if (err) {
-      setError("Could not load HOPE submissions.");
-      setLoading(false);
-      return;
-    }
-    setItems((data?.submissions ?? []) as SubmissionRow[]);
+    setReadStatus("ok");
+    const { status: readOutcome, res } = await settleRead(
+      client.GET("/api/v1/hope/submissions", { params: { query: {} } }),
+      "denied",
+    );
+    if (mine !== latestLoad.current) return;
+    setReadStatus(readOutcome);
+    setItems(readOutcome === "ok" ? ((res?.data?.submissions ?? []) as SubmissionRow[]) : []);
     setLoading(false);
   }, [client]);
 
@@ -216,7 +222,11 @@ export function SubmissionWorklist(): JSX.Element {
           <div style={toolbarStyle}>
             <div style={toolbarTitleStyle}>
               <span style={toolbarEyebrowStyle}>Queue</span>
-              <strong>{rows.length} matching submissions</strong>
+              <strong>
+                {readStatus === "ok"
+                  ? `${rows.length} matching submissions`
+                  : "Submissions unavailable"}
+              </strong>
             </div>
             <div style={controlGroupStyle}>
               <label className="wx-search-field">
@@ -282,121 +292,144 @@ export function SubmissionWorklist(): JSX.Element {
         </div>
       }
       table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching submissions" : "No submissions"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the submission filters."
-                  : "No HOPE submission batches have been assembled."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "28%" }}>Submission</th>
-                  <th style={{ ...thStyle, width: "20%" }}>Provider entity</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Period</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Items</th>
-                  <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Accepted</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Rejected</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((s) => (
-                  <tr
-                    key={s.id}
-                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/hope/submissions/${s.id}`)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        navigate(`/hope/submissions/${s.id}`);
-                      }
-                    }}
-                    style={rowStyle}
-                    className="wx-data-row-interactive"
-                  >
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>HOPE submission</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(s.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(s.providerEntityId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>{s.submissionPeriod}</td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(s.status)}
-                        tone={SUBMISSION_TONE[s.status] ?? "neutral"}
-                      />
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {s.itemCount}
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {s.acceptedCount}
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                        color: s.rejectedCount > 0 ? "var(--color-error)" : undefined,
-                      }}
-                    >
-                      {s.rejectedCount}
-                    </td>
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          // biome-ignore lint/a11y/useSemanticElements: a <fieldset> is for form controls; this names a results region.
+          role="group"
+          aria-label="HOPE submissions"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
+          {readStatus !== "ok" ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <HopeListReadState
+                status={readStatus}
+                subject="the agency-wide HOPE submissions"
+                failedTitle="HOPE submissions could not be loaded"
+                onRetry={() => void load()}
+              />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching submissions" : "No submissions"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the submission filters."
+                    : "No HOPE submission batches have been assembled."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "28%" }}>Submission</th>
+                    <th style={{ ...thStyle, width: "20%" }}>Provider entity</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Period</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Items</th>
+                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Accepted</th>
+                    <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Rejected</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={HOPE_PAGE_SIZES}
-              noun="submissions"
-            />
-          </div>
-        )
+                </thead>
+                <tbody>
+                  {pagedRows.map((s) => (
+                    <tr
+                      key={s.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/hope/submissions/${s.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/hope/submissions/${s.id}`);
+                        }
+                      }}
+                      style={rowStyle}
+                      className="wx-data-row-interactive"
+                    >
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>HOPE submission</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(s.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(s.providerEntityId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>{s.submissionPeriod}</td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(s.status)}
+                          tone={SUBMISSION_TONE[s.status] ?? "neutral"}
+                        />
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {s.itemCount}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {s.acceptedCount}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                          color: s.rejectedCount > 0 ? "var(--color-error)" : undefined,
+                        }}
+                      >
+                        {s.rejectedCount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={HOPE_PAGE_SIZES}
+                noun="submissions"
+              />
+            </div>
+          )}
+        </div>
       }
       fullPageScroll
     />

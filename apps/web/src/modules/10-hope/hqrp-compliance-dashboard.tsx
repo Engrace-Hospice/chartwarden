@@ -1,20 +1,23 @@
 import {
-  EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   WorkQueueLayout,
+  settleRead,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HQRP compliance dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Dashboard."
 // "Are we losing the 4 points?" — four KPI cards: HOPE on-time rate, SFV on-time rate, submission
 // acceptance rate, late-completion rate (1 − HOPE on-time). Rates are server-computed (ADR-0030 — no
 // frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@chartwarden/ui).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import { HopeListReadState } from "./hope-read-state";
 
 interface RateCounts {
   onTime?: number;
@@ -48,20 +51,23 @@ export function HqrpComplianceDashboard(): JSX.Element {
   const client = useApiClient();
   const [row, setRow] = useState<Compliance | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
 
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/hope/dashboard/compliance", {
-      params: { query: {} },
-    });
-    if (err) {
-      setError("Could not load the HQRP compliance dashboard.");
-      setLoading(false);
-      return;
-    }
-    setRow(data as Compliance);
+    setReadStatus("ok");
+    const { status, res } = await settleRead(
+      client.GET("/api/v1/hope/dashboard/compliance", { params: { query: {} } }),
+      "denied",
+    );
+    if (mine !== latestLoad.current) return;
+    // An ok read with no body is a failed read, not an endless spinner.
+    const data = status === "ok" ? ((res?.data as Compliance | undefined) ?? null) : null;
+    setReadStatus(status === "ok" && !data ? "failed" : status);
+    setRow(data);
     setLoading(false);
   }, [client]);
 
@@ -124,21 +130,21 @@ export function HqrpComplianceDashboard(): JSX.Element {
         <KpiStrip>
           <KpiCard
             label="HOPE on-time"
-            value={loading || error || !row ? "—" : pct(row.hopeOnTimeRate)}
+            value={loading || readStatus !== "ok" || !row ? "—" : pct(row.hopeOnTimeRate)}
             detail="Assessment timing"
             tone={toneForRate(row?.hopeOnTimeRate)}
             accentColor={accentForRate(row?.hopeOnTimeRate)}
           />
           <KpiCard
             label="SFV on-time"
-            value={loading || error || !row ? "—" : pct(row.sfvOnTimeRate)}
+            value={loading || readStatus !== "ok" || !row ? "—" : pct(row.sfvOnTimeRate)}
             detail="Follow-up timing"
             tone={toneForRate(row?.sfvOnTimeRate)}
             accentColor={accentForRate(row?.sfvOnTimeRate)}
           />
           <KpiCard
             label="Submission acceptance"
-            value={loading || error || !row ? "—" : pct(row.submissionAcceptanceRate)}
+            value={loading || readStatus !== "ok" || !row ? "—" : pct(row.submissionAcceptanceRate)}
             detail="Accepted batches"
             tone={toneForRate(row?.submissionAcceptanceRate)}
             accentColor={accentForRate(row?.submissionAcceptanceRate)}
@@ -147,14 +153,6 @@ export function HqrpComplianceDashboard(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
-            </div>
-          ) : null}
           <div style={toolbarStyle}>
             <div style={toolbarTitleStyle}>
               <span style={toolbarEyebrowStyle}>Scope</span>
@@ -171,63 +169,78 @@ export function HqrpComplianceDashboard(): JSX.Element {
         </div>
       }
       table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading || !row ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "32%" }}>Metric</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Rate</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Target</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Posture</th>
-                  <th style={{ ...thStyle, width: "20%" }}>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((m) => {
-                  const lateMetric = m.key === "late_completion";
-                  // #48 — no denominator means there is nothing to be on track OR at risk about. Saying
-                  // "On Track" over zero observations is the failure this screen was built to prevent.
-                  const passing =
-                    m.value === null
-                      ? null
-                      : lateMetric
-                        ? m.value <= m.target
-                        : m.value >= m.target;
-                  return (
-                    <tr key={m.key} style={rowStyle}>
-                      <td style={tdStyle}>
-                        <span style={primaryTextStyle}>{m.label}</span>
-                      </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                        {pct(m.value)}
-                        <span style={countsStyle}>{countsLabel(m.counts)}</span>
-                      </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                        {lateMetric ? `<= ${pct(m.target)}` : `>= ${pct(m.target)}`}
-                      </td>
-                      <td style={tdStyle}>
-                        <StatusPill
-                          label={passing === null ? "No Data" : passing ? "On Track" : "At Risk"}
-                          tone={passing === null ? "neutral" : passing ? "success" : "warning"}
-                        />
-                      </td>
-                      <td style={tdStyle}>{m.detail}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          // biome-ignore lint/a11y/useSemanticElements: a <fieldset> is for form controls; this names a results region.
+          role="group"
+          aria-label="HQRP compliance"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
+          {readStatus !== "ok" ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <HopeListReadState
+                status={readStatus}
+                subject="the agency-wide HQRP compliance dashboard"
+                failedTitle="The HQRP compliance dashboard could not be loaded"
+                onRetry={() => void load()}
+              />
+            </div>
+          ) : loading || !row ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "32%" }}>Metric</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Rate</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Target</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Posture</th>
+                    <th style={{ ...thStyle, width: "20%" }}>Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metrics.map((m) => {
+                    const lateMetric = m.key === "late_completion";
+                    // #48 — no denominator means there is nothing to be on track OR at risk about. Saying
+                    // "On Track" over zero observations is the failure this screen was built to prevent.
+                    const passing =
+                      m.value === null
+                        ? null
+                        : lateMetric
+                          ? m.value <= m.target
+                          : m.value >= m.target;
+                    return (
+                      <tr key={m.key} style={rowStyle}>
+                        <td style={tdStyle}>
+                          <span style={primaryTextStyle}>{m.label}</span>
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {pct(m.value)}
+                          <span style={countsStyle}>{countsLabel(m.counts)}</span>
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {lateMetric ? `<= ${pct(m.target)}` : `>= ${pct(m.target)}`}
+                        </td>
+                        <td style={tdStyle}>
+                          <StatusPill
+                            label={passing === null ? "No Data" : passing ? "On Track" : "At Risk"}
+                            tone={passing === null ? "neutral" : passing ? "success" : "warning"}
+                          />
+                        </td>
+                        <td style={tdStyle}>{m.detail}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       }
       fullPageScroll
     />
@@ -293,26 +306,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-};
-
-const errorBannerStyle = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
-  fontSize: "0.85rem",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-};
-
-const dismissButtonStyle = {
-  border: "none",
-  background: "none",
-  color: "inherit",
-  cursor: "pointer",
-  fontWeight: 600,
 };
 
 const tableWrapStyle = {
