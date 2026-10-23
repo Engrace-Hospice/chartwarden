@@ -7,6 +7,7 @@ import {
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { validateNext } from "../session-guard";
 import {
   type SignInOutcome,
   requestMagicLink,
@@ -42,6 +43,19 @@ export function PortalSignIn(): JSX.Element {
   const linkProblem =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).has("link");
+  // Set by the expired-session redirect (#593); a plain flag, never a server code.
+  const sessionExpired =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("reason") === "expired";
+
+  // A validated return path from the expired-session redirect (#593); anything else is dropped silently.
+  const returnTo =
+    typeof window !== "undefined"
+      ? validateNext(new URLSearchParams(window.location.search).get("next"))
+      : null;
+  const signedInPath = returnTo
+    ? `/signed-in?next=${encodeURIComponent(returnTo)}`
+    : "/signed-in";
 
   function changeStep(next: Step): void {
     if (inFlight.current) return;
@@ -74,6 +88,8 @@ export function PortalSignIn(): JSX.Element {
       const outcome = await requestMagicLink(
         email.trim(),
         window.location.origin,
+        undefined,
+        returnTo,
       );
       if (outcome === "sent") changeStepAfterSubmission("link_sent");
       else setError(messageFor(outcome));
@@ -93,7 +109,7 @@ export function PortalSignIn(): JSX.Element {
     void submit(async () => {
       const outcome = await signInWithPassword(email.trim(), password);
       setPassword("");
-      if (outcome === "ok") navigate("/signed-in", { replace: true });
+      if (outcome === "ok") navigate(signedInPath, { replace: true });
       else if (outcome === "two_factor") changeStepAfterSubmission("code");
       else setError(messageFor(outcome));
     });
@@ -104,7 +120,7 @@ export function PortalSignIn(): JSX.Element {
     void submit(async () => {
       const outcome = await verifyTotp(code.trim());
       setCode("");
-      if (outcome === "ok") navigate("/signed-in", { replace: true });
+      if (outcome === "ok") navigate(signedInPath, { replace: true });
       else setError(messageFor(outcome));
     });
   }
@@ -232,6 +248,11 @@ export function PortalSignIn(): JSX.Element {
               title="Sign in"
               description="Visit updates, care information, and secure messages shared by your hospice team."
             />
+            {sessionExpired && !linkProblem ? (
+              <InlineAlert tone="info">
+                Your session ended. Please sign in again.
+              </InlineAlert>
+            ) : null}
             {linkProblem ? (
               <InlineAlert tone="error">
                 That sign-in link can't be used. Request a new one below.

@@ -5,13 +5,14 @@ import type { ApiClient } from "@chartwarden/ui";
 // top-level routes; every other §5.1 screen renders inside the portal frame (brand bar + reading column).
 // The shell reads the registry but imports no screen directly — screens register at composition (main.tsx),
 // the same discipline the M1 web shell keeps.
-import { createElement, useMemo } from "react";
+import { createElement, useEffect, useMemo } from "react";
 import type { JSX } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { PORTAL_BASE_PATH } from "./base-path";
 import { PortalAppShell } from "./portal-shell";
 import { createPortalRegistry, portalScreens } from "./screens/registry";
+import type { SessionGuard } from "./session-guard";
 
 function newCorrelationId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
@@ -22,11 +23,14 @@ function newCorrelationId(): string {
 export interface PortalAppProps {
   client: ApiClient;
   correlationId?: string;
+  /** The guard whose `onResponseStatus` the client was built with; bound to the router here (#593). */
+  sessionGuard?: SessionGuard;
 }
 
 export function PortalApp({
   client,
   correlationId = newCorrelationId(),
+  sessionGuard,
 }: PortalAppProps): JSX.Element {
   const router = useMemo(() => {
     const registry = createPortalRegistry();
@@ -48,6 +52,8 @@ export function PortalApp({
     ];
     return createBrowserRouter(routes, { basename: PORTAL_BASE_PATH || "/" });
   }, []);
+
+  useEffect(() => sessionGuard?.attach(router), [router, sessionGuard]);
 
   return (
     <ErrorBoundary correlationId={correlationId}>
