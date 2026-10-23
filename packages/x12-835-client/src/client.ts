@@ -40,6 +40,8 @@ export interface Parse835Request {
   readonly payerProgram: PayerProgram;
   /** The raw 835 text, when the caller already holds it (receive path). Otherwise read via `readRaw`. */
   readonly rawEdi?: string;
+  /** ST02 of the transaction set to parse; required when the file holds more than one ST/SE set. */
+  readonly transactionSetControlNumber?: string;
 }
 
 /** Reads the staged raw 835 by object key (injected: this package holds no storage code). */
@@ -97,10 +99,20 @@ export function createX12835Client(opts: X12835ClientOptions = {}): X12835Worker
           raw = await opts.readRaw(input.minioObjectKey);
         } catch {
           // Fixed text: a storage error message can carry bucket/endpoint detail and lands in parse_summary.
-          return degraded835("X12_835_RAW_READ", "staged 835 object could not be read", "parse835", true);
+          return degraded835(
+            "X12_835_RAW_READ",
+            "staged 835 object could not be read",
+            "parse835",
+            true,
+          );
         }
       }
-      return parseX12835(raw, input.payerProgram, { allowTestFiles: opts.allowTestFiles ?? false });
+      return parseX12835(
+        raw,
+        input.payerProgram,
+        { allowTestFiles: opts.allowTestFiles ?? false },
+        input.transactionSetControlNumber,
+      );
     },
 
     async parse277ca(input) {

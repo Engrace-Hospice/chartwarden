@@ -41,6 +41,7 @@ import {
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
 import { useSession } from "../../shell/session";
+import { TARGET_24 } from "../../shell/target-size";
 import { WristbandAction } from "./wristband-action";
 
 // The shared identity helpers now live in the shell (chart tabs span modules); re-exported so this
@@ -619,18 +620,7 @@ export function PanelLink({
   arrow?: boolean;
 }): JSX.Element {
   return (
-    <Link
-      to={to}
-      style={{
-        display: "inline-flex",
-
-        alignItems: "center",
-
-        gap: "0.3rem",
-
-        fontWeight: 500,
-      }}
-    >
+    <Link to={to} style={{ ...TARGET_24, gap: "0.3rem", fontWeight: 500 }}>
       {children}
 
       {arrow ? <Glyph name="arrow-right" size={14} /> : null}
@@ -1062,6 +1052,7 @@ function ClinicalSnapshotPanel({
               <Link
                 to={`/admissions/${data.election.admission.id}`}
                 style={{
+                  ...TARGET_24,
                   color: "var(--color-primary)",
 
                   fontWeight: 650,
@@ -1177,9 +1168,13 @@ function CareTeamPanel({
                   </div>
                 </div>
 
-                <span style={{ display: "flex", gap: "0.625rem", color: t.primary }}>
+                <span style={{ display: "flex", gap: "0.25rem", color: t.primary }}>
                   {m?.email ? (
-                    <a href={`mailto:${m.email}`} aria-label={`Email ${name ?? roleLabel(a.role)}`}>
+                    <a
+                      href={`mailto:${m.email}`}
+                      aria-label={`Email ${name ?? roleLabel(a.role)}`}
+                      style={TARGET_24}
+                    >
                       <Glyph name="mail" size={16} strokeWidth={1.75} />
                     </a>
                   ) : null}
@@ -1188,6 +1183,7 @@ function CareTeamPanel({
                     patientId={patientId}
                     conversation={conversation}
                     aria-label={`Message ${name ?? roleLabel(a.role)}`}
+                    style={TARGET_24}
                   >
                     <Glyph name="message-square" size={16} strokeWidth={1.75} />
                   </PatientConversationLink>

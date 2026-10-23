@@ -742,6 +742,61 @@ describe("createS3ObjectStore verified upload (mocked fetch)", () => {
   });
 });
 
+describe("createS3ObjectStore getObject (mocked fetch, #658)", () => {
+  const store = (respond: () => Response) =>
+    createS3ObjectStore(testConfig, { fetchImpl: mockFetch(respond).fetchImpl, now: fixedNow });
+
+  it("GETs the object bytes with a signed request", async () => {
+    const m = mockFetch(() => new Response("ISA*00~", { status: 200 }));
+    const s = createS3ObjectStore(testConfig, { fetchImpl: m.fetchImpl, now: fixedNow });
+    const bytes = await s.getObject({ bucket: "tenant-abc", objectKey: "k", maxBytes: 1024 });
+    expect(new TextDecoder().decode(bytes ?? new Uint8Array())).toBe("ISA*00~");
+    expect(m.calls[0]?.method).toBe("GET");
+    expect(m.calls[0]?.headers.authorization).toContain("AWS4-HMAC-SHA256");
+  });
+
+  it("returns null for a missing object and refuses an over-size or failing read", async () => {
+    await expect(
+      store(() => new Response(null, { status: 404 })).getObject({
+        bucket: "b",
+        objectKey: "k",
+        maxBytes: 10,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      store(() => new Response("x".repeat(11), { status: 200 })).getObject({
+        bucket: "b",
+        objectKey: "k",
+        maxBytes: 10,
+      }),
+    ).rejects.toThrow(/exceeds/);
+    // A chunked body with no content-length is cut off at the cap, not buffered whole.
+    let pulled = 0;
+    const chunked = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled += 1;
+        c.enqueue(new Uint8Array(6));
+        if (pulled > 50) c.close();
+      },
+    });
+    await expect(
+      store(() => new Response(chunked, { status: 200 })).getObject({
+        bucket: "tenant-abc",
+        objectKey: "k",
+        maxBytes: 10,
+      }),
+    ).rejects.toThrow(/exceeds/);
+    expect(pulled).toBeLessThan(10);
+    await expect(
+      store(() => new Response(null, { status: 500 })).getObject({
+        bucket: "b",
+        objectKey: "k",
+        maxBytes: 10,
+      }),
+    ).rejects.toThrow(/getObject.*500/);
+  });
+});
+
 describe("createS3ObjectStore destroyAllVersions (mocked fetch)", () => {
   it("lists ?versions then DELETEs every version + delete-marker for the EXACT key, sequentially", async () => {
     const { fetchImpl, calls } = mockFetch((call) =>

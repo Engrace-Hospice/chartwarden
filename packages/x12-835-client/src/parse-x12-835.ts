@@ -5,13 +5,13 @@
 // Money is parsed from the decimal text into integer cents (no float math) and emitted as cents/100.
 //
 // Current-behavior limits (deliberate; tracked as follow-ups, not silent):
-//  - one ST/SE transaction set per file (a second one is rejected);
-//  - payer/payee N1 identity is required to be present but is NOT surfaced in ParsedRemittanceAdvice;
-//  - SVC modifiers / SVC06 (original procedure) are not surfaced; SVC01 qualifier is validated only;
+//  - one ISA and one GS/GE group per file; several ST/SE transaction sets inside that group are split, each
+//    balanced on its own, and selected by ST02 (a second ISA or GS is rejected);
+//  - SVC01 qualifier is validated only (modifiers and SVC06 are surfaced);
 //  - the production date is BPR16, falling back to DTM*405 (label not reconciled with the spec);
 //  - BPR02 = 0 does not force BPR04 = NON;
 //  - test files (ISA15 != P) are rejected unless `allowTestFiles` is set; only GS01=HP / GS08=005010X221* pass.
-import { checkClaimBalance, checkPaymentBalance, type CentsAdjustment } from "./balance-835";
+import { type CentsAdjustment, checkClaimBalance, checkPaymentBalance } from "./balance-835";
 import {
   type ParsedAdjustment,
   type ParsedCasGroupCode,
@@ -19,12 +19,13 @@ import {
   type ParsedPaymentMethod,
   type ParsedRemark,
   type ParsedRemittanceAdvice,
+  type ParsedRemittanceParty,
   type ParsedServiceLine,
   type PayerProgram,
   type X12WorkerResult,
   degraded835,
 } from "./types";
-import { X12ParseError, elem, segId, tokenizeX12, type X12Segment } from "./x12-tokenizer";
+import { X12ParseError, type X12Segment, elem, segId, tokenizeX12 } from "./x12-tokenizer";
 
 const CAS_GROUPS: ReadonlySet<string> = new Set(["CO", "CR", "OA", "PI", "PR"]);
 const PAYMENT_METHODS: Readonly<Record<string, ParsedPaymentMethod>> = {
@@ -35,8 +36,22 @@ const PAYMENT_METHODS: Readonly<Record<string, ParsedPaymentMethod>> = {
   NON: "non_payment_remit",
 };
 const MAX_CAS_TRIPLETS = 6;
+const MAX_MODIFIERS = 4;
+/** numeric(12,2) ceiling (9,999,999,999.99): a larger sum would fail at insert, so refuse it at parse. */
+const MAX_CENTS = 999_999_999_999;
 const CLAIM_STATUSES: ReadonlySet<number> = new Set([1, 2, 3, 4, 19, 20, 21, 22, 23, 25]);
-const SVC_QUALIFIERS: ReadonlySet<string> = new Set(["AD", "ER", "HC", "HP", "IV", "N4", "N6", "NU", "UI", "WK"]);
+const SVC_QUALIFIERS: ReadonlySet<string> = new Set([
+  "AD",
+  "ER",
+  "HC",
+  "HP",
+  "IV",
+  "N4",
+  "N6",
+  "NU",
+  "UI",
+  "WK",
+]);
 
 export interface ParseX12835Options {
   /** Accept interchanges flagged as test (ISA15 = T). Default false: test data must never post as real money. */
@@ -54,7 +69,7 @@ function toCents(v: string, field: string): number {
   const frac = (m[3] ?? "").replace(/0+$/, "");
   if (frac.length > 2) return fail(`${field} has more than 2 decimal places`);
   const n = Number((m[2] || "0") + frac.padEnd(2, "0"));
-  if (!Number.isSafeInteger(n)) return fail(`${field} is out of range`);
+  if (n > MAX_CENTS) return fail(`${field} is out of range`);
   return m[1] === "-" && n !== 0 ? -n : n;
 }
 
@@ -85,7 +100,11 @@ function parseCas(seg: X12Segment): AdjDraft[] {
   for (let t = 0; t < MAX_CAS_TRIPLETS; t++) {
     const base = 2 + t * 3;
     const reason = elem(seg, base);
-    if (!reason) break;
+    if (!reason) {
+      // A blank triplet is skipped, not a terminator; a stray amount/quantity without a reason is malformed.
+      if (elem(seg, base + 1) || elem(seg, base + 2)) fail("CAS amount without a reason code");
+      continue;
+    }
     const cents = toCents(elem(seg, base + 1), "CAS amount");
     const qty = elem(seg, base + 2);
     out.push({
@@ -117,6 +136,8 @@ function remarksOf(seg: X12Segment): ParsedRemark[] {
 
 interface LineDraft {
   procedureCode?: string;
+  modifiers: string[];
+  submittedProcedureCode?: string;
   revenueCode?: string;
   charge: number;
   paid: number;
@@ -160,16 +181,28 @@ function newClaim(seg: X12Segment): ClaimDraft {
   };
 }
 
+/** Modifier slots are positional (SVC01-3..6 = modifier 1..4): keep gaps, drop only trailing empties. */
+function trimTrailingEmpty(parts: readonly string[]): string[] {
+  let end = parts.length;
+  while (end > 0 && parts[end - 1] === "") end--;
+  return parts.slice(0, end);
+}
+
 function newLine(seg: X12Segment, compSep: string): LineDraft {
-  const [qual, code] = elem(seg, 1).split(compSep);
+  const [qual, code, ...mods] = elem(seg, 1).split(compSep);
   if (!qual || !code) fail("SVC01 is not a qualifier:code composite");
-  if (!SVC_QUALIFIERS.has(qual)) fail("SVC01 qualifier is not a supported product/service id qualifier");
+  if (mods.length > MAX_MODIFIERS) fail("SVC01 carries more than 4 modifiers");
+  const [, submitted] = elem(seg, 6).split(compSep);
+  if (!SVC_QUALIFIERS.has(qual))
+    fail("SVC01 qualifier is not a supported product/service id qualifier");
   const rev = elem(seg, 4);
   const units = elem(seg, 5);
   const sub = elem(seg, 7);
   return {
     ...(qual === "NU" ? { revenueCode: code } : { procedureCode: code }),
     ...(rev ? { revenueCode: rev } : {}),
+    modifiers: trimTrailingEmpty(mods),
+    ...(submitted ? { submittedProcedureCode: submitted } : {}),
     charge: toCents(elem(seg, 2), "SVC02"),
     paid: toCents(elem(seg, 3), "SVC03"),
     ...(units ? { paidUnits: toNumber(units, "SVC05") } : {}),
@@ -198,6 +231,8 @@ function applyClaimSegment(claim: ClaimDraft, seg: X12Segment): void {
 const toLine = (l: LineDraft): ParsedServiceLine => ({
   ...(l.procedureCode ? { procedureCode: l.procedureCode } : {}),
   ...(l.revenueCode ? { revenueCode: l.revenueCode } : {}),
+  ...(l.modifiers.length ? { modifiers: l.modifiers } : {}),
+  ...(l.submittedProcedureCode ? { submittedProcedureCode: l.submittedProcedureCode } : {}),
   chargeAmount: l.charge / 100,
   paidAmount: l.paid / 100,
   ...(l.paidUnits !== undefined ? { paidUnits: l.paidUnits } : {}),
@@ -221,14 +256,20 @@ const toClaim = (c: ClaimDraft): ParsedClaim835 => ({
   serviceLines: c.lines.map(toLine),
 });
 
-/** Validate ISA..IEA / GS..GE / ST..SE; returns the segments strictly between ST and SE. */
+interface TransactionSet {
+  readonly st02: string;
+  readonly body: readonly X12Segment[];
+}
+
+/** Validate ISA..IEA / GS..GE and every ST..SE; returns each transaction set's segments between ST and SE. */
 function unwrapEnvelope(
   segs: readonly X12Segment[],
   opts: ParseX12835Options,
-): { isa13: string; st02: string; body: readonly X12Segment[] } {
+): { isa13: string; sets: readonly TransactionSet[] } {
   const ids = segs.map(segId);
   const pos = (id: string): number[] => ids.flatMap((x, i) => (x === id ? [i] : []));
-  if (ids[0] !== "ISA" || ids[ids.length - 1] !== "IEA") fail("interchange is not wrapped in ISA..IEA");
+  if (ids[0] !== "ISA" || ids[ids.length - 1] !== "IEA")
+    fail("interchange is not wrapped in ISA..IEA");
   const only = (id: string, msg: string): number => {
     const at = pos(id);
     if (at.length !== 1) fail(msg);
@@ -238,29 +279,48 @@ function unwrapEnvelope(
   only("IEA", "expected exactly one ISA/IEA");
   const gsAt = only("GS", "expected exactly one GS/GE functional group");
   const geAt = only("GE", "expected exactly one GS/GE functional group");
-  const stAt = only("ST", "expected exactly one ST/SE transaction set per file");
-  const seAt = only("SE", "expected exactly one ST/SE transaction set per file");
-  if (!(gsAt < stAt && stAt < seAt && seAt < geAt && geAt < segs.length - 1)) {
-    fail("envelope segments are out of order");
-  }
-  const [isa, gs, st, se, ge, iea] = [0, gsAt, stAt, seAt, geAt, segs.length - 1].map(
-    (i) => segs[i] as X12Segment,
-  ) as [X12Segment, X12Segment, X12Segment, X12Segment, X12Segment, X12Segment];
+  const stAts = pos("ST");
+  const seAts = pos("SE");
+  if (stAts.length === 0 || stAts.length !== seAts.length)
+    fail("ST and SE segments are not paired");
+  const inOrder = stAts.every(
+    (st, i) =>
+      st < (seAts[i] as number) &&
+      (i === 0 ? gsAt < st : (seAts[i - 1] as number) + 1 === st) &&
+      (i < stAts.length - 1 || (seAts[i] as number) < geAt),
+  );
+  if (!(inOrder && geAt < segs.length - 1)) fail("envelope segments are out of order");
+  const [isa, gs, ge, iea] = [0, gsAt, geAt, segs.length - 1].map((i) => segs[i] as X12Segment) as [
+    X12Segment,
+    X12Segment,
+    X12Segment,
+    X12Segment,
+  ];
   const isa13 = elem(isa, 13);
-  const st02 = elem(st, 2);
   if (!isa13) fail("missing ISA13 interchange control number");
-  if (!st02) fail("missing ST02 transaction set control number");
-  if (!opts.allowTestFiles && elem(isa, 15) !== "P") fail("interchange is not flagged production (ISA15 != P)");
+  if (!opts.allowTestFiles && elem(isa, 15) !== "P")
+    fail("interchange is not flagged production (ISA15 != P)");
   if (elem(gs, 1) !== "HP") fail("functional group is not a health care payment (GS01 != HP)");
   if (!elem(gs, 8).startsWith("005010X221")) fail("GS08 is not a 005010X221 (5010 835) version");
-  if (elem(st, 1) !== "835") fail("transaction set is not an 835");
-  if (elem(se, 2) !== st02) fail("SE02 does not match ST02");
-  if (elem(se, 1) !== String(seAt - stAt + 1)) fail("SE01 segment count does not match the transaction set");
   if (elem(gs, 6) === "" || elem(ge, 2) !== elem(gs, 6)) fail("GE02 does not match GS06");
-  if (elem(ge, 1) !== "1") fail("GE01 transaction-set count is not 1");
+  if (elem(ge, 1) !== String(stAts.length)) fail("GE01 transaction-set count does not match");
   if (elem(iea, 2) !== isa13) fail("IEA02 does not match ISA13");
   if (elem(iea, 1) !== "1") fail("IEA01 functional-group count is not 1");
-  return { isa13, st02, body: segs.slice(stAt + 1, seAt) };
+  const sets = stAts.map((stAt, i): TransactionSet => {
+    const seAt = seAts[i] as number;
+    const st = segs[stAt] as X12Segment;
+    const se = segs[seAt] as X12Segment;
+    const st02 = elem(st, 2);
+    if (!st02) fail("missing ST02 transaction set control number");
+    if (elem(st, 1) !== "835") fail("transaction set is not an 835");
+    if (elem(se, 2) !== st02) fail("SE02 does not match ST02");
+    if (elem(se, 1) !== String(seAt - stAt + 1))
+      fail("SE01 segment count does not match the transaction set");
+    return { st02, body: segs.slice(stAt + 1, seAt) };
+  });
+  if (new Set(sets.map((x) => x.st02)).size !== sets.length)
+    fail("two transaction sets share an ST02");
+  return { isa13, sets };
 }
 
 function parsePlb(seg: X12Segment): number[] {
@@ -275,10 +335,27 @@ function parsePlb(seg: X12Segment): number[] {
   return out;
 }
 
+function partyOf(seg: X12Segment): ParsedRemittanceParty {
+  const qual = elem(seg, 3);
+  const id = elem(seg, 4);
+  return { name: elem(seg, 2), ...(qual ? { idQualifier: qual } : {}), ...(id ? { id } : {}) };
+}
+
+/** Party-loop REF segments (payee tax id / PTAN, payer additional id); other REFs are left alone. */
+function applyPartyRef(party: ParsedRemittanceParty, kind: "PR" | "PE", seg: X12Segment): void {
+  const q = elem(seg, 1);
+  const v = elem(seg, 2);
+  if (!v) return;
+  if (kind === "PE" && q === "TJ") party.taxId = v;
+  else if (kind === "PE" && q === "PQ") party.payerAssignedId = v;
+  else if (kind === "PR" && q === "2U") party.additionalPayerId = v;
+}
+
 interface Body {
   readonly bpr: X12Segment;
   readonly trn: X12Segment;
   readonly production: string | undefined;
+  readonly parties: Readonly<Record<"PR" | "PE", ParsedRemittanceParty | undefined>>;
   readonly claims: readonly ClaimDraft[];
   readonly plb: readonly number[];
 }
@@ -288,7 +365,12 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
   let bpr: X12Segment | undefined;
   let trn: X12Segment | undefined;
   let dtm405: string | undefined;
-  const parties = new Set<string>();
+  const parties: Record<"PR" | "PE", ParsedRemittanceParty | undefined> = {
+    PR: undefined,
+    PE: undefined,
+  };
+  let party: ParsedRemittanceParty | undefined;
+  let partyKind: "PR" | "PE" | undefined;
   const claims: ClaimDraft[] = [];
   const plb: number[] = [];
   for (const seg of body) {
@@ -305,16 +387,22 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
       claims.push(newClaim(seg));
     } else if (id === "PLB") plb.push(...parsePlb(seg));
     else if (id === "SVC") (current ?? fail("SVC outside a CLP")).lines.push(newLine(seg, compSep));
-    else if (id === "N1" && !current) parties.add(elem(seg, 1));
+    else if (id === "N1" && !current) {
+      const kind = elem(seg, 1);
+      partyKind = kind === "PR" || kind === "PE" ? kind : undefined;
+      if (partyKind && parties[partyKind]) fail(`more than one N1 ${partyKind} loop`);
+      party = partyKind ? partyOf(seg) : undefined;
+      if (partyKind) parties[partyKind] = party;
+    } else if (id === "REF" && !current && party && partyKind) applyPartyRef(party, partyKind, seg);
     else if (current) applyClaimSegment(current, seg);
     else if (id === "CAS") fail("CAS outside a CLP");
     else if (id === "DTM" && elem(seg, 1) === "405") dtm405 = toIsoDate(elem(seg, 2), "DTM405");
   }
   if (!bpr) return fail("missing BPR");
   if (!trn) return fail("missing TRN");
-  if (!parties.has("PR") || !parties.has("PE")) fail("missing N1 payer (PR) or payee (PE) loop");
+  if (!parties.PR || !parties.PE) fail("missing N1 payer (PR) or payee (PE) loop");
   const date = elem(bpr, 16) ? toIsoDate(elem(bpr, 16), "BPR16") : dtm405;
-  return { bpr, trn, production: date, claims, plb };
+  return { bpr, trn, production: date, parties, claims, plb };
 }
 
 function checkBalances(b: Body, total: number): void {
@@ -331,12 +419,29 @@ function checkBalances(b: Body, total: number): void {
       i + 1,
     ),
   );
-  checkPaymentBalance(total, b.claims.map((c) => c.paid), b.plb);
+  checkPaymentBalance(
+    total,
+    b.claims.map((c) => c.paid),
+    b.plb,
+  );
 }
 
-function build(raw: string, payerProgram: PayerProgram, opts: ParseX12835Options): ParsedRemittanceAdvice {
+function build(
+  raw: string,
+  payerProgram: PayerProgram,
+  opts: ParseX12835Options,
+  transactionSetControlNumber?: string,
+): ParsedRemittanceAdvice {
   const doc = tokenizeX12(raw);
-  const { isa13, st02, body } = unwrapEnvelope(doc.segments, opts);
+  const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+  const chosen =
+    transactionSetControlNumber === undefined
+      ? sets.length === 1
+        ? sets[0]
+        : fail("the file holds several transaction sets; select one by ST02")
+      : sets.find((x) => x.st02 === transactionSetControlNumber);
+  if (!chosen) return fail("no transaction set with that ST02 in the file");
+  const { st02, body } = chosen;
   const b = walkBody(body, doc.componentSeparator);
   const method = PAYMENT_METHODS[elem(b.bpr, 4)];
   if (!method) fail("BPR04 is not a supported payment method");
@@ -352,6 +457,9 @@ function build(raw: string, payerProgram: PayerProgram, opts: ParseX12835Options
     interchangeControlNumber: isa13,
     transactionSetControlNumber: st02,
     checkOrEftTraceNumber: trace,
+    ...(elem(b.trn, 3) ? { originatingCompanyId: elem(b.trn, 3) } : {}),
+    payer: b.parties.PR as ParsedRemittanceParty,
+    payee: b.parties.PE as ParsedRemittanceParty,
     paymentMethod: method,
     totalPaymentAmount: total / 100,
     productionDate: `${b.production}T00:00:00Z`,
@@ -364,9 +472,10 @@ export function parseX12835(
   raw: string,
   payerProgram: PayerProgram,
   opts: ParseX12835Options = {},
+  transactionSetControlNumber?: string,
 ): X12WorkerResult<ParsedRemittanceAdvice> {
   try {
-    return { ok: true, value: build(raw, payerProgram, opts) };
+    return { ok: true, value: build(raw, payerProgram, opts, transactionSetControlNumber) };
   } catch (err) {
     if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);
     return degraded835("X12_835_PARSE_FAILED", "unexpected parser failure", "parse835", false);

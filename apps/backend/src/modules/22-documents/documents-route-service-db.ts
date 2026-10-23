@@ -60,6 +60,7 @@ import type {
   ReferralIntakeBatchView,
   TagView,
   VersionView,
+  WriteBasis,
 } from "./routes/service";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./routes/signed-url-service";
 
@@ -265,6 +266,43 @@ export function createDbDocumentRouteService(
       );
     }
     return r;
+  }
+
+  /**
+   * #641 — lock the document row (`FOR UPDATE`) and, when the route observed a patient at its scope check, refuse the
+   * write if the row has since moved to another one: a 404, like the scope check itself.
+   */
+  async function lockDocForWrite(
+    tx: DbClient,
+    organizationId: OrgId,
+    documentId: string,
+    basis?: WriteBasis,
+  ): Promise<DocumentView> {
+    await tx.execute(sql`select id from document where id = ${documentId} for update`);
+    const doc = await loadDocRow(tx, organizationId, documentId); // 404
+    if (basis?.expectedPatientId !== undefined && doc.patientId !== basis.expectedPatientId)
+      throw new NotFoundError("document");
+    if (basis?.expectedAdmissionId !== undefined && doc.admissionId !== basis.expectedAdmissionId)
+      throw new NotFoundError("document");
+    return doc;
+  }
+
+  /** #641 — a link names a patient that exists in this org. (Admission/patient agreement is checked at the route
+   *  through M6's `AdmissionStatusReader` seam: M22 may not read M6's table.) */
+  async function assertLinkPatient(
+    tx: DbClient,
+    organizationId: OrgId,
+    patientId: string | null | undefined,
+  ): Promise<void> {
+    if (!patientId) return;
+    const [p] = await tx
+      .select({ id: schema.patients.id })
+      .from(schema.patients)
+      .where(
+        and(eq(schema.patients.id, patientId), eq(schema.patients.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!p) throw new NotFoundError("patient");
   }
 
   /** §4.7 — a document under an active legal hold (released_at IS NULL) refuses mutation (409). */
@@ -684,7 +722,13 @@ export function createDbDocumentRouteService(
 
     // ── Document writes (append-only version ledger; no producer outbox) ─────────────────────────────
     async uploadDocument(organizationId, actor, args) {
-      const committed = await requireUploads().createDocument(organizationId, actor, args);
+      const uploads = requireUploads();
+      // #655 — the patient the upload is filed for exists in this org (no FK behind the column).
+      if (args.patientId)
+        await withOrgAs(db, organizationId, actor, (tx) =>
+          assertLinkPatient(tx, organizationId, args.patientId),
+        );
+      const committed = await uploads.createDocument(organizationId, actor, args);
       return service.getDocument(organizationId, committed.documentId);
     },
     async uploadVersion(organizationId, actor, documentId, args) {
@@ -696,9 +740,9 @@ export function createDbDocumentRouteService(
       );
       return service.getVersion(organizationId, committed.documentId, committed.versionId);
     },
-    async patchDocument(organizationId, actor, documentId, patch) {
+    async patchDocument(organizationId, actor, documentId, patch, basis) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await loadDocRow(tx, organizationId, documentId); // 404
+        await lockDocForWrite(tx, organizationId, documentId, basis);
         await assertNoHold(tx, documentId);
         const set: Record<string, unknown> = { updatedAt: new Date() };
         if (patch.title !== undefined) set.title = patch.title;
@@ -709,13 +753,18 @@ export function createDbDocumentRouteService(
         return loadDocRow(tx, organizationId, documentId);
       });
     },
-    async linkDocument(organizationId, actor, documentId, patch) {
+    async linkDocument(organizationId, actor, documentId, patch, basis) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await loadDocRow(tx, organizationId, documentId); // 404
+        await lockDocForWrite(tx, organizationId, documentId, basis);
         await assertNoHold(tx, documentId);
         if (patch.patientId === undefined && patch.admissionId === undefined) {
-          throw new ChartWardenError("VALIDATION_FAILED", "at least one link field is required", 422);
+          throw new ChartWardenError(
+            "VALIDATION_FAILED",
+            "at least one link field is required",
+            422,
+          );
         }
+        await assertLinkPatient(tx, organizationId, patch.patientId);
         const set: Record<string, unknown> = { updatedAt: new Date() };
         if (patch.patientId !== undefined) set.patientId = patch.patientId;
         if (patch.admissionId !== undefined) set.admissionId = patch.admissionId;
@@ -752,9 +801,9 @@ export function createDbDocumentRouteService(
         );
       });
     },
-    async addTag(organizationId, actor, documentId, tag) {
+    async addTag(organizationId, actor, documentId, tag, basis) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await loadDocRow(tx, organizationId, documentId); // 404
+        await lockDocForWrite(tx, organizationId, documentId, basis);
         await assertNoHold(tx, documentId);
         const [t] = await tx
           .insert(TAG)
@@ -778,9 +827,9 @@ export function createDbDocumentRouteService(
         };
       });
     },
-    async removeTag(organizationId, actor, documentId, tagId) {
+    async removeTag(organizationId, actor, documentId, tagId, basis) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await loadDocRow(tx, organizationId, documentId); // 404
+        await lockDocForWrite(tx, organizationId, documentId, basis);
         await assertNoHold(tx, documentId);
         const del = await tx
           .delete(TAG)

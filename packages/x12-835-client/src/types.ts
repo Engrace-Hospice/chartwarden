@@ -52,6 +52,10 @@ export interface ParsedServiceLine {
   procedureCode?: string;
   /** SVC01 composite — the UB-04 revenue code, when the line is revenue-coded. */
   revenueCode?: string;
+  /** SVC01 composite — procedure modifiers (SVC01-3..6), in order. */
+  modifiers?: string[];
+  /** SVC06 — the originally submitted procedure code, when the payer changed it (paid vs billed line matching). */
+  submittedProcedureCode?: string;
   /** SVC02 — the line submitted charge in dollars. */
   chargeAmount: number;
   /** SVC03 — the line paid amount in dollars. */
@@ -94,6 +98,22 @@ export interface ParsedClaim835 {
   serviceLines: ParsedServiceLine[];
 }
 
+/** An N1 payer (PR) or payee (PE) loop as the payer sent it; used to confirm an ERA belongs to the tenant. */
+export interface ParsedRemittanceParty {
+  /** N102. */
+  name: string;
+  /** N103 — id qualifier (XX = NPI, XV = payer id, FI = tax id). */
+  idQualifier?: string;
+  /** N104. */
+  id?: string;
+  /** REF*TJ — federal tax id (payee). */
+  taxId?: string;
+  /** REF*PQ — payee id assigned by the payer, i.e. the PTAN (payee loop). */
+  payerAssignedId?: string;
+  /** REF*2U — additional payer identification (payer loop). */
+  additionalPayerId?: string;
+}
+
 /** The parsed 835 envelope — one per X12 5010 835 transaction. */
 export interface ParsedRemittanceAdvice {
   /** The program the M25 puller pulled this 835 over. */
@@ -108,8 +128,14 @@ export interface ParsedRemittanceAdvice {
   paymentMethod: ParsedPaymentMethod;
   /** BPR02 — total payment amount in dollars. */
   totalPaymentAmount: number;
-  /** BPR16 / production date (ISO date-time). */
+  /** BPR16 (check issue / EFT effective date), falling back to DTM*405 (production date) — ISO date-time. */
   productionDate: string;
+  /** TRN03 — the originating company identifier. */
+  originatingCompanyId?: string;
+  /** N1*PR loop (always set by the parser; optional so hand-built advices still type). */
+  payer?: ParsedRemittanceParty;
+  /** N1*PE loop (always set by the parser). */
+  payee?: ParsedRemittanceParty;
   /** The CLP claim-payment segments. */
   claims: ParsedClaim835[];
 }

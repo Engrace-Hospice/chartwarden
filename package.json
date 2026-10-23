@@ -158,6 +158,7 @@
     "test:m2:tax-id-cipher:live": "vitest run apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
     "test:m34:platform-staff-binding:live": "vitest run apps/backend/__tests__/m34-platform-staff-binding.live.test.ts",
     "test:m34:lifecycle-outbox:live": "vitest run apps/backend/__tests__/m34-lifecycle-outbox.live.test.ts",
+    "test:m34:tenant-slug:live": "vitest run apps/backend/__tests__/m34-tenant-slug.live.test.ts",
     "test:m21:order-cascade:live": "vitest run apps/backend/__tests__/m21-order-cascade.live.test.ts",
     "test:m21:supply-fulfillment-intake:live": "vitest run apps/backend/__tests__/m21-supply-fulfillment-intake.live.test.ts",
     "test:m22:write:live": "vitest run apps/backend/__tests__/m22-documents-write.live.test.ts",
@@ -592,7 +593,7 @@
     "test:db:client:live": "vitest run packages/db/__tests__/client.live.test.ts",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
-    "typecheck:tests": "tsc -p tsconfig.tests.json --pretty && tsc -p tsconfig.tests.dom.json --pretty"
+    "typecheck:tests": "NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.json --pretty && NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.dom.json --pretty"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

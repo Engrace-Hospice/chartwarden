@@ -372,7 +372,8 @@ const admissionOrIntakeScope = (action: string): PreHandler =>
         const params = (
           typeof request.params === "object" && request.params ? request.params : {}
         ) as Record<string, unknown>;
-        return { ...params, admissionId: params.id };
+        // `access` is read only by `admission.scope` (#613 read arm); the intake/site predicates ignore it.
+        return { ...params, admissionId: params.id, access: admissionScopeAccessOf(action) };
       },
     },
   ) as PreHandler;

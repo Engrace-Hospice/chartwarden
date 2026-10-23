@@ -445,3 +445,43 @@ spoof detector open through the same cipher.
   `/triage` and `/safety` pages (F-026) is intended (#637): Visits is the field-work entry, pinned by a nav test.
 - **Not done.** A permanent live suite for route-level caseload resolution (needs a CI job row); the in-memory route
   tests and the manual run above stand in for it.
+
+## #653 / #655 — M20 keyless-tenant live proof; M22 upload scope
+
+- **M20 keyless tenant (#653, follow-up to #622).** `m20-routes.live.test.ts` now runs a second server over a key
+  provider that throws: an SOS press answers 201 with the no-coordinate sentinel, accuracy 0 and
+  `COORDINATES_DROPPED_NO_CIPHER`; a check-in stores NULL in all three coordinate columns (`m20_sci_coordinate_triple`
+  holds); incident create still answers 503 `SAFETY_CIPHER_UNBOUND`.
+- **Decided: SOS resolve on a keyless tenant keeps refusing (503).** The resolution narrative is workers'-comp
+  evidence, not part of getting help; dropping it silently would lose the record, and a keyless tenant is a
+  provisioning defect to fix, not a state to operate in. The alert is raised and acknowledged without a key; only the
+  close waits for one, and retries once the key ring is bound.
+- **Open.** `resolveDek` still maps every key-provider failure (including a transient KMS/DB fault) to
+  `SAFETY_CIPHER_UNBOUND`; telling them apart needs a typed "no key ring" error from M34's provider, which five
+  other modules consume. The clinical-safety reviewer's sign-off on the coordinate degradation is not obtained.
+- **M22 `POST /documents` scope (#655, found in #641).** A caseload-scoped uploader could file a document for any
+  patient/admission in the org. The route now applies the `/links` rules: the patient must be on the write caseload
+  (404 otherwise), an admission with no patient is refused for a scoped uploader, and the admission must be that
+  patient's (422, via M6's `AdmissionStatusReader`); the service checks the patient exists in the org (404, before
+  anything is stored). Two route-test fixtures had seeded an off-caseload patient's document as a scoped nurse; they
+  now seed as an org-wide uploader.
+
+## #659 / #660 / #664 — M25 835 payee check and multiple ST/SE; chart target-size follow-ups
+
+- **Payee identity (#659).** `receiveAdvice` and `postAdvice` compare the 835 payee (N1*PE, N103 = XX) with the
+  provider entity's NPI and refuse on a mismatch, a payee with no NPI, or a provider entity with none on file
+  (fail closed; `receiveAdvice` stores nothing, `postAdvice` marks the advice `failed` with a PHI-free reason).
+  The NPI arrives through the injected `payeeNpi` dep, bound in both composition roots to the foundation site
+  reader; an unbound dep skips the check (tests only). The TIN is sealed per tenant in M2 and there is no PTAN
+  column, so neither is compared yet.
+- **Several ST/SE sets in one file (#660).** The parser still takes one ISA and one GS/GE group, but splits any number
+  of ST/SE sets inside it: each is validated and balanced on its own, GE01 must equal the set count, ST02 must be
+  unique, and nothing may sit between two sets. `parse835` takes an optional `transactionSetControlNumber`; a
+  multi-set file without one is refused rather than guessed. `receiveAdvice` parses and payee-checks every set
+  before storing any, then queues one advice (and one `m25.edi.835_received`) per set; `postAdvice` parses the set
+  its row names. The response reports the first queued set (or the first duplicate).
+- **Not done (blocked on real files or the companion guide).** Validating the strict balance rules against real MAC
+  hospice 835s, SVC01 qualifier retention, the BPR02 = 0 / BPR04 rule, multiple GS or ISA per file, and 277CA, which
+  ADR-0029 places with M23's client.
+- **#664.** `TARGET_24` now lives in `apps/web/src/shell/target-size.ts` (the patient-context "View all" link uses it).
+  Added the Care Team link size render test and the ledger staff-filter request test.

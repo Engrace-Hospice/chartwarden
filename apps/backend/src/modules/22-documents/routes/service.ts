@@ -40,7 +40,18 @@ export interface UploadedContent {
   readonly sha256Hex?: string;
 }
 
-export interface UploadVersionArgs {
+/**
+ * #641 — the patient the route's scope check observed on the document. The service compares it to the row it locks, so
+ * a concurrent relink between the scope check and the write cannot carry the write onto a patient the actor never
+ * had scope for. Absent = no comparison (system callers).
+ */
+export interface WriteBasis {
+  readonly expectedPatientId?: string | null;
+  /** #656 — the admission the `/links` route checked against the patient; same compare, same 404. */
+  readonly expectedAdmissionId?: string | null;
+}
+
+export interface UploadVersionArgs extends WriteBasis {
   readonly title?: string;
   readonly content: UploadedContent;
 }
@@ -280,12 +291,14 @@ export interface DocumentRouteService {
     actor: DocumentWriteActor,
     documentId: string,
     patch: { title?: string; patientFacing?: boolean; attachToDisclosures?: boolean },
+    basis?: WriteBasis,
   ): Promise<DocumentView>;
   linkDocument(
     organizationId: OrgId,
     actor: DocumentWriteActor,
     documentId: string,
     patch: { patientId?: string | null; admissionId?: string | null },
+    basis?: WriteBasis,
   ): Promise<DocumentView>;
   /** F-060 — `document_tag` had two writers and no reader: every tag was invisible on write and
    *  undeletable on reload, because the id the DELETE needs was produced once and never readable. */
@@ -300,12 +313,14 @@ export interface DocumentRouteService {
     actor: DocumentWriteActor,
     documentId: string,
     tag: { tagKind: string; tagKey: string; tagValue: string | null },
+    basis?: WriteBasis,
   ): Promise<TagView>;
   removeTag(
     organizationId: OrgId,
     actor: DocumentWriteActor,
     documentId: string,
     tagId: string,
+    basis?: WriteBasis,
   ): Promise<void>;
   exportPhiBundle(
     organizationId: OrgId,
@@ -608,6 +623,14 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     if (!r || r.organizationId !== organizationId) throw new NotFoundError("document");
     return r;
   }
+  function loadDocForWrite(organizationId: OrgId, id: string, basis?: WriteBasis): DocumentRecord {
+    const r = loadDoc(organizationId, id);
+    if (basis?.expectedPatientId !== undefined && r.patientId !== basis.expectedPatientId)
+      throw new NotFoundError("document");
+    if (basis?.expectedAdmissionId !== undefined && r.admissionId !== basis.expectedAdmissionId)
+      throw new NotFoundError("document");
+    return r;
+  }
   function loadBatch(organizationId: OrgId, id: string): BatchRecord {
     const r = batches.get(id);
     if (!r || r.organizationId !== organizationId) throw new NotFoundError("intake batch");
@@ -682,8 +705,14 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       docs.set(id, rec);
       return toDocView(rec);
     },
-    async uploadVersion(organizationId, _actor, documentId, _args) {
-      const r = loadDoc(organizationId, documentId);
+    async uploadVersion(organizationId, _actor, documentId, args) {
+      const r = loadDocForWrite(organizationId, documentId, args);
+      if (r.legalHoldActive)
+        throw new ChartWardenError(
+          "DOCUMENT_IMMUTABLE",
+          "document cannot accept a new version",
+          409,
+        );
       const versionNumber = r.versions.length + 1;
       const v = {
         id: subId(),
@@ -742,7 +771,9 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         [...docs.values()]
           .filter((r) => r.organizationId === organizationId)
           .filter((r) =>
-            filter.patientScope ? r.patientId !== null && filter.patientScope.includes(r.patientId) : true,
+            filter.patientScope
+              ? r.patientId !== null && filter.patientScope.includes(r.patientId)
+              : true,
           )
           .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
           .filter((r) => (filter.aggregateType ? r.aggregateType === filter.aggregateType : true))
@@ -763,8 +794,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       );
       return paginate(rows, cursor, limit);
     },
-    async patchDocument(organizationId, _actor, documentId, patch) {
-      const r = loadDoc(organizationId, documentId);
+    async patchDocument(organizationId, _actor, documentId, patch, basis) {
+      const r = loadDocForWrite(organizationId, documentId, basis);
       if (r.legalHoldActive)
         throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
@@ -779,8 +810,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       r.updatedAt = now();
       return toDocView(r);
     },
-    async linkDocument(organizationId, _actor, documentId, patch) {
-      const r = loadDoc(organizationId, documentId);
+    async linkDocument(organizationId, _actor, documentId, patch, basis) {
+      const r = loadDocForWrite(organizationId, documentId, basis);
       if (r.legalHoldActive)
         throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
@@ -805,8 +836,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       );
       return paginate(rows, cursor, limit);
     },
-    async addTag(organizationId, _actor, documentId, tag) {
-      const r = loadDoc(organizationId, documentId);
+    async addTag(organizationId, _actor, documentId, tag, basis) {
+      const r = loadDocForWrite(organizationId, documentId, basis);
       if (r.legalHoldActive)
         throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
@@ -826,8 +857,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       r.tags.set(id, view);
       return view;
     },
-    async removeTag(organizationId, _actor, documentId, tagId) {
-      const r = loadDoc(organizationId, documentId);
+    async removeTag(organizationId, _actor, documentId, tagId, basis) {
+      const r = loadDocForWrite(organizationId, documentId, basis);
       if (r.legalHoldActive)
         throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",

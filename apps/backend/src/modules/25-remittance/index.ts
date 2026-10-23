@@ -119,6 +119,7 @@ export {
 export {
   type M25IngestActor,
   type M25IngestService,
+  type RawAdviceStore,
   type ReceiveAdviceInput,
   type ReceiveAdviceResult,
   type PostAdviceResult,
@@ -127,7 +128,11 @@ export {
   type TerminologyLookupPort as IngestTerminologyLookupPort,
   NO_CLAIM_MATCH_CANDIDATES,
 } from "./ingest/service";
-export { type M25IngestDrizzleDeps, buildDrizzleM25IngestService } from "./ingest/service-drizzle";
+export {
+  type M25IngestDrizzleDeps,
+  PAYEE_UNCHECKED,
+  buildDrizzleM25IngestService,
+} from "./ingest/service-drizzle";
 export {
   buildM23BackedClaimMatchCandidateProvider,
   buildM24BackedClaimMatchCandidateProvider,
