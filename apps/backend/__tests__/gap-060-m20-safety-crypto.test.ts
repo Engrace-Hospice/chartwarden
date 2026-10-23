@@ -22,12 +22,15 @@ function keyProvider(active: string) {
   };
 }
 
+/** An M34-style typed error: the class sets `name`, which is what M20 matches on (no import edge). */
+const named = (name: string, message: string): Error => Object.assign(new Error(message), { name });
+
 describe("createSafetyCiphers", () => {
   it("turns a key-resolve failure into a typed 503 instead of a bare Error (#596 F-039)", async () => {
     const { cipher } = createSafetyCiphers({
       ...keyProvider("v1"),
       async dekForOrg() {
-        throw new Error("TenantKeyMissing: no tenant key ring for org org-a");
+        throw named("TenantKeyMissing", "no tenant key ring for org org-a");
       },
     });
     const err = await cipher
@@ -35,6 +38,44 @@ describe("createSafetyCiphers", () => {
       .catch((e: unknown) => e);
     expect(err).toMatchObject({ code: "SAFETY_CIPHER_UNBOUND", statusCode: 503 });
     expect((err as Error).message).not.toContain("org-a");
+  });
+
+  it("tells a provider fault from a keyless tenant: retryable code, reported, cause kept (#666)", async () => {
+    const faults: unknown[] = [];
+    const boom = new Error("KMS timeout");
+    const { cipher } = createSafetyCiphers(
+      {
+        ...keyProvider("v1"),
+        async dekForOrg() {
+          throw boom;
+        },
+      },
+      (cause) => faults.push(cause),
+    );
+    const err = await cipher
+      .encrypt({ organizationId: "org-a", plaintext: "x" })
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "SAFETY_KEY_UNAVAILABLE", statusCode: 503, cause: boom });
+    expect(faults).toEqual([boom]);
+  });
+
+  it("does not report a keyless or shredded tenant as a fault", async () => {
+    for (const name of ["TenantKeyMissing", "TenantKeyDestroyed", "M34InfraPortUnbound"]) {
+      const faults: unknown[] = [];
+      const { cipher } = createSafetyCiphers(
+        {
+          ...keyProvider("v1"),
+          async dekForOrg() {
+            throw named(name, "x");
+          },
+        },
+        (cause) => faults.push(cause),
+      );
+      await expect(cipher.encrypt({ organizationId: "o", plaintext: "x" })).rejects.toMatchObject({
+        code: "SAFETY_CIPHER_UNBOUND",
+      });
+      expect(faults).toEqual([]);
+    }
   });
 
   it("round-trips plaintext through bytea-shaped ciphertext that is not the plaintext", async () => {
@@ -139,10 +180,25 @@ describe("encryptOrNull (#622)", () => {
     const { cipher } = createSafetyCiphers({
       ...keyProvider("v1"),
       async dekForOrg() {
-        throw new Error("TenantKeyMissing");
+        throw named("TenantKeyMissing", "no tenant key ring");
       },
     });
     expect(await encryptOrNull(cipher, input)).toBeNull();
+  });
+
+  it("also degrades on a provider fault, and reports it", async () => {
+    const faults: unknown[] = [];
+    const { cipher } = createSafetyCiphers(
+      {
+        ...keyProvider("v1"),
+        async dekForOrg() {
+          throw new Error("KMS timeout");
+        },
+      },
+      (cause) => faults.push(cause),
+    );
+    expect(await encryptOrNull(cipher, input)).toBeNull();
+    expect(faults).toHaveLength(1);
   });
 
   it("returns the ciphertext when the key ring is usable", async () => {

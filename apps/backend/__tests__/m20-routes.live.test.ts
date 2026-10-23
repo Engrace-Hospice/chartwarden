@@ -1072,10 +1072,14 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
     beforeAll(async () => {
       const ciphers = createSafetyCiphers({
         async dekForOrg() {
-          throw new Error("no key ring for this tenant");
+          throw Object.assign(new Error("no key ring for this tenant"), {
+            name: "TenantKeyMissing",
+          });
         },
         async dekForOrgVersion() {
-          throw new Error("no key ring for this tenant");
+          throw Object.assign(new Error("no key ring for this tenant"), {
+            name: "TenantKeyMissing",
+          });
         },
       });
       const readService = buildDrizzleM20ReadService(handle.db, { decipher: ciphers.decipher });
