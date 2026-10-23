@@ -485,3 +485,14 @@ spoof detector open through the same cipher.
   ADR-0029 places with M23's client.
 - **#664.** `TARGET_24` now lives in `apps/web/src/shell/target-size.ts` (the patient-context "View all" link uses it).
   Added the Care Team link size render test and the ledger staff-filter request test.
+
+## #666 — M20 key-provider faults vs. a keyless tenant
+
+- `resolveDek` (`safety-crypto.ts`) used to map every key-provider failure to `SAFETY_CIPHER_UNBOUND`. It now matches
+  M34's typed errors by `name` (`TenantKeyMissing`, `TenantKeyDestroyed`, `M34InfraPortUnbound`; M20 has no import
+  edge on M34) and keeps that code for them. Any other failure is a retryable 503 `SAFETY_KEY_UNAVAILABLE`, and is
+  reported through the new `onKeyFault` argument of `createSafetyCiphers` (bound to `app.log.error` in `index.ts`).
+- `encryptOrNull` degrades on both codes, so an SOS press or check-in still goes out without a location either way;
+  incident create still refuses both (the narrative is never stored in the clear).
+- **Not done.** Clinical-safety reviewer sign-off on storing SOS / check-ins without a location is a human decision
+  and stays open on #666's second point.

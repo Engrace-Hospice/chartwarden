@@ -6001,7 +6001,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // paragraph above describes the pre-GAP-060 behaviour): the DEK envelope sits over
           // `getTenantKeyProvider()` (the M8/M29/M31/M39 precedent, resolved lazily) and the §4.5 count is
           // M20's own §4.3 supervisor registry (a floor — `null`, never 0, when nobody is confirmed).
-          const m20Ciphers = createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider));
+          const m20Ciphers = createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider), (err) =>
+            app.log.error({ err }, "M20 tenant key provider fault (not a keyless tenant)"),
+          );
           const m20ReadService = buildDrizzleM20ReadService(dbHandle.db, {
             decipher: m20Ciphers.decipher,
           });
