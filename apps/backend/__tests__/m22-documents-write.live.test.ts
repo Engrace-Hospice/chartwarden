@@ -26,12 +26,18 @@ import { rotateIntakeRetentionForOrg } from "../src/modules/22-documents/workers
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MEMBER = "33333333-3333-3333-3333-333333333333"; // document created_by etc. carry no FK — literal ok
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-4555-8555-555555555555";
+const PATIENT_OTHER = "44444444-4444-4444-8444-444444444445";
 const REFERRAL = "66666666-6666-4666-8666-666666666666";
 const MEMBERSHIP = "77777777-7777-4777-8777-777777777777";
 /** GAP-039 — every write carries BOTH ids: the audit actor (`user.id`, FK-checked by audit_event)
@@ -111,6 +117,17 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m22w@x.test')`, [MEMBER]);
+    // #641 — /links now checks the patient exists in the org (admission agreement is the route's seam check).
+    for (const [pid, mrn] of [
+      [PATIENT, "MRN-M22-1"],
+      [PATIENT_OTHER, "MRN-M22-2"],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO patient (id,organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
+         VALUES ($1,$2,$3,'Doc','Link','1990-01-01','M','active')`,
+        [pid, ORG_A, mrn],
+      );
+    }
     // Platform form-template + version (form_template* is platform reference; admin can seed).
     const templateId = (
       await admin.query(
@@ -479,6 +496,42 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     await expect(svc.removeTag(ORG_A, ACTOR, docId, tag.id)).rejects.toMatchObject({
       statusCode: 404,
     });
+  });
+
+  it("#641: /links refuses a patient that does not exist in the org (404)", async () => {
+    const docId = await seedDocument(ORG_A);
+    const ghost = "99999999-9999-4999-8999-999999999999";
+    await expect(svc.linkDocument(ORG_A, ACTOR, docId, { patientId: ghost })).rejects.toMatchObject(
+      { statusCode: 404 },
+    );
+    const ok = await svc.linkDocument(ORG_A, ACTOR, docId, { patientId: PATIENT_OTHER });
+    expect(ok.patientId).toBe(PATIENT_OTHER);
+  });
+
+  it("#641: a write whose scope check saw another patient is refused under the row lock (404)", async () => {
+    const docId = await seedDocument(ORG_A); // linked to PATIENT
+    const stale = { expectedPatientId: PATIENT_OTHER };
+    await expect(
+      svc.patchDocument(ORG_A, ACTOR, docId, { title: "x" }, stale),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(
+      svc.addTag(ORG_A, ACTOR, docId, { tagKind: "free", tagKey: "k", tagValue: null }, stale),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      svc.linkDocument(ORG_A, ACTOR, docId, { patientId: PATIENT_OTHER }, stale),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    const fresh = await svc.patchDocument(
+      ORG_A,
+      ACTOR,
+      docId,
+      { title: "ok" },
+      { expectedPatientId: PATIENT },
+    );
+    expect(fresh.title).toBe("ok");
   });
 
   it("an active legal hold blocks patch/tag mutations (409)", async () => {

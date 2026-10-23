@@ -14,7 +14,12 @@ import {
   requireStepUp,
   resolveActorPermissions,
 } from "@chartwarden/auth";
-import { DegradedError, NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import {
+  DegradedError,
+  NotFoundError,
+  UnauthorizedError,
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   RECORDS_REQUEST_FILEABLE,
@@ -70,9 +75,13 @@ import {
   parse,
 } from "./documents-typebox";
 import { getSeam } from "../../../bootstrap/index";
-import { ORG_WIDE_LIST_PERMISSION, resolveDocumentListScope } from "./list-scope";
+import {
+  type DocumentScopePurpose,
+  ORG_WIDE_LIST_PERMISSION,
+  resolveDocumentListScope,
+} from "./list-scope";
 import { decodeBase64Content } from "./server-upload";
-import type { DocumentRouteService, DocumentWriteActor } from "./service";
+import type { DocumentRouteService, DocumentWriteActor, WriteBasis } from "./service";
 import type { SignedUrlService } from "./signed-url-service";
 
 /** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -217,12 +226,16 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   }
 
   /** F-023 — the actor's patient scope for document METADATA reads (`null` = org-wide). */
-  function metadataScopeOf(request: FastifyRequest): Promise<readonly string[] | null> {
+  function metadataScopeOf(
+    request: FastifyRequest,
+    purpose: DocumentScopePurpose = "read",
+  ): Promise<readonly string[] | null> {
     const { organizationId, actor, roles } = actorOf(request);
     return resolveDocumentListScope({
       organizationId,
       userId: actor.userId,
       roles,
+      purpose,
       hasOrgWideKey: async () =>
         (await resolveActorPermissions({ organizationId, userId: actor.userId })).has(
           ORG_WIDE_LIST_PERMISSION,
@@ -241,6 +254,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   async function assertDocumentInScope(
     request: FastifyRequest,
     doc: { patientId: string | null; aggregateType: string; aggregateId: string | null },
+    purpose: DocumentScopePurpose = "read",
   ): Promise<void> {
     if (doc.aggregateType === "referral") {
       const { organizationId, actor } = actorOf(request);
@@ -258,7 +272,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       }
       return;
     }
-    const scope = await metadataScopeOf(request);
+    const scope = await metadataScopeOf(request, purpose);
     if (scope === null) return;
     if (doc.patientId !== null && scope.includes(doc.patientId)) return;
     throw new NotFoundError("document");
@@ -279,12 +293,20 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request as FastifyRequest);
       const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
+      // #641 — remembered for the handler, which hands it to the service to re-check under the row lock.
+      observedPatient.set(request as object, doc.patientId);
       if (doc.patientId === null && doc.aggregateType !== "referral") {
-        if (allowUnlinked || (await metadataScopeOf(request as FastifyRequest)) === null) return;
+        if (allowUnlinked || (await metadataScopeOf(request as FastifyRequest, "write")) === null)
+          return;
         throw new NotFoundError("document");
       }
-      await assertDocumentInScope(request as FastifyRequest, doc);
+      await assertDocumentInScope(request as FastifyRequest, doc, "write");
     };
+  const observedPatient = new WeakMap<object, string | null>();
+  const basisOf = (request: FastifyRequest): WriteBasis => {
+    const expectedPatientId = observedPatient.get(request);
+    return expectedPatientId === undefined ? {} : { expectedPatientId };
+  };
   const SCOPE_WRITE = scopeWrite(false);
   const SCOPE_WRITE_LINK = scopeWrite(true);
 
@@ -298,7 +320,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     docId: string,
     body: { patientId?: string | null; admissionId?: string | null },
   ): Promise<void> {
-    const scope = await metadataScopeOf(request);
+    const scope = await metadataScopeOf(request, "write");
     if (scope === null) return;
     if (body.patientId) {
       if (scope.includes(body.patientId)) return;
@@ -309,6 +331,34 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     const detaching = body.patientId === null && doc.patientId !== null;
     const orphanAdmission = !!body.admissionId && doc.patientId === null;
     if (detaching || orphanAdmission) throw new NotFoundError("patient");
+  }
+
+  /**
+   * #641 — `/links` joins a document to a patient and an admission with no FK behind either, so the route checks
+   * them: the admission (named, or already on the document) must exist in the org and be the resulting patient's.
+   * Through M6's `AdmissionStatusReader` seam — M22 does not read M6's table.
+   */
+  async function assertAdmissionMatchesPatient(
+    organizationId: string,
+    docId: string,
+    body: { patientId?: string | null; admissionId?: string | null },
+  ): Promise<void> {
+    const doc = await service.getDocument(organizationId, docId);
+    const patientId = body.patientId !== undefined ? body.patientId : doc.patientId;
+    const admissionId = body.admissionId !== undefined ? body.admissionId : doc.admissionId;
+    if (!admissionId) return;
+    const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
+      organizationId,
+      admissionId as never,
+    );
+    if (!care) throw new NotFoundError("admission");
+    if (care.patientId !== patientId) {
+      throw new ChartWardenError(
+        "VALIDATION_FAILED",
+        "the admission does not belong to the document's patient",
+        422,
+      );
+    }
   }
 
   // 1 — upload new document (creates document + version v1).
@@ -376,11 +426,15 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 2 — upload new version of an existing document.
   app.post(
     "/api/v1/documents/:id/versions",
-    { preHandler: [UPLOAD, SCOPE_WRITE, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+    {
+      preHandler: [UPLOAD, SCOPE_WRITE, ABAC_LEGAL_HOLD, IDEMPOTENT],
+      bodyLimit: UPLOAD_BODY_LIMIT_BYTES,
+    },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(UploadVersionRequest, request.body);
       const res = await service.uploadVersion(organizationId, actor, docIdOf(request), {
+        ...basisOf(request),
         ...(body.title !== undefined ? { title: body.title } : {}),
         content: {
           bytes: decodeBase64Content(body.contentBase64),
@@ -402,7 +456,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(VersionListQuerySchema, request.query);
-      await assertDocumentInScope(request, await service.getDocument(organizationId, docIdOf(request)));
+      await assertDocumentInScope(
+        request,
+        await service.getDocument(organizationId, docIdOf(request)),
+      );
       return service.listVersions(organizationId, docIdOf(request), q.cursor, q.limit);
     },
   );
@@ -465,11 +522,17 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(PatchDocumentRequest, request.body);
-      return service.patchDocument(organizationId, actor, docIdOf(request), {
-        title: body.title,
-        patientFacing: body.patientFacing,
-        attachToDisclosures: body.attachToDisclosures,
-      });
+      return service.patchDocument(
+        organizationId,
+        actor,
+        docIdOf(request),
+        {
+          title: body.title,
+          patientFacing: body.patientFacing,
+          attachToDisclosures: body.attachToDisclosures,
+        },
+        basisOf(request),
+      );
     },
   );
 
@@ -480,10 +543,14 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const { organizationId, actor } = actorOf(request);
       const body = parse(LinkDocumentRequest, request.body);
       await assertLinkTargetInScope(request, docIdOf(request), body);
-      return service.linkDocument(organizationId, actor, docIdOf(request), {
-        patientId: body.patientId,
-        admissionId: body.admissionId,
-      });
+      await assertAdmissionMatchesPatient(organizationId, docIdOf(request), body);
+      return service.linkDocument(
+        organizationId,
+        actor,
+        docIdOf(request),
+        { patientId: body.patientId, admissionId: body.admissionId },
+        basisOf(request),
+      );
     },
   );
 
@@ -501,7 +568,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(TagListQuerySchema, request.query);
-      await assertDocumentInScope(request, await service.getDocument(organizationId, docIdOf(request)));
+      await assertDocumentInScope(
+        request,
+        await service.getDocument(organizationId, docIdOf(request)),
+      );
       return service.listTags(organizationId, docIdOf(request), q.cursor, q.limit);
     },
   );
@@ -513,11 +583,17 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(AddTagRequest, request.body);
-      const res = await service.addTag(organizationId, actor, docIdOf(request), {
-        tagKind: body.tagKind,
-        tagKey: body.tagKey,
-        tagValue: body.tagValue ?? null,
-      });
+      const res = await service.addTag(
+        organizationId,
+        actor,
+        docIdOf(request),
+        {
+          tagKind: body.tagKind,
+          tagKey: body.tagKey,
+          tagValue: body.tagValue ?? null,
+        },
+        basisOf(request),
+      );
       return reply.code(201).send(res);
     },
   );
@@ -529,7 +605,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const { id, tagId } = parse(TagParamsSchema, request.params);
-      await service.removeTag(organizationId, actor, id, tagId);
+      await service.removeTag(organizationId, actor, id, tagId, basisOf(request));
       return reply.code(204).send();
     },
   );
