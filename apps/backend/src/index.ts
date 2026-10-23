@@ -5729,7 +5729,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(),
-            rawStore: buildM25RawAdviceStore(),
+            rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
+              app.log.warn(
+                { errorName: error instanceof Error ? error.name : "unknown" },
+                "M25 staged-835 expiry rule could not be applied",
+              ),
+            ),
             onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
             onStagedDeleteFailed: (event) =>
               app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
@@ -11883,7 +11888,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
-              rawStore: buildM25RawAdviceStore(),
+              rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
+                app.log.warn(
+                  { errorName: error instanceof Error ? error.name : "unknown" },
+                  "M25 staged-835 expiry rule could not be applied",
+                ),
+              ),
               onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
               onStagedDeleteFailed: (event) =>
                 app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
