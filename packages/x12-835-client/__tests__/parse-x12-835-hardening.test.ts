@@ -4,7 +4,10 @@ import { createX12835Client, parseX12835 } from "../src/index";
 import { CLEAN_BODY, replaceSeg, wrap835 } from "./fixtures-835";
 
 const parse = (raw: string) => parseX12835(raw, "medicare");
-const HEADER = CLEAN_BODY.slice(1, CLEAN_BODY.findIndex((x) => x.startsWith("CLP*PCN-0001")));
+const HEADER = CLEAN_BODY.slice(
+  1,
+  CLEAN_BODY.findIndex((x) => x.startsWith("CLP*PCN-0001")),
+);
 const bpr = (amount: string, method = "ACH"): string =>
   `BPR*I*${amount}*C*${method}*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`;
 
@@ -46,7 +49,11 @@ describe("no-payment statuses and reversals", () => {
     const r = parse(wrap835(body));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.claims[0]).toMatchObject({ statusCode: 22, totalPayment: -100, totalCharge: -500 });
+    expect(r.value.claims[0]).toMatchObject({
+      statusCode: 22,
+      totalPayment: -100,
+      totalCharge: -500,
+    });
     expect(r.value.totalPaymentAmount).toBe(0);
   });
 
@@ -86,7 +93,11 @@ describe("balancing edge cases", () => {
       "PLB*1512345678*20261231*WO:A*0.10*WO:B*0.20*L6:C*-0.30",
     ];
     expect(parse(wrap835(body)).ok).toBe(true);
-    expectDegraded(wrap835(replaceSeg(body, "BPR", bpr("0.70"))), "X12_835_UNBALANCED", "BPR02 0.70");
+    expectDegraded(
+      wrap835(replaceSeg(body, "BPR", bpr("0.70"))),
+      "X12_835_UNBALANCED",
+      "BPR02 0.70",
+    );
   });
 
   it("rejects a negative BPR02", () => {
@@ -164,5 +175,105 @@ describe("numeric quantity fields", () => {
   it.each(["0x10", "1e3"])("rejects a non-decimal CAS quantity (%s)", (qty) => {
     const raw = wrap835(replaceSeg(CLEAN_BODY, "CAS*CO*45*100.00*1", `CAS*CO*45*100.00*${qty}`));
     expectDegraded(raw, "X12_835_PARSE_FAILED", "CAS quantity is not numeric");
+  });
+});
+
+describe("payee / payer identity and line identity (#625)", () => {
+  const withParty = (extra: readonly string[]): string[] => {
+    const at = CLEAN_BODY.findIndex((s) => s.startsWith("N1*PE"));
+    return [...CLEAN_BODY.slice(0, at + 1), ...extra, ...CLEAN_BODY.slice(at + 1)];
+  };
+
+  it("surfaces the payer and payee loops so ingestion can match them to the tenant", () => {
+    const body = withParty(["REF*TJ*123456789", "REF*PQ*PTAN01"]).map((s) =>
+      s.startsWith("TRN*") ? "TRN*1*EFT0001*1512345678" : s,
+    );
+    const r = parse(wrap835(body));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.payer).toEqual({ name: "SYNTHETIC MAC", idQualifier: "XV", id: "99999" });
+    expect(r.value.payee).toEqual({
+      name: "SYNTH HOSPICE",
+      idQualifier: "XX",
+      id: "1999999999",
+      taxId: "123456789",
+      payerAssignedId: "PTAN01",
+    });
+    expect(r.value.originatingCompanyId).toBe("1512345678");
+  });
+
+  it("keeps SVC01 modifiers and the originally submitted SVC06 code", () => {
+    const body = CLEAN_BODY.map((s) =>
+      s.startsWith("SVC*HC:Q5001") ? "SVC*HC:Q5001:GW:RT*600.00*500.00**1*HC:Q5009*1" : s,
+    );
+    const r = parse(wrap835(body));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.claims[0]?.serviceLines[0]).toMatchObject({
+      procedureCode: "Q5001",
+      modifiers: ["GW", "RT"],
+      submittedProcedureCode: "Q5009",
+    });
+    expect(r.value.claims[0]?.serviceLines[1]).not.toHaveProperty("modifiers");
+  });
+});
+
+describe("CAS and amount bounds (#625)", () => {
+  it("parses the triplets after a blank middle one", () => {
+    const body = CLEAN_BODY.map((s) => (s === "CAS*PR*2*50.00" ? "CAS*PR*2*50.00***" : s)).map(
+      (s) => (s === "CAS*CO*45*300.00" ? "CAS*CO*45*100.00*****45*200.00" : s),
+    );
+    const r = parse(wrap835(body));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.claims[2]?.adjustments.map((a) => a.amount)).toEqual([100, 200]);
+  });
+
+  it("refuses a stray CAS amount with no reason code", () => {
+    for (const stray of ["CAS*CO*45*300.00*1**5.00", "CAS*CO*45*300.00***5"]) {
+      const body = CLEAN_BODY.map((s) => (s === "CAS*CO*45*300.00" ? stray : s));
+      expectDegraded(wrap835(body), "X12_835_PARSE_FAILED", "CAS amount without a reason code");
+    }
+  });
+
+  it("refuses an amount above the numeric(12,2) ceiling", () => {
+    expectDegraded(
+      wrap835(replaceSeg(CLEAN_BODY, "BPR*", bpr("10000000000.00"))),
+      "X12_835_PARSE_FAILED",
+      "out of range",
+    );
+  });
+});
+
+describe("party loops, modifier slots and the amount ceiling (#625)", () => {
+  it("keeps modifier positions and refuses more than four", () => {
+    const line = (svc01: string) =>
+      wrap835(CLEAN_BODY.map((s) => (s.startsWith("SVC*HC:Q5001") ? `SVC*${svc01}*600.00*500.00**1**1` : s)));
+    const r = parse(line("HC:Q5001::RT"));
+    expect(r.ok && r.value.claims[0]?.serviceLines[0]?.modifiers).toEqual(["", "RT"]);
+    expectDegraded(line("HC:Q5001:A:B:C:D:E"), "X12_835_PARSE_FAILED", "more than 4 modifiers");
+  });
+
+  it("refuses a repeated payer or payee loop instead of letting the last win", () => {
+    const at = CLEAN_BODY.findIndex((s) => s.startsWith("N1*PE"));
+    const dup = [...CLEAN_BODY.slice(0, at + 1), "N1*PE*OTHER*XX*1888888888", ...CLEAN_BODY.slice(at + 1)];
+    expectDegraded(wrap835(dup), "X12_835_PARSE_FAILED", "more than one N1 PE loop");
+  });
+
+  it("reads REF*2U in the payer loop", () => {
+    const at = CLEAN_BODY.findIndex((s) => s.startsWith("N1*PR"));
+    const body = [...CLEAN_BODY.slice(0, at + 1), "REF*2U*PAYER-X", ...CLEAN_BODY.slice(at + 1)];
+    const r = parse(wrap835(body));
+    expect(r.ok && r.value.payer?.additionalPayerId).toBe("PAYER-X");
+  });
+
+  it("accepts exactly the numeric(12,2) ceiling and refuses a negative beyond it", () => {
+    const max = parse(wrap835(replaceSeg(CLEAN_BODY, "BPR*", bpr("9999999999.99"))));
+    expect(max.ok || (!max.ok && !max.degraded.reason.includes("out of range"))).toBe(true);
+    expectDegraded(
+      wrap835(CLEAN_BODY.map((s) => (s.startsWith("PLB") ? "PLB*1512345678*20261231*WO:REF1*-10000000000.00" : s))),
+      "X12_835_PARSE_FAILED",
+      "out of range",
+    );
   });
 });
