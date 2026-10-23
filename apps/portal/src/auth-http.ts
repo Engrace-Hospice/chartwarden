@@ -28,11 +28,15 @@ export async function requestMagicLink(
   email: string,
   origin: string,
   fetchImpl: FetchLike = fetch,
+  next: string | null = null,
 ): Promise<"sent" | "rate_limited" | "failed"> {
+  // `next` is a validated app-relative return path (session-guard#validateNext); it rides the emailed link so it
+  // survives opening the link in another tab/device, where sessionStorage would be empty.
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
   const res = await post(fetchImpl, "/api/auth/sign-in/magic-link", {
     email,
-    callbackURL: `${origin}${PORTAL_BASE_PATH}/signed-in`,
-    errorCallbackURL: `${origin}${PORTAL_BASE_PATH}/?link=invalid`,
+    callbackURL: `${origin}${PORTAL_BASE_PATH}/signed-in${nextQuery}`,
+    errorCallbackURL: `${origin}${PORTAL_BASE_PATH}/?link=invalid${nextQuery ? `&${nextQuery.slice(1)}` : ""}`,
   });
   if (res.status === 429) return "rate_limited";
   return res.ok ? "sent" : "failed";

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { signOut } from "../auth-http";
+import { validateNext } from "../session-guard";
 import { humanize } from "./portal-format";
 import {
   PortalOnboardingBrand,
@@ -93,10 +94,15 @@ export function PortalSignedIn(): JSX.Element {
               message: "We couldn't open your account. Please try again.",
             });
         } else {
-          navigate("/patient-picker", {
-            replace: true,
-            state: { openOnlyPatient: true },
-          });
+          const returnTo = validateNext(
+            new URLSearchParams(window.location.search).get("next"),
+          );
+          if (returnTo) navigate(returnTo, { replace: true });
+          else
+            navigate("/patient-picker", {
+              replace: true,
+              state: { openOnlyPatient: true },
+            });
         }
       } catch {
         if (current())
