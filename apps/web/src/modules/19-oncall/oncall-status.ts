@@ -24,6 +24,7 @@ import type {
   TriageDispositionValue,
   TriageInboundChannel,
 } from "./oncall-api";
+import { toLocalInput } from "@chartwarden/ui";
 
 /**
  * `triage_call_state` (§2.2.1 / D6).
@@ -397,9 +398,7 @@ export function durationLabel(minutes: number | null | undefined): string {
 
 /** An instant suitable for a `datetime-local` input's initial value (local minute precision). */
 export function nowLocalInput(offsetMinutes = 0): string {
-  const d = new Date(Date.now() + offsetMinutes * 60_000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toLocalInput(new Date(Date.now() + offsetMinutes * 60_000));
 }
 
 /** A `datetime-local` value → the ISO instant §4.2's `date-time` format expects. An unparseable value

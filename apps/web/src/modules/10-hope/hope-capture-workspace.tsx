@@ -8,6 +8,7 @@ import {
   cardSurface,
   t,
   useApiClient,
+  isoToLocalInput,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
@@ -86,7 +87,7 @@ function HopeCaptureWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [targetDate, setTargetDate] = useState(toDatetimeLocal(new Date().toISOString()));
+  const [targetDate, setTargetDate] = useState(isoToLocalInput(new Date().toISOString()));
   const [discipline, setDiscipline] = useState<Discipline>("RN");
   const [lateReason, setLateReason] = useState("");
   const [dischargeReason, setDischargeReason] = useState<DischargeReason>("live_discharge");
@@ -408,12 +409,6 @@ function fmtDate(value: string | null | undefined): string {
     day: "numeric",
     year: "numeric",
   }).format(date);
-}
-
-function toDatetimeLocal(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
 function fromDatetimeLocal(value: string): string {

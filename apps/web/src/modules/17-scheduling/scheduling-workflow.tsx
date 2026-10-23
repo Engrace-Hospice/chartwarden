@@ -1,4 +1,4 @@
-import { Button, Glyph, Modal, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import { Button, Glyph, Modal, StatusPill, t, useApiClient, toLocalInput } from "@chartwarden/ui";
 import type { ApiClient, EntityLookupOption } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent, JSX, ReactNode } from "react";
@@ -95,13 +95,6 @@ const VISIT_SETTINGS = ["patient_home", "facility", "inpatient_unit", "telephoni
 
 export function hasPermission(permissions: readonly string[] | undefined, key: string): boolean {
   return permissions?.includes(key) ?? false;
-}
-
-function toLocalInput(value: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(
-    value.getHours(),
-  )}:${pad(value.getMinutes())}`;
 }
 
 function isoFromLocal(value: string): string {

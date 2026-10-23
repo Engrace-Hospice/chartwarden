@@ -6,6 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
+  nowLocalInput,
 } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — order detail (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
@@ -117,12 +118,7 @@ export function OrderDetail(): JSX.Element {
   const [cosignAttestation, setCosignAttestation] = useState("");
   const [confirmDiscontinue, setConfirmDiscontinue] = useState(false);
   const [resendOutcome, setResendOutcome] = useState<ResendOutcome | null>(null);
-  const [verbalEffectiveAt, setVerbalEffectiveAt] = useState(() => {
-    const now = new Date();
-    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-
-    return local.toISOString().slice(0, 16);
-  });
+  const [verbalEffectiveAt, setVerbalEffectiveAt] = useState(nowLocalInput);
 
   const [readBackVerified, setReadBackVerified] = useState(false);
 

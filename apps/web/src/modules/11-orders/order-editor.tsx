@@ -1,4 +1,4 @@
-import { Button, Modal, nowLocalInput, useApiClient } from "@chartwarden/ui";
+import { Button, Modal, nowLocalInput, useApiClient, localInputToIso } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { CanonicalOrderFields, kindDefaults } from "./order-kind-fields";
@@ -91,6 +91,11 @@ export function OrderEditor({
       setError("Admission and ordering physician are required.");
       return;
     }
+    const receivedAtIso = verbal ? localInputToIso(receivedAt) : "";
+    if (verbal && !receivedAtIso) {
+      setError("Enter the date and time the verbal order was received.");
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -135,8 +140,8 @@ export function OrderEditor({
                 verbal: {
                   recorderDiscipline: discipline,
                   orderingPhysicianMdmId: physicianId,
-                  receivedAt: new Date(receivedAt).toISOString(),
-                  effectiveAt: new Date(receivedAt).toISOString(),
+                  receivedAt: receivedAtIso,
+                  effectiveAt: receivedAtIso,
                   readBackVerified,
                   verbalAttestation: attestation,
                 },

@@ -7,6 +7,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
+  nowLocalInput,
 } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the APPEAL LIFECYCLE PANEL (GAP-074): attach packet document / submit /
 // MAC acknowledgement / record decision / withdraw / close, over the live /api/v1/appeals/{id}/* routes
@@ -74,10 +75,6 @@ const LABEL: Record<AppealAction["kind"], string> = {
 const OUTCOMES: readonly AppealOutcome[] = ["favorable", "partial", "unfavorable"];
 const OPEN_STATES = new Set(["draft", "submitted", "under_review"]);
 
-/** `datetime-local` value for "now", to the minute. */
-const nowLocal = (): string =>
-  new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-
 /** One UUID per line or comma-separated; blanks dropped. */
 const splitIds = (raw: string): string[] =>
   raw
@@ -143,7 +140,7 @@ export function AppealDetailPanel({
   const [documentIds, setDocumentIds] = useState(restored?.documentIds ?? "");
   const [narrative, setNarrative] = useState(restored?.narrative ?? "");
   const [outcome, setOutcome] = useState<AppealOutcome>(restored?.outcome ?? "favorable");
-  const [decidedAt, setDecidedAt] = useState(restored?.decidedAt ?? nowLocal());
+  const [decidedAt, setDecidedAt] = useState(restored?.decidedAt ?? nowLocalInput());
   // The date printed on the decision letter starts the next tier's clock, so it is never pre-filled.
   const [letterDate, setLetterDate] = useState(restored?.letterDate ?? "");
   const [macRefs, setMacRefs] = useState(restored?.macRefs ?? "");
@@ -177,7 +174,7 @@ export function AppealDetailPanel({
     setDocumentIds(appeal?.appealPacketDocumentId ?? "");
     setNarrative("");
     setMacRefs("");
-    setDecidedAt(nowLocal());
+    setDecidedAt(nowLocalInput());
     setLetterDate("");
     setRecon(EMPTY_RECONSIDERATION_SUBMIT);
     setError(null);

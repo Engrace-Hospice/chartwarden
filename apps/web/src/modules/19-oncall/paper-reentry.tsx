@@ -23,6 +23,7 @@ import {
   WorkQueueLayout,
   t,
   useApiClient,
+  isoToLocalInput,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
@@ -73,15 +74,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function minutesUntil(value: string, now = Date.now()): number {
   const ms = Date.parse(value);
   return Number.isNaN(ms) ? 0 : Math.floor((ms - now) / 60_000);
-}
-
-/** A `datetime-local` value from an ISO instant, for pre-filling the window start. */
-function localFromInstant(iso: string): string {
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return "";
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function PaperReentryWorklistScreen(): JSX.Element {
@@ -270,7 +262,7 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                               disabled={busy}
                               onClick={() => {
                                 setEntering(r);
-                                setOpenedAt(localFromInstant(r.shiftStartsAt));
+                                setOpenedAt(isoToLocalInput(r.shiftStartsAt));
                               }}
                             >
                               Re-enter a call

@@ -1,4 +1,4 @@
-import { StatusPill, nowLocalInput, t, useApiClient } from "@chartwarden/ui";
+import { StatusPill, nowLocalInput, t, useApiClient, localInputToIso } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the AIDE POC VIEW + SUPERVISORY MODAL (§5.1 #2 / #5).
 //
 // The 42 CFR §418.76(h) surface: the current Aide Plan of Care over the shared plan spine, plus the two
@@ -86,6 +86,11 @@ function SupervisoryVisitModal({
     !busy;
 
   async function submit(): Promise<void> {
+    const supervisoryAtIso = localInputToIso(supervisoryAt);
+    if (!supervisoryAtIso) {
+      setError("Enter the date and time of the supervisory visit.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const res = await client.POST("/api/v1/discipline-plans/{planId}/aide-supervisory-visits", {
@@ -94,7 +99,7 @@ function SupervisoryVisitModal({
         aideMembershipId,
         supervisingRnMembershipId,
         sourceEncounterId: phoneOnly ? null : sourceEncounterId,
-        supervisoryAt: new Date(supervisoryAt).toISOString(),
+        supervisoryAt: supervisoryAtIso,
         attestationMode,
         aidePerformanceSatisfactory: satisfactory,
         correctiveActions: correctiveActions.trim() === "" ? null : correctiveActions,

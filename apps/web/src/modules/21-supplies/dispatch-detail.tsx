@@ -13,7 +13,15 @@
 // chain — every dispense, drawdown, return and disposal against each lot — is the PERPETUAL LOG, which has
 // its own permission key (`comfort_kit.perpetual_log.read`) and its own screen: a supply coordinator who may
 // dispatch must not thereby acquire the ledger a diversion investigation reads.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+  nowLocalInput,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -59,12 +67,6 @@ import {
 } from "./supplies-ui";
 
 type Ceremony = "deploy" | "return" | null;
-
-function nowLocalInput(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 function toInstant(local: string): string {
   const ms = Date.parse(local);

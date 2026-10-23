@@ -14,6 +14,7 @@
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
 import type { SafetyConsentPurpose, SafetySubscriptionAlertKind } from "./safety-api";
+import { toLocalInput } from "@chartwarden/ui";
 
 /**
  * `safety_sos_lifecycle_state` (§2.2.2).
@@ -592,9 +593,7 @@ export function isLocationStale(ageMinutes: number | null | undefined): boolean 
 
 /** An instant suitable for a `datetime-local` input's initial value (local minute precision). */
 export function nowLocalInput(offsetMinutes = 0): string {
-  const d = new Date(Date.now() + offsetMinutes * 60_000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toLocalInput(new Date(Date.now() + offsetMinutes * 60_000));
 }
 
 /** A `datetime-local` value → the ISO instant §4.2's `date-time` format expects. An unparseable value
