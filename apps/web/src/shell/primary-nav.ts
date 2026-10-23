@@ -143,6 +143,10 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
     label: "Clinical tools",
     entries: [
       {
+        // Visits is the "field work" entry: a clinician's visits, EVV, safety check-ins/incidents and on-call
+        // triage are one working surface, so they share this entry and the page's own child row carries the
+        // finer location (#637). Do not split On-call / Field safety into top-level entries without a redesign
+        // decision: the sidebar structure follows the mockups.
         key: "visits",
         label: "Visits",
         icon: "stethoscope",

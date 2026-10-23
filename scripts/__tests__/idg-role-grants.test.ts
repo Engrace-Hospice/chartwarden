@@ -30,3 +30,16 @@ describe("roleMayHoldPermission (M14 default roles for idg.coordinate / idg.sche
     expect(roleMayHoldPermission("rn", "patient.read")).toBe(true);
   });
 });
+
+describe("roleMayHoldPermission (M19 triage.paper_reentry, #640)", () => {
+  it.each(["auditor", "clinician", "rn", "volunteer"])(
+    "withholds the back-dating write from %s",
+    (role) => {
+      expect(roleMayHoldPermission(role, "triage.paper_reentry")).toBe(false);
+    },
+  );
+
+  it.each(["clinical_supervisor", "compliance_officer"])("keeps it for %s", (role) => {
+    expect(roleMayHoldPermission(role, "triage.paper_reentry")).toBe(true);
+  });
+});

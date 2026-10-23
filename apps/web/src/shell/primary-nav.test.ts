@@ -104,4 +104,20 @@ describe("buildPrimaryNav", () => {
     expect(activeEntryKey(nav, "/hope")).toBe("assessments");
     expect(activeEntryKey(nav, "/")).toBe("home");
   });
+
+  it("keeps on-call triage and field safety under Visits, with the page's own row as the child (#637)", () => {
+    const nav = buildPrimaryNav([
+      screen("/me/visits"),
+      screen("/triage/intake"),
+      screen("/safety/incidents/new"),
+      screen("/me/oncall"),
+    ]);
+    for (const path of ["/triage/intake", "/safety/incidents/new", "/me/oncall"]) {
+      expect(activeEntryKey(nav, path)).toBe("visits");
+    }
+    const visits = nav.flatMap((g) => g.entries).find((e) => e.key === "visits");
+    expect(visits?.children.map((c) => c.path)).toEqual(
+      expect.arrayContaining(["/triage/intake", "/safety/incidents/new", "/me/oncall"]),
+    );
+  });
 });
