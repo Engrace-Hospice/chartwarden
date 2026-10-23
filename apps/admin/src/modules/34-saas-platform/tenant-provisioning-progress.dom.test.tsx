@@ -80,7 +80,9 @@ describe("tenant overview provisioning card", () => {
     window.history.pushState({}, "", "/tenants/cedar-ridge");
     render(
       <MemoryRouter initialEntries={["/tenants/cedar-ridge"]}>
-        <ApiClientProvider client={{ GET, POST: vi.fn() } as unknown as ApiClient}>
+        <ApiClientProvider
+          client={{ GET, POST: vi.fn() } as unknown as ApiClient}
+        >
           <ToastProvider>
             <Routes>
               <Route path="/tenants/:orgSlug" element={<TenantOverview />} />
