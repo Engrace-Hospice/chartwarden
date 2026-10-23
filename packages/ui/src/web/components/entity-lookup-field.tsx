@@ -230,9 +230,7 @@ export function EntityLookupField({
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
           aria-activedescendant={
-            appearance === "modal" && open && activeIndex >= 0
-              ? `${listId}-option-${activeIndex}`
-              : undefined
+            open && activeIndex >= 0 ? `${listId}-option-${activeIndex}` : undefined
           }
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={describedBy}
@@ -243,7 +241,7 @@ export function EntityLookupField({
           placeholder={placeholder}
           onFocus={focus}
           onBlur={blur}
-          onKeyDown={appearance === "modal" ? onInputKeyDown : undefined}
+          onKeyDown={onInputKeyDown}
           onChange={(event) => {
             setQuery(event.target.value);
             setActiveIndex(-1);
@@ -463,11 +461,7 @@ const optionStyle = (
   padding: appearance === "modal" ? "0.7rem 0.8rem" : "0.55rem 0.7rem",
   border: "none",
   borderBottom: `1px solid color-mix(in srgb, ${t.outlineVariant} 45%, transparent)`,
-  background: selected
-    ? t.primaryTint
-    : appearance === "modal" && active
-      ? t.surfaceContainer
-      : "transparent",
+  background: selected ? t.primaryTint : active ? t.surfaceContainer : "transparent",
   color: appearance === "modal" ? t.onSurface : undefined,
   textAlign: "left",
   cursor: "pointer",
