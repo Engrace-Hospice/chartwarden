@@ -72,6 +72,7 @@ import {
   ChartWardenError,
   DegradedError,
   type Npi,
+  REDACTION_SINGLE_OFFICER_FLAG_KEY,
   RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY,
   RETENTION_DESTRUCTION_EXECUTE_ENV,
   RETENTION_DESTRUCTION_FLAG_KEY,
@@ -292,6 +293,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@chartwarden/terminology-loader";
+import { buildActivePermissionHolderCounter } from "./bootstrap/active-permission-holders";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -5130,6 +5132,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               auditQuery: createDbAuditQuery(dbHandle.db),
               // "placed by" / redaction people: M2's by-id directory reader (M36 reads no identity table).
               staffNames: readStaffNames,
+              // The single-officer redaction fallback (PROVISIONAL, off per tenant): the tenant flag and M3's count of people who can approve.
+              redactionFallback: {
+                enabled: async (organizationId: string) =>
+                  (await featureFlagReader?.forOrg(organizationId))?.[
+                    REDACTION_SINGLE_OFFICER_FLAG_KEY
+                  ] === true,
+                eligibleApprovers: buildActivePermissionHolderCounter(
+                  createMembershipsHoldingPermissionReader(dbHandle.db),
+                ),
+              },
               // The destruction executor's mode for the screen: the tenant ops flag, then the deployment's execute switch.
               destructionMode: async (organizationId) =>
                 m36RetentionDestructionWired

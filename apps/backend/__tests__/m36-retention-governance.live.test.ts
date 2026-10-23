@@ -43,15 +43,22 @@ import {
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { RETENTION_DESTRUCTION_FLAG_KEY, retentionDestructionModeOf } from "@chartwarden/types";
+import {
+  REDACTION_SINGLE_OFFICER_FLAG_KEY,
+  RETENTION_DESTRUCTION_FLAG_KEY,
+  retentionDestructionModeOf,
+} from "@chartwarden/types";
+import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildActivePermissionHolderCounter } from "../src/bootstrap/active-permission-holders";
 import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
 import { readStaffNames } from "../src/modules/02-identity/staff-names";
+import { createMembershipsHoldingPermissionReader } from "../src/modules/03-authorization/permission-holders";
 import { M4_OUTBOX_EVENTS } from "../src/modules/04-audit/events-by-m4";
 import {
   activeLegalHolds,
@@ -129,6 +136,11 @@ const ALLOWED_KEYS = new Set([
   "approved_by_name",
   "approved_at",
   "under_legal_hold",
+  "self_approved",
+  "countersign_deadline_at",
+  "countersigned_by",
+  "countersigned_by_name",
+  "single_officer_fallback_available",
 ]);
 
 interface Login {
@@ -363,6 +375,14 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
         auditQuery: createDbAuditQuery(handle.db as never),
         // The identity directory port and the executor's mode, bound as the composition root binds them.
         staffNames: readStaffNames,
+        // The single-officer redaction fallback, bound as the composition root binds it: the tenant flag and M3's holder count.
+        redactionFallback: {
+          enabled: async (organizationId) =>
+            (await flagReader.forOrg(organizationId))[REDACTION_SINGLE_OFFICER_FLAG_KEY] === true,
+          eligibleApprovers: buildActivePermissionHolderCounter(
+            createMembershipsHoldingPermissionReader(handle.db),
+          ),
+        },
         destructionMode: async (organizationId) =>
           retentionDestructionModeOf(
             (await flagReader.forOrg(organizationId))[RETENTION_DESTRUCTION_FLAG_KEY] === true,
@@ -1104,6 +1124,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(listed.redactions.map((r) => r.id)).toContain(dto.id);
     expect((await gov("GET", "/redactions", outsiderRedactorLogin)).json()).toEqual({
       redactions: [],
+      single_officer_fallback_available: false,
     });
     expect(
       (
@@ -1128,6 +1149,306 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(
       (await readAs(officerLogin)).messages.find((m) => m.messageId === messageId)?.legalHold,
     ).toBeUndefined();
+  });
+
+  describe("single-officer redaction fallback (ADR-0055 D9, migration 1165, PROVISIONAL)", () => {
+    // A tenant of its own with exactly ONE person who can approve: the fallback is about THAT tenant, and ORG already has three approvers.
+    const ORG_3 = "55555555-5555-4555-8555-5555000a9603";
+    const FLAG = "messaging.redaction_single_officer_fallback";
+    let sole: Person;
+    let soleLogin: Login;
+    let soleStale: Login;
+    let second: Person;
+    let secondLogin: Login;
+    let counter: Person;
+    let counterLogin: Login;
+    let counterStale: Login;
+    let ch3 = "";
+
+    const setFlag = async (on: boolean) => {
+      await admin.query("DELETE FROM feature_flag WHERE organization_id=$1 AND flag_key=$2", [
+        ORG_3,
+        FLAG,
+      ]);
+      if (on) {
+        await admin.query(
+          "INSERT INTO feature_flag (organization_id,flag_key,value_type,value) VALUES ($1,$2,'bool','true'::jsonb)",
+          [ORG_3, FLAG],
+        );
+      }
+    };
+    /** A message in ORG_3 and the sole officer's open request on it. Redaction never reads a body, so the cipher is a placeholder. */
+    const requestOne = async (): Promise<{ messageId: string; id: string }> => {
+      const messageId = (
+        await admin.query(
+          `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, body_kind)
+           VALUES ($1,$2,$3,'user','\\x01aa',repeat('0',64),'plain') RETURNING id`,
+          [ORG_3, ch3, sole.userId],
+        )
+      ).rows[0].id as string;
+      const res = await gov("POST", "/redactions", soleLogin, {
+        message_id: messageId,
+        reason: REASON,
+      });
+      expect(res.statusCode, res.body).toBe(201);
+      return { messageId, id: (res.json() as { id: string }).id };
+    };
+    const stateOf = async (id: string) =>
+      (
+        await rows<{
+          approved: boolean;
+          selfApproved: boolean;
+          countersigned: boolean;
+          hours: number | null;
+        }>(
+          `SELECT approved_at IS NOT NULL approved, self_approved_at IS NOT NULL "selfApproved", countersigned_by IS NOT NULL countersigned,
+                  extract(epoch FROM (countersign_deadline_at - self_approved_at))/3600 hours
+             FROM message_redaction WHERE id=$1`,
+          [id],
+        )
+      )[0];
+    const auditCount = (eventType: string, resourceId: string) =>
+      count(
+        "SELECT count(*) n FROM audit_event WHERE event_type=$1 AND resource_id=$2 AND organization_id=$3",
+        [eventType, resourceId, ORG_3],
+      );
+
+    beforeAll(async () => {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'wp56c','wp56c','wp56c','active')",
+        [ORG_3],
+      );
+      const keys = [...STAFF, "messaging.redact.request", "messaging.redact.approve"];
+      // The sole officer ALSO holds the countersign key, so the "never the requester" rule is proved at the service and the database, not by a missing key.
+      sole = await seedPerson("sole-officer", ORG_3, [...keys, "messaging.redact.countersign"]);
+      second = await seedPerson("second-officer", ORG_3, keys);
+      counter = await seedPerson("counter-signer", ORG_3, ["messaging.redact.countersign"]);
+      // The second officer is on the books but starts DISABLED, so the tenant has exactly one eligible approver.
+      await admin.query(
+        `UPDATE membership SET status='suspended' WHERE user_id=$1 AND organization_id=$2`,
+        [second.userId, ORG_3],
+      );
+      soleLogin = await login(sole, ORG_3, true);
+      soleStale = await login(sole, ORG_3, false);
+      secondLogin = await login(second, ORG_3, true);
+      counterLogin = await login(counter, ORG_3, true);
+      counterStale = await login(counter, ORG_3, false);
+      ch3 = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+           VALUES ($1,'location','aaaaaaaa-aaaa-4aaa-8aaa-0000000a96b1','wp56-c','care_related') RETURNING id`,
+          [ORG_3],
+        )
+      ).rows[0].id as string;
+    });
+
+    it("OFF by default: with the tenant setting off, self-approval is refused and the list says it is unavailable", async () => {
+      await setFlag(false);
+      const { id } = await requestOne();
+      const res = await gov("POST", `/redactions/${id}/self-approve`, soleLogin);
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toContain("REDACTION_FALLBACK_UNAVAILABLE");
+      expect((await stateOf(id))?.selfApproved).toBe(false);
+      const list = (await gov("GET", "/redactions", soleLogin)).json() as {
+        single_officer_fallback_available: boolean;
+      };
+      expect(list.single_officer_fallback_available).toBe(false);
+      // the plain route still refuses the requester
+      expect((await gov("POST", `/redactions/${id}/approve`, soleLogin)).body).toContain(
+        "REDACTION_SELF_APPROVAL",
+      );
+    });
+
+    it("a tenant with TWO eligible officers never gets the fallback, even with the setting on", async () => {
+      await setFlag(true);
+      await admin.query(
+        `UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2`,
+        [second.userId, ORG_3],
+      );
+      const { id } = await requestOne();
+      const res = await gov("POST", `/redactions/${id}/self-approve`, soleLogin);
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toContain("REDACTION_FALLBACK_UNAVAILABLE");
+      expect(
+        (
+          (await gov("GET", "/redactions", soleLogin)).json() as {
+            single_officer_fallback_available: boolean;
+          }
+        ).single_officer_fallback_available,
+      ).toBe(false);
+      await admin.query(
+        `UPDATE membership SET status='suspended' WHERE user_id=$1 AND organization_id=$2`,
+        [second.userId, ORG_3],
+      );
+    });
+
+    it("ON with exactly one officer: needs its OWN fresh step-up, masks nothing, starts a 72 h period, is audited beyond the row trigger; only the requester can do it", async () => {
+      await setFlag(true);
+      const { id, messageId } = await requestOne();
+      expect(
+        (
+          (await gov("GET", "/redactions", soleLogin)).json() as {
+            single_officer_fallback_available: boolean;
+          }
+        ).single_officer_fallback_available,
+      ).toBe(true);
+      expect((await gov("POST", `/redactions/${id}/self-approve`, null)).statusCode).toBe(401);
+      const stale = await gov("POST", `/redactions/${id}/self-approve`, soleStale);
+      expect(stale.statusCode).toBe(403);
+      expect(stale.body).toContain("STEP_UP_REQUIRED");
+      expect((await gov("POST", `/redactions/${id}/self-approve`, counterLogin)).statusCode).toBe(
+        403,
+      ); // no approve key
+      const ok = await gov("POST", `/redactions/${id}/self-approve`, soleLogin);
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(ok.json()).toMatchObject({
+        status: "awaiting_countersign",
+        self_approved: true,
+        approved_at: null,
+        approved_by: null,
+        countersigned_by: null,
+      });
+      expect(Math.round((await stateOf(id))?.hours ?? 0)).toBe(72);
+      expect(await auditCount("m36.redaction.self_approved", id)).toBe(1);
+      // not final: nothing masks it (the reader keys on approved_at), and it is out of search / uneditable like any request
+      expect((await stateOf(id))?.approved).toBe(false);
+      expect(
+        await count(
+          "SELECT count(*) n FROM message_redaction WHERE message_id=$1 AND approved_at IS NOT NULL",
+          [messageId],
+        ),
+      ).toBe(0);
+      // a second self-approval is 409
+      expect((await gov("POST", `/redactions/${id}/self-approve`, soleLogin)).statusCode).toBe(409);
+      // only the requester: another officer using the self route is refused (they use the ordinary approve)
+      const stranger = await gov("POST", `/redactions/${id}/self-approve`, secondLogin);
+      expect([401, 403, 409]).toContain(stranger.statusCode);
+    });
+
+    it("COUNTERSIGN: a second role with its own permission and fresh step-up makes it final; never the requester; once", async () => {
+      await setFlag(true);
+      const { id } = await requestOne();
+      expect((await gov("POST", `/redactions/${id}/self-approve`, soleLogin)).statusCode).toBe(200);
+      expect((await gov("POST", `/redactions/${id}/countersign`, null)).statusCode).toBe(401);
+      const own = await gov("POST", `/redactions/${id}/countersign`, soleLogin);
+      expect(own.statusCode).toBe(403);
+      expect(own.body).toContain("REDACTION_COUNTERSIGN_SELF");
+      expect((await stateOf(id))?.approved).toBe(false);
+      const stale = await gov("POST", `/redactions/${id}/countersign`, counterStale);
+      expect(stale.statusCode).toBe(403);
+      expect(stale.body).toContain("STEP_UP_REQUIRED");
+      expect(await auditCount("m36.redaction.countersigned", id)).toBe(0);
+      const done = await gov("POST", `/redactions/${id}/countersign`, counterLogin);
+      expect(done.statusCode, done.body).toBe(200);
+      expect(done.json()).toMatchObject({
+        status: "approved",
+        self_approved: true,
+        approved_by_name: "sole-officer",
+        countersigned_by_name: "counter-signer",
+      });
+      expect(await stateOf(id)).toMatchObject({
+        approved: true,
+        selfApproved: true,
+        countersigned: true,
+      });
+      expect(await auditCount("m36.redaction.countersigned", id)).toBe(1);
+      expect((await gov("POST", `/redactions/${id}/countersign`, counterLogin)).statusCode).toBe(
+        409,
+      );
+    });
+
+    it("COUNTERSIGN by the requester is refused by the database too (CHECK and guard), even if a caller bypassed the service", async () => {
+      await setFlag(true);
+      const { id } = await requestOne();
+      expect((await gov("POST", `/redactions/${id}/self-approve`, soleLogin)).statusCode).toBe(200);
+      await expect(
+        withOrgContext<DbClient, unknown>(
+          handle.db,
+          { organizationId: ORG_3, userId: sole.userId },
+          (tx) =>
+            tx.execute(
+              sql`UPDATE message_redaction SET countersigned_by = ${sole.userId}::uuid, approved_by = ${sole.userId}::uuid WHERE id = ${id}::uuid`,
+            ),
+        ),
+      ).rejects.toThrow();
+      expect((await stateOf(id))?.approved).toBe(false);
+    });
+
+    it("LAPSED: after 72 h the countersign is refused and it stays non-final; a DIFFERENT officer can still approve it the ordinary way", async () => {
+      await setFlag(true);
+      const { id } = await requestOne();
+      expect((await gov("POST", `/redactions/${id}/self-approve`, soleLogin)).statusCode).toBe(200);
+      // Age the self-approval (the guard forbids touching these columns, so the test switches it off for this one statement).
+      await admin.query(
+        "ALTER TABLE message_redaction DISABLE TRIGGER trg_message_redaction_guard",
+      );
+      await admin.query(
+        "UPDATE message_redaction SET self_approved_at = now() - interval '80 hours', countersign_deadline_at = now() - interval '8 hours' WHERE id=$1",
+        [id],
+      );
+      await admin.query("ALTER TABLE message_redaction ENABLE TRIGGER trg_message_redaction_guard");
+      const late = await gov("POST", `/redactions/${id}/countersign`, counterLogin);
+      expect(late.statusCode).toBe(409);
+      expect(late.body).toContain("REDACTION_COUNTERSIGN_LAPSED");
+      expect((await stateOf(id))?.approved).toBe(false);
+      const listed = (await gov("GET", "/redactions", soleLogin)).json() as {
+        redactions: { id: string; status: string }[];
+      };
+      expect(listed.redactions.find((r) => r.id === id)?.status).toBe("lapsed");
+      // the database enforces the deadline itself (its own clock), not just the service
+      await expect(
+        withOrgContext<DbClient, unknown>(
+          handle.db,
+          { organizationId: ORG_3, userId: counter.userId },
+          (tx) =>
+            tx.execute(
+              sql`UPDATE message_redaction SET countersigned_by = ${counter.userId}::uuid, approved_by = ${sole.userId}::uuid WHERE id = ${id}::uuid`,
+            ),
+        ),
+      ).rejects.toThrow();
+      // a second, different officer is an ordinary two-person approval
+      const lateOfficer = await seedPerson("late-officer", ORG_3, [
+        ...STAFF,
+        "messaging.redact.request",
+        "messaging.redact.approve",
+      ]);
+      const ordinary = await gov(
+        "POST",
+        `/redactions/${id}/approve`,
+        await login(lateOfficer, ORG_3, true),
+      );
+      expect(ordinary.statusCode, ordinary.body).toBe(200);
+      expect(ordinary.json()).toMatchObject({
+        status: "approved",
+        approved_by_name: "late-officer",
+      });
+      expect(await stateOf(id)).toMatchObject({
+        approved: true,
+        selfApproved: true,
+        countersigned: false,
+      });
+    });
+
+    it("CROSS-TENANT (IDOR): another organisation's officer and countersigner get the random-id 404 on both new routes and change nothing", async () => {
+      await setFlag(true);
+      const { id } = await requestOne();
+      const before = await stateOf(id);
+      const foreignOfficer = await seedPerson("foreign-officer", ORG_2, [
+        ...STAFF,
+        "messaging.redact.approve",
+        "messaging.redact.countersign",
+      ]);
+      const foreign = await login(foreignOfficer, ORG_2, true);
+      const random = randomUUID();
+      for (const route of ["self-approve", "countersign"] as const) {
+        const real = await gov("POST", `/redactions/${id}/${route}`, foreign);
+        const fake = await gov("POST", `/redactions/${random}/${route}`, foreign);
+        expect(real.statusCode, route).toBe(404);
+        expect(real.statusCode).toBe(fake.statusCode);
+        expect(Object.keys(real.json()).sort()).toEqual(Object.keys(fake.json()).sort());
+      }
+      expect(await stateOf(id)).toEqual(before);
+    });
   });
 
   it("NO PII: every response carried only contract keys (no body, no name, no email)", () => {

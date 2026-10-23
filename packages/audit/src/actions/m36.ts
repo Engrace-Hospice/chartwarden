@@ -104,6 +104,24 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.redaction.self_approved", // WP 5.6 (ADR-0055 D9, migration 1165, PROVISIONAL) - the sole officer approved their own redaction request
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A sole eligible officer approved their OWN message redaction request under the single-officer fallback (redactionId, messageId, countersignDeadlineAt, provisional). Not final: it masks nothing until a second role countersigns within 72 hours. Ids and instants only, never the reason or the message.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.redaction.countersigned", // WP 5.6 (ADR-0055 D9, migration 1165, PROVISIONAL) - the second role made a self-approved redaction final
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A second role (org admin or privacy officer) countersigned a sole officer's self-approved message redaction within its 72 hour period, making it final (redactionId, messageId, provisional). Ids only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.retention_destruction.reconciled", // WP 5.6 — reservations stranded by a crash were settled against the message table
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",

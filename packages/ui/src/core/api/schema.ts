@@ -15056,7 +15056,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Compliance officer: the newest redactions (messaging.redact.request or messaging.redact.approve) with status (requested or approved), the requester and approver ids and display names, instants and whether an active legal hold covers the message now. Never the message or the reason. Read-audited. Not cached */
+        /** Compliance officer: the newest redactions (messaging.redact.request, messaging.redact.approve or messaging.redact.countersign) with status (requested, awaiting_countersign, approved or lapsed), the requester, approver and countersigner ids and display names, instants and whether an active legal hold covers the message now; single_officer_fallback_available says whether the PROVISIONAL self-approve route can be used now (setting on and exactly one eligible approver). Never the message or the reason. Read-audited. Not cached */
         get: operations["getApiV1MessagingGovernanceRedactions"];
         put?: never;
         /** Compliance officer: ask for a message to be redacted (messaging.redact.request; message_id and a reason of 10 to 1000 characters, 422). No channel membership is needed and the requester never sees the body. The request already takes the message out of search and blocks edits (409 MESSAGE_REDACTED); nothing is masked until a DIFFERENT person approves. One request per message (409 REDACTION_EXISTS); an unknown or another tenant's message is 404. A legal hold does not block it: a redaction only masks, the cipher is retained. Audited by the table's trigger (the reason text is left out) */
@@ -15078,6 +15078,40 @@ export interface paths {
         put?: never;
         /** Compliance officer: approve a redaction (messaging.redact.approve + a fresh step-up for `messaging.redact.approve`, else 403 STEP_UP_REQUIRED). The approver is never the requester (403 REDACTION_SELF_APPROVAL, and the database refuses it too); 409 REDACTION_ALREADY_APPROVED; 404 unknown or another tenant's redaction. From the approval every reader of the message sees an empty body with a redactedAt instant, no attachments, links, poll or mentions, and the message is out of search and exports; the cipher and hash are untouched, so a held message stays retained under the mask */
         post: operations["postApiV1MessagingGovernanceRedactionsByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/redactions/{id}/countersign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off */
+        post: operations["postApiV1MessagingGovernanceRedactionsByIdCountersign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/redactions/{id}/self-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compliance officer, PROVISIONAL single-officer fallback (ADR-0055 D9; pending compliance sign-off): approve your OWN redaction request. Needs messaging.redact.approve and a fresh step-up for `messaging.redact.self_approve` (else 403 STEP_UP_REQUIRED), the tenant setting messaging.redaction_single_officer_fallback ON (off by default) and exactly ONE person who can approve (else 403 REDACTION_FALLBACK_UNAVAILABLE); only the requester (403 REDACTION_SELF_APPROVAL_NOT_REQUESTER); 409 REDACTION_ALREADY_APPROVED. NOT final: it masks nothing and the message stays editable-blocked and out of search until a second role countersigns within 72 hours (status awaiting_countersign, then lapsed). Audited by the row's trigger and m36.redaction.self_approved */
+        post: operations["postApiV1MessagingGovernanceRedactionsByIdSelfapprove"];
         delete?: never;
         options?: never;
         head?: never;
@@ -69968,15 +70002,20 @@ export interface operations {
                         redactions: {
                             id: string;
                             message_id: string;
-                            status: "requested" | "approved";
+                            status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                             requested_by: string;
                             requested_by_name: string | null;
                             requested_at: string;
                             approved_by: string | null;
                             approved_by_name: string | null;
                             approved_at: string | null;
+                            self_approved: boolean;
+                            countersign_deadline_at: string | null;
+                            countersigned_by: string | null;
+                            countersigned_by_name: string | null;
                             under_legal_hold: boolean;
                         }[];
+                        single_officer_fallback_available: boolean;
                     };
                 };
             };
@@ -70009,13 +70048,17 @@ export interface operations {
                     "application/json": {
                         id: string;
                         message_id: string;
-                        status: "requested" | "approved";
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
                         requested_by_name: string | null;
                         requested_at: string;
                         approved_by: string | null;
                         approved_by_name: string | null;
                         approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
                         under_legal_hold: boolean;
                     };
                 };
@@ -70044,13 +70087,95 @@ export interface operations {
                     "application/json": {
                         id: string;
                         message_id: string;
-                        status: "requested" | "approved";
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
                         requested_by_name: string | null;
                         requested_at: string;
                         approved_by: string | null;
                         approved_by_name: string | null;
                         approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
+                        under_legal_hold: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceRedactionsByIdCountersign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        message_id: string;
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
+                        requested_by: string;
+                        requested_by_name: string | null;
+                        requested_at: string;
+                        approved_by: string | null;
+                        approved_by_name: string | null;
+                        approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
+                        under_legal_hold: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceRedactionsByIdSelfapprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        message_id: string;
+                        status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
+                        requested_by: string;
+                        requested_by_name: string | null;
+                        requested_at: string;
+                        approved_by: string | null;
+                        approved_by_name: string | null;
+                        approved_at: string | null;
+                        self_approved: boolean;
+                        countersign_deadline_at: string | null;
+                        countersigned_by: string | null;
+                        countersigned_by_name: string | null;
                         under_legal_hold: boolean;
                     };
                 };

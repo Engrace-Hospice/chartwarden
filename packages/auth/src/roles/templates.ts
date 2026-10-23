@@ -354,6 +354,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     systemLocked: true,
     description: "§164.530(a) privacy official.",
     floor: SYSTEM_LOCKED_FLOORS.hipaa_privacy_officer,
+    // WP 5.6 (ADR-0055 D9): the second role that countersigns a sole officer's self-approved message redaction (migration 1165).
+    grants: ["messaging.redact.countersign"],
   },
   {
     key: "hipaa_security_officer",

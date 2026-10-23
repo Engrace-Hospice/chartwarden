@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1702,
-    "coveredRoutes": 1702,
+    "routes": 1704,
+    "coveredRoutes": 1704,
     "directRoutesReferenced": 1572
   },
   "modules": [
@@ -62,7 +62,8 @@
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
         "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts",
-        "apps/backend/__tests__/m36-global-search-query.test.ts"
+        "apps/backend/__tests__/m36-global-search-query.test.ts",
+        "apps/backend/__tests__/m36-retention-governance.live.test.ts"
       ],
       "directRoutesReferenced": 16
     },
@@ -515,7 +516,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 155,
+      "routes": 157,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",

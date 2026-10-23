@@ -7,7 +7,9 @@ import {
   MESSAGE_REDACTION_REASON_MAX_LENGTH,
   MESSAGE_REDACTION_REASON_MIN_LENGTH,
   MESSAGING_REDACT_APPROVE_PERMISSION,
+  MESSAGING_REDACT_COUNTERSIGN_PERMISSION,
   MESSAGING_REDACT_REQUEST_PERMISSION,
+  REDACTION_COUNTERSIGN_HOURS,
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
@@ -107,5 +109,72 @@ describe("migration 1156 message redaction", () => {
     expect(read("architecture/module-manifest.cjs")).toContain('"message_redaction",');
     expect(read("scripts/check-tenancy.ts")).toContain("message_redaction_guard");
     expect(read("packages/db/src/schema/index.ts")).toContain("./messaging/message-redactions");
+  });
+});
+
+// WP 5.6 (ADR-0055 D9, PROVISIONAL): the single-officer fallback, migration 1165.
+const fallbackSql = flat(read("packages/db/migrations/1165_m36_redaction_single_officer.sql"));
+describe("migration 1165 single-officer redaction fallback", () => {
+  it("the guard fixes the countersign period at 72 hours on the database clock (the shared constant)", () => {
+    expect(fallbackSql).toContain(`now() + interval '${REDACTION_COUNTERSIGN_HOURS} hours'`);
+    expect(fallbackSql).toContain("now() > OLD.countersign_deadline_at");
+  });
+
+  it("only the requester self-approves, only a different person countersigns, and a countersign is bound to app.user_id", () => {
+    expect(fallbackSql).toContain("v_user IS DISTINCT FROM OLD.requested_by");
+    expect(fallbackSql).toContain(
+      "NEW.countersigned_by IS DISTINCT FROM v_user OR NEW.countersigned_by = OLD.requested_by",
+    );
+    expect(fallbackSql).toContain(
+      'CHECK ("countersigned_by" IS NULL OR "countersigned_by" <> "requested_by")',
+    );
+  });
+
+  it("a self-approved row is final only with a countersign, and the two-people rule is relaxed only for a row that carries a self-approval", () => {
+    expect(fallbackSql).toContain(
+      'CHECK ("approved_by" IS NULL OR "approved_by" <> "requested_by" OR "self_approved_at" IS NOT NULL)',
+    );
+    expect(fallbackSql).toContain(
+      'CHECK ("approved_by" IS NULL OR "approved_by" <> "requested_by" OR "countersigned_by" IS NOT NULL)',
+    );
+    // the ordinary path still refuses the requester
+    expect(fallbackSql).toContain("NEW.approved_by IS NULL OR NEW.approved_by = OLD.requested_by");
+  });
+
+  it("the app role may update the four new columns; no DELETE is granted and the message table is never written", () => {
+    expect(fallbackSql).toContain(
+      'GRANT UPDATE ("self_approved_at", "countersign_deadline_at", "countersigned_by", "countersigned_at") ON "message_redaction" TO chartwarden_app',
+    );
+    expect(fallbackSql).not.toMatch(/GRANT [^;]*DELETE[^;]*TO chartwarden_app/);
+    const code = flat(
+      read("packages/db/migrations/1165_m36_redaction_single_officer.sql").replace(/^--.*$/gm, ""),
+    );
+    expect(code).not.toMatch(/ALTER TABLE "?message"? /);
+    expect(code).not.toMatch(/UPDATE "?message"? /);
+  });
+
+  it("the countersign permission goes to org_admin and the privacy officer, never the compliance officer, and matches the constant", () => {
+    expect(fallbackSql).toContain(
+      `'${MESSAGING_REDACT_COUNTERSIGN_PERMISSION}', 'message_redaction', 'countersign'`,
+    );
+    expect(fallbackSql).toContain("r.\"key\" IN ('org_admin', 'hipaa_privacy_officer')");
+    expect(fallbackSql).not.toContain("'compliance_officer'");
+  });
+
+  it("the Drizzle schema carries the new columns and the same CHECK names", () => {
+    for (const name of [
+      "self_approved_at",
+      "countersign_deadline_at",
+      "countersigned_by",
+      "countersigned_at",
+      "message_redaction_self_approval_pair",
+      "message_redaction_countersign_pair",
+      "message_redaction_countersign_needs_self_approval",
+      "message_redaction_countersigner_is_another",
+      "message_redaction_self_final_needs_countersign",
+    ]) {
+      expect(schema, name).toContain(name);
+      expect(fallbackSql, name).toContain(name);
+    }
   });
 });

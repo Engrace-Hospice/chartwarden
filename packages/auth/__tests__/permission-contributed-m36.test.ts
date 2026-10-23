@@ -47,6 +47,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.retention.manage",
         "messaging.redact.request",
         "messaging.redact.approve",
+        "messaging.redact.countersign",
         "messaging.break_glass.invoke",
         "messaging.break_glass.review",
         "messaging.export.request",
@@ -86,6 +87,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.retention.manage",
       "messaging.redact.request",
       "messaging.redact.approve",
+      "messaging.redact.countersign",
       "messaging.break_glass.invoke",
       "messaging.break_glass.review",
       "messaging.export.request",
@@ -106,7 +108,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
   });
 
   it("the redaction keys are compliance-category on message_redaction", () => {
-    for (const action of ["request", "approve"] as const) {
+    for (const action of ["request", "approve", "countersign"] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[`messaging.redact.${action}`]).toMatchObject({
         resource: "message_redaction",
         action,

@@ -111,6 +111,18 @@ export interface RetentionGovernanceDeps {
   readonly auditQuery: Pick<AuditQuery, "searchEvents">;
   /** By-id staff names (M2's directory reader, bound at the composition root). Absent => `placed_by_name` is null and the screen shows the id. */
   readonly staffNames?: StaffNamePort;
+  /**
+   * The single-officer redaction fallback (ADR-0055 D9, PROVISIONAL): the tenant flag and the count of people who can approve a redaction
+   * (M3's reader), bound at the composition root. Absent => the fallback does not exist.
+   */
+  readonly redactionFallback?: {
+    readonly enabled: (organizationId: string) => Promise<boolean>;
+    readonly eligibleApprovers: (
+      tx: DbClient,
+      organizationId: string,
+      permissionKey: string,
+    ) => Promise<number>;
+  };
   /** The destruction executor's mode for a tenant (flag + deployment switch). Absent => "off". */
   readonly destructionMode?: (organizationId: string) => Promise<RetentionDestructionMode>;
   readonly now?: () => Date;
