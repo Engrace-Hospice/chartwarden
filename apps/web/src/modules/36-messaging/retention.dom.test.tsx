@@ -89,6 +89,8 @@ interface Routes {
 function mount(routes: Routes, userId = ME, organizationId = ORG) {
   const GET = vi.fn((path: string, _init?: unknown): Promise<Reply> => {
     if (path.endsWith("/retention")) return Promise.resolve(routes.retention?.() ?? ok(OVERVIEW));
+    if (path.endsWith("/redactions"))
+      return Promise.resolve(ok({ redactions: [], single_officer_fallback_available: false }));
     if (path.endsWith("/release-preview")) return Promise.resolve(routes.preview?.() ?? fail(500));
     return Promise.resolve(routes.holds?.() ?? ok({ holds: [hold()] }));
   });
@@ -756,23 +758,20 @@ describe("Stale-while-revalidate and focus", () => {
 describe("Tabs keyboard", () => {
   it("ArrowLeft goes to the previous tab (wrapping), Home and End jump, and focus follows", async () => {
     mount({});
+    const tab = (name: string) => screen.getByRole("tab", { name });
+    const selected = (name: string) => tab(name).getAttribute("aria-selected") === "true";
     const retention = await screen.findByRole("tab", { name: "Retention" });
     fireEvent.keyDown(retention, { key: "ArrowLeft" });
-    const holds = screen.getByRole("tab", { name: "Legal holds" });
-    expect(holds.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(holds);
-    fireEvent.keyDown(holds, { key: "Home" });
-    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
-      "true",
-    );
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Retention" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
-      "true",
-    );
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Legal holds" }), { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
-      "true",
-    );
+    expect(selected("Redactions")).toBe(true);
+    expect(document.activeElement).toBe(tab("Redactions"));
+    fireEvent.keyDown(tab("Redactions"), { key: "ArrowLeft" });
+    expect(selected("Legal holds")).toBe(true);
+    fireEvent.keyDown(tab("Legal holds"), { key: "Home" });
+    expect(selected("Retention")).toBe(true);
+    fireEvent.keyDown(tab("Retention"), { key: "End" });
+    expect(selected("Redactions")).toBe(true);
+    fireEvent.keyDown(tab("Redactions"), { key: "ArrowRight" });
+    expect(selected("Retention")).toBe(true);
   });
 
   it("only the selected tab points at a panel that exists, and that panel is focusable", async () => {
