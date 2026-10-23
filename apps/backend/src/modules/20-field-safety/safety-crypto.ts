@@ -10,6 +10,7 @@
 // `decrypt` THROWS on anything it cannot authenticate, including M20-F16's no-coordinate sentinel — callers
 // (`openCipher`, the §8.6 coordinate decipher) turn that into "unavailable", never into text.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { ChartWardenError } from "@chartwarden/types";
 import { decodeCoordinates } from "./routes/coordinates";
 import type { SafetyDecipherPort } from "./routes/read-service-drizzle";
 import type { SafetyCipherPort } from "./routes/write-service";
@@ -32,6 +33,28 @@ const TAG_BYTES = 16;
 const aadFor = (organizationId: string): Buffer =>
   Buffer.from(`m20:field_safety:cipher:${organizationId}`, "utf8");
 
+/**
+ * A tenant with no key ring (`TenantKeyMissing`), a destroyed one, or an unbound KEK adapter threw a plain Error from
+ * deep inside M34, which the error handler renders as a generic 500 "An unexpected error occurred" (#596, F-039). All
+ * are the same operational statement - this deployment cannot key this tenant's PHI right now - and 503 says it.
+ */
+async function resolveDek(
+  keys: SafetyTenantKeyProvider,
+  organizationId: string,
+): Promise<{ version: string; key: Buffer }> {
+  try {
+    return await keys.dekForOrg(organizationId);
+  } catch (cause) {
+    const refusal = new ChartWardenError(
+      "SAFETY_CIPHER_UNBOUND",
+      "this organization's encryption key is not available, so this record cannot be stored encrypted; nothing was recorded",
+      503,
+    );
+    refusal.cause = cause; // logged with the handled error; never sent to the client
+    throw refusal;
+  }
+}
+
 /** Build the write-side cipher and read-side decipher over one tenant key provider. */
 export function createSafetyCiphers(keys: SafetyTenantKeyProvider): {
   readonly cipher: SafetyCipherPort;
@@ -39,7 +62,7 @@ export function createSafetyCiphers(keys: SafetyTenantKeyProvider): {
 } {
   const cipher: SafetyCipherPort = {
     async encrypt({ organizationId, plaintext }) {
-      const { version, key } = await keys.dekForOrg(organizationId);
+      const { version, key } = await resolveDek(keys, organizationId);
       if (key.byteLength !== DEK_BYTES) throw new Error("tenant DEK must be 32 bytes");
       const nonce = randomBytes(NONCE_BYTES);
       const c = createCipheriv("aes-256-gcm", key, nonce);
