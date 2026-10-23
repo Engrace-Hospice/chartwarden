@@ -33,6 +33,12 @@ import { SYSTEM_LOCKED_FLOORS } from "./templates";
 const PATIENT_READ = "patient.read";
 
 /**
+ * The tenant-owner roles ADR-0090 names by ROLE as org-wide. Exported separately because a module whose
+ * scope decision is narrower than {@link hasOrgWideScope} (M6 `admission.scope`) widens for exactly these two.
+ */
+export const BUSINESS_ADMIN_SCOPE_ROLES: readonly string[] = ["administrator", "org_admin"];
+
+/**
  * Roles that read the whole org's patients without a caseload assignment.
  *
  * Sorted and de-duplicated so the value is stable regardless of how the floors are declared — the
@@ -41,10 +47,9 @@ const PATIENT_READ = "patient.read";
  */
 export const ORG_WIDE_SCOPE_ROLES: readonly string[] = [
   ...new Set([
-    "administrator",
+    ...BUSINESS_ADMIN_SCOPE_ROLES,
     "compliance_officer",
     "medical_director",
-    "org_admin",
     "survey_coordinator",
     ...Object.entries(SYSTEM_LOCKED_FLOORS)
       .filter(([, floor]) => (floor as readonly string[]).includes(PATIENT_READ))
