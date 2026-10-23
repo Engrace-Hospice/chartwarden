@@ -32,7 +32,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** A single seeded `user` is enough: it backs `organization_invitation.inviter_id` (FK → user, nullable)
@@ -44,6 +49,16 @@ type SeedIds = {
   organizationInvitation: string;
   tenantStepUpPolicyOverride: string;
   deviceAttestation: string;
+};
+
+/** NOLOGIN definer-owner roles whose `FOR SELECT … USING (true)` policy is deliberate (migrations 0231, 0324):
+ * the app role does not inherit them and reaches the rows only through a SECURITY DEFINER lookup keyed by a
+ * capability (token hash / own user id). Named, never pattern-matched: a new entry needs a reason here. */
+const DEFINER_READER_ROLES: Record<string, string> = {
+  invitation_token_reader:
+    "0324 m2_find_invitation_by_token — pre-org invite accept, keyed by the token hash",
+  membership_picker_reader:
+    "0231 m2_list_own_memberships — pre-org picker, keyed by the caller's own user id",
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -197,12 +212,43 @@ describe.skipIf(!DB_URL)(
           `${table} has no CREATE POLICY block in any migration`,
         ).toBeGreaterThan(0);
       }
-      for (const block of policyBlocks) {
+      const tenantBlocks = policyBlocks.filter((block) => {
+        const role = /\bTO\s+"?(\w+)"?/i.exec(block)?.[1]?.toLowerCase();
+        if (!role || !(role in DEFINER_READER_ROLES)) return true;
+        expect(block, `${role} policy must be read-only`).toMatch(/FOR\s+SELECT/i);
+        return false;
+      });
+      for (const block of tenantBlocks) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((m) => m[1]);
         expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
+    });
+
+    it("the invitation-token definer role is not inherited by the app role, and its lookup is a capability, not a listing", async () => {
+      const { rows: member } = await db.query(
+        "SELECT pg_has_role('chartwarden_app','invitation_token_reader','USAGE') AS inherits",
+      );
+      expect(member[0].inherits).toBe(false);
+      const hash = (
+        await db.query("SELECT token_hash FROM organization_invitation WHERE id=$1", [
+          a.organizationInvitation,
+        ])
+      ).rows[0].token_hash as string;
+      const lookup = async (h: string | null) => {
+        await db.query("RESET app.org_id"); // the pre-org caller has no organization bound
+        await db.query("SET ROLE chartwarden_app");
+        try {
+          return (await db.query("SELECT id FROM m2_find_invitation_by_token($1)", [h])).rows;
+        } finally {
+          await db.query("RESET ROLE");
+        }
+      };
+      expect((await lookup(hash)).map((r) => r.id)).toEqual([a.organizationInvitation]);
+      expect(await lookup("not-a-token-hash")).toEqual([]);
+      expect(await lookup("")).toEqual([]);
+      expect(await lookup(null)).toEqual([]);
     });
 
     it.each(COVERED)(
