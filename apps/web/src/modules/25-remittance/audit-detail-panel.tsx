@@ -22,7 +22,6 @@ import {
   isConflict,
   linkAuditClaim,
   loadAuditRequest,
-  loadClaimControlNumber,
   moveAuditRequest,
   unlinkAuditClaim,
 } from "./audit-api";
@@ -39,32 +38,23 @@ const MOVES: Record<string, readonly AuditRequestState[]> = {
 };
 const TERMINAL = new Set(["closed", "withdrawn"]);
 
-/** The detail returns claim ids only: the control number is read through the billing claim read, id prefix as fallback. */
+/** The detail carries each claim's control number (resolved server-side); the id prefix is the fallback. */
 function LinkedClaim({
   claimId,
+  claimControlNumber,
   dateOfServiceNote,
   canUnlink,
   busy,
   onUnlink,
 }: {
   readonly claimId: string;
+  readonly claimControlNumber: string | null;
   readonly dateOfServiceNote: string | null;
   readonly canUnlink: boolean;
   readonly busy: boolean;
   readonly onUnlink: () => void;
 }): JSX.Element {
-  const client = useApiClient();
-  const [control, setControl] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    void loadClaimControlNumber(client, claimId).then((c) => {
-      if (live) setControl(c);
-    });
-    return () => {
-      live = false;
-    };
-  }, [client, claimId]);
-  const name = control ?? claimId.slice(0, 8);
+  const name = claimControlNumber ?? claimId.slice(0, 8);
   return (
     <li>
       {name}
@@ -137,6 +127,15 @@ export function AuditDetailPanel({
     }
     moveHeading.current?.focus();
   }, [move]);
+
+  // After a terminal move the "Move this request" heading unmounts (and takes focus with it): hand focus to the
+  // stable Claims heading, which stays on screen for every state.
+  const wasTerminal = useRef(false);
+  const isTerminal = audit ? TERMINAL.has(audit.state) : false;
+  useEffect(() => {
+    if (isTerminal && !wasTerminal.current) claimsHeading.current?.focus();
+    wasTerminal.current = isTerminal;
+  }, [isTerminal]);
 
   useEffect(() => {
     void load();
@@ -268,6 +267,7 @@ export function AuditDetailPanel({
                   <LinkedClaim
                     key={c.id}
                     claimId={c.claimId}
+                    claimControlNumber={c.claimControlNumber}
                     dateOfServiceNote={c.dateOfServiceNote}
                     canUnlink={!terminal}
                     busy={claimBusy}

@@ -120,6 +120,7 @@ export const AuditDetailSchema = Type.Composite([
         id: Type.String(),
         claimId: Type.String(),
         dateOfServiceNote: NULLABLE_STRING,
+        claimControlNumber: NULLABLE_STRING,
       }),
     ),
     deadlines: Type.Array(RecordedDeadlineViewSchema),

@@ -6,13 +6,13 @@
 // SME-confirmed is FLAGGED (windowConfirmed: false), never hidden. The view carries item LABELS (a recorded deadline's user-typed label, an ADR's MAC name) but not the longer free-text notes (source, scope and disposition notes).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { type TimelineItem, nextDeadline, sortTimeline, windowUnconfirmed } from "../domain";
 import type { AppealTier } from "../domain";
 import type { M25ReadActor } from "./actor";
-import type { AppealSourcePorts } from "./appeal-packet-sources";
-import { patientOfClaim } from "./claim-patient";
 import { viewRecordedDeadline } from "./recorded-deadline-view";
+import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
 
 /** Rows read per kind; a claim with more says so (`truncated`) instead of silently dropping them. */
@@ -44,11 +44,19 @@ const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() :
 
 export function buildDrizzleCaseViewService(
   db: DbClient,
-  ports: { readonly sources?: AppealSourcePorts } = {},
+  ports: { readonly claims?: ClaimFactsPort } = {},
 ): CaseViewService {
   return {
     async getCaseView(actor, claimId, options) {
       return withOrgContext(db, actor, async (tx) => {
+        // The claim must resolve under RLS and inside the actor's provider scope, else it reads as absent (404). A claim
+        // that is real but has no ADR / appeal / audit yet is a legitimate empty view (200). The patient named for the
+        // read audit is this resolved claim's, so an out-of-scope claim is never attributed.
+        const claim = await (ports.claims ?? m23ClaimFactsPort).byId(tx, claimId);
+        const scope = actor.providerEntityScope;
+        if (!claim || (scope !== undefined && !scope.includes(claim.providerEntityId))) {
+          throw new NotFoundError("claim");
+        }
         const now = new Date();
         const items: TimelineItem[] = [];
         let truncated = false;
@@ -250,7 +258,7 @@ export function buildDrizzleCaseViewService(
 
         return {
           claimId,
-          patientId: await patientOfClaim(ports.sources, actor.organizationId, claimId),
+          patientId: claim.patientId,
           generatedAt: now.toISOString(),
           nextDeadline: nextDeadline(items, now),
           items: sortTimeline(items),

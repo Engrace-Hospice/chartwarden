@@ -44,7 +44,7 @@ const auditDetail = () => ({
   denialCaseId: null,
   respondedAt: null,
   closedAt: null,
-  claims: [{ id: "l1", claimId: CLAIM, dateOfServiceNote: null }],
+  claims: [{ id: "l1", claimId: CLAIM, claimControlNumber: "CCN-100", dateOfServiceNote: null }],
   deadlines: auditDeadlines,
   events: [],
 });

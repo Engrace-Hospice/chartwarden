@@ -72,7 +72,7 @@ const auditDetail = () => ({
   denialCaseId: null,
   respondedAt: null,
   closedAt: null,
-  claims: [{ id: "l1", claimId: CLAIM, dateOfServiceNote: null }],
+  claims: [{ id: "l1", claimId: CLAIM, claimControlNumber: "CCN-100", dateOfServiceNote: null }],
   deadlines: [
     {
       id: "ffffffff-6666-4666-8666-ffffffffffff",
@@ -135,9 +135,6 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       items: [],
       truncated: false,
     });
-  }
-  if (path === `/api/v1/billing/claims/${CLAIM}`) {
-    return json(200, { claimId: CLAIM, claimControlNumber: "CCN-100" });
   }
   return json(200, {});
 }

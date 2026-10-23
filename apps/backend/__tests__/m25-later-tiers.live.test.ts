@@ -142,9 +142,7 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
     });
     registerLaterTierRoutes(app, { laterTierService: tier() });
     registerCaseViewRoutes(app, {
-      caseViewService: buildDrizzleCaseViewService(fx.handle.db, {
-        sources: buildSeamAppealSourcePorts(),
-      }),
+      caseViewService: buildDrizzleCaseViewService(fx.handle.db),
     });
     return app;
   }
@@ -740,9 +738,7 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
       ).rows[0].patient_id as string;
       expect((await tier().getLaterTier(A(), id))?.patientId).toBe(patient);
       expect((await tier().listDeadlines(A(), { kind: "appeal", id })).patientId).toBe(patient);
-      const view = await buildDrizzleCaseViewService(fx.handle.db, {
-        sources: buildSeamAppealSourcePorts(),
-      }).getCaseView(A(), fx.claim1, {
+      const view = await buildDrizzleCaseViewService(fx.handle.db).getCaseView(A(), fx.claim1, {
         includeAdr: false,
         includeReopening: false,
         includeAudits: false,
@@ -977,13 +973,38 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
       expect(new Set(n.items.map((i) => i.kind)).has("audit_request")).toBe(false);
       await narrow.close();
 
-      // outside the actor's provider entities the claim has no items; no read key at all is a 403 (an auditor session)
+      // outside the actor's provider entities the claim reads as absent (404), and no read audit names its patient
+      await fx.admin.query(
+        "DELETE FROM audit_event WHERE organization_id=$1 AND event_type LIKE 'claim_case_view.%'",
+        [ORG],
+      );
       const scoped = makeApp(["appeal.read"], { role: "biller", scope: [fx.pe1] });
-      const s = (
-        await scoped.inject({ method: "GET", url: `/api/v1/claims/${claim}/case-view` })
-      ).json() as { items: unknown[] };
-      expect(s.items).toEqual([]);
+      expect(
+        (await scoped.inject({ method: "GET", url: `/api/v1/claims/${claim}/case-view` }))
+          .statusCode,
+      ).toBe(404);
+      const leaked = await fx.admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND event_type='claim_case_view.viewed' AND context->>'patientId' IS NOT NULL",
+        [ORG],
+      );
+      expect(leaked.rows[0].n).toBe(0);
       await scoped.close();
+      // an unknown claim and another tenant's claim are 404; a real claim with nothing on it yet is an empty 200
+      const open = makeApp(["appeal.read"]);
+      expect(
+        (await open.inject({ method: "GET", url: `/api/v1/claims/${randomUUID()}/case-view` }))
+          .statusCode,
+      ).toBe(404);
+      expect(
+        (await open.inject({ method: "GET", url: `/api/v1/claims/${fx.claimB}/case-view` }))
+          .statusCode,
+      ).toBe(404);
+      const fresh = await open.inject({
+        method: "GET",
+        url: `/api/v1/claims/${fx.claim2}/case-view`,
+      });
+      expect(fresh.statusCode).toBe(200);
+      await open.close();
       const none = makeApp([]);
       expect(
         (await none.inject({ method: "GET", url: `/api/v1/claims/${claim}/case-view` })).statusCode,

@@ -36527,6 +36527,7 @@ export interface operations {
                             id: string;
                             claimId: string;
                             dateOfServiceNote: string | null;
+                            claimControlNumber: string | null;
                         }[];
                         deadlines: {
                             id: string;

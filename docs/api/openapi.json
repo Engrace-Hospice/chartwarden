@@ -41923,7 +41923,8 @@
                         "required": [
                           "id",
                           "claimId",
-                          "dateOfServiceNote"
+                          "dateOfServiceNote",
+                          "claimControlNumber"
                         ],
                         "properties": {
                           "id": {
@@ -41933,6 +41934,16 @@
                             "type": "string"
                           },
                           "dateOfServiceNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "claimControlNumber": {
                             "anyOf": [
                               {
                                 "type": "string"

@@ -5776,9 +5776,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
               sources: buildSeamAppealSourcePorts(),
             }),
-            caseViewService: buildDrizzleCaseViewService(dbHandle.db, {
-              sources: buildSeamAppealSourcePorts(),
-            }),
+            caseViewService: buildDrizzleCaseViewService(dbHandle.db),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).

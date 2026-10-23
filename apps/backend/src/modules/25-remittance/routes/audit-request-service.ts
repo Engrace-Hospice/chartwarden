@@ -79,6 +79,8 @@ export interface AuditClaimView {
   readonly id: string;
   readonly claimId: string;
   readonly dateOfServiceNote: string | null;
+  /** For display; null when the claim cannot be read or beyond the first AUDIT_CLAIM_LABEL_CAP claims. */
+  readonly claimControlNumber: string | null;
 }
 
 export interface AuditDetail extends AuditSummary {
@@ -149,6 +151,9 @@ export interface AuditRequestPorts {
 
 const iso = (d: Date | string | null): string | null =>
   d === null ? null : d instanceof Date ? d.toISOString() : String(d);
+
+/** Claims whose control number a detail read resolves (one in-transaction lookup each). */
+const AUDIT_CLAIM_LABEL_CAP = 50;
 
 const MAX_LIST = 100;
 
@@ -414,6 +419,11 @@ export function buildDrizzleAuditRequestService(
           .where(eq(EV.auditRequestId, id))
           .orderBy(asc(EV.occurredAt))
           .limit(200);
+        const controlNumbers = new Map<string, string>();
+        for (const c of claimRows.slice(0, AUDIT_CLAIM_LABEL_CAP)) {
+          const facts = await claims.byId(tx, c.claimId);
+          if (facts?.claimControlNumber) controlNumbers.set(c.claimId, facts.claimControlNumber);
+        }
         return {
           ...base!,
           patientId: await patientOfClaim(
@@ -432,6 +442,7 @@ export function buildDrizzleAuditRequestService(
             id: c.id,
             claimId: c.claimId,
             dateOfServiceNote: c.dateOfServiceNote,
+            claimControlNumber: controlNumbers.get(c.claimId) ?? null,
           })),
           deadlines: deadlineRows.map((d) => viewRecordedDeadline(d, now)),
           events: events.map((e) => ({
@@ -496,18 +507,14 @@ export function buildDrizzleAuditRequestService(
           );
         }
         try {
-          const inserted = await tx
-            .insert(ARC)
-            .values({
-              organizationId: actor.organizationId,
-              auditRequestId: id,
-              claimId: claim.id,
-              dateOfServiceNote: clean(input.dateOfServiceNote),
-              addedByMembershipId: actor.membershipId,
-            })
-            .returning({ id: ARC.id });
+          await tx.insert(ARC).values({
+            organizationId: actor.organizationId,
+            auditRequestId: id,
+            claimId: claim.id,
+            dateOfServiceNote: clean(input.dateOfServiceNote),
+            addedByMembershipId: actor.membershipId,
+          });
           await event(tx, actor, id, "claim_added");
-          void inserted;
           return await bumpVersion(tx, cur, ifMatch);
         } catch (e) {
           if (isUniqueViolation(e)) {

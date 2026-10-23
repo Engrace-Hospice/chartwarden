@@ -272,7 +272,9 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
       // same org transaction: a dispatch that throws rolls the transaction back, so nothing is marked and the next
       // tick retries. The alert sink is outside this transaction, so a COMMIT that fails after a successful dispatch
       // can repeat an alert (at-least-once; the M36 router de-duplicates). The mark update is compare-and-set on the
-      // boundary that was read, so two overlapping ticks cannot both move the same deadline.
+      // boundary that was read, so only one of two overlapping ticks can move the mark. DISPATCH PRECEDES that
+      // compare-and-set, though: two overlapping ticks that read the same boundary can BOTH dispatch the alert. Delivery
+      // is at-least-once and relies on the M36 router to de-duplicate; only the mark is single-winner.
       // A deadline of a finished subject (a closed / withdrawn appeal or audit request) never alerts.
       const RD = schema.recordedDeadline;
       const readBoundary = new Map<string, number | null>();

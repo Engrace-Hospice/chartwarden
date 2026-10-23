@@ -253,20 +253,3 @@ export async function moveAuditRequest(
     return error || !data ? failure(response?.status, error) : ok(data);
   });
 }
-
-/** A linked claim's control number (the audit detail returns claim ids only); null when it cannot be read. */
-export async function loadClaimControlNumber(
-  client: ApiClient,
-  claimId: string,
-): Promise<string | null> {
-  try {
-    const { data, error } = await client.GET("/api/v1/billing/claims/{id}", {
-      params: { path: { id: claimId } },
-    });
-    const control = (data as { claimControlNumber?: string | null } | undefined)
-      ?.claimControlNumber;
-    return error || !control ? null : control;
-  } catch {
-    return null;
-  }
-}

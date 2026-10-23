@@ -157,6 +157,10 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
         providerEntityId: fx.pe1,
       });
       expect(detail?.claims.map((c) => c.claimId).sort()).toEqual([fx.claim1, fx.claim1b].sort());
+      const control = (
+        await fx.admin.query("SELECT claim_control_number AS n FROM claim WHERE id=$1", [fx.claim1])
+      ).rows[0].n;
+      expect(detail?.claims.find((c) => c.claimId === fx.claim1)?.claimControlNumber).toBe(control);
       expect(detail?.events.map((e) => e.eventKind)).toEqual(["received"]);
     });
 
