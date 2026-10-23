@@ -131,6 +131,8 @@ const PERMISSION_SEED = [
   // F-023 — documents.read without any caseload, and the same with the view-only org-wide key.
   { userId: "nocase_1", permissions: ["documents.read"] },
   { userId: "him_1", permissions: ["documents.read", "documents.read_org_wide"] },
+  // #655 — an org-wide uploader (compliance_officer role), who may file for any patient in the org.
+  { userId: "seeder_1", permissions: ["documents.upload", "documents.read"] },
   // #611 — editors: one with no caseload, one with the view-only org-wide key.
   { userId: "editnocase_1", permissions: ["documents.read", "documents.edit_metadata"] },
   {
@@ -252,6 +254,12 @@ function makeServer(
   return { app };
 }
 
+/** #655 — an org-wide uploader (may file a document for any patient in the org). */
+const SEEDER = {
+  "x-test-user": "seeder_1",
+  "x-test-org": ORG,
+  "x-test-roles": "compliance_officer",
+};
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 /** A physician assistant — a licence the platform could not represent at all before 0221 (F-030). */
 const PA = { "x-test-user": "pa_1", "x-test-org": ORG, "x-test-roles": "rn" };
@@ -364,6 +372,45 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("active");
     expect(res.json().id).toMatch(/^c0000000-/);
+  });
+
+  describe("#655 — POST /documents scopes the patient and admission it files against", () => {
+    const upload = (extra: object, headers: Record<string, string> = RN) =>
+      makeServer().app.inject({
+        method: "POST",
+        url: "/api/v1/documents",
+        headers: { ...headers, "idempotency-key": `up655-${Math.random()}` },
+        payload: {
+          ...UPLOAD_CONTENT,
+          retentionClass: "clinical_record",
+          aggregateType: "encounter",
+          title: "Visit note",
+          ...extra,
+        },
+      });
+
+    it("404 for a patient off the uploader's caseload", async () => {
+      expect((await upload({ patientId: PATIENT_OFF })).statusCode).toBe(404);
+    });
+
+    it("404 for an admission with no patient from a caseload-scoped uploader", async () => {
+      expect((await upload({ admissionId: ADMISSION })).statusCode).toBe(404);
+    });
+
+    it("422 when the admission is another patient's, even on the caseload", async () => {
+      expect((await upload({ patientId: PATIENT, admissionId: ADMISSION_OFF })).statusCode).toBe(
+        422,
+      );
+    });
+
+    it("404 for an admission that does not exist", async () => {
+      const ghost = "55555555-5555-4555-8555-5555555555ff";
+      expect((await upload({ patientId: PATIENT, admissionId: ghost })).statusCode).toBe(404);
+    });
+
+    it("accepts the patient's own admission", async () => {
+      expect((await upload({ patientId: PATIENT, admissionId: ADMISSION })).statusCode).toBe(201);
+    });
   });
 
   it("POST /documents and /documents/:id/versions require an Idempotency-Key (GAP-068 follow-up)", async () => {
@@ -1406,7 +1453,8 @@ describe("F-023 — GET /documents lists the actor's caseload, not the whole org
       await app.inject({
         method: "POST",
         url: "/api/v1/documents",
-        headers: { ...RN, "idempotency-key": `f023-${i}` },
+        // #655: an off-caseload patient's document is filed by an org-wide uploader, not the scoped nurse.
+        headers: { ...SEEDER, "idempotency-key": `f023-${i}` },
         payload: {
           ...UPLOAD_CONTENT,
           retentionClass: "clinical_record",
@@ -1465,7 +1513,7 @@ describe("F-023 — GET /documents lists the actor's caseload, not the whole org
       const created = await app.inject({
         method: "POST",
         url: "/api/v1/documents",
-        headers: { ...RN, "idempotency-key": `f023-id-${i}` },
+        headers: { ...SEEDER, "idempotency-key": `f023-id-${i}` },
         payload: {
           ...UPLOAD_CONTENT,
           retentionClass: "clinical_record",

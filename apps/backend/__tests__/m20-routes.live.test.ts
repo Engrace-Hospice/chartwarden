@@ -101,6 +101,11 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
   let handle: ReturnType<typeof createDbClient>;
   let app: FastifyInstance;
   const actors: Record<string, Actor> = {};
+  const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M20_OUTBOX_EVENTS]));
+  const outbox = {
+    publish: (tx: unknown, emission: object) =>
+      txPublisher.publish(tx as never, { ...emission, callerModule: "m20" } as never),
+  };
 
   async function seedActor(
     key: string,
@@ -174,12 +179,6 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-
-    const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M20_OUTBOX_EVENTS]));
-    const outbox = {
-      publish: (tx: unknown, emission: object) =>
-        txPublisher.publish(tx as never, { ...emission, callerModule: "m20" } as never),
-    };
 
     const permissions = createInMemoryEffectivePermissionStore(
       Object.values(actors)
@@ -1066,6 +1065,91 @@ describe.skipIf(!DB_URL)("GAP-136 M20 field-safety routes — LIVE Postgres", ()
   });
 
   // ── tenant isolation ─────────────────────────────────────────────────────────────────────────────
+  // #622 / #653 — a tenant whose key provider cannot hand out a DEK: the panic paths keep working without a
+  // location, the evidence paths keep refusing. A second server over the same database, keyless.
+  describe("keyless tenant (no usable DEK)", () => {
+    let keyless: ReturnType<typeof buildServer>;
+    beforeAll(async () => {
+      const ciphers = createSafetyCiphers({
+        async dekForOrg() {
+          throw new Error("no key ring for this tenant");
+        },
+        async dekForOrgVersion() {
+          throw new Error("no key ring for this tenant");
+        },
+      });
+      const readService = buildDrizzleM20ReadService(handle.db, { decipher: ciphers.decipher });
+      keyless = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+      mountM20Routes(keyless, {
+        readService,
+        writeService: buildDrizzleM20WriteService(handle.db, readService, {
+          outbox: outbox as never,
+          cipher: ciphers.cipher,
+        }),
+      });
+    });
+    afterAll(async () => {
+      await keyless?.close();
+    });
+    const callKeyless = (method: "POST", url: string, as: string, payload: unknown) =>
+      keyless.inject({ method, url, headers: headersFor(as), payload: payload as object });
+    const coords = { latitude: 45.5, longitude: -122.6, accuracyM: 8 };
+
+    it("SOS press is raised without a pin: 201, sentinel stored, accuracy 0, warning returned", async () => {
+      await call("POST", "/api/v1/safety/consent/grant", "rn2", {
+        purpose: "sos_coordinates",
+        acknowledgmentTextSnapshot: "I agree my location is shared when I press SOS.",
+      });
+      const sos = await callKeyless("POST", "/api/v1/safety/sos", "rn2", {
+        postedCoordinates: coords,
+      });
+      expect(sos.statusCode).toBe(201);
+      expect(sos.json().warningsSurfaced.map((w: { code: string }) => w.code)).toContain(
+        "COORDINATES_DROPPED_NO_CIPHER",
+      );
+      const { rows } = await admin.query(
+        "SELECT posted_coordinates_cipher, posted_coordinates_accuracy_m FROM safety_sos_alert WHERE id=$1",
+        [sos.json().id],
+      );
+      expect(Number(rows[0].posted_coordinates_accuracy_m)).toBe(0);
+      expect((rows[0].posted_coordinates_cipher as Buffer).toString("utf8")).not.toContain("45.5");
+    });
+
+    it("a check-in is recorded with NULL in all three coordinate columns (the triple constraint holds)", async () => {
+      const res = await callKeyless("POST", "/api/v1/safety/check-ins", "rn2", {
+        kind: "ad_hoc",
+        status: "ok",
+        postedCoordinates: coords,
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().warningsSurfaced.map((w: { code: string }) => w.code)).toContain(
+        "COORDINATES_DROPPED_NO_CIPHER",
+      );
+      const { rows } = await admin.query(
+        `SELECT posted_coordinates_cipher, posted_coordinates_accuracy_m, coordinates_consent_at
+           FROM safety_check_in WHERE id=$1`,
+        [res.json().checkIn.id],
+      );
+      expect(rows[0]).toEqual({
+        posted_coordinates_cipher: null,
+        posted_coordinates_accuracy_m: null,
+        coordinates_consent_at: null,
+      });
+    });
+
+    it("incident create still refuses (503): the narrative is evidence and is never stored in the clear", async () => {
+      const res = await callKeyless("POST", "/api/v1/safety/incidents", "rn", {
+        affectedClinicianMembershipId: actors.rn?.membership,
+        category: "near_miss",
+        severity: "minor",
+        occurredAt: new Date(Date.now() - 60_000).toISOString(),
+        narrative: NARRATIVE,
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({ error: { code: "SAFETY_CIPHER_UNBOUND" } });
+    });
+  });
+
   describe("tenant isolation (RLS on the app role)", () => {
     it("org B's DON sees none of org A's alerts, incidents, check-ins, areas or subscriptions", async () => {
       const sos = (await call("POST", "/api/v1/safety/sos", "rn", {})).json();
