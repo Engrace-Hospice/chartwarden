@@ -41935,7 +41935,16 @@
                             "type": "string"
                           },
                           "subjectKind": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "subjectId": {
                             "type": "string"
@@ -41976,7 +41985,24 @@
                             ]
                           },
                           "status": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "version": {
                             "type": "integer"

@@ -36527,7 +36527,7 @@ export interface operations {
                         }[];
                         deadlines: {
                             id: string;
-                            subjectKind: string;
+                            subjectKind: "appeal" | "audit_request";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -36536,7 +36536,7 @@ export interface operations {
                             sourceNote: string;
                             noticeDocumentId: string | null;
                             satisfiedOn: string | null;
-                            status: string;
+                            status: "open" | "due_soon" | "past" | "satisfied";
                             version: number;
                         }[];
                         events: {
