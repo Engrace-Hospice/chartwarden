@@ -13762,6 +13762,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/analytics/response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance / operations: aggregate response analytics (messaging.analytics.read; 404 while the tenant flag messaging.response_analytics is off). Acknowledgment latency (median), share acknowledged before the deadline, escalation rate and handoff acceptance for a window of at most 92 days (default 30), with a breakdown by ack class or by clinical discipline (the assignee's clinical role key, never the person). AGGREGATES ONLY: no person, patient or message content in the body. A group with fewer than minCohort (provisional 5) distinct people is withheld, and with exactly one group hidden the smallest visible group is withheld too (suppressedGroups counts them, never names them); fewer than minCohort people in the whole organisation is status insufficient_data. Handoff figures are null under the same floor. There is no individual-level view. Not cached */
+        get: operations["getApiV1MessagingAnalyticsResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/announce": {
         parameters: {
             query?: never;
@@ -65783,6 +65800,62 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAnalyticsResponse: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                groupBy?: "class" | "discipline";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "insufficient_data";
+                        minCohort: number;
+                    } | {
+                        /** @constant */
+                        status: "ok";
+                        from: string;
+                        to: string;
+                        minCohort: number;
+                        groupBy: "class" | "discipline";
+                        kpis: {
+                            requests: number;
+                            acknowledged: number;
+                            ackedBeforeDeadlineRate: number | null;
+                            escalationRate: number | null;
+                            medianAckSeconds: number | null;
+                            handoffsOffered: number | null;
+                            handoffsAccepted: number | null;
+                            medianHandoffAcceptSeconds: number | null;
+                        };
+                        cells: {
+                            group: string;
+                            requests: number;
+                            acknowledged: number;
+                            ackedBeforeDeadlineRate: number | null;
+                            escalationRate: number | null;
+                            medianAckSeconds: number | null;
+                        }[];
+                        suppressedGroups: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

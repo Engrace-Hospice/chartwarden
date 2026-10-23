@@ -78,6 +78,7 @@ import type {
   IpuVisitorReader,
 } from "./inpatient";
 import type { EscalationRouter } from "./messaging-escalation";
+import type { MessagingResponseAnalyticsReader } from "./messaging-analytics";
 import type { ChartPromotionSourceReader } from "./messaging-promotion";
 import type {
   HospitalizationRiskProvider,
@@ -204,6 +205,7 @@ export type SeamName =
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
   | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
+  | "MessagingResponseAnalyticsReader" // M36 - aggregate-only response analytics, served by M33 (WP 6.2, ADR-0110)
   | "ChartPromotionSourceReader" // M36 — read-only: messages proposed for the chart, shown to the M8/M14 reviewer (WP 3.7)
   | "MdmEntityProvider" // M40 — master-data read surface (physician/facility/payer; merge-aware)
   | "BaaStatusProvider" // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
@@ -1129,6 +1131,7 @@ export interface SeamContracts {
   MessagingProvider: unknown;
   // WP 3.7: leaf-typed (the interface lives in ./messaging-promotion), read-only; M8 and M14 resolve it via getSeam.
   ChartPromotionSourceReader: ChartPromotionSourceReader;
+  MessagingResponseAnalyticsReader: MessagingResponseAnalyticsReader;
   // M40's `MdmEntityProvider` follows the SAME opaque rich-seam pattern: its interface lives in
   // @chartwarden/mdm (per-kind `CanonicalFields<K>`/`OverlayFields<K>` generics + the merge-redirect
   // shape), which this leaf may not import (`leaves-stay-leaves`). Consumers that list `40` in

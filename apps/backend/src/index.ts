@@ -1467,6 +1467,7 @@ import {
 } from "./modules/35-subscription/index";
 import { createDeliveryRouteReader } from "./modules/36-messaging/ack-delivery-failure/delivery-route-reader-db";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
+import { createResponseAnalyticsReader } from "./modules/36-messaging/analytics/response-analytics-reader";
 import {
   invalidateMessageBodyKeys,
   setMessageBodyKeyProvider,
@@ -1806,6 +1807,11 @@ export function wireModuleSeams(
             ...(deps.messageBodyCipher ? { cipher: deps.messageBodyCipher } : {}),
           }),
           ...(deps.promotionSource ? { promotionSource: deps.promotionSource } : {}),
+          // WP 6.2 (ADR-0110): aggregate response analytics for M33's route; the tenant flag is read per call.
+          responseAnalytics: createResponseAnalyticsReader({
+            db: deps.db,
+            flags: createDrizzleFeatureFlagReader(deps.db),
+          }),
         }
       : {},
   );

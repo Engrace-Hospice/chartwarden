@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1702,
-    "coveredRoutes": 1702,
-    "directRoutesReferenced": 1572
+    "routes": 1703,
+    "coveredRoutes": 1703,
+    "directRoutesReferenced": 1573
   },
   "modules": [
     {
@@ -484,14 +484,15 @@
     },
     {
       "module": "33-reporting",
-      "routes": 42,
+      "routes": 43,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts",
+        "apps/backend/__tests__/m36-response-analytics.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/reporting-inject.test.ts"
       ],
-      "directRoutesReferenced": 42
+      "directRoutesReferenced": 43
     },
     {
       "module": "34-saas-tenant-platform",
@@ -565,6 +566,7 @@
         "apps/backend/__tests__/m36-promotion-routes.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
+        "apps/backend/__tests__/m36-response-analytics.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-review-routes.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
