@@ -651,12 +651,21 @@ export interface ComplianceWindowRow extends SummaryRow {
   readonly dueAt?: string;
 }
 
+/** Only the identity needed by an admission list or context header. */
+export interface AdmissionPatientIdentity {
+  readonly id: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly mrn: string;
+}
+
 /** F-195 (#248) — `GET /api/v1/admissions`'s own row, carrying the hold/resume facts M6's spec (line 2983)
  *  names as surfaced on "M30's operational dashboard" — `holdReason`/`holdAt`/`releasedAt` were write-only
  *  everywhere in this module until now (see `events-by-m6.ts`'s corrected `m30` declaration on
  *  `m6.admission.on_hold`/`.resumed` for the full citation). A dedicated type rather than widening the
  *  shared `SummaryRow` (also used by referral summaries, which have no hold concept at all). */
 export interface AdmissionSummary extends SummaryRow {
+  readonly patient: AdmissionPatientIdentity | null;
   readonly holdReason: string | null;
   readonly holdAt: string | null;
   readonly releasedAt: string | null;
@@ -672,6 +681,7 @@ export interface PatientAdmissionSummary {
 
 /** The admission aggregate (route 10) — summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
 export interface AdmissionDetail extends SummaryRow {
+  readonly patient: AdmissionPatientIdentity | null;
   readonly patientId?: string;
   readonly referralId?: string | null;
   /** Existing nullable self-FK; null for direct intake and unknown historical episodes. */
@@ -1447,6 +1457,8 @@ export interface AdmissionSeedRecord {
 
 export interface AdmissionBackendSeed {
   readonly records?: readonly AdmissionSeedRecord[];
+  /** Patient identities supplied by the M5 test double; absent identities resolve to null. */
+  readonly patientIdentities?: Readonly<Record<string, NonNullable<AdmissionSummary["patient"]> & { readonly organizationId: string }>>;
   readonly now?: () => Date;
   /** Org timezone (M2 `organization.timezone`; D8) — drives the D4 deadline + F2F window math. */
   readonly orgTimeZone?: string;
@@ -1514,6 +1526,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
   events: string[];
 } {
   const events: string[] = [];
+  const patientIdentity = (organizationId: string, patientId: string | null | undefined) => {
+    const identity = patientId ? seed.patientIdentities?.[patientId] : undefined;
+    return identity && identity.id === patientId && identity.organizationId === organizationId
+      ? { id: identity.id, firstName: identity.firstName, lastName: identity.lastName, mrn: identity.mrn }
+      : null;
+  };
   const byId = new Map<string, Rec>();
   for (const r of seed.records ?? []) {
     byId.set(r.id, {
@@ -2180,7 +2198,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // never persist a timestamp (a lightweight state-transition double, not the D1 record); the real
       // values are proven against the Drizzle implementation's own live suite.
       return page(
-        rows.map((r) => ({ ...summary(r), holdReason: null, holdAt: null, releasedAt: null })),
+        rows.map((r) => ({ ...summary(r), patient: patientIdentity(organizationId, r.patientId), holdReason: null, holdAt: null, releasedAt: null })),
         query,
       );
     },
@@ -2189,6 +2207,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return rec
         ? {
             ...summary(rec),
+            patient: patientIdentity(organizationId, rec.patientId),
             patientId: rec.patientId,
             referralId: rec.externalReferralId ?? null,
             readmittedFromAdmissionId: rec.readmittedFromAdmissionId ?? null,

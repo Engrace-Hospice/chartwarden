@@ -25,6 +25,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { repositories } from "@chartwarden/billing";
@@ -53,6 +54,8 @@ import {
   buildDrizzleM25IngestService,
 } from "../src/modules/25-remittance/ingest/service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
+
+const sha256Hex = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -390,7 +393,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "a".repeat(64),
+      fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
     expect(received.outcome).toBe("queued");
@@ -524,7 +527,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "b".repeat(64),
+      fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
     if (received.outcome !== "queued") throw new Error("unreachable");
@@ -560,7 +563,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "c".repeat(64),
+      fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     };
     const first = await service.receiveAdvice(actor, input);
@@ -592,7 +595,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: "minio/garbage.835",
-      fileSha256: "d".repeat(64),
+      fileSha256: sha256Hex("this is not an X12 document at all, no ISA segment here"),
       rawEdi: "this is not an X12 document at all, no ISA segment here",
     });
     expect(result.outcome).toBe("malformed");
@@ -638,7 +641,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "e".repeat(64),
+      fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
     if (received.outcome !== "queued") throw new Error("unreachable");
@@ -679,7 +682,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "f".repeat(64),
+      fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
     if (received.outcome !== "queued") throw new Error("unreachable");
@@ -738,7 +741,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "b".repeat(64),
+      fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
     expect(received.outcome).toBe("queued");
@@ -760,7 +763,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: "minio/unbalanced.835",
-      fileSha256: "c".repeat(64),
+      fileSha256: sha256Hex(bad),
       rawEdi: bad,
     });
     expect(rejected.outcome).toBe("malformed");
@@ -782,6 +785,9 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       async get(org: string, adviceId: string) {
         return objects.get(`${org}/${adviceId}`) ?? null;
       },
+      async delete(org: string, adviceId: string) {
+        objects.delete(`${org}/${adviceId}`);
+      },
     };
     const service = buildDrizzleM25IngestService(handle.db, {
       payeeNpi: PAYEE_UNCHECKED,
@@ -798,7 +804,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: "d".repeat(64),
+      fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
     if (received.outcome !== "queued") throw new Error("unreachable");
@@ -807,6 +813,104 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     expect(objects.get(`${ORG_A}/${received.adviceId}`)).toBe(raw);
     expect(objects.has(`${ORG_A}/${objectKey}`)).toBe(false);
     expect((await service.postAdvice(actor, received.adviceId)).outcome).toBe("posted");
+    // #669: the staged PHI is removed once the post committed.
+    expect(objects.has(`${ORG_A}/${received.adviceId}`)).toBe(false);
+  });
+
+  it("#668: a fileSha256 that does not describe the submitted text is refused with nothing persisted", async () => {
+    const actor: M25IngestActor = { organizationId: ORG_A };
+    const raw = buildFullEdi("000000206", "0206", "500.00");
+    const staged: string[] = [];
+    const service = buildDrizzleM25IngestService(handle.db, {
+      client: createX12835Client(),
+      payeeNpi: PAYEE_UNCHECKED,
+      rawStore: {
+        async put(_o: string, id: string) {
+          staged.push(id);
+        },
+        async get() {
+          return null;
+        },
+        async delete() {},
+      },
+      outbox: { async publish() {} },
+    });
+    const result = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: "minio/wrong-hash.835",
+      fileSha256: "0".repeat(64),
+      rawEdi: raw,
+    });
+    expect(result).toMatchObject({ outcome: "malformed" });
+    expect(staged).toEqual([]);
+    const none = await admin.query(
+      "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000206'",
+    );
+    expect(none.rows[0].n).toBe(0);
+    // An upper-case hex digest of the same text is the same hash.
+    const ok = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: "minio/right-hash.835",
+      fileSha256: sha256Hex(raw).toUpperCase(),
+      rawEdi: raw,
+    });
+    expect(ok.outcome).toBe("queued");
+  });
+
+  it("#669: a delete failure never un-posts the advice (hook fires); a failed post keeps the staged text for replay", async () => {
+    const actor: M25IngestActor = { organizationId: ORG_A };
+    const events: unknown[] = [];
+    const deleted: string[] = [];
+    let failDelete = true;
+    const objects = new Map<string, string>();
+    const mk = (claims: Record<string, unknown>) =>
+      buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client(),
+        payeeNpi: PAYEE_UNCHECKED,
+        rawStore: {
+          async put(_o: string, id: string, text: string) {
+            objects.set(id, text);
+          },
+          async get(_o: string, id: string) {
+            return objects.get(id) ?? null;
+          },
+          async delete(_o: string, id: string) {
+            if (failDelete) throw new Error("bucket down");
+            deleted.push(id);
+          },
+        },
+        onStagedDeleteFailed: (e) => events.push(e),
+        terminology: fakeTerminology({}),
+        claims: {
+          medicare: fakeClaims(claims as never, {}),
+        },
+        outbox: { async publish() {} },
+      });
+    const raw = buildFullEdi("000000207", "0207", "500.00");
+    const service = mk({ "ICN-PAID": [{ claimId: CLAIM_PAID, payerIcn: "ICN-PAID" }] });
+    const received = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: "minio/delete-fails.835",
+      fileSha256: sha256Hex(raw),
+      rawEdi: raw,
+    });
+    if (received.outcome !== "queued") throw new Error("unreachable");
+    const posted = await service.postAdvice(actor, received.adviceId);
+    expect(posted.outcome).toBe("posted");
+    expect(events).toEqual([
+      { organizationId: ORG_A, adviceId: received.adviceId, errorName: "Error" },
+    ]);
+    expect(objects.has(received.adviceId)).toBe(true); // left behind for the lifecycle rule
+    // A redelivery of the same event retries the delete that failed.
+    failDelete = false;
+    expect((await service.postAdvice(actor, received.adviceId)).outcome).toBe("already_posted");
+    expect(deleted).toEqual([received.adviceId]);
   });
 
   it("#658: a failed stage rolls the receive back (nothing queued); a missing object stays retryable", async () => {
@@ -817,7 +921,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: key,
-      fileSha256: "e".repeat(64),
+      fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
     const broken = buildDrizzleM25IngestService(handle.db, {
@@ -830,6 +934,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         async get() {
           return null;
         },
+        async delete() {},
       },
       outbox: { async publish() {} },
     });
@@ -849,6 +954,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         async get() {
           return null;
         },
+        async delete() {},
       },
       outbox: { async publish() {} },
     });
@@ -891,7 +997,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: key,
-      fileSha256: "d".repeat(64),
+      fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
 
@@ -1002,7 +1108,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       payerId: PAYER,
       payerKind: "medicare",
       minioObjectKey: objectKey,
-      fileSha256: sha.repeat(64),
+      fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
 
@@ -1149,7 +1255,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           payerId: PAYER,
           payerKind: "medicare",
           minioObjectKey: objectKey,
-          fileSha256: "b".repeat(64),
+          fileSha256: sha256Hex(buildRawEdi(isa, st)),
           rawEdi: buildRawEdi(isa, st),
         },
       );
@@ -1223,7 +1329,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           payerId: PAYER,
           payerKind: "medicare",
           minioObjectKey: objectKey,
-          fileSha256: "c".repeat(64),
+          fileSha256: sha256Hex(buildRawEdi(isa, st)),
           rawEdi: buildRawEdi(isa, st),
         },
       );
@@ -1271,7 +1377,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         payerId: PAYER,
         payerKind: "medicare",
         minioObjectKey: "minio/org-a.835",
-        fileSha256: "1".repeat(64),
+        fileSha256: sha256Hex(rawEdi),
         rawEdi,
       },
     );
@@ -1282,7 +1388,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         payerId: PAYER,
         payerKind: "medicare",
         minioObjectKey: "minio/org-b.835",
-        fileSha256: "2".repeat(64),
+        fileSha256: sha256Hex(rawEdi),
         rawEdi,
       },
     );

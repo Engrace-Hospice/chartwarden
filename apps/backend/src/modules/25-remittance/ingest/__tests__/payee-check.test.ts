@@ -1,5 +1,6 @@
 // #659 — an 835 addressed to another provider is refused before anything is stored. receiveAdvice returns
 // before it touches the database, so the refusal needs no live DB (the post-time refusal is in the live suite).
+import { createHash } from "node:crypto";
 import type { ParsedRemittanceAdvice, X12835WorkerClient } from "@chartwarden/x12-835-client";
 import { describe, expect, it } from "vitest";
 import { buildDrizzleM25IngestService } from "../service-drizzle";
@@ -41,7 +42,7 @@ function receive(payee: ParsedRemittanceAdvice["payee"], tenantNpi: string | nul
       payerId: PE,
       payerKind: "medicare",
       minioObjectKey: "k",
-      fileSha256: "a".repeat(64),
+      fileSha256: createHash("sha256").update(RAW, "utf8").digest("hex"),
       rawEdi: RAW,
     },
   );

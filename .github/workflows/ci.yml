@@ -726,6 +726,9 @@ jobs:
           - { name: "M25 QIC reconsideration", scripts: "test:m25:qic:live" }
           # Milestone 6a - submission attempts, receipts and proof-missing (guided manual; nothing is transmitted).
           - { name: "M25 submission attempts", scripts: "test:m25:submission:live" }
+          # Milestone 7a-1 - later tiers (ALJ / Council / federal court record-keeping, recorded deadlines, the case view) and audit request intake.
+          - { name: "M25 later tiers", scripts: "test:m25:later-tiers:live" }
+          - { name: "M25 audit requests", scripts: "test:m25:audit-request:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {

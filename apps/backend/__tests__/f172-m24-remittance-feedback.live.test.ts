@@ -27,6 +27,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m24:remittance-feedback:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -57,6 +58,8 @@ import {
   buildM24BackedClaimMatchCandidateProvider,
 } from "../src/modules/25-remittance/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+
+const sha256Hex = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -559,7 +562,7 @@ describe.skipIf(!DB_URL)(
             payerId: "00000000-0000-0000-0000-0000000fee01",
             payerKind: "medicare",
             minioObjectKey: "minio/f171-medicare",
-            fileSha256: "1".repeat(64),
+            fileSha256: sha256Hex(buildRawEdi(isa, st)),
             rawEdi: buildRawEdi(isa, st),
           },
         );
@@ -596,7 +599,7 @@ describe.skipIf(!DB_URL)(
             payerId: "00000000-0000-0000-0000-0000000fee02",
             payerKind: "medicaid",
             minioObjectKey: "minio/f171-medicaid",
-            fileSha256: "2".repeat(64),
+            fileSha256: sha256Hex(buildRawEdi(isa, st)),
             rawEdi: buildRawEdi(isa, st),
           },
         );

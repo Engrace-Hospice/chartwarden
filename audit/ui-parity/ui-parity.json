@@ -1911,6 +1911,14 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.audits",
+      "path": "/remittance/audits",
+      "permission": "audit_request.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.appeals",
       "path": "/remittance/appeals",
       "permission": "appeal.read"

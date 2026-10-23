@@ -8,7 +8,8 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { type AuditNoDeadlineStore, runAuditNoDeadlineWatch } from "./audit-no-deadline-watch";
 import {
   type AdrDeadlineStore,
   type AppealDeadlineStore,
@@ -24,6 +25,10 @@ import {
   M25_JOB_SCHEDULES,
   M25_QUEUE_PARAMS,
 } from "./queues";
+import {
+  type RecordedDeadlineWatchStore,
+  runRecordedDeadlineWatch,
+} from "./recorded-deadline-watch";
 import { type SubmissionProofStore, runSubmissionProofWatch } from "./submission-proof-watch";
 
 /** The §4.9 M36 typed-alert dispatcher (alerts ship as defs + fire through M36). */
@@ -260,6 +265,96 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
           organizationId,
           payload: a.detail,
         });
+      }
+
+      // Milestone 7a-1: deadlines typed from a notice alert once per boundary; an open audit request with no
+      // recorded due date alerts once. The boundary / alert time is written AFTER the alerts are dispatched, in the
+      // same org transaction: a dispatch that throws rolls the transaction back, so nothing is marked and the next
+      // tick retries. The alert sink is outside this transaction, so a COMMIT that fails after a successful dispatch
+      // can repeat an alert (at-least-once; the M36 router de-duplicates). The mark update is compare-and-set on the
+      // boundary that was read, so only one of two overlapping ticks can move the mark. DISPATCH PRECEDES that
+      // compare-and-set, though: two overlapping ticks that read the same boundary can BOTH dispatch the alert. Delivery
+      // is at-least-once and relies on the M36 router to de-duplicate; only the mark is single-winner.
+      // A deadline of a finished subject (a closed / withdrawn appeal or audit request) never alerts.
+      const RD = schema.recordedDeadline;
+      const readBoundary = new Map<string, number | null>();
+      const deadlineStore: RecordedDeadlineWatchStore = {
+        async openDeadlines() {
+          const rows = await tx
+            .select()
+            .from(RD)
+            .where(
+              sql`${RD.satisfiedOn} IS NULL
+                AND (${RD.appealCaseId} IS NULL OR EXISTS (SELECT 1 FROM appeal_case a WHERE a.id = ${RD.appealCaseId} AND a.state::text NOT IN ('closed','withdrawn')))
+                AND (${RD.auditRequestId} IS NULL OR EXISTS (SELECT 1 FROM audit_request r WHERE r.id = ${RD.auditRequestId} AND r.state NOT IN ('closed','withdrawn')))`,
+            )
+            .limit(100000);
+          for (const r of rows) readBoundary.set(r.id, r.lastAlertedBoundary);
+          return rows.map((r) => ({
+            id: r.id,
+            subjectKind: r.appealCaseId ? ("appeal" as const) : ("audit_request" as const),
+            subjectId: (r.appealCaseId ?? r.auditRequestId) as string,
+            dueOn: r.dueOn,
+            zone: r.zone,
+            satisfiedOn: r.satisfiedOn,
+            lastAlertedBoundary: r.lastAlertedBoundary,
+          }));
+        },
+      };
+      const recorded = await runRecordedDeadlineWatch(deadlineStore, now);
+      for (const a of recorded.alerts) {
+        await alerts.dispatch({
+          alertCode: a.kind,
+          severity: "warn",
+          organizationId,
+          payload: a.detail,
+        });
+      }
+      for (const m of recorded.marks) {
+        await tx
+          .update(RD)
+          .set({ lastAlertedBoundary: m.boundary })
+          .where(
+            and(
+              eq(RD.id, m.id),
+              sql`${RD.lastAlertedBoundary} IS NOT DISTINCT FROM ${readBoundary.get(m.id) ?? null}`,
+            ),
+          );
+      }
+      const AR = schema.auditRequest;
+      const auditStore: AuditNoDeadlineStore = {
+        async openAudits() {
+          const rows = await tx
+            .select({
+              id: AR.id,
+              state: AR.state,
+              createdAt: AR.createdAt,
+              alerted: AR.noDeadlineAlertedAt,
+              openDeadlines: sql<number>`(SELECT count(*)::int FROM recorded_deadline d WHERE d.audit_request_id = ${AR.id} AND d.satisfied_on IS NULL)`,
+            })
+            .from(AR)
+            .where(sql`${AR.state} NOT IN ('withdrawn','closed')`)
+            .limit(100000);
+          return rows.map((r) => ({
+            id: r.id,
+            state: r.state,
+            createdAt: r.createdAt.toISOString(),
+            hasDeadline: r.openDeadlines > 0,
+            alreadyAlerted: r.alerted !== null,
+          }));
+        },
+      };
+      const noDeadline = await runAuditNoDeadlineWatch(auditStore, now);
+      for (const a of noDeadline.alerts) {
+        await alerts.dispatch({
+          alertCode: a.kind,
+          severity: "warn",
+          organizationId,
+          payload: a.detail,
+        });
+      }
+      for (const id of noDeadline.alertedIds) {
+        await tx.update(AR).set({ noDeadlineAlertedAt: now }).where(eq(AR.id, id));
       }
     });
   }

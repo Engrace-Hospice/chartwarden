@@ -595,6 +595,26 @@ import {
   QicViewSchema as M25QicViewSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
+  AuditClaimRequestSchema as M25AuditClaimRequestSchema,
+  AuditCreateRequestSchema as M25AuditCreateRequestSchema,
+  AuditDetailSchema as M25AuditDetailSchema,
+  AuditListQuerySchema as M25AuditListQuerySchema,
+  AuditMoveRequestSchema as M25AuditMoveRequestSchema,
+  AuditPageSchema as M25AuditPageSchema,
+  AuditPatchRequestSchema as M25AuditPatchRequestSchema,
+  AuditVersionedResultSchema as M25AuditVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/audit-request.routes";
+import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import {
+  LaterTierViewSchema as M25LaterTierViewSchema,
+  RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
+  RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
+  RecordedDeadlineRequestSchema as M25RecordedDeadlineRequestSchema,
+  RecordedDeadlineResultSchema as M25RecordedDeadlineResultSchema,
+  RecordedDeadlineSatisfyRequestSchema as M25RecordedDeadlineSatisfyRequestSchema,
+  TierDetailRequestSchema as M25TierDetailRequestSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
+import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
   ReopeningCreateRequestSchema as M25ReopeningCreateRequestSchema,
@@ -8418,6 +8438,101 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/reopenings/:id/close": {
     summary: "Close a decided reopening (If-Match)",
     response: M25ReopeningVersionedResultSchema,
+  },
+  // ── audit-request.routes.ts / later-tier.routes.ts / case-view.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-1) ──
+  "GET /api/v1/audit-requests": {
+    summary: "RAC / UPIC / SMRC audit request worklist, newest first",
+    query: M25AuditListQuerySchema,
+    response: M25AuditPageSchema,
+  },
+  "GET /api/v1/audit-requests/:id": {
+    summary: "Audit request detail: claims, recorded deadlines and history",
+    response: M25AuditDetailSchema,
+  },
+  "POST /api/v1/audit-requests": {
+    summary:
+      "Log an audit request for one or many claims; the authority is a label only and no due date is computed",
+    body: M25AuditCreateRequestSchema,
+    response: M25AuditVersionedResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/audit-requests/:id": {
+    summary: "Edit an open audit request's intake facts or its ADR / denial link (If-Match)",
+    body: M25AuditPatchRequestSchema,
+    response: M25AuditVersionedResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/claims": {
+    summary: "Add a claim to an open audit request (If-Match; bumps the request version)",
+    body: M25AuditClaimRequestSchema,
+    response: M25AuditVersionedResultSchema,
+    status: 201,
+  },
+  "DELETE /api/v1/audit-requests/:id/claims/:claimId": {
+    summary: "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
+    response: M25AuditVersionedResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/state": {
+    summary: "Move an audit request forward, or withdraw it (If-Match)",
+    body: M25AuditMoveRequestSchema,
+    response: M25AuditVersionedResultSchema,
+  },
+  "GET /api/v1/audit-requests/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this audit request, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/audit-requests/:id/recorded-deadlines": {
+    summary:
+      "Record a due date typed from a notice (the source note is required; no CMS date is computed)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/audit-requests/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "GET /api/v1/appeals/:id/later-tier": {
+    summary:
+      "Later-tier (ALJ / Council / federal court) facts, the window-not-confirmed flag and recorded deadlines",
+    response: M25LaterTierViewSchema,
+  },
+  "PUT /api/v1/appeals/:id/later-tier/detail": {
+    summary:
+      "Record the authority reference, amount in controversy (stored only), hearing facts, disposition label and counsel filing (If-Match 0 creates)",
+    body: M25TierDetailRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "GET /api/v1/appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this appeal case, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/appeals/:id/recorded-deadlines": {
+    summary:
+      "Record a due date typed from a notice (the source note is required; no CMS date is computed)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "GET /api/v1/claims/:claimId/case-view": {
+    summary:
+      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+    response: M25CaseViewSchema,
   },
   "GET /api/v1/adrs/:id/submission": {
     summary:

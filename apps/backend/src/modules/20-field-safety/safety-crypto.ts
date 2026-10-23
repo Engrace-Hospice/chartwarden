@@ -34,22 +34,54 @@ const aadFor = (organizationId: string): Buffer =>
   Buffer.from(`m20:field_safety:cipher:${organizationId}`, "utf8");
 
 /**
- * A tenant with no key ring (`TenantKeyMissing`), a destroyed one, or an unbound KEK adapter threw a plain Error from
- * deep inside M34, which the error handler renders as a generic 500 "An unexpected error occurred" (#596, F-039). All
- * are the same operational statement - this deployment cannot key this tenant's PHI right now - and 503 says it.
+ * M34 errors that mean "this tenant has no usable key ring" (never provisioned, crypto-shredded, or the KEK adapter
+ * is unbound). Matched by `name`: M20 has no import edge on M34, and the M34 classes set it. Anything else out of
+ * the provider (a KMS timeout, a dropped DB connection) is a transient fault and must not read as "no key".
+ */
+const KEY_ABSENT_ERRORS: ReadonlySet<string> = new Set([
+  "TenantKeyMissing",
+  "TenantKeyDestroyed",
+  "M34InfraPortUnbound",
+]);
+
+/** Codes `encryptOrNull` degrades on: the alert still goes out, without a location. */
+const KEY_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "SAFETY_CIPHER_UNBOUND",
+  "SAFETY_KEY_UNAVAILABLE",
+]);
+
+/**
+ * A key the tenant does not have is a stable 503 `SAFETY_CIPHER_UNBOUND` (#596, F-039: otherwise a generic 500);
+ * a provider fault is a retryable 503 `SAFETY_KEY_UNAVAILABLE` and is reported through `onKeyFault` so it is
+ * alerted on, not mistaken for a tenant that was never keyed (#666).
  */
 async function resolveDek(
   keys: SafetyTenantKeyProvider,
   organizationId: string,
+  onKeyFault: ((cause: unknown) => void) | undefined,
 ): Promise<{ version: string; key: Buffer }> {
   try {
     return await keys.dekForOrg(organizationId);
   } catch (cause) {
-    const refusal = new ChartWardenError(
-      "SAFETY_CIPHER_UNBOUND",
-      "this organization's encryption key is not available, so this record cannot be stored encrypted; nothing was recorded",
-      503,
-    );
+    const absent = cause instanceof Error && KEY_ABSENT_ERRORS.has(cause.name);
+    if (!absent) {
+      try {
+        onKeyFault?.(cause);
+      } catch {
+        // a failing reporter must not replace the 503 and cost a panic alert its degraded path
+      }
+    }
+    const refusal = absent
+      ? new ChartWardenError(
+          "SAFETY_CIPHER_UNBOUND",
+          "this organization's encryption key is not available, so this record cannot be stored encrypted; nothing was recorded",
+          503,
+        )
+      : new ChartWardenError(
+          "SAFETY_KEY_UNAVAILABLE",
+          "the encryption key service is unavailable, so this record cannot be stored encrypted; nothing was recorded; try again, and contact support if it persists",
+          503,
+        );
     refusal.cause = cause; // logged with the handled error; never sent to the client
     throw refusal;
   }
@@ -57,7 +89,7 @@ async function resolveDek(
 
 /**
  * Best-effort coordinate encryption for the panic paths (#622). A bound cipher over a tenant with no usable key ring
- * throws `SAFETY_CIPHER_UNBOUND`; for an SOS press or a check-in that must not cost the alert, so it answers `null`
+ * (or a faulting key provider) throws `SAFETY_CIPHER_UNBOUND` / `SAFETY_KEY_UNAVAILABLE`; for an SOS press or a check-in that must not cost the alert, so it answers `null`
  * and the caller stores the no-coordinate sentinel. Any other failure is a real fault and still propagates.
  */
 export async function encryptOrNull(
@@ -67,19 +99,22 @@ export async function encryptOrNull(
   try {
     return await cipher.encrypt(input);
   } catch (err) {
-    if (err instanceof ChartWardenError && err.code === "SAFETY_CIPHER_UNBOUND") return null;
+    if (err instanceof ChartWardenError && KEY_REFUSAL_CODES.has(err.code)) return null;
     throw err;
   }
 }
 
 /** Build the write-side cipher and read-side decipher over one tenant key provider. */
-export function createSafetyCiphers(keys: SafetyTenantKeyProvider): {
+export function createSafetyCiphers(
+  keys: SafetyTenantKeyProvider,
+  onKeyFault?: (cause: unknown) => void,
+): {
   readonly cipher: SafetyCipherPort;
   readonly decipher: SafetyDecipherPort;
 } {
   const cipher: SafetyCipherPort = {
     async encrypt({ organizationId, plaintext }) {
-      const { version, key } = await resolveDek(keys, organizationId);
+      const { version, key } = await resolveDek(keys, organizationId, onKeyFault);
       if (key.byteLength !== DEK_BYTES) throw new Error("tenant DEK must be 32 bytes");
       const nonce = randomBytes(NONCE_BYTES);
       const c = createCipheriv("aes-256-gcm", key, nonce);

@@ -15,6 +15,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-m25-claim-match-seam.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient } from "@chartwarden/db";
@@ -28,6 +29,8 @@ import {
   PAYEE_UNCHECKED,
   buildDrizzleM25IngestService,
 } from "../src/modules/25-remittance/ingest/service-drizzle";
+
+const sha256Hex = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -235,7 +238,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
         payerId: PAYER,
         payerKind: "medicare",
         minioObjectKey: objectKey,
-        fileSha256: "9".repeat(64),
+        fileSha256: sha256Hex(buildRawEdi(isa, st)),
         rawEdi: buildRawEdi(isa, st),
       },
     );

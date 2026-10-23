@@ -3434,6 +3434,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/appeals/{id}/later-tier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Later-tier (ALJ / Council / federal court) facts, the window-not-confirmed flag and recorded deadlines */
+        get: operations["getApiV1AppealsByIdLatertier"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/later-tier/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record the authority reference, amount in controversy (stored only), hearing facts, disposition label and counsel filing (If-Match 0 creates) */
+        put: operations["putApiV1AppealsByIdLatertierDetail"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/appeals/{id}/qic": {
         parameters: {
             query?: never;
@@ -3466,6 +3500,58 @@ export interface paths {
         head?: never;
         /** Record the date the QIC received the request, or add a late-evidence extension of 0-14 days (If-Match) */
         patch: operations["patchApiV1AppealsByIdQicclock"];
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/recorded-deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deadlines typed from a notice for this appeal case, each with its source note */
+        get: operations["getApiV1AppealsByIdRecordeddeadlines"];
+        put?: never;
+        /** Record a due date typed from a notice (the source note is required; no CMS date is computed) */
+        post: operations["postApiV1AppealsByIdRecordeddeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a recorded deadline until it is satisfied (If-Match) */
+        patch: operations["patchApiV1AppealsByIdRecordeddeadlinesByDeadlineId"];
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a recorded deadline satisfied (If-Match) */
+        post: operations["postApiV1AppealsByIdRecordeddeadlinesByDeadlineIdSatisfy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/appeals/{id}/request-escalation": {
@@ -3598,6 +3684,145 @@ export interface paths {
         put?: never;
         /** LPN cosignature (cosigner_role_match ABAC) */
         post: operations["postApiV1AssessmentsByIdCosignatures"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RAC / UPIC / SMRC audit request worklist, newest first */
+        get: operations["getApiV1Auditrequests"];
+        put?: never;
+        /** Log an audit request for one or many claims; the authority is a label only and no due date is computed */
+        post: operations["postApiV1Auditrequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit request detail: claims, recorded deadlines and history */
+        get: operations["getApiV1AuditrequestsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit an open audit request's intake facts or its ADR / denial link (If-Match) */
+        patch: operations["patchApiV1AuditrequestsById"];
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a claim to an open audit request (If-Match; bumps the request version) */
+        post: operations["postApiV1AuditrequestsByIdClaims"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/claims/{claimId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a claim from an open audit request (If-Match; the removal is kept in the trail) */
+        delete: operations["deleteApiV1AuditrequestsByIdClaimsByClaimId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/recorded-deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deadlines typed from a notice for this audit request, each with its source note */
+        get: operations["getApiV1AuditrequestsByIdRecordeddeadlines"];
+        put?: never;
+        /** Record a due date typed from a notice (the source note is required; no CMS date is computed) */
+        post: operations["postApiV1AuditrequestsByIdRecordeddeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a recorded deadline until it is satisfied (If-Match) */
+        patch: operations["patchApiV1AuditrequestsByIdRecordeddeadlinesByDeadlineId"];
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a recorded deadline satisfied (If-Match) */
+        post: operations["postApiV1AuditrequestsByIdRecordeddeadlinesByDeadlineIdSatisfy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move an audit request forward, or withdraw it (If-Match) */
+        post: operations["postApiV1AuditrequestsByIdState"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6450,6 +6675,23 @@ export interface paths {
         put?: never;
         /** Record a signature toward the version's §11 D5 quorum */
         post: operations["postApiV1CareplansByPlanIdVersionsByVersionIdSignatures"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/claims/{claimId}/case-view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline */
+        get: operations["getApiV1ClaimsByClaimIdCaseview"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -30912,6 +31154,12 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            patient: {
+                                id: string;
+                                firstName: string;
+                                lastName: string;
+                                mrn: string;
+                            } | null;
                             holdReason: string | null;
                             holdAt: string | null;
                             releasedAt: string | null;
@@ -31338,6 +31586,12 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string;
+                        patient: {
+                            id: string;
+                            firstName: string;
+                            lastName: string;
+                            mrn: string;
+                        } | null;
                         referralId?: string | null;
                         readmittedFromAdmissionId: string | null;
                         admissionAt?: string | null;
@@ -35621,6 +35875,106 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AppealsByIdLatertier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        appealCaseId: string;
+                        claimId: string;
+                        patientId: string | null;
+                        tier: string;
+                        state: string;
+                        filedByEscalation: boolean;
+                        windowUnconfirmed: boolean;
+                        canPacketRender: boolean;
+                        needsManualReview: boolean;
+                        detail: {
+                            id: string;
+                            authorityReference: string | null;
+                            amountInControversyCents: number | null;
+                            hearingOn: string | null;
+                            hearingFormatNote: string | null;
+                            dispositionKind: string | null;
+                            dispositionNote: string | null;
+                            filedByCounselOn: string | null;
+                            docketReference: string | null;
+                            version: number;
+                        } | null;
+                        deadlines: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1AppealsByIdLatertierDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    authorityReference?: string | null;
+                    amountInControversyCents?: number | null;
+                    hearingOn?: string | null;
+                    hearingFormatNote?: string | null;
+                    dispositionKind?: "decision" | "remand" | "dismissal" | "other" | null;
+                    dispositionNote?: string | null;
+                    filedByCounselOn?: string | null;
+                    docketReference?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AppealsByIdQic: {
         parameters: {
             query?: never;
@@ -35697,6 +36051,153 @@ export interface operations {
                 "application/json": {
                     receivedOn?: string;
                     extensionDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AppealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string | null;
+                        items: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    dueOn: string;
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AppealsByIdRecordeddeadlinesByDeadlineId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label?: string;
+                    dueOn?: string;
+                    sourceNote?: string;
+                    noticeDocumentId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdRecordeddeadlinesByDeadlineIdSatisfy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    satisfiedOn?: string;
                 };
             };
         };
@@ -36032,6 +36533,438 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Auditrequests: {
+        parameters: {
+            query?: {
+                state?: string;
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            authorityKind: string;
+                            authorityName: string | null;
+                            requestReference: string | null;
+                            receivedOn: string;
+                            state: string;
+                            claimCount: number;
+                            dueState: "no_deadline_recorded" | "open" | "past" | "not_applicable";
+                            nextDueAt: string | null;
+                            version: number;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Auditrequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    authorityKind: "rac" | "upic" | "smrc" | "other";
+                    authorityName?: string | null;
+                    requestReference?: string | null;
+                    requestDatedOn?: string | null;
+                    receivedOn: string;
+                    scopeNote?: string | null;
+                    /** Format: uuid */
+                    providerEntityId?: string;
+                    claimIds?: string[];
+                    adrCaseId?: string | null;
+                    denialCaseId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditrequestsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        authorityKind: string;
+                        authorityName: string | null;
+                        requestReference: string | null;
+                        receivedOn: string;
+                        state: string;
+                        claimCount: number;
+                        dueState: "no_deadline_recorded" | "open" | "past" | "not_applicable";
+                        nextDueAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        requestDatedOn: string | null;
+                        scopeNote: string | null;
+                        patientId: string | null;
+                        providerEntityId: string;
+                        adrCaseId: string | null;
+                        denialCaseId: string | null;
+                        respondedAt: string | null;
+                        closedAt: string | null;
+                        claims: {
+                            id: string;
+                            claimId: string;
+                            dateOfServiceNote: string | null;
+                            claimControlNumber: string | null;
+                        }[];
+                        deadlines: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                        events: {
+                            id: string;
+                            eventKind: string;
+                            occurredAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AuditrequestsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    authorityName?: string | null;
+                    requestReference?: string | null;
+                    requestDatedOn?: string | null;
+                    scopeNote?: string | null;
+                    adrCaseId?: string | null;
+                    denialCaseId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdClaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    claimId: string;
+                    dateOfServiceNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AuditrequestsByIdClaimsByClaimId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditrequestsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string | null;
+                        items: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    dueOn: string;
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AuditrequestsByIdRecordeddeadlinesByDeadlineId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label?: string;
+                    dueOn?: string;
+                    sourceNote?: string;
+                    noticeDocumentId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdRecordeddeadlinesByDeadlineIdSatisfy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    satisfiedOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to: "in_assembly" | "in_review" | "responded" | "closed" | "withdrawn";
+                    /** Format: date-time */
+                    respondedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44953,6 +45886,59 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ClaimsByClaimIdCaseview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        patientId: string | null;
+                        generatedAt: string;
+                        nextDeadline: {
+                            id: string;
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission";
+                            at: string;
+                            label: string;
+                            state: string;
+                            tier: string | null;
+                            relatedId?: string | null;
+                            deadlineAt: string | null;
+                            deadlineSource: "computed" | "recorded" | null;
+                            windowConfirmed: boolean;
+                        } | null;
+                        items: {
+                            id: string;
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission";
+                            at: string;
+                            label: string;
+                            state: string;
+                            tier: string | null;
+                            relatedId?: string | null;
+                            deadlineAt: string | null;
+                            deadlineSource: "computed" | "recorded" | null;
+                            windowConfirmed: boolean;
+                        }[];
+                        truncated: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

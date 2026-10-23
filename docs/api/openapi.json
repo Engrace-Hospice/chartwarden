@@ -18208,6 +18208,7 @@
                           "id",
                           "state",
                           "version",
+                          "patient",
                           "holdReason",
                           "holdAt",
                           "releasedAt"
@@ -18226,6 +18227,36 @@
                             "anyOf": [
                               {
                                 "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patient": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "firstName",
+                                  "lastName",
+                                  "mrn"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "firstName": {
+                                    "type": "string"
+                                  },
+                                  "lastName": {
+                                    "type": "string"
+                                  },
+                                  "mrn": {
+                                    "type": "string"
+                                  }
+                                }
                               },
                               {
                                 "type": "null"
@@ -20977,6 +21008,7 @@
                     "id",
                     "state",
                     "version",
+                    "patient",
                     "readmittedFromAdmissionId",
                     "activationGate"
                   ],
@@ -20992,6 +21024,36 @@
                     },
                     "patientId": {
                       "type": "string"
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "firstName",
+                            "lastName",
+                            "mrn"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "firstName": {
+                              "type": "string"
+                            },
+                            "lastName": {
+                              "type": "string"
+                            },
+                            "mrn": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "referralId": {
                       "anyOf": [
@@ -39381,6 +39443,461 @@
         }
       }
     },
+    "/api/v1/appeals/{id}/later-tier": {
+      "get": {
+        "operationId": "getApiV1AppealsByIdLatertier",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Later-tier (ALJ / Council / federal court) facts, the window-not-confirmed flag and recorded deadlines",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "appealCaseId",
+                    "claimId",
+                    "patientId",
+                    "tier",
+                    "state",
+                    "filedByEscalation",
+                    "windowUnconfirmed",
+                    "canPacketRender",
+                    "needsManualReview",
+                    "detail",
+                    "deadlines"
+                  ],
+                  "properties": {
+                    "appealCaseId": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tier": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "filedByEscalation": {
+                      "type": "boolean"
+                    },
+                    "windowUnconfirmed": {
+                      "type": "boolean"
+                    },
+                    "canPacketRender": {
+                      "type": "boolean"
+                    },
+                    "needsManualReview": {
+                      "type": "boolean"
+                    },
+                    "detail": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "authorityReference",
+                            "amountInControversyCents",
+                            "hearingOn",
+                            "hearingFormatNote",
+                            "dispositionKind",
+                            "dispositionNote",
+                            "filedByCounselOn",
+                            "docketReference",
+                            "version"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "authorityReference": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "amountInControversyCents": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "hearingOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "hearingFormatNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "dispositionKind": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "dispositionNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "filedByCounselOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "docketReference": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/later-tier/detail": {
+      "put": {
+        "operationId": "putApiV1AppealsByIdLatertierDetail",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record the authority reference, amount in controversy (stored only), hearing facts, disposition label and counsel filing (If-Match 0 creates)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorityReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "amountInControversyCents": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "hearingOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "hearingFormatNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dispositionKind": {
+                    "anyOf": [
+                      {
+                        "const": "decision",
+                        "type": "string"
+                      },
+                      {
+                        "const": "remand",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dismissal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dispositionNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "filedByCounselOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "docketReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/appeals/{id}/qic": {
       "get": {
         "operationId": "getApiV1AppealsByIdQic",
@@ -39714,6 +40231,413 @@
                     "minimum": 0,
                     "maximum": 14,
                     "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/recorded-deadlines": {
+      "get": {
+        "operationId": "getApiV1AppealsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Deadlines typed from a notice for this appeal case, each with its source note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "items"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AppealsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a due date typed from a notice (the source note is required; no CMS date is computed)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "dueOn",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}": {
+      "patch": {
+        "operationId": "patchApiV1AppealsByIdRecordeddeadlinesByDeadlineId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Correct a recorded deadline until it is satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+      "post": {
+        "operationId": "postApiV1AppealsByIdRecordeddeadlinesByDeadlineIdSatisfy",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Mark a recorded deadline satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "satisfiedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
                   }
                 }
               }
@@ -40555,6 +41479,1431 @@
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests": {
+      "get": {
+        "operationId": "getApiV1Auditrequests",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "RAC / UPIC / SMRC audit request worklist, newest first",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "authorityKind",
+                          "authorityName",
+                          "requestReference",
+                          "receivedOn",
+                          "state",
+                          "claimCount",
+                          "dueState",
+                          "nextDueAt",
+                          "version",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "authorityKind": {
+                            "type": "string"
+                          },
+                          "authorityName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requestReference": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receivedOn": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "claimCount": {
+                            "type": "integer"
+                          },
+                          "dueState": {
+                            "anyOf": [
+                              {
+                                "const": "no_deadline_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_applicable",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "nextDueAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Auditrequests",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Log an audit request for one or many claims; the authority is a label only and no due date is computed",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "authorityKind",
+                  "receivedOn"
+                ],
+                "properties": {
+                  "authorityKind": {
+                    "anyOf": [
+                      {
+                        "const": "rac",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upic",
+                        "type": "string"
+                      },
+                      {
+                        "const": "smrc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "authorityName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestDatedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "receivedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "scopeNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "claimIds": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "adrCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "denialCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}": {
+      "get": {
+        "operationId": "getApiV1AuditrequestsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Audit request detail: claims, recorded deadlines and history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "authorityKind",
+                    "authorityName",
+                    "requestReference",
+                    "receivedOn",
+                    "state",
+                    "claimCount",
+                    "dueState",
+                    "nextDueAt",
+                    "version",
+                    "createdAt",
+                    "requestDatedOn",
+                    "scopeNote",
+                    "patientId",
+                    "providerEntityId",
+                    "adrCaseId",
+                    "denialCaseId",
+                    "respondedAt",
+                    "closedAt",
+                    "claims",
+                    "deadlines",
+                    "events"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "authorityKind": {
+                      "type": "string"
+                    },
+                    "authorityName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedOn": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "claimCount": {
+                      "type": "integer"
+                    },
+                    "dueState": {
+                      "anyOf": [
+                        {
+                          "const": "no_deadline_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "past",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_applicable",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "nextDueAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "requestDatedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scopeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "adrCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "denialCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respondedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "claims": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "claimId",
+                          "dateOfServiceNote",
+                          "claimControlNumber"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "type": "string"
+                          },
+                          "dateOfServiceNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "claimControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "deadlines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "eventKind",
+                          "occurredAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "eventKind": {
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1AuditrequestsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Edit an open audit request's intake facts or its ADR / denial link (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorityName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestDatedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "scopeNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "adrCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "denialCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}/claims": {
+      "post": {
+        "operationId": "postApiV1AuditrequestsByIdClaims",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Add a claim to an open audit request (If-Match; bumps the request version)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claimId"
+                ],
+                "properties": {
+                  "claimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "dateOfServiceNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}/claims/{claimId}": {
+      "delete": {
+        "operationId": "deleteApiV1AuditrequestsByIdClaimsByClaimId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}/recorded-deadlines": {
+      "get": {
+        "operationId": "getApiV1AuditrequestsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Deadlines typed from a notice for this audit request, each with its source note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "items"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AuditrequestsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a due date typed from a notice (the source note is required; no CMS date is computed)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "dueOn",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}": {
+      "patch": {
+        "operationId": "patchApiV1AuditrequestsByIdRecordeddeadlinesByDeadlineId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Correct a recorded deadline until it is satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+      "post": {
+        "operationId": "postApiV1AuditrequestsByIdRecordeddeadlinesByDeadlineIdSatisfy",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Mark a recorded deadline satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "satisfiedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-requests/{id}/state": {
+      "post": {
+        "operationId": "postApiV1AuditrequestsByIdState",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Move an audit request forward, or withdraw it (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "to"
+                ],
+                "properties": {
+                  "to": {
+                    "anyOf": [
+                      {
+                        "const": "in_assembly",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "responded",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "withdrawn",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "respondedAt": {
+                    "format": "date-time",
+                    "type": "string"
                   }
                 }
               }
@@ -81474,6 +83823,290 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/claims/{claimId}/case-view": {
+      "get": {
+        "operationId": "getApiV1ClaimsByClaimIdCaseview",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+        "parameters": [
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "patientId",
+                    "generatedAt",
+                    "nextDeadline",
+                    "items",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "generatedAt": {
+                      "type": "string"
+                    },
+                    "nextDeadline": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "kind",
+                            "at",
+                            "label",
+                            "state",
+                            "tier",
+                            "deadlineAt",
+                            "deadlineSource",
+                            "windowConfirmed"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "appeal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "adr",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "reopening",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recorded_deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "audit_request",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submission",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "tier": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "relatedId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadlineAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadlineSource": {
+                              "anyOf": [
+                                {
+                                  "const": "computed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recorded",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "windowConfirmed": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "kind",
+                          "at",
+                          "label",
+                          "state",
+                          "tier",
+                          "deadlineAt",
+                          "deadlineSource",
+                          "windowConfirmed"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "adr",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reopening",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recorded_deadline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submission",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "at": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "tier": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "relatedId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineSource": {
+                            "anyOf": [
+                              {
+                                "const": "computed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recorded",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "windowConfirmed": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

@@ -704,6 +704,17 @@ export function createS3TenantStorageProvisioner(
     readonly organizationId: string;
     readonly prefixes: readonly string[];
   }): Promise<TenantStorageEnsureResult>;
+  /**
+   * Idempotently expire every object (and noncurrent version) under `prefix` after `days`. Used for transient PHI
+   * staging prefixes (M25 `m25-835/`) so an orphan cannot outlive a bounded window. S3's PUT replaces the whole
+   * lifecycle config, so the bucket's existing rules are read and kept; our rule is added only when absent.
+   */
+  ensurePrefixExpiry(input: {
+    readonly organizationId: string;
+    readonly prefix: string;
+    readonly days: number;
+    readonly signal?: AbortSignal;
+  }): Promise<{ readonly applied: boolean }>;
 } {
   const signedFetch = createS3SignedFetch(config, deps, "createS3TenantStorageProvisioner");
 
@@ -733,6 +744,86 @@ export function createS3TenantStorageProvisioner(
       if (!created.ok && created.status !== 409)
         throw opError("createBucket", created.status, bucket);
       return { bucket, created: created.ok, prefixesEnsured: [...prefixes] };
+    },
+
+    async ensurePrefixExpiry({ organizationId, prefix, days, signal }) {
+      if (!Number.isInteger(days) || days < 1)
+        throw new Error("ensurePrefixExpiry: days must be a positive integer");
+      if (!/^[A-Za-z0-9._\-/]+$/.test(prefix)) throw new Error("ensurePrefixExpiry: unsafe prefix");
+      const bucket = deriveTenantBucket(organizationId as OrgId);
+      const ruleId = `cw-expire:${prefix}`;
+      const read = async (op: string): Promise<string> => {
+        const res = await signedFetch({
+          method: "GET",
+          bucket,
+          objectKey: null,
+          query: [["lifecycle", ""]],
+          payload: null,
+          ...(signal ? { signal } : {}),
+        });
+        if (res.status === 404) return ""; // NoSuchLifecycleConfiguration (or bucket gone: the PUT will say so)
+        if (!res.ok) throw opError(op, res.status, bucket);
+        return res.text();
+      };
+      const existing = await read("getLifecycle");
+      const rule =
+        `<Rule><ID>${ruleId}</ID><Status>Enabled</Status><Filter><Prefix>${prefix}</Prefix></Filter>` +
+        `<Expiration><Days>${days}</Days></Expiration>` +
+        `<NoncurrentVersionExpiration><NoncurrentDays>${days}</NoncurrentDays></NoncurrentVersionExpiration></Rule>`;
+
+      // PUT replaces the whole config, so a body we cannot positively recognise is never rewritten.
+      const trimmed = existing.trim();
+      const emptyConfig = trimmed === "" || /^<LifecycleConfiguration\b[^>]*\/>$/.test(trimmed);
+      const closeAt = existing.lastIndexOf("</LifecycleConfiguration>");
+      if (
+        !emptyConfig &&
+        (!/^(<\?xml[^>]*\?>\s*)?<LifecycleConfiguration(\s[^>]*)?>/.test(trimmed) || closeAt < 0)
+      )
+        throw new Error(
+          `m34 s3 tenant storage: unrecognised lifecycle config for bucket ${bucket}; refusing to overwrite`,
+        );
+
+      let xml: string;
+      if (emptyConfig) {
+        xml = `<LifecycleConfiguration>${rule}</LifecycleConfiguration>`;
+      } else {
+        const ours = [...existing.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)].find((m) =>
+          new RegExp(`<ID>\\s*${ruleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*</ID>`).test(
+            m[0],
+          ),
+        );
+        if (ours) {
+          const current =
+            /<Status>\s*Enabled\s*<\/Status>/.test(ours[0]) &&
+            ours[0].includes(`<Prefix>${prefix}</Prefix>`) &&
+            new RegExp(`<Days>\\s*${days}\\s*</Days>`).test(ours[0]) &&
+            new RegExp(`<NoncurrentDays>\\s*${days}\\s*</NoncurrentDays>`).test(ours[0]);
+          if (current) return { applied: false };
+          xml = existing.replace(ours[0], rule); // a changed window/prefix replaces our own rule only
+        } else {
+          xml = `${existing.slice(0, closeAt)}${rule}${existing.slice(closeAt)}`;
+        }
+      }
+      const body = new TextEncoder().encode(xml);
+      const put = await signedFetch({
+        method: "PUT",
+        bucket,
+        objectKey: null,
+        query: [["lifecycle", ""]],
+        payload: body,
+        ...(signal ? { signal } : {}),
+        // S3 requires an integrity header on PutBucketLifecycle; Content-MD5 is accepted by AWS and MinIO.
+        extraHeaders: {
+          "content-md5": createHash("md5").update(body).digest("base64"),
+          "content-type": "application/xml",
+        },
+      });
+      if (!put.ok) throw opError("putLifecycle", put.status, bucket);
+      // S3 has no conditional PUT for lifecycle: a concurrent writer could have replaced the config between our
+      // GET and PUT. Re-read and fail loudly (the next stage retries) rather than report a rule that is not there.
+      if (!(await read("verifyLifecycle")).includes(`<ID>${ruleId}</ID>`))
+        throw opError("verifyLifecycle", 409, bucket);
+      return { applied: true };
     },
   };
 }

@@ -224,6 +224,7 @@ import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolv
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 import { buildM23OverrideAuditPort } from "./m23-override-audit";
+import { buildM25RawAdviceStore } from "./m25-raw-advice-store";
 import { buildM36AttachmentBinding, buildM36AttachmentStorage } from "./m36-attachment-storage";
 import {
   type AuthAuditDb,
@@ -1110,11 +1111,13 @@ import {
   type WorkerAlertPort as M25WorkerAlertPort,
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
-  type RawAdviceStore as M25RawAdviceStore,
   type TerminologyLookupPort,
   buildDrizzleAdrService,
+  buildDrizzleAuditRequestService,
+  buildDrizzleCaseViewService,
   buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
+  buildDrizzleLaterTierService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
@@ -3188,41 +3191,6 @@ function buildFirstAdminAcceptanceService(deps: {
  * organization-name read is the M1 bootstrap reader; the MBI comes from M5's `MbiUnlockReader` seam
  * (resolved lazily per check, so boot registration order never matters).
  */
-/** Largest raw 835 the post path will read back (a real remittance file is well under 1 MiB). */
-const M25_RAW_835_MAX_BYTES = 16 * 1024 * 1024;
-const M25_RAW_835_IO_TIMEOUT_MS = 15_000;
-
-/**
- * #658 — the raw-835 stage for M25: the tenant's own bucket (same MINIO_* contract and `deriveTenantBucket` as M22),
- * under `m25-835/<adviceId>` (server-generated, never the caller's key) so M25 can neither overwrite nor read an M22 object whatever key the caller names.
- * No object store configured = undefined, and `postAdvice` stays fail-closed (retryable X12_835_RAW_UNAVAILABLE).
- */
-function buildM25RawAdviceStore(): M25RawAdviceStore | undefined {
-  const config = s3ObjectStoreConfigFromEnv(process.env);
-  if (!config) return undefined;
-  const store = createS3ObjectStore(config);
-  const keyOf = (adviceId: string): string => `m25-835/${adviceId}`;
-  return {
-    async put(organizationId, adviceId, text) {
-      await store.putObject({
-        bucket: deriveTenantBucket(organizationId as never),
-        objectKey: keyOf(adviceId),
-        bytes: new TextEncoder().encode(text),
-        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
-      });
-    },
-    async get(organizationId, adviceId) {
-      const bytes = await store.getObject({
-        bucket: deriveTenantBucket(organizationId as never),
-        objectKey: keyOf(adviceId),
-        maxBytes: M25_RAW_835_MAX_BYTES,
-        signal: AbortSignal.timeout(M25_RAW_835_IO_TIMEOUT_MS),
-      });
-      return bytes ? new TextDecoder().decode(bytes) : null;
-    },
-  };
-}
-
 function buildM23HetsPort(db: DbClient, config: M23HetsConfig) {
   return buildHetsEligibilityPort({
     transport: createM23HetsTransport(config),
@@ -5788,8 +5756,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(),
-            rawStore: buildM25RawAdviceStore(),
+            rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
+              app.log.warn(
+                { errorName: error instanceof Error ? error.name : "unknown" },
+                "M25 staged-835 expiry rule could not be applied",
+              ),
+            ),
             onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
+            onStagedDeleteFailed: (event) =>
+              app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
             onRetryableParseDegraded: (event) =>
               app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
             payeeNpi: m25PayeeNpi,
@@ -5840,6 +5815,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             submissionService: buildDrizzleSubmissionService(dbHandle.db, {
               sources: buildSeamAppealSourcePorts(),
             }),
+            // Milestone 7a-1: audit request intake, later-tier record-keeping + recorded deadlines (a date typed
+            // from a notice, never a computed CMS date), and the one claim-keyed case view. Nothing is sent.
+            auditRequestService: buildDrizzleAuditRequestService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
+              providerEntityExists: async (tx, organizationId, providerEntityId) =>
+                (await buildFoundationSiteReader().providerEntityIdentifiers(
+                  tx as never,
+                  organizationId,
+                  providerEntityId,
+                )) !== null,
+            }),
+            laterTierService: buildDrizzleLaterTierService(dbHandle.db, {
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+              sources: buildSeamAppealSourcePorts(),
+            }),
+            caseViewService: buildDrizzleCaseViewService(dbHandle.db),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
@@ -6061,7 +6053,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // paragraph above describes the pre-GAP-060 behaviour): the DEK envelope sits over
           // `getTenantKeyProvider()` (the M8/M29/M31/M39 precedent, resolved lazily) and the §4.5 count is
           // M20's own §4.3 supervisor registry (a floor — `null`, never 0, when nobody is confirmed).
-          const m20Ciphers = createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider));
+          const m20Ciphers = createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider), (err) =>
+            app.log.error({ err }, "M20 tenant key provider fault (not a keyless tenant)"),
+          );
           const m20ReadService = buildDrizzleM20ReadService(dbHandle.db, {
             decipher: m20Ciphers.decipher,
           });
@@ -11921,8 +11915,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
-              rawStore: buildM25RawAdviceStore(),
+              rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
+                app.log.warn(
+                  { errorName: error instanceof Error ? error.name : "unknown" },
+                  "M25 staged-835 expiry rule could not be applied",
+                ),
+              ),
               onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
+              onStagedDeleteFailed: (event) =>
+                app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
               onRetryableParseDegraded: (event) =>
                 app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
               payeeNpi: m25PayeeNpi,

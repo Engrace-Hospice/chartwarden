@@ -83,6 +83,10 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   rule("appeal.qic_decision_overdue", "warn", BILLING_MANAGERS),
   // Milestone 6a: a filing made outside ChartWarden whose receipt (confirmation reference) was never recorded.
   rule("submission.proof_missing", "warn", BILLING_MANAGERS),
+  // Milestone 7a-1: a deadline a person typed from a notice (ALJ / Council / court notice, RAC / UPIC letter) is
+  // approaching, and an open audit request that still has no recorded due date.
+  rule("deadline.recorded_approaching", "warn", BILLING_MANAGERS),
+  rule("audit.no_deadline_recorded", "warn", BILLING_MANAGERS),
   // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
   // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
   ...(["agency", "patient"] as const).flatMap((family) => [

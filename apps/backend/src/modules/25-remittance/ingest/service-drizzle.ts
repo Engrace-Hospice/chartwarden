@@ -7,6 +7,7 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
+import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
@@ -45,7 +46,10 @@ type AdviceContext = {
   payerKind: ReceiveAdviceInput["payerKind"];
 };
 
-export type PayeeNpiLookup = (organizationId: string, providerEntityId: string) => Promise<string | null>;
+export type PayeeNpiLookup = (
+  organizationId: string,
+  providerEntityId: string,
+) => Promise<string | null>;
 /** Explicit opt-out of the payee check, for tests that are not about it. */
 export const PAYEE_UNCHECKED = "unchecked" as const;
 
@@ -78,6 +82,11 @@ export interface M25IngestDrizzleDeps {
    * the degraded code only. The composition root points this at a warn log.
    */
   readonly onStagedReadFailed?: (event: {
+    readonly organizationId: string;
+    readonly adviceId: string;
+    readonly errorName: string;
+  }) => void;
+  readonly onStagedDeleteFailed?: (event: {
     readonly organizationId: string;
     readonly adviceId: string;
     readonly errorName: string;
@@ -562,6 +571,24 @@ export function buildDrizzleM25IngestService(
     return { outcome: "queued", adviceId: row.id };
   }
 
+  /**
+   * #669 — once an advice is posted the staged raw text (PHI) has no reader left. Best effort: a failure must
+   * never un-post the advice; it is reported, and the next redelivery (or a bucket lifecycle rule) retries.
+   */
+  async function dropStagedRaw(organizationId: string, adviceId: string): Promise<void> {
+    await deps.rawStore?.delete(organizationId, adviceId).catch((err: unknown) => {
+      try {
+        deps.onStagedDeleteFailed?.({
+          organizationId,
+          adviceId,
+          errorName: err instanceof Error ? err.name : "unknown",
+        });
+      } catch {
+        // Ops-only hook.
+      }
+    });
+  }
+
   return {
     async receiveAdvice(
       actor: M25IngestActor,
@@ -575,6 +602,13 @@ export function buildDrizzleM25IngestService(
           outcome: "malformed",
           reason: "not a valid X12 envelope (missing ISA/ST segment)",
         };
+      }
+      // #668 — the staged text is what gets posted, so the declared hash must describe it.
+      if (
+        createHash("sha256").update(input.rawEdi, "utf8").digest("hex") !==
+        input.fileSha256.toLowerCase()
+      ) {
+        return { outcome: "malformed", reason: "fileSha256 does not match the submitted 835 text" };
       }
       // One file may hold several ST/SE sets; each is its own advice (its own dedup key and event). Every set is
       // parsed and payee-checked BEFORE anything is stored, so one bad set refuses the whole file.
@@ -644,6 +678,9 @@ export function buildDrizzleM25IngestService(
       const advice = current[0];
       if (!advice) return { outcome: "not_found", adviceId };
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed") {
+        // A redelivery retries a delete that failed after the original post (delete is idempotent).
+        if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted")
+          await dropStagedRaw(actor.organizationId, adviceId);
         return { outcome: "already_posted", adviceId };
       }
 
@@ -757,7 +794,11 @@ export function buildDrizzleM25IngestService(
             return { outcome: finalStatus, postedLineCount, unmatchedLineCount };
           },
         );
-        if (result.outcome === "already_posted") return { outcome: "already_posted", adviceId };
+        if (result.outcome === "already_posted") {
+          await dropStagedRaw(actor.organizationId, adviceId);
+          return { outcome: "already_posted", adviceId };
+        }
+        await dropStagedRaw(actor.organizationId, adviceId);
         return {
           outcome: result.outcome,
           adviceId,

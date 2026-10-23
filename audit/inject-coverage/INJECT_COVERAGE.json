@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1714,
-    "coveredRoutes": 1714,
-    "directRoutesReferenced": 1577
+    "routes": 1732,
+    "coveredRoutes": 1732,
+    "directRoutesReferenced": 1597
   },
   "modules": [
     {
@@ -179,7 +179,7 @@
         "apps/backend/__tests__/m8-chart-promotion.test.ts",
         "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts"
       ],
-      "directRoutesReferenced": 35
+      "directRoutesReferenced": 37
     },
     {
       "module": "09-assessments",
@@ -353,6 +353,7 @@
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
         "apps/backend/__tests__/f238-records-request.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
+        "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
@@ -379,6 +380,8 @@
         "apps/backend/__tests__/m23-validation-override.live.test.ts",
         "apps/backend/__tests__/m23-visit-charge-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
+        "apps/backend/__tests__/m25-audit-request.live.test.ts",
+        "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
@@ -396,17 +399,19 @@
     },
     {
       "module": "25-remittance",
-      "routes": 82,
+      "routes": 100,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
+        "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 54
+      "directRoutesReferenced": 72
     },
     {
       "module": "26-cap",

@@ -3614,6 +3614,27 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "none",
   },
+  // --- audit requests and later-tier record-keeping (milestone 7a-1; granted by migration 1173) ---
+  // `audit_request.*`, not `audit.*`: the plain audit keys are the platform compliance audit trail.
+  "audit_request.read": {
+    resource: "audit_request",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "audit_request.manage": {
+    resource: "audit_request",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Record the ALJ / Council / federal-court facts and the deadlines typed from a notice.
+  "appeal.tier_record": {
+    resource: "appeal_case",
+    action: "tier_record",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   // --- taxonomy surface ---
   "taxonomy.read": {
     resource: "denial_taxonomy",
