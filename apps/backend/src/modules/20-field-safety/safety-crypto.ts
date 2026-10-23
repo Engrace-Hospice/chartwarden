@@ -55,6 +55,23 @@ async function resolveDek(
   }
 }
 
+/**
+ * Best-effort coordinate encryption for the panic paths (#622). A bound cipher over a tenant with no usable key ring
+ * throws `SAFETY_CIPHER_UNBOUND`; for an SOS press or a check-in that must not cost the alert, so it answers `null`
+ * and the caller stores the no-coordinate sentinel. Any other failure is a real fault and still propagates.
+ */
+export async function encryptOrNull(
+  cipher: SafetyCipherPort,
+  input: { readonly organizationId: string; readonly plaintext: string },
+): Promise<Buffer | null> {
+  try {
+    return await cipher.encrypt(input);
+  } catch (err) {
+    if (err instanceof ChartWardenError && err.code === "SAFETY_CIPHER_UNBOUND") return null;
+    throw err;
+  }
+}
+
 /** Build the write-side cipher and read-side decipher over one tenant key provider. */
 export function createSafetyCiphers(keys: SafetyTenantKeyProvider): {
   readonly cipher: SafetyCipherPort;

@@ -1,7 +1,7 @@
 // GAP-060 — the M20 DEK envelope (cipher + decipher) and the §4.5 SOS recipient counter.
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createSafetyCiphers } from "../src/modules/20-field-safety/safety-crypto";
+import { createSafetyCiphers, encryptOrNull } from "../src/modules/20-field-safety/safety-crypto";
 import { createSosRecipientCounter } from "../src/modules/20-field-safety/sos-recipient-count";
 
 const KEYS = new Map<string, Buffer>([
@@ -30,7 +30,9 @@ describe("createSafetyCiphers", () => {
         throw new Error("TenantKeyMissing: no tenant key ring for org org-a");
       },
     });
-    const err = await cipher.encrypt({ organizationId: "org-a", plaintext: "x" }).catch((e: unknown) => e);
+    const err = await cipher
+      .encrypt({ organizationId: "org-a", plaintext: "x" })
+      .catch((e: unknown) => e);
     expect(err).toMatchObject({ code: "SAFETY_CIPHER_UNBOUND", statusCode: 503 });
     expect((err as Error).message).not.toContain("org-a");
   });
@@ -127,5 +129,31 @@ describe("createSosRecipientCounter", () => {
       },
     });
     await expect(count(input)).rejects.toThrow("registry unreadable");
+  });
+});
+
+describe("encryptOrNull (#622)", () => {
+  const input = { organizationId: "org-1", plaintext: "1,2" };
+
+  it("answers null for a keyless tenant so the SOS / check-in degrades instead of failing", async () => {
+    const { cipher } = createSafetyCiphers({
+      ...keyProvider("v1"),
+      async dekForOrg() {
+        throw new Error("TenantKeyMissing");
+      },
+    });
+    expect(await encryptOrNull(cipher, input)).toBeNull();
+  });
+
+  it("returns the ciphertext when the key ring is usable", async () => {
+    const { cipher } = createSafetyCiphers(keyProvider("v1"));
+    expect((await encryptOrNull(cipher, input))?.byteLength).toBeGreaterThan(0);
+  });
+
+  it("still propagates any other failure", async () => {
+    const boom = new Error("disk on fire");
+    await expect(encryptOrNull({ encrypt: async () => Promise.reject(boom) }, input)).rejects.toBe(
+      boom,
+    );
   });
 });
