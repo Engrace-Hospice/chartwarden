@@ -24,10 +24,12 @@ const CHROMELESS_PATHS = PORTAL_SCREEN_MANIFEST.filter((s) => s.chrome === false
 const CHROMED_PATHS = PORTAL_SCREEN_MANIFEST.filter((s) => s.chrome !== false).map((s) => s.path);
 
 /** router.state.location carries the basename; routes and `next` are app-relative. */
-const appPath = (pathname: string): string =>
-  PORTAL_BASE_PATH && pathname.startsWith(PORTAL_BASE_PATH)
-    ? pathname.slice(PORTAL_BASE_PATH.length) || "/"
-    : pathname;
+export const appPath = (pathname: string): string => {
+  const base = PORTAL_BASE_PATH.toLowerCase();
+  const lower = pathname.toLowerCase();
+  if (!base || (lower !== base && !lower.startsWith(`${base}/`))) return pathname;
+  return pathname.slice(base.length) || "/";
+};
 
 const matchesAny = (paths: readonly string[], pathname: string): boolean =>
   paths.some((path) => matchPath({ path, end: true }, pathname) !== null);
@@ -36,6 +38,8 @@ const matchesAny = (paths: readonly string[], pathname: string): boolean =>
  * An app-relative return path (basename already stripped) that is safe to navigate to, or null. Strict allow-list:
  * it must resolve to one of the signed-in (chromed) portal routes, which excludes "/", other origins, `//host`,
  * schemes, backslashes, control characters and traversal (also when percent-encoded). Invalid input is dropped.
+ * Path-only: search and hash are discarded. The value rides the magic-link callbackURL, which Better Auth decodes
+ * twice, so a query/`%`/`#` inside `next` would be truncated or make the verify 400.
  */
 export function validateNext(raw: string | null | undefined): string | null {
   if (!raw || raw.length > MAX_NEXT_LENGTH) return null;
@@ -53,13 +57,26 @@ export function validateNext(raw: string | null | undefined): string | null {
   }
   const url = new URL(raw, NEXT_BASE);
   if (url.origin !== NEXT_BASE || !matchesAny(CHROMED_PATHS, url.pathname)) return null;
-  return `${url.pathname}${url.search}${url.hash}`;
+  return url.pathname;
 }
 
-/** The sign-in screen URL (app-relative) that returns to `target` after sign-in. */
-export function signInPathFor(target: string): string {
+/** The patient a `/p/:patientId[/...]` return path belongs to, or null for patient-less routes. */
+export function patientIdOf(next: string): string | null {
+  const match = matchPath({ path: "/p/:patientId/*", end: false }, next);
+  return match?.params.patientId ?? null;
+}
+
+/**
+ * The sign-in screen URL (app-relative) that returns to `target` after sign-in. `expired` adds `reason=expired`
+ * so the sign-in screen can say why; it is deliberately not part of the magic-link URLs.
+ */
+export function signInPathFor(target: string, opts: { expired?: boolean } = {}): string {
   const next = validateNext(target);
-  return next ? `/?next=${encodeURIComponent(next)}` : "/";
+  const params = [
+    ...(next ? [`next=${encodeURIComponent(next)}`] : []),
+    ...(opts.expired ? ["reason=expired"] : []),
+  ];
+  return params.length ? `/?${params.join("&")}` : "/";
 }
 
 /** The minimal slice of a react-router data router the guard needs. */
@@ -101,11 +118,15 @@ export function createSessionGuard(): SessionGuard {
 
   function redirect(): void {
     if (!router || redirecting) return;
-    const { search, hash } = router.state.location;
     const pathname = appPath(router.state.location.pathname);
     if (matchesAny(CHROMELESS_PATHS, pathname)) return;
-    redirecting = true; // N parallel 401s navigate once; cleared when the router settles on a chromeless route
-    void router.navigate(signInPathFor(`${pathname}${search}${hash}`), { replace: true });
+    redirecting = true; // N parallel 401s navigate once; cleared when the navigation settles (even if superseded)
+    const clear = (): void => {
+      redirecting = false;
+    };
+    void Promise.resolve(
+      router.navigate(signInPathFor(pathname, { expired: true }), { replace: true }),
+    ).then(clear, clear);
   }
 
   return {
