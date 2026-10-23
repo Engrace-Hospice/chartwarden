@@ -84,6 +84,13 @@ async function listScopeOf(
   }
 }
 
+/** The org a service principal acts in (#680). It has no membership, so the user `actorOf` would 401 it. */
+function systemOrgOf(request: FastifyRequest): string {
+  const organizationId = request.context?.organizationId;
+  if (!organizationId) throw new UnauthorizedError();
+  return organizationId;
+}
+
 function actorOf(request: FastifyRequest): {
   organizationId: string;
   userId: string;
@@ -929,7 +936,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const organizationId = systemOrgOf(request);
       const q = parse(BillableQuerySchema, request.query);
       return service.billable(organizationId, q.encounterIds);
     },
@@ -943,7 +950,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const organizationId = systemOrgOf(request);
       const q = parse(SignedSinceQuerySchema, request.query);
       return service.signedSince(organizationId, q.since);
     },
@@ -959,7 +966,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const organizationId = systemOrgOf(request);
       return service.renderPayload(organizationId, encounterIdOf(request));
     },
   );

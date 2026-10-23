@@ -73,6 +73,13 @@ function headerAuth(request: FastifyRequest): void {
   request.context.attributes.membershipId =
     typeof membership === "string" && membership.length > 0 ? membership : user;
   request.context.attributes.sessionId = user;
+  // The authenticate hook stamps the principal kind; the `/internal/...` seams are system-only (#678).
+  const kind = request.headers["x-test-actor-kind"];
+  request.context.attributes.actorKind = typeof kind === "string" ? kind : "user";
+  // #680 — a service principal carries no membership.
+  if (request.headers["x-test-no-membership"] === "1") {
+    request.context.attributes.membershipId = undefined;
+  }
 }
 
 const ORG = "org_a";
@@ -229,7 +236,13 @@ const SUPERVISOR = {
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const LPN_COSIGNER = { "x-test-user": "lpn_cos", "x-test-org": ORG, "x-test-roles": "lpn" };
 /** The system principal the M22 render seam (route 31) is called as. */
-const INTERNAL = { "x-test-user": "svc_m22", "x-test-org": ORG, "x-test-roles": "system" };
+const INTERNAL = {
+  "x-test-user": "svc_m22",
+  "x-test-org": ORG,
+  "x-test-roles": "system",
+  "x-test-actor-kind": "system",
+  "x-test-no-membership": "1",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -904,6 +917,23 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
   it("the M22 render seam serves the assembled note, and 404s when there is none to render", async () => {
     const { app } = makeServer();
     const id = await draft(app);
+
+    // #680: the other two seams also serve a membership-less service principal.
+    for (const url of [
+      `/api/v1/internal/encounters/billable?encounterIds=${id}`,
+      "/api/v1/internal/encounters/signed-since?since=2026-01-01T00:00:00Z",
+    ]) {
+      const res = await app.inject({ method: "GET", url, headers: INTERNAL });
+      expect(res.statusCode, url).toBe(200);
+    }
+
+    // #678: a human session is refused even when it holds the key — the seam is system-principal-only.
+    const human = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: { ...INTERNAL, "x-test-actor-kind": "user", "x-test-no-membership": "0" },
+    });
+    expect(human.statusCode).toBe(403);
 
     // Was `{ final: "" }` with a 200 — a renderable answer for a note that does not exist.
     const empty = await app.inject({

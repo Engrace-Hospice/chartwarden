@@ -61,6 +61,13 @@ export interface AssessmentRouteDeps {
   service: AssessmentRouteService;
 }
 
+/** The org a service principal acts in (#680). It has no membership, so the user `actorOf` would 401 it. */
+function systemOrgOf(request: FastifyRequest): string {
+  const organizationId = request.context?.organizationId;
+  if (!organizationId) throw new UnauthorizedError();
+  return organizationId;
+}
+
 function actorOf(request: FastifyRequest): {
   organizationId: string;
   userId: string;
@@ -357,11 +364,11 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/internal/assessments/latest-batch",
     {
-      preHandler: [READ, SYSTEM_PRINCIPAL_ONLY],
+      preHandler: [SYSTEM_PRINCIPAL_ONLY],
       config: { auditRead: { resourceKind: "assessment", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const organizationId = systemOrgOf(request);
       const q = parse(LatestBatchQuerySchema, request.query);
       return service.latestBatch(organizationId, q.patientId, q.scaleTypes);
     },
@@ -371,11 +378,11 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/internal/assessments/series-batch",
     {
-      preHandler: [READ, SYSTEM_PRINCIPAL_ONLY],
+      preHandler: [SYSTEM_PRINCIPAL_ONLY],
       config: { auditRead: { resourceKind: "assessment", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const organizationId = systemOrgOf(request);
       const q = parse(SeriesBatchQuerySchema, request.query);
       return service.seriesScale(organizationId, q.patientId, q.scaleType, q.from, q.to);
     },
