@@ -108,6 +108,8 @@ export const TenantExportJobParamsSchema = Type.Object({
 export const ProvisionTenantRequest = Type.Object({
   signupIntentId: Type.Optional(Type.String({ format: "uuid" })),
   legalBusinessName: Type.String({ minLength: 2, maxLength: 300 }),
+  /** The tenant's host label (`<slug>.<base domain>`); validated against the ADR-0049 D3 rules in the service. */
+  slug: Type.Optional(Type.String({ minLength: 1, maxLength: 63 })),
   billingContactEmail: Type.String({ format: "email" }),
   breachNotificationContactEmail: Type.String({ format: "email" }),
   firstAdminEmail: Type.String({ format: "email" }),

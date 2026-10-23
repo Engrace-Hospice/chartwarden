@@ -241,6 +241,13 @@ to the `storage.` host in the tenant image; the demo image keeps the shared snip
 - M34 tenant provisioning validates the slug (Phase 1 rules) and audits the action. No per-tenant DNS,
   certificate, Pangolin or ingress change.
 
+**Build notes (Phase 6).** `POST /api/v1/platform/tenants` takes an optional `slug`. The route validates it with
+`validateTenantSlug` (422 `INVALID_TENANT_SLUG`, reason in the message); it reaches M2's `TenantOrgCreationProvider` as
+`intent.slug` (absent: the old name-derived slug); a slug that is taken or was ever another organization's is refused
+409 `TENANT_SLUG_UNAVAILABLE` (the 1144 trigger is the authority; the app maps 23505/23514). The chosen slug is recorded
+in the `tenant_status_event` row's `sideEffectsRecorded`. Still open: choosing the slug in the admin provisioning form,
+and a live suite for the 409 path on the real role.
+
 ## Tests and gates
 
 - Live suite on the real NOBYPASSRLS `chartwarden_app` role, in a private `pgvector/pgvector:pg18` container

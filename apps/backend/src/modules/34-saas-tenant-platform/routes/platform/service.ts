@@ -260,6 +260,7 @@ export interface SetKillSwitchArgs {
 export interface ProvisionTenantArgs {
   readonly signupIntentId: string | null;
   readonly legalBusinessName: string;
+  readonly slug?: string;
   readonly billingContactEmail: string;
   readonly breachNotificationContactEmail: string;
   readonly firstAdminEmail: string;

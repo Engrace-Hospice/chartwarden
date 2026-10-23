@@ -132,6 +132,7 @@ export interface OrganizationProvisionPort {
     readonly organizationId: string;
     readonly tenantAccountId: string;
     readonly legalBusinessName: string;
+    readonly slug?: string;
   }): Promise<{ readonly organizationId: string }>;
 }
 
@@ -540,11 +541,21 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const accounts = new TenantAccountRepository(tx);
         const existing = await accounts.findById(tenantAccountId);
 
-        await deps.organizations.ensure({
-          organizationId,
-          tenantAccountId,
-          legalBusinessName: args.legalBusinessName,
-        });
+        try {
+          await deps.organizations.ensure({
+            organizationId,
+            tenantAccountId,
+            legalBusinessName: args.legalBusinessName,
+            ...(args.slug !== undefined ? { slug: args.slug } : {}),
+          });
+        } catch (err) {
+          // 23505 = the slug is, or once was, another organization's (never reused); 23514 = the DB's own slug rule.
+          const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+          if (args.slug !== undefined && (code === "23505" || code === "23514")) {
+            throw new ChartWardenError("TENANT_SLUG_UNAVAILABLE", "that slug is taken or was used by another organization (an earlier failed provisioning attempt can also hold it)", 409);
+          }
+          throw err;
+        }
 
         if (!existing) {
           await accounts.create({
@@ -565,7 +576,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             transitionReason: "platform operator requested tenant provisioning",
             actorMembershipId,
             actorKind: "platform_ops",
-            sideEffectsRecorded: { queue: "tenant.provision" },
+            sideEffectsRecorded: {
+              queue: "tenant.provision",
+              ...(args.slug !== undefined ? { slug: args.slug } : {}),
+            },
           });
         } else if (existing.status !== "provisioning") {
           throw new ChartWardenError(
