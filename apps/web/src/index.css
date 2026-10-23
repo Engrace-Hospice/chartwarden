@@ -1207,6 +1207,11 @@
       flex-direction: column !important;
       overflow: auto;
     }
+    /* flex:1 is inline; in a column it squeezes the main column to 0 and the rail paints over the tab strip.
+       The workspace now scrolls here, not .wx-patient-workspace-body (scroll code must not assume the body scrolls). */
+    .wx-patient-workspace-main {
+      flex: none !important;
+    }
     .wx-patient-rail {
       width: 100%;
       padding: 0 1.5rem 1.5rem;

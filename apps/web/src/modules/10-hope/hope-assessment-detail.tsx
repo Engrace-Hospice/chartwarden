@@ -356,11 +356,25 @@ const NAV_MODE_KEY = "wx.hope.navMode";
 const VISITED_KEY = "wx.hope.visitedGroups";
 
 /**
+ * The pane that actually scrolls the workspace content: the body above 1200px, the whole
+ * `.wx-patient-workspace` below it (the body grows to its content there). Falls back to the body.
+ */
+function workspaceScroller(element: HTMLElement): HTMLElement | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight)
+      return node;
+    if (node.classList.contains("wx-patient-workspace")) break;
+  }
+  return element.closest<HTMLElement>(".wx-patient-workspace-body");
+}
+
+/**
  * Scrolls the workspace pane — not the window — so the app shell (top bar, banner) never shifts.
  * `scrollIntoView` scrolls every scrollable ancestor, including the document.
  */
 function scrollWithinWorkspace(element: HTMLElement, block: "start" | "center"): void {
-  const pane = element.closest<HTMLElement>(".wx-patient-workspace-body");
+  const pane = workspaceScroller(element);
   if (!pane) {
     element.scrollIntoView({ behavior: "smooth", block });
     return;
@@ -589,7 +603,7 @@ export function HopeAssessmentDetail(): JSX.Element {
   useEffect(() => {
     if (pendingItemFocus || pendingScroll) return;
     if (navMode === "all" && activeSection !== "Review") return;
-    workspaceRef.current?.closest(".wx-patient-workspace-body")?.scrollTo({ top: 0 });
+    if (workspaceRef.current) workspaceScroller(workspaceRef.current)?.scrollTo({ top: 0 });
   }, [activeSection, groupBySection, navMode]);
 
   // Show-all: jump to a section/group once it is rendered.
@@ -620,7 +634,7 @@ export function HopeAssessmentDetail(): JSX.Element {
   // Show-all scroll-spy: track the topmost visible group; groups scrolled past count as visited.
   useEffect(() => {
     if (navMode !== "all" || activeSection === "Review" || !workspace) return;
-    const root = workspaceRef.current?.closest(".wx-patient-workspace-body") ?? null;
+    const root = workspaceRef.current ? workspaceScroller(workspaceRef.current) : null;
     const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-hope-group]"));
     if (!nodes.length || typeof IntersectionObserver === "undefined") return;
     const visible = new Set<HTMLElement>();
