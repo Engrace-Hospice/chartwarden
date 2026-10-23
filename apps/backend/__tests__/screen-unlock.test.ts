@@ -145,6 +145,19 @@ describe("#589 POST /api/v1/auth/unlock", () => {
     await h.app.close();
   });
 
+  it("Retry-After is the window's remaining time, not the full window (#602)", async () => {
+    let t = 1_000_000;
+    const h = makeServer({ store: createInMemoryFailedLoginStore(() => t) });
+    for (let i = 0; i < 5; i += 1) await unlock(h.app, { password: "nope" });
+    t += 4 * 60_000; // 4 of the 10 minutes have passed
+
+    const next = await unlock(h.app, { password: GOOD_PASSWORD });
+
+    expect(next.statusCode).toBe(429);
+    expect(next.headers["retry-after"]).toBe("360");
+    await h.app.close();
+  });
+
   it("a lockout does NOT refund the budget, so requests already in flight cannot reserve fresh attempts", async () => {
     const h = makeServer();
     for (let i = 0; i < 5; i += 1) await unlock(h.app, { password: "nope" });

@@ -59,7 +59,7 @@ import {
   type MembershipView,
 } from "../identity-ports";
 import { mfaEnrolmentRequired } from "../mfa-enrolment-gate";
-import { UNLOCK_ATTEMPT_LIMIT, UNLOCK_WINDOW_MS } from "../unlock-guard";
+import { UNLOCK_ATTEMPT_LIMIT } from "../unlock-guard";
 import { registerLinkRoutes } from "./link-routes";
 import {
   auditContextFor,
@@ -329,8 +329,9 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       // One audit row per window, not per request: a held cookie hammering past the limit must not amplify into
       // unbounded compliance rows (the lockout row already records the event that matters).
       if (attempt.attempt === UNLOCK_ATTEMPT_LIMIT + 1) await record("throttled");
-      reply.header("Retry-After", String(Math.ceil(UNLOCK_WINDOW_MS / 1000)));
-      throw new CredentialThrottleError(Math.ceil(UNLOCK_WINDOW_MS / 1000));
+      const retryAfter = await deps.unlockGuard.retryAfterSeconds(actor.userId);
+      reply.header("Retry-After", String(retryAfter));
+      throw new CredentialThrottleError(retryAfter);
     }
 
     const ok = await deps.passwordVerifier.verify({ userId: actor.userId, password });
