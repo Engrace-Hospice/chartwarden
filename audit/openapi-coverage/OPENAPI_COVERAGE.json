@@ -51,12 +51,12 @@
     },
     {
       "module": "06-admission",
-      "routes": 87,
-      "enriched": 87,
+      "routes": 88,
+      "enriched": 88,
       "deficit": 0,
       "mutating": 63,
       "mutatingNoBody": 0,
-      "gets": 24,
+      "gets": 25,
       "getsNoResponse": 0
     },
     {

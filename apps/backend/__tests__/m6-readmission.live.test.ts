@@ -870,6 +870,9 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       [direct.id],
     );
     expect(adm.readmitted_from_admission_id).toBe(stayOfA);
+    expect((await svc.getAdmission(ORG, direct.id))?.readmittedFromAdmissionId).toBe(stayOfA);
+    expect((await svc.getAdmission(ORG, stayOfA))?.readmittedFromAdmissionId).toBeNull();
+    expect(await svc.getAdmission(ORG_B, direct.id)).toBeNull();
     expect((await periodsOf(direct.id))[0]).toMatchObject({
       sequence_number: 2,
       benefit_period_source: "internal_history",

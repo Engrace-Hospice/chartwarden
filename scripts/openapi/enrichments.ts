@@ -140,7 +140,9 @@ import {
   CtiMarkLateSchema,
   CtiSignSchema,
   CtiVoidSchema,
+  DischargeCosignContextResponseSchema,
   DischargeCosignSchema,
+  DischargeCreateResponseSchema,
   DischargeCreateSchema,
   DischargeDeclineSchema,
   DischargeOrderResponseSchema,
@@ -196,6 +198,7 @@ import {
   ReferralTriageSchema,
   ReferralUpdateSchema,
   RevocationCreateSchema,
+  TransferInResponseSchema,
   TransferInSchema,
   TransferOutSchema,
   UploadedCtiEvidenceSchema,
@@ -4491,28 +4494,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admissions/:id/revocation": {
     summary: "Record a benefit revocation",
     body: RevocationCreateSchema,
+    status: 201,
+    response: M6SummaryRowResponseSchema,
   },
   "POST /api/v1/admissions/:id/transfer-out": {
     summary: "Transfer the beneficiary out to another hospice",
     body: TransferOutSchema,
+    status: 201,
+    response: M6SummaryRowResponseSchema,
   },
   "POST /api/v1/admissions/:id/transfer-in": {
     summary: "Transfer a beneficiary in (inherits the prior benefit period)",
     body: TransferInSchema,
+    status: 201,
+    response: TransferInResponseSchema,
   },
   "POST /api/v1/admissions/:id/discharge": {
     summary: "Discharge the admission (§6.3: permission key derived from reason)",
     body: DischargeCreateSchema,
+    status: 201,
+    response: DischargeCreateResponseSchema,
   },
   "POST /api/v1/discharges/:id/cosign-for-cause": {
     summary:
       "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
     body: DischargeCosignSchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "GET /api/v1/discharges/:id/cosign-context": {
+    summary: "Current pending discharge event and its version for an authorized cosigner",
+    response: DischargeCosignContextResponseSchema,
   },
   "POST /api/v1/discharges/:id/decline-for-cause": {
     summary:
       "Decline a for-cause discharge awaiting cosign — the discharge is voided and the admission stays active (the filer cannot cosign their own filing; another director decides)",
     body: DischargeDeclineSchema,
+    response: M6SummaryRowResponseSchema,
   },
   "GET /api/v1/admissions/:id/discharge-order": {
     summary:

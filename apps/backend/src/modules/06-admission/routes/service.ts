@@ -609,6 +609,15 @@ export interface DischargeOrderView {
   } | null;
 }
 
+/** A pending event's own concurrency token; never substitute admission.version. */
+export interface DischargeCosignContext {
+  readonly dischargeEventId: string;
+  readonly admissionId: string;
+  readonly status: "pending_cosign";
+  readonly dischargeEventVersion: number;
+  readonly dischargeDate: string;
+}
+
 /** 42 CFR 418.25(a) — the recorded physician admission recommendation (route 10 projection). */
 export interface AdmissionRecommendationView {
   readonly recommendedByUserId: string;
@@ -664,6 +673,8 @@ export interface PatientAdmissionSummary {
 export interface AdmissionDetail extends SummaryRow {
   readonly patientId?: string;
   readonly referralId?: string | null;
+  /** Existing nullable self-FK; null for direct intake and unknown historical episodes. */
+  readonly readmittedFromAdmissionId?: string | null;
   readonly admissionAt?: string | null;
   readonly activatedAt?: string | null;
   readonly providerEntityId?: string | null;
@@ -1236,6 +1247,12 @@ export interface AdmissionRouteService {
     organizationId: string,
     admissionId: string,
   ): Promise<{ readonly discharge: DischargeOrderView | null } | null>;
+  /** Called only behind the same permission and signer ABAC as cosign/decline. */
+  getDischargeCosignContext(
+    organizationId: string,
+    dischargeEventId: string,
+    actorUserId: string,
+  ): Promise<DischargeCosignContext | null>;
   /** The physicians who may sign for this admission's patient (`null` = unknown admission). */
   listPhysicianSigners(
     organizationId: string,
@@ -1336,6 +1353,7 @@ interface Rec {
   electionPeriodId?: string;
   sequence?: number;
   primaryDiagnosisIcd10?: string;
+  readmittedFromAdmissionId?: string | null;
   scheduledDate?: LocalDate | null;
   requestedWindowStart?: LocalDate | null;
   requestedWindowEnd?: LocalDate | null;
@@ -2125,6 +2143,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (input.referralId) throw new ReferralAdmissionPathError();
       const rec = insert("admission", organizationId, "pending", {
         patientId: input.patientId,
+        readmittedFromAdmissionId: input.readmittedFromAdmissionId ?? null,
         providerEntityId: null,
         createdByUserId: actorUserId || null,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
@@ -2171,6 +2190,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             ...summary(rec),
             patientId: rec.patientId,
             referralId: rec.externalReferralId ?? null,
+            readmittedFromAdmissionId: rec.readmittedFromAdmissionId ?? null,
             admissionAt: rec.admissionAt ?? null,
             activatedAt: rec.state === "active" ? now().toISOString() : null,
             providerEntityId: rec.providerEntityId ?? null,
@@ -3140,6 +3160,23 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
               ? { name: de.cosignerName, npi: de.cosignerNpi, cosignedAt: de.cosignedAt ?? null }
               : null,
         },
+      };
+    },
+    async getDischargeCosignContext(organizationId, dischargeEventId, actorUserId) {
+      const de = get(organizationId, dischargeEventId, "discharge");
+      if (
+        !de ||
+        !["pending_cosign", "awaiting_cosign"].includes(de.state) ||
+        de.filedByUserId === actorUserId ||
+        !de.admissionId
+      )
+        return null;
+      return {
+        dischargeEventId: de.id,
+        admissionId: de.admissionId,
+        status: "pending_cosign",
+        dischargeEventVersion: de.version,
+        dischargeDate: de.effectiveAt ?? "",
       };
     },
     async listPhysicianSigners(organizationId, admissionId) {
