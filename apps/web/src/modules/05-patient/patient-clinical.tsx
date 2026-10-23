@@ -1,11 +1,15 @@
 import {
   CountBadge,
+  DeniedState,
+  ErrorState,
   Glyph,
   type GlyphName,
   InfoRows,
   Panel,
+  type ReadStatus,
   StatusPill,
   ageYears,
+  classifyRead,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -14,7 +18,7 @@ import {
 // PPS + ESAS-r from the M9 scale timeline, vitals + note text from the M8 encounter detail, open
 // significant-change events (M9) as clinical alerts, and advance-directive consents + the active
 // healthcare DPOA (M17). Nothing the platform does not capture (POLST, last BM, orientation) is drawn.
-import { type JSX, type ReactNode, useEffect, useRef, useState } from "react";
+import { type JSX, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PatientSummaryPanel, medicareTail } from "../../shell/patient-context";
 import {
@@ -96,6 +100,12 @@ export interface ClinicalData {
   notes?: EncounterDetail[];
   consents?: Consent[];
   dpoa?: Dpoa | null;
+  /** Read outcome of the three reads that must not collapse to empty; undefined while loading. */
+  ppsLatestRead?: ReadStatus;
+  consentsRead?: ReadStatus;
+  dpoaRead?: ReadStatus;
+  /** Re-runs the clinical reads (wired to the failed-read retry buttons). */
+  retry?: () => void;
 }
 
 type Client = ReturnType<typeof useApiClient>;
@@ -107,6 +117,55 @@ async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promi
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A read whose outcome matters. `notFound` says what a 404 means for it: "empty" is a true absence
+ * (PPS latest 404s when nothing is recorded); "denied" is deny-as-404 (consents / DPOA are ABAC-guarded
+ * and answer 404 rather than 403 to hide existence, and return 200 with empty data when there is none).
+ */
+export function classifyClinicalRead(
+  res: { error?: unknown; response?: { status: number } },
+  notFound: "empty" | "denied",
+): ReadStatus {
+  if (res.response?.status === 404) return notFound === "denied" ? "denied" : "ok";
+  return classifyRead(res);
+}
+
+async function settleRead<T>(
+  p: Promise<{ data?: unknown; error?: unknown; response?: { status: number } }>,
+  notFound: "empty" | "denied",
+): Promise<{ status: ReadStatus; data?: T }> {
+  try {
+    const r = await p;
+    const status = classifyClinicalRead(r, notFound);
+    return status === "ok" ? { status, data: r.data as T | undefined } : { status };
+  } catch {
+    return { status: "failed" };
+  }
+}
+
+/** Denied / failed notice for a read that did not return data; renders nothing for "ok". */
+export function ReadNotice({
+  status,
+  subject,
+  onRetry,
+}: {
+  status: ReadStatus | undefined;
+  subject: string;
+  onRetry?: () => void;
+}): JSX.Element | null {
+  if (status === "denied") return <DeniedState subject={subject} />;
+  if (status === "failed") {
+    return (
+      <ErrorState
+        title={`${subject} could not be loaded`}
+        description="Try again in a moment."
+        onRetry={onRetry}
+      />
+    );
+  }
+  return null;
 }
 
 const daysAgo = (n: number): string =>
@@ -124,6 +183,20 @@ export function useClinicalData(
   const client: Client = useApiClient();
   const [data, setData] = useState<ClinicalData>({});
   const alive = useRef(true);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setData((d) => ({
+      ...d,
+      ppsLatest: undefined,
+      ppsLatestRead: undefined,
+      consents: undefined,
+      consentsRead: undefined,
+      dpoa: undefined,
+      dpoaRead: undefined,
+    }));
+    setAttempt((n) => n + 1);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the fetch on Retry.
   useEffect(() => {
     if (!enabled) return;
     alive.current = true;
@@ -139,11 +212,12 @@ export function useClinicalData(
         },
       }),
     ).then((r) => merge({ pps: r?.points ?? [] }));
-    void settle<ScaleAssessment>(
+    void settleRead<ScaleAssessment>(
       client.GET("/api/v1/patients/{patientId}/scales/{scaleType}/latest", {
         params: { path: { patientId, scaleType: "pps" } },
       }),
-    ).then((r) => merge({ ppsLatest: r ?? null }));
+      "empty",
+    ).then((r) => merge({ ppsLatest: r.data ?? null, ppsLatestRead: r.status }));
     void settle<{ assessments: ScaleAssessment[] }>(
       client.GET("/api/v1/patients/{patientId}/assessments", {
         params: {
@@ -165,18 +239,25 @@ export function useClinicalData(
         changes: (r?.events ?? []).filter((e) => e.status !== "acknowledged"),
       }),
     );
-    void settle<{ data: Consent[] }>(
+    void settleRead<{ data: Consent[] }>(
       client.GET("/api/v1/patients/{patientId}/consents", { params: { path } }),
-    ).then((r) => merge({ consents: (r?.data ?? []).filter((c) => c.status === "active") }));
-    void settle<{ data: Dpoa | null }>(
+      "denied",
+    ).then((r) =>
+      merge({
+        consents: (r.data?.data ?? []).filter((c) => c.status === "active"),
+        consentsRead: r.status,
+      }),
+    );
+    void settleRead<{ data: Dpoa | null }>(
       client.GET("/api/v1/patients/{patientId}/dpoa/active-primary", {
         params: { path },
       }),
-    ).then((r) => merge({ dpoa: r?.data ?? null }));
+      "denied",
+    ).then((r) => merge({ dpoa: r.data?.data ?? null, dpoaRead: r.status }));
     return () => {
       alive.current = false;
     };
-  }, [client, patientId, enabled]);
+  }, [client, patientId, enabled, attempt]);
 
   // Vitals and note text live only on the encounter detail — read the few most recent ones.
   const encounters = chart.encounters;
@@ -208,7 +289,7 @@ export function useClinicalData(
     };
   }, [client, encounters, enabled]);
 
-  return data;
+  return { ...data, retry };
 }
 
 // ---------- helpers ----------
@@ -540,22 +621,34 @@ function ClinicalStatusPanel({
         <Loading />
       ) : (
         <ul className="wx-status-rows">
-          <StatusRow
-            icon="bar-chart"
-            label="PPS"
-            value={pps?.score != null ? `${pps.score}%` : "—"}
-            strong
-          />
-          <StatusRow
-            icon="user"
-            label="Self-care"
-            value={PPS_SELF_CARE[String(pps?.data.selfCare)] ?? "—"}
-          />
-          <StatusRow
-            icon="globe"
-            label="Consciousness"
-            value={PPS_CONSCIOUSNESS[String(pps?.data.consciousness)] ?? "—"}
-          />
+          {clinical.ppsLatestRead === "ok" ? (
+            <>
+              <StatusRow
+                icon="bar-chart"
+                label="PPS"
+                value={pps?.score != null ? `${pps.score}%` : "—"}
+                strong
+              />
+              <StatusRow
+                icon="user"
+                label="Self-care"
+                value={PPS_SELF_CARE[String(pps?.data.selfCare)] ?? "—"}
+              />
+              <StatusRow
+                icon="globe"
+                label="Consciousness"
+                value={PPS_CONSCIOUSNESS[String(pps?.data.consciousness)] ?? "—"}
+              />
+            </>
+          ) : (
+            <li>
+              <ReadNotice
+                status={clinical.ppsLatestRead}
+                subject="Performance status"
+                onRetry={clinical.retry}
+              />
+            </li>
+          )}
           <StatusRow
             icon="zap"
             label="Pain (ESAS-r)"
@@ -1163,8 +1256,14 @@ export function ClinicalRail({
         icon="shield-check"
         action={<PanelLink to={`/patients/${patient.id}?view=privacy`}>Edit</PanelLink>}
       >
-        {clinical.consents === undefined || clinical.dpoa === undefined ? (
+        {clinical.consentsRead === undefined || clinical.dpoaRead === undefined ? (
           <Loading />
+        ) : clinical.consentsRead !== "ok" || clinical.dpoaRead !== "ok" ? (
+          <ReadNotice
+            status={clinical.consentsRead !== "ok" ? clinical.consentsRead : clinical.dpoaRead}
+            subject="Advance directives"
+            onRetry={clinical.retry}
+          />
         ) : directives.length === 0 && !clinical.dpoa ? (
           <EmptyLine>No advance directive or healthcare DPOA on file.</EmptyLine>
         ) : (
