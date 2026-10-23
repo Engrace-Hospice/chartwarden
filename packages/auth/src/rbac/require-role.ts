@@ -109,6 +109,8 @@ export function resetEffectivePermissionResolver(): void {
 export function resolveActorPermissions(
   actor: Pick<HttpRequestContext, "organizationId" | "userId">,
 ): Promise<ReadonlySet<string>> | ReadonlySet<string> {
+  // The service principal's userId is the literal "system", not a uuid (#678): it has no membership grants.
+  if (actor.userId === "system") return new Set<string>();
   return effectivePermissionResolver(actor as HttpRequestContext);
 }
 

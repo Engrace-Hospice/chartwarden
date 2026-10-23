@@ -176,7 +176,15 @@ const ADDENDUM_AUTHOR = P("encounter.addendum_author");
 const ADDENDUM_SIGN = P("encounter.addendum_sign");
 const LATE_OVERRIDE = P("encounter.late_entry_override");
 const ADMIN_OVERRIDE = P("encounter.administrative_override");
-const READ_INTERNAL = P("encounter.read_internal");
+const READ_PERMISSION_INTERNAL = P("encounter.read_internal");
+// Second lock (#678): the key alone is not enough — a human session holding it by a custom role would get an
+// org-wide encounter read with no caseload check. Same rule as M9/M15/M25 `/internal/...` seams.
+const SYSTEM_ONLY: PreHandler = async (request) => {
+  const kind = request.context?.attributes?.actorKind;
+  if (typeof kind !== "string" || !kind.startsWith("system")) {
+    throw new ForbiddenError("this seam route is reachable by system principals only (§4.1)");
+  }
+};
 const VITALS = P("vitals.author");
 const MILEAGE = P("mileage.author");
 
@@ -917,7 +925,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.get(
     "/api/v1/internal/encounters/billable",
     {
-      preHandler: [READ_INTERNAL],
+      preHandler: [READ_PERMISSION_INTERNAL, SYSTEM_ONLY],
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
@@ -931,7 +939,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.get(
     "/api/v1/internal/encounters/signed-since",
     {
-      preHandler: [READ_INTERNAL],
+      preHandler: [READ_PERMISSION_INTERNAL, SYSTEM_ONLY],
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
@@ -945,7 +953,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.get(
     "/api/v1/internal/encounters/:encounterId/render-payload",
     {
-      preHandler: [READ_INTERNAL],
+      preHandler: [READ_PERMISSION_INTERNAL, SYSTEM_ONLY],
       config: {
         auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" },
       },

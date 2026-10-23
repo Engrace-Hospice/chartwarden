@@ -25,6 +25,7 @@ import {
   requireSession,
   requireStepUp,
   resetAuthorizationContract,
+  resolveActorPermissions,
   setAbacEvaluator,
   setBreakGlassAuditHook,
   setBreakGlassChecker,
@@ -120,6 +121,24 @@ describe("requirePermission — service principal (#678)", () => {
   it("denies a user-facing key to the service principal", async () => {
     setEffectivePermissionResolver(() => new Set(["role.manage"]));
     await expect(requirePermission("role.manage")(system())).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('only the exact kind "system" bypasses; a user holding the key still goes through the resolver', async () => {
+    setEffectivePermissionResolver(() => new Set(["remittance.ingest_internal"]));
+    const user = makeRequest({ attributes: { actorKind: "user" } as never });
+    await expect(requirePermission("remittance.ingest_internal")(user)).resolves.toBeUndefined();
+    const spoof = makeRequest({ attributes: { actorKind: "system_x" } as never });
+    setEffectivePermissionResolver(() => new Set<string>());
+    await expect(requirePermission("remittance.ingest_internal")(spoof)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+  });
+
+  it("resolveActorPermissions never hands the literal system id to the resolver", async () => {
+    const resolver = vi.fn(() => new Set(["x"]));
+    setEffectivePermissionResolver(resolver);
+    expect((await resolveActorPermissions({ organizationId: "o", userId: "system" })).size).toBe(0);
+    expect(resolver).not.toHaveBeenCalled();
   });
 
   it("does not elevate a user session that merely lacks the key", async () => {
