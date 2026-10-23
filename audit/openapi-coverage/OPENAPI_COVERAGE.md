@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 1712/1712 routes enriched (100%) · **1/968 mutating routes read a body they publish none for** · 9/695 GETs carry no response schema
+**Totals:** 1713/1713 routes enriched (100%) · **1/968 mutating routes read a body they publish none for** · 9/696 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -15,7 +15,7 @@
 | 03-authorization | 17 | 17 (100%) | 0 | 9 | 0 | 6 | 0 |
 | 04-audit | 13 | 13 (100%) | 0 | 5 | 0 | 8 | 0 |
 | 05-patient | 45 | 45 (100%) | 0 | 25 | 0 | 20 | 4 |
-| 06-admission | 87 | 87 (100%) | 0 | 63 | 0 | 24 | 0 |
+| 06-admission | 88 | 88 (100%) | 0 | 63 | 0 | 25 | 0 |
 | 07-care-plan | 25 | 25 (100%) | 0 | 15 | 0 | 10 | 0 |
 | 08-encounters | 39 | 39 (100%) | 0 | 23 | 0 | 15 | 0 |
 | 09-assessments | 20 | 20 (100%) | 0 | 8 | 0 | 12 | 0 |

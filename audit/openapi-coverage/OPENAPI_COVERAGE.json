@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1712,
-    "enriched": 1712,
+    "routes": 1713,
+    "enriched": 1713,
     "deficit": 0,
     "mutating": 968,
     "mutatingNoBody": 1,
-    "gets": 695,
+    "gets": 696,
     "getsNoResponse": 9
   },
   "modules": [
