@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ActionRail, ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
 import { AdrPacketPanel } from "./adr-packet-panel";
+import { AdrReadinessPanel } from "./adr-readiness-panel";
 import { type AdrDetail, type AdrTransitionTarget, loadAdr, transitionAdr } from "./remittance-api";
 import { ADR_STATE_TONE, humanize, toneOf } from "./remittance-status";
 import { SubmissionPanel } from "./submission-panel";
@@ -148,6 +149,9 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
               await load();
             }}
           />
+          {adr.state === "in_assembly" || adr.state === "in_review" ? (
+            <AdrReadinessPanel adrId={adrId} packetVersion={adr.version} />
+          ) : null}
           {adr.state === "submitted" || adr.state === "closed" ? (
             <SubmissionPanel key={adrId} kind="adr" subjectId={adrId} />
           ) : null}
