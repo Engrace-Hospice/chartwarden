@@ -45,7 +45,7 @@ Hospice tenants of the real-data environment are served at `<slug>.chartwarden.c
   `tenant-host-resolver-db.ts`; the guard is registered right after `authenticate`; `select-organization` pins the org
   to the host; the cache is evicted when M2's organization lifecycle suspends, closes or activates an org; env rule
   `PASSKEY_RP_ID == TENANT_BASE_DOMAIN`. **Open decision:** the host guard reads `organization.status`, and the only code
-  that writes it is M2's organization-lifecycle route (checked by grep, 2026-10-23). M34's suspend / offboard transitions
+  that writes it in application code is M2's organization-lifecycle route (checked by grep over `apps/` and `packages/` TypeScript, 2026-10-23; migrations, seeds and workers were not searched). M34's suspend / offboard transitions
   write `tenant_account.status` and revoke sessions, but do not touch `organization.status` (a deliberate separation,
   per the comment on the `session_cascade` effect in `service-drizzle.ts`). So a tenant suspended or offboarded only in M34
   keeps resolving as `active` on its host, and nothing is evicted because nothing changed. Making M34 offboarding close the
@@ -264,8 +264,11 @@ The Phase 4 browser pass left four items; three are closed and one is the open d
 - The wrong-organization message said "your account is not a member of it", which is false for a two-org user who picked
   the other tenant on this host; it now says only the host's members can work there.
 - A reset or magic link that stays on its own origin (recipient not a member of the requested tenant) still carried the
-  requester's origin in `callbackURL`, so a forged `Origin` naming a real tenant would steer that token to its host after the
-  reset; in tenant mode those callbacks are now pinned to the link's origin.
+  requester's origin in its callbacks. Better Auth also refuses an untrusted callback when the link is clicked, so this was
+  not shown to be exploitable; the callbacks (`callbackURL`, `errorCallbackURL`, `newUserCallbackURL`) are now pinned to the
+  link's own origin in tenant mode as a second layer, so the mailed link never names a tenant the recipient was not matched
+  to. This assumes the SPA is served on the same origin as the auth base URL in tenant mode, which is how the tenant vhost
+  is built.
 - `typecheck:tests` exhausted the default Node heap; the script now sets `--max-old-space-size=8192` for both programs.
 
 ## Tests and gates

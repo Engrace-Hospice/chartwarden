@@ -104,6 +104,24 @@ describe("rewriteLinkToRequestOrigin", () => {
       ).toBe(bare);
     });
 
+    it("pins newUserCallbackURL and every copy of a repeated callback, and neutralises a non-web scheme", async () => {
+      const link =
+        "https://auth.chartwarden.com/magic-link/verify?token=t&newUserCallbackURL=https%3A%2F%2Feagle.chartwarden.com%2Fwelcome" +
+        "&callbackURL=%2Fok&callbackURL=https%3A%2F%2Feagle.chartwarden.com%2Fx&errorCallbackURL=javascript%3Aalert(1)";
+      const out = new URL(
+        await rewriteLinkToRequestOrigin(link, forged, matcher, "a@b.test", async () => false),
+      );
+      expect(out.searchParams.get("newUserCallbackURL")).toBe(
+        "https://auth.chartwarden.com/welcome",
+      );
+      expect(out.searchParams.getAll("callbackURL")).toEqual([
+        "/ok",
+        "https://auth.chartwarden.com/x",
+      ]);
+      expect(out.searchParams.get("errorCallbackURL")).toBe("https://auth.chartwarden.com/");
+      expect(out.searchParams.get("token")).toBe("t");
+    });
+
     it("does nothing at all when tenant mode is off (no matcher)", async () => {
       expect(await rewriteLinkToRequestOrigin(FORGED, forged, undefined, "a@b.test", member)).toBe(
         FORGED,

@@ -57,9 +57,10 @@ export function createTenantOriginMatcher(deps: {
  * any look-alike, or a tenant the recipient does not belong to, leaves the link on its own origin). Never throws: any doubt
  * returns the URL unchanged.
  *
- * A link that stays on its own origin must not carry the requester's origin in its `callbackURL`: the token is delivered to
- * that callback after the reset, so a forged `Origin` naming a real tenant would otherwise steer a non-member's reset
- * token to that tenant's host. In tenant mode those callbacks are pinned to the link's origin.
+ * A link that stays on its own origin must not carry the requester's origin in its callbacks: the token is delivered to
+ * `callbackURL` after the reset. Better Auth also refuses an untrusted callback when the link is clicked; pinning here is the
+ * second layer, so the link we mail never names a tenant the recipient was not matched to. In tenant mode those callbacks are
+ * pinned to the link's origin.
  */
 export async function rewriteLinkToRequestOrigin(
   url: string,
@@ -98,28 +99,40 @@ async function rewriteOntoRequestHost(
   }
 }
 
-const CALLBACK_PARAMS = ["callbackURL", "errorCallbackURL"] as const;
+const CALLBACK_PARAMS = ["callbackURL", "errorCallbackURL", "newUserCallbackURL"] as const;
 
-/** The URL with any absolute `callbackURL` / `errorCallbackURL` moved onto the link's own origin; the same string when nothing needs moving. */
+/**
+ * The URL with any absolute callback moved onto the link's own origin; the same string when nothing needs moving.
+ * A callback that is not a web URL (`javascript:`, `data:`) has no origin worth keeping: it becomes the link's root. A
+ * value that does not parse is left to Better Auth, which refuses non-path relative values at send and click time.
+ */
 function pinCallbacksToLinkOrigin(url: string): string {
   try {
     const link = new URL(url);
     let changed = false;
     for (const key of CALLBACK_PARAMS) {
-      const value = link.searchParams.get(key);
-      if (!value) continue;
-      let target: URL;
-      try {
-        target = new URL(value);
-      } catch {
-        continue; // a relative callback resolves against the link's own origin
-      }
-      if (target.origin === link.origin) continue;
-      link.searchParams.set(key, `${link.origin}${target.pathname}${target.search}${target.hash}`);
+      const values = link.searchParams.getAll(key);
+      if (values.length === 0) continue;
+      const pinned = values.map((value) => pinOne(value, link.origin));
+      if (pinned.every((value, index) => value === values[index])) continue;
+      link.searchParams.delete(key);
+      for (const value of pinned) link.searchParams.append(key, value);
       changed = true;
     }
     return changed ? link.toString() : url;
   } catch {
     return url;
   }
+}
+
+function pinOne(value: string, linkOrigin: string): string {
+  let target: URL;
+  try {
+    target = new URL(value);
+  } catch {
+    return value; // a relative callback resolves against the link's own origin
+  }
+  if (target.origin === linkOrigin) return value;
+  if (target.protocol !== "https:" && target.protocol !== "http:") return `${linkOrigin}/`;
+  return `${linkOrigin}${target.pathname}${target.search}${target.hash}`;
 }
