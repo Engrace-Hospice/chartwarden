@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   WorkQueueLayout,
   useApiClient,
@@ -26,6 +27,7 @@ import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { assembleSubmission } from "./hope-api";
+import { HopeListReadState, classifyHopeListRead } from "./hope-read-state";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
@@ -59,6 +61,7 @@ export function SubmissionWorklist(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
   const canGenerate = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
   const [providerEntities, setProviderEntities] = useState<ProviderEntityOption[]>([]);
   const [providerEntityId, setProviderEntityId] = useState("");
@@ -109,16 +112,10 @@ export function SubmissionWorklist(): JSX.Element {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/hope/submissions", {
-      params: { query: {} },
-    });
-    if (err) {
-      setError("Could not load HOPE submissions.");
-      setLoading(false);
-      return;
-    }
-    setItems((data?.submissions ?? []) as SubmissionRow[]);
+    const res = await client.GET("/api/v1/hope/submissions", { params: { query: {} } });
+    const status = classifyHopeListRead(res);
+    setReadStatus(status);
+    setItems(status === "ok" ? ((res.data?.submissions ?? []) as SubmissionRow[]) : []);
     setLoading(false);
   }, [client]);
 
@@ -216,7 +213,11 @@ export function SubmissionWorklist(): JSX.Element {
           <div style={toolbarStyle}>
             <div style={toolbarTitleStyle}>
               <span style={toolbarEyebrowStyle}>Queue</span>
-              <strong>{rows.length} matching submissions</strong>
+              <strong>
+                {readStatus === "ok"
+                  ? `${rows.length} matching submissions`
+                  : "Submissions unavailable"}
+              </strong>
             </div>
             <div style={controlGroupStyle}>
               <label className="wx-search-field">
@@ -282,9 +283,14 @@ export function SubmissionWorklist(): JSX.Element {
         </div>
       }
       table={
-        error ? (
+        readStatus !== "ok" ? (
           <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
+            <HopeListReadState
+              status={readStatus}
+              subject="the agency-wide HOPE submissions"
+              failedTitle="HOPE submissions could not be loaded"
+              onRetry={() => void load()}
+            />
           </div>
         ) : loading && items.length === 0 ? (
           <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>

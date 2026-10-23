@@ -52,6 +52,9 @@ describe("Billing plan read states", () => {
   it("shows the genuine empty copy when the catalog is empty", async () => {
     mount({ [PLANS]: ok([]), [SUB]: ok({ planSlug: "pro" }) });
     await screen.findByText("No plans");
+    // The cause is an unconfigured platform catalog, not the account: say so and point at support.
+    expect(screen.getByText(/plan catalog has not been set up yet/)).toBeTruthy();
+    expect(screen.queryByText(/available for your account/)).toBeNull();
   });
 
   it("explains a 403 on the current plan, without retry or permission codes", async () => {

@@ -129,7 +129,10 @@ export function BillingPlan(): JSX.Element {
       table={
         plans.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="No plans" description="No plans are available for your account." />
+            <EmptyState
+              title="No plans"
+              description="The plan catalog has not been set up yet. Contact support or an administrator to have it configured."
+            />
           </div>
         ) : (
           <div

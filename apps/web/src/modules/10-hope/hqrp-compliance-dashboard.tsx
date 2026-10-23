@@ -1,9 +1,9 @@
 import {
-  EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   WorkQueueLayout,
   useApiClient,
@@ -15,6 +15,7 @@ import {
 // frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { HopeListReadState, classifyHopeListRead } from "./hope-read-state";
 
 interface RateCounts {
   onTime?: number;
@@ -48,20 +49,14 @@ export function HqrpComplianceDashboard(): JSX.Element {
   const client = useApiClient();
   const [row, setRow] = useState<Compliance | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/hope/dashboard/compliance", {
-      params: { query: {} },
-    });
-    if (err) {
-      setError("Could not load the HQRP compliance dashboard.");
-      setLoading(false);
-      return;
-    }
-    setRow(data as Compliance);
+    const res = await client.GET("/api/v1/hope/dashboard/compliance", { params: { query: {} } });
+    const status = classifyHopeListRead(res);
+    setReadStatus(status);
+    setRow(status === "ok" ? (res.data as Compliance) : null);
     setLoading(false);
   }, [client]);
 
@@ -124,21 +119,21 @@ export function HqrpComplianceDashboard(): JSX.Element {
         <KpiStrip>
           <KpiCard
             label="HOPE on-time"
-            value={loading || error || !row ? "—" : pct(row.hopeOnTimeRate)}
+            value={loading || readStatus !== "ok" || !row ? "—" : pct(row.hopeOnTimeRate)}
             detail="Assessment timing"
             tone={toneForRate(row?.hopeOnTimeRate)}
             accentColor={accentForRate(row?.hopeOnTimeRate)}
           />
           <KpiCard
             label="SFV on-time"
-            value={loading || error || !row ? "—" : pct(row.sfvOnTimeRate)}
+            value={loading || readStatus !== "ok" || !row ? "—" : pct(row.sfvOnTimeRate)}
             detail="Follow-up timing"
             tone={toneForRate(row?.sfvOnTimeRate)}
             accentColor={accentForRate(row?.sfvOnTimeRate)}
           />
           <KpiCard
             label="Submission acceptance"
-            value={loading || error || !row ? "—" : pct(row.submissionAcceptanceRate)}
+            value={loading || readStatus !== "ok" || !row ? "—" : pct(row.submissionAcceptanceRate)}
             detail="Accepted batches"
             tone={toneForRate(row?.submissionAcceptanceRate)}
             accentColor={accentForRate(row?.submissionAcceptanceRate)}
@@ -147,14 +142,6 @@ export function HqrpComplianceDashboard(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
-            </div>
-          ) : null}
           <div style={toolbarStyle}>
             <div style={toolbarTitleStyle}>
               <span style={toolbarEyebrowStyle}>Scope</span>
@@ -171,9 +158,14 @@ export function HqrpComplianceDashboard(): JSX.Element {
         </div>
       }
       table={
-        error ? (
+        readStatus !== "ok" ? (
           <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
+            <HopeListReadState
+              status={readStatus}
+              subject="the agency-wide HQRP compliance dashboard"
+              failedTitle="The HQRP compliance dashboard could not be loaded"
+              onRetry={() => void load()}
+            />
           </div>
         ) : loading || !row ? (
           <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
@@ -293,26 +285,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-};
-
-const errorBannerStyle = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
-  fontSize: "0.85rem",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-};
-
-const dismissButtonStyle = {
-  border: "none",
-  background: "none",
-  color: "inherit",
-  cursor: "pointer",
-  fontWeight: 600,
 };
 
 const tableWrapStyle = {

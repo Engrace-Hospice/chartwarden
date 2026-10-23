@@ -9,6 +9,7 @@ import {
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   interactiveRowProps,
   useApiClient,
@@ -32,6 +33,7 @@ import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-dis
 import { usePatientNames } from "../../shell/patient-names";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
 import type { RfaKind } from "./hope-api";
+import { HopeListReadState, classifyHopeListRead } from "./hope-read-state";
 import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
@@ -70,22 +72,16 @@ export function HopeDashboard(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
   const [recording, setRecording] = useState<ScheduleRow | null>(null);
   const [acting, setActing] = useState<{ action: HopeAction; row: ScheduleRow } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/hope/schedules", {
-      params: { query: {} },
-    });
-    if (err) {
-      setError("Could not load HOPE schedules.");
-      setLoading(false);
-      return;
-    }
-    setItems((data?.schedules ?? []) as ScheduleRow[]);
+    const res = await client.GET("/api/v1/hope/schedules", { params: { query: {} } });
+    const status = classifyHopeListRead(res);
+    setReadStatus(status);
+    setItems(status === "ok" ? ((res.data?.schedules ?? []) as ScheduleRow[]) : []);
     setLoading(false);
   }, [client]);
 
@@ -178,7 +174,7 @@ export function HopeDashboard(): JSX.Element {
           <KpiStrip>
             <KpiCard
               label="Open"
-              value={loading || error ? "—" : counts.open}
+              value={loading || readStatus !== "ok" ? "—" : counts.open}
               detail="Outside final 48h"
               tone="info"
               accentColor="var(--color-primary)"
@@ -190,7 +186,7 @@ export function HopeDashboard(): JSX.Element {
             />
             <KpiCard
               label="Closing 48h"
-              value={loading || error ? "—" : counts.closing}
+              value={loading || readStatus !== "ok" ? "—" : counts.closing}
               detail="Needs attention"
               tone={counts.closing > 0 ? "warning" : "neutral"}
               accentColor={
@@ -204,7 +200,7 @@ export function HopeDashboard(): JSX.Element {
             />
             <KpiCard
               label="Late"
-              value={loading || error ? "—" : counts.late}
+              value={loading || readStatus !== "ok" ? "—" : counts.late}
               detail="Window closed"
               tone={counts.late > 0 ? "danger" : "neutral"}
               accentColor={counts.late > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
@@ -216,7 +212,7 @@ export function HopeDashboard(): JSX.Element {
             />
             <KpiCard
               label="Expired"
-              value={loading || error ? "—" : counts.expired}
+              value={loading || readStatus !== "ok" ? "—" : counts.expired}
               detail="Terminal schedule"
               tone="neutral"
               accentColor="var(--color-outline-variant)"
@@ -230,12 +226,6 @@ export function HopeDashboard(): JSX.Element {
         }
         charts={
           <div style={filterPanelStyle}>
-            {error ? (
-              <div role="alert" style={errorBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>{error}</span>
-              </div>
-            ) : null}
             <div className="wx-filter-panel">
               <label className="wx-search-field">
                 <Glyph name="search" size={16} />
@@ -292,15 +282,22 @@ export function HopeDashboard(): JSX.Element {
                 </button>
               ) : null}
               <span style={{ ...mutedStyle, lineHeight: "2.5rem", marginLeft: "auto" }}>
-                {rows.length} of {items.length} schedules
+                {readStatus === "ok"
+                  ? `${rows.length} of ${items.length} schedules`
+                  : "Schedules unavailable"}
               </span>
             </div>
           </div>
         }
         table={
-          error ? (
+          readStatus !== "ok" ? (
             <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState title="Unavailable" description={error} />
+              <HopeListReadState
+                status={readStatus}
+                subject="the agency-wide HOPE schedules"
+                failedTitle="HOPE schedules could not be loaded"
+                onRetry={() => void load()}
+              />
             </div>
           ) : loading && items.length === 0 ? (
             <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
@@ -471,19 +468,6 @@ const filterPanelStyle: CSSProperties = {};
 const mutedStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.8125rem",
-};
-
-const errorBannerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  marginBottom: "0.75rem",
-  padding: "0.65rem 0.75rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-error)",
-  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
-  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
-  fontSize: "0.875rem",
 };
 
 const primaryCellStyle: CSSProperties = {
