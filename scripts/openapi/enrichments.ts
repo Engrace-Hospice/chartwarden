@@ -28,6 +28,10 @@ import {
  * path end-to-end). Wiring the remaining modules' bodies/responses is the
  * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
  */
+import {
+  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
+  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
@@ -10224,6 +10228,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only",
     response: M36OffboardingResponseSchema,
+  },
+
+  // response analytics (WP 6.2, ADR-0110 PROPOSED), served by M33 over the M36 seam
+  "GET /api/v1/messaging/analytics/response": {
+    summary:
+      "Compliance / operations: aggregate response analytics (messaging.analytics.read; 404 while the tenant flag messaging.response_analytics is off). Acknowledgment latency (median), share acknowledged before the deadline, escalation rate and handoff acceptance for a window of at most 92 days (default 30); from and to are snapped by the server to COMPLETED whole UTC days (from floored to its day start, to = the start of the day after its day, capped at the start of the current UTC day, so today is never served; the default is the 30 completed days before today; a window with no completed day answers insufficient_data) and the snapped values are echoed, with a breakdown by ack class or by clinical discipline (the assignee's clinical role key, never the person). AGGREGATES ONLY: no person, patient or message content in the body. A group with fewer than minCohort (provisional 5) distinct people is withheld, and the combined hidden residual must itself involve at least minCohort distinct people, else the next-smallest visible group is withheld too (suppressedGroups counts them, never names them); if that cannot be reached the breakdown is withheld (breakdownWithheld true); fewer than minCohort people in the whole organisation is status insufficient_data. Handoff figures are null under the same floor. There is no individual-level view. Not cached",
+    query: M36ResponseAnalyticsQuerySchema,
+    response: M36ResponseAnalyticsResponseSchema,
   },
 
   // message retention and legal hold (WP 5.6, ADR-0086 PROPOSED)

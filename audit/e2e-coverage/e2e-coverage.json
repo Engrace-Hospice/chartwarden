@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 189,
+  "totalStaticWebScreens": 190,
   "e2eReachedCount": 20,
-  "axeReachedCount": 179,
+  "axeReachedCount": 180,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -737,6 +737,14 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/validation-worklist",
       "permission": "medicaid.validation.read_run",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.response-analytics",
+      "module": "36-messaging",
+      "path": "/messaging/analytics",
+      "permission": "messaging.analytics.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2270,6 +2278,14 @@
       "path": "/messaging",
       "permission": "messaging.read",
       "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.response-analytics",
+      "module": "36-messaging",
+      "path": "/messaging/analytics",
+      "permission": "messaging.analytics.read",
+      "e2eReached": false,
       "axeReached": true
     },
     {

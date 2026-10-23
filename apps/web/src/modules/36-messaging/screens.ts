@@ -35,6 +35,9 @@ const OffboardingWorkflow = lazy(() =>
 const RetentionGovernance = lazy(() =>
   import("./retention-governance").then((m) => ({ default: m.RetentionGovernance })),
 );
+const ResponseAnalytics = lazy(() =>
+  import("./response-analytics").then((m) => ({ default: m.ResponseAnalytics })),
+);
 const BreakGlassReview = lazy(() =>
   import("./break-glass-review").then((m) => ({ default: m.BreakGlassReview })),
 );
@@ -119,6 +122,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.retention.manage",
       screen: RetentionGovernance,
+    },
+    {
+      // WP 6.2 (ADR-0110, proposed): aggregate response analytics. Hidden (404 -> "not turned on") until the tenant flag messaging.response_analytics is on.
+      id: "messaging.response-analytics",
+      path: "/messaging/analytics",
+      title: "Response analytics",
+      navGroup: "Admin",
+      requiredPermission: "messaging.analytics.read",
+      screen: ResponseAnalytics,
     },
     {
       // WP 5.8 (ADR-0087, proposed): the compliance review of break-glass access (queue, detail, complete). Reviews never depend on the tenant flag.

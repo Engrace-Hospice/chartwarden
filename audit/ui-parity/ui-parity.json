@@ -2303,6 +2303,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.response-analytics",
+      "path": "/messaging/analytics",
+      "permission": "messaging.analytics.read"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.break-glass",
       "path": "/messaging/governance/break-glass",
       "permission": "messaging.break_glass.review"

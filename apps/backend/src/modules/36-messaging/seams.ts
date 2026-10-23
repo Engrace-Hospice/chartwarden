@@ -27,7 +27,11 @@ import {
 // seams) by default — the M36-T04 resolution/fan-out engine over empty recipient ports + the
 // platform-default rule seed. Production injects the Drizzle/seam-backed ports (T07/T08) via
 // `deps.emitter`.
-import type { ChartPromotionSourceReader, EscalationRouter } from "@chartwarden/types";
+import type {
+  ChartPromotionSourceReader,
+  EscalationRouter,
+  MessagingResponseAnalyticsReader,
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production wiring for M36's published seams (the slice defaults to in-memory). */
@@ -38,6 +42,8 @@ export interface MessagingSeamDeps {
   provider?: MessagingProvider;
   /** The chart-promotion reader M8 and M14 show their reviewer (WP 3.7); absent = the fail-closed deny-stub stays. */
   promotionSource?: ChartPromotionSourceReader;
+  /** WP 6.2: aggregate response analytics, served over M33's route; absent = the fail-closed deny-stub stays. */
+  responseAnalytics?: MessagingResponseAnalyticsReader;
 }
 
 /**
@@ -50,6 +56,9 @@ export function registerMessagingSeams(deps: MessagingSeamDeps = {}): void {
   registerSeam("AlertEmitter", emitter);
   if (deps.provider) registerSeam("MessagingProvider", deps.provider);
   if (deps.promotionSource) registerSeam("ChartPromotionSourceReader", deps.promotionSource);
+  if (deps.responseAnalytics) {
+    registerSeam("MessagingResponseAnalyticsReader", deps.responseAnalytics);
+  }
 }
 
 /**

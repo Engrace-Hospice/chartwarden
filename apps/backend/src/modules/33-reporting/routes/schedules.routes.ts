@@ -20,7 +20,12 @@
 // ONE `withOrgContext` tx on the PRIMARY (RLS scopes to `app.org_id`); each carries `requireIdempotencyKey`.
 // READS disclose the actor's own org schedules / runs; the M4 write-audit trigger on the `withOrgContext`
 // path is the §164.312(b) anchor. Org/actor binding is ALWAYS server-side (request.context, never the body).
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

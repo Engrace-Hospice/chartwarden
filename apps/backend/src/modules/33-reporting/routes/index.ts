@@ -13,6 +13,7 @@ import { registerDefinitionRoutes } from "./definitions.routes";
 import { registerDrilldownRoutes } from "./drilldown.routes";
 import type { M33ExportDrilldownRouteService } from "./export-drilldown-service";
 import { registerExportRoutes } from "./exports.routes";
+import { registerMessagingResponseAnalyticsRoutes } from "./messaging-response-analytics.routes";
 import { registerMetricsSeamRoutes } from "./metrics-seam.routes";
 import type { M33ReadRouteService } from "./read-service";
 import { registerScheduleRoutes } from "./schedules.routes";
@@ -136,6 +137,7 @@ export function mountM33ReadRoutes(app: FastifyInstance, service: M33ReadRouteSe
   registerBaseMetricRoutes(app, { service });
   registerReportingAdminRoutes(app, { service });
   registerMetricsSeamRoutes(app, { service });
+  registerMessagingResponseAnalyticsRoutes(app); // M36 WP 6.2 (ADR-0110): aggregate response analytics over the M36 seam
 }
 
 /**
