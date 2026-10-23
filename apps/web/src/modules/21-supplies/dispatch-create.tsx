@@ -23,7 +23,17 @@
 // The per-line lot / expiration fields stay OPTIONAL in the form exactly as they are in §4.2's TypeBox: the
 // DOMAIN raises `M21_LOT_NUMBER_REQUIRED` with its own code on a controlled line, and letting the boundary
 // pre-empt it with a generic "required field" would hide which rule actually refused.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  DeniedState,
+  ErrorState,
+  LoadingSpinner,
+  PageHeader,
+  type ReadStatus,
+  StatusPill,
+  classifyRead,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -94,7 +104,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
   const [requests, setRequests] = useState<SupplyRequestListItem[]>([]);
   const [templates, setTemplates] = useState<ComfortKitTemplateView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadStatus, setLoadStatus] = useState<ReadStatus>("ok");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -114,7 +124,6 @@ export function ComfortKitDispatchCreate(): JSX.Element {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setLoadError(null);
     const [reqs, tmpls] = await Promise.all([
       // Only the two kit kinds can produce a dispatch (§2.1). Two reads rather than one unfiltered page:
       // the list route filters by a SINGLE kind, and scanning an unfiltered page client-side would drop
@@ -126,11 +135,10 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       listComfortKitTemplates(client, { includePlatformFloor: true, limit: 100 }),
     ]);
     const [deploys, replenishes] = reqs;
-    if (deploys.error) {
-      setLoadError(errorMessage(deploys.error, "Open comfort-kit requests could not be loaded."));
-      setLoading(false);
-      return;
-    }
+    // The kit requests and the templates are both needed to build a dispatch: if either read was refused or
+    // failed, say so rather than present a form with an empty request or template picker.
+    const blocked = [deploys, replenishes, tmpls].map(classifyRead).find((r) => r !== "ok");
+    setLoadStatus(blocked ?? "ok");
     setRequests([...(deploys.page?.data ?? []), ...(replenishes.page?.data ?? [])]);
     setTemplates(tmpls.page?.data ?? []);
     setLoading(false);
@@ -163,7 +171,16 @@ export function ComfortKitDispatchCreate(): JSX.Element {
   };
 
   if (loading) return <LoadingSpinner />;
-  if (loadError) return <EmptyState title="Unavailable" description={loadError} />;
+  if (loadStatus === "denied") return <DeniedState subject="comfort-kit dispatches" />;
+  if (loadStatus === "failed") {
+    return (
+      <ErrorState
+        title="Open comfort-kit requests could not be loaded"
+        description="Try again in a moment."
+        onRetry={() => void load()}
+      />
+    );
+  }
 
   const selectedRequest = requests.find((r) => r.supplyRequestId === supplyRequestId);
   const needsFacility = deploymentSite !== "home";

@@ -35,8 +35,10 @@ export type {
 } from "./components/entity-lookup-field";
 export { ErrorBoundary } from "./components/error-boundary";
 export type { ErrorBoundaryProps } from "./components/error-boundary";
-export { ErrorState } from "./components/error-state";
-export type { ErrorStateProps } from "./components/error-state";
+export { DeniedState, ErrorState } from "./components/error-state";
+export type { DeniedStateProps, ErrorStateProps } from "./components/error-state";
+export { classifyRead } from "./components/read-status";
+export type { ReadStatus } from "./components/read-status";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
 export { MetricCard } from "./components/metric-card";

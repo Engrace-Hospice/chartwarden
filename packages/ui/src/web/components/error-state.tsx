@@ -70,3 +70,19 @@ export function ErrorState({
     </div>
   );
 }
+
+export interface DeniedStateProps {
+  /** What the person cannot see, in plain language ("par stock"). Never a permission code. */
+  subject?: string;
+}
+
+/** A read the server refused (403). Not an error to retry and not "nothing here": the data exists, this
+ *  person may not see it. Same `role="alert"` semantics as `ErrorState`, no Retry. */
+export function DeniedState({ subject = "this information" }: DeniedStateProps): JSX.Element {
+  return (
+    <ErrorState
+      title="You do not have access"
+      description={`You do not have permission to view ${subject}. Ask an administrator if you need it.`}
+    />
+  );
+}

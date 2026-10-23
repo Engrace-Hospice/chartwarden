@@ -4,8 +4,10 @@ import {
   Glyph,
   LoadingSpinner,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   WorkQueueLayout,
+  classifyRead,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 plan picker (§5.1 `/billing/plan`).
@@ -42,6 +44,8 @@ export function BillingPlan(): JSX.Element {
   const client = useApiClient();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [currentSlug, setCurrentSlug] = useState<string | null>(null);
+  // The current-plan read is secondary: a refusal or failure must say so, not silently drop the Current chip.
+  const [subStatus, setSubStatus] = useState<ReadStatus>("ok");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,8 +62,12 @@ export function BillingPlan(): JSX.Element {
       return;
     }
     setPlans((plansRes.data as unknown as Plan[]) ?? []);
+    const nextSubStatus = classifyRead(subRes);
+    setSubStatus(nextSubStatus);
     setCurrentSlug(
-      subRes.error ? null : ((subRes.data as unknown as { planSlug: string }).planSlug ?? null),
+      nextSubStatus === "ok"
+        ? ((subRes.data as unknown as { planSlug: string }).planSlug ?? null)
+        : null,
     );
     setLoading(false);
   }, [client]);
@@ -100,6 +108,20 @@ export function BillingPlan(): JSX.Element {
               <code className="wx-data-md" style={currentSlugStyle}>
                 {currentSlug}
               </code>
+            </div>
+          ) : null}
+          {subStatus !== "ok" ? (
+            <div role="alert" style={toolbarCopyStyle}>
+              <span>
+                {subStatus === "denied"
+                  ? "You do not have permission to view your current plan."
+                  : "Your current plan could not be loaded."}
+              </span>
+              {subStatus === "failed" ? (
+                <Button type="button" tone="secondary" onClick={() => void load()}>
+                  Retry
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
