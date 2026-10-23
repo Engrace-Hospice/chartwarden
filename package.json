@@ -158,6 +158,7 @@
     "test:m2:tax-id-cipher:live": "vitest run apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
     "test:m34:platform-staff-binding:live": "vitest run apps/backend/__tests__/m34-platform-staff-binding.live.test.ts",
     "test:m34:lifecycle-outbox:live": "vitest run apps/backend/__tests__/m34-lifecycle-outbox.live.test.ts",
+    "test:m34:tenant-slug:live": "vitest run apps/backend/__tests__/m34-tenant-slug.live.test.ts",
     "test:m21:order-cascade:live": "vitest run apps/backend/__tests__/m21-order-cascade.live.test.ts",
     "test:m21:supply-fulfillment-intake:live": "vitest run apps/backend/__tests__/m21-supply-fulfillment-intake.live.test.ts",
     "test:m22:write:live": "vitest run apps/backend/__tests__/m22-documents-write.live.test.ts",
