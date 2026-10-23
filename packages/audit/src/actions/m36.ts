@@ -95,6 +95,15 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.retention_destruction.attachments_destroyed", // WP 5.6 — attachment objects of a planned batch were destroyed before its delete
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "The attachment objects of a planned destruction batch were destroyed (runId, batchId, certificateId, destroyedAttachmentIds, destroyed, failed, skippedLegalHold). Written after the object store calls and before the message delete; a message whose objects were not all destroyed (failed, or held when re-checked) is kept by the delete. Ids and counts only; a dry run writes nothing here.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.retention_destruction.reconciled", // WP 5.6 — reservations stranded by a crash were settled against the message table
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",

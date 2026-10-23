@@ -72,6 +72,7 @@ import {
   ChartWardenError,
   DegradedError,
   type Npi,
+  RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY,
   RETENTION_DESTRUCTION_EXECUTE_ENV,
   RETENTION_DESTRUCTION_FLAG_KEY,
   retentionDestructionModeOf,
@@ -124,11 +125,11 @@ import {
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
+  classifyTenantHost,
   createCachingTenantHostResolver,
   createDbTenantAppOrigin,
   createDbTenantHostResolver,
   createSessionAuthenticate,
-  classifyTenantHost,
   createTenantHostGuard,
   escalationRouterDenyStub,
   getSeam,
@@ -316,27 +317,28 @@ import {
   buildM2ConsentRevokedConsumer,
   createAuditorEnrolment,
   createAuditorLinkEmailDelivery,
+  createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
   createLinkDelivery,
   createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
   createPortalSignInStore,
   createTaxIdCipher,
+  createUnlockGuard,
+  createUserMayUseTenantHost,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
-  createUnlockGuard,
   mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
   registerAuditorEnrolmentRoutes,
   registerAuditorRedeemRoutes,
-  registerPublicTenantRoutes,
-  createDbPublicTenantLookups,
-  createUserMayUseTenantHost,
   registerIdentityErasers,
   registerIdentitySeams,
+  registerPublicTenantRoutes,
 } from "./modules/02-identity/index";
+import { readStaffNames } from "./modules/02-identity/staff-names";
 import {
   type ActorPermissionResolver,
   type M3OutboxPublisher,
@@ -381,15 +383,14 @@ import {
   activeLegalHolds,
   approvedMessageCertificates,
   completeMessageCertificate,
+  createMessagingGovernanceHoldPort,
   expiredMessageCertificateIds,
   lockMessageCertificate,
   messageCertificateIsLive,
+  openMessageCertificate,
   reserveMessageCertificateCount,
   settleMessageCertificateCount,
-  createMessagingGovernanceHoldPort,
-  openMessageCertificate,
 } from "./modules/04-audit/messaging-hold-workflow";
-import { readStaffNames } from "./modules/02-identity/staff-names";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
@@ -3327,7 +3328,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // ADR-0049 Phase 4 — where an organization's emailed links point (its own subdomain when TENANT_BASE_DOMAIN is set,
   // else the global origin exactly as before). Undefined without a database: no org to name, global origins apply.
   const tenantAppOrigin = dbHandle ? createDbTenantAppOrigin(dbHandle.db) : undefined;
-  const appOriginFor = tenantAppOrigin ? (orgId: string) => tenantAppOrigin.appOrigin(orgId) : undefined;
+  const appOriginFor = tenantAppOrigin
+    ? (orgId: string) => tenantAppOrigin.appOrigin(orgId)
+    : undefined;
   const portalOriginFor = tenantAppOrigin
     ? (orgId: string) => tenantAppOrigin.portalOrigin(orgId)
     : undefined;
@@ -4225,7 +4228,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // bucket, and fail-CLOSED on a store error (unlike the login-door throttles above). See unlock-guard.ts.
   const unlockGuard = createUnlockGuard(doorFailureStore, {
     onStoreError: (err) =>
-      process.stderr.write(`[throttle] screen-unlock counter store unavailable - failing CLOSED (503): ${String(err)}\n`),
+      process.stderr.write(
+        `[throttle] screen-unlock counter store unavailable - failing CLOSED (503): ${String(err)}\n`,
+      ),
   });
   const portalSignInThrottle = createCredentialThrottle(doorFailureStore, {
     keyPrefix: "portal-signin",
@@ -4242,7 +4247,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
   // Per-tenant origins alone (TENANT_BASE_DOMAIN set, no global PORTAL_APP_URL / WEB_APP_URL) are enough to send.
   const linkDelivery =
-    (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) && emailBinding.linkDeliveryAvailable
+    (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) &&
+    emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({
           transport: emailTransport,
           ...(linkLandingBaseUrl ? { baseUrl: linkLandingBaseUrl } : {}),
@@ -4300,7 +4306,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ...(tenantOrigins ? { tenantOrigins } : {}),
         ...(tenantOrigins && tenantBaseDomain
           ? {
-              userMayUseTenantHost: createUserMayUseTenantHost(createDbPublicTenantLookups(dbHandle.db), tenantBaseDomain),
+              userMayUseTenantHost: createUserMayUseTenantHost(
+                createDbPublicTenantLookups(dbHandle.db),
+                tenantBaseDomain,
+              ),
             }
           : {}),
       })
@@ -4835,7 +4844,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 windowMs: 15 * 60 * 1000,
                 keyPrefix,
                 failClosed: true, // an unauthenticated email-sending route: an outage must not lift its budget
-                onStoreError: (err) => app.log.warn({ err }, "public tenant rate-limit store error"),
+                onStoreError: (err) =>
+                  app.log.warn({ err }, "public tenant rate-limit store error"),
               });
             registerPublicTenantRoutes(app, {
               baseDomain: tenantBaseDomain,
@@ -4843,7 +4853,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               emailTransport,
               ipLimiter: publicTenantLimiter("find-my-org:ip", 10),
               emailLimiter: publicTenantLimiter("find-my-org:email", 3),
-              onBackgroundError: (err) => app.log.warn({ err }, "find-my-organization email failed"),
+              onBackgroundError: (err) =>
+                app.log.warn({ err }, "find-my-organization email failed"),
             });
           }
           mountAuditRoutes(app, dbHandle.db, {
@@ -5667,7 +5678,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(),
             onRetryableParseDegraded: (event) =>
-              app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
+              app.log.warn(
+                event,
+                "M25 835 post degraded (retryable); no staged-object reader wired?",
+              ),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -9532,6 +9546,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
         messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
+        attachmentObjectsEnabled: async (organizationId: string) =>
+          (await featureFlagReader?.forOrg(organizationId))?.[
+            RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY
+          ] === true,
         // WP 5.6 (ADR-0086): the message destruction executor, after the weekly scan. Needs the destruction credential; off per tenant unless
         // `messaging.retention_destruction` is on, and a DRY RUN unless M36_RETENTION_DESTRUCTION_EXECUTE=true.
         ...(destructionDbHandle
@@ -9551,7 +9569,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 },
                 onBatchError: (err: unknown) =>
                   app.log.error(
-                    { err: err instanceof Error ? { name: err.name, message: err.message } : "unknown" },
+                    {
+                      err:
+                        err instanceof Error ? { name: err.name, message: err.message } : "unknown",
+                    },
                     "M36 retention destruction batch failed",
                   ),
                 isEnabled: async (organizationId: string) =>
@@ -9559,6 +9580,25 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     RETENTION_DESTRUCTION_FLAG_KEY
                   ] === true,
                 execute: process.env[RETENTION_DESTRUCTION_EXECUTE_ENV] === "true",
+                // The attachment-object step reuses the reaper's deadline-bound destroy and the destruction credential's stamp.
+                attachmentObjects: {
+                  isEnabled: async (organizationId: string) =>
+                    (await featureFlagReader?.forOrg(organizationId))?.[
+                      RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY
+                    ] === true,
+                  destroyObjectsForMessages: createAttachmentService({
+                    db: dbHandle.db,
+                    storage: m36AttachmentBinding.storage,
+                    scanner: m36AttachmentBinding.scanner,
+                    canViewChannel: async () => false,
+                    reaperDb: destructionDbHandle.db,
+                    onReapError: (context, err) =>
+                      app.log.warn(
+                        { ...context, reason: err instanceof Error ? err.message : "unknown" },
+                        "M36 retention attachment-object destroy deferred (row and object kept)",
+                      ),
+                  }).destroyObjectsForMessages,
+                },
               },
             }
           : {}),
@@ -11769,7 +11809,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
               onRetryableParseDegraded: (event) =>
-                app.log.warn(event, "M25 835 post degraded (retryable); no staged-object reader wired?"),
+                app.log.warn(
+                  event,
+                  "M25 835 post degraded (retryable); no staged-object reader wired?",
+                ),
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

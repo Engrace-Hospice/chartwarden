@@ -36,6 +36,7 @@ import {
   messagingHoldLockName,
 } from "@chartwarden/types";
 import { type SQL, and, eq, lt, sql } from "drizzle-orm";
+import type { RetentionObjectDestroyResult } from "../attachments/attachment-service-db";
 import {
   type ActiveMessageHold,
   type ApprovedMessageCertificateRef,
@@ -87,6 +88,16 @@ export const RECONCILE_MAX_BATCHES_PER_RUN = 50;
 
 const BATCH = schema.messageDestructionBatches;
 
+/** WP 5.6: the attachment-object step. Both parts are bound together at the composition root; absent = objects are never touched. */
+export interface RetentionAttachmentObjectsPort {
+  /** The tenant flag `messaging.retention_attachment_destruction` (absent = off). Needs `messaging.retention_destruction` too. */
+  readonly isEnabled: (organizationId: string) => Promise<boolean>;
+  readonly destroyObjectsForMessages: (
+    organizationId: string,
+    messageIds: readonly string[],
+  ) => Promise<RetentionObjectDestroyResult>;
+}
+
 export interface RetentionDestructionDeps {
   /** The tenant (app role) pool: candidate planning, certificate close, audit. */
   readonly db: DbClient;
@@ -95,6 +106,8 @@ export interface RetentionDestructionDeps {
   readonly messageHolds: MessageDestructionHoldPort;
   /** The tenant ops flag, read per org (absent = off). */
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
+  /** Destroys the stored objects of the messages a batch is about to delete (off per tenant). Absent = a message with an object is kept. */
+  readonly attachmentObjects?: RetentionAttachmentObjectsPort;
   /** The deployment's second switch. false (the default) = dry run. */
   readonly execute?: boolean;
   readonly now?: () => Date;
@@ -137,6 +150,13 @@ export interface CertificateDestructionResult {
   readonly heldRefused: number;
   /** Past the window but bearing an attachment object that is not yet destroyed. */
   readonly attachmentPending: number;
+  /** Attachment-object step (null when the tenant flag is off). Dry run: `wouldDestroy` only. Live: what the object store calls did. */
+  readonly attachmentObjects: {
+    readonly wouldDestroy: number;
+    readonly destroyed: number;
+    readonly failed: number;
+    readonly skippedLegalHold: number;
+  } | null;
   /** Past the window but still the parent or quote target of another message. */
   readonly referenced: number;
   /** Planned rows the delete refused because it re-checked them (a hold or reference landed in between). */
@@ -187,9 +207,12 @@ export function destroyablePredicate(
   cls: MessageRetentionClass,
   windowEndsAt: Date,
   holds: readonly ActiveMessageHold[],
+  /** true = planning/dry run with the attachment flag on: a pending object is allowed because the object step runs before the delete. The DELETE never sets this. */
+  objectsWillBeDestroyed = false,
 ): SQL {
+  const noPendingObject = objectsWillBeDestroyed ? sql`TRUE` : sql`NOT ${HAS_PENDING_OBJECT}`;
   return sql`${pastWindow(orgId, cls, windowEndsAt)}
-    AND NOT ${heldPredicate(holds)} AND NOT ${HAS_PENDING_OBJECT} AND NOT ${IS_REFERENCED}`;
+    AND NOT ${heldPredicate(holds)} AND ${noPendingObject} AND NOT ${IS_REFERENCED}`;
 }
 
 /** The per-org advisory lock an apply takes EXCLUSIVE; taking it SHARED means a hold cannot land between our read and our write. */
@@ -222,6 +245,8 @@ async function planBatch(
   windowEndsAt: Date,
   limit: number,
   notBefore: Date,
+  objectsWillBeDestroyed: boolean,
+  skipIds: ReadonlySet<string>,
   onPlanned: (tx: DbClient, ids: readonly string[]) => Promise<void>,
 ): Promise<PlannedBatch> {
   return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
@@ -240,8 +265,9 @@ async function planBatch(
     const holds = await deps.messageHolds.activeHolds(tx, orgId);
     const rows = (
       await tx.execute<{ id: string }>(
-        sql`SELECT m.id ${FROM_MESSAGE} WHERE ${destroyablePredicate(orgId, cls, windowEndsAt, holds)}
+        sql`SELECT m.id ${FROM_MESSAGE} WHERE ${destroyablePredicate(orgId, cls, windowEndsAt, holds, objectsWillBeDestroyed)}
               AND ${NOT_IN_RESERVED_BATCH}
+              AND ${skipIds.size === 0 ? sql`TRUE` : sql`m.id NOT IN (${uuidList([...skipIds])})`}
             ORDER BY m.created_at, m.id LIMIT ${take}`,
       )
     ).rows;
@@ -330,6 +356,19 @@ interface RemainderCounts {
   readonly attachmentPending: number;
   readonly referenced: number;
   readonly eligible: number;
+  /** Undestroyed attachment objects on the messages a live run would destroy (only computed with the attachment flag on). */
+  readonly pendingObjectsOnEligible: number;
+}
+
+async function countPendingObjects(tx: DbClient, where: SQL): Promise<number> {
+  const [row] = (
+    await tx.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM message_attachment a
+           WHERE a.object_key IS NOT NULL AND a.object_destroyed_at IS NULL
+             AND a.message_id IN (SELECT m.id ${FROM_MESSAGE} WHERE ${where})`,
+    )
+  ).rows;
+  return Number(row?.n ?? 0);
 }
 
 /** Counts of what is still past the window and why it is (or is not) destroyable, in one tenant tx. */
@@ -338,6 +377,7 @@ async function countRemainder(
   orgId: string,
   cls: MessageRetentionClass,
   windowEndsAt: Date,
+  objectsWillBeDestroyed: boolean,
 ): Promise<RemainderCounts> {
   return withOrgContext(deps.db, systemOrgContext(orgId), async (txRaw) => {
     const tx = txRaw as unknown as DbClient;
@@ -348,7 +388,13 @@ async function countRemainder(
       heldRefused: await count(tx, sql`${base} AND ${heldPredicate(holds)}`),
       attachmentPending: await count(tx, sql`${base} AND ${HAS_PENDING_OBJECT}`),
       referenced: await count(tx, sql`${base} AND ${IS_REFERENCED}`),
-      eligible: await count(tx, destroyablePredicate(orgId, cls, windowEndsAt, holds)),
+      eligible: await count(
+        tx,
+        destroyablePredicate(orgId, cls, windowEndsAt, holds, objectsWillBeDestroyed),
+      ),
+      pendingObjectsOnEligible: objectsWillBeDestroyed
+        ? await countPendingObjects(tx, destroyablePredicate(orgId, cls, windowEndsAt, holds, true))
+        : 0,
     };
   });
 }
@@ -486,6 +532,7 @@ async function destroyUnderCertificate(
   cls: MessageRetentionClass,
   live: boolean,
   notBefore: Date,
+  objectsOn: boolean,
 ): Promise<CertificateDestructionResult> {
   const now = (deps.now ?? (() => new Date()))();
   const windowEndsAt = windowEnd(cert.createdAt, MESSAGE_RETENTION_YEARS[cls]);
@@ -500,6 +547,9 @@ async function destroyUnderCertificate(
   // The approved count is the ceiling across runs: every committed batch spends it, and no batch may plan more than is left.
   let remaining = Math.max(cert.recordCount - cert.destroyedCount - cert.reservedCount, 0);
   let failure: CertificateDestructionResult["failure"];
+  // Ids this run already planned and the delete refused (an object that would not go, a hold or reference that landed): not planned again this run.
+  const refusedThisRun = new Set<string>();
+  const objects = { destroyed: 0, failed: 0, skippedLegalHold: 0 };
 
   try {
     for (let batch = 0; live && batch < maxBatches && remaining > 0; batch += 1) {
@@ -513,6 +563,8 @@ async function destroyUnderCertificate(
         windowEndsAt,
         batchSize,
         notBefore,
+        objectsOn,
+        refusedThisRun,
         (tx, plannedIds) =>
           write(tx as unknown as AuditExecutor, SYSTEM(orgId, runId), {
             eventType: "m36.retention_destruction.batch_started",
@@ -539,6 +591,30 @@ async function destroyUnderCertificate(
         break;
       }
       planned += ids.length;
+      // The objects go BEFORE the rows (their only pointers): the ids are reserved against the approved certificate, and the delete below
+      // re-checks the strict predicate, so a message whose object could not be destroyed (or was held when re-checked) is simply kept.
+      if (objectsOn && deps.attachmentObjects) {
+        const step = await deps.attachmentObjects.destroyObjectsForMessages(orgId, ids);
+        objects.destroyed += step.destroyed;
+        objects.failed += step.failed;
+        objects.skippedLegalHold += step.skippedLegalHold;
+        await auditIn(
+          deps,
+          orgId,
+          runId,
+          "m36.retention_destruction.attachments_destroyed",
+          batchId,
+          {
+            runId,
+            batchId,
+            certificateId: cert.id,
+            destroyed: step.destroyed,
+            failed: step.failed,
+            skippedLegalHold: step.skippedLegalHold,
+            destroyedAttachmentIds: step.destroyedAttachmentIds,
+          },
+        );
+      }
       const deletedIds = await deleteBatch(
         deps,
         orgId,
@@ -550,6 +626,8 @@ async function destroyUnderCertificate(
         plan.reservedAt,
       );
       destroyed += deletedIds.length;
+      const deletedSet = new Set(deletedIds);
+      for (const id of ids) if (!deletedSet.has(id)) refusedThisRun.add(id);
       refusedAtDelete += ids.length - deletedIds.length;
       remaining = await recordBatch(deps, orgId, runId, cert, batchId, ids.length, deletedIds);
       // Everything planned was refused at delete time (a hold or reference landed in between): planning again would repeat itself.
@@ -565,7 +643,7 @@ async function destroyUnderCertificate(
     deps.onBatchError?.(error);
   }
 
-  const rest = await countRemainder(deps, orgId, cls, windowEndsAt);
+  const rest = await countRemainder(deps, orgId, cls, windowEndsAt, objectsOn);
   // Close the certificate when its approved count is spent, or when nothing past its window remains for the class; held, object-bearing or
   // referenced rows (with count left) keep it open until it expires.
   // "Spent" means really spent (record - destroyed), read now: another executor's in-flight reservation may still be refunded, so a remainder
@@ -596,6 +674,12 @@ async function destroyUnderCertificate(
     destroyed,
     heldRefused: rest.heldRefused,
     attachmentPending: rest.attachmentPending,
+    attachmentObjects: objectsOn
+      ? {
+          wouldDestroy: live ? 0 : rest.pendingObjectsOnEligible,
+          ...objects,
+        }
+      : null,
     referenced: rest.referenced,
     refusedAtDelete,
     drained,
@@ -739,12 +823,14 @@ export async function runRetentionDestructionForOrg(
       ),
     )),
   ];
+  // Both tenant flags are needed to touch an object; the port is only bound with the destruction credential.
+  const objectsOn = deps.attachmentObjects ? await deps.attachmentObjects.isEnabled(orgId) : false;
   const certificates: CertificateDestructionResult[] = [];
   for (const cert of approved) {
     const cls = retentionClassOf(cert.dataClass);
     if (!cls) continue; // not a class this module owns: never guess
     certificates.push(
-      await destroyUnderCertificate(deps, orgId, runId, cert, cls, live, notBefore),
+      await destroyUnderCertificate(deps, orgId, runId, cert, cls, live, notBefore, objectsOn),
     );
   }
   const destroyed = certificates.reduce((n, c) => n + c.destroyed, 0);
@@ -752,6 +838,7 @@ export async function runRetentionDestructionForOrg(
     runId,
     mode,
     destroyed,
+    attachmentObjectsFlag: objectsOn,
     certificates,
     expiredCertificateIds,
     reconciled: reconciled.length,

@@ -20,6 +20,13 @@ export const MESSAGING_GOVERNANCE_HOLD_ORIGIN = "messaging_governance";
  * tenant. ON still means DRY RUN unless the platform also sets `M36_RETENTION_DESTRUCTION_EXECUTE=true` (the second, deployment-wide key).
  */
 export const RETENTION_DESTRUCTION_FLAG_KEY = "messaging.retention_destruction";
+/**
+ * Third tenant ops flag (absent = off): with `messaging.retention_destruction` ALSO on, the executor destroys the attachment OBJECTS of the
+ * messages it is about to delete (same dry-run/live modes, same approved certificate, never a held message). Off: a message that still bears an
+ * undestroyed object is kept, exactly as before. The scan counts such messages toward the certificate only while this flag is on.
+ */
+export const RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY =
+  "messaging.retention_attachment_destruction";
 /** Environment key of the second switch: the executor deletes only when it is exactly "true". */
 export const RETENTION_DESTRUCTION_EXECUTE_ENV = "M36_RETENTION_DESTRUCTION_EXECUTE";
 export const RETENTION_DESTRUCTION_MODES = ["off", "dry_run", "live"] as const;

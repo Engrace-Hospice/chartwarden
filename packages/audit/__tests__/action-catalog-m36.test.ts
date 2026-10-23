@@ -18,6 +18,7 @@ describe("M36-T08 action catalog (§8.1.2)", () => {
       "m36.retention_destruction.run",
       "m36.retention_destruction.batch_started",
       "m36.retention_destruction.batch_completed",
+      "m36.retention_destruction.attachments_destroyed",
       "m36.retention_destruction.reconciled",
       "m36.retention_destruction.certificate_executed",
       "m36.dlq_job",

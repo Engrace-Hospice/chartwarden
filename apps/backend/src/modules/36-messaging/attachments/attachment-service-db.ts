@@ -156,6 +156,18 @@ export interface ReapRunResult {
   readonly skippedLegalHold: number;
 }
 
+/** What one retention object-destruction pass did (attachment objects, not messages). */
+export interface RetentionObjectDestroyResult {
+  /** Objects destroyed and stamped `object_destroyed_at`. */
+  readonly destroyed: number;
+  /** Objects whose destroy or stamp failed; the row stays unstamped, so the message is kept and the next run retries. */
+  readonly failed: number;
+  /** Objects skipped by the pre-destroy hold re-check (ADR-0086). */
+  readonly skippedLegalHold: number;
+  /** Ids of the attachments destroyed (ids only: for the audit row). */
+  readonly destroyedAttachmentIds: readonly string[];
+}
+
 export interface AttachmentServiceDeps {
   readonly db: DbClient;
   readonly storage: AttachmentStoragePort;
@@ -233,6 +245,16 @@ export interface AttachmentService {
     orgId: string,
     opts?: { limit?: number; budgetMs?: number },
   ): Promise<ReapRunResult>;
+  /**
+   * WP 5.6 (ADR-0086): destroy the stored OBJECTS of these messages' attachments so the retention executor may then delete the messages.
+   * The caller (the executor) has already planned the ids under an approved M4 certificate; this method decides nothing about eligibility
+   * except holds: each object is re-checked against the live holds right before its destroy, and a held message's objects are skipped.
+   * Same deadline-bound destroy and destruction-credential stamp as the reaper. Without `reaperDb` nothing is destroyed.
+   */
+  destroyObjectsForMessages(
+    orgId: string,
+    messageIds: readonly string[],
+  ): Promise<RetentionObjectDestroyResult>;
 }
 
 const SCAN_BATCH_LIMIT = 50;
@@ -1216,6 +1238,39 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       await purgeRetainedObjects(orgId, reaperDb, opts, result);
       return result;
     },
+
+    async destroyObjectsForMessages(orgId, messageIds) {
+      let destroyed = 0;
+      let failed = 0;
+      let skippedLegalHold = 0;
+      const destroyedAttachmentIds: string[] = [];
+      const reaperDb = deps.reaperDb;
+      if (!reaperDb || messageIds.length === 0) {
+        return { destroyed, failed, skippedLegalHold, destroyedAttachmentIds };
+      }
+      const rows = await withOrgContext(db, systemOrgContext(orgId), (rawTx) =>
+        (rawTx as unknown as Tx)
+          .select({ id: ATT.id, objectKey: ATT.objectKey, messageId: ATT.messageId })
+          .from(ATT)
+          .where(
+            and(
+              eq(ATT.organizationId, orgId),
+              inArray(ATT.messageId, [...messageIds]),
+              isNull(ATT.objectDestroyedAt),
+              isNotNull(ATT.objectKey),
+            ),
+          ),
+      );
+      for (const row of rows) {
+        const outcome = await destroyRetainedObject(orgId, reaperDb, row);
+        if (outcome === "destroyed") {
+          destroyed += 1;
+          destroyedAttachmentIds.push(row.id);
+        } else if (outcome === "held") skippedLegalHold += 1;
+        else if (outcome === "failed") failed += 1;
+      }
+      return { destroyed, failed, skippedLegalHold, destroyedAttachmentIds };
+    },
   };
 
   function isHeldNow(orgId: string, messageId: string): Promise<boolean> {
@@ -1267,36 +1322,46 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     for (const row of candidates) {
       if (attempted > 0 && budgetEndsAt !== undefined && now().getTime() >= budgetEndsAt) break;
       attempted += 1;
-      const objectKey = row.objectKey;
-      if (!objectKey) continue;
-      try {
-        // A hold can land after the candidates were read: look again, in a short tx that takes the shared hold lock (a concurrent
-        // apply waits for it). The lock is released at commit, before destroyObject, so a hold applied after this check can still lose
-        // the bytes: the residual window is up to the storage destroy deadline (REAP_DESTROY_DEADLINE_MS plus abort grace), accepted
-        // as ADR-0086 known limit (g).
-        if (row.messageId && (await isHeldNow(orgId, row.messageId))) {
-          result.skippedLegalHold += 1;
-          continue;
-        }
-        await runWithDeadline(
-          (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
-          deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
-          () => new Error("attachment destroy exceeded its deadline"),
-          abortGraceMs,
-        );
-        await withOrgContext(reaperDb, systemOrgContext(orgId), (rawTx) =>
-          (rawTx as unknown as Tx)
-            .update(ATT)
-            .set({ objectDestroyedAt: now() })
-            .where(
-              and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt)),
-            ),
-        );
-        result.reaped += 1;
-      } catch (error) {
-        result.failed += 1;
-        deps.onReapError?.({ attachmentId: row.id }, error);
-      }
+      const outcome = await destroyRetainedObject(orgId, reaperDb, row);
+      if (outcome === "destroyed") result.reaped += 1;
+      else if (outcome === "held") result.skippedLegalHold += 1;
+      else if (outcome === "failed") result.failed += 1;
+    }
+  }
+
+  /**
+   * Destroy one retained row's object and stamp it. A hold can land after the candidates were read: look again, in a short tx that takes
+   * the shared hold lock (a concurrent apply waits for it). The lock is released at commit, before destroyObject, so a hold applied after
+   * this check can still lose the bytes: the residual window is up to the storage destroy deadline (REAP_DESTROY_DEADLINE_MS plus abort
+   * grace), accepted as ADR-0086 known limit (g). A failed destroy leaves the row unstamped: retried next run.
+   */
+  async function destroyRetainedObject(
+    orgId: string,
+    reaperDb: DbClient,
+    row: { id: string; objectKey: string | null; messageId: string | null },
+  ): Promise<"destroyed" | "held" | "failed" | "none"> {
+    const objectKey = row.objectKey;
+    if (!objectKey) return "none";
+    try {
+      if (row.messageId && (await isHeldNow(orgId, row.messageId))) return "held";
+      await runWithDeadline(
+        (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
+        deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
+        () => new Error("attachment destroy exceeded its deadline"),
+        abortGraceMs,
+      );
+      await withOrgContext(reaperDb, systemOrgContext(orgId), (rawTx) =>
+        (rawTx as unknown as Tx)
+          .update(ATT)
+          .set({ objectDestroyedAt: now() })
+          .where(
+            and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt)),
+          ),
+      );
+      return "destroyed";
+    } catch (error) {
+      deps.onReapError?.({ attachmentId: row.id }, error);
+      return "failed";
     }
   }
 }
