@@ -40,6 +40,7 @@ import {
   MESSAGING_RETENTION_MANAGE_PERMISSION,
   UnauthorizedError,
 } from "@chartwarden/types";
+import type { ExternalShareIndicatorDto } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
@@ -146,6 +147,13 @@ export const CHANNEL_MEMBER_ADMIN_PREDICATE = "channel_member_admin";
 export interface MessagingRouteDeps {
   /** The §4.1–4.2 application service (in-memory in the slice; Drizzle/Valkey in prod). */
   service: MessagingRouteService;
+  /** WP 6.6 (ADR-0096 D18): the live "an outside partner can read this" fact for the channel detail. Omitted => the field is never present. */
+  externalShare?: {
+    indicator(
+      actor: { organizationId: string; userId: string },
+      channelId: string,
+    ): Promise<ExternalShareIndicatorDto | null>;
+  };
   /** WP 2.9: announcement receipts, department channels and the org_admin-only announcement send guard. */
   announcements: AnnouncementService;
   /** WP 2.12: ephemeral presence/typing. Omitted => the routes are registered but the tenant flag reads off. */
@@ -356,7 +364,16 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
-      return service.getChannel(organizationId, userId, id);
+      const detail = await service.getChannel(organizationId, userId, id);
+      // The route's preHandler already proved the caller may read this channel; the indicator is computed live from the share table every time.
+      // A break-glass reader passes the route's read predicate without being a member; the indicator is for MEMBERS (plain visibility, no grant).
+      const isMember = deps.externalShare
+        ? await service.canViewChannel(organizationId, userId, id)
+        : false;
+      const externalShare = isMember
+        ? await deps.externalShare?.indicator({ organizationId, userId }, id)
+        : null;
+      return externalShare ? { ...detail, externalShare } : detail;
     },
   );
 

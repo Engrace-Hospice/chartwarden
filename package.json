@@ -556,6 +556,7 @@
     "test:m36:thread-grant:live": "vitest run apps/backend/__tests__/m36-thread-grant.live.test.ts",
     "test:m36:break-glass:live": "vitest run apps/backend/__tests__/m36-break-glass.live.test.ts",
     "test:m36:export:live": "vitest run apps/backend/__tests__/m36-export.live.test.ts",
+    "test:m36:external-share:live": "vitest run apps/backend/__tests__/m36-external-share.live.test.ts",
     "test:m36:message-legal-hold:live": "vitest run apps/backend/__tests__/m36-message-legal-hold.live.test.ts",
     "test:m36:session-devices:live": "vitest run apps/backend/__tests__/m36-session-device-controls.live.test.ts",
     "test:m36:retention-governance:live": "vitest run apps/backend/__tests__/m36-retention-governance.live.test.ts",
@@ -628,6 +629,7 @@
   ],
   "overrides": {
     "esbuild": "^0.25.0",
+    "zod": "^4.6.6",
     "source-map-js": "^1.2.2",
     "find-my-way": "^9.7.0",
     "postcss": "^8.5.18",
@@ -637,6 +639,7 @@
     "nanoid": "^3.3.17",
     "browserslist": "^4.29.1",
     "baseline-browser-mapping": "^2.11.26",
-    "@simplewebauthn/server": "^13.3.3"
+    "@simplewebauthn/server": "^13.3.3",
+    "zod": "^4.6.6"
   }
 }

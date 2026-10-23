@@ -49,6 +49,10 @@ function headerAuth(request: FastifyRequest): void {
   // GAP-182 — the M2 authenticate hook stamps `actorKind` ("system" for the internal-service credential).
   const actorKind = request.headers["x-test-actor-kind"];
   request.context.attributes.actorKind = typeof actorKind === "string" ? actorKind : "user";
+  // #680 — the service principal has no membership; the real authenticate hook never stamps one for it.
+  if (request.headers["x-test-no-membership"] === "1") {
+    request.context.attributes.membershipId = undefined;
+  }
 }
 
 const ORG = "org_a";
@@ -855,6 +859,16 @@ describe("GAP-182 — /internal/assessments/* are system-principal-only seam rou
     for (const url of [LATEST, SERIES]) {
       const res = await app.inject({ method: "GET", url, headers: RN });
       expect(res.statusCode, url).toBe(403);
+    }
+    await app.close();
+  });
+
+  it("serves a system principal that has no membership id (#680)", async () => {
+    const { app } = makeServer();
+    const headers = { ...SYSTEM, "x-test-no-membership": "1" };
+    for (const url of [LATEST, SERIES]) {
+      const res = await app.inject({ method: "GET", url, headers });
+      expect(res.statusCode, url).toBe(200);
     }
     await app.close();
   });

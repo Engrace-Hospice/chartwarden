@@ -197,6 +197,17 @@ describe("WP 5.7 (ADR-0089) export keys reach NEW tenants' compliance officer an
   });
 });
 
+describe("WP 6.6 (ADR-0096) external share key: the compliance officer template only", () => {
+  it("the compliance_officer template grants it and no other template does", () => {
+    const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];
+    expect(grants).toContain("messaging.share.manage");
+    for (const t of ROLE_TEMPLATES) {
+      if (t.key === "compliance_officer") continue;
+      expect(t.grants ?? [], t.key).not.toContain("messaging.share.manage");
+    }
+  });
+});
+
 describe("WP 5.6 (ADR-0055 D9) redaction keys: the compliance officer only, never a full-catalog admin role", () => {
   const REDACT_KEYS = ["messaging.redact.request", "messaging.redact.approve"];
 

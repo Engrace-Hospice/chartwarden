@@ -94,6 +94,7 @@ type NorMethod = (typeof NOR_METHODS)[number]["value"];
 
 interface AdmissionDetailView extends SummaryRow {
   patientId?: string;
+  patient: { id: string; firstName: string; lastName: string; mrn: string } | null;
   referralId?: string | null;
   admissionAt?: string | null;
   activatedAt?: string | null;
@@ -1150,7 +1151,7 @@ export function AdmissionDetail({
               }}
             >
               Patient{" "}
-              <AdmissionPatientLink patientId={admission.patientId} patient={patient} compact />
+              <AdmissionPatientLink patientId={admission.patientId} patient={patient} identity={admission.patient} compact />
               {admission.referralId ? (
                 <>
                   {" "}
@@ -1338,6 +1339,7 @@ export function AdmissionDetail({
                     <AdmissionPatientLink
                       patientId={admission.patientId}
                       patient={patient}
+                      identity={admission.patient}
                       admissionState={admission.state}
                     />
                   }
@@ -1578,7 +1580,7 @@ export function AdmissionDetail({
               <>
                 {" "}
                 · Patient{" "}
-                <AdmissionPatientLink patientId={admission.patientId} patient={patient} compact />
+                <AdmissionPatientLink patientId={admission.patientId} patient={patient} identity={admission.patient} compact />
               </>
             ) : null}
           </div>
@@ -1628,6 +1630,7 @@ export function AdmissionDetail({
                 <AdmissionPatientLink
                   patientId={admission.patientId}
                   patient={patient}
+                  identity={admission.patient}
                   admissionState={admission.state}
                 />
               }
@@ -3574,17 +3577,19 @@ function PatientUnavailableNotice({
 function AdmissionPatientLink({
   patientId,
   patient,
+  identity,
   compact,
   admissionState,
 }: {
   patientId?: string;
   patient: PatientSummary | null;
+  identity: AdmissionDetailView["patient"];
   compact?: boolean;
   admissionState?: string;
 }): JSX.Element {
   if (!patientId) return <span>Unresolved</span>;
   // No readable record (e.g. 404 for this role): never show the raw id or link to a page that will 404.
-  if (!patient) return <span>{patientDisplayName(null)}</span>;
+  if (!patient) return <span>{patientDisplayName(identity)}</span>;
   return (
     <>
       <Link to={`/patients/${patientId}`} style={patientLinkStyle}>

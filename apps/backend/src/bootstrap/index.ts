@@ -34,6 +34,7 @@ import {
 } from "./routes/system";
 import { wireSeams } from "./seams/providers";
 import { validateSeams } from "./seams/registry";
+import { parseTrustedProxies } from "./trusted-proxies";
 
 /** Hook M2's auth plugin supplies to populate userId/organizationId/roles (spec §4.5). */
 export type AuthenticateHook = (request: FastifyRequest) => Promise<void> | void;
@@ -92,18 +93,8 @@ export interface ServerDeps {
 
 const TEN_MB = 10 * 1024 * 1024;
 
-/**
- * Parse `TRUSTED_PROXY_CIDRS` into Fastify's `trustProxy` value. Returns `false` when unset or empty,
- * so the default posture is "trust nothing" rather than "trust everything" — an unset env var must not
- * silently let a caller choose its own `X-Forwarded-For`, and therefore its own rate-limit bucket.
- */
-export function parseTrustedProxies(raw: string | undefined): string[] | false {
-  const entries = (raw ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  return entries.length > 0 ? entries : false;
-}
+// `TRUSTED_PROXY_CIDRS` -> Fastify's `trustProxy` value, VALIDATED (rejects /0, wildcards, booleans and malformed entries; see trusted-proxies.ts).
+export { parseTrustedProxies };
 
 /**
  * The PHI read surface under §2.5 read-audit coverage. Every GET/HEAD registered under one of these

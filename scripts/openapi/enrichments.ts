@@ -1395,6 +1395,19 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
+// M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
+import {
+  CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
+  CreatedExternalShareResponseSchema as M36ExtShareCreatedResponseSchema,
+  ExternalShareListResponseSchema as M36ExtShareListResponseSchema,
+  ExternalShareResponseSchema as M36ExtShareResponseSchema,
+  PartnerMessagesResponseSchema as M36PartnerMessagesResponseSchema,
+  PartnerRedeemBodySchema as M36PartnerRedeemBodySchema,
+  PartnerRedeemResponseSchema as M36PartnerRedeemResponseSchema,
+  PartnerStateResponseSchema as M36PartnerStateResponseSchema,
+  PartnerVerifiedResponseSchema as M36PartnerVerifiedResponseSchema,
+  PartnerVerifyBodySchema as M36PartnerVerifyBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/external-share-typebox";
 // M36 WP 2.7b C4 tenant global search switch.
 import {
   GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
@@ -10502,6 +10515,52 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/export/:id/download": {
     summary:
       "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
+  },
+
+  // external partner share (WP 6.6, ADR-0096 PROPOSED)
+  "POST /api/v1/messaging/external-shares": {
+    summary:
+      "Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). The body must carry `acknowledgedMinimumNecessary: true` (an outside party reads the conversation; patient names in free text are NOT filtered; messages with a date of birth, record/phone number, email or street address are withheld). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 503 PARTNER_ACCESS_UNAVAILABLE when the deployment has no trusted proxy configuration. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day",
+    body: M36ExtShareCreateBodySchema,
+    response: M36ExtShareCreatedResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/external-shares": {
+    summary:
+      "The tenant's partner shares, newest first (messaging.share.manage; never depends on the flag): ids, partner label, kind, status (active, expired, revoked), instants and whether the invitation was redeemed or the code locked. No token, code or message",
+    response: M36ExtShareListResponseSchema,
+  },
+  "DELETE /api/v1/messaging/external-shares/:id": {
+    summary:
+      "Revoke a partner share now (messaging.share.manage + a fresh step-up; never depends on the flag). The partner's very next request is a 404 (nothing is cached). 409 when already revoked; publishes m36.external_share.revoked (ids only)",
+    response: M36ExtShareResponseSchema,
+  },
+  "POST /api/v1/messaging/external-shares/:id/reissue": {
+    summary:
+      "Reissue the invitation of an ACTIVE partner share (messaging.share.manage + a fresh step-up, and the caller must be a MEMBER of the shared channel, no break-glass: otherwise the same 404 as an unknown share; 404 while the tenant flag is off; 409 when the share is revoked or expired; 503 PARTNER_ACCESS_UNAVAILABLE without trusted proxy configuration). A new single-use invitation AND a NEW 8-digit code are returned once; every session and the old code of the earlier invitation are dead, and the attempt counter restarts. This is the only way to reset it. Publishes m36.external_share.reissued (ids only)",
+    response: M36ExtShareCreatedResponseSchema,
+  },
+  "POST /api/v1/messaging/partner/redeem": {
+    summary:
+      "PARTNER (no user session): redeem the one-time invitation for an enrolment-stage bearer (single use; budgeted per client address and organisation). The bearer reaches only the state and verify routes until the 8-digit code is proven. Every refusal (flag off, unknown, used, revoked, expired invitation, wrong organisation) is the same 404",
+    body: M36PartnerRedeemBodySchema,
+    response: M36PartnerRedeemResponseSchema,
+  },
+  "GET /api/v1/messaging/partner/shares/:shareId": {
+    summary:
+      "PARTNER (Authorization: Bearer): the partner's own share state (stage, label, expiry). Any other share id, a revoked or expired share or a bad bearer is the same 404",
+    response: M36PartnerStateResponseSchema,
+  },
+  "POST /api/v1/messaging/partner/shares/:shareId/verify": {
+    summary:
+      "PARTNER (Authorization: Bearer): prove the out-of-band 8-digit code to activate the session. Activation ROTATES the bearer: the response carries the NEW active-stage `sessionToken` (once) and the enrolment token is dead from then on. Five wrong attempts lock the share for good (404 afterwards, until staff reissue the invitation); a wrong code is 422 EXTERNAL_SHARE_CODE_INVALID. The bearer is resolved before the body is validated (an unauthenticated caller never sees a 422)",
+    body: M36PartnerVerifyBodySchema,
+    response: M36PartnerVerifiedResponseSchema,
+  },
+  "GET /api/v1/messaging/partner/shares/:shareId/messages": {
+    summary:
+      "PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references, redaction rows, urgent or targeted messages, acknowledgment requests, legal holds, or a high-signal identifier in the text (withheld, never masked; names are NOT detected). The session dies after 30 idle minutes or 12 hours. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned",
+    response: M36PartnerMessagesResponseSchema,
   },
 
   // alerts (§4.2)

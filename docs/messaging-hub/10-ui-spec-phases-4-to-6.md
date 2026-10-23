@@ -107,7 +107,7 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 | 6.3 | Voice notes and dictation | (composer) | web | `messaging.send` | `voice`+ | attachments routes; dictation per ADR | missing (no matching route, screen or web file found) |
 | 6.4 | Language and translation review | `/messaging/settings/language`; `…/templates` | web | self; `messaging.template.translate` **new** | `i18n`+ | `template-admin` built + translations **new** | missing (no matching route, screen or web file found) |
 | 6.5 | AI summary panel | (thread side panel) | web | `messaging.ai.use` **new** | `ai`+ | `POST /channels/:id/summaries` **new** (M32) | missing (no matching route, screen or web file found) |
-| 6.6 | External partner share | `/messaging/partners`; partner view | web | `messaging.share.manage` **new** | `external_share`+ | `POST/GET/DELETE /external-shares` **new** | missing (no matching route, screen or web file found) |
+| 6.6 | External partner share | `/messaging/partners`; partner view | web | `messaging.share.manage` **new** | `external_share`+ | `POST/GET/DELETE /external-shares` **new** | staff screen and routes built (ADR-0096, flag off by default); the partner view is NOT built |
 
 ## 4. Gaps in the built Phase 4.1 / 4.2 UI
 
