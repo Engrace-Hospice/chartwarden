@@ -67,12 +67,16 @@ export function KeyRings(): JSX.Element {
     setError(null);
     setRing(null);
     setSearched(true);
-    const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}/key-ring", {
+    const { data, error: err, response } = await client.GET("/api/v1/platform/tenants/{orgSlug}/key-ring", {
       params: { path: { orgSlug: slug } },
     });
     if (!isCurrent()) return;
     if (err) {
-      setError("Could not load the key-ring for this tenant.");
+      setError(
+        response?.status === 404
+          ? "No key ring has been provisioned for this tenant."
+          : "Could not load the key-ring for this tenant.",
+      );
       setLoading(false);
       return;
     }

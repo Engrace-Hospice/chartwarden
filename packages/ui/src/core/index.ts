@@ -62,6 +62,9 @@ export {
   toLocalInput,
 } from "./dates";
 
+// API error envelope -> the server's own message (#596)
+export { envelopeErrorMessage } from "./error-message";
+
 // Display-only fallback for internal enum/event identifiers when no product label is available.
 export { humanizeIdentifier } from "./humanize-identifier";
 

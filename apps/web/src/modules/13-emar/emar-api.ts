@@ -26,6 +26,7 @@
 //     device and rides as `x-witness-attestation`; this layer only carries it. It is a server-minted,
 //     single-use, 60-second bearer credential — the reason `check-request-header-auth.ts` classifies that
 //     header `verified` rather than trusting a self-asserted "a witness watched me".
+import { envelopeErrorMessage } from "@chartwarden/ui";
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
@@ -141,6 +142,8 @@ export function errorMessage(error: unknown, fallback: string): string {
     | { title?: string; detail?: string; code?: string; status?: number }
     | null
     | undefined;
+  const serverMessage = envelopeErrorMessage(error);
+  if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
   if (body?.status === 403)
