@@ -106,6 +106,32 @@ export const TPE_RISK_TONE: Record<string, StatusTone> = {
   referred: "error",
 };
 
+/** audit_request state → tone (milestone 7a-1). The authority kind is a label only; no state implies a CMS rule. */
+export const AUDIT_STATE_TONE: Record<string, StatusTone> = {
+  received: "warning",
+  in_assembly: "progress",
+  in_review: "progress",
+  responded: "success",
+  closed: "neutral",
+  withdrawn: "neutral",
+};
+
+/** audit_request dueState → tone. A case with no recorded due date is loud: it is not "fine", it is unknown. */
+export const AUDIT_DUE_TONE: Record<string, StatusTone> = {
+  no_deadline_recorded: "error",
+  open: "progress",
+  past: "error",
+  not_applicable: "neutral",
+};
+
+/** recorded_deadline status → tone (milestone 7a-1). */
+export const RECORDED_DEADLINE_TONE: Record<string, StatusTone> = {
+  open: "progress",
+  due_soon: "warning",
+  past: "error",
+  satisfied: "success",
+};
+
 /** The path a denial takes → tone. Undetermined is inert: the denial stays appealable exactly as before. */
 export const DENIAL_ROUTE_TONE: Record<string, StatusTone> = {
   appeal: "progress",

@@ -35,6 +35,9 @@ import {
   NoticeAlert,
   ReasonField,
 } from "./action-ui";
+import { isLaterTier } from "./audit-api";
+import { CaseViewPanel } from "./case-view-panel";
+import { LaterTierPanel } from "./later-tier-panel";
 import {
   EMPTY_RECONSIDERATION_SUBMIT,
   ReconsiderationSubmitFields,
@@ -370,6 +373,15 @@ export function AppealDetailPanel({
               }}
             />
           ) : null}
+          {isLaterTier(appeal.tier) ? (
+            <LaterTierPanel
+              key={`lt-${appealId}`}
+              appealId={appealId}
+              appealState={appeal.state}
+              onChanged={onChanged}
+            />
+          ) : null}
+          <CaseViewPanel key={`cv-${appeal.claimId}`} claimId={appeal.claimId} />
           {appeal.state !== "draft" ? (
             <SubmissionPanel key={appealId} kind="appeal" subjectId={appealId} />
           ) : null}

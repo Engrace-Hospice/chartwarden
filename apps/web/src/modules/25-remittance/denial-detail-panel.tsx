@@ -31,6 +31,7 @@ import {
   NoticeAlert,
   ReasonField,
 } from "./action-ui";
+import { CaseViewPanel } from "./case-view-panel";
 import { DenialRoutePanel } from "./denial-route-panel";
 import {
   type AppealTier,
@@ -254,6 +255,7 @@ export function DenialDetailPanel({
             ]}
           />
           <NoticeAlert message={notice} />
+          {denial.claimId ? <CaseViewPanel key={denial.claimId} claimId={denial.claimId} /> : null}
           <DenialRoutePanel
             key={denialId}
             denialId={denialId}

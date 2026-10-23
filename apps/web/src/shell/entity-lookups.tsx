@@ -382,6 +382,55 @@ export function ReferralLookupField(
   );
 }
 
+/**
+ * Claims by control number / service dates (the billing claim list has no free-text filter, so the page is
+ * narrowed here); optionally scoped to one ProviderEntity. The option id is the claim id, never typed by hand.
+ */
+async function loadClaims(
+  client: ApiClient,
+  input: EntityLookupLoadInput,
+  providerEntityId?: string,
+): Promise<EntityLookupLoadResult> {
+  const query: Record<string, string | number> = { limit: input.limit };
+  if (input.cursor) query.cursor = input.cursor;
+  if (providerEntityId) query.providerEntityId = providerEntityId;
+  const { data, error } = await client.GET("/api/v1/billing/claims", { params: { query } });
+  if (error) throw error;
+  const needle = input.query.trim().toLowerCase();
+  const rows = (data?.items ?? []).filter(
+    (c) =>
+      !needle ||
+      [c.claimControlNumber, c.serviceFrom, c.serviceTo, c.state].some((v) =>
+        String(v).toLowerCase().includes(needle),
+      ),
+  );
+  return {
+    options: rows.map((c) => ({
+      id: c.claimId,
+      label: optionLabel(c.claimControlNumber, shortId(c.claimId)),
+      searchLabel: c.claimControlNumber,
+      description: `${humanizeIdentifier(c.state)} · ${c.serviceFrom} to ${c.serviceTo}`,
+    })),
+    nextCursor: (data as { nextCursor?: string | null } | undefined)?.nextCursor ?? null,
+  };
+}
+
+export function ClaimLookupField(props: LookupProps & { providerEntityId?: string }): JSX.Element {
+  const client = useApiClient();
+  const { providerEntityId, ...rest } = props;
+  const loadOptions = useCallback(
+    (input: EntityLookupLoadInput) => loadClaims(client, input, providerEntityId),
+    [client, providerEntityId],
+  );
+  return (
+    <EntityLookupField
+      {...rest}
+      loadOptions={loadOptions}
+      placeholder={props.placeholder ?? "Search claim by control number or service date..."}
+    />
+  );
+}
+
 export function ProviderEntityLookupField(props: LookupProps): JSX.Element {
   const client = useApiClient();
   const loadOptions = useCallback(
