@@ -75,4 +75,33 @@ describe("resolveDocumentListScope (F-023: the document list is caseload-scoped)
     });
     expect(stages).toEqual(["caseload"]);
   });
+
+  describe("purpose: write (#641)", () => {
+    const write = { ...base, purpose: "write" as const };
+
+    it("the view-only documents.read_org_wide key does not widen a write", async () => {
+      const scope = await resolveDocumentListScope({
+        ...write,
+        hasOrgWideKey: async () => {
+          throw new Error("a write must not consult the view-only key");
+        },
+      });
+      expect(scope).toEqual([P1]);
+    });
+
+    it.each(["survey_auditor", "qa"])(
+      "%s is org-wide for a read but not for a write",
+      async (role) => {
+        expect(await resolveDocumentListScope({ ...base, roles: [role] })).toBeNull();
+        expect(await resolveDocumentListScope({ ...write, roles: [role] })).toEqual([P1]);
+      },
+    );
+
+    it.each(["compliance_officer", "medical_director", "org_admin", "director_of_nursing"])(
+      "%s stays org-wide for a write",
+      async (role) => {
+        expect(await resolveDocumentListScope({ ...write, roles: [role] })).toBeNull();
+      },
+    );
+  });
 });

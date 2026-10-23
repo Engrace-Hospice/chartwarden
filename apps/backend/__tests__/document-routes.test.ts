@@ -86,6 +86,12 @@ const PATIENT_OFF = "22222222-2222-4222-8222-222222222222";
 const DOC_OFF_CASELOAD = "c0000000-0000-4000-8000-0000000000f1";
 const DOC_OFF_CASELOAD_HOLD = "c0000000-0000-4000-8000-0000000000f2";
 const DOC_UNLINKED = "c0000000-0000-4000-8000-0000000000f3";
+const ADMISSION = "55555555-5555-4555-8555-555555555555";
+const ADMISSION_OFF = "55555555-5555-4555-8555-555555555556";
+const ADMISSION_PATIENTS: Record<string, string> = {
+  [ADMISSION]: PATIENT,
+  [ADMISSION_OFF]: PATIENT_OFF,
+};
 
 /** Everything an intake reviewer needs at the RBAC layer, shared by the three reviewer personas so a
  *  403 in the §4.7 cases below can only ever come from the LICENSURE predicate (F-030). */
@@ -280,6 +286,15 @@ beforeEach(() => {
     isInCaseload,
     async caseloadPatientIds({ userId }: { userId: string }) {
       return REVIEWERS.includes(userId) ? [PATIENT] : [];
+    },
+  } as never);
+  // #641 — M6's admission → patient read, which /links uses to check the pair agrees.
+  registerSeam("AdmissionStatusReader", {
+    async getAdmissionPatientCare(_org: string, admissionId: string) {
+      const patientId = ADMISSION_PATIENTS[admissionId];
+      return patientId
+        ? { admissionId, patientId, status: "active", otherAdmissionUnderCare: false }
+        : null;
     },
   } as never);
 });
@@ -906,6 +921,70 @@ describe("M22 Phase 1 — document link metadata action", () => {
   });
 });
 
+describe("#641 — /links keeps the admission and the patient consistent", () => {
+  const link = (
+    backend: ReturnType<typeof createInMemoryDocumentBackend>,
+    payload: object,
+    headers: Record<string, string> = RN,
+  ) =>
+    makeServer(backend.service).app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC}/links`,
+      headers: { ...headers, "idempotency-key": `link-${Math.random()}` },
+      payload,
+    });
+  const fresh = () =>
+    createInMemoryDocumentBackend({
+      documents: [
+        {
+          id: DOC,
+          organizationId: ORG,
+          patientId: PATIENT,
+          admissionId: null,
+          aggregateType: "other",
+        },
+      ],
+    });
+
+  it("422 when the admission belongs to another patient", async () => {
+    expect((await link(fresh(), { admissionId: ADMISSION_OFF })).statusCode).toBe(422);
+    expect(
+      (await link(fresh(), { patientId: PATIENT, admissionId: ADMISSION_OFF })).statusCode,
+    ).toBe(422);
+  });
+
+  it("404 for an admission that does not exist", async () => {
+    const res = await link(fresh(), { admissionId: "55555555-5555-4555-8555-5555555555ff" });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("422 when re-linking the patient would strand the document's admission", async () => {
+    const backend = createInMemoryDocumentBackend({
+      documents: [
+        {
+          id: DOC,
+          organizationId: ORG,
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          aggregateType: "other",
+        },
+      ],
+    });
+    // An org-wide editor: a caseload-scoped one may not detach at all (#611).
+    const wide = {
+      "x-test-user": "hedit_1",
+      "x-test-org": ORG,
+      "x-test-roles": "compliance_officer",
+    };
+    expect((await link(backend, { patientId: PATIENT }, wide)).statusCode).toBe(200);
+    expect((await link(backend, { patientId: null }, wide)).statusCode).toBe(422);
+  });
+
+  it("accepts the patient's own admission", async () => {
+    expect((await link(fresh(), { admissionId: ADMISSION })).statusCode).toBe(200);
+  });
+});
+
 describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
   it("a stale If-Match on the overlay PUT is refused with 412", async () => {
     const { app } = makeServer();
@@ -1511,10 +1590,42 @@ describe("#611 — metadata WRITE routes honour the caseload", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("the org-wide key widens the write scope to the whole org", async () => {
+  // #641: documents.read_org_wide is VIEW-only. It lists the whole org; it does not let an editor write there.
+  it("the view-only org-wide key does not widen the write scope", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ ...calls(DOC_OFF_CASELOAD)[0], headers: as("hedit_1", "him") });
+    for (const c of calls(DOC_OFF_CASELOAD)) {
+      const res = await app.inject({ ...c, headers: as("hedit_1", "him") });
+      expect([c.method, c.url, res.statusCode]).toEqual([c.method, c.url, 404]);
+    }
+  });
+
+  it("an org-wide oversight role that can edit still writes anywhere in the org", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      ...calls(DOC_OFF_CASELOAD)[0],
+      headers: as("hedit_1", "compliance_officer"),
+    });
     expect(res.statusCode).toBe(200);
+  });
+
+  it.each(["survey_auditor", "qa"])(
+    "%s (view-only bypass) cannot write off its caseload",
+    async (role) => {
+      const { app } = makeServer();
+      const res = await app.inject({ ...calls(DOC_OFF_CASELOAD)[0], headers: as("hedit_1", role) });
+      expect(res.statusCode).toBe(404);
+    },
+  );
+
+  it("a new version is refused under legal hold, like the other writes", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC_OFF_CASELOAD_HOLD}/versions`,
+      headers: as("hedit_1", "compliance_officer"),
+      payload: { contentBase64: "aGk=", mimeType: "text/plain" },
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it("a scoped actor cannot detach a linked document or set an admission on an unlinked one", async () => {
@@ -1541,7 +1652,10 @@ describe("#611 — metadata WRITE routes honour the caseload", () => {
       const res = await app.inject({ ...calls(DOC_UNLINKED)[k], headers: as("rn_1", "rn") });
       expect(res.statusCode).toBe(404);
     }
-    const wide = await app.inject({ ...calls(DOC_UNLINKED)[0], headers: as("hedit_1", "him") });
+    const wide = await app.inject({
+      ...calls(DOC_UNLINKED)[0],
+      headers: as("hedit_1", "compliance_officer"),
+    });
     expect(wide.statusCode).toBe(200);
     // Last: the fixture store is shared, and linking leaves the document attached to the patient.
     const link = await app.inject({ ...calls(DOC_UNLINKED)[1], headers: as("rn_1", "rn") });

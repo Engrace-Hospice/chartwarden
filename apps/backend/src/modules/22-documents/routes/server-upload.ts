@@ -217,7 +217,12 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
   }
 
   /** Lock the document row and refuse a write onto an immutable / held document. Returns its facts. */
-  async function lockWritableDocument(tx: DbClient, organizationId: OrgId, documentId: string) {
+  async function lockWritableDocument(
+    tx: DbClient,
+    organizationId: OrgId,
+    documentId: string,
+    expectedPatientId?: string | null,
+  ) {
     await tx.execute(sql`select id from document where id = ${documentId} for update`);
     const [doc] = await tx
       .select({
@@ -225,11 +230,15 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
         status: D.status,
         aggregateType: D.aggregateType,
         activeVersionId: D.activeVersionId,
+        patientId: D.patientId,
       })
       .from(D)
       .where(and(eq(D.id, documentId), eq(D.organizationId, organizationId)))
       .limit(1);
     if (!doc) throw new NotFoundError("document");
+    // #641 — the route's scope check saw this patient; a row that has since moved is out of scope.
+    if (expectedPatientId !== undefined && doc.patientId !== expectedPatientId)
+      throw new NotFoundError("document");
     const [hold] = await tx
       .select({ id: LH.id })
       .from(LH)
@@ -386,13 +395,18 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       requireStore();
       const verified = verifyUploadContent(args.content);
       const target = await inOrg(organizationId, actor.userId, (tx) =>
-        lockWritableDocument(tx, organizationId, documentId),
+        lockWritableDocument(tx, organizationId, documentId, args.expectedPatientId),
       );
       await assertScanned(args.content, verified);
       const objectKey = objectKeyFor(target.aggregateType);
       return storeThenCommit(organizationId, objectKey, args.content, verified, () =>
         inOrg(organizationId, actor.userId, async (tx) => {
-          const doc = await lockWritableDocument(tx, organizationId, documentId);
+          const doc = await lockWritableDocument(
+            tx,
+            organizationId,
+            documentId,
+            args.expectedPatientId,
+          );
           const rows = await tx
             .select({ versionNumber: V.versionNumber })
             .from(V)

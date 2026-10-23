@@ -60,7 +60,7 @@ const PLAN = buildBenefitPeriodPlan({
   startDate: "2026-03-01",
 });
 
-function makeServer(opts: { bound?: boolean } = {}) {
+function makeServer(opts: { bound?: boolean; inCaseload?: boolean } = {}) {
   const backend = createInMemoryAdmissionBackend({
     records: [
       {
@@ -69,6 +69,7 @@ function makeServer(opts: { bound?: boolean } = {}) {
         kind: "admission",
         state: "discharged",
         patientId: PATIENT,
+        providerEntityId: "pe_x",
       },
     ],
   });
@@ -81,12 +82,16 @@ function makeServer(opts: { bound?: boolean } = {}) {
     createInMemoryEffectivePermissionStore([
       grants("reader_1", ["admission.read"]),
       grants("intake_1", ["admission.read", "admission.create"]),
+      grants("oversight_1", ["admission.read"]),
       grants("nobody_1", []),
     ]).store,
   );
   const registry = createPredicateRegistry();
   for (const [name, fn] of Object.entries(
-    buildAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true }),
+    buildAdmissionAbacPredicates({
+      resolver: backend.resolver,
+      isInCaseload: async () => opts.inCaseload ?? true,
+    }),
   )) {
     registry.register(name, fn);
   }
@@ -154,6 +159,31 @@ describe("GET /api/v1/admissions/:id/readmission-context", () => {
       sequence: 3,
       startDate: "2026-03-01",
     });
+  });
+
+  // #644: the census lists these roles every admission, so the context read must open it too (admission.scope's
+  // read arm needs the `access` marker; this route builds its own target).
+  it.each(["compliance_officer", "director_of_nursing", "survey_coordinator"])(
+    "200 for %s on a sited admission outside its caseload",
+    async (role) => {
+      const { app } = makeServer({ inCaseload: false });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/admissions/adm_prior/readmission-context",
+        headers: as("oversight_1", role),
+      });
+      expect(res.statusCode).toBe(200);
+    },
+  );
+
+  it("404 for a role outside the org-wide set on the same admission", async () => {
+    const { app } = makeServer({ inCaseload: false });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/admissions/adm_prior/readmission-context",
+      headers: as("oversight_1", "rn"),
+    });
+    expect(res.statusCode).toBe(404);
   });
 
   it("403 without admission.read", async () => {
