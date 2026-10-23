@@ -35,6 +35,9 @@ import {
   NoticeAlert,
   ReasonField,
 } from "./action-ui";
+import { isLaterTier } from "./audit-api";
+import { CaseViewPanel } from "./case-view-panel";
+import { LaterTierPanel } from "./later-tier-panel";
 import {
   EMPTY_RECONSIDERATION_SUBMIT,
   ReconsiderationSubmitFields,
@@ -134,6 +137,8 @@ export function AppealDetailPanel({
   const [restored] = useState(() => peekStepUpDraft<AppealDraft>(draftKey));
   const [appeal, setAppeal] = useState<AppealDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped when the later-tier panel writes, so the case timeline is read again.
+  const [caseTick, setCaseTick] = useState(0);
   const [act, setAct] = useState<AppealAction["kind"] | null>(restored?.act ?? null);
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [documentId, setDocumentId] = useState(restored?.documentId ?? "");
@@ -370,6 +375,23 @@ export function AppealDetailPanel({
               }}
             />
           ) : null}
+          {isLaterTier(appeal.tier) ? (
+            <LaterTierPanel
+              key={`lt-${appealId}`}
+              appealId={appealId}
+              appealState={appeal.state}
+              onChanged={() => {
+                onChanged();
+                setCaseTick((n) => n + 1);
+                void load();
+              }}
+            />
+          ) : null}
+          <CaseViewPanel
+            key={`cv-${appeal.claimId}`}
+            claimId={appeal.claimId}
+            refreshKey={`${appeal.version}:${caseTick}`}
+          />
           {appeal.state !== "draft" ? (
             <SubmissionPanel key={appealId} kind="appeal" subjectId={appealId} />
           ) : null}

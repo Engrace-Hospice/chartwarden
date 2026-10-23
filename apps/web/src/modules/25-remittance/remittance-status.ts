@@ -106,6 +106,32 @@ export const TPE_RISK_TONE: Record<string, StatusTone> = {
   referred: "error",
 };
 
+/** audit_request state → tone (milestone 7a-1). The authority kind is a label only; no state implies a CMS rule. */
+export const AUDIT_STATE_TONE: Record<string, StatusTone> = {
+  received: "warning",
+  in_assembly: "progress",
+  in_review: "progress",
+  responded: "success",
+  closed: "neutral",
+  withdrawn: "neutral",
+};
+
+/** audit_request dueState → tone. A case with no recorded due date is loud: it is not "fine", it is unknown. */
+export const AUDIT_DUE_TONE: Record<string, StatusTone> = {
+  no_deadline_recorded: "error",
+  open: "progress",
+  past: "error",
+  not_applicable: "neutral",
+};
+
+/** recorded_deadline status → tone (milestone 7a-1). */
+export const RECORDED_DEADLINE_TONE: Record<string, StatusTone> = {
+  open: "progress",
+  due_soon: "warning",
+  past: "error",
+  satisfied: "success",
+};
+
 /** The path a denial takes → tone. Undetermined is inert: the denial stays appealable exactly as before. */
 export const DENIAL_ROUTE_TONE: Record<string, StatusTone> = {
   appeal: "progress",
@@ -150,4 +176,23 @@ export function money(value: string | number | null | undefined): string {
     typeof value === "string" ? Number(value) : typeof value === "number" ? value : Number.NaN;
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+/**
+ * A calendar day for display. A date-only string (YYYY-MM-DD) is a day, not an instant: formatting it through
+ * `new Date(str)` parses it as UTC midnight and shows the previous day west of Greenwich, so it is formatted in UTC.
+ * A full timestamp is an instant and is shown in the viewer's zone.
+ */
+export function formatDay(value: string | null | undefined): string {
+  if (!value) return "—";
+  const m = DATE_ONLY.exec(value);
+  if (m) {
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString(
+      undefined,
+      { timeZone: "UTC" },
+    );
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString();
 }

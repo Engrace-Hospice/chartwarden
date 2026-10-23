@@ -74,6 +74,14 @@ export function EntityLookupField({
   const labelId = `${inputId}-label`;
   const describedBy = error ? errorId : hint ? hintId : undefined;
   const closeTimer = useRef<number | null>(null);
+  // Newest-wins guard: a slow earlier response (or one that lands after unmount) never overwrites a later one.
+  const requestSeq = useRef(0);
+  useEffect(
+    () => () => {
+      requestSeq.current += 1;
+    },
+    [],
+  );
 
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -96,7 +104,11 @@ export function EntityLookupField({
   const load = useCallback(
     async (cursor: string | null, append: boolean) => {
       const needle = query.trim();
+      requestSeq.current += 1;
+      const seq = requestSeq.current;
       if (needle.length < minQueryLength) {
+        setLoading(false);
+        setLoadingMore(false);
         setOptions([]);
         setNextCursor(null);
         setActiveIndex(-1);
@@ -113,18 +125,22 @@ export function EntityLookupField({
           cursor,
           limit: pageSize,
         });
+        if (seq !== requestSeq.current) return;
         setOptions((current) => (append ? [...current, ...result.options] : result.options));
         setNextCursor(result.nextCursor ?? null);
         if (!append) setActiveIndex(-1);
       } catch {
+        if (seq !== requestSeq.current) return;
         setLoadError("Lookup unavailable.");
         if (!append) {
           setOptions([]);
           setActiveIndex(-1);
         }
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (seq === requestSeq.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [loadOptions, minQueryLength, pageSize, query],

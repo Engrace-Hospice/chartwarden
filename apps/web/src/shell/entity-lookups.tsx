@@ -382,6 +382,79 @@ export function ReferralLookupField(
   );
 }
 
+/**
+ * Claims by control number / service dates (the billing claim list has no free-text filter, so the page is
+ * narrowed here); optionally scoped to one ProviderEntity. The option id is the claim id, never typed by hand.
+ */
+/** Safety ceiling on how many list pages one lookup may walk to fill a filtered page. */
+const CLAIM_LOOKUP_MAX_PAGES = 20;
+
+const claimMatches = (
+  c: {
+    claimControlNumber?: string | null;
+    serviceFrom?: string | null;
+    serviceTo?: string | null;
+    state?: string | null;
+  },
+  needle: string,
+): boolean =>
+  !needle ||
+  [c.claimControlNumber, c.serviceFrom, c.serviceTo, c.state].some((v) =>
+    String(v ?? "")
+      .toLowerCase()
+      .includes(needle),
+  );
+
+/**
+ * The billing claim list has no text filter, so the filter is applied here, paging (cursor) until a full page of
+ * matches is collected or the list is exhausted; the returned cursor resumes after the last page read.
+ */
+async function loadClaims(
+  client: ApiClient,
+  input: EntityLookupLoadInput,
+  providerEntityId?: string,
+): Promise<EntityLookupLoadResult> {
+  const needle = input.query.trim().toLowerCase();
+  const options: EntityLookupOption[] = [];
+  let cursor = input.cursor;
+  for (let page = 0; page < CLAIM_LOOKUP_MAX_PAGES; page += 1) {
+    const query: Record<string, string | number> = { limit: input.limit };
+    if (cursor) query.cursor = cursor;
+    if (providerEntityId) query.providerEntityId = providerEntityId;
+    const { data, error } = await client.GET("/api/v1/billing/claims", { params: { query } });
+    if (error) throw error;
+    for (const c of data?.items ?? []) {
+      if (!claimMatches(c, needle)) continue;
+      const control = c.claimControlNumber ?? shortId(c.claimId);
+      options.push({
+        id: c.claimId,
+        label: optionLabel(control, shortId(c.claimId)),
+        searchLabel: control,
+        description: `${humanizeIdentifier(c.state)} · ${c.serviceFrom ?? "?"} to ${c.serviceTo ?? "?"}`,
+      });
+    }
+    cursor = (data as { nextCursor?: string | null } | undefined)?.nextCursor ?? null;
+    if (!cursor || options.length >= input.limit) break;
+  }
+  return { options, nextCursor: cursor };
+}
+
+export function ClaimLookupField(props: LookupProps & { providerEntityId?: string }): JSX.Element {
+  const client = useApiClient();
+  const { providerEntityId, ...rest } = props;
+  const loadOptions = useCallback(
+    (input: EntityLookupLoadInput) => loadClaims(client, input, providerEntityId),
+    [client, providerEntityId],
+  );
+  return (
+    <EntityLookupField
+      {...rest}
+      loadOptions={loadOptions}
+      placeholder={props.placeholder ?? "Search claim by control number or service date..."}
+    />
+  );
+}
+
 export function ProviderEntityLookupField(props: LookupProps): JSX.Element {
   const client = useApiClient();
   const loadOptions = useCallback(

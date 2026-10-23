@@ -21,6 +21,8 @@ export interface ClaimFacts {
   readonly id: string;
   readonly providerEntityId: string;
   readonly patientId: string;
+  /** The claim control number (for display); absent on a stub. */
+  readonly claimControlNumber?: string;
 }
 
 export interface ClaimFactsPort {
@@ -46,7 +48,12 @@ export const m23ClaimFactsPort: ClaimFactsPort = {
       tx as ConstructorParameters<typeof repositories.ClaimRepository>[0],
     ).findById(claimId);
     return claim
-      ? { id: claim.id, providerEntityId: claim.providerEntityId, patientId: claim.patientId }
+      ? {
+          id: claim.id,
+          providerEntityId: claim.providerEntityId,
+          patientId: claim.patientId,
+          claimControlNumber: claim.claimControlNumber,
+        }
       : null;
   },
 };

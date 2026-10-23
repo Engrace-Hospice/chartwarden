@@ -10,9 +10,12 @@
 import type { FastifyInstance } from "fastify";
 import { registerAdrRoutes } from "./adr.routes";
 import { registerAppealRoutes } from "./appeals.routes";
+import { registerAuditRequestRoutes } from "./audit-request.routes";
+import { registerCaseViewRoutes } from "./case-view.routes";
 import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
 import { registerInternalRoutes } from "./internal.routes";
+import { registerLaterTierRoutes } from "./later-tier.routes";
 import { registerQicRoutes } from "./qic.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerReopeningRoutes } from "./reopening.routes";
@@ -30,6 +33,9 @@ export { registerAppealRoutes, type AppealRouteDeps } from "./appeals.routes";
 export { registerTaxonomyRoutes, type TaxonomyRouteDeps } from "./taxonomy.routes";
 export { registerInternalRoutes, type InternalRouteDeps } from "./internal.routes";
 export { registerSubmissionRoutes, type SubmissionRouteDeps } from "./submission.routes";
+export { registerAuditRequestRoutes, type AuditRequestRouteDeps } from "./audit-request.routes";
+export { registerLaterTierRoutes, type LaterTierRouteDeps } from "./later-tier.routes";
+export { registerCaseViewRoutes, type CaseViewRouteDeps } from "./case-view.routes";
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
@@ -48,5 +54,18 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   if (qicService) registerQicRoutes(app, { qicService });
   if (services.submissionService) {
     registerSubmissionRoutes(app, { submissionService: services.submissionService });
+  }
+  // Milestone 7a-1: later-tier record-keeping + recorded deadlines, audit request intake, the one case view.
+  if (services.laterTierService) {
+    registerLaterTierRoutes(app, { laterTierService: services.laterTierService });
+    if (services.auditRequestService) {
+      registerAuditRequestRoutes(app, {
+        auditRequestService: services.auditRequestService,
+        laterTierService: services.laterTierService,
+      });
+    }
+  }
+  if (services.caseViewService) {
+    registerCaseViewRoutes(app, { caseViewService: services.caseViewService });
   }
 }

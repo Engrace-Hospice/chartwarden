@@ -14,6 +14,7 @@ import {
   type AppealTier,
   DEFAULT_DEADLINE_ZONE,
   type DenialState,
+  canPacketRender,
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
@@ -761,6 +762,14 @@ export function buildDrizzleM25WriteService(
     return withOrgContext(db, actor, async (tx) => {
       const cur = await appealRow(tx, id);
       if (!canTransitionAppeal(cur.state, to)) throw new InvalidTransitionError(cur.state, to);
+      // Federal court is record-only: counsel files the civil action, so WardenX renders and sends nothing for it.
+      if (to === "submitted" && !canPacketRender(cur.tier)) {
+        throw new ChartWardenError(
+          "FEDERAL_COURT_RECORD_ONLY",
+          "a federal-court case is filed by counsel; record the filing on the case instead of submitting a packet",
+          409,
+        );
+      }
       guard?.(cur);
       const updated = await tx
         .update(AC)

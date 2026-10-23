@@ -3,6 +3,7 @@
 // box with the server's length floor shown, one alert. Flat sections; tokens and kit components only.
 import { Button, Glyph, InlineAlert, Modal, TextAreaField, useDrawerA11y } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
+import { useId } from "react";
 
 export interface ActionModalProps {
   readonly ariaLabel: string;
@@ -120,10 +121,59 @@ export function NoticeAlert({ message }: { readonly message: string | null }): J
   return message ? <InlineAlert tone="success">{message}</InlineAlert> : null;
 }
 
+/** An advisory (not an error): for a state the user should notice but that blocks nothing. */
+export function WarningAlert({ children }: { readonly children: ReactNode }): JSX.Element {
+  return <InlineAlert tone="warning">{children}</InlineAlert>;
+}
+
+/** One sentence under a free-text field: these notes are not patient-attributed, so PHI does not belong in them. */
+export const PHI_NOTICE =
+  "Do not enter patient names or Medicare numbers; free text is not patient-attributed.";
+
+export function PhiNotice(): JSX.Element {
+  return <Hint>{PHI_NOTICE}</Hint>;
+}
+
+/** An error with a Retry button: shown only when there is no data yet to keep on screen. */
+export function RetryAlert({
+  message,
+  onRetry,
+}: {
+  readonly message: string;
+  readonly onRetry: () => void;
+}): JSX.Element {
+  return (
+    <>
+      <ErrorAlert message={message} />
+      <ButtonRow>
+        <Button size="sm" tone="secondary" onClick={onRetry}>
+          Retry
+        </Button>
+      </ButtonRow>
+    </>
+  );
+}
+
+/** A hint that explains why a submit is disabled, wired to the button with aria-describedby. */
+export function BlockedReason({
+  id,
+  children,
+}: {
+  readonly id: string;
+  readonly children: ReactNode;
+}): JSX.Element {
+  return (
+    <p id={id} className="wx-action-hint">
+      {children}
+    </p>
+  );
+}
+
 export function FormButtons({
   submitLabel,
   busy,
   blocked,
+  blockedReason,
   danger,
   onSubmit,
   onCancel,
@@ -131,18 +181,30 @@ export function FormButtons({
   readonly submitLabel: string;
   readonly busy: boolean;
   readonly blocked: boolean;
+  /** Why the submit is disabled; shown beside the buttons and linked with aria-describedby while blocked. */
+  readonly blockedReason?: string;
   readonly danger?: boolean;
   readonly onSubmit: () => void;
   readonly onCancel: () => void;
 }): JSX.Element {
+  const reasonId = useId();
+  const reason = blocked && blockedReason ? blockedReason : null;
   return (
-    <ButtonRow end>
-      <Button tone="tertiary" onClick={onCancel} disabled={busy}>
-        Cancel
-      </Button>
-      <Button tone={danger ? "danger" : "primary"} onClick={onSubmit} disabled={busy || blocked}>
-        {busy ? "Working…" : submitLabel}
-      </Button>
-    </ButtonRow>
+    <>
+      {reason ? <BlockedReason id={reasonId}>{reason}</BlockedReason> : null}
+      <ButtonRow end>
+        <Button tone="tertiary" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          tone={danger ? "danger" : "primary"}
+          onClick={onSubmit}
+          disabled={busy || blocked}
+          aria-describedby={reason ? reasonId : undefined}
+        >
+          {busy ? "Working…" : submitLabel}
+        </Button>
+      </ButtonRow>
+    </>
   );
 }

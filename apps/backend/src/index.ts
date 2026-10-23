@@ -1112,8 +1112,11 @@ import {
   M25_PLATFORM_JOB_ID,
   type TerminologyLookupPort,
   buildDrizzleAdrService,
+  buildDrizzleAuditRequestService,
+  buildDrizzleCaseViewService,
   buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
+  buildDrizzleLaterTierService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
@@ -5780,6 +5783,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             submissionService: buildDrizzleSubmissionService(dbHandle.db, {
               sources: buildSeamAppealSourcePorts(),
             }),
+            // Milestone 7a-1: audit request intake, later-tier record-keeping + recorded deadlines (a date typed
+            // from a notice, never a computed CMS date), and the one claim-keyed case view. Nothing is sent.
+            auditRequestService: buildDrizzleAuditRequestService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
+              providerEntityExists: async (tx, organizationId, providerEntityId) =>
+                (await buildFoundationSiteReader().providerEntityIdentifiers(
+                  tx as never,
+                  organizationId,
+                  providerEntityId,
+                )) !== null,
+            }),
+            laterTierService: buildDrizzleLaterTierService(dbHandle.db, {
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+              sources: buildSeamAppealSourcePorts(),
+            }),
+            caseViewService: buildDrizzleCaseViewService(dbHandle.db),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
