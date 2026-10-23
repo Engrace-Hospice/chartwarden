@@ -58,6 +58,7 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           build-args: |
             VITE_TENANT_BASE_DOMAIN=${{ inputs.base_domain }}
+            CSP_STORAGE_ORIGIN=https://storage.${{ inputs.base_domain }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Scan tenant web image (HIGH/CRITICAL fail the release)

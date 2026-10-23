@@ -21,10 +21,21 @@ FROM nginxinc/nginx-unprivileged:1.29-alpine
 # packages at build time so published web images include available fixes such as PCRE2 10.49.
 USER root
 RUN apk upgrade --no-cache
-USER nginx
 
 COPY deploy/production/web-nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/production/web-security-headers.conf /etc/nginx/snippets/security-headers.conf
+# ADR-0049: the real environment pins the CSP's `img-src`/`frame-src` to its object-storage origin instead of any `https:`
+# host (presigned previews load from there). Empty on the demo, which keeps the shared snippet unchanged.
+ARG CSP_STORAGE_ORIGIN=""
+RUN case "$CSP_STORAGE_ORIGIN" in \
+      "") ;; \
+      https://*[!a-z0-9.:-]* | https://) echo "CSP_STORAGE_ORIGIN must be a bare https origin" >&2; exit 1 ;; \
+      https://*) sed -i "s# https:;# ${CSP_STORAGE_ORIGIN};#g" /etc/nginx/snippets/security-headers.conf \
+                 && ! grep -q ' https:;' /etc/nginx/snippets/security-headers.conf ;; \
+      *) echo "CSP_STORAGE_ORIGIN must be a bare https origin" >&2; exit 1 ;; \
+    esac
+USER nginx
+
 COPY --from=build /app/apps/web/dist/app /usr/share/nginx/html
 COPY --from=build /app/apps/portal/dist/app /usr/share/nginx/html/portal
 
