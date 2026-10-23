@@ -46,6 +46,7 @@ import {
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
+import { patientAdmissionIdentitiesInTx } from "../05-patient/patient-admission-identity";
 import { getMdmEntityProvider } from "../40-mdm/seams";
 import type { ActorSite } from "./actor-site";
 import { createDocumentReaderEvidenceValidator } from "./admission-document-validator";
@@ -2136,8 +2137,11 @@ export function createDbAdmissionRouteService(
           .orderBy(desc(ADM.admissionAt), desc(ADM.id))
           .limit(limit + 1)
           .offset(offset);
-        const items = rows.slice(0, limit).map((r) => ({
+        const pageRows = rows.slice(0, limit);
+        const patients = await patientAdmissionIdentitiesInTx(tx, organizationId, pageRows.map((row) => row.patientId));
+        const items = pageRows.map((r) => ({
           ...toSummary(r),
+          patient: patients.get(r.patientId) ?? null,
           holdReason: r.holdReason ?? null,
           holdAt: r.holdAt ? r.holdAt.toISOString() : null,
           releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
@@ -2210,6 +2214,7 @@ export function createDbAdmissionRouteService(
           .where(eq(ADM.id, id))
           .limit(1);
         if (!adm) return null;
+        const patients = await patientAdmissionIdentitiesInTx(tx, organizationId, [adm.patientId]);
         const readiness = await readinessForAdmission(tx, organizationId, id);
         const legacy = await gateFacts(tx, organizationId, id);
         const activationGate = computeActivationGate(legacy);
@@ -2221,6 +2226,7 @@ export function createDbAdmissionRouteService(
           state: adm.status,
           version: Number(adm.version),
           patientId: adm.patientId,
+          patient: patients.get(adm.patientId) ?? null,
           referralId: adm.referralId,
           readmittedFromAdmissionId: adm.readmittedFromAdmissionId ?? null,
           admissionAt: adm.admissionAt?.toISOString() ?? null,

@@ -19,7 +19,7 @@ function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
 }
 
-function clientFor(): ApiClient {
+function clientFor(patientReadUnavailable = false): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/admissions") {
@@ -30,12 +30,15 @@ function clientFor(): ApiClient {
               state: "pending",
               version: 3,
               patientId: "patient-1",
+              patient: { id: "patient-1", firstName: "Elena", lastName: "Rivera", mrn: "MRN-1001" },
             },
           ],
           nextCursor: null,
         });
       }
       if (path === "/api/v1/patients/{id}") {
+        if (patientReadUnavailable)
+          return { data: undefined, error: { code: "FORBIDDEN" }, response: new Response(null, { status: 403 }) };
         return ok({
           id: "patient-1",
           organizationId: "org-1",
@@ -80,5 +83,12 @@ describe("Admission census", () => {
       "/api/v1/patients/{id}",
       expect.objectContaining({ params: { path: { id: "patient-1" } } }),
     );
+  });
+
+  it("keeps the admission-provided name when the separate patient read fails", async () => {
+    renderCensus(clientFor(true));
+    await waitFor(() => expect(screen.getAllByText("Elena Rivera").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("link", { name: "Elena Rivera" })).toBeNull();
+    expect(screen.getAllByText("…1001").length).toBeGreaterThan(0);
   });
 });

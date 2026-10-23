@@ -3,8 +3,8 @@
 // KPI cards, a labeled filter bar, the admissions table (patient · MRN · admission date · status ·
 // source · hospice physician) and a right drawer for the selected admission: its intake workflow and
 // task checklist from the M6 readiness read, and its key facts. The list route carries only
-// id/state/patient, so each loaded row's admission date, referral link and physician come from the
-// admission detail read; names from the patient read. Admission type, assigned nurse and payer
+// id/state/patient identity, so each loaded row's admission date, referral link and physician come from the
+// admission detail read; DOB for age still comes from the patient read. Admission type, assigned nurse and payer
 // eligibility are not on these reads, so they are not drawn. The server enforces every scope
 // (ADR-0030 — no authz on the frontend).
 import { formatMrn } from "@chartwarden/types";
@@ -35,6 +35,7 @@ interface AdmissionRow {
   state: string;
   version: number;
   patientId?: string | null;
+  patient: { id: string; firstName: string; lastName: string; mrn: string } | null;
 }
 
 interface AdmissionDetail {
@@ -197,7 +198,7 @@ export function AdmissionCensus(): JSX.Element {
     const q = searchQuery.trim().toLowerCase();
     const cutoff = range === "all" ? 0 : Date.now() - Number(range) * DAY;
     return items.filter((a) => {
-      const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
+      const patient = a.patient;
       const d = details[a.id];
       if (source && sourceOf(d) !== source) return false;
       if (cutoff) {
@@ -213,7 +214,7 @@ export function AdmissionCensus(): JSX.Element {
         (d?.hospicePhysician?.displayName ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, patientsById, details, searchQuery, source, range]);
+  }, [items, details, searchQuery, source, range]);
 
   const kpis = useMemo(() => {
     const now = new Date();
@@ -406,9 +407,9 @@ export function AdmissionCensus(): JSX.Element {
               </thead>
               <tbody>
                 {pagedItems.map((a) => {
-                  const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
+                  const patient = a.patient;
                   const name = patientDisplayName(patient, a.patientId);
-                  const age = ageOf(patient?.dob);
+                  const age = ageOf(a.patientId ? patientsById[a.patientId]?.dob : null);
                   const d = details[a.id];
                   const isSelected = selected?.id === a.id;
                   return (
@@ -432,7 +433,7 @@ export function AdmissionCensus(): JSX.Element {
                         <span style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                           <Avatar name={name} />
                           <span style={{ minWidth: 0 }}>
-                            {a.patientId ? (
+                            {a.patientId && patientsById[a.patientId] ? (
                               <Link
                                 to={`/patients/${a.patientId}`}
                                 className="wx-row-title"
@@ -441,7 +442,7 @@ export function AdmissionCensus(): JSX.Element {
                                 {name}
                               </Link>
                             ) : (
-                              <span className="wx-row-title">Unresolved patient</span>
+                              <span className="wx-row-title">{name}</span>
                             )}
                             <span className="wx-row-sub">
                               {age != null ? `${age}y` : patient ? "Age unknown" : "…"}
@@ -511,7 +512,8 @@ export function AdmissionCensus(): JSX.Element {
         <AdmissionDrawer
           key={selected.id}
           admission={selected}
-          patient={selected.patientId ? (patientsById[selected.patientId] ?? null) : null}
+          patient={selected.patient}
+          dob={selected.patientId ? patientsById[selected.patientId]?.dob : null}
           detail={details[selected.id]}
           onClose={() => setDrawerOpen(false)}
           onOpen={() => navigate(`/admissions/${selected.id}`)}
@@ -524,12 +526,14 @@ export function AdmissionCensus(): JSX.Element {
 function AdmissionDrawer({
   admission: a,
   patient,
+  dob,
   detail,
   onClose,
   onOpen,
 }: {
   admission: AdmissionRow;
   patient: PatientSummary | null;
+  dob?: string | null;
   detail?: AdmissionDetail;
   onClose: () => void;
   onOpen: () => void;
@@ -551,7 +555,7 @@ function AdmissionDrawer({
   }, [client, a.id]);
 
   const name = patientDisplayName(patient, a.patientId);
-  const age = ageOf(patient?.dob);
+  const age = ageOf(dob);
   const reqs = readiness?.requirements ?? [];
   const stepDone = (codes: string[]) => {
     const own = reqs.filter((r) => codes.includes(r.code));

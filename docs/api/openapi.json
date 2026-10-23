@@ -18208,6 +18208,7 @@
                           "id",
                           "state",
                           "version",
+                          "patient",
                           "holdReason",
                           "holdAt",
                           "releasedAt"
@@ -18226,6 +18227,36 @@
                             "anyOf": [
                               {
                                 "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patient": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "firstName",
+                                  "lastName",
+                                  "mrn"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "firstName": {
+                                    "type": "string"
+                                  },
+                                  "lastName": {
+                                    "type": "string"
+                                  },
+                                  "mrn": {
+                                    "type": "string"
+                                  }
+                                }
                               },
                               {
                                 "type": "null"
@@ -20977,6 +21008,7 @@
                     "id",
                     "state",
                     "version",
+                    "patient",
                     "readmittedFromAdmissionId",
                     "activationGate"
                   ],
@@ -20992,6 +21024,36 @@
                     },
                     "patientId": {
                       "type": "string"
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "firstName",
+                            "lastName",
+                            "mrn"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "firstName": {
+                              "type": "string"
+                            },
+                            "lastName": {
+                              "type": "string"
+                            },
+                            "mrn": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "referralId": {
                       "anyOf": [
