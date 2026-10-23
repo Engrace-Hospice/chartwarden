@@ -6,7 +6,7 @@ import { Button, SelectField, TextAreaField, TextField, useApiClient } from "@ch
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ClaimLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
-import { ActionModal, ErrorAlert, FormButtons, Hint } from "./action-ui";
+import { ActionModal, ErrorAlert, FormButtons, Hint, PhiNotice } from "./action-ui";
 import { AUDIT_AUTHORITY_KINDS, createAuditRequest } from "./audit-api";
 import { humanize } from "./remittance-status";
 
@@ -47,10 +47,25 @@ export function AuditIntakeModal({
 
   // A claim carries its own provider entity; the entity is only asked for when no claim is linked.
   const needsEntity = claimIds.length === 0;
-  const blocked =
-    receivedOn === "" ||
-    (authorityKind === "other" && authorityName.trim() === "") ||
-    (needsEntity && providerEntityId === "");
+  const blockedReason = blockedReasonFor();
+  const blocked = blockedReason !== null;
+  const claimList = useRef<HTMLUListElement>(null);
+
+  // The picker remounts after each pick, which drops focus to <body>: hand it to the linked-claims list.
+  useEffect(() => {
+    if (pickerKey > 0) claimList.current?.focus();
+  }, [pickerKey]);
+
+  function blockedReasonFor(): string | null {
+    if (receivedOn === "") return "Enter the date the request was received.";
+    if (authorityKind === "other" && authorityName.trim() === "") {
+      return "Enter the authority name when the authority is Other.";
+    }
+    if (needsEntity && providerEntityId === "") {
+      return "Add a claim, or choose a provider entity when no claim is linked.";
+    }
+    return null;
+  }
 
   async function submit(): Promise<void> {
     setBusy(true);
@@ -115,6 +130,7 @@ export function AuditIntakeModal({
         rows={3}
         maxLength={2000}
       />
+      <PhiNotice />
       <ClaimLookupField
         key={pickerKey}
         label="Add a claim"
@@ -126,7 +142,12 @@ export function AuditIntakeModal({
         }}
       />
       {claimIds.length > 0 ? (
-        <ul className="wx-action-hint wx-action-list" aria-label="Linked claims">
+        <ul
+          className="wx-action-hint wx-action-list"
+          aria-label="Linked claims"
+          ref={claimList}
+          tabIndex={-1}
+        >
           {claims.map((c) => (
             <li key={c.id}>
               {c.label}{" "}
@@ -157,6 +178,7 @@ export function AuditIntakeModal({
         submitLabel="Log request"
         busy={busy}
         blocked={blocked}
+        blockedReason={blockedReason ?? undefined}
         onSubmit={() => void submit()}
         onCancel={onClose}
       />

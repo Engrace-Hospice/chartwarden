@@ -12,13 +12,24 @@ import {
 // the detail record, the recorded deadlines (each with its source note), and for federal court only the counsel's
 // filing date and docket reference (record-only: no packet, no submit). The disposition kind is a label; a remand or
 // dismissal reads "needs manual review" and nothing is created from it. The amount in controversy is stored only.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
-import { ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
+import {
+  BlockedReason,
+  ButtonRow,
+  ErrorAlert,
+  Facts,
+  Hint,
+  NoticeAlert,
+  PhiNotice,
+  RetryAlert,
+  WarningAlert,
+} from "./action-ui";
 import {
   DISPOSITION_KINDS,
   type LaterTierDetailInput,
   type LaterTierView,
+  isConflict,
   loadLaterTier,
   saveLaterTierDetail,
 } from "./audit-api";
@@ -78,12 +89,18 @@ function bodyFor(tier: string, f: Form): LaterTierDetailInput {
   };
 }
 
-export function LaterTierPanel({
+/** Keyed by appeal: switching to another appeal resets the form, the view and every message. */
+export function LaterTierPanel(props: LaterTierPanelProps): JSX.Element {
+  return <LaterTierPanelBody key={props.appealId} {...props} />;
+}
+
+function LaterTierPanelBody({
   appealId,
   appealState,
   onChanged,
 }: LaterTierPanelProps): JSX.Element {
   const client = useApiClient();
+  const blockedId = useId();
   const [view, setView] = useState<LaterTierView | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,28 +115,39 @@ export function LaterTierPanel({
     };
   }, []);
 
-  const load = useCallback(async () => {
-    const res = await loadLaterTier(client, appealId);
-    if (!mounted.current) return;
-    if (!res.ok) {
-      setLoadError(res.message);
-      return;
-    }
-    if (!Array.isArray(res.value.deadlines)) {
-      setLoadError("Later-tier record unavailable: unexpected response.");
-      return;
-    }
-    setLoadError(null);
-    setView(res.value);
-    setForm(formFrom(res.value));
-  }, [client, appealId]);
+  // `reseed` re-fills the form from the server: only on the first load and after this panel's own successful save.
+  // A reload for any other reason (a deadline changed, a version conflict) must keep what is being typed.
+  // A failed reload keeps the last good view; the error shows inline, with Retry only when there is no view yet.
+  const load = useCallback(
+    async (reseed: boolean) => {
+      const res = await loadLaterTier(client, appealId);
+      if (!mounted.current) return;
+      if (!res.ok) {
+        setLoadError(res.message);
+        return;
+      }
+      if (!Array.isArray(res.value.deadlines)) {
+        setLoadError("Later-tier record unavailable: unexpected response.");
+        return;
+      }
+      setLoadError(null);
+      setView(res.value);
+      if (reseed) setForm(formFrom(res.value));
+    },
+    [client, appealId],
+  );
 
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
-  if (loadError) return <ErrorAlert message={loadError} />;
-  if (!view) return <LoadingSpinner />;
+  if (!view) {
+    return loadError ? (
+      <RetryAlert message={loadError} onRetry={() => void load(true)} />
+    ) : (
+      <LoadingSpinner />
+    );
+  }
 
   const federal = view.tier === "federal_court";
   const editable = !["closed", "withdrawn"].includes(appealState);
@@ -143,10 +171,12 @@ export function LaterTierPanel({
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
+      // The detail moved under us: fetch the new version, but keep the typed values for the retry.
+      if (isConflict(res)) await load(false);
       return;
     }
     setNotice("Saved.");
-    await load();
+    await load(true);
     onChanged();
   }
 
@@ -167,7 +197,8 @@ export function LaterTierPanel({
             : []),
         ]}
       />
-      {view.needsManualReview ? <ErrorAlert message={NOTHING_SPAWNS} /> : null}
+      {loadError ? <ErrorAlert message={loadError} /> : null}
+      {view.needsManualReview ? <WarningAlert>{NOTHING_SPAWNS}</WarningAlert> : null}
       {federal ? (
         <>
           <TextField
@@ -237,15 +268,28 @@ export function LaterTierPanel({
           />
         </>
       )}
+      <PhiNotice />
       <Hint>{NOT_COMPUTED}</Hint>
       <ErrorAlert message={error} />
       <NoticeAlert message={notice} />
       {editable ? (
-        <ButtonRow end>
-          <Button size="sm" onClick={() => void save()} disabled={busy || amountBad}>
-            {busy ? "Working…" : view.detail ? "Save details" : "Record details"}
-          </Button>
-        </ButtonRow>
+        <>
+          {amountBad ? (
+            <BlockedReason id={blockedId}>
+              Amount in controversy must be whole cents (digits only).
+            </BlockedReason>
+          ) : null}
+          <ButtonRow end>
+            <Button
+              size="sm"
+              onClick={() => void save()}
+              disabled={busy || amountBad}
+              aria-describedby={amountBad ? blockedId : undefined}
+            >
+              {busy ? "Working…" : view.detail ? "Save details" : "Record details"}
+            </Button>
+          </ButtonRow>
+        </>
       ) : null}
       <RecordedDeadlines
         subject={{ kind: "appeal", id: appealId }}
@@ -253,7 +297,7 @@ export function LaterTierPanel({
         allowNoticeDocument
         editable={editable}
         onChanged={() => {
-          void load();
+          void load(false);
           onChanged();
         }}
       />

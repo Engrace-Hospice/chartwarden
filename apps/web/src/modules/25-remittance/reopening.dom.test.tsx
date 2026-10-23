@@ -1,8 +1,8 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — milestone 3 denial routing and MAC reopenings. Asserts on RECORDED FETCH CALLS
 // (method, path, If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires
 // still fails. The server owns every rule and its refusal is shown verbatim; the filing form survives step-up.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
@@ -251,12 +251,15 @@ describe("M25 denial path", () => {
     routeFails = true;
     mount();
     expect(await screen.findByText("route read failed")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    // The case timeline (also unreadable in this stub) has its own Retry above the path section's.
+    const retry = (): HTMLElement =>
+      screen.getAllByRole("button", { name: "Retry" }).at(-1) as HTMLElement;
+    expect(retry()).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Open appeal" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     routeFails = false;
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(retry());
     expect(await screen.findByText("MAC reopening")).toBeTruthy();
   });
 

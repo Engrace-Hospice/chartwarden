@@ -3,18 +3,18 @@ import { LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // recorded deadline, audit request and submission on one claim, newest first, with the next deadline on top. Dates
 // shown come from the API as computed or as recorded from a notice, and say which. A claim with no recorded due date
 // is flagged loudly, never given a default.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { Hint } from "./action-ui";
+import { ErrorAlert, Hint, RetryAlert } from "./action-ui";
 import { type CaseView, type TimelineItem, loadCaseView } from "./audit-api";
 import { NOT_COMPUTED, NoDueDateAlert } from "./recorded-deadlines";
-import { humanize } from "./remittance-status";
+import { formatDay, humanize } from "./remittance-status";
 
 const UNCONFIRMED = "Window not SME-confirmed";
 
 function deadlineText(item: TimelineItem): string {
   if (!item.deadlineAt) return "";
-  const day = new Date(item.deadlineAt).toLocaleDateString();
+  const day = formatDay(item.deadlineAt);
   return item.deadlineSource === "recorded" ? `${day} (from your notice)` : `${day} (computed)`;
 }
 
@@ -22,7 +22,7 @@ function Row({ item }: { readonly item: TimelineItem }): JSX.Element {
   return (
     <li>
       <strong>{humanize(item.kind)}</strong> · {item.label} · {humanize(item.state)}
-      {item.tier ? ` · ${humanize(item.tier)}` : ""} · {new Date(item.at).toLocaleDateString()}
+      {item.tier ? ` · ${humanize(item.tier)}` : ""} · {formatDay(item.at)}
       {item.deadlineAt ? ` · due ${deadlineText(item)}` : ""}
       {item.deadlineAt && !item.windowConfirmed ? (
         <>
@@ -34,31 +34,55 @@ function Row({ item }: { readonly item: TimelineItem }): JSX.Element {
   );
 }
 
-export function CaseViewPanel({ claimId }: { readonly claimId: string }): JSX.Element {
+export interface CaseViewPanelProps {
+  readonly claimId: string;
+  /**
+   * Changes whenever something on this claim was written (a version, a counter): the timeline is read again and
+   * the last good timeline stays on screen while it does.
+   */
+  readonly refreshKey?: string | number;
+}
+
+export function CaseViewPanel({ claimId, refreshKey }: CaseViewPanelProps): JSX.Element {
   const client = useApiClient();
   const [view, setView] = useState<CaseView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0);
 
-  useEffect(() => {
-    let live = true;
-    void loadCaseView(client, claimId).then((res) => {
-      if (!live) return;
-      if (res.ok && Array.isArray(res.value.items)) setView(res.value);
-      else if (res.ok) setError("unexpected response");
-      else setError(res.message);
-    });
-    return () => {
-      live = false;
-    };
+  const load = useCallback(async () => {
+    latest.current += 1;
+    const seq = latest.current;
+    const res = await loadCaseView(client, claimId);
+    if (seq !== latest.current) return; // a newer read (or unmount) superseded this one
+    if (res.ok && Array.isArray(res.value.items)) {
+      setView(res.value);
+      setError(null);
+    } else setError(res.ok ? "unexpected response" : res.message);
   }, [client, claimId]);
 
-  if (error) return <Hint>Case timeline unavailable: {error}</Hint>;
-  if (!view) return <LoadingSpinner />;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the explicit "read again" trigger
+  useEffect(() => {
+    void load();
+    return () => {
+      latest.current += 1;
+    };
+  }, [load, refreshKey]);
+
+  if (!view) {
+    return error ? (
+      <section aria-label="Case timeline">
+        <RetryAlert message={`Case timeline unavailable: ${error}`} onRetry={() => void load()} />
+      </section>
+    ) : (
+      <LoadingSpinner />
+    );
+  }
 
   const next = view.nextDeadline;
   return (
     <section aria-label="Case timeline">
       <h3 className="wx-action-title">Case timeline</h3>
+      {error ? <ErrorAlert message={`Case timeline could not be refreshed: ${error}`} /> : null}
       {next ? (
         <p className="wx-action-hint">
           <strong>Next deadline:</strong> {next.label} · {deadlineText(next)}

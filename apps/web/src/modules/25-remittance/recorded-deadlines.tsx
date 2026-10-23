@@ -4,29 +4,23 @@ import { Button, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
 // notice. The app computes nothing and applies no default: no deadline recorded reads as exactly that, loudly.
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint } from "./action-ui";
+import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint, PhiNotice } from "./action-ui";
 import {
   type DeadlineSubject,
   type RecordedDeadlineView,
   addRecordedDeadline,
   editRecordedDeadline,
+  isConflict,
   satisfyRecordedDeadline,
 } from "./audit-api";
 import { isUuid } from "./remittance-api";
-import { RECORDED_DEADLINE_TONE, humanize, toneOf } from "./remittance-status";
+import { RECORDED_DEADLINE_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 
 export const NOT_COMPUTED = "From your notice, not a computed CMS date.";
 export const NO_DUE_DATE = "No due date recorded - enter it from the notice";
 
 export function NoDueDateAlert(): JSX.Element {
-  return (
-    <output
-      className="wx-action-hint"
-      style={{ display: "block", color: "var(--color-error)", fontWeight: 600 }}
-    >
-      {NO_DUE_DATE}
-    </output>
-  );
+  return <output className="wx-action-hint is-alert">{NO_DUE_DATE}</output>;
 }
 
 export interface RecordedDeadlinesProps {
@@ -45,12 +39,27 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
   const client = useApiClient();
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
+  const [satisfyingId, setSatisfyingId] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   async function satisfy(d: RecordedDeadlineView): Promise<void> {
+    if (satisfyingId) return;
     setError(null);
+    setSatisfyingId(d.id);
     const res = await satisfyRecordedDeadline(client, props.subject, d);
-    if (!res.ok) setError(res.message);
-    else props.onChanged();
+    if (!mounted.current) return;
+    setSatisfyingId(null);
+    if (!res.ok) {
+      setError(res.message);
+      // The deadline moved under us: reload so the next attempt carries the new version.
+      if (isConflict(res)) props.onChanged();
+    } else props.onChanged();
   }
 
   return (
@@ -66,14 +75,16 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
               <th>Due</th>
               <th>Status</th>
               <th>Source</th>
-              <th />
+              <th>
+                <span className="wx-sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {props.deadlines.map((d) => (
               <tr key={d.id}>
                 <td>{d.label}</td>
-                <td>{d.dueOn}</td>
+                <td>{formatDay(d.dueOn)}</td>
                 <td>
                   <StatusPill
                     label={humanize(d.status)}
@@ -88,6 +99,7 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
                         size="sm"
                         tone="tertiary"
                         aria-label={`Edit deadline ${d.label}`}
+                        disabled={satisfyingId !== null}
                         onClick={() => setEditing({ deadline: d })}
                       >
                         Edit
@@ -96,9 +108,10 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
                         size="sm"
                         tone="secondary"
                         aria-label={`Mark ${d.label} satisfied`}
+                        disabled={satisfyingId !== null}
                         onClick={() => void satisfy(d)}
                       >
-                        Mark satisfied
+                        {satisfyingId === d.id ? "Working…" : "Mark satisfied"}
                       </Button>
                     </ButtonRow>
                   ) : null}
@@ -119,8 +132,12 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
       {editing ? (
         <DeadlineModal
           {...props}
-          deadline={editing.deadline}
+          deadline={
+            // The live row, so a reload after a version conflict hands the modal the new version.
+            props.deadlines.find((d) => d.id === editing.deadline?.id) ?? editing.deadline
+          }
           onClose={() => setEditing(null)}
+          onReload={props.onChanged}
           onDone={() => {
             setEditing(null);
             props.onChanged();
@@ -131,11 +148,26 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
   );
 }
 
+/** The first thing still missing before a deadline can be recorded, or null when the form is complete. */
+function blockedReasonFor(
+  label: string,
+  dueOn: string,
+  sourceNote: string,
+  noticeBad: boolean,
+): string | null {
+  if (label.trim() === "") return "Enter what is due.";
+  if (dueOn === "") return "Enter the due date from the notice.";
+  if (sourceNote.trim() === "") return "Say which notice this date came from (source note).";
+  if (noticeBad) return "The notice document ID must be a UUID.";
+  return null;
+}
+
 function DeadlineModal(
   props: RecordedDeadlinesProps & {
     readonly deadline: RecordedDeadlineView | null;
     readonly onClose: () => void;
     readonly onDone: () => void;
+    readonly onReload: () => void;
   },
 ): JSX.Element {
   const client = useApiClient();
@@ -157,7 +189,8 @@ function DeadlineModal(
   const noticeBad =
     props.allowNoticeDocument && noticeDocumentId.trim() !== "" && !isUuid(noticeDocumentId);
   // The source note is mandatory: a date without the notice it came from is not recorded.
-  const blocked = label.trim() === "" || dueOn === "" || sourceNote.trim() === "" || noticeBad;
+  const blockedReason = blockedReasonFor(label, dueOn, sourceNote, noticeBad);
+  const blocked = blockedReason !== null;
 
   async function submit(): Promise<void> {
     setBusy(true);
@@ -179,8 +212,11 @@ function DeadlineModal(
         });
     if (!mounted.current) return;
     setBusy(false);
-    if (!res.ok) setError(res.message);
-    else props.onDone();
+    if (!res.ok) {
+      setError(res.message);
+      // The deadline moved under us: reload (typed values stay) so the retry carries the new version.
+      if (isConflict(res)) props.onReload();
+    } else props.onDone();
   }
 
   return (
@@ -217,12 +253,14 @@ function DeadlineModal(
           error={noticeBad ? "Enter a document UUID." : undefined}
         />
       ) : null}
+      <PhiNotice />
       <Hint>{NOT_COMPUTED}</Hint>
       <ErrorAlert message={error} />
       <FormButtons
         submitLabel={deadline ? "Save deadline" : "Record deadline"}
         busy={busy}
         blocked={blocked}
+        blockedReason={blockedReason ?? undefined}
         onSubmit={() => void submit()}
         onCancel={props.onClose}
       />

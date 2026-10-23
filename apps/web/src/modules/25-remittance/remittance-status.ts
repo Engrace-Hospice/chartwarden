@@ -177,3 +177,22 @@ export function money(value: string | number | null | undefined): string {
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
+
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+/**
+ * A calendar day for display. A date-only string (YYYY-MM-DD) is a day, not an instant: formatting it through
+ * `new Date(str)` parses it as UTC midnight and shows the previous day west of Greenwich, so it is formatted in UTC.
+ * A full timestamp is an instant and is shown in the viewer's zone.
+ */
+export function formatDay(value: string | null | undefined): string {
+  if (!value) return "—";
+  const m = DATE_ONLY.exec(value);
+  if (m) {
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString(
+      undefined,
+      { timeZone: "UTC" },
+    );
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString();
+}

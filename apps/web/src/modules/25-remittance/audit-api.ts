@@ -35,6 +35,9 @@ export const DISPOSITION_KINDS = ["decision", "remand", "dismissal", "other"] as
 export const isLaterTier = (tier: string): boolean =>
   (LATER_TIERS as readonly string[]).includes(tier);
 
+/** A 409 on a versioned write means the record moved: reload it so the next attempt carries the fresh version. */
+export const isConflict = (res: { readonly status: number | null }): boolean => res.status === 409;
+
 /** The two subjects a recorded deadline can hang off; each has its own route family and permission. */
 export type DeadlineSubject = { kind: "appeal" | "audit"; id: string };
 
@@ -205,12 +208,14 @@ export async function patchAuditRequest(
 export async function linkAuditClaim(
   client: ApiClient,
   id: string,
+  version: number,
   claimId: string,
   dateOfServiceNote?: string,
 ): Promise<WriteResult<{ id: string }>> {
   return guarded(async () => {
     const { data, error, response } = await client.POST("/api/v1/audit-requests/{id}/claims", {
       params: { path: { id } },
+      headers: ifMatch(version),
       body: { claimId, ...(dateOfServiceNote ? { dateOfServiceNote } : {}) },
     });
     return error || !data ? failure(response?.status, error) : ok(data);
@@ -220,12 +225,13 @@ export async function linkAuditClaim(
 export async function unlinkAuditClaim(
   client: ApiClient,
   id: string,
+  version: number,
   claimId: string,
 ): Promise<WriteResult<{ id: string }>> {
   return guarded(async () => {
     const { data, error, response } = await client.DELETE(
       "/api/v1/audit-requests/{id}/claims/{claimId}",
-      { params: { path: { id, claimId } } },
+      { params: { path: { id, claimId } }, headers: ifMatch(version) },
     );
     return error || !data ? failure(response?.status, error) : ok(data);
   });
@@ -246,4 +252,21 @@ export async function moveAuditRequest(
     });
     return error || !data ? failure(response?.status, error) : ok(data);
   });
+}
+
+/** A linked claim's control number (the audit detail returns claim ids only); null when it cannot be read. */
+export async function loadClaimControlNumber(
+  client: ApiClient,
+  claimId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await client.GET("/api/v1/billing/claims/{id}", {
+      params: { path: { id: claimId } },
+    });
+    const control = (data as { claimControlNumber?: string | null } | undefined)
+      ?.claimControlNumber;
+    return error || !control ? null : control;
+  } catch {
+    return null;
+  }
 }

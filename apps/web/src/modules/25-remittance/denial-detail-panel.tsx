@@ -255,7 +255,13 @@ export function DenialDetailPanel({
             ]}
           />
           <NoticeAlert message={notice} />
-          {denial.claimId ? <CaseViewPanel key={denial.claimId} claimId={denial.claimId} /> : null}
+          {denial.claimId ? (
+            <CaseViewPanel
+              key={denial.claimId}
+              claimId={denial.claimId}
+              refreshKey={refreshToken}
+            />
+          ) : null}
           <DenialRoutePanel
             key={denialId}
             denialId={denialId}

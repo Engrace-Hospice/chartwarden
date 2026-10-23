@@ -350,6 +350,12 @@
     font-size: 0.8125rem;
     color: var(--color-on-surface-variant);
   }
+  /* A required-but-missing fact stated loudly (e.g. no recorded due date): bold error colour, never a default. */
+  .wx-action-hint.is-alert {
+    display: block;
+    color: var(--color-error);
+    font-weight: 600;
+  }
   .wx-action-row {
     display: flex;
     flex-wrap: wrap;

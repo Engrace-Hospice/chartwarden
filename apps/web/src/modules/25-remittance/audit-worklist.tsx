@@ -21,7 +21,7 @@ import { type AuditRequestSummary, loadAuditRequests } from "./audit-api";
 import { AuditDetailPanel } from "./audit-detail-panel";
 import { AuditIntakeModal } from "./audit-forms";
 import { NO_DUE_DATE } from "./recorded-deadlines";
-import { AUDIT_DUE_TONE, AUDIT_STATE_TONE, humanize, toneOf } from "./remittance-status";
+import { AUDIT_DUE_TONE, AUDIT_STATE_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 
 const STATE_FILTERS = [
   "all",
@@ -55,15 +55,16 @@ export function AuditWorklist(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // A failed reload keeps the rows already shown (stale beats blank); the error shows inline once.
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     const res = await loadAuditRequests(client);
     if (!res.ok) {
       setError(res.message);
       setLoading(false);
       return;
     }
+    setError(null);
     setRows(res.value);
     setLoading(false);
   }, [client]);
@@ -80,7 +81,8 @@ export function AuditWorklist(): JSX.Element {
   const noDueDate = rows.filter(hasNoDueDate);
   const now = Date.now();
   const dueSoon = rows.filter((r) => isDueWithinWeek(r, now));
-  const shown = (n: number): string | number => (loading || error ? "—" : n);
+  const noData = rows.length === 0 && (loading || error !== null);
+  const shown = (n: number): string | number => (noData ? "—" : n);
 
   return (
     <>
@@ -124,7 +126,7 @@ export function AuditWorklist(): JSX.Element {
         }
         filters={
           <div style={filterRowStyle}>
-            {error ? (
+            {error && rows.length > 0 ? (
               <div role="alert" style={errorBannerStyle}>
                 <Glyph name="alert" size={16} />
                 <span>{error}</span>
@@ -155,13 +157,21 @@ export function AuditWorklist(): JSX.Element {
           </div>
         }
         table={
-          loading ? (
+          rows.length === 0 && loading ? (
             <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
               <LoadingSpinner />
             </div>
-          ) : error ? (
+          ) : rows.length === 0 && error ? (
             <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState title="Unavailable" description={error} />
+              <EmptyState
+                title="Unavailable"
+                description={error}
+                action={
+                  <Button size="sm" tone="secondary" onClick={() => void load()}>
+                    Retry
+                  </Button>
+                }
+              />
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: "2rem 1.5rem" }}>
@@ -185,7 +195,9 @@ export function AuditWorklist(): JSX.Element {
                     <th style={headStyle}>State</th>
                     <th style={headStyle}>Claims</th>
                     <th style={headStyle}>Due</th>
-                    <th style={headStyle}>Work</th>
+                    <th style={headStyle}>
+                      <span className="wx-sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -195,7 +207,7 @@ export function AuditWorklist(): JSX.Element {
                       <tr key={r.id} style={rowStyle}>
                         <td style={cellStyle}>{name}</td>
                         <td style={cellStyle}>{r.requestReference ?? "—"}</td>
-                        <td style={cellStyle}>{r.receivedOn}</td>
+                        <td style={cellStyle}>{formatDay(r.receivedOn)}</td>
                         <td style={cellStyle}>
                           <StatusPill
                             label={humanize(r.state)}

@@ -14,18 +14,21 @@ import {
   FormButtons,
   Hint,
   NoticeAlert,
+  RetryAlert,
 } from "./action-ui";
 import {
   type AuditRequestDetail,
   type AuditRequestState,
+  isConflict,
   linkAuditClaim,
   loadAuditRequest,
+  loadClaimControlNumber,
   moveAuditRequest,
   unlinkAuditClaim,
 } from "./audit-api";
 import { CaseViewPanel } from "./case-view-panel";
 import { RecordedDeadlines } from "./recorded-deadlines";
-import { AUDIT_DUE_TONE, AUDIT_STATE_TONE, humanize, toneOf } from "./remittance-status";
+import { AUDIT_DUE_TONE, AUDIT_STATE_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 
 /** Mirrors the backend machine only to offer the legal moves; the server still decides. */
 const MOVES: Record<string, readonly AuditRequestState[]> = {
@@ -35,6 +38,51 @@ const MOVES: Record<string, readonly AuditRequestState[]> = {
   responded: ["closed", "withdrawn"],
 };
 const TERMINAL = new Set(["closed", "withdrawn"]);
+
+/** The detail returns claim ids only: the control number is read through the billing claim read, id prefix as fallback. */
+function LinkedClaim({
+  claimId,
+  dateOfServiceNote,
+  canUnlink,
+  busy,
+  onUnlink,
+}: {
+  readonly claimId: string;
+  readonly dateOfServiceNote: string | null;
+  readonly canUnlink: boolean;
+  readonly busy: boolean;
+  readonly onUnlink: () => void;
+}): JSX.Element {
+  const client = useApiClient();
+  const [control, setControl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadClaimControlNumber(client, claimId).then((c) => {
+      if (live) setControl(c);
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, claimId]);
+  const name = control ?? claimId.slice(0, 8);
+  return (
+    <li>
+      {name}
+      {dateOfServiceNote ? ` · ${dateOfServiceNote}` : ""}{" "}
+      {canUnlink ? (
+        <Button
+          size="sm"
+          tone="tertiary"
+          aria-label={`Unlink claim ${name}`}
+          disabled={busy}
+          onClick={onUnlink}
+        >
+          Unlink
+        </Button>
+      ) : null}
+    </li>
+  );
+}
 
 export function AuditDetailPanel({
   auditId,
@@ -54,6 +102,11 @@ export function AuditDetailPanel({
   const [respondedAt, setRespondedAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [pickerKey, setPickerKey] = useState(0);
+  // Claim link/unlink in flight (one at a time): disables the picker and the Unlink buttons.
+  const [claimBusy, setClaimBusy] = useState(false);
+  const claimsHeading = useRef<HTMLHeadingElement>(null);
+  const moveHeading = useRef<HTMLHeadingElement>(null);
+  const moveSeen = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -62,6 +115,7 @@ export function AuditDetailPanel({
     };
   }, []);
 
+  // A failed reload keeps the last good request on screen; the error shows inline (Retry only when nothing loaded yet).
   const load = useCallback(async () => {
     const res = await loadAuditRequest(client, auditId);
     if (!mounted.current) return;
@@ -70,6 +124,19 @@ export function AuditDetailPanel({
       setLoadError(null);
     } else setLoadError(res.message);
   }, [client, auditId]);
+
+  // A remounted claim picker (and a collapsed move form) drops focus to <body>: hand it to the section heading.
+  useEffect(() => {
+    if (pickerKey > 0) claimsHeading.current?.focus();
+  }, [pickerKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `move` is the trigger; the effect only moves focus
+  useEffect(() => {
+    if (!moveSeen.current) {
+      moveSeen.current = true;
+      return;
+    }
+    moveHeading.current?.focus();
+  }, [move]);
 
   useEffect(() => {
     void load();
@@ -81,19 +148,35 @@ export function AuditDetailPanel({
   }
 
   async function addClaim(claimId: string): Promise<void> {
+    if (claimBusy || !audit) return;
     setError(null);
     setNotice(null);
-    const res = await linkAuditClaim(client, auditId, claimId);
+    setClaimBusy(true);
+    const res = await linkAuditClaim(client, auditId, audit.version, claimId);
+    if (!mounted.current) return;
     setPickerKey((k) => k + 1);
-    if (!res.ok) setError(res.message);
-    else await refresh();
+    if (!res.ok) {
+      setError(res.message);
+      // A stale version: reload so the next attempt carries the request's new version.
+      if (isConflict(res)) await load();
+    } else await refresh();
+    if (mounted.current) setClaimBusy(false);
   }
 
   async function removeClaim(claimId: string): Promise<void> {
+    if (claimBusy || !audit) return;
     setError(null);
-    const res = await unlinkAuditClaim(client, auditId, claimId);
-    if (!res.ok) setError(res.message);
-    else await refresh();
+    setClaimBusy(true);
+    const res = await unlinkAuditClaim(client, auditId, audit.version, claimId);
+    if (!mounted.current) return;
+    if (!res.ok) {
+      setError(res.message);
+      if (isConflict(res)) await load();
+    } else await refresh();
+    if (mounted.current) {
+      setClaimBusy(false);
+      claimsHeading.current?.focus();
+    }
   }
 
   async function submitMove(): Promise<void> {
@@ -107,6 +190,8 @@ export function AuditDetailPanel({
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
+      // The request moved under us: fetch its new version; the chosen move and typed time stay for the retry.
+      if (isConflict(res)) await load();
       return;
     }
     setNotice(`Moved to ${humanize(move)}.`);
@@ -117,15 +202,22 @@ export function AuditDetailPanel({
 
   const terminal = audit ? TERMINAL.has(audit.state) : true;
   const firstClaim = audit?.claims[0]?.claimId;
+  // Anything that bumps a version (the request or a deadline) or the claim count changes the case timeline.
+  const caseViewKey = audit
+    ? `${audit.version}:${audit.deadlines.map((d) => d.version).join(",")}:${audit.claims.length}`
+    : "";
 
   return (
     <ActionRail ariaLabel="Audit request" onClose={onClose}>
-      {loadError ? (
-        <ErrorAlert message={loadError} />
-      ) : !audit ? (
-        <LoadingSpinner />
+      {!audit ? (
+        loadError ? (
+          <RetryAlert message={loadError} onRetry={() => void load()} />
+        ) : (
+          <LoadingSpinner />
+        )
       ) : (
         <>
+          {loadError ? <ErrorAlert message={loadError} /> : null}
           <Facts
             items={[
               [
@@ -133,8 +225,8 @@ export function AuditDetailPanel({
                 `${humanize(audit.authorityKind)}${audit.authorityName ? ` · ${audit.authorityName}` : ""}`,
               ],
               ["Reference", audit.requestReference ?? "—"],
-              ["Letter dated", audit.requestDatedOn ?? "—"],
-              ["Received", audit.receivedOn],
+              ["Letter dated", formatDay(audit.requestDatedOn)],
+              ["Received", formatDay(audit.receivedOn)],
               ["Scope", audit.scopeNote ?? "—"],
               [
                 "State",
@@ -165,26 +257,22 @@ export function AuditDetailPanel({
             onChanged={() => void refresh()}
           />
           <section aria-label="Linked claims">
-            <h3 className="wx-action-title">Claims</h3>
+            <h3 className="wx-action-title" ref={claimsHeading} tabIndex={-1}>
+              Claims
+            </h3>
             {audit.claims.length === 0 ? (
               <Hint>No claims linked.</Hint>
             ) : (
               <ul className="wx-action-hint wx-action-list">
                 {audit.claims.map((c) => (
-                  <li key={c.id}>
-                    {c.claimId.slice(0, 8)}
-                    {c.dateOfServiceNote ? ` · ${c.dateOfServiceNote}` : ""}{" "}
-                    {terminal ? null : (
-                      <Button
-                        size="sm"
-                        tone="tertiary"
-                        aria-label={`Unlink claim ${c.claimId.slice(0, 8)}`}
-                        onClick={() => void removeClaim(c.claimId)}
-                      >
-                        Unlink
-                      </Button>
-                    )}
-                  </li>
+                  <LinkedClaim
+                    key={c.id}
+                    claimId={c.claimId}
+                    dateOfServiceNote={c.dateOfServiceNote}
+                    canUnlink={!terminal}
+                    busy={claimBusy}
+                    onUnlink={() => void removeClaim(c.claimId)}
+                  />
                 ))}
               </ul>
             )}
@@ -193,22 +281,33 @@ export function AuditDetailPanel({
                 key={pickerKey}
                 label="Link a claim"
                 value=""
+                disabled={claimBusy}
                 onChange={(id) => {
                   if (id) void addClaim(id);
                 }}
               />
             )}
           </section>
-          {firstClaim ? <CaseViewPanel key={firstClaim} claimId={firstClaim} /> : null}
-          {audit.events.length > 0 ? (
-            <ul className="wx-action-hint wx-action-list">
-              {audit.events.map((e) => (
-                <li key={e.id}>
-                  {humanize(e.eventKind)} — {new Date(e.occurredAt).toLocaleString()}
-                </li>
-              ))}
-            </ul>
+          {firstClaim ? (
+            <CaseViewPanel key={firstClaim} claimId={firstClaim} refreshKey={caseViewKey} />
           ) : null}
+          {audit.events.length > 0 ? (
+            <section aria-label="Audit events">
+              <h3 className="wx-action-title">Events</h3>
+              <ul className="wx-action-hint wx-action-list">
+                {audit.events.map((e) => (
+                  <li key={e.id}>
+                    {humanize(e.eventKind)} — {new Date(e.occurredAt).toLocaleString()}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {terminal ? null : (
+            <h3 className="wx-action-title" ref={moveHeading} tabIndex={-1}>
+              {move === null ? "Move this request" : `Moving to ${humanize(move)}`}
+            </h3>
+          )}
           {terminal ? null : move === null ? (
             <ButtonRow>
               {(MOVES[audit.state] ?? []).map((to) => (
