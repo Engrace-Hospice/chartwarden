@@ -24,7 +24,7 @@ wins until the spec is re-locked.
 | Module specifications (40) | [`modules/`](./modules/) | [`modules/README.md`](./modules/README.md) |
 | Design & UI corpus | [`design/`](./design/) | [`design/README.md`](./design/README.md) |
 | Architecture Decision Records | [`adr/`](./adr/) | [`adr/README.md`](./adr/README.md) |
-| AI capability catalog (18) | [`ai/capabilities/`](./ai/capabilities/) | [below](#ai-capability-catalog) |
+| AI capability catalog (19) | [`ai/capabilities/`](./ai/capabilities/) | [below](#ai-capability-catalog) |
 | Roadmap & phase plans | `docs/*PHASE*` · `IMPLEMENTATION_ROADMAP.md` | [below](#roadmap--phase-plans) |
 | Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
 | Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
@@ -110,7 +110,7 @@ Every ADR lives in [`adr/`](./adr/); the full list (titles, resolved findings, s
 
 ## AI capability catalog
 
-The 18 governed AI capabilities registered against M32 (per
+The 19 governed AI capabilities registered against M32 (per
 [`architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md`](./architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md)),
 in [`ai/capabilities/`](./ai/capabilities/):
 
@@ -133,6 +133,7 @@ in [`ai/capabilities/`](./ai/capabilities/):
 | Bereavement Risk Narrative | [`bereavement-risk-narrative.md`](./ai/capabilities/bereavement-risk-narrative.md) |
 | On-Call Triage Protocol Suggestion | [`protocol-suggestion-oncall.md`](./ai/capabilities/protocol-suggestion-oncall.md) |
 | Denial Outcome / Appeal Prediction | [`denial-outcome-prediction.md`](./ai/capabilities/denial-outcome-prediction.md) |
+| ADR Documentation Readiness (advisory) | [`adr-documentation-readiness.md`](./ai/capabilities/adr-documentation-readiness.md) |
 | Aggregate Cap Projection | [`aggregate-cap-projection.md`](./ai/capabilities/aggregate-cap-projection.md) |
 
 ---

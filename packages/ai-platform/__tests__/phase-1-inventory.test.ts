@@ -98,11 +98,11 @@ describe("§2.3 backend inventory", () => {
 });
 
 describe("§2.4 capability inventory", () => {
-  it("registers seventeen, not the spec's stated eighteen", () => {
+  it("registers eighteen: the seventeen the architecture catalog reconciles to, plus adr_documentation_readiness", () => {
     // §2.4 arrives at 18 by counting mortality and decline separately; the architecture's enforced
     // catalog joins them into one `mortality-decline-prediction`, and architecture wins on conflict.
-    expect(AI_PHASE_1_CAPABILITIES).toHaveLength(17);
-    expect(new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.capabilityKey)).size).toBe(17);
+    expect(AI_PHASE_1_CAPABILITIES).toHaveLength(18);
+    expect(new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.capabilityKey)).size).toBe(18);
     expect(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).toContain(
       "prediction-capability-count-does-not-reconcile",
     );
@@ -131,9 +131,15 @@ describe("§2.4 capability inventory", () => {
   });
 
   it("leaves the tabular-ML capabilities backend-less rather than inventing a key", () => {
-    const backendless = AI_PHASE_1_CAPABILITIES.filter((c) => c.defaultBackendKey === null).map(
-      (c) => c.capabilityKey,
-    );
+    // `adr_documentation_readiness` is also backend-less, but because NO vendor or model has been
+    // chosen (decision D1), not because it is tabular ML, so it is not part of the tabular-ML gap.
+    const backendless = AI_PHASE_1_CAPABILITIES.filter(
+      (c) => c.defaultBackendKey === null && c.capabilityKey !== "adr_documentation_readiness",
+    ).map((c) => c.capabilityKey);
+    expect(
+      AI_PHASE_1_CAPABILITIES.find((c) => c.capabilityKey === "adr_documentation_readiness")
+        ?.defaultBackendKey,
+    ).toBeNull();
     expect(backendless.sort()).toEqual([
       "denial_outcome_prediction",
       "falls_risk_prediction",

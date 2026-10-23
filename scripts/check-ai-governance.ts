@@ -44,6 +44,7 @@ const REQUIRED = [
   "bereavement-risk-narrative",
   "denial-outcome-prediction",
   "level-of-care-prediction",
+  "adr-documentation-readiness",
 ] as const;
 
 interface CatalogEntry {

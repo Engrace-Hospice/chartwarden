@@ -247,6 +247,7 @@ Each AI capability is registered, classified, and tracked. Maintained in `docs/a
 | **Bereavement risk narrative augmentation** | 16 Bereavement | Medium (service intensity, not care) | Module 32 §2.4 |
 | **Denial outcome / appeal probability prediction** | 25 Remittance & Denials | Medium (financial decision support) | Module 32 §2.4 |
 | **Level of care prediction** | 32 (care plan + IDG surfaces) | High (clinical decision support) | Module 32 §2.4 |
+| **ADR documentation readiness** — advisory gap review of an ADR response packet | 25 Remittance & Denials | Medium (compliance decision support; High-class controls; classification pending AI Safety Owner) | Module 32 §2.4 |
 
 The final six were added from Module 32's §2.4 Phase-1 inventory, which had registered them with no
 catalog entry. Every risk class above is inherited from a stated source except **level of care

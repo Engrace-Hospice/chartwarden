@@ -190,3 +190,14 @@ capabilities:
     enabled_by_default: false
     capability_key: level_of_care_prediction
     doc: docs/ai/capabilities/level-of-care-prediction.md
+
+  # risk_class is the RECOMMENDED DEFAULT (medium, with High-class controls), pending the AI Safety
+  # Owner's decision; the alternative is high. See the capability doc's Risk Classification section.
+  - id: adr-documentation-readiness
+    name: ADR documentation readiness (advisory)
+    module: 25
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: adr_documentation_readiness
+    doc: docs/ai/capabilities/adr-documentation-readiness.md
