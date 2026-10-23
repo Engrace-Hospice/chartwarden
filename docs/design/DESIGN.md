@@ -16,12 +16,13 @@ Scope: The token system, component patterns, and hard rules for every ChartWarde
 > **Implementation source of truth:** the tokens below are mirrored in
 > [`packages/ui/src/core/theme/colors.ts`](../../packages/ui/src/core/theme/colors.ts) and the
 > Tailwind v4 `@theme` block in [`apps/web/src/index.css`](../../apps/web/src/index.css).
-> **STATUS (2026-08-14): ADOPTED.** The R0/R1 Lantern reconciliation replaced the bootstrap
-> placeholders — both files now carry the Lantern palette (incl. the `.dark` twilight theme), and
-> `arch:design-tokens` keeps `colors.ts` ↔ the `@theme` block in sync. The shipped files also carry
-> post-adoption fixes this doc's §11 predates (the `:root` `--space-*` scale, `--color-on-emphasis`
-> / `--color-scrim`, and the WX-PR-018 WCAG fix moving `--color-muted` to `#726d64`) — so **never
-> paste §11 over `index.css`**; §11 is the adoption-era record. When code and this doc disagree, this doc is the design intent and the code should be reconciled to it.
+> **STATUS (2026-10-23).** Lantern was ADOPTED 2026-08-14; the 2026-09-25 shell redesign then replaced
+> its **color palette** with a clinical blue (§2 now mirrors the shipped tokens). `arch:design-tokens`
+> keeps `colors.ts` ↔ the `@theme` block in sync. The shipped files also carry post-adoption
+> additions §11 predates (the `:root` `--space-*` scale, `--color-on-emphasis` / `--color-scrim`,
+> the WX-PR-018 WCAG `--color-muted`) — so **never paste §11 over `index.css`**; §11 is the
+> adoption-era record. For color, the code is authoritative (product owner, #599); for the other
+> sections, where code and this doc disagree, this doc is the design intent until re-verified.
 
 ---
 
@@ -57,39 +58,54 @@ a formalized **Guardrail, Provenance, and Sensitivity** system that no generic d
 
 ## 2. Color Tokens
 
-ChartWarden color is **warm-neutral canvas + twilight-indigo brand + strictly-semantic accents.**
-Hue carries meaning: indigo = the product/navigation/primary action; green/amber/red = state;
-gold = brand warmth only (never status). Every value ships a light and a dark value.
+> **Palette status (2026-10-23, #599).** The 2026-09-25 shell redesign replaced the original Lantern
+> palette (twilight indigo `#3B45A8` on warm paper `#F6F5F2`) with a **clinical blue on a cool slate
+> canvas**. The product owner confirmed `#1a56eb` as authoritative. The tables in this section now
+> mirror the shipped tokens in `apps/web/src/index.css` and `packages/ui/src/core/theme/colors.ts`;
+> change the code and this section together. Sections other than color (type, spacing, radii,
+> elevation, motion) have **not** been re-verified against the live tokens — treat them as design
+> intent, and check `index.css` before relying on a value. The `docs/design/*.pen` frames still show
+> the original Lantern look (serif headings, cream canvas, indigo) and are **legacy**.
 
-### 2.1 Primary — Twilight Indigo (brand, navigation, primary action)
+ChartWarden color is **cool-slate canvas + clinical-blue brand + strictly-semantic accents.**
+Hue carries meaning: blue = the product/navigation/primary action; green/amber/red = state;
+amber accent = brand warmth only (never status). Every value ships a light and a dark value.
+
+### 2.1 Primary — Clinical Blue (brand, navigation, primary action)
 
 | Token | Light | Dark | Usage |
 | :-- | :-- | :-- | :-- |
-| `primary` | `#3B45A8` | `#AEB4F0` | Primary CTAs, active nav, links, focus accent |
-| `primary-strong` | `#2B338A` | `#8E95E0` | Gradient CTA end, pressed, emphasis fills |
-| `primary-tint` | `#ECEDFB` | `#262A52` | Tinted backgrounds, info surfaces, active-nav fill |
-| `primary-dim` | `#AEB4EC` | `#3A4080` | Subdued primary, hairlines on tint |
-| `on-primary` | `#FFFFFF` | `#13163A` | Text/icons on primary |
+| `primary` | `#1A56EB` | `#7AA2FF` | Primary CTAs, active nav, links, focus accent |
+| `primary-strong` | `#1443C6` | `#9BB8FF` | Gradient CTA end, pressed, emphasis fills |
+| `primary-tint` | `#E6EDFD` | `#16264D` | Tinted backgrounds, info surfaces, active-nav fill |
+| `primary-dim` | `#A9C1F8` | `#1E3A8A` | Subdued primary, hairlines on tint |
+| `on-primary` | `#FFFFFF` | `#0B1120` | Text/icons on primary |
+| `focus-ring` | `#1A56EB` | `#7AA2FF` | Keyboard focus outline |
 
-### 2.2 Accent — Lantern Gold (brand warmth — **non-semantic**)
+### 2.2 Accent — Lantern Amber (brand warmth — **non-semantic**)
 
 | Token | Light | Dark | Usage |
 | :-- | :-- | :-- | :-- |
-| `accent` | `#C98A1F` | `#E7B35A` | The "light": logo mark, the *now*-marker on timelines, empty-state warmth, selected-step glow |
-| `accent-tint` | `#FBF1DD` | `#3A2F16` | Accent background wash |
+| `accent` | `#D97706` | `#F5B544` | The "light": logo mark, the *now*-marker on timelines, empty-state warmth, selected-step glow |
+| `accent-tint` | `#FEF3C7` | `#3A2A10` | Accent background wash |
 
-> **Hard rule:** Lantern Gold is **never** a status color. It does not mean "warning," "pending,"
+> **Hard rule:** Lantern Amber is **never** a status color. It does not mean "warning," "pending,"
 > or "selected-as-success." It is brand warmth. Warnings use `warning` (§2.3), which is a
 > deliberately browner, deeper amber so the two never read as the same signal.
 
 ### 2.3 Semantic — state and outcome
 
-| Token | Light fg / bg | Dark fg / bg | Usage |
+| Token | Light | Dark | Usage |
 | :-- | :-- | :-- | :-- |
-| `success` | `#1F8A5B` / `#E3F4EC` | `#5FD6A0` / `#10331F` | Validation passed, AI-accepted, complete, on-time, posted |
-| `warning` | `#9A5B00` / `#FFF4E0` | `#E0A24A` / `#3A2A0E` | Deadline approaching, advisory, geofence-soft, degraded-input |
-| `error` | `#C12B3B` / `#FBE7E9` | `#F2939E` / `#3A1418` | Validation errors, billing blocks, denials, failed |
-| `alert` | `#E0413F` / `#FCEBEA` | `#FF6B68` / `#3E1513` | **Critical clinical/safety:** DNR/code-status, allergy, controlled-substance, cap **breach**, break-glass, mandatory-report |
+| `success` | `#16A34A` | `#4ADE80` | Validation passed, AI-accepted, complete, on-time, posted |
+| `warning` | `#B45309` | `#FBBF24` | Deadline approaching, advisory, geofence-soft, degraded-input |
+| `error` | `#DC2626` | `#F87171` | Validation errors, billing blocks, denials, failed |
+| `alert` | `#E5484D` | `#FB7185` | **Critical clinical/safety:** DNR/code-status, allergy, controlled-substance, cap **breach**, break-glass, mandatory-report |
+
+> The tint behind each state is derived from the token itself (a 12% mix), not a separate value. A
+> chip's *text* uses the darker `*-pill-fg` variant where the base colour misses AA on its own tint:
+> light `success-pill-fg` `#166534`, `warning-pill-fg` `#92400E`, `error-pill-fg` `#B91C1C`,
+> `alert-pill-fg` `#B42330`; in dark they equal the base token.
 
 > **`error` vs `alert`.** `error` is "this form/claim/transition is wrong — fix it." `alert` is
 > "this is clinically or legally dangerous — stop and look." Allergy banners, DNR/code-status,
@@ -108,34 +124,36 @@ degraded-mode banner (App Shell / System Health). Do not redefine them per scree
 | `health-degraded` | `#92400E` | `#FEF3C7` | `#FCD34D` | Reduced capability (queue lag, integration slow) |
 | `health-outage` | `#991B1B` | `#FEE2E2` | `#FCA5A5` | Subsystem down; degraded-mode active |
 
-### 2.5 Surfaces — warm paper hierarchy
+### 2.5 Surfaces — cool slate hierarchy
 
-ChartWarden's canvas is **warm paper**, not cool clinical grey. Boundaries come from tonal shifts
+ChartWarden's canvas is a **cool slate**, near-white in light and deep navy in dark. Boundaries come from tonal shifts
 in this ramp (see the No-Line rule, §10), never from default 1px lines.
 
 | Token | Light | Dark | Usage |
 | :-- | :-- | :-- | :-- |
-| `background` | `#F6F5F2` | `#15151B` | Page canvas (warm paper / twilight ink) |
-| `surface` | `#F6F5F2` | `#15151B` | Base layer |
-| `surface-container-lowest` | `#FFFFFF` | `#1C1C24` | **Cards / primary content** |
-| `surface-container-low` | `#F1F0EC` | `#21212B` | Secondary sectioning, zebra rows, input rest |
-| `surface-container` | `#ECEAE5` | `#272732` | Default container, hover |
-| `surface-container-high` | `#E5E3DD` | `#30303C` | Secondary buttons, active tabs |
-| `surface-container-highest` | `#DEDBD4` | `#3A3A47` | Critical/selected emphasis only |
+| `background` | `#F7F8FA` | `#0B1120` | Page canvas |
+| `surface` | `#F7F8FA` | `#0B1120` | Base layer |
+| `surface-container-lowest` | `#FFFFFF` | `#111827` | **Cards / primary content** |
+| `surface-container-low` | `#F4F6F9` | `#151E2E` | Secondary sectioning, zebra rows, input rest |
+| `surface-container` | `#EEF1F5` | `#1B2436` | Default container, hover |
+| `surface-container-high` | `#E5E9EF` | `#232E42` | Secondary buttons, active tabs |
+| `surface-container-highest` | `#DCE1E8` | `#2C384E` | Critical/selected emphasis only |
+| `sidebar` | `#F2F5F9` | `#0E1626` | Shell navigation column |
+| `card-border` | `#E4E8EE` | `#222C3E` | Hairline card edge (the redesign uses a hairline, not borderless shadow cards) |
 
 ### 2.6 Text & border
 
 | Token | Light | Dark | Usage |
 | :-- | :-- | :-- | :-- |
-| `on-surface` | `#1C1B1A` | `#ECEAE6` | Primary text (warm near-black) |
-| `on-surface-variant` | `#56524C` | `#B8B4AD` | Secondary text, labels, metadata |
-| `muted` | `#726D64` *(shipped — WX-PR-018 WCAG fix; this doc originally said `#8C877F`, which fails AA)* | `#7E7A72` | Disabled, placeholder |
-| `outline` | `#6E6A62` | `#8A857C` | Active borders, focus rings |
-| `outline-variant` | `#D7D3CB` | `#45444E` | Ghost borders (apply at ≤15% opacity) |
+| `on-surface` | `#0F172A` | `#E5E9F0` | Primary text (slate near-black) |
+| `on-surface-variant` | `#475569` | `#A7B1C2` | Secondary text, labels, metadata |
+| `muted` | `#586476` | `#8B97AB` | Disabled, placeholder (WX-PR-018: holds AA on every surface it sits on) |
+| `outline` | `#94A3B8` | `#6B778C` | Active borders |
+| `outline-variant` | `#DFE4EB` | `#263145` | Ghost borders (apply at ≤15% opacity) |
+| `scrim` | `rgba(15,23,42,.5)` | `rgba(0,0,0,.62)` | Modal / overlay backdrop |
 
-> **No pure black.** Text is `on-surface` (`#1C1B1A`) or `on-surface-variant`. `#000000` is
-> prohibited. The dark base is **twilight ink** (`#15151B`, a hair of indigo), not pure black —
-> the lantern glows warmest against dusk, not void.
+> **No pure black.** Text is `on-surface` (`#0F172A`) or `on-surface-variant`. `#000000` is
+> prohibited. The dark base is **deep navy slate** (`#0B1120`), not pure black.
 
 ---
 
@@ -217,7 +235,7 @@ A patient banner is the name in `headline-md` Fraunces beside `data-md` mono ide
 | :-- | :-- | :-- |
 | `shadow-soft` | `0 4px 24px rgba(28, 27, 26, 0.05)` | Cards, content containers |
 | `shadow-float` | `0 12px 48px rgba(28, 27, 26, 0.10)` | Dropdowns, popovers, ceremonies |
-| `shadow-ambient` | `0 8px 32px rgba(59, 69, 168, 0.06)` | Indigo-tinted float (primary surfaces) |
+| `shadow-ambient` | `0 4px 16px rgba(26, 86, 235, 0.06)` | Blue-tinted float (primary surfaces) (primary surfaces) |
 
 **Glassmorphism** — floating chrome only (nav, modals, command palette, toasts, the
 break-glass banner). Warm white glass in light, twilight glass in dark:
@@ -474,8 +492,9 @@ the clinician *decides*.
 
 ## 11. Dark Mode & Tailwind v4 Tokens
 
-Dark mode is **first-class, not inverted** — a designed *twilight*: `#15151B` ink, indigo
-lifted to `#AEB4F0`, gold to `#E7B35A` so the lantern actually glows. Enabled via the `class`
+Dark mode is **first-class, not inverted** — deep navy `#0B1120`, blue lifted to `#7AA2FF`,
+amber to `#F5B544`. (The §11 block below is the original indigo Lantern spec; the live values are
+in §2.) Enabled via the `class`
 strategy (`.dark` on `<html>`).
 
 ChartWarden is **Tailwind v4 (CSS-first `@theme`)** — tokens are CSS custom properties, not a JS
