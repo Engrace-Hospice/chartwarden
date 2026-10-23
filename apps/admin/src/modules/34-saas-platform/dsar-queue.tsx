@@ -25,6 +25,7 @@ import type { paths } from "@chartwarden/ui";
 // laid out as the redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import { PatientFinder } from "./patient-finder";
 import { DSAR_TONE, cap } from "./saas-status";
 
 // The §164.524 DSAR job view (mirrors the backend DsarExportJobViewSchema).
@@ -135,7 +136,14 @@ export function DsarQueue(): JSX.Element {
         </header>
 
         <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-2">
+          <div className="grid w-full gap-3 md:grid-cols-3">
+            <PatientFinder
+              value={patientId}
+              onPick={(id) => {
+                setPatientId(id);
+                void load(id);
+              }}
+            />
             <TextField
               label="Patient id"
               placeholder="Patient id"
