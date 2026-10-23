@@ -18,13 +18,22 @@ export { buildDrizzleReopeningService, type ReopeningService } from "./reopening
 export { buildDrizzleTpeService, type TpeService } from "./tpe-service";
 export { buildDrizzleQicService, type QicService } from "./qic-service";
 export {
+  buildDrizzleAuditRequestService,
+  type AuditRequestService,
+} from "./audit-request-service";
+export { buildDrizzleLaterTierService, type LaterTierService } from "./later-tier-service";
+export { buildDrizzleCaseViewService, type CaseViewService } from "./case-view-service";
+export {
   buildDrizzleSubmissionService,
   type SubmissionService,
 } from "./submission-service";
 
 import type { M25IngestService } from "../ingest/service";
 import type { AdrService } from "./adr-service";
+import type { AuditRequestService } from "./audit-request-service";
+import type { CaseViewService } from "./case-view-service";
 import type { DenialRouteService } from "./denial-route-service";
+import type { LaterTierService } from "./later-tier-service";
 import type { QicService } from "./qic-service";
 import type { M25ReadService } from "./read-service";
 import type { ReopeningService } from "./reopening-service";
@@ -53,4 +62,10 @@ export interface M25RouteServices {
   readonly qicService?: QicService;
   /** Submission attempts and receipts (milestone 6a); the routes mount only when supplied. */
   readonly submissionService?: SubmissionService;
+  /** Audit request intake (milestone 7a-1); the routes mount only when both audit and later-tier services are supplied. */
+  readonly auditRequestService?: AuditRequestService;
+  /** Later-tier record-keeping + recorded deadlines (milestone 7a-1); the routes mount only when supplied. */
+  readonly laterTierService?: LaterTierService;
+  /** The one claim-keyed case view (milestone 7a-1); the route mounts only when supplied. */
+  readonly caseViewService?: CaseViewService;
 }

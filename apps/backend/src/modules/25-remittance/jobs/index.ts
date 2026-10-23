@@ -5,6 +5,8 @@
 export * from "./m25-jobs";
 export * from "./qic-overdue";
 export * from "./submission-proof-watch";
+export * from "./recorded-deadline-watch";
+export * from "./audit-no-deadline-watch";
 export * from "./queues";
 export {
   type M25WorkerDeps,

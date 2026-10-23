@@ -8,12 +8,13 @@
 import { repositories } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,
   DEFAULT_DEADLINE_ZONE,
   type DenialState,
+  canPacketRender,
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
@@ -228,7 +229,11 @@ export function buildDrizzleM25WriteService(
       );
     }
     if (day > noticeDayOf(new Date(Date.now() + 86_400_000))) {
-      throw new ChartWardenError("NOTICE_DATE_IN_FUTURE", "notice date cannot be in the future", 422);
+      throw new ChartWardenError(
+        "NOTICE_DATE_IN_FUTURE",
+        "notice date cannot be in the future",
+        422,
+      );
     }
     return day;
   }
@@ -761,6 +766,14 @@ export function buildDrizzleM25WriteService(
     return withOrgContext(db, actor, async (tx) => {
       const cur = await appealRow(tx, id);
       if (!canTransitionAppeal(cur.state, to)) throw new InvalidTransitionError(cur.state, to);
+      // Federal court is record-only: counsel files the civil action, so WardenX renders and sends nothing for it.
+      if (to === "submitted" && !canPacketRender(cur.tier)) {
+        throw new ChartWardenError(
+          "FEDERAL_COURT_RECORD_ONLY",
+          "a federal-court case is filed by counsel; record the filing on the case instead of submitting a packet",
+          409,
+        );
+      }
       guard?.(cur);
       const updated = await tx
         .update(AC)
