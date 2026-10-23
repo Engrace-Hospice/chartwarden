@@ -29,12 +29,18 @@ import {
   INBOX_STALE,
   INBOX_TITLE,
   INBOX_URGENT_INCOMPLETE,
+  RANK_LABEL,
+  REASON_URGENT,
+  REASON_WHY,
   SOURCE_UNAVAILABLE,
 } from "./smart-inbox-wording";
 import { type SmartInboxView, useSmartInbox } from "./use-smart-inbox";
 import "./smart-inbox.css";
 
-const OPEN_PATH = "/messaging";
+// The conversation route takes ?channelId= (ADR-0075). target_id is the owning row's id (a request, task or handoff), not a message id,
+// so only the channel the row already carries is used; a handoff row has none and opens Messaging.
+const openPath = (item: SmartInboxItemDto): string =>
+  item.channel_id ? `/messaging?${new URLSearchParams({ channelId: item.channel_id })}` : "/messaging";
 
 function Problem({
   text,
@@ -56,7 +62,8 @@ function Row({ item }: { readonly item: SmartInboxItemDto }): JSX.Element {
   const urgent = item.band === "urgent_ack";
   return (
     <li className="wx-inbox-row" data-band={item.band}>
-      <span className="wx-inbox-rank" aria-label={`Rank ${item.rank}`}>
+      <span className="wx-inbox-rank">
+        <span className="sr-only">{RANK_LABEL} </span>
         {item.rank}
       </span>
       <div className="wx-inbox-main">
@@ -68,7 +75,7 @@ function Row({ item }: { readonly item: SmartInboxItemDto }): JSX.Element {
           <p key={r.code} className="wx-inbox-reason">
             <StatusPill
               tone={urgent ? "critical" : "neutral"}
-              label={urgent ? "Urgent" : "Why here"}
+              label={urgent ? REASON_URGENT : REASON_WHY}
             />
             <span>{r.text}</span>
           </p>
@@ -76,8 +83,9 @@ function Row({ item }: { readonly item: SmartInboxItemDto }): JSX.Element {
         {item.restricted ? <p className="wx-inbox-reason">{INBOX_RESTRICTED}</p> : null}
       </div>
       {item.restricted ? null : (
-        <Link className="wx-inbox-open" to={OPEN_PATH}>
+        <Link className="wx-inbox-open" to={openPath(item)}>
           {INBOX_OPEN_LABEL}
+          <span className="sr-only"> {item.title}</span>
         </Link>
       )}
     </li>
@@ -127,7 +135,10 @@ function Body({
         <Problem key={band} text={SOURCE_UNAVAILABLE(band)} retry={retry} />
       ))}
       {inbox.urgent_complete ? null : <Problem text={INBOX_URGENT_INCOMPLETE} />}
-      {inbox.items.length === 0 && inbox.unavailable_sources.length === 0 ? (
+      {inbox.items.length === 0 &&
+      inbox.unavailable_sources.length === 0 &&
+      inbox.complete &&
+      inbox.urgent_complete ? (
         <EmptyState title={INBOX_EMPTY_TITLE} description={INBOX_EMPTY_TEXT} />
       ) : (
         <Groups inbox={inbox} />

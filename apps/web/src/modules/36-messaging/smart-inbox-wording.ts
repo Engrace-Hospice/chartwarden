@@ -19,6 +19,9 @@ export const INBOX_URGENT_INCOMPLETE =
   "More urgent requests may exist than are shown here. Open the acknowledgment queue to see them all.";
 export const INBOX_INCOMPLETE = "Only the most pressing rows are shown.";
 export const INBOX_OPEN_LABEL = "Open in Messaging";
+export const RANK_LABEL = "Rank";
+export const REASON_URGENT = "Urgent";
+export const REASON_WHY = "Why here";
 export const INBOX_RESTRICTED = "You cannot open this conversation. Ask the sender or a supervisor.";
 
 export const BAND_LABELS: Readonly<Record<SmartInboxBand, string>> = {
