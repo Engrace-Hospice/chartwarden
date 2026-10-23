@@ -104,3 +104,20 @@ describe("EntityLookupField ARIA", () => {
     expect(onChange).toHaveBeenCalledWith(chosen.id, expect.objectContaining({ id: chosen.id }));
   });
 });
+
+describe("EntityLookupField keyboard (default appearance)", () => {
+  it("chooses an option with ArrowDown and Enter, announcing it through aria-activedescendant", async () => {
+    const { onChange } = renderField();
+    const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
+    await screen.findAllByRole("option");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const first = screen.getAllByRole("option")[0];
+    expect(input.getAttribute("aria-activedescendant")).toBe(first?.id);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith(
+      OPTIONS[0]?.id,
+      expect.objectContaining({ id: OPTIONS[0]?.id }),
+    );
+  });
+});

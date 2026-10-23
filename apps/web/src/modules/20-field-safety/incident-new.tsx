@@ -15,6 +15,7 @@ import type { GateItem, GateStatus } from "@chartwarden/ui";
 import { useCallback, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { MembershipLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import {
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
@@ -52,6 +53,7 @@ export function IncidentNewScreen(): JSX.Element {
 
   const [step, setStep] = useState(0);
   const [affected, setAffected] = useState("");
+  const [affectedName, setAffectedName] = useState("");
   const [category, setCategory] = useState(DEFAULT_INCIDENT_CATEGORY);
   const [severity, setSeverity] = useState(DEFAULT_INCIDENT_SEVERITY);
   const [occurredAt, setOccurredAt] = useState(nowLocalInput());
@@ -238,7 +240,10 @@ export function IncidentNewScreen(): JSX.Element {
         {step === 0 ? (
           <IncidentStep
             affected={affected}
-            setAffected={setAffected}
+            setAffected={(id, name) => {
+              setAffected(id);
+              setAffectedName(name);
+            }}
             occurredAt={occurredAt}
             setOccurredAt={setOccurredAt}
             category={category}
@@ -262,6 +267,7 @@ export function IncidentNewScreen(): JSX.Element {
         {step === 2 ? (
           <ReviewStep
             affected={affected}
+            affectedName={affectedName}
             occurredAt={occurredAt}
             category={category}
             severity={severity}
@@ -301,7 +307,7 @@ function IncidentStep({
   showErrors,
 }: {
   affected: string;
-  setAffected: (value: string) => void;
+  setAffected: (id: string, name: string) => void;
   occurredAt: string;
   setOccurredAt: (value: string) => void;
   category: string;
@@ -314,14 +320,11 @@ function IncidentStep({
     <section style={sectionStyle} aria-labelledby="incident-step-h">
       <SectionTitle id="incident-step-h" title="Who was affected and when?" />
       <div style={stackStyle}>
-        <TextInput
+        <MembershipLookupField
           label="Affected clinician"
           value={affected}
-          onChange={setAffected}
-          mono
+          onChange={(id, option) => setAffected(id, option?.searchLabel ?? "")}
           required
-          placeholder="Clinician membership ID"
-          hint="Use the membership ID; the draft still stores the ID expected by the safety API."
           error={
             showErrors && affected.trim().length === 0 ? "Affected clinician is required." : null
           }
@@ -406,6 +409,7 @@ function DetailsStep({
 
 function ReviewStep({
   affected,
+  affectedName,
   occurredAt,
   category,
   severity,
@@ -428,6 +432,7 @@ function ReviewStep({
   ready,
 }: {
   affected: string;
+  affectedName: string;
   occurredAt: string;
   category: string;
   severity: string;
@@ -455,7 +460,10 @@ function ReviewStep({
       <div style={summaryPanelStyle}>
         <h3 style={panelTitleStyle}>Incident summary</h3>
         <div style={summaryGridStyle}>
-          <ReviewField label="Affected clinician" value={affected.trim() || "Missing"} mono />
+          <ReviewField
+            label="Affected clinician"
+            value={affectedName || affected.trim() || "Missing"}
+          />
           <ReviewField
             label="Occurred at"
             value={occurredAt.trim() ? localDateTimeLabel(occurredAt) : "Missing"}
@@ -491,7 +499,11 @@ function ReviewStep({
               hint="Plain words are enough; do not enter coordinates here."
             />
             <TextInput label="Visit" value={visitId} onChange={setVisitId} mono />
-            <TextInput label="Patient" value={patientId} onChange={setPatientId} mono />
+            <PatientLookupField
+              label="Patient"
+              value={patientId}
+              onChange={(id) => setPatientId(id)}
+            />
             <TextInput label="Linked SOS alert" value={sosAlertId} onChange={setSosAlertId} mono />
           </div>
         ) : null}
