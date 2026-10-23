@@ -8,11 +8,11 @@ import {
   interactiveRowProps,
   isValid,
   stashStepUpDraft,
-  takeStepUpDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
+  useStepUpDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
@@ -101,7 +101,7 @@ export function PlansList(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // A step-up refusal sends the operator to /step-up and back; the typed plan is restored and the drawer reopens.
-  const [restored] = useState(() => takeStepUpDraft<PlanForm>(PLAN_DRAFT_KEY));
+  const restored = useStepUpDraft<PlanForm>(PLAN_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [form, setForm] = useState<PlanForm>(restored ?? EMPTY_FORM);
   const [saving, setSaving] = useState(false);

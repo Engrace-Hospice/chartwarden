@@ -2,6 +2,7 @@ import {
   Glyph,
   InlineAlert,
   SkipLink,
+  discardStepUpDrafts,
   useDisclosureDismiss,
   useOffCanvasNav,
   useTheme,
@@ -141,6 +142,7 @@ export function ActorMenu({ session }: { session: Session | null }): JSX.Element
       setSignOutFailed(true);
       return;
     }
+    discardStepUpDrafts(); // a typed form must not outlive the session that typed it
     setOpen(false);
     window.location.href = "/login";
   }

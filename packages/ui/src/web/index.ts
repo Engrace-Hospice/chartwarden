@@ -71,8 +71,9 @@ export { focusFirstInvalid, isValid } from "./components/form-validation";
 export type { FieldErrors } from "./components/form-validation";
 export {
   STEP_UP_DRAFT_TTL_MS,
+  discardStepUpDrafts,
   stashStepUpDraft,
-  takeStepUpDraft,
+  useStepUpDraft,
 } from "./components/step-up-draft";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";

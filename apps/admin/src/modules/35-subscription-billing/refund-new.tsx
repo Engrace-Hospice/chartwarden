@@ -8,8 +8,8 @@ import {
   focusFirstInvalid,
   isValid,
   stashStepUpDraft,
-  takeStepUpDraft,
   useApiClient,
+  useStepUpDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 New refund request (`/admin/refunds/new`,
 // refund.request). POST /api/admin/refunds (step-up + Idempotency-Key). The §4.8 four-eyes rule keeps
@@ -58,9 +58,10 @@ export function RefundNew(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   // A step-up refusal sends the operator to /step-up and back; the typed request is restored.
+  const restored = useStepUpDraft<RefundForm>(REFUND_DRAFT_KEY);
   const [form, setForm] = useState<RefundForm>(
     () =>
-      takeStepUpDraft<RefundForm>(REFUND_DRAFT_KEY) ?? {
+      restored ?? {
         invoiceId: "",
         amount: "",
         kind: "partial",
@@ -166,6 +167,7 @@ export function RefundNew(): JSX.Element {
                 <TextAreaField
                   id="detail"
                   label="Reason detail"
+                  hint="Do not include patient information."
                   required
                   error={errors.detail}
                   value={form.detail}

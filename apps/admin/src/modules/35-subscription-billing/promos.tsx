@@ -8,11 +8,11 @@ import {
   interactiveRowProps,
   isValid,
   stashStepUpDraft,
-  takeStepUpDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
+  useStepUpDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
@@ -99,7 +99,7 @@ export function Promos(): JSX.Element {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   // A step-up refusal sends the operator to /step-up and back; the typed promo is restored and the drawer reopens.
-  const [restored] = useState(() => takeStepUpDraft<PromoForm>(PROMO_DRAFT_KEY));
+  const restored = useStepUpDraft<PromoForm>(PROMO_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("promo");

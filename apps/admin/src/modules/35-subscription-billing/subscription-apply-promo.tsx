@@ -3,8 +3,8 @@ import {
   Panel,
   TextField,
   stashStepUpDraft,
-  takeStepUpDraft,
   useApiClient,
+  useStepUpDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Apply promo to a subscription
 // (`/admin/subscriptions/:id/apply_promo`, promo.admin.apply). POST /api/admin/subscriptions/:id/apply_promo
@@ -24,7 +24,8 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const { gate, retry } = useSubscriptionGate(id);
   // A step-up refusal sends the operator to /step-up and back; the typed code is restored.
   const draftKey = `subscription-apply-promo:${id ?? ""}`;
-  const [code, setCode] = useState(() => takeStepUpDraft<string>(draftKey) ?? "");
+  const restored = useStepUpDraft<string>(draftKey);
+  const [code, setCode] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
