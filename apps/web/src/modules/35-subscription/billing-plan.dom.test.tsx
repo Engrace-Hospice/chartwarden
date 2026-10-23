@@ -1,6 +1,6 @@
 // F-024 (#591) - the plan picker says so when the current-plan read is refused or fails (jsdom).
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { BillingPlan } from "./billing-plan";
@@ -98,6 +98,27 @@ describe("Billing plan read states", () => {
     fireEvent.click(retry);
     await screen.findByText("pro", { selector: "code" });
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("replaces the catalog error and its Retry with the loading cue while a retry is in flight", async () => {
+    let release: (v: unknown) => void = () => {};
+    let calls = 0;
+    mount({
+      [PLANS]: () => {
+        calls += 1;
+        if (calls === 1) return Promise.resolve(failure(500));
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+      [SUB]: ok({ planSlug: "pro" }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("status")).toBeTruthy();
+    await act(async () => release(ok([PLAN])));
+    await screen.findByText("pro", { selector: "code" });
   });
 
   it("shows a failed state, not a stuck spinner, when a request is rejected", async () => {

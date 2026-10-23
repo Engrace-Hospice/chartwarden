@@ -118,14 +118,17 @@ describe("Supply team dashboard read states", () => {
     fireEvent.click(retry);
     // Reloading: the layout stays mounted (no spinner swap) and is marked busy; the failure is still shown.
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull());
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    // No Retry is offered for a read that is already being retried; a refreshing cue shows instead.
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByText("Refreshing…")).toBeTruthy();
     await act(async () => release(EMPTY));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
     expect(get.mock.calls.filter(([p]) => p === PAR)).toHaveLength(2);
     expect(within(tile("Shelf critical / empty")).getByText("0")).toBeTruthy();
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
     // The Retry button is gone; focus moved to the page region instead of falling to <body>.
-    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(document.querySelector(".wx-kit-column"));
+    expect(screen.queryByText("Refreshing…")).toBeNull();
   });
 
   it("shows a failed panel (not a stuck spinner) when a request is rejected", async () => {

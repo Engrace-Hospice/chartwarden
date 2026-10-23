@@ -1,6 +1,6 @@
 // F-022 (#591) - the dispatch form never presents an empty picker when a prerequisite read was refused or failed (jsdom).
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ComfortKitDispatchCreate } from "./dispatch-create";
@@ -58,6 +58,29 @@ describe("Comfort-kit dispatch create read states", () => {
     await screen.findByText(/No open comfort-kit request is available/);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(get.mock.calls.length).toBe(6);
+  });
+
+  it("replaces the error and its Retry with the loading cue while a retry is in flight", async () => {
+    const releases: Array<(v: unknown) => void> = [];
+    let calls = 0;
+    mount({
+      [REQUESTS]: () => {
+        calls += 1;
+        if (calls <= 2) return Promise.resolve(failure(503));
+        return new Promise((resolve) => {
+          releases.push(resolve);
+        });
+      },
+      [TEMPLATES]: ok,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("status")).toBeTruthy();
+    await act(async () => {
+      for (const r of releases) r(ok);
+    });
+    await screen.findByText(/No open comfort-kit request is available/);
   });
 
   it("recovers when the first request read fails and the second succeeds", async () => {

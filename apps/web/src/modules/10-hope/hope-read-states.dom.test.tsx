@@ -3,7 +3,7 @@
 // load" and never render the denied/failed read as an empty list or a zero count.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { JSX } from "react";
+import { type JSX, StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
@@ -20,6 +20,8 @@ interface Screen {
   emptyBody: unknown;
   Component: () => JSX.Element;
   emptyText: RegExp;
+  /** Accessible name of the focusable results wrapper. */
+  groupName: string;
   failedTitle: RegExp;
   /** KPI cards that must read an em dash (not 0) when the read did not succeed. */
   kpiCount: number;
@@ -34,6 +36,7 @@ const SCREENS: Screen[] = [
     emptyBody: { schedules: [] },
     Component: HopeDashboard,
     emptyText: /No HOPE schedules are currently open/,
+    groupName: "HOPE schedules",
     failedTitle: /HOPE schedules could not be loaded/,
     kpiCount: 4,
     countLine: /Schedules unavailable/,
@@ -44,6 +47,7 @@ const SCREENS: Screen[] = [
     emptyBody: { submissions: [] },
     Component: SubmissionWorklist,
     emptyText: /No HOPE submission batches have been assembled/,
+    groupName: "HOPE submissions",
     failedTitle: /HOPE submissions could not be loaded/,
     kpiCount: 0,
     countLine: /Submissions unavailable/,
@@ -62,13 +66,18 @@ const SCREENS: Screen[] = [
     },
     Component: HqrpComplianceDashboard,
     emptyText: /No observations|no observations/,
+    groupName: "HQRP compliance",
     failedTitle: /compliance dashboard could not be loaded/,
     kpiCount: 3,
     countLine: null,
   },
 ];
 
-function mount(screenDef: Screen, responses: Array<() => Response | Promise<Response>>) {
+function mount(
+  screenDef: Screen,
+  responses: Array<() => Response | Promise<Response>>,
+  strict = false,
+) {
   let n = 0;
   const stubFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const req = input instanceof Request ? input : new Request(String(input), init);
@@ -78,7 +87,7 @@ function mount(screenDef: Screen, responses: Array<() => Response | Promise<Resp
     return (next as () => Response | Promise<Response>)();
   };
   const { Component } = screenDef;
-  return render(
+  const tree = (
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider
         session={{
@@ -94,8 +103,9 @@ function mount(screenDef: Screen, responses: Array<() => Response | Promise<Resp
           </MemoryRouter>
         </ToastProvider>
       </SessionProvider>
-    </ApiClientProvider>,
+    </ApiClientProvider>
   );
+  return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
 }
 
 describe.each(SCREENS)("$name read states", (def) => {
@@ -107,7 +117,8 @@ describe.each(SCREENS)("$name read states", (def) => {
 
   it.each([403, 404])("shows the scoped denied state on %i, not an empty list", async (status) => {
     mount(def, [() => json({ error: { code: "NOT_FOUND", message: "no" } }, status)]);
-    const denied = await screen.findByRole("status", { name: "" });
+    await screen.findByText("You do not have access");
+    const denied = screen.getByRole("status");
     expect(denied.textContent).toMatch(/do not have access/i);
     expect(denied.textContent).toMatch(
       /Your access is limited to your own caseload or provider entity/,
@@ -154,20 +165,21 @@ describe.each(SCREENS)("$name read states", (def) => {
   });
 
   it("applies only the latest response when loads overlap", async () => {
+    // StrictMode runs the mount effect twice, so two real loads are in flight at once.
     const resolvers: Array<(r: Response) => void> = [];
-    mount(def, [
-      () => json({ error: { code: "UNAVAILABLE", message: "down" } }, 503),
-      () => new Promise<Response>((resolve) => resolvers.push(resolve)),
-    ]);
-    await screen.findByRole("alert");
-    // A single in-flight retry settles the screen; a stale (older) failure can never overwrite it.
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(resolvers).toHaveLength(1));
-    await act(async () => resolvers[0]?.(json(def.emptyBody)));
+    mount(def, [() => new Promise<Response>((resolve) => resolvers.push(resolve))], true);
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    // The newer load succeeds first; the older one then fails late and must not overwrite it.
+    await act(async () => resolvers[1]?.(json(def.emptyBody)));
     await waitFor(() => expect(screen.getAllByText(def.emptyText).length).toBeGreaterThan(0));
+    await act(async () =>
+      resolvers[0]?.(json({ error: { code: "UNAVAILABLE", message: "down" } }, 503)),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByText(def.emptyText).length).toBeGreaterThan(0);
   });
 
-  it("keeps keyboard focus off <body> after Retry succeeds", async () => {
+  it("focuses the results region by name after Retry succeeds", async () => {
     mount(def, [
       () => json({ error: { code: "UNAVAILABLE", message: "down" } }, 503),
       () => json(def.emptyBody),
@@ -176,6 +188,32 @@ describe.each(SCREENS)("$name read states", (def) => {
     retry.focus();
     fireEvent.click(retry);
     await waitFor(() => expect(screen.getAllByText(def.emptyText).length).toBeGreaterThan(0));
-    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("group", { name: def.groupName })),
+    );
+  });
+
+  it("focuses the new Retry button when Retry fails again", async () => {
+    mount(def, [
+      () => json({ error: { code: "UNAVAILABLE", message: "down" } }, 503),
+      () => json({ error: { code: "UNAVAILABLE", message: "still down" } }, 503),
+    ]);
+    const first = await screen.findByRole("button", { name: "Retry" });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Retry" })),
+    );
+  });
+});
+
+describe("HQRP compliance ok-but-empty body", () => {
+  it("is a failed read with Retry, not an endless spinner", async () => {
+    const def = SCREENS[2] as Screen;
+    mount(def, [() => json(null)]);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(def.failedTitle);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

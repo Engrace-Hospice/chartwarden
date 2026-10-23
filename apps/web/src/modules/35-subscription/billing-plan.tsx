@@ -79,7 +79,8 @@ export function BillingPlan(): JSX.Element {
     void load();
   }, [load]);
 
-  if (!loadedOnce) return <LoadingSpinner />;
+  // A retry after a failed catalog read shows the loading cue, not the stale error with a live Retry.
+  if (!loadedOnce || (loading && plansStatus !== "ok")) return <LoadingSpinner />;
   if (plansStatus !== "ok") {
     return (
       <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={{ outline: "none" }}>
@@ -140,7 +141,12 @@ export function BillingPlan(): JSX.Element {
                   : "Your current plan could not be loaded."}
               </span>
               {subStatus === "failed" ? (
-                <Button type="button" tone="secondary" onClick={() => void load()}>
+                <Button
+                  type="button"
+                  tone="secondary"
+                  disabled={loading}
+                  onClick={() => void load()}
+                >
                   Retry
                 </Button>
               ) : null}

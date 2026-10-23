@@ -301,7 +301,18 @@ export function HopeDashboard(): JSX.Element {
           </div>
         }
         table={
-          <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={{ outline: "none" }}>
+          <div
+            ref={focusRef}
+            tabIndex={-1}
+            // biome-ignore lint/a11y/useSemanticElements: a <fieldset> is for form controls; this names a results region.
+            role="group"
+            aria-label="HOPE schedules"
+            aria-busy={loading}
+            style={{ outline: "none", opacity: loading && items.length > 0 ? 0.6 : 1 }}
+          >
+            {loading && items.length > 0 ? (
+              <div style={{ fontSize: "0.75rem", padding: "0.25rem 1rem" }}>Refreshing…</div>
+            ) : null}
             {readStatus !== "ok" ? (
               <div style={{ padding: "2rem 1.5rem" }}>
                 <HopeListReadState

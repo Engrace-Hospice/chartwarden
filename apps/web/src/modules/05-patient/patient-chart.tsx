@@ -194,6 +194,7 @@ export function PatientChart(): JSX.Element {
 
   return (
     <PatientChartReady
+      key={state.patient.id}
       patient={state.patient}
       section={currentSection}
       updatePatient={updatePatient}

@@ -181,7 +181,8 @@ export function ComfortKitDispatchCreate(): JSX.Element {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   };
 
-  if (!loadedOnce) return <LoadingSpinner />;
+  // A retry after a refused/failed read shows the loading cue, not the stale error with a live Retry.
+  if (!loadedOnce || (loading && loadStatus !== "ok")) return <LoadingSpinner />;
   if (loadStatus === "denied") {
     return (
       <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={focusRootStyle}>

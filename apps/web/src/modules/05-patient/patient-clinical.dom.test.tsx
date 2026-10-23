@@ -212,7 +212,7 @@ describe("Clinical tab read states", () => {
     const tree = (id: string) => (
       <ApiClientProvider client={{ GET: get } as unknown as ApiClient}>
         <MemoryRouter>
-          <Switcher id={id} />
+          <Switcher key={id} id={id} />
         </MemoryRouter>
       </ApiClientProvider>
     );
@@ -226,5 +226,12 @@ describe("Clinical tab read states", () => {
       );
     });
     expect(screen.queryByText("Advance directive on file")).toBeNull();
+    // Positive control: the current patient's own reply does render.
+    await act(async () => {
+      resolvers[1]?.(
+        ok({ data: [{ id: "c2", typeKey: "advance_directive_acknowledgment", status: "active" }] }),
+      );
+    });
+    expect(await screen.findByText("Advance directive on file")).toBeTruthy();
   });
 });

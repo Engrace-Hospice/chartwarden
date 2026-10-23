@@ -64,8 +64,10 @@ export function HqrpComplianceDashboard(): JSX.Element {
       "denied",
     );
     if (mine !== latestLoad.current) return;
-    setReadStatus(status);
-    setRow(status === "ok" ? ((res?.data as Compliance | undefined) ?? null) : null);
+    // An ok read with no body is a failed read, not an endless spinner.
+    const data = status === "ok" ? ((res?.data as Compliance | undefined) ?? null) : null;
+    setReadStatus(status === "ok" && !data ? "failed" : status);
+    setRow(data);
     setLoading(false);
   }, [client]);
 
@@ -167,7 +169,18 @@ export function HqrpComplianceDashboard(): JSX.Element {
         </div>
       }
       table={
-        <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={{ outline: "none" }}>
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          // biome-ignore lint/a11y/useSemanticElements: a <fieldset> is for form controls; this names a results region.
+          role="group"
+          aria-label="HQRP compliance"
+          aria-busy={loading}
+          style={{ outline: "none", opacity: loading && row !== null ? 0.6 : 1 }}
+        >
+          {loading && row !== null ? (
+            <div style={{ fontSize: "0.75rem", padding: "0.25rem 1rem" }}>Refreshing…</div>
+          ) : null}
           {readStatus !== "ok" ? (
             <div style={{ padding: "2rem 1.5rem" }}>
               <HopeListReadState

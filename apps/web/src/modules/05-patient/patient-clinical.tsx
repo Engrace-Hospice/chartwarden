@@ -154,6 +154,8 @@ const daysAgo = (n: number): string =>
 /**
  * The Clinical tab's own sources, fetched in parallel; the encounter details follow the chart's list.
  * Called once by the chart (the tab and its rail share it) and idle until the tab is shown.
+ * The caller MUST key the component that calls this by patient id: a new patient remounts, so state resets and
+ * in-flight reads of the previous patient are dropped by the effect cleanups (no reset-in-effect flash).
  */
 export function useClinicalData(
   patientId: string,
@@ -181,12 +183,6 @@ export function useClinicalData(
     }));
     setAttempt((n) => n + 1);
   }, []);
-  // A different patient must never inherit the previous patient's reads (declared first, so it runs
-  // before the fetch effect below in the same commit).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `patientId` is the trigger, not a read value.
-  useEffect(() => {
-    setData({});
-  }, [patientId]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the fetch on Retry.
   useEffect(() => {
     if (!enabled) return;
