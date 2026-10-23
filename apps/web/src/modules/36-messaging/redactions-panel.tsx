@@ -113,7 +113,11 @@ function RedactionRow({
 
 export function RedactionsPanel({
   resume,
-}: { readonly resume: RedactionResume | null }): JSX.Element {
+  onResumeConsumed,
+}: {
+  readonly resume: RedactionResume | null;
+  readonly onResumeConsumed: () => void;
+}): JSX.Element {
   const me = useSession()?.userId;
   const owner = useStepUpOwner();
   const { view, reload, refreshFailed } = useRedactions();
@@ -140,7 +144,8 @@ export function RedactionsPanel({
       setDeciding(resumeDecision);
     }
     setResumeDecision(null);
-  }, [resumeDecision, view, me]);
+    onResumeConsumed(); // the parent must not hand it to a later mount (tab switch back)
+  }, [resumeDecision, view, me, onResumeConsumed]);
 
   // The trigger may be gone after an action (the row changed, the dialog closed): keep focus on the result.
   useEffect(() => {

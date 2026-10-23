@@ -9,7 +9,7 @@ import type {
   RetentionOverviewDto,
 } from "@chartwarden/types";
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { useSession } from "../../shell/session";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
@@ -264,7 +264,8 @@ export function RetentionGovernance(): JSX.Element {
   const owner = useStepUpOwner();
   const returning = useStepUpReturn(owner, RESUME_ACTIONS);
   const [resume] = useState<HoldResume>(() => (returning ? readResume(owner) : NO_RESUME));
-  const [redactionResume] = useState(() => (returning ? readRedactionResume(owner) : null));
+  const [redactionResume, setRedactionResume] = useState(() => (returning ? readRedactionResume(owner) : null));
+  const consumeRedactionResume = useCallback(() => setRedactionResume(null), []);
   const [tab, setTab] = useState<TabId>(() =>
     redactionResume !== null
       ? "redactions"
@@ -327,7 +328,7 @@ export function RetentionGovernance(): JSX.Element {
           ) : tab === "holds" ? (
             <HoldsPanel resume={resume} />
           ) : (
-            <RedactionsPanel resume={redactionResume} />
+            <RedactionsPanel resume={redactionResume} onResumeConsumed={consumeRedactionResume} />
           )}
         </div>
       </section>

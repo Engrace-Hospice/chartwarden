@@ -278,6 +278,31 @@ describe("Decisions", () => {
     expect(POST).toHaveBeenCalledTimes(1);
   });
 
+  it("a resumed decision opens once: after cancel, leaving the tab and coming back does not reopen it", async () => {
+    mount({
+      list: () => ok(list([row()])),
+      decide: () => fail(403, { error: { code: "STEP_UP_REQUIRED" } }),
+    });
+    await openTab();
+    fireEvent.click(await screen.findByRole("button", { name: /^Approve redaction/ }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Approve now" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("where").textContent).toContain("/step-up?returnTo="),
+    );
+    cleanup();
+    markStepUpReturn(PATH);
+    mount({ list: () => ok(list([row()])) });
+    const dialog = await screen.findByRole("alertdialog", { name: "Approve redaction" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Cancel/ }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(screen.getByRole("tab", { name: "Retention" }));
+    await openTab();
+    await screen.findByRole("button", { name: /^Approve redaction/ });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
   it("an abandoned step-up is discarded: a later ordinary visit opens no dialog", async () => {
     mount({
       list: () => ok(list([row()])),
