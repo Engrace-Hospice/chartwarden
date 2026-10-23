@@ -62,8 +62,8 @@ export function promoFormErrors(form: PromoForm): FieldErrors<keyof PromoForm> {
   } else {
     const amount = Number(form.amount);
     if (form.amount.trim() === "") errors.amount = "Enter an amount in dollars, e.g. 10.00.";
-    else if (!Number.isFinite(amount) || amount <= 0)
-      errors.amount = "Enter a dollar amount greater than 0, e.g. 10.00.";
+    else if (!Number.isFinite(amount) || Math.round(amount * 100) < 1)
+      errors.amount = "Enter a dollar amount of at least 0.01, e.g. 10.00.";
   }
   return errors;
 }
