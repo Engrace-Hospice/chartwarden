@@ -3964,6 +3964,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
+  // #659 - the tenant's NPI an 835 payee must match (see M25IngestDrizzleDeps.payeeNpi); one lookup for both M25 ingest roots.
+  const m25PayeeNpi = dbHandle
+    ? (organizationId: string, providerEntityId: string): Promise<string | null> =>
+        withOrgContext(
+          dbHandle.db,
+          { organizationId, userId: "" },
+          async (tx) =>
+            (
+              await buildFoundationSiteReader().providerEntityIdentifiers(
+                tx,
+                organizationId,
+                providerEntityId,
+              )
+            )?.npi ?? null,
+        )
+    : async () => null; // no database: no NPI on file, so every 835 is refused
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   // WX-PR-013 — the real §4.8 BullMQ producer the M27 write-service's mutating routes call (refresh-inputs /
@@ -5749,6 +5765,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
             onRetryableParseDegraded: (event) =>
               app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
+            payeeNpi: m25PayeeNpi,
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -11879,8 +11896,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               client: createX12835Client(),
               rawStore: buildM25RawAdviceStore(),
               onStagedReadFailed: (event) => app.log.error(event, "M25 835 staged raw read failed"),
-            onRetryableParseDegraded: (event) =>
+              onRetryableParseDegraded: (event) =>
                 app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
+              payeeNpi: m25PayeeNpi,
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

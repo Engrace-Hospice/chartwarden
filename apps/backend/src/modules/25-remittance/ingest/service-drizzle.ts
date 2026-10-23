@@ -2,8 +2,11 @@
 // implementation of {@link M25IngestService} (see ./service.ts for the full design rationale).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { parseX12EnvelopeHeader } from "@chartwarden/x12-835-client";
-import type { ParsedClaim835 } from "@chartwarden/x12-835-client";
+import {
+  parseX12EnvelopeHeader,
+  parseX12TransactionSetControlNumbers,
+} from "@chartwarden/x12-835-client";
+import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
 import { and, eq, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
@@ -42,6 +45,10 @@ type AdviceContext = {
   payerKind: ReceiveAdviceInput["payerKind"];
 };
 
+export type PayeeNpiLookup = (organizationId: string, providerEntityId: string) => Promise<string | null>;
+/** Explicit opt-out of the payee check, for tests that are not about it. */
+export const PAYEE_UNCHECKED = "unchecked" as const;
+
 export interface M25IngestDrizzleDeps {
   readonly client: X12835WorkerClient;
   readonly outbox?: WriteOutboxPort;
@@ -57,6 +64,14 @@ export interface M25IngestDrizzleDeps {
    * routes a Medicaid 835 against M23's claim table, or vice versa.
    */
   readonly claims?: ClaimMatchCandidateProviderByPayer;
+  /**
+   * #659 — the tenant's own NPI for a provider entity (null when unknown). When bound, an 835 whose payee
+   * (N1*PE, N103=XX) is not that NPI is refused before anything is stored or posted, so a file addressed to
+   * another provider can never post into this tenant. Required so a composition root cannot drop the guard
+   * silently; tests that do not exercise it pass {@link PAYEE_UNCHECKED}. The TIN is sealed per tenant (M2) and the
+   * PTAN has no tenant column, so neither is compared. A payee identified only by tax id (FI) is refused.
+   */
+  readonly payeeNpi: PayeeNpiLookup | typeof PAYEE_UNCHECKED;
   /**
    * Ops-visibility hook: called when `postAdvice` fails on a RETRYABLE degraded parse (e.g. no staged-object
    * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
@@ -123,6 +138,22 @@ export function buildDrizzleM25IngestService(
         .set({ parseStatus: "failed", parseSummary: { reason } })
         .where(and(eq(RA.id, adviceId), sql`${RA.parseStatus} IN ('queued','failed')`));
     });
+  }
+
+  /** #659 — null when the payee is this tenant's, else a PHI-free refusal reason (fail closed). */
+  async function payeeMismatch(
+    organizationId: string,
+    providerEntityId: string,
+    payee: ParsedRemittanceAdvice["payee"],
+  ): Promise<string | null> {
+    if (deps.payeeNpi === PAYEE_UNCHECKED) return null;
+    const expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim();
+    if (!expected) return "payee check: the provider entity has no NPI on file";
+    if (payee?.idQualifier !== "XX" || !payee.id)
+      return "payee check: the 835 payee carries no NPI (N103 XX)";
+    return payee.id === expected
+      ? null
+      : "payee check: the 835 payee NPI is not this provider entity's";
   }
 
   async function resolveCategory(carcCode: string): Promise<DenialCategory | null> {
@@ -463,6 +494,74 @@ export function buildDrizzleM25IngestService(
     }
   }
 
+  /**
+   * Insert one transaction set's envelope row + its `m25.edi.835_received` event (tx-bound). The DB's
+   * `ux_remittance_envelope_dedupe` unique index is the real dedup enforcement (§2.6) — a conflicting insert is
+   * caught here (never thrown, so the tx never poisons) and resolved by looking up the winner, whether that was
+   * an earlier call or a concurrent one racing this one.
+   */
+  async function queueEnvelope(
+    tx: M25Tx,
+    actor: M25IngestActor,
+    input: ReceiveAdviceInput,
+    parsed: ParsedRemittanceAdvice,
+  ): Promise<ReceiveAdviceResult> {
+    const [row] = await tx
+      .insert(RA)
+      .values({
+        organizationId: actor.organizationId,
+        providerEntityId: input.providerEntityId,
+        payerId: input.payerId,
+        payerKind: input.payerKind,
+        interchangeControlNumber: parsed.interchangeControlNumber,
+        transactionSetControlNumber: parsed.transactionSetControlNumber,
+        checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
+        paymentMethod: parsed.paymentMethod,
+        totalPaymentAmount: money(parsed.totalPaymentAmount),
+        productionDate: productionDay(parsed.productionDate),
+        minioObjectKey: input.minioObjectKey,
+        fileSha256: input.fileSha256,
+        parseStatus: "queued",
+      })
+      .onConflictDoNothing({
+        target: [RA.interchangeControlNumber, RA.transactionSetControlNumber, RA.providerEntityId],
+      })
+      .returning({ id: RA.id });
+    if (!row) {
+      const [dup] = await tx
+        .select({ id: RA.id })
+        .from(RA)
+        .where(
+          and(
+            eq(RA.interchangeControlNumber, parsed.interchangeControlNumber),
+            eq(RA.transactionSetControlNumber, parsed.transactionSetControlNumber),
+            eq(RA.providerEntityId, input.providerEntityId),
+          ),
+        )
+        .limit(1);
+      if (!dup) throw new Error("m25-ingest: envelope insert conflicted but no row found");
+      return { outcome: "duplicate", existingAdviceId: dup.id };
+    }
+    // Staged inside the transaction under the new row's id: a store failure rolls the receive back, so
+    // nothing is queued whose raw text cannot be read at post time (every set of a file stages the whole file).
+    await deps.rawStore?.put(actor.organizationId, row.id, input.rawEdi);
+    await outbox.publish(tx, {
+      eventName: "m25.edi.835_received",
+      organizationId: actor.organizationId,
+      aggregateKind: "remittance_advice",
+      aggregateId: row.id,
+      payload: {
+        remittanceAdviceId: row.id,
+        providerEntityId: input.providerEntityId,
+        payerId: input.payerId,
+        payerProgram: input.payerKind,
+        minioObjectKey: input.minioObjectKey,
+        fileSha256: input.fileSha256,
+      },
+    });
+    return { outcome: "queued", adviceId: row.id };
+  }
+
   return {
     async receiveAdvice(
       actor: M25IngestActor,
@@ -477,92 +576,49 @@ export function buildDrizzleM25IngestService(
           reason: "not a valid X12 envelope (missing ISA/ST segment)",
         };
       }
-      const parsed = await client.parse835({
-        minioObjectKey: input.minioObjectKey,
-        payerProgram: input.payerKind,
-        rawEdi: input.rawEdi,
-      });
-      if (!parsed.ok) {
-        return { outcome: "malformed", reason: parsed.degraded.reason };
-      }
-      if (
-        parsed.value.interchangeControlNumber !== header.interchangeControlNumber ||
-        parsed.value.transactionSetControlNumber !== header.transactionSetControlNumber
-      ) {
-        return {
-          outcome: "malformed",
-          reason: "parsed envelope control numbers disagree with the local ISA/ST header",
-        };
+      // One file may hold several ST/SE sets; each is its own advice (its own dedup key and event). Every set is
+      // parsed and payee-checked BEFORE anything is stored, so one bad set refuses the whole file.
+      const parsedSets: ParsedRemittanceAdvice[] = [];
+      for (const st02 of parseX12TransactionSetControlNumbers(input.rawEdi)) {
+        const parsed = await client.parse835({
+          minioObjectKey: input.minioObjectKey,
+          payerProgram: input.payerKind,
+          rawEdi: input.rawEdi,
+          transactionSetControlNumber: st02,
+        });
+        if (!parsed.ok) {
+          return { outcome: "malformed", reason: parsed.degraded.reason };
+        }
+        if (
+          parsed.value.interchangeControlNumber !== header.interchangeControlNumber ||
+          parsed.value.transactionSetControlNumber !== st02
+        ) {
+          return {
+            outcome: "malformed",
+            reason: "parsed envelope control numbers disagree with the local ISA/ST header",
+          };
+        }
+        const mismatch = await payeeMismatch(
+          actor.organizationId,
+          input.providerEntityId,
+          parsed.value.payee,
+        );
+        if (mismatch) return { outcome: "malformed", reason: mismatch };
+        parsedSets.push(parsed.value);
       }
 
-      return withOrgContext(
+      // The response carries the first set's advice (queued if any set is new, else the existing duplicate);
+      // every queued set emits its own `m25.edi.835_received`, so the pipeline never depends on the response.
+      const results = await withOrgContext(
         db,
         { organizationId: actor.organizationId, userId: "" },
         async (tx) => {
-          // The DB's `ux_remittance_envelope_dedupe` unique index is the real dedup enforcement (§2.6) — a
-          // conflicting insert is caught here (never thrown, so the tx never poisons) and resolved by
-          // looking up the winner, whether that was an earlier call or a concurrent one racing this one.
-          const [row] = await tx
-            .insert(RA)
-            .values({
-              organizationId: actor.organizationId,
-              providerEntityId: input.providerEntityId,
-              payerId: input.payerId,
-              payerKind: input.payerKind,
-              interchangeControlNumber: header.interchangeControlNumber,
-              transactionSetControlNumber: header.transactionSetControlNumber,
-              checkOrEftTraceNumber: parsed.value.checkOrEftTraceNumber ?? null,
-              paymentMethod: parsed.value.paymentMethod,
-              totalPaymentAmount: money(parsed.value.totalPaymentAmount),
-              productionDate: productionDay(parsed.value.productionDate),
-              minioObjectKey: input.minioObjectKey,
-              fileSha256: input.fileSha256,
-              parseStatus: "queued",
-            })
-            .onConflictDoNothing({
-              target: [
-                RA.interchangeControlNumber,
-                RA.transactionSetControlNumber,
-                RA.providerEntityId,
-              ],
-            })
-            .returning({ id: RA.id });
-          if (!row) {
-            const [dup] = await tx
-              .select({ id: RA.id })
-              .from(RA)
-              .where(
-                and(
-                  eq(RA.interchangeControlNumber, header.interchangeControlNumber),
-                  eq(RA.transactionSetControlNumber, header.transactionSetControlNumber),
-                  eq(RA.providerEntityId, input.providerEntityId),
-                ),
-              )
-              .limit(1);
-            if (!dup) throw new Error("m25-ingest: envelope insert conflicted but no row found");
-            return { outcome: "duplicate", existingAdviceId: dup.id };
-          }
-          // Staged inside the transaction under the new row's id: a store failure rolls the receive back, so
-          // nothing is queued whose raw text cannot be read at post time. A commit failure after this only
-          // orphans an object nothing references (the id never committed).
-          await deps.rawStore?.put(actor.organizationId, row.id, input.rawEdi);
-          await outbox.publish(tx, {
-            eventName: "m25.edi.835_received",
-            organizationId: actor.organizationId,
-            aggregateKind: "remittance_advice",
-            aggregateId: row.id,
-            payload: {
-              remittanceAdviceId: row.id,
-              providerEntityId: input.providerEntityId,
-              payerId: input.payerId,
-              payerProgram: input.payerKind,
-              minioObjectKey: input.minioObjectKey,
-              fileSha256: input.fileSha256,
-            },
-          });
-          return { outcome: "queued", adviceId: row.id };
+          const out: ReceiveAdviceResult[] = [];
+          for (const parsed of parsedSets) out.push(await queueEnvelope(tx, actor, input, parsed));
+          return out;
         },
       );
+      return results.find((r) => r.outcome === "queued") ?? (results[0] as ReceiveAdviceResult);
     },
 
     async postAdvice(actor: M25IngestActor, adviceId: string): Promise<PostAdviceResult> {
@@ -574,6 +630,7 @@ export function buildDrizzleM25IngestService(
             .select({
               id: RA.id,
               providerEntityId: RA.providerEntityId,
+              transactionSetControlNumber: RA.transactionSetControlNumber,
               payerKind: RA.payerKind,
               minioObjectKey: RA.minioObjectKey,
               parseStatus: RA.parseStatus,
@@ -610,6 +667,7 @@ export function buildDrizzleM25IngestService(
       const parsed = await client.parse835({
         minioObjectKey: advice.minioObjectKey,
         payerProgram: advice.payerKind,
+        transactionSetControlNumber: advice.transactionSetControlNumber,
         ...(staged ? { rawEdi: staged } : {}),
       });
       if (!parsed.ok) {
@@ -626,6 +684,16 @@ export function buildDrizzleM25IngestService(
         }
         await markFailed(actor, adviceId, parsed.degraded.reason);
         return { outcome: "failed", adviceId, reason: parsed.degraded.reason };
+      }
+
+      const mismatch = await payeeMismatch(
+        actor.organizationId,
+        advice.providerEntityId,
+        parsed.value.payee,
+      );
+      if (mismatch) {
+        await markFailed(actor, adviceId, mismatch);
+        return { outcome: "failed", adviceId, reason: mismatch };
       }
 
       try {

@@ -128,7 +128,7 @@ export interface ParsedRemittanceAdvice {
   paymentMethod: ParsedPaymentMethod;
   /** BPR02 — total payment amount in dollars. */
   totalPaymentAmount: number;
-  /** BPR16 / production date (ISO date-time). */
+  /** BPR16 (check issue / EFT effective date), falling back to DTM*405 (production date) — ISO date-time. */
   productionDate: string;
   /** TRN03 — the originating company identifier. */
   originatingCompanyId?: string;

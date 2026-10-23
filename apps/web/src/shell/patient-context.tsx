@@ -15,6 +15,7 @@ import {
 // import each other. Everything reads the M5 patient routes through the typed client.
 import { type JSX, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { TARGET_24 } from "./target-size";
 
 export interface ChartPatient {
   id: string;
@@ -298,12 +299,7 @@ export function ActiveDiagnosesPanel({ patientId }: { patientId: string }): JSX.
         problems && problems.length > 0 ? (
           <Link
             to={`/patients/${patientId}/care-plan`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              minHeight: "1.5rem",
-              fontWeight: 500,
-            }}
+            style={{ ...TARGET_24, fontWeight: 500 }}
           >
             View all
           </Link>
