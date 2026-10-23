@@ -3,7 +3,8 @@
 // injected-transport client; no network code, no pyx12 shim, no PHI logging. M23 owns the disjoint
 // 837-generation / 999 slice in @chartwarden/x12-837-client.
 export * from "./types";
-export * from "./parse-835";
+export * from "./parse-x12-835";
+export * from "./x12-tokenizer";
 export * from "./parse-277ca";
 export * from "./client";
 export * from "./envelope-header";

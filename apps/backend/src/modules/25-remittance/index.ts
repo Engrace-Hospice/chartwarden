@@ -130,12 +130,6 @@ export {
   buildM24BackedClaimMatchCandidateProvider,
 } from "./ingest/claim-match-adapter";
 export {
-  type M25X12WorkerConfig,
-  createFetchX12835HttpPort,
-  m25X12WorkerConfigFromEnv,
-  m25X12WorkerPortFromEnv,
-} from "./ingest/x12-worker-transport";
-export {
   type M25EdiReceivedConsumerBinding,
   buildM25EdiReceivedConsumer,
 } from "./outbox-consumers/live-binding";

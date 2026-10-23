@@ -321,11 +321,11 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.3 Medicare MAC — NGS J6 / others (Modules 23, 25)
 
 - **Purpose:** Submit institutional hospice claims and receive acknowledgments and remittances. Engrace: NGS J6 (CCN 381588).
-- **Direction & protocol:** Outbound claim submission + inbound acknowledgments. EDI X12 via the Python `x12-worker` (pyx12): **837I** (claim), **999** (functional ack), **277CA** (claim ack), **835** (remittance/ERA). Submission via MAC file drop with portal upload.
+- **Direction & protocol:** Outbound claim submission + inbound acknowledgments. EDI X12 (ADR-0037: TypeScript in-monorepo, no Python sidecar; the 835 is parsed by `packages/x12-835-client/src/parse-x12-835.ts`): **837I** (claim), **999** (functional ack), **277CA** (claim ack), **835** (remittance/ERA). Submission via MAC file drop with portal upload.
 - **Credential model:** **Per-ProviderEntity** — MAC submitter ID, trading-partner credentials, portal login scoped to the CCN's MAC jurisdiction. Some Organizations operate multiple CCNs across different MAC jurisdictions (architecture §3) — each ProviderEntity carries its own.
 - **BAA / PHI:** PHI-bearing; governed by CMS EDI Trading Partner Agreement + enrollment, not a BAA.
 - **Sandbox vs prod:** MAC test/CEDI environment for 837I syntax validation; synthetic claims. The Claim Pre-Submission Validation Framework (architecture §11.A, 30+ rules) runs *before* submission to target >99% acceptance.
-- **Webhooks:** None — acknowledgment is pull/file-based (999, 277CA, 835 retrieved and parsed by x12-worker).
+- **Webhooks:** None — acknowledgment is pull/file-based (999, 277CA, 835 retrieved and parsed in TypeScript).
 - **Retry/idempotency:** Submission via **outbox** — claim intent committed transactionally, worker performs file generation + drop with idempotency on claim control number. Duplicate-billing rule in §11.A prevents resubmission of an already-accepted claim.
 - **Rate-limit posture:** Batch/file cadence, not request-rate limited; respect MAC submission windows. NOE/NOTR fast path is independent of full-claim batch (5-day window enforced).
 - **Failure handling:** Portal/MAC unavailability → claims queue in READY/outbox; no patient-care impact (Tier 2 billing). Rejections (999/277CA) route to the denial worklist (Module 25); unmapped rejection codes auto-suggest a new validation rule (§11.A workflow).

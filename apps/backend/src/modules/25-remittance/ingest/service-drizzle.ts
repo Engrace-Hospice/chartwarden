@@ -447,7 +447,7 @@ export function buildDrizzleM25IngestService(
       actor: M25IngestActor,
       input: ReceiveAdviceInput,
     ): Promise<ReceiveAdviceResult> {
-      // Cheap, real, local pre-flight (no sidecar round-trip) — a genuinely malformed file (not X12, no
+      // Cheap, real, local pre-flight — a genuinely malformed file (not X12, no
       // ISA/ST segment) is rejected with NOTHING persisted before we ever call the parser.
       const header = parseX12EnvelopeHeader(input.rawEdi);
       if (!header) {
@@ -459,6 +459,7 @@ export function buildDrizzleM25IngestService(
       const parsed = await client.parse835({
         minioObjectKey: input.minioObjectKey,
         payerProgram: input.payerKind,
+        rawEdi: input.rawEdi,
       });
       if (!parsed.ok) {
         return { outcome: "malformed", reason: parsed.degraded.reason };
@@ -469,7 +470,7 @@ export function buildDrizzleM25IngestService(
       ) {
         return {
           outcome: "malformed",
-          reason: "sidecar envelope control numbers disagree with the local ISA/ST header",
+          reason: "parsed envelope control numbers disagree with the local ISA/ST header",
         };
       }
 

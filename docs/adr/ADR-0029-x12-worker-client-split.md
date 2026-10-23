@@ -3,6 +3,7 @@
 - **Status:** Accepted (applied 2026-06-14 — manifest edited, `.cjs` mirror updated, 2 packages
   scaffolded; `arch:fitness` green at 38 packages; Wave G plan corrected)
 - **Date:** 2026-06-14
+- **Update (#253):** superseded in part by [ADR-0037](ADR-0037-x12-cost-report-typescript.md) — no Python sidecar is deployed. `x12-835-client` now parses the 835 in-process in TypeScript (`parse-x12-835.ts`); only the 277CA mapper still fronts a (never-wired) sidecar port.
 - **Phase:** pre-build governance (applies before Wave G — M23/M25 billing — builds)
 - **Resolves:** the open item left by [ADR-0028](ADR-0028-adapter-package-codepaths.md) — the one
   adapter package that could not simply join a `codePath` because it is referenced by **two** modules.
