@@ -2840,7 +2840,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
         {consentsRead !== "ok" ? (
           <ReadNotice
             status={consentsRead}
-            subject="Consent records"
+            subject="consent records"
             onRetry={() => setAttempt((n) => n + 1)}
           />
         ) : (

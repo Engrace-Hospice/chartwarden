@@ -8,6 +8,7 @@ import {
   WorkQueueLayout,
   settleRead,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HQRP compliance dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Dashboard."
@@ -50,6 +51,7 @@ export function HqrpComplianceDashboard(): JSX.Element {
   const client = useApiClient();
   const [row, setRow] = useState<Compliance | null>(null);
   const [loading, setLoading] = useState(true);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
 
   const latestLoad = useRef(0);
@@ -165,68 +167,70 @@ export function HqrpComplianceDashboard(): JSX.Element {
         </div>
       }
       table={
-        readStatus !== "ok" ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <HopeListReadState
-              status={readStatus}
-              subject="the agency-wide HQRP compliance dashboard"
-              failedTitle="The HQRP compliance dashboard could not be loaded"
-              onRetry={() => void load()}
-            />
-          </div>
-        ) : loading || !row ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "32%" }}>Metric</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Rate</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Target</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Posture</th>
-                  <th style={{ ...thStyle, width: "20%" }}>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((m) => {
-                  const lateMetric = m.key === "late_completion";
-                  // #48 — no denominator means there is nothing to be on track OR at risk about. Saying
-                  // "On Track" over zero observations is the failure this screen was built to prevent.
-                  const passing =
-                    m.value === null
-                      ? null
-                      : lateMetric
-                        ? m.value <= m.target
-                        : m.value >= m.target;
-                  return (
-                    <tr key={m.key} style={rowStyle}>
-                      <td style={tdStyle}>
-                        <span style={primaryTextStyle}>{m.label}</span>
-                      </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                        {pct(m.value)}
-                        <span style={countsStyle}>{countsLabel(m.counts)}</span>
-                      </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                        {lateMetric ? `<= ${pct(m.target)}` : `>= ${pct(m.target)}`}
-                      </td>
-                      <td style={tdStyle}>
-                        <StatusPill
-                          label={passing === null ? "No Data" : passing ? "On Track" : "At Risk"}
-                          tone={passing === null ? "neutral" : passing ? "success" : "warning"}
-                        />
-                      </td>
-                      <td style={tdStyle}>{m.detail}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
+        <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={{ outline: "none" }}>
+          {readStatus !== "ok" ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <HopeListReadState
+                status={readStatus}
+                subject="the agency-wide HQRP compliance dashboard"
+                failedTitle="The HQRP compliance dashboard could not be loaded"
+                onRetry={() => void load()}
+              />
+            </div>
+          ) : loading || !row ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "32%" }}>Metric</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Rate</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Target</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Posture</th>
+                    <th style={{ ...thStyle, width: "20%" }}>Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metrics.map((m) => {
+                    const lateMetric = m.key === "late_completion";
+                    // #48 — no denominator means there is nothing to be on track OR at risk about. Saying
+                    // "On Track" over zero observations is the failure this screen was built to prevent.
+                    const passing =
+                      m.value === null
+                        ? null
+                        : lateMetric
+                          ? m.value <= m.target
+                          : m.value >= m.target;
+                    return (
+                      <tr key={m.key} style={rowStyle}>
+                        <td style={tdStyle}>
+                          <span style={primaryTextStyle}>{m.label}</span>
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {pct(m.value)}
+                          <span style={countsStyle}>{countsLabel(m.counts)}</span>
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {lateMetric ? `<= ${pct(m.target)}` : `>= ${pct(m.target)}`}
+                        </td>
+                        <td style={tdStyle}>
+                          <StatusPill
+                            label={passing === null ? "No Data" : passing ? "On Track" : "At Risk"}
+                            tone={passing === null ? "neutral" : passing ? "success" : "warning"}
+                          />
+                        </td>
+                        <td style={tdStyle}>{m.detail}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       }
       fullPageScroll
     />

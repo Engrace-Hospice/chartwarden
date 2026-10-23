@@ -12,6 +12,7 @@ import {
   settleRead,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — the patient chart's Clinical tab (2026-09-25 redesign, mockup
 // "Patient Chart — Clinical"). Every panel reads a real endpoint: diagnoses from the M7 plan of care,
@@ -138,7 +139,7 @@ export function ReadNotice({
   if (status === "failed") {
     return (
       <ErrorState
-        title={`${subject} could not be loaded`}
+        title={`${subject.charAt(0).toUpperCase()}${subject.slice(1)} could not be loaded`}
         description="Try again in a moment."
         onRetry={onRetry}
       />
@@ -471,8 +472,24 @@ export function ClinicalTab({
   data: PatientChartData;
   clinical: ClinicalData;
 }): JSX.Element {
+  // Loading until every clinical read has settled; Retry clears them, so a reload keeps focus on this region.
+  const loading = [
+    clinical.ppsRead,
+    clinical.ppsLatestRead,
+    clinical.esasRead,
+    clinical.changesRead,
+    clinical.consentsRead,
+    clinical.dpoaRead,
+  ].some((read) => read === undefined);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   return (
-    <div className="wx-overview-grid">
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      aria-busy={loading}
+      className="wx-overview-grid"
+      style={{ outline: "none" }}
+    >
       <ClinicalOverviewPanel patientId={patient.id} data={data} className="wx-c15" />
       <ClinicalStatusPanel clinical={clinical} className="wx-c9" />
       <SymptomsPanel clinical={clinical} className="wx-c24" />
@@ -661,7 +678,7 @@ function ClinicalStatusPanel({
             <li>
               <ReadNotice
                 status={clinical.ppsLatestRead}
-                subject="Performance status"
+                subject="performance status"
                 onRetry={clinical.retry}
               />
             </li>
@@ -685,7 +702,7 @@ function ClinicalStatusPanel({
             <li>
               <ReadNotice
                 status={clinical.esasRead}
-                subject="Symptom scores"
+                subject="symptom scores"
                 onRetry={clinical.retry}
               />
             </li>
@@ -778,7 +795,7 @@ function SymptomsPanel({
       ) : clinical.esasRead !== "ok" ? (
         <ReadNotice
           status={clinical.esasRead}
-          subject="Symptom assessments"
+          subject="symptom assessments"
           onRetry={clinical.retry}
         />
       ) : !latest ? (
@@ -1020,7 +1037,7 @@ function FunctionalPanel({
       {clinical.pps === undefined ? (
         <Loading />
       ) : clinical.ppsRead !== "ok" ? (
-        <ReadNotice status={clinical.ppsRead} subject="The PPS trend" onRetry={clinical.retry} />
+        <ReadNotice status={clinical.ppsRead} subject="the PPS trend" onRetry={clinical.retry} />
       ) : points.length === 0 ? (
         <EmptyLine>No PPS captured in the last 30 days.</EmptyLine>
       ) : (
@@ -1235,7 +1252,7 @@ export function ClinicalRail({
         ) : clinical.changesRead !== "ok" ? (
           <ReadNotice
             status={clinical.changesRead}
-            subject="Significant-change alerts"
+            subject="significant-change alerts"
             onRetry={clinical.retry}
           />
         ) : changes.length === 0 ? (
@@ -1309,7 +1326,7 @@ export function ClinicalRail({
                 ? "failed"
                 : "denied"
             }
-            subject="Advance directives"
+            subject="advance directives"
             onRetry={clinical.retry}
           />
         ) : directives.length === 0 && !clinical.dpoa ? (

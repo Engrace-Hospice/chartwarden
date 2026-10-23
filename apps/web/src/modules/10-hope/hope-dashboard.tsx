@@ -14,6 +14,7 @@ import {
   interactiveRowProps,
   settleRead,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE timepoint dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Dashboard."
@@ -73,6 +74,7 @@ export function HopeDashboard(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
   const [recording, setRecording] = useState<ScheduleRow | null>(null);
   const [acting, setActing] = useState<{ action: HopeAction; row: ScheduleRow } | null>(null);
@@ -299,149 +301,153 @@ export function HopeDashboard(): JSX.Element {
           </div>
         }
         table={
-          readStatus !== "ok" ? (
-            <div style={{ padding: "2rem 1.5rem" }}>
-              <HopeListReadState
-                status={readStatus}
-                subject="the agency-wide HOPE schedules"
-                failedTitle="HOPE schedules could not be loaded"
-                onRetry={() => void load()}
-              />
-            </div>
-          ) : loading && items.length === 0 ? (
-            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-              <LoadingSpinner />
-            </div>
-          ) : rows.length === 0 ? (
-            <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState
-                title="No HOPE schedules"
-                description={
-                  hasActiveFilters
-                    ? "No timepoint windows match the current filters."
-                    : "No HOPE schedules are currently open."
-                }
-                action={
-                  hasActiveFilters ? (
-                    <Button tone="secondary" size="sm" onClick={clearFilters}>
-                      Clear filters
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </div>
-          ) : (
-            <>
-              <section
-                aria-label="HOPE records"
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
-                tabIndex={0}
-                className="wx-list-table-wrap"
-              >
-                <table
-                  className="wx-list-table"
-                  style={{ minWidth: "66rem", tableLayout: "fixed" }}
+          <div ref={focusRef} tabIndex={-1} aria-busy={loading} style={{ outline: "none" }}>
+            {readStatus !== "ok" ? (
+              <div style={{ padding: "2rem 1.5rem" }}>
+                <HopeListReadState
+                  status={readStatus}
+                  subject="the agency-wide HOPE schedules"
+                  failedTitle="HOPE schedules could not be loaded"
+                  onRetry={() => void load()}
+                />
+              </div>
+            ) : loading && items.length === 0 ? (
+              <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+                <LoadingSpinner />
+              </div>
+            ) : rows.length === 0 ? (
+              <div style={{ padding: "2rem 1.5rem" }}>
+                <EmptyState
+                  title="No HOPE schedules"
+                  description={
+                    hasActiveFilters
+                      ? "No timepoint windows match the current filters."
+                      : "No HOPE schedules are currently open."
+                  }
+                  action={
+                    hasActiveFilters ? (
+                      <Button tone="secondary" size="sm" onClick={clearFilters}>
+                        Clear filters
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </div>
+            ) : (
+              <>
+                <section
+                  aria-label="HOPE records"
+                  // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+                  tabIndex={0}
+                  className="wx-list-table-wrap"
                 >
-                  <colgroup>
-                    <col style={{ width: "22%" }} />
-                    <col style={{ width: "18%" }} />
-                    <col style={{ width: "16%" }} />
-                    <col style={{ width: "26%" }} />
-                    <col style={{ width: "18%" }} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>RFA</th>
-                      <th>Window closes</th>
-                      <th>State</th>
-                      <th>Patient</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedRows.map(({ row, bucket }) => (
-                      <tr
-                        key={row.id}
-                        {...interactiveRowProps(
-                          () => navigate(`/patients/${row.patientId}/hope`),
-                          false,
-                          true,
-                        )}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <td>
-                          <div style={primaryCellStyle}>
-                            <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-                              {rfaLabel(row.rfaKind)}
-                            </span>
-                            <span style={monoMutedStyle}>{row.id.slice(0, 8)}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <CountdownChip
-                            dueAt={row.windowClosesAt}
-                            warnWithinHours={48}
-                            label="Closes"
-                          />
-                        </td>
-                        <td>
-                          <StatusPill
-                            label={stateLabel(bucket)}
-                            tone={BUCKET_TONE[bucket] ?? "neutral"}
-                          />
-                        </td>
-                        <td>
-                          <div style={primaryCellStyle}>
-                            <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-                              <NameLabel value={patientNameOf(patientNames, row.patientId)} />
-                            </span>
-                            {patientNames[row.patientId]?.mrn ? (
-                              <span style={monoMutedStyle}>{patientNames[row.patientId]?.mrn}</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          {row.status === "open" ? (
-                            // The row itself navigates; a click on an action must not also do that.
-                            <div
-                              style={{ display: "flex", gap: "0.375rem" }}
-                              onClick={(ev) => ev.stopPropagation()}
-                              onKeyDown={(ev) => ev.stopPropagation()}
-                            >
-                              <Button size="sm" onClick={() => setRecording(row)}>
-                                Record
-                              </Button>
-                              <Button
-                                size="sm"
-                                tone="tertiary"
-                                onClick={() => setActing({ action: "skip", row })}
-                              >
-                                Skip
-                              </Button>
-                            </div>
-                          ) : (
-                            <span style={mutedStyle}>—</span>
-                          )}
-                        </td>
+                  <table
+                    className="wx-list-table"
+                    style={{ minWidth: "66rem", tableLayout: "fixed" }}
+                  >
+                    <colgroup>
+                      <col style={{ width: "22%" }} />
+                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "16%" }} />
+                      <col style={{ width: "26%" }} />
+                      <col style={{ width: "18%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>RFA</th>
+                        <th>Window closes</th>
+                        <th>State</th>
+                        <th>Patient</th>
+                        <th>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-              <OffsetPagination
-                page={activePage}
-                pageSize={pageSize}
-                totalItems={rows.length}
-                onPageChange={setPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setPage(1);
-                }}
-                pageSizeOptions={PAGE_SIZES}
-                noun="schedules"
-              />
-            </>
-          )
+                    </thead>
+                    <tbody>
+                      {pagedRows.map(({ row, bucket }) => (
+                        <tr
+                          key={row.id}
+                          {...interactiveRowProps(
+                            () => navigate(`/patients/${row.patientId}/hope`),
+                            false,
+                            true,
+                          )}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <td>
+                            <div style={primaryCellStyle}>
+                              <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                                {rfaLabel(row.rfaKind)}
+                              </span>
+                              <span style={monoMutedStyle}>{row.id.slice(0, 8)}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <CountdownChip
+                              dueAt={row.windowClosesAt}
+                              warnWithinHours={48}
+                              label="Closes"
+                            />
+                          </td>
+                          <td>
+                            <StatusPill
+                              label={stateLabel(bucket)}
+                              tone={BUCKET_TONE[bucket] ?? "neutral"}
+                            />
+                          </td>
+                          <td>
+                            <div style={primaryCellStyle}>
+                              <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                                <NameLabel value={patientNameOf(patientNames, row.patientId)} />
+                              </span>
+                              {patientNames[row.patientId]?.mrn ? (
+                                <span style={monoMutedStyle}>
+                                  {patientNames[row.patientId]?.mrn}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td>
+                            {row.status === "open" ? (
+                              // The row itself navigates; a click on an action must not also do that.
+                              <div
+                                style={{ display: "flex", gap: "0.375rem" }}
+                                onClick={(ev) => ev.stopPropagation()}
+                                onKeyDown={(ev) => ev.stopPropagation()}
+                              >
+                                <Button size="sm" onClick={() => setRecording(row)}>
+                                  Record
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  tone="tertiary"
+                                  onClick={() => setActing({ action: "skip", row })}
+                                >
+                                  Skip
+                                </Button>
+                              </div>
+                            ) : (
+                              <span style={mutedStyle}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+                <OffsetPagination
+                  page={activePage}
+                  pageSize={pageSize}
+                  totalItems={rows.length}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setPage(1);
+                  }}
+                  pageSizeOptions={PAGE_SIZES}
+                  noun="schedules"
+                />
+              </>
+            )}
+          </div>
         }
       />
       {recording !== null ? (

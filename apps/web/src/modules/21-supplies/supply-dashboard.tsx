@@ -113,7 +113,7 @@ function ReadPanel({
   if (status === "failed") {
     return (
       <ErrorState
-        title={`${subject} could not be loaded`}
+        title={`${subject.charAt(0).toUpperCase()}${subject.slice(1)} could not be loaded`}
         description="Try again in a moment."
         onRetry={onRetry}
       />
@@ -265,7 +265,7 @@ export function SupplyTeamDashboard(): JSX.Element {
       </FilterRow>
 
       <Card title="Action queue">
-        <ReadPanel status={reqStatus} subject="The supply worklist" onRetry={() => void load()}>
+        <ReadPanel status={reqStatus} subject="the supply worklist" onRetry={() => void load()}>
           {requests.length === 0 ? (
             <span style={mutedStyle}>
               Nothing needs supply-team action in this view — every open request has a vendor and is
@@ -326,7 +326,7 @@ export function SupplyTeamDashboard(): JSX.Element {
           </Link>
         }
       >
-        <ReadPanel status={parStatus} subject="The par stock list" onRetry={() => void load()}>
+        <ReadPanel status={parStatus} subject="the par stock list" onRetry={() => void load()}>
           {sortedPar.length === 0 ? (
             <span style={mutedStyle}>Every active shelf row is at or above its reorder point.</span>
           ) : (
@@ -374,7 +374,7 @@ export function SupplyTeamDashboard(): JSX.Element {
           ) : undefined
         }
       >
-        <ReadPanel status={retStatus} subject="The returns worklist" onRetry={() => void load()}>
+        <ReadPanel status={retStatus} subject="the returns worklist" onRetry={() => void load()}>
           {openReturns.length === 0 ? (
             <span style={mutedStyle}>
               No comfort-kit return is open. A return row is created when the obligation ARISES (the
@@ -428,7 +428,7 @@ export function SupplyTeamDashboard(): JSX.Element {
           </Link>
         }
       >
-        <ReadPanel status={dispStatus} subject="The dispatch list" onRetry={() => void load()}>
+        <ReadPanel status={dispStatus} subject="the dispatch list" onRetry={() => void load()}>
           {dispatches.length === 0 ? (
             <span style={mutedStyle}>No comfort kit has been dispatched.</span>
           ) : (

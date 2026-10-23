@@ -166,4 +166,16 @@ describe.each(SCREENS)("$name read states", (def) => {
     await act(async () => resolvers[0]?.(json(def.emptyBody)));
     await waitFor(() => expect(screen.getAllByText(def.emptyText).length).toBeGreaterThan(0));
   });
+
+  it("keeps keyboard focus off <body> after Retry succeeds", async () => {
+    mount(def, [
+      () => json({ error: { code: "UNAVAILABLE", message: "down" } }, 503),
+      () => json(def.emptyBody),
+    ]);
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getAllByText(def.emptyText).length).toBeGreaterThan(0));
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+  });
 });

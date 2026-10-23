@@ -72,9 +72,9 @@ describe("Clinical tab read states", () => {
     ["DPOA", DPOA],
   ])("treats a 404 on %s as denied, never as none on file", async (_n, path) => {
     mount({ ...base, [path]: fail(404) });
-    await screen.findByText(/Advance directives/, { selector: "p" });
+    await screen.findByText(/advance directives/, { selector: "p" });
     expect(screen.queryByText(NO_DIRECTIVES)).toBeNull();
-    expect(screen.getByRole("status").textContent).toMatch(/Advance directives/);
+    expect(screen.getByRole("status").textContent).toMatch(/advance directives/);
   });
 
   it.each([
@@ -154,7 +154,7 @@ describe("Clinical tab read states", () => {
   it("shows PPS 403 as denied without retry", async () => {
     mount({ ...base, [PPS]: fail(403) });
     await waitFor(() =>
-      expect(screen.getByRole("status").textContent).toMatch(/Performance status/),
+      expect(screen.getByRole("status").textContent).toMatch(/performance status/),
     );
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
@@ -163,6 +163,22 @@ describe("Clinical tab read states", () => {
     mount({ ...base, [PPS]: fail(500) });
     await screen.findByRole("button", { name: "Retry" });
     expect(screen.getByText(/Performance status could not be loaded/)).toBeTruthy();
+  });
+
+  it("keeps keyboard focus off <body> after Retry succeeds", async () => {
+    let calls = 0;
+    mount({
+      ...base,
+      [PPS]: () => {
+        calls += 1;
+        return calls === 1 ? fail(500) : base[PPS];
+      },
+    });
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
   });
 
   it("treats a rejected request as failed", async () => {
