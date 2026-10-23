@@ -108,6 +108,22 @@ describe("TenantProvisionDrawer", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("sends the optional subdomain trimmed, and refuses a reserved or malformed one before posting", async () => {
+    const { calls } = mount(() => json(202, {}));
+    fillAll();
+    fill("Subdomain", "admin");
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+    expect(await screen.findByText(/reserved/)).toBeTruthy();
+    fill("Subdomain", "Bad_Slug");
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+    expect(await screen.findByText(/lowercase letters/)).toBeTruthy();
+    expect(calls).toEqual([]);
+    fill("Subdomain", " sunrise ");
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({ slug: "sunrise" });
+  });
+
   it("a step-up refusal keeps the typed values and offers Re-verify", async () => {
     const { onAccepted } = mount(() =>
       json(403, { error: { code: "STEP_UP_REQUIRED", message: "step up", correlationId: "c" } }),

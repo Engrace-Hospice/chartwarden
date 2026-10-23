@@ -1,3 +1,4 @@
+import { validateTenantSlug } from "@chartwarden/types";
 import {
   Button,
   type FieldErrors,
@@ -29,6 +30,11 @@ const PLAN_OPTIONS: readonly { value: PlanLabel; label: string }[] = [
 const NAME_MIN = 2;
 const NAME_MAX = 300;
 const ADMIN_NAME_MAX = 200;
+const SLUG_MESSAGES = {
+  format: "Use 3–63 lowercase letters, digits or hyphens, starting and ending with a letter or digit.",
+  punycode: "A slug cannot start with “xn--”.",
+  reserved: "That name is reserved. Choose another.",
+} as const;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Re-verify leaves the page, so the typed values ride through sessionStorage and are restored once, on return.
@@ -40,6 +46,7 @@ interface Draft {
   breachEmail: string;
   adminEmail: string;
   adminName: string;
+  slug: string;
   plan: PlanLabel;
 }
 
@@ -64,11 +71,17 @@ function stashDraft(draft: Draft): void {
 
 /** Per-field messages for the New tenant form; empty when it can be submitted (#597, F-042). */
 export function tenantProvisionErrors(
-  form: Pick<Draft, "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName">,
-): FieldErrors<"legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> {
+  form: Pick<Draft, "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> &
+    Partial<Pick<Draft, "slug">>,
+): FieldErrors<"legalName" | "slug" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> {
   const errors: FieldErrors<
-    "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"
+    "legalName" | "slug" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"
   > = {};
+  const slug = (form.slug ?? "").trim();
+  if (slug !== "") {
+    const verdict = validateTenantSlug(slug);
+    if (!verdict.ok) errors.slug = SLUG_MESSAGES[verdict.reason];
+  }
   const name = form.legalName.trim();
   if (name.length < NAME_MIN)
     errors.legalName = `Enter the legal business name (at least ${NAME_MIN} characters).`;
@@ -108,6 +121,7 @@ export function TenantProvisionDrawer({
   const [breachEmail, setBreachEmail] = useState(draft?.breachEmail ?? "");
   const [adminEmail, setAdminEmail] = useState(draft?.adminEmail ?? "");
   const [adminName, setAdminName] = useState(draft?.adminName ?? "");
+  const [slug, setSlug] = useState(draft?.slug ?? "");
   const [plan, setPlan] = useState<PlanLabel>(draft?.plan ?? "standard");
   const [busy, setBusy] = useState(false);
   // Provisioning is queued, not instant, so the tenant is not in the list yet; locking the form after acceptance stops
@@ -118,7 +132,7 @@ export function TenantProvisionDrawer({
   const name = legalName.trim();
   // Errors appear after the first submit attempt; the button stays enabled so a refusal always explains itself.
   const [attempted, setAttempted] = useState(false);
-  const fieldValues = { legalName, billingEmail, breachEmail, adminEmail, adminName };
+  const fieldValues = { legalName, slug, billingEmail, breachEmail, adminEmail, adminName };
   const errors = attempted ? tenantProvisionErrors(fieldValues) : {};
 
   async function submit(e: FormEvent<HTMLFormElement>): Promise<void> {
@@ -141,6 +155,7 @@ export function TenantProvisionDrawer({
           firstAdminEmail: adminEmail.trim(),
           firstAdminFullName: adminName.trim(),
           planLabel: plan,
+          ...(slug.trim() === "" ? {} : { slug: slug.trim() }),
         },
       }));
     } catch {
@@ -196,6 +211,17 @@ export function TenantProvisionDrawer({
             value={legalName}
             maxLength={NAME_MAX}
             onChange={(e) => setLegalName(e.target.value)}
+          />
+          <TextField
+            id="prov-slug"
+            label="Subdomain (optional)"
+            hint="The tenant's address, e.g. sunrise for sunrise.chartwarden.com. Leave blank to generate one. It cannot be changed or reused later."
+            error={errors.slug}
+            value={slug}
+            maxLength={63}
+            autoCapitalize="none"
+            spellCheck={false}
+            onChange={(e) => setSlug(e.target.value)}
           />
           <SelectField
             label="Plan"
@@ -254,7 +280,7 @@ export function TenantProvisionDrawer({
             {!outcome.ok && outcome.stepUp ? (
               <ReverifyLink
                 onNavigate={() =>
-                  stashDraft({ legalName, billingEmail, breachEmail, adminEmail, adminName, plan })
+                  stashDraft({ legalName, billingEmail, breachEmail, adminEmail, adminName, slug, plan })
                 }
               />
             ) : null}
