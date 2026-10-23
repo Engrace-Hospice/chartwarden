@@ -2439,6 +2439,14 @@ export const M22_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "document_owner_or_caseload",
   },
+  // F-023 (#592) — view-only: lets a role that lists the whole org's documents keep doing so. `documents.read`
+  // alone now lists the actor's caseload. Metadata only; content stays behind `documents.read_phi_content`.
+  "documents.read_org_wide": {
+    resource: "document",
+    action: "read_org_wide",
+    category: "clinical",
+    abac: "none",
+  },
   "documents.read_history": {
     resource: "document",
     action: "read_history",

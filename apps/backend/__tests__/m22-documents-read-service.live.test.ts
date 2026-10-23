@@ -182,4 +182,55 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
     const page = await service.listDocuments(ORG_A, {}, undefined, 100);
     expect(page.items.every((d) => d.title !== "Smoke upload")).toBe(true);
   });
+
+  // #592 F-023 — the list narrows by patient in SQL. Proven here (real Postgres, NOBYPASSRLS role) because the
+  // in-memory route tests cannot catch a drizzle `inArray` / `sql\`false\`` regression.
+  describe("patientScope (F-023)", () => {
+    const OTHER_PATIENT = "66666666-6666-6666-6666-666666666666";
+
+    async function insertCopy(title: string, patientId: string | null) {
+      await admin.query(
+        `INSERT INTO document (organization_id, patient_id, provider_entity_id, location_id, retention_class,
+           source_kind, aggregate_type, title, created_by_membership_id)
+         SELECT organization_id, $2, provider_entity_id, location_id, retention_class,
+                source_kind, aggregate_type, $3, created_by_membership_id
+           FROM document WHERE id = $1`,
+        [seeded[ORG_A].document, patientId, title],
+      );
+    }
+
+    const titlesFor = async (patientScope: readonly string[] | null) =>
+      (await service.listDocuments(ORG_A, { patientScope }, undefined, 100)).items
+        .map((d) => d.title)
+        .filter((t) => t.startsWith("F023"))
+        .sort();
+
+    beforeAll(async () => {
+      await insertCopy("F023 mine", PATIENT);
+      await insertCopy("F023 other patient", OTHER_PATIENT);
+      await insertCopy("F023 org level", null);
+    });
+
+    it("a caseload scope returns only that patient's documents", async () => {
+      expect(await titlesFor([PATIENT])).toEqual(["F023 mine"]);
+    });
+
+    it("an empty scope returns nothing", async () => {
+      expect(await titlesFor([])).toEqual([]);
+    });
+
+    it("the org-wide arm (null) returns every document, including org-level ones", async () => {
+      expect(await titlesFor(null)).toEqual(["F023 mine", "F023 org level", "F023 other patient"]);
+    });
+
+    it("a patientId filter outside the scope cannot widen it", async () => {
+      const page = await service.listDocuments(
+        ORG_A,
+        { patientScope: [PATIENT], patientId: OTHER_PATIENT },
+        undefined,
+        100,
+      );
+      expect(page.items).toEqual([]);
+    });
+  });
 });

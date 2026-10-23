@@ -39,7 +39,7 @@ import {
   type OrgId,
   ChartWardenError,
 } from "@chartwarden/types";
-import { and, desc, eq, exists, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { otherBatchHoldsSudFlag } from "./extraction/batch-identity";
 import { commitClinicalWriteback } from "./extraction/writeback-commit-clinical-db";
@@ -290,6 +290,12 @@ export function createDbDocumentRouteService(
     async listDocuments(organizationId, filter, cursor, limit): Promise<CursorPage<DocumentView>> {
       return withOrg(db, organizationId, async (tx) => {
         const conds = [
+          // F-023 — an empty scope matches nothing; org-level documents (null patient) fall out of IN.
+          filter.patientScope
+            ? filter.patientScope.length > 0
+              ? inArray(DOC.patientId, [...filter.patientScope])
+              : sql`false`
+            : undefined,
           filter.patientId ? eq(DOC.patientId, filter.patientId) : undefined,
           filter.aggregateType ? eq(DOC.aggregateType, filter.aggregateType as never) : undefined,
           filter.aggregateId ? eq(DOC.aggregateId, filter.aggregateId) : undefined,

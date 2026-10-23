@@ -54,6 +54,20 @@ export function canSeeScreen(
   return session.permissions.includes(screen.requiredPermission);
 }
 
+/**
+ * Is a screen KNOWN to be off-limits to this actor? The route-level counterpart of {@link canSeeScreen}
+ * (#592 F-025): nav hiding alone left a typed URL opening a create form the actor cannot submit. Unlike
+ * the nav it denies only when the permission set is known and lacks the key — an unknown set renders the
+ * screen and lets the server (the authoritative enforcer) refuse, so a context-less environment is not blanked.
+ */
+export function isScreenDenied(
+  screen: { requiredPermission?: string },
+  session: Session | null,
+): boolean {
+  if (!screen.requiredPermission || !session?.permissions) return false;
+  return !session.permissions.includes(screen.requiredPermission);
+}
+
 /** What a chromed-route guard should do for a given session status (audit #6, TASK-033). */
 export type RouteGuardOutcome = "loading" | "redirect" | "outage" | "allow";
 
