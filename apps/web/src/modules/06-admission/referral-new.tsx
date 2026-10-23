@@ -1,5 +1,5 @@
 import { isValidMedicaidNumber, isValidMedicareNumber } from "@chartwarden/types";
-import { Button, DetailPageLayout, PageHeader, useApiClient } from "@chartwarden/ui";
+import { Button, DetailPageLayout, PageHeader, nowLocalInput, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -34,7 +34,7 @@ export function ReferralNew(): JSX.Element {
     referrerPhone: "",
     externalReferralId: "",
     referringDxText: "",
-    receivedAt: new Date().toISOString().slice(0, 16),
+    receivedAt: nowLocalInput(),
   });
 
   useEffect(() => {

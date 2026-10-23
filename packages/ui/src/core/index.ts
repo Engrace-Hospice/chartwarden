@@ -52,7 +52,15 @@ export {
 export { brandColors, colors, statusColors } from "./theme/colors";
 
 // Date-only helpers (PARAM-004 — local-calendar parsing, never a UTC-instant off-by-one)
-export { ageYears, formatDateOnly, parseLocalDateOnly } from "./dates";
+export {
+  ageYears,
+  formatDateOnly,
+  isoToLocalInput,
+  localInputToIso,
+  nowLocalInput,
+  parseLocalDateOnly,
+  toLocalInput,
+} from "./dates";
 
 // Display-only fallback for internal enum/event identifiers when no product label is available.
 export { humanizeIdentifier } from "./humanize-identifier";

@@ -4,8 +4,16 @@
 // etc.) are applied. This test pins `process.env.TZ` to a real negative-offset zone to reproduce
 // the exact failure mode the bug had, rather than relying on whatever timezone the test runner
 // happens to be in.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ageYears, formatDateOnly, parseLocalDateOnly } from "../dates";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  ageYears,
+  formatDateOnly,
+  isoToLocalInput,
+  localInputToIso,
+  nowLocalInput,
+  parseLocalDateOnly,
+  toLocalInput,
+} from "../dates";
 
 const ORIGINAL_TZ = process.env.TZ;
 const restoreTz = () => {
@@ -96,5 +104,48 @@ describe.each(["America/Los_Angeles", "Pacific/Auckland"])("formatDateOnly in %s
     expect(
       formatDateOnly("1950-03-15", { month: "2-digit", day: "2-digit", year: "numeric" }),
     ).toBe("03/15/1950");
+  });
+});
+
+// #595 — datetime-local defaults were `new Date().toISOString().slice(0, 16)`: the UTC wall clock, read back as
+// local, so a 19:15 PDT submit stored an instant 7 h in the future.
+describe("datetime-local helpers — non-UTC timezone (#595)", () => {
+  beforeAll(() => {
+    process.env.TZ = "America/Los_Angeles";
+  });
+  afterAll(() => {
+    restoreTz();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("defaults to the local wall clock, not the UTC one", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T02:15:00Z")); // 19:15 PDT on the 22nd
+    expect(nowLocalInput()).toBe("2026-10-22T19:15");
+    expect(new Date().toISOString().slice(0, 16)).toBe("2026-10-23T02:15"); // the old, wrong default
+  });
+
+  it("round-trips the same instant through the field", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T02:15:00Z"));
+    expect(localInputToIso(nowLocalInput())).toBe("2026-10-23T02:15:00.000Z");
+  });
+
+  it("shows a server instant in the viewer's zone (and stays stable across edits)", () => {
+    expect(isoToLocalInput("2026-10-23T02:15:00.000Z")).toBe("2026-10-22T19:15");
+    expect(localInputToIso(isoToLocalInput("2026-10-23T02:15:00.000Z"))).toBe("2026-10-23T02:15:00.000Z");
+  });
+
+  it("pads single digits and honours the winter offset", () => {
+    expect(toLocalInput(new Date(2026, 0, 5, 3, 7))).toBe("2026-01-05T03:07");
+  });
+
+  it("returns an empty string for empty or unparseable input", () => {
+    expect(isoToLocalInput(undefined)).toBe("");
+    expect(isoToLocalInput("nope")).toBe("");
+    expect(localInputToIso("")).toBe("");
+    expect(localInputToIso("nope")).toBe("");
   });
 });

@@ -1,4 +1,13 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  isoToLocalInput,
+  nowLocalInput,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the DISCIPLINE ASSESSMENT EDITOR (§5.1 #7, Track B).
 //
 // Capture, sign and amend one discipline assessment (routes 12 / 13 / 14). The lifecycle it renders is
@@ -74,7 +83,7 @@ export function AssessmentEditor(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [kind, setKind] = useState("msw_psychosocial");
-  const [capturedAt, setCapturedAt] = useState(new Date().toISOString().slice(0, 16));
+  const [capturedAt, setCapturedAt] = useState(nowLocalInput);
   const [isInitial, setIsInitial] = useState(false);
   const [sudFlag, setSudFlag] = useState(false);
   const [familyViolenceFlag, setFamilyViolenceFlag] = useState(false);
@@ -96,7 +105,7 @@ export function AssessmentEditor(): JSX.Element {
     const found = loaded.assessments.find((a) => a.assessmentId === assessmentId) ?? null;
     if (found) {
       setKind(found.kind);
-      setCapturedAt(found.capturedAt.slice(0, 16));
+      setCapturedAt(isoToLocalInput(found.capturedAt));
       setIsInitial(found.isInitial);
       setSudFlag(found.sudFlag);
       setFamilyViolenceFlag(found.familyViolenceFlag);

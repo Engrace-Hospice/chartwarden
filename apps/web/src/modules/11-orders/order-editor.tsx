@@ -1,4 +1,4 @@
-import { Button, Modal, useApiClient } from "@chartwarden/ui";
+import { Button, Modal, nowLocalInput, useApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { CanonicalOrderFields, kindDefaults } from "./order-kind-fields";
@@ -68,7 +68,7 @@ export function OrderEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [receivedAt, setReceivedAt] = useState(nowLocalInput);
   const [attestation, setAttestation] = useState("");
   const [readBackVerified, setReadBackVerified] = useState(false);
 
