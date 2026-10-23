@@ -1,12 +1,24 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // @chartwarden/portal — #594: an unknown URL or a throwing screen must show a themed, family-safe page, never
 // React Router's developer-facing "Unexpected Application Error" default.
-import { CorrelationIdProvider, createApiClient } from "@chartwarden/ui";
-import type { JSX } from "react";
-import { RouterProvider, createMemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { createApiClient } from "@chartwarden/ui";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PortalApp } from "../src/app";
-import { PortalRouteError } from "../src/not-found";
+
+// A screen that throws on demand, so the route-error test goes through PortalApp's real router and fails if
+// `errorElement` is ever removed from app.tsx.
+const screenBehaviour = vi.hoisted(() => ({ throws: false }));
+vi.mock("../src/screens/patient-picker", () => ({
+  PortalPatientPicker: () => {
+    if (screenBehaviour.throws) throw new Error("developer-only detail: undefined is not a function");
+    return null;
+  },
+}));
+
+afterEach(() => {
+  screenBehaviour.throws = false;
+  vi.restoreAllMocks();
+});
 
 function recordingClient(requests: string[]) {
   return createApiClient({
@@ -46,25 +58,19 @@ describe("portal not-found and route-error pages (#594)", () => {
     window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={recordingClient([])} />);
 
-    await waitFor(() => expect(screen.queryByText("We couldn’t find that page")).toBeNull());
+    expect((await screen.findAllByText(/sign in/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("We couldn’t find that page")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Portal navigation" })).toBeNull();
   });
 
   it("shows the route-error page, not the thrown message, when a screen throws", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    function Boom(): JSX.Element {
-      throw new Error("developer-only detail: undefined is not a function");
-    }
-    const router = createMemoryRouter([
-      { path: "/", element: <Boom />, errorElement: <PortalRouteError /> },
-    ]);
-    render(
-      <CorrelationIdProvider value="cid-test">
-        <RouterProvider router={router} />
-      </CorrelationIdProvider>,
-    );
+    screenBehaviour.throws = true;
+    window.history.pushState({}, "", "/portal/patient-picker");
+    render(<PortalApp client={recordingClient([])} />);
 
     expect(await screen.findByText("Something went wrong")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload this page" })).toBeTruthy();
     expect(screen.queryByText(/developer-only detail/)).toBeNull();
     expect(screen.queryByText(/Hey developer/i)).toBeNull();
   });

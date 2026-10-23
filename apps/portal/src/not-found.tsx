@@ -13,6 +13,15 @@ function GoHome(): JSX.Element {
   return <Button onClick={() => navigate(HOME_PATH)}>Go to your patients</Button>;
 }
 
+// The error may come from the page the home button leads to, so the error page also offers a full reload.
+function Reload(): JSX.Element {
+  return (
+    <Button tone="secondary" onClick={() => window.location.reload()}>
+      Reload this page
+    </Button>
+  );
+}
+
 export function PortalNotFound(): JSX.Element {
   return (
     <CenteredStatusLayout
@@ -31,7 +40,12 @@ export function PortalRouteError(): JSX.Element {
       icon={<Glyph name="alert" size={24} />}
       headline="Something went wrong"
       explanation="An unexpected error occurred. Please try again, or contact your care team if it keeps happening."
-      actions={<GoHome />}
+      actions={
+        <>
+          <Reload />
+          <GoHome />
+        </>
+      }
       correlationId={correlationId ?? undefined}
     />
   );
