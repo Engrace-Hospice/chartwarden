@@ -4,11 +4,14 @@
 // Reads only M36's own tables (acknowledgment request/event, clinical_handoff) inside the caller's tenant context (FORCE RLS plus an
 // explicit organization_id filter). The one cross-module read is the assignee's role KEY (membership/role: the sanctioned identity join),
 // used to name a discipline group; the person is never selected into the result. Output is counts, rates and medians only; groups and the
-// handoff median are held back unless at least ANALYTICS_MIN_COHORT distinct people stand behind them.
+// handoff median are held back unless at least ANALYTICS_MIN_COHORT distinct people (and, for groups, ANALYTICS_MIN_REQUESTS requests) stand behind them.
+// Only settled requests are counted (see requestsCte).
 import { type DbClient, schema } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
+  ANALYTICS_MAX_PERSON_SHARE,
   ANALYTICS_MIN_COHORT,
+  ANALYTICS_MIN_REQUESTS,
   type AnalyticsGroupBy,
   type MessagingResponseAnalyticsReader,
   RESPONSE_ANALYTICS_FLAG_KEY,
@@ -37,9 +40,17 @@ const num = (v: string | number): number => Number(v);
 const rate = (part: number, whole: number): number | null => (whole === 0 ? null : part / whole);
 const medianOf = (v: string | number | null): number | null => (v === null ? null : Number(v));
 
+/** Start of the current UTC day by the DATABASE clock: the boundary of "settled" (a window `to` is never later than it). */
+const SETTLED_BEFORE = sql`(date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`;
+
 /**
- * Requests opened in [from, to), cancelled ones excluded, each with its escalation fact and the assignee's discipline. The discipline comes
+ * Requests opened in [from, to) that are SETTLED, cancelled ones excluded, each with its escalation fact and the assignee's discipline. The discipline comes
  * from `disciplines` (a jsonb array of {user_id, discipline} built through the identity schema, see {@link disciplineMap}), never a join here.
+ *
+ * SETTLED (ADR-0092 D6 g): only requests that are acknowledged or resolved AND whose last change (the request row and its newest event) is
+ * before the start of the current UTC day. A request still open, or one that changed today, is not in any figure, so the answer for a given
+ * window is identical all day and a poller cannot watch one acknowledgment (or escalation) arrive; changes surface only at the UTC day
+ * boundary, in batches of a whole day.
  */
 function requestsCte(orgId: string, from: string, to: string, disciplines: string): SQL {
   return sql`
@@ -54,7 +65,11 @@ function requestsCte(orgId: string, from: string, to: string, disciplines: strin
           ON d.user_id = r.assigned_user_id
        WHERE r.organization_id = ${orgId}::uuid
          AND r.requested_at >= ${from}::timestamptz AND r.requested_at < ${to}::timestamptz
-         AND r.status <> 'cancelled'
+         AND r.status IN ('acknowledged', 'resolved')
+         AND r.updated_at < ${SETTLED_BEFORE}
+         AND NOT EXISTS (SELECT 1 FROM message_acknowledgment_event e2
+                          WHERE e2.organization_id = r.organization_id AND e2.request_id = r.id
+                            AND e2.created_at >= ${SETTLED_BEFORE})
     )`;
 }
 
@@ -92,7 +107,7 @@ async function disciplineMap(tx: Tx, orgId: string): Promise<string> {
 }
 
 const AGGREGATES = sql`
-  array_agg(DISTINCT assigned_user_id) AS members,
+  array_agg(assigned_user_id) AS members,
   count(*) AS requests,
   count(acknowledged_at) AS acknowledged,
   count(*) FILTER (WHERE acknowledged_at IS NOT NULL AND acknowledged_at <= deadline_at) AS in_time,
@@ -139,7 +154,7 @@ export function createResponseAnalyticsReader(deps: {
     async report(organizationId, { from, to, groupBy }): Promise<ResponseAnalyticsReport> {
       const fromIso = from.toISOString();
       const toIso = to.toISOString();
-      return withOrgContext(deps.db, { organizationId, userId: "" }, async (txRaw) => {
+      return withOrgContext(deps.db, systemOrgContext(organizationId), async (txRaw) => {
         const tx = txRaw as unknown as Tx;
         const total = await tx.execute<GroupSqlRow>(sql`
           WITH ${requestsCte(organizationId, fromIso, toIso, NO_DISCIPLINES)}
@@ -147,7 +162,7 @@ export function createResponseAnalyticsReader(deps: {
         const all = total.rows[0] ? toRaw(total.rows[0]) : null;
         const totalPeople = new Set(total.rows[0]?.members ?? []).size;
         // The whole report is held back when the organisation-wide cohort is itself too small to be anything but an individual's record.
-        if (!all || totalPeople < ANALYTICS_MIN_COHORT) {
+        if (!all || totalPeople < ANALYTICS_MIN_COHORT || all.requests < ANALYTICS_MIN_REQUESTS) {
           return { status: "insufficient_data", minCohort: ANALYTICS_MIN_COHORT } as const;
         }
         const handoff = await tx.execute<{
@@ -163,7 +178,8 @@ export function createResponseAnalyticsReader(deps: {
                    FILTER (WHERE accepted_at IS NOT NULL) AS median_accept
             FROM clinical_handoff
            WHERE organization_id = ${organizationId}::uuid
-             AND offered_at >= ${fromIso}::timestamptz AND offered_at < ${toIso}::timestamptz`);
+             AND offered_at >= ${fromIso}::timestamptz AND offered_at < ${toIso}::timestamptz
+             AND state <> 'offered' AND updated_at < ${SETTLED_BEFORE}`);
         const h = handoff.rows[0];
         const handoffCohortOk = h !== undefined && num(h.recipients) >= ANALYTICS_MIN_COHORT;
         const kpis: ResponseAnalyticsKpis = {
@@ -178,7 +194,11 @@ export function createResponseAnalyticsReader(deps: {
         };
         const floored = applyCohortFloor(
           await groups(tx, organizationId, fromIso, toIso, groupBy),
-          ANALYTICS_MIN_COHORT,
+          {
+            minCohort: ANALYTICS_MIN_COHORT,
+            minRequests: ANALYTICS_MIN_REQUESTS,
+            maxPersonShare: ANALYTICS_MAX_PERSON_SHARE,
+          },
         );
         return {
           status: "ok",

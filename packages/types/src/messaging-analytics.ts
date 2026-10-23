@@ -15,6 +15,15 @@ export const RESPONSE_ANALYTICS_PERMISSION = "messaging.analytics.read";
  */
 export const ANALYTICS_MIN_COHORT = 5;
 
+/**
+ * PROVISIONAL minimum number of REQUESTS behind every shown cell and behind the combined hidden residual (ADR-0092 D6), on top of the
+ * people floor: five people with one request each is five individual records. Same status as {@link ANALYTICS_MIN_COHORT}.
+ */
+export const ANALYTICS_MIN_REQUESTS = 20;
+
+/** A cell where one person owns more than this share of its requests is withheld (it is that person's record in all but name). */
+export const ANALYTICS_MAX_PERSON_SHARE = 0.8;
+
 /** Longest window a single read may cover (live query over indexed tables; an MV-backed longer range is a follow-up). */
 export const ANALYTICS_MAX_RANGE_DAYS = 92;
 

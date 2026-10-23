@@ -88,6 +88,8 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     daysAgo: number;
     ackSeconds: number | null;
     escalated?: boolean;
+    /** Leave `updated_at` at now(): a request that changed today, so it is not yet settled. */
+    changedToday?: boolean;
   }): Promise<void> {
     await kit.admin.query("SET session_replication_role = replica");
     try {
@@ -103,10 +105,11 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
         await kit.admin.query(
           `INSERT INTO message_acknowledgment_request
              (organization_id, message_id, channel_id, patient_id, ack_class, status, requester_user_id, assigned_user_id,
-              requested_at, window_started_at, deadline_at, current_tier, acknowledged_at, acknowledged_by_user_id)
+              requested_at, window_started_at, deadline_at, current_tier, acknowledged_at, acknowledged_by_user_id, updated_at)
            SELECT $1,$2,$3,$4,'urgent',$5::message_ack_status,$6,$7, t, t, t + interval '20 minutes', $8,
                   CASE WHEN $9::int IS NULL THEN NULL ELSE t + ($9::int * interval '1 second') END,
-                  CASE WHEN $9::int IS NULL THEN NULL ELSE $7::uuid END
+                  CASE WHEN $9::int IS NULL THEN NULL ELSE $7::uuid END,
+                  CASE WHEN $11::boolean THEN now() ELSE t + (coalesce($9::int, 0) * interval '1 second') END
              FROM (SELECT now() - ($10::int * interval '1 day') AS t) x
            RETURNING id`,
           [
@@ -120,14 +123,15 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
             !acked && o.escalated ? 1 : 0,
             o.ackSeconds,
             o.daysAgo,
+            o.changedToday === true,
           ],
         )
       ).rows[0].id as string;
       if (o.escalated) {
         await kit.admin.query(
-          `INSERT INTO message_acknowledgment_event (organization_id, request_id, event_type, actor_kind, tier)
-           VALUES ($1,$2,'escalated','system',1)`,
-          [o.org, requestId],
+          `INSERT INTO message_acknowledgment_event (organization_id, request_id, event_type, actor_kind, tier, created_at)
+           VALUES ($1,$2,'escalated','system',1, CASE WHEN $3::boolean THEN now() ELSE now() - ($4::int * interval '1 day') END)`,
+          [o.org, requestId, o.changedToday === true, o.daysAgo],
         );
       }
     } finally {
@@ -140,10 +144,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     try {
       await kit.admin.query(
         `INSERT INTO clinical_handoff
-           (organization_id, from_user_id, to_user_id, state, offered_at, expires_at, accepted_at, closed_at, closed_reason)
+           (organization_id, from_user_id, to_user_id, state, offered_at, expires_at, accepted_at, closed_at, closed_reason, updated_at)
          SELECT $1,$2,$3,$4,t,t + interval '12 hours',
                 CASE WHEN $5::int IS NULL THEN NULL ELSE t + ($5::int * interval '1 second') END,
-                t + interval '1 hour', 'deadline'
+                t + interval '1 hour', 'deadline', t + interval '1 hour'
            FROM (SELECT now() - interval '2 days' AS t) x`,
         [org, from, to, acceptSeconds === null ? "expired" : "accepted", acceptSeconds],
       );
@@ -164,8 +168,9 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     const requesterB = await kit.seedUser("requesterb", ORG_B, []);
     channelA = await mkChannel(kit, "care_team", randomUUID(), []);
 
-    // Org A. rn: 6 people, 14 requests (12 acked in 60 s, 1 acked in 60 s after an escalation, 1 pending); md: 5 people, 5 requests (4 in
-    // 180 s, 1 in 21 minutes = late); sw: 2 people, 2 requests in 600 s. 21 requests, 13 people.
+    // Org A (settled figures only). rn: 6 people, 23 requests (22 acked in 60 s, 1 acked in 60 s after an escalation) plus 1 still pending
+    // (excluded); md: 5 people, 20 requests (19 in 180 s, 1 in 21 minutes = late); sw: 2 people, 2 requests in 600 s.
+    // 45 settled requests, 13 people.
     const seedAll = async (org: string, d: string, n: number) => {
       const out: string[] = [];
       for (let i = 1; i <= n; i++) out.push(await clinician(org, d, i));
@@ -184,10 +189,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
         ackSeconds,
         escalated,
       });
-    for (let i = 0; i < 12; i++) await open(rn[i % 6]!, 60);
+    for (let i = 0; i < 22; i++) await open(rn[i % 6]!, 60);
     await open(rn[0]!, 60, true);
-    await open(rn[1]!, null);
-    for (let i = 0; i < 4; i++) await open(md[i]!, 180);
+    await open(rn[1]!, null); // still pending: not settled, so in no figure
+    for (let i = 0; i < 19; i++) await open(md[i % 5]!, 180);
     await open(md[4]!, 21 * 60);
     for (const s of sw) await open(s, 600);
     for (const to of rn.slice(0, 5)) await handoff(ORG_A, requesterA, to, 120);
@@ -249,11 +254,11 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     const body = res.json();
     expect(body.status).toBe("ok");
     expect(body.minCohort).toBe(ANALYTICS_MIN_COHORT);
-    expect(body.kpis.requests).toBe(21);
-    expect(body.kpis.acknowledged).toBe(20);
+    expect(body.kpis.requests).toBe(45);
+    expect(body.kpis.acknowledged).toBe(45);
     expect(body.kpis.medianAckSeconds).toBe(60);
-    expect(body.kpis.ackedBeforeDeadlineRate).toBeCloseTo(19 / 21, 5); // 1 pending + 1 late
-    expect(body.kpis.escalationRate).toBeCloseTo(1 / 21, 5);
+    expect(body.kpis.ackedBeforeDeadlineRate).toBeCloseTo(44 / 45, 5); // 1 late; the pending one is not settled
+    expect(body.kpis.escalationRate).toBeCloseTo(1 / 45, 5);
     expect(body.kpis.handoffsOffered).toBe(6);
     expect(body.kpis.handoffsAccepted).toBe(5);
     expect(body.kpis.medianHandoffAcceptSeconds).toBe(120);
@@ -286,7 +291,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     expect(body.cells.map((c: { group: string }) => c.group)).toEqual(["rn"]);
     expect(body.suppressedGroups).toBe(2);
     const rn = body.cells[0];
-    expect(rn.requests).toBe(14);
+    expect(rn.requests).toBe(23);
     expect(rn.medianAckSeconds).toBe(60);
   });
 
@@ -310,16 +315,18 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
   it("shows both groups once the hidden groups together involve at least 5 distinct people", async () => {
     for (const n of [2, 3, 4]) {
       const extra = await clinician(ORG_A, "chaplain", n);
-      await request({
-        org: ORG_A,
-        channel: channelA,
-        requester: requesterA,
-        assignee: extra,
-        daysAgo: 3,
-        ackSeconds: 30,
-      });
+      for (let k = 0; k < 6; k++) {
+        await request({
+          org: ORG_A,
+          channel: channelA,
+          requester: requesterA,
+          assignee: extra,
+          daysAgo: 3,
+          ackSeconds: 30,
+        });
+      }
     }
-    // sw 2 + chaplain 4 are still separate hidden groups, but together 6 distinct people: chaplain (4) is hidden, residual = 6 >= 5.
+    // sw 2 + chaplain 4 are still separate hidden groups, but together 6 distinct people and 21 requests: the residual clears both floors.
     const body = (await get(viewer, ORG_A, "?groupBy=discipline")).json();
     expect(body.cells.map((c: { group: string }) => c.group).sort()).toEqual(["md", "rn"]);
     expect(body.suppressedGroups).toBe(2);
@@ -365,6 +372,38 @@ describe.skipIf(!DB_URL)("M36 WP 6.2 response analytics - LIVE Postgres", () => 
     });
     const after = await get(viewer, ORG_A, "?groupBy=class");
     expect(after.json()).toEqual(before.json());
+  });
+
+  it("serves settled requests only: one acknowledged or escalated today (or still open) never changes a past window, so polling cannot see it", async () => {
+    const before = await get(viewer, ORG_A, "?groupBy=class");
+    const fresh = await clinician(ORG_A, "rn", 98);
+    await request({
+      org: ORG_A,
+      channel: channelA,
+      requester: requesterA,
+      assignee: fresh,
+      daysAgo: 3,
+      ackSeconds: 5,
+      escalated: true,
+      changedToday: true,
+    });
+    await request({
+      org: ORG_A,
+      channel: channelA,
+      requester: requesterA,
+      assignee: fresh,
+      daysAgo: 3,
+      ackSeconds: null,
+    });
+    expect((await get(viewer, ORG_A, "?groupBy=class")).json()).toEqual(before.json());
+  });
+
+  it("is a uniform 404 for a permitted user with the flag off even when the query is invalid; sends Cache-Control: no-store", async () => {
+    flags[FLAG] = false;
+    expect((await get(viewer, ORG_A, "?groupBy=bogus")).statusCode).toBe(404);
+    flags[FLAG] = true;
+    const ok = await get(viewer, ORG_A, "?groupBy=class");
+    expect(ok.headers["cache-control"]).toBe("no-store");
   });
 
   it("answers insufficient_data for a window that holds no completed day (only today)", async () => {

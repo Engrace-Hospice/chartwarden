@@ -300,6 +300,7 @@ import {
 } from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
+  ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
@@ -5380,6 +5381,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               db: dbHandle.db,
               enqueue: m33ReadEnqueue.enqueue,
             }).service,
+            {
+              // ADR-0092: modest per-route cap on the response-analytics read (not the privacy control; see D6).
+              analyticsRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
+                keyPrefix: "m36-analytics",
+              }),
+            },
           );
           // M33 — bind the catalog-validating tx outbox publisher (callerModule `m33`) so the §4.10
           // `m33.report_definition.published` / `report_view.shared_org` / `report_schedule.created`
