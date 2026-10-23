@@ -18,6 +18,7 @@
 // field on purpose: ABSENT means "the D10 volunteer scope or the §7.13 Part 2 gate withheld it", `null`
 // means "no tier has been computed yet", and a value is a value. Collapsing absent into null in the web
 // layer would tell a volunteer that a high-risk survivor is unscored.
+import { envelopeErrorMessage } from "@chartwarden/ui";
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
@@ -164,6 +165,8 @@ export const EARLY_CLOSE_SELF_COSIGN_MESSAGE =
 export function errorMessage(error: unknown, fallback: string): string {
   const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
   if (body?.code === EARLY_CLOSE_SELF_COSIGN_CODE) return EARLY_CLOSE_SELF_COSIGN_MESSAGE;
+  const serverMessage = envelopeErrorMessage(error);
+  if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
   if (body?.status === 412)

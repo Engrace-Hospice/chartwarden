@@ -12,7 +12,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -49,6 +49,11 @@ export function TriageIntakeScreen(): JSX.Element {
   const [callerQuote, setCallerQuote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  // The banner sits above a long form; a refusal after pressing the button at the bottom must not happen off-screen (#596).
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ block: "center" });
+  }, [error]);
 
   const peValid = UUID_RE.test(providerEntityId);
   const phoneValid = callerPhone === "" || E164_RE.test(callerPhone);
@@ -123,7 +128,7 @@ export function TriageIntakeScreen(): JSX.Element {
       filters={
         <div style={filterShellStyle}>
           {error ? (
-            <div role="alert" style={errorBannerStyle}>
+            <div ref={errorRef} role="alert" style={errorBannerStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Glyph name="alert" size={16} />
                 <span>{error}</span>

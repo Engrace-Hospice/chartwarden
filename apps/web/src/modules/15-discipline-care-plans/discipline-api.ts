@@ -12,6 +12,7 @@
 // `Idempotency-Key`, and a PATCH / state transition requires `If-Match` carrying the row `version` the
 // caller READ (a 412 means the row moved under you — reload, never retry blind). The server stays the only
 // authorization point: nothing here decides what a caller may see.
+import { envelopeErrorMessage } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 
 // ── wire shapes (mirror of the §4.1 response DTOs) ─────────────────────────────────────────────────────
@@ -244,6 +245,8 @@ export function writeHeaders(version?: number | null): Record<string, string> {
  */
 export function errorMessage(error: unknown, fallback: string): string {
   const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
+  const serverMessage = envelopeErrorMessage(error);
+  if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
   if (body?.status === 412)
