@@ -28,13 +28,17 @@ export interface TemplatePickerProps {
   readonly locale?: Locale;
 }
 
-export function matchesQuery(reply: SavedReply, query: string): boolean {
+export function matchesQuery(
+  reply: SavedReply,
+  query: string,
+  locale: Locale = "en",
+  translations?: Parameters<typeof pickTemplateText>[2],
+): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return (
-    reply.title.toLowerCase().includes(needle) ||
-    reply.body.toLowerCase().includes(needle) ||
-    CATEGORY_LABEL[reply.category].toLowerCase().includes(needle)
+  const shown = pickTemplateText(reply, locale, translations); // what the user reads, not only the English source
+  return [reply.title, reply.body, shown.title, shown.body, CATEGORY_LABEL[reply.category]].some(
+    (text) => text.toLowerCase().includes(needle),
   );
 }
 
@@ -58,6 +62,7 @@ export function TemplatePicker({
   const [detected] = useState(currentLocale);
   const locale = localeProp ?? detected;
   const tr = (key: Parameters<typeof translate>[1]): string => translate(locale, key).text;
+  const trLang = (key: Parameters<typeof translate>[1]): string => translate(locale, key).lang;
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const replies = useSavedReplies(open);
@@ -67,8 +72,8 @@ export function TemplatePicker({
   const popoverId = useId();
 
   const visible = useMemo(
-    () => replies.items.filter((reply) => matchesQuery(reply, query)),
-    [replies.items, query],
+    () => replies.items.filter((reply) => matchesQuery(reply, query, locale)),
+    [replies.items, query, locale],
   );
   // The SBAR item is entry 0 while it is offered and matches the search; replies follow.
   const sbarShown = Boolean(onChooseSbar) && matchesSbar(query);
@@ -185,6 +190,7 @@ export function TemplatePicker({
           // biome-ignore lint/a11y/useSemanticElements: a non-modal anchored popover; <dialog> adds top-layer and backdrop semantics
           role="dialog"
           aria-label={tr("picker.toggle")}
+          lang={trLang("picker.toggle")}
           onKeyDown={onPopoverKey}
         >
           <input
@@ -192,6 +198,7 @@ export function TemplatePicker({
             className="wx-template-search"
             type="text"
             role="combobox"
+            lang={trLang("picker.search")}
             aria-label={tr("picker.search")}
             aria-expanded="true"
             aria-controls={listId}
@@ -219,6 +226,7 @@ export function TemplatePicker({
             id={listId}
             // biome-ignore lint/a11y/useSemanticElements: a native select cannot render the title, scope and preview of each reply
             role="listbox"
+            lang={trLang("picker.toggle")}
             aria-label={tr("picker.toggle")}
           >
             {sbarShown ? (
