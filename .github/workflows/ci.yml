@@ -602,6 +602,9 @@ jobs:
               name: "M34 lifecycle outbox — suspend/reactivate/at_risk/offboard",
               scripts: "test:m34:lifecycle-outbox:live",
             }
+          # ADR-0049 phase 6 — an operator-chosen slug through the real provisioning path on the real platform role: taken,
+          # aliased and label-rule refusals are 409 TENANT_SLUG_UNAVAILABLE, a re-provision cannot swap the slug. Own runner (drops roles).
+          - { name: "M34 tenant slug provisioning", scripts: "test:m34:tenant-slug:live" }
           # F-045 (#105): the per-tenant DEK chain, which four modules' encryption surfaces terminated at
           # and which had never once run. Its own runner because it DROPs and re-CREATEs the cluster roles
           # and then relies on `chartwarden_app` being refused a grant — a suite sharing a runner with one that
