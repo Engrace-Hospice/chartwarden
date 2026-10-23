@@ -40,6 +40,7 @@ const TimelineItemSchema = Type.Object({
 
 export const CaseViewSchema = Type.Object({
   claimId: Type.String(),
+  patientId: NULLABLE_STRING,
   generatedAt: Type.String(),
   nextDeadline: Type.Union([TimelineItemSchema, Type.Null()]),
   items: Type.Array(TimelineItemSchema),
@@ -51,7 +52,13 @@ export function registerCaseViewRoutes(app: FastifyInstance, deps: CaseViewRoute
     "/api/v1/claims/:claimId/case-view",
     {
       preHandler: [P("appeal.read")],
-      config: { auditRead: { resourceKind: "claim_case_view", resourceIdParam: "claimId" } },
+      config: {
+        auditRead: {
+          resourceKind: "claim_case_view",
+          resourceIdParam: "claimId",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) => {
       const claimId = (request.params as { claimId: string }).claimId;

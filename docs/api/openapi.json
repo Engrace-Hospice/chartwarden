@@ -39408,6 +39408,7 @@
                   "required": [
                     "appealCaseId",
                     "claimId",
+                    "patientId",
                     "tier",
                     "state",
                     "filedByEscalation",
@@ -39423,6 +39424,16 @@
                     },
                     "claimId": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "tier": {
                       "type": "string"
@@ -40191,9 +40202,20 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "patientId",
                     "items"
                   ],
                   "properties": {
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -41739,6 +41761,7 @@
                     "createdAt",
                     "requestDatedOn",
                     "scopeNote",
+                    "patientId",
                     "providerEntityId",
                     "adrCaseId",
                     "denialCaseId",
@@ -41831,6 +41854,16 @@
                       ]
                     },
                     "scopeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientId": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -42177,7 +42210,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Add a claim to an open audit request",
+        "summary": "Add a claim to an open audit request (If-Match; bumps the request version)",
         "parameters": [
           {
             "name": "id",
@@ -42196,11 +42229,15 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "id"
+                    "id",
+                    "version"
                   ],
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
                     }
                   }
                 }
@@ -42252,7 +42289,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Remove a claim from an open audit request (the removal is kept in the trail)",
+        "summary": "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
         "parameters": [
           {
             "name": "id",
@@ -42279,11 +42316,15 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "id"
+                    "id",
+                    "version"
                   ],
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
                     }
                   }
                 }
@@ -42324,9 +42365,20 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "patientId",
                     "items"
                   ],
                   "properties": {
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -83728,6 +83780,7 @@
                   "type": "object",
                   "required": [
                     "claimId",
+                    "patientId",
                     "generatedAt",
                     "nextDeadline",
                     "items",
@@ -83736,6 +83789,16 @@
                   "properties": {
                     "claimId": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "generatedAt": {
                       "type": "string"

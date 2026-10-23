@@ -8,7 +8,7 @@
 import { repositories } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,
@@ -229,11 +229,7 @@ export function buildDrizzleM25WriteService(
       );
     }
     if (day > noticeDayOf(new Date(Date.now() + 86_400_000))) {
-      throw new ChartWardenError(
-        "NOTICE_DATE_IN_FUTURE",
-        "notice date cannot be in the future",
-        422,
-      );
+      throw new ChartWardenError("NOTICE_DATE_IN_FUTURE", "notice date cannot be in the future", 422);
     }
     return day;
   }

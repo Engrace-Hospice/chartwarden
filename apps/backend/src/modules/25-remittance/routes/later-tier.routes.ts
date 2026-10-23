@@ -79,6 +79,7 @@ export const RecordedDeadlineViewSchema = Type.Object({
   version: Type.Integer(),
 });
 export const RecordedDeadlinePageSchema = Type.Object({
+  patientId: NULLABLE_STRING,
   items: Type.Array(RecordedDeadlineViewSchema),
 });
 export const RecordedDeadlineResultSchema = Type.Object({
@@ -89,6 +90,7 @@ export const RecordedDeadlineResultSchema = Type.Object({
 export const LaterTierViewSchema = Type.Object({
   appealCaseId: Type.String(),
   claimId: Type.String(),
+  patientId: NULLABLE_STRING,
   tier: Type.String(),
   state: Type.String(),
   filedByEscalation: Type.Boolean(),
@@ -129,7 +131,13 @@ export function registerLaterTierRoutes(app: FastifyInstance, deps: LaterTierRou
     "/api/v1/appeals/:id/later-tier",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "appeal_case", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "appeal_case",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) => {
       const found = await laterTierService.getLaterTier(
@@ -168,7 +176,13 @@ export function registerLaterTierRoutes(app: FastifyInstance, deps: LaterTierRou
     "/api/v1/appeals/:id/recorded-deadlines",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "appeal_case", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "appeal_case",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) =>
       reply.send(await laterTierService.listDeadlines(actorOf(request), subjectOf(request))),

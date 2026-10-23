@@ -3,13 +3,15 @@
 // prior_tier_appeal_case_id), submission attempts, recorded deadlines and linked audit requests, with the next open
 // deadline on top. Before this each lived on its own worklist. Reads run under `withOrgContext` (RLS) inside the actor's
 // provider-entity scope, so an out-of-scope claim simply has no items. A deadline from a window that is not
-// SME-confirmed is FLAGGED (windowConfirmed: false), never hidden. Free-text notes are not part of the view.
+// SME-confirmed is FLAGGED (windowConfirmed: false), never hidden. The view carries item LABELS (a recorded deadline's user-typed label, an ADR's MAC name) but not the longer free-text notes (source, scope and disposition notes).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { type TimelineItem, nextDeadline, sortTimeline, windowUnconfirmed } from "../domain";
 import type { AppealTier } from "../domain";
 import type { M25ReadActor } from "./actor";
+import type { AppealSourcePorts } from "./appeal-packet-sources";
+import { patientOfClaim } from "./claim-patient";
 import { viewRecordedDeadline } from "./recorded-deadline-view";
 import { providerEntityScopeCondition } from "./scope";
 
@@ -25,6 +27,8 @@ export interface CaseViewOptions {
 
 export interface CaseView {
   readonly claimId: string;
+  /** The claim's patient, so the read audit can attribute the read (null when no source port is bound). */
+  readonly patientId: string | null;
   readonly generatedAt: string;
   readonly nextDeadline: TimelineItem | null;
   readonly items: TimelineItem[];
@@ -38,7 +42,10 @@ export interface CaseViewService {
 const OPEN_ADR = ["received", "in_assembly", "in_review"];
 const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : String(d));
 
-export function buildDrizzleCaseViewService(db: DbClient): CaseViewService {
+export function buildDrizzleCaseViewService(
+  db: DbClient,
+  ports: { readonly sources?: AppealSourcePorts } = {},
+): CaseViewService {
   return {
     async getCaseView(actor, claimId, options) {
       return withOrgContext(db, actor, async (tx) => {
@@ -243,6 +250,7 @@ export function buildDrizzleCaseViewService(db: DbClient): CaseViewService {
 
         return {
           claimId,
+          patientId: await patientOfClaim(ports.sources, actor.organizationId, claimId),
           generatedAt: now.toISOString(),
           nextDeadline: nextDeadline(items, now),
           items: sortTimeline(items),

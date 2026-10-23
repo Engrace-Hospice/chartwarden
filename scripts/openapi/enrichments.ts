@@ -12,6 +12,26 @@ import {
   ClaimVoidRequest,
   ManualValidateRequest,
 } from "@chartwarden/billing";
+/**
+ * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
+ * --------------------------------------------------------
+ * Layers request/response schema detail onto the auto-discovered routes
+ * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
+ *
+ * Routes are discovered automatically, so COVERAGE never depends on this file —
+ * an unlisted route still appears in the contract (params auto-derived from the
+ * path). This registry only ADDS the request body / typed response, reusing the
+ * SAME exported TypeBox schemas the route handlers validate against, so the
+ * contract cannot drift from the validator.
+ *
+ * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
+ * path end-to-end). Wiring the remaining modules' bodies/responses is the
+ * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
+ */
+import {
+  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
+  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
@@ -564,11 +584,20 @@ import {
   MacRulePageSchema as M25MacRulePageSchema,
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
+import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
+  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
+  EscalationRequestSchema as M25EscalationRequestSchema,
+  QicClockRequestSchema as M25QicClockRequestSchema,
+  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
+  QicVersionedResultSchema as M25QicVersionedResultSchema,
+  QicViewSchema as M25QicViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
   AuditClaimRequestSchema as M25AuditClaimRequestSchema,
   AuditCreateRequestSchema as M25AuditCreateRequestSchema,
   AuditDetailSchema as M25AuditDetailSchema,
-  AuditIdResultSchema as M25AuditIdResultSchema,
   AuditListQuerySchema as M25AuditListQuerySchema,
   AuditMoveRequestSchema as M25AuditMoveRequestSchema,
   AuditPageSchema as M25AuditPageSchema,
@@ -585,16 +614,6 @@ import {
   RecordedDeadlineSatisfyRequestSchema as M25RecordedDeadlineSatisfyRequestSchema,
   TierDetailRequestSchema as M25TierDetailRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
-import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
-import {
-  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
-  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
-  EscalationRequestSchema as M25EscalationRequestSchema,
-  QicClockRequestSchema as M25QicClockRequestSchema,
-  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
-  QicVersionedResultSchema as M25QicVersionedResultSchema,
-  QicViewSchema as M25QicViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
@@ -775,26 +794,6 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
-/**
- * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
- * --------------------------------------------------------
- * Layers request/response schema detail onto the auto-discovered routes
- * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
- *
- * Routes are discovered automatically, so COVERAGE never depends on this file —
- * an unlisted route still appears in the contract (params auto-derived from the
- * path). This registry only ADDS the request body / typed response, reusing the
- * SAME exported TypeBox schemas the route handlers validate against, so the
- * contract cannot drift from the validator.
- *
- * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
- * path end-to-end). Wiring the remaining modules' bodies/responses is the
- * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
- */
-import {
-  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
-  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
-} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import {
   PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
   PresenceResponseSchema as M36PresenceResponseSchema,
@@ -1425,11 +1424,6 @@ import {
   IdgDiscussionListResponseSchema as M36IdgDiscussionListResponseSchema,
   IdgDiscussionQuerySchema as M36IdgDiscussionQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/idg-discussion-typebox";
-// M36 WP 6.1 smart work inbox.
-import {
-  InboxQuerySchema as M36InboxQuerySchema,
-  InboxResponseSchema as M36InboxResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 3.10 medication questions.
 import {
   AskMedicationQuestionBodySchema as M36AskMedicationQuestionBodySchema,
@@ -1586,6 +1580,11 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+// M36 WP 6.1 smart work inbox.
+import {
+  InboxQuerySchema as M36InboxQuerySchema,
+  InboxResponseSchema as M36InboxResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 4.9 supervisor unacknowledged queue.
 import {
   UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
@@ -8427,7 +8426,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Close a decided reopening (If-Match)",
     response: M25ReopeningVersionedResultSchema,
   },
-
   // ── audit-request.routes.ts / later-tier.routes.ts / case-view.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-1) ──
   "GET /api/v1/audit-requests": {
     summary: "RAC / UPIC / SMRC audit request worklist, newest first",
@@ -8451,14 +8449,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25AuditVersionedResultSchema,
   },
   "POST /api/v1/audit-requests/:id/claims": {
-    summary: "Add a claim to an open audit request",
+    summary: "Add a claim to an open audit request (If-Match; bumps the request version)",
     body: M25AuditClaimRequestSchema,
-    response: M25AuditIdResultSchema,
+    response: M25AuditVersionedResultSchema,
     status: 201,
   },
   "DELETE /api/v1/audit-requests/:id/claims/:claimId": {
-    summary: "Remove a claim from an open audit request (the removal is kept in the trail)",
-    response: M25AuditIdResultSchema,
+    summary: "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
+    response: M25AuditVersionedResultSchema,
   },
   "POST /api/v1/audit-requests/:id/state": {
     summary: "Move an audit request forward, or withdraw it (If-Match)",

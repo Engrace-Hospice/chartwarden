@@ -103,12 +103,13 @@ const AuditSummarySchema = Type.Object({
 });
 export const AuditPageSchema = Type.Object({ items: Type.Array(AuditSummarySchema) });
 
-
 export const AuditDetailSchema = Type.Composite([
   AuditSummarySchema,
   Type.Object({
     requestDatedOn: NULLABLE_STRING,
     scopeNote: NULLABLE_STRING,
+    /** The patient when the request covers exactly one claim; null otherwise (no single patient). */
+    patientId: NULLABLE_STRING,
     providerEntityId: Type.String(),
     adrCaseId: NULLABLE_STRING,
     denialCaseId: NULLABLE_STRING,
@@ -131,7 +132,6 @@ export const AuditVersionedResultSchema = Type.Object({
   id: Type.String(),
   version: Type.Integer(),
 });
-export const AuditIdResultSchema = Type.Object({ id: Type.String() });
 
 export function registerAuditRequestRoutes(
   app: FastifyInstance,
@@ -160,7 +160,13 @@ export function registerAuditRequestRoutes(
     "/api/v1/audit-requests/:id",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "audit_request", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "audit_request",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) => {
       const found = await svc.getAuditRequest(actorOf(request), auditId(request));
@@ -201,7 +207,14 @@ export function registerAuditRequestRoutes(
       const body = parse(AuditClaimRequestSchema, request.body);
       return reply
         .code(201)
-        .send(await svc.addClaim(writeActorOf(request), auditId(request), body));
+        .send(
+          await svc.addClaim(
+            writeActorOf(request),
+            auditId(request),
+            body,
+            ifMatchVersion(request),
+          ),
+        );
     },
   );
 
@@ -214,6 +227,7 @@ export function registerAuditRequestRoutes(
           writeActorOf(request),
           auditId(request),
           uuidParam(request, "claimId", "audit request claim"),
+          ifMatchVersion(request),
         ),
       ),
   );
@@ -245,7 +259,13 @@ export function registerAuditRequestRoutes(
     "/api/v1/audit-requests/:id/recorded-deadlines",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "audit_request", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "audit_request",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) =>
       reply.send(await laterTierService.listDeadlines(actorOf(request), subjectOf(request))),

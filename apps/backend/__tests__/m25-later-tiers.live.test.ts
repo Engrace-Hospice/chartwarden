@@ -23,15 +23,18 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { FormatRegistry } from "@sinclair/typebox";
 import type { DbClient } from "@chartwarden/db";
+import { FormatRegistry } from "@sinclair/typebox";
 import { sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { createDocumentReader, createDrizzleDocumentReaderStore } from "../src/modules/22-documents/index";
+import {
+  createDocumentReader,
+  createDrizzleDocumentReaderStore,
+} from "../src/modules/22-documents/index";
 import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { runAppealDeadlineCron } from "../src/modules/25-remittance/jobs/cron-workers";
@@ -138,7 +141,11 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
       security: { rateLimitEnabled: false },
     });
     registerLaterTierRoutes(app, { laterTierService: tier() });
-    registerCaseViewRoutes(app, { caseViewService: buildDrizzleCaseViewService(fx.handle.db) });
+    registerCaseViewRoutes(app, {
+      caseViewService: buildDrizzleCaseViewService(fx.handle.db, {
+        sources: buildSeamAppealSourcePorts(),
+      }),
+    });
     return app;
   }
   const WRITE = (version?: number) => ({
@@ -149,7 +156,10 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
   beforeAll(async () => {
     fx = await setupM7Fixture(DB_URL as string, "m25-lt");
     registerM23PublishedSeams(fx.handle.db);
-    registerSeam("DocumentReader", createDocumentReader(createDrizzleDocumentReaderStore(fx.handle.db)));
+    registerSeam(
+      "DocumentReader",
+      createDocumentReader(createDrizzleDocumentReaderStore(fx.handle.db)),
+    );
   }, 300_000);
 
   afterAll(async () => {
@@ -159,7 +169,7 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
   });
 
   // ── schema posture ───────────────────────────────────────────────────────────────────────────────────────
-  it("registers the new key and grants it to existing roles by migration 1173 (idempotent, ABAC kept)", async () => {
+  it("registers the new key and grants it to existing roles by migration 1173 (idempotent; the appeal ABAC override is not copied onto the audit keys)", async () => {
     const keys = (
       await fx.admin.query(
         `SELECT key FROM permission WHERE key IN ('appeal.tier_record','audit_request.read','audit_request.manage')`,
@@ -197,7 +207,7 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
     expect(granted).toEqual([
       { permission_key: "appeal.tier_record", abac_override: null },
       { permission_key: "audit_request.manage", abac_override: null },
-      { permission_key: "audit_request.read", abac_override: "narrowed_predicate" },
+      { permission_key: "audit_request.read", abac_override: null },
     ]);
   });
 
@@ -473,8 +483,14 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
 
     it("takes a notice document only after the document seam validates it", async () => {
       const id = await escalatedAlj();
-      const patient = (await fx.admin.query("SELECT patient_id FROM claim WHERE id=$1", [fx.claim1])).rows[0].patient_id as string;
-      const doc = async (org: string, patientId: string | null, over: { retentionClass?: string } = {}) =>
+      const patient = (
+        await fx.admin.query("SELECT patient_id FROM claim WHERE id=$1", [fx.claim1])
+      ).rows[0].patient_id as string;
+      const doc = async (
+        org: string,
+        patientId: string | null,
+        over: { retentionClass?: string } = {},
+      ) =>
         (
           await fx.admin.query(
             `INSERT INTO document (organization_id, patient_id, retention_class, source_kind, aggregate_type, title, status, created_by_membership_id)
@@ -483,7 +499,11 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
           )
         ).rows[0].id as string;
       const make = (documentId: string) =>
-        tier().createDeadline(A(), { kind: "appeal", id }, { label: "Notice", dueOn: daysAhead(10), sourceNote: "n", noticeDocumentId: documentId });
+        tier().createDeadline(
+          A(),
+          { kind: "appeal", id },
+          { label: "Notice", dueOn: daysAhead(10), sourceNote: "n", noticeDocumentId: documentId },
+        );
       for (const bad of [
         randomUUID(),
         await doc(ORG, randomUUID()),
@@ -494,7 +514,9 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
       }
       const good = await doc(ORG, patient);
       const ok = await make(good);
-      const stored = (await tier().listDeadlines(A(), { kind: "appeal", id })).items.find((d) => d.id === ok.id);
+      const stored = (await tier().listDeadlines(A(), { kind: "appeal", id })).items.find(
+        (d) => d.id === ok.id,
+      );
       expect(stored?.noticeDocumentId).toBe(good);
     });
   });
@@ -606,6 +628,145 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
     });
   });
 
+  // ── finished subjects, late good cause, attribution ──────────────────────────────────────────────────────
+  describe("review hardening", () => {
+    it("stops alerting for a closed or withdrawn subject and refuses to change its deadlines", async () => {
+      const closed = await escalatedAlj();
+      const open = await escalatedAlj();
+      const dClosed = await tier().createDeadline(
+        A(),
+        { kind: "appeal", id: closed },
+        { label: "Brief", dueOn: daysAhead(6), sourceNote: "n" },
+      );
+      const dOpen = await tier().createDeadline(
+        A(),
+        { kind: "appeal", id: open },
+        { label: "Brief", dueOn: daysAhead(6), sourceNote: "n" },
+      );
+      await fx.admin.query("UPDATE appeal_case SET state='closed', closed_at=now() WHERE id=$1", [
+        closed,
+      ]);
+      const dispatched = await cron();
+      expect(recordedAlerts(dispatched, dClosed.id)).toEqual([]);
+      expect(recordedAlerts(dispatched, dOpen.id)).toHaveLength(1);
+      expect(
+        (
+          await fx.refused(
+            tier().updateDeadline(
+              A(),
+              { kind: "appeal", id: closed },
+              dClosed.id,
+              { label: "x" },
+              dClosed.version,
+            ),
+          )
+        )?.code,
+      ).toBe("DEADLINE_SUBJECT_FINISHED");
+      expect(
+        (
+          await fx.refused(
+            tier().satisfyDeadline(
+              A(),
+              { kind: "appeal", id: closed },
+              dClosed.id,
+              undefined,
+              dClosed.version,
+            ),
+          )
+        )?.code,
+      ).toBe("DEADLINE_SUBJECT_FINISHED");
+    });
+
+    it("advances the alerted boundary monotonically and never back to a wider one", async () => {
+      const id = await escalatedAlj();
+      const d = await tier().createDeadline(
+        A(),
+        { kind: "appeal", id },
+        { label: "Brief", dueOn: daysAhead(6), sourceNote: "n" },
+      );
+      await cron();
+      const row = async () =>
+        (
+          await fx.admin.query("SELECT last_alerted_boundary FROM recorded_deadline WHERE id=$1", [
+            d.id,
+          ])
+        ).rows[0].last_alerted_boundary;
+      expect(await row()).toBe(7);
+      // a later tick (boundary 1) advances it from 7; it never goes back to a wider boundary
+      await cron(() => new Date(Date.now() + 6 * 864e5));
+      expect(await row()).toBe(1);
+      await cron();
+      expect(await row()).toBe(1);
+    });
+
+    it("refuses a late good-cause federal-court filing too, and leaves no submission attempt", async () => {
+      const court = await fx.mkAppeal({
+        claimId: fx.claim1,
+        pe: fx.pe1,
+        tier: "federal_court",
+        state: "draft",
+        deadline: new Date(Date.now() - 864e5).toISOString(),
+      });
+      const r = await fx.refused(
+        write().submitAppealLateGoodCause(
+          A(),
+          court,
+          {
+            appealNarrative: "n".repeat(60),
+            attachedDocumentIds: [],
+            goodCauseJustification: "j".repeat(60),
+          } as never,
+          await fx.ver("appeal_case", court),
+        ),
+      );
+      expect(r?.code).toBe("FEDERAL_COURT_RECORD_ONLY");
+      // attempts are created only by the submit paths, which refuse federal court: none can exist for it
+      const attempts = await fx.admin.query(
+        "SELECT count(*)::int AS n FROM submission_attempt WHERE appeal_case_id=$1",
+        [court],
+      );
+      expect(attempts.rows[0].n).toBe(0);
+    });
+
+    it("attributes the reads to the claim's patient, in the payload and the read-audit trail", async () => {
+      const id = await escalatedAlj();
+      await tier().createDeadline(
+        A(),
+        { kind: "appeal", id },
+        { label: "Brief", dueOn: daysAhead(9), sourceNote: "n" },
+      );
+      const patient = (
+        await fx.admin.query("SELECT patient_id FROM claim WHERE id=$1", [fx.claim1])
+      ).rows[0].patient_id as string;
+      expect((await tier().getLaterTier(A(), id))?.patientId).toBe(patient);
+      expect((await tier().listDeadlines(A(), { kind: "appeal", id })).patientId).toBe(patient);
+      const view = await buildDrizzleCaseViewService(fx.handle.db, {
+        sources: buildSeamAppealSourcePorts(),
+      }).getCaseView(A(), fx.claim1, {
+        includeAdr: false,
+        includeReopening: false,
+        includeAudits: false,
+      });
+      expect(view.patientId).toBe(patient);
+      const app = makeApp(["appeal.read"]);
+      await fx.admin.query(
+        "DELETE FROM audit_event WHERE organization_id=$1 AND event_type='appeal_case.viewed'",
+        [ORG],
+      );
+      expect(
+        (await app.inject({ method: "GET", url: `/api/v1/appeals/${id}/later-tier` })).statusCode,
+      ).toBe(200);
+      await app.close();
+      const logged = (
+        await fx.admin.query(
+          "SELECT context->>'patientId' AS pid FROM audit_event WHERE organization_id=$1 AND event_type='appeal_case.viewed'",
+          [ORG],
+        )
+      ).rows;
+      expect(logged.map((r) => r.pid)).toEqual([patient]);
+    });
+  });
+
   // ── tenancy ──────────────────────────────────────────────────────────────────────────────────────────────
   describe("another tenant", () => {
     it("sees none of it, through the service or as the app role, and cannot attach a deadline to it", async () => {
@@ -633,7 +794,10 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
       ).toBe(404);
       for (const table of NEW_TABLES) {
         const rows = await fx.asApp((tx) => tx.execute(sql.raw(`SELECT id FROM ${table}`)), ORG_B);
-        expect((rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown[]), table).toHaveLength(0);
+        expect(
+          (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown[]),
+          table,
+        ).toHaveLength(0);
       }
       // a writer that skips the service still cannot point at another tenant's case
       const msg = await fx.dbMessage(

@@ -8,7 +8,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_DEADLINE_ZONE,
   type RecordedDeadlineRefusal,
@@ -27,6 +27,7 @@ import {
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import { type AppealSourcePorts, describeEnclosures } from "./appeal-packet-sources";
+import { patientOfClaim } from "./claim-patient";
 import { VersionConflictError } from "./concurrency";
 import { isUniqueViolation } from "./denial-route-service";
 import { type RecordedDeadlineView, viewRecordedDeadline } from "./recorded-deadline-view";
@@ -70,6 +71,8 @@ export interface TierDetailView {
 export interface LaterTierView {
   readonly appealCaseId: string;
   readonly claimId: string;
+  /** The claim's patient, so the read audit can attribute the read (null when no source port is bound). */
+  readonly patientId: string | null;
   readonly tier: string;
   readonly state: string;
   readonly filedByEscalation: boolean;
@@ -94,7 +97,7 @@ export interface LaterTierService {
   listDeadlines(
     actor: M25ReadActor,
     subject: DeadlineSubject,
-  ): Promise<{ items: RecordedDeadlineView[] }>;
+  ): Promise<{ items: RecordedDeadlineView[]; patientId: string | null }>;
   createDeadline(
     actor: M25WriteActor,
     subject: DeadlineSubject,
@@ -145,6 +148,13 @@ const DEADLINE_MESSAGES: Readonly<Record<RecordedDeadlineRefusal, string>> = {
   SOURCE_NOTE_REQUIRED: "say where the date came from (the notice, page or paragraph)",
   SOURCE_NOTE_TOO_LONG: "the source note is too long",
 };
+
+const subjectFinished = () =>
+  new ChartWardenError(
+    "DEADLINE_SUBJECT_FINISHED",
+    "the case is finished; its deadlines can no longer change",
+    409,
+  );
 
 const clean = (v: string | null | undefined): string | null => {
   const t = v?.trim();
@@ -202,10 +212,21 @@ export function buildDrizzleLaterTierService(
       .where(scope ? and(eq(AR.id, subject.id), scope) : eq(AR.id, subject.id))
       .limit(1);
     if (!rows[0]) throw new NotFoundError("audit request");
+    // An audit request has a single patient only when it covers exactly one claim.
+    const live = await tx
+      .select({ claimId: schema.auditRequestClaim.claimId })
+      .from(schema.auditRequestClaim)
+      .where(
+        and(
+          eq(schema.auditRequestClaim.auditRequestId, subject.id),
+          isNull(schema.auditRequestClaim.removedAt),
+        ),
+      )
+      .limit(2);
     return {
       providerEntityId: rows[0].providerEntityId,
       finished: rows[0].state === "closed" || rows[0].state === "withdrawn",
-      claimId: null as string | null,
+      claimId: live.length === 1 ? (live[0]?.claimId ?? null) : null,
     };
   }
 
@@ -305,6 +326,7 @@ export function buildDrizzleLaterTierService(
         return {
           appealCaseId,
           claimId: appeal.claimId,
+          patientId: await patientOfClaim(ports.sources, actor.organizationId, appeal.claimId),
           tier: appeal.tier,
           state: appeal.state,
           filedByEscalation: appeal.filedByEscalation,
@@ -370,14 +392,17 @@ export function buildDrizzleLaterTierService(
 
     async listDeadlines(actor, subject) {
       return withOrgContext(db, actor, async (tx) => {
-        await loadSubject(tx, actor, subject);
+        const s = await loadSubject(tx, actor, subject);
         const rows = await tx
           .select()
           .from(RD)
           .where(subjectFilter(subject))
           .orderBy(asc(RD.dueOn), asc(RD.createdAt));
         const now = new Date();
-        return { items: rows.map((r) => viewRecordedDeadline(r, now)) };
+        return {
+          items: rows.map((r) => viewRecordedDeadline(r, now)),
+          patientId: await patientOfClaim(ports.sources, actor.organizationId, s.claimId),
+        };
       });
     },
 
@@ -386,13 +411,7 @@ export function buildDrizzleLaterTierService(
       if (refusal) throw unprocessable(`DEADLINE_${refusal}`, DEADLINE_MESSAGES[refusal]);
       return withOrgContext(db, actor, async (tx) => {
         const s = await loadSubject(tx, actor, subject);
-        if (s.finished) {
-          throw new ChartWardenError(
-            "DEADLINE_SUBJECT_FINISHED",
-            "the case is finished; no deadline can be added",
-            409,
-          );
-        }
+        if (s.finished) throw subjectFinished();
         await checkNoticeDocument(actor.organizationId, subject, s.claimId, input.noticeDocumentId);
         const derived = deriveRecordedDeadline(input.dueOn, await zonesFor(tx, s.providerEntityId));
         const inserted = await tx
@@ -418,6 +437,7 @@ export function buildDrizzleLaterTierService(
     async updateDeadline(actor, subject, deadlineId, patch, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const s = await loadSubject(tx, actor, subject);
+        if (s.finished) throw subjectFinished();
         const cur = await loadDeadline(tx, subject, deadlineId);
         if (cur.satisfiedOn !== null) {
           throw new ChartWardenError(
@@ -475,7 +495,8 @@ export function buildDrizzleLaterTierService(
         );
       }
       return withOrgContext(db, actor, async (tx) => {
-        await loadSubject(tx, actor, subject);
+        const s = await loadSubject(tx, actor, subject);
+        if (s.finished) throw subjectFinished();
         const cur = await loadDeadline(tx, subject, deadlineId);
         if (cur.satisfiedOn !== null) {
           throw new ChartWardenError(

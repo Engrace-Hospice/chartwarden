@@ -20,14 +20,16 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { FormatRegistry } from "@sinclair/typebox";
 import type { DbClient } from "@chartwarden/db";
+import { FormatRegistry } from "@sinclair/typebox";
 import { sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { buildServer } from "../src/bootstrap/index";
+import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
 import { runAppealDeadlineCron } from "../src/modules/25-remittance/jobs/cron-workers";
+import { buildSeamAppealSourcePorts } from "../src/modules/25-remittance/routes/appeal-packet-sources";
 import { buildDrizzleAuditRequestService } from "../src/modules/25-remittance/routes/audit-request-service";
 import { registerAuditRequestRoutes } from "../src/modules/25-remittance/routes/audit-request.routes";
 import { buildDrizzleLaterTierService } from "../src/modules/25-remittance/routes/later-tier-service";
@@ -49,6 +51,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
     buildFoundationSiteReader().providerEntityTimezones(tx, pe);
   const audit = () =>
     buildDrizzleAuditRequestService(fx.handle.db, {
+      sources: buildSeamAppealSourcePorts(),
       providerEntityExists: async (tx, organizationId, providerEntityId) =>
         (await buildFoundationSiteReader().providerEntityIdentifiers(
           tx as never,
@@ -115,6 +118,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
 
   beforeAll(async () => {
     fx = await setupM7Fixture(DB_URL as string, "m25-ar");
+    registerM23PublishedSeams(fx.handle.db);
   }, 300_000);
 
   afterAll(async () => {
@@ -387,8 +391,11 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       );
       expect(msg).toMatch(/M25_AUDIT_FROZEN/);
       expect(
-        (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim1b })))?.code ?? "refused",
-      ).toBeTruthy();
+        (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim1b }, await v())))?.code,
+      ).toBe("AUDIT_FROZEN");
+      expect((await fx.refused(audit().removeClaim(A(), id, fx.claim1, await v())))?.code).toBe(
+        "AUDIT_FROZEN",
+      );
       expect(
         (await fx.refused(audit().updateAuditRequest(A(), id, { scopeNote: "y" }, await v())))
           ?.code,
@@ -418,20 +425,29 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
   describe("claims", () => {
     it("adds, soft-removes and re-adds a claim, once at a time, of the same provider entity", async () => {
       const { id } = await audit().createAuditRequest(A(), intake());
-      await audit().addClaim(A(), id, { claimId: fx.claim1b, dateOfServiceNote: "March" });
-      expect((await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim1b })))?.code).toBe(
-        "AUDIT_CLAIM_EXISTS",
-      );
-      expect((await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim2 })))?.code).toBe(
-        "AUDIT_MIXED_PROVIDER_ENTITY",
+      const v = () => fx.ver("audit_request", id);
+      await audit().addClaim(
+        A(),
+        id,
+        { claimId: fx.claim1b, dateOfServiceNote: "March" },
+        await v(),
       );
       expect(
-        (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claimB })))?.statusCode,
+        (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim1b }, await v())))?.code,
+      ).toBe("AUDIT_CLAIM_EXISTS");
+      expect(
+        (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claim2 }, await v())))?.code,
+      ).toBe("AUDIT_MIXED_PROVIDER_ENTITY");
+      expect(
+        (await fx.refused(audit().addClaim(A(), id, { claimId: fx.claimB }, await v())))
+          ?.statusCode,
       ).toBe(404);
-      await audit().removeClaim(A(), id, fx.claim1b);
-      expect((await fx.refused(audit().removeClaim(A(), id, fx.claim1b)))?.statusCode).toBe(404);
+      await audit().removeClaim(A(), id, fx.claim1b, await v());
+      expect(
+        (await fx.refused(audit().removeClaim(A(), id, fx.claim1b, await v())))?.statusCode,
+      ).toBe(404);
       expect((await audit().getAuditRequest(A(), id))?.claimCount).toBe(1);
-      await audit().addClaim(A(), id, { claimId: fx.claim1b });
+      await audit().addClaim(A(), id, { claimId: fx.claim1b }, await v());
       expect((await audit().getAuditRequest(A(), id))?.claimCount).toBe(2);
       const rows = await fx.admin.query(
         "SELECT removed_at FROM audit_request_claim WHERE audit_request_id=$1 AND claim_id=$2 ORDER BY created_at",
@@ -440,6 +456,37 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       expect(rows.rows).toHaveLength(2);
       expect(rows.rows[0].removed_at).not.toBeNull();
       expect(rows.rows[1].removed_at).toBeNull();
+    });
+
+    it("detects concurrent claim-set edits: each edit bumps the version and a stale If-Match loses", async () => {
+      const { id } = await audit().createAuditRequest(A(), intake());
+      const v1 = await fx.ver("audit_request", id);
+      const added = await audit().addClaim(A(), id, { claimId: fx.claim1b }, v1);
+      expect(added.version).toBe(v1 + 1);
+      expect((await fx.refused(audit().removeClaim(A(), id, fx.claim1b, v1)))?.code).toBe(
+        "VERSION_CONFLICT",
+      );
+      // the refused edit changed nothing: the claim is still on the request
+      expect((await audit().getAuditRequest(A(), id))?.claimCount).toBe(2);
+    });
+
+    it("names a patient for the read audit only when the request covers exactly one claim", async () => {
+      const one = await audit().createAuditRequest(A(), intake());
+      const many = await audit().createAuditRequest(
+        A(),
+        intake({ claimIds: [fx.claim1, fx.claim1b] }),
+      );
+      const none = await audit().createAuditRequest(A(), {
+        authorityKind: "rac",
+        receivedOn: daysAgo(1),
+        providerEntityId: fx.pe1,
+      });
+      const patientOf = (
+        await fx.admin.query("SELECT patient_id FROM claim WHERE id=$1", [fx.claim1])
+      ).rows[0].patient_id as string;
+      expect((await audit().getAuditRequest(A(), one.id))?.patientId).toBe(patientOf);
+      expect((await audit().getAuditRequest(A(), many.id))?.patientId).toBeNull();
+      expect((await audit().getAuditRequest(A(), none.id))?.patientId).toBeNull();
     });
 
     it("takes no claim from a finished request (database guard), nor a cross-tenant parent", async () => {
@@ -483,7 +530,10 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       ).toBe(404);
       for (const table of NEW_TABLES) {
         const rows = await fx.asApp((tx) => tx.execute(sql.raw(`SELECT id FROM ${table}`)), ORG_B);
-        expect((rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown[]), table).toHaveLength(0);
+        expect(
+          (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown[]),
+          table,
+        ).toHaveLength(0);
       }
       const kinds = (
         await fx.admin.query(
@@ -592,14 +642,14 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       const addClaim = await app.inject({
         method: "POST",
         url: `/api/v1/audit-requests/${id}/claims`,
-        headers: WRITE(),
+        headers: WRITE(await fx.ver("audit_request", id)),
         payload: { claimId: fx.claim1b },
       });
       expect(addClaim.statusCode).toBe(201);
       const delClaim = await app.inject({
         method: "DELETE",
         url: `/api/v1/audit-requests/${id}/claims/${fx.claim1b}`,
-        headers: WRITE(),
+        headers: WRITE(await fx.ver("audit_request", id)),
       });
       expect(delClaim.statusCode).toBe(200);
       const noNote = await app.inject({

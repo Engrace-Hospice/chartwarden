@@ -21,6 +21,8 @@ import {
   noticeDayOf,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
+import type { AppealSourcePorts } from "./appeal-packet-sources";
+import { patientOfClaim } from "./claim-patient";
 import { VersionConflictError } from "./concurrency";
 import { isUniqueViolation } from "./denial-route-service";
 import {
@@ -80,6 +82,8 @@ export interface AuditClaimView {
 }
 
 export interface AuditDetail extends AuditSummary {
+  /** The patient when the request covers exactly one claim; null for none or many (no single patient). */
+  readonly patientId: string | null;
   readonly requestDatedOn: string | null;
   readonly scopeNote: string | null;
   readonly providerEntityId: string;
@@ -109,12 +113,19 @@ export interface AuditRequestService {
     patch: AuditPatchInput,
     ifMatch: number,
   ): Promise<{ id: string; version: number }>;
+  /** Both claim edits are If-Match on the request and bump its version, so concurrent claim-set edits are detected. */
   addClaim(
     actor: M25WriteActor,
     id: string,
     input: { claimId: string; dateOfServiceNote?: string | null },
-  ): Promise<{ id: string }>;
-  removeClaim(actor: M25WriteActor, id: string, claimId: string): Promise<{ id: string }>;
+    ifMatch: number,
+  ): Promise<{ id: string; version: number }>;
+  removeClaim(
+    actor: M25WriteActor,
+    id: string,
+    claimId: string,
+    ifMatch: number,
+  ): Promise<{ id: string; version: number }>;
   moveAuditRequest(
     actor: M25WriteActor,
     id: string,
@@ -126,6 +137,8 @@ export interface AuditRequestService {
 
 export interface AuditRequestPorts {
   readonly claims?: ClaimFactsPort;
+  /** M23 claim copy seam: names the single patient of a one-claim request for the read audit. */
+  readonly sources?: AppealSourcePorts;
   /** True when the provider entity exists for the org (used only when a request names no claim). */
   readonly providerEntityExists?: (
     tx: DbClient,
@@ -173,6 +186,28 @@ export function buildDrizzleAuditRequestService(
       .limit(1);
     if (!rows[0]) throw new NotFoundError("audit request");
     return rows[0];
+  }
+
+  /** A withdrawn or closed request takes no change: a typed 409, not the trigger's raw error. */
+  function assertOpen(cur: typeof AR.$inferSelect): void {
+    if (isAuditTerminal(cur.state as AuditState)) {
+      throw new ChartWardenError("AUDIT_FROZEN", `the audit request is ${cur.state}`, 409);
+    }
+  }
+
+  /** Bump the request's version under If-Match; a stale caller loses with a 409 and the whole edit rolls back. */
+  async function bumpVersion(
+    tx: Tx,
+    cur: typeof AR.$inferSelect,
+    ifMatch: number,
+  ): Promise<{ id: string; version: number }> {
+    const bumped = await tx
+      .update(AR)
+      .set({ version: sql`${AR.version} + 1`, updatedAt: new Date() })
+      .where(and(eq(AR.id, cur.id), eq(AR.version, ifMatch)))
+      .returning({ id: AR.id, version: AR.version });
+    if (!bumped[0]) throw new VersionConflictError(cur.version);
+    return bumped[0];
   }
 
   const inScope = (actor: M25ReadActor, providerEntityId: string): boolean =>
@@ -381,6 +416,11 @@ export function buildDrizzleAuditRequestService(
           .limit(200);
         return {
           ...base!,
+          patientId: await patientOfClaim(
+            ports.sources,
+            actor.organizationId,
+            claimRows.length === 1 ? (claimRows[0]?.claimId ?? null) : null,
+          ),
           requestDatedOn: row.requestDatedOn,
           scopeNote: row.scopeNote,
           providerEntityId: row.providerEntityId,
@@ -409,9 +449,7 @@ export function buildDrizzleAuditRequestService(
       }
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
-        if (isAuditTerminal(cur.state as AuditState)) {
-          throw new ChartWardenError("AUDIT_FROZEN", `the audit request is ${cur.state}`, 409);
-        }
+        assertOpen(cur);
         await checkLinks(tx, actor, patch);
         const next = {
           authorityName:
@@ -446,9 +484,10 @@ export function buildDrizzleAuditRequestService(
       });
     },
 
-    async addClaim(actor, id, input) {
+    async addClaim(actor, id, input, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
+        assertOpen(cur);
         const claim = await visibleClaim(tx, actor, input.claimId);
         if (claim.providerEntityId !== cur.providerEntityId) {
           throw unprocessable(
@@ -468,7 +507,8 @@ export function buildDrizzleAuditRequestService(
             })
             .returning({ id: ARC.id });
           await event(tx, actor, id, "claim_added");
-          return inserted[0]!;
+          void inserted;
+          return await bumpVersion(tx, cur, ifMatch);
         } catch (e) {
           if (isUniqueViolation(e)) {
             throw new ChartWardenError(
@@ -482,9 +522,10 @@ export function buildDrizzleAuditRequestService(
       });
     },
 
-    async removeClaim(actor, id, claimId) {
+    async removeClaim(actor, id, claimId, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
-        await load(tx, actor, id);
+        const cur = await load(tx, actor, id);
+        assertOpen(cur);
         const removed = await tx
           .update(ARC)
           .set({ removedAt: new Date(), removedByMembershipId: actor.membershipId })
@@ -492,7 +533,7 @@ export function buildDrizzleAuditRequestService(
           .returning({ id: ARC.id });
         if (!removed[0]) throw new NotFoundError("audit request claim");
         await event(tx, actor, id, "claim_removed");
-        return removed[0];
+        return await bumpVersion(tx, cur, ifMatch);
       });
     },
 

@@ -3735,7 +3735,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add a claim to an open audit request */
+        /** Add a claim to an open audit request (If-Match; bumps the request version) */
         post: operations["postApiV1AuditrequestsByIdClaims"];
         delete?: never;
         options?: never;
@@ -3753,7 +3753,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a claim from an open audit request (the removal is kept in the trail) */
+        /** Remove a claim from an open audit request (If-Match; the removal is kept in the trail) */
         delete: operations["deleteApiV1AuditrequestsByIdClaimsByClaimId"];
         options?: never;
         head?: never;
@@ -35763,6 +35763,7 @@ export interface operations {
                     "application/json": {
                         appealCaseId: string;
                         claimId: string;
+                        patientId: string | null;
                         tier: string;
                         state: string;
                         filedByEscalation: boolean;
@@ -35956,6 +35957,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        patientId: string | null;
                         items: {
                             id: string;
                             subjectKind: "appeal" | "audit_request";
@@ -36515,6 +36517,7 @@ export interface operations {
                         createdAt: string;
                         requestDatedOn: string | null;
                         scopeNote: string | null;
+                        patientId: string | null;
                         providerEntityId: string;
                         adrCaseId: string | null;
                         denialCaseId: string | null;
@@ -36616,6 +36619,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         id: string;
+                        version: number;
                     };
                 };
             };
@@ -36643,6 +36647,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         id: string;
+                        version: number;
                     };
                 };
             };
@@ -36668,6 +36673,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        patientId: string | null;
                         items: {
                             id: string;
                             subjectKind: "appeal" | "audit_request";
@@ -45771,6 +45777,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         claimId: string;
+                        patientId: string | null;
                         generatedAt: string;
                         nextDeadline: {
                             id: string;
