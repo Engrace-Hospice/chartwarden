@@ -408,6 +408,10 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
       expect((await upload({ patientId: PATIENT, admissionId: ghost })).statusCode).toBe(404);
     });
 
+    it("422 for an admission with no patient, even from an org-wide uploader", async () => {
+      expect((await upload({ admissionId: ADMISSION }, SEEDER)).statusCode).toBe(422);
+    });
+
     it("accepts the patient's own admission", async () => {
       expect((await upload({ patientId: PATIENT, admissionId: ADMISSION })).statusCode).toBe(201);
     });
