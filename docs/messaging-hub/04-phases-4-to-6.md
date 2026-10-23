@@ -116,4 +116,6 @@ routes, no PHI on lock screen, unreachable→fallback event, shift/time-zone cor
 | **6.9 Death-event coordination board** *(proposed)* | Checklist thread for pronouncement and follow-up tasks, building on the lifecycle review queue (WP 3.8) | Each checklist item has one accountable owner and an audit trail |
 | **6.10 Alarm ingest (watch only)** *(proposed, P3)* | Receive third-party alarms as alerts only on a real customer need; reuse the alert catalog | Not scheduled; revisit on customer demand |
 
+> **6.4 status (2026-10-23, ADR-0120):** mechanism built and scoped to the saved-reply picker: i18n keys (en, provisional es), visible English fallback (`lang="en"` + EN tag), template translations as data that are offered only when clinician-reviewed (all shipped Spanish rows are `unreviewed`, so none is offered). No machine translation, no migration. Not done: server-side language preference/settings screen, reviewer workflow and stored translations table, conversion of the other messaging wording files, clinician sign-off.
+
 **Phase 6 gate:** the AI, partner-scope and voice-retention acceptance tests from the source spec, plus a clinical/compliance review of every AI capability.
