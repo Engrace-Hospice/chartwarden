@@ -396,10 +396,12 @@
     border-bottom: 1px solid var(--color-card-border);
     padding: 0 1.5rem;
     overflow-x: auto;
+    /* Twelve tabs overflow a laptop-width chart; a visible thin scrollbar is the cue that more exist. */
+    scrollbar-width: thin;
   }
   .wx-chart-tabs ul {
     display: flex;
-    gap: 1.75rem;
+    gap: 1.125rem;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -2229,6 +2231,9 @@
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: thin;
+  }
+  .wx-subtabs-scroll > button {
+    padding-inline: 0.7rem;
   }
   .wx-filter-panel {
     display: flex;

@@ -1,5 +1,5 @@
 import { PatientWorkspaceLayout } from "@chartwarden/ui";
-import type { JSX, ReactNode } from "react";
+import { type JSX, type ReactNode, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { PatientConversationLink, useOpenPatientConversation } from "./open-patient-conversation";
 // apps/web/src/shell — the patient-chart tab strip, shared by every patient-scoped workspace screen
@@ -126,8 +126,16 @@ export function ChartModuleRail({
 }): JSX.Element {
   const active = SECTION_TAB[current];
   const conversation = useOpenPatientConversation(patientId);
+  const nav = useRef<HTMLElement>(null);
+  // The strip scrolls at laptop widths; keep the current tab on screen after a navigation.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `active` is the trigger, not a value read
+  useEffect(() => {
+    nav.current
+      ?.querySelector<HTMLElement>("[aria-current='page']")
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [active]);
   return (
-    <nav className="wx-chart-tabs wx-no-scrollbar" aria-label="Patient chart">
+    <nav ref={nav} className="wx-chart-tabs" aria-label="Patient chart">
       <ul>
         {TABS.map((tab) => {
           const isActive = tab.key === active;

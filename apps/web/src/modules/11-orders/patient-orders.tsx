@@ -390,6 +390,7 @@ export function PatientOrders(): JSX.Element {
       banner={
         identity ? (
           <ChartBanner
+            nameAsHeading
             identity={identity}
             actions={
               <>

@@ -406,6 +406,7 @@ export function CarePlanView(): JSX.Element {
       banner={
         identity ? (
           <ChartBanner
+            nameAsHeading
             identity={identity}
             actions={
               <>

@@ -29,6 +29,7 @@ export function PatientDocuments(): JSX.Element {
       banner={
         identity ? (
           <ChartBanner
+            nameAsHeading
             identity={identity}
             actions={
               <Link to={`/patients/${patientId}`} className="wx-btn-secondary">

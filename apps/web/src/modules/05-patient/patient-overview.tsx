@@ -651,6 +651,7 @@ export function PatientChartHeader({
 }): JSX.Element {
   return (
     <ChartBanner
+      nameAsHeading
       identity={{
         patient,
 

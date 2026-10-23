@@ -409,6 +409,8 @@ export interface PatientBannerProps {
   meta?: ReactNode;
   chips?: ReactNode;
   actions?: ReactNode;
+  /** Render the name as the page's `<h1>`; set it only on chart pages that have no other h1. */
+  nameAsHeading?: boolean;
 }
 export function PatientBanner({
   name,
@@ -421,6 +423,7 @@ export function PatientBanner({
   meta,
   chips,
   actions,
+  nameAsHeading,
 }: PatientBannerProps): JSX.Element {
   const field = (label: string, value: ReactNode, mono = false): ReactNode =>
     value ? (
@@ -440,6 +443,7 @@ export function PatientBanner({
           .join("")
       : null;
   const avatarNode = avatar ?? initials;
+  const NameTag = nameAsHeading ? "h1" : "strong";
   // 2026-09-25 redesign (mockups): a large tinted avatar, the name in bold with its status chip beside
   // it, the meta line below, actions right. The tab strip that follows draws the bottom rule.
   return (
@@ -484,9 +488,10 @@ export function PatientBanner({
         style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 0, flex: 1 }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.625rem" }}>
-          <strong
+          <NameTag
             className="wx-banner-name"
             style={{
+              margin: 0,
               fontFamily: t.fontSans,
               fontSize: "1.625rem",
               fontWeight: 700,
@@ -496,7 +501,7 @@ export function PatientBanner({
             }}
           >
             {name}
-          </strong>
+          </NameTag>
           {/* Chips — caller-supplied identity/status/alert pills; falls back to the original fields. */}
           <div
             className="wx-banner-chips"
