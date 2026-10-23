@@ -376,9 +376,18 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         // Mark the session locked FIRST, then refund the shared budget (so the user's next session is not told to wait),
         // then kill the session. The marker keeps in-flight requests and a failed revoke from reopening the door
         // (see unlock-guard.ts). The audit rows are still written, but a failure there is logged, not allowed to hide the 423.
-        await deps.unlockGuard.lockSession(actor.sessionId);
+        // The revoke never waits on the marker: a counter-store blip here must not leave the session alive.
+        let markerError: unknown;
+        try {
+          await deps.unlockGuard.lockSession(actor.sessionId);
+        } catch (err) {
+          markerError = err;
+        }
         await deps.unlockGuard.release(actor.userId);
         await deps.sessions.revokeSession(actor.sessionId);
+        if (markerError) {
+          request.log.error({ err: markerError, sessionId: actor.sessionId }, "unlock lock marker write failed");
+        }
         try {
           await record("failed");
           await record("locked_out");
@@ -395,6 +404,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       throw new ChartWardenError("INVALID_CREDENTIALS", "that password did not match", 401);
     }
 
+    // A lockout may have landed while this (correct) guess was being hashed: that session is dead, not unlocked.
+    if (await deps.unlockGuard.isSessionLocked(actor.sessionId)) return refuseLockedSession();
     await deps.unlockGuard.release(actor.userId);
     await record("unlocked");
     if (actor.organizationId) {

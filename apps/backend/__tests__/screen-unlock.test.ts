@@ -223,6 +223,27 @@ describe("#589 POST /api/v1/auth/unlock", () => {
     await h.app.close();
   });
 
+  it("a counter-store failure while marking the lockout still ends the session (#602)", async () => {
+    let failMarkers = false;
+    const base = createInMemoryFailedLoginStore();
+    const store: FailedLoginStore = {
+      ...base,
+      async recordFailure(key, windowMs) {
+        if (failMarkers && key.startsWith("screen-unlock:locked:")) throw new Error("valkey blip");
+        return base.recordFailure(key, windowMs);
+      },
+    };
+    const h = makeServer({ store });
+    for (let i = 0; i < 4; i += 1) await unlock(h.app, { password: "nope" });
+    failMarkers = true;
+
+    const fifth = await unlock(h.app, { password: "nope" });
+
+    expect(fifth.statusCode).toBe(423);
+    expect(h.sessions.revokedSessions()).toEqual(["sess_1"]);
+    await h.app.close();
+  });
+
   it("a passwordless account gets 409 UNLOCK_NO_PASSWORD and spends no attempts (#602)", async () => {
     const h = makeServer({ hasPassword: false });
     for (let i = 0; i < 8; i += 1) {
