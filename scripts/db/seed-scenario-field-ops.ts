@@ -532,10 +532,10 @@ async function main(): Promise<void> {
   }
 
   // ── M20 — Field Safety ─────────────────────────────────────────────────────────────────────────
-  // `POST /api/v1/safety/incidents` is skipped on purpose, not a bug workaround: `write-service-drizzle.ts`'s
-  // own header documents "Phase 1 has none [DEK] for M20" as a DELIBERATE, permanent-for-this-phase design
-  // decision (`SAFETY_CIPHER_UNBOUND`, 503) — writing the narrative in the clear to fake it would make the
-  // §3.7 erasure a lie, so unlike this file's other DB-direct workarounds, no seed shortcut is taken here.
+  // `POST /api/v1/safety/incidents` is not driven here. `write-service-drizzle.ts` seals the narrative with the
+  // tenant DEK, so it answers `SAFETY_CIPHER_UNBOUND` (503) when the org has no usable tenant key ring (#596) —
+  // the seed must not write the narrative in the clear to fake it. With a key ring (`db:seed` with
+  // `M34_TENANT_KEK` set, or `m34_provision_tenant_key_ring`) it returns 201; this script just doesn't exercise it.
   // The SOS press is the one path M20-F16/S13 guarantees NEVER refuses for a missing cipher (property 2 in
   // the same file header), so that alone carries this section.
   try {
@@ -573,13 +573,11 @@ async function main(): Promise<void> {
     });
     if (ack.error) throw new Error(`SOS acknowledge failed: ${JSON.stringify(ack.error)}`);
 
-    // `resolve` is skipped too, for the SAME reason incident-create is: `write-service-drizzle.ts`'s
-    // ordinary (non-incident) resolve path ALSO unconditionally `seal()`s `resolutionNarrative` — "the
-    // narrative column is nullable... but the WRITE PATH requires it... With no cipher bound the resolve
-    // REFUSES rather than dropping the narrative." Confirmed live: SAFETY_CIPHER_UNBOUND, not a script bug.
+    // `resolve` is skipped too: its ordinary path also `seal()`s `resolutionNarrative`, so without a tenant key
+    // ring it refuses with SAFETY_CIPHER_UNBOUND rather than dropping the narrative. Not re-checked with a key ring.
 
     log.ok(
-      "Field safety: 1 SOS alert raised + acknowledged (resolve + incident-create both skipped — SAFETY_CIPHER_UNBOUND is a permanent Phase-1 gap, see comments above)",
+      "Field safety: 1 SOS alert raised + acknowledged (resolve + incident-create not driven here; they need a tenant key ring (SAFETY_CIPHER_UNBOUND otherwise), see comments above)",
     );
   } catch (err) {
     log.fail(`M20 field safety: ${String(err)}`);
