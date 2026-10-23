@@ -8,17 +8,19 @@ import "./index.css"; // Tailwind v4 Preflight + the portal's Lantern token laye
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { PortalApp } from "./app";
+import { createSessionGuard } from "./session-guard";
 
 // Resolve the stored choice (or OS preference) before React paints, matching web/admin.
 initTheme();
 
-const client = createApiClient();
+const sessionGuard = createSessionGuard();
+const client = createApiClient({ onResponseStatus: sessionGuard.onResponseStatus });
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error('Root element "#root" not found');
 
 createRoot(rootEl).render(
   <StrictMode>
-    <PortalApp client={client} />
+    <PortalApp client={client} sessionGuard={sessionGuard} />
   </StrictMode>,
 );
