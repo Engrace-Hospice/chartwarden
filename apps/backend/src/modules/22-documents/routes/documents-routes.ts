@@ -264,6 +264,53 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     throw new NotFoundError("document");
   }
 
+  /**
+   * #611 — the document WRITE routes keyed by id (`PATCH /:id`, `POST /:id/links`, `POST /:id/versions`,
+   * `POST|DELETE /:id/tags`) answer with, or act on, a document the actor names by id, so they honour the same
+   * caseload scope as the reads. Runs BEFORE the legal-hold ABAC so an out-of-scope id cannot learn "this
+   * document exists and is on hold" from a 403.
+   *
+   * A document with NO patient (an unlinked intake document) has no caseload to test, so only an org-wide actor
+   * may touch it — except through `/links` (`allowUnlinked`), whose whole purpose is to attach it to a patient
+   * (and that patient is scoped instead, see `assertLinkTargetInScope`).
+   */
+  const scopeWrite =
+    (allowUnlinked: boolean): PreHandler =>
+    async (request) => {
+      const { organizationId } = actorOf(request as FastifyRequest);
+      const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
+      if (doc.patientId === null && doc.aggregateType !== "referral") {
+        if (allowUnlinked || (await metadataScopeOf(request as FastifyRequest)) === null) return;
+        throw new NotFoundError("document");
+      }
+      await assertDocumentInScope(request as FastifyRequest, doc);
+    };
+  const SCOPE_WRITE = scopeWrite(false);
+  const SCOPE_WRITE_LINK = scopeWrite(true);
+
+  /**
+   * #611 — `/links` may not attach a document to a patient outside the actor's caseload, and a scoped actor may
+   * not detach a linked document (`patientId: null`) or set an admission with no patient to test: either would
+   * leave a document that no caseload-bound reader can see, or that every scoped editor can adopt.
+   */
+  async function assertLinkTargetInScope(
+    request: FastifyRequest,
+    docId: string,
+    body: { patientId?: string | null; admissionId?: string | null },
+  ): Promise<void> {
+    const scope = await metadataScopeOf(request);
+    if (scope === null) return;
+    if (body.patientId) {
+      if (scope.includes(body.patientId)) return;
+      throw new NotFoundError("patient");
+    }
+    const { organizationId } = actorOf(request);
+    const doc = await service.getDocument(organizationId, docId);
+    const detaching = body.patientId === null && doc.patientId !== null;
+    const orphanAdmission = !!body.admissionId && doc.patientId === null;
+    if (detaching || orphanAdmission) throw new NotFoundError("patient");
+  }
+
   // 1 — upload new document (creates document + version v1).
   app.post(
     "/api/v1/documents",
@@ -329,7 +376,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 2 — upload new version of an existing document.
   app.post(
     "/api/v1/documents/:id/versions",
-    { preHandler: [UPLOAD, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+    { preHandler: [UPLOAD, SCOPE_WRITE, IDEMPOTENT], bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(UploadVersionRequest, request.body);
@@ -412,22 +459,27 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   );
 
   // 8 — edit metadata (legal_hold_aware ABAC denies while a hold is active, §4.7).
-  app.patch("/api/v1/documents/:id", { preHandler: [EDIT, ABAC_LEGAL_HOLD] }, async (request) => {
-    const { organizationId, actor } = actorOf(request);
-    const body = parse(PatchDocumentRequest, request.body);
-    return service.patchDocument(organizationId, actor, docIdOf(request), {
-      title: body.title,
-      patientFacing: body.patientFacing,
-      attachToDisclosures: body.attachToDisclosures,
-    });
-  });
+  app.patch(
+    "/api/v1/documents/:id",
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
+    async (request) => {
+      const { organizationId, actor } = actorOf(request);
+      const body = parse(PatchDocumentRequest, request.body);
+      return service.patchDocument(organizationId, actor, docIdOf(request), {
+        title: body.title,
+        patientFacing: body.patientFacing,
+        attachToDisclosures: body.attachToDisclosures,
+      });
+    },
+  );
 
   app.post(
     "/api/v1/documents/:id/links",
-    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE_LINK, ABAC_LEGAL_HOLD] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(LinkDocumentRequest, request.body);
+      await assertLinkTargetInScope(request, docIdOf(request), body);
       return service.linkDocument(organizationId, actor, docIdOf(request), {
         patientId: body.patientId,
         admissionId: body.admissionId,
@@ -457,7 +509,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 9 — add tag.
   app.post(
     "/api/v1/documents/:id/tags",
-    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(AddTagRequest, request.body);
@@ -473,7 +525,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 10 — remove tag.
   app.delete(
     "/api/v1/documents/:id/tags/:tagId",
-    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    { preHandler: [EDIT, SCOPE_WRITE, ABAC_LEGAL_HOLD] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const { id, tagId } = parse(TagParamsSchema, request.params);
