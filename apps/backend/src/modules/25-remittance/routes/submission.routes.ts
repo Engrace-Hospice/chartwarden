@@ -1,3 +1,4 @@
+import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/submission.routes.ts - M25 milestone 6a routes: the submission attempt of
 // an ADR response, an appeal (incl. a QIC escalation request) and a reopening request. Reading gates on each subject's
 // own read key; recording a receipt gates on the subject's submit key + step-up (the operation key is the permission
@@ -5,7 +6,6 @@
 // stale) and requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
 // Nothing here sends anything outside ChartWarden: there is no send route in 6a.
 import { Type } from "@sinclair/typebox";
-import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
@@ -233,8 +233,36 @@ export function registerReopeningSubmissionRoutes(
   );
 }
 
-/** Mount the three subjects' submission routes. */
+/** Milestone 7a-2: the audit response's attempt (born acknowledged at filing; only an amendment is recorded here). */
+export function registerAuditSubmissionRoutes(
+  app: FastifyInstance,
+  deps: SubmissionRouteDeps,
+): void {
+  const h = handlersFor(deps.submissionService, "audit", "audit request");
+  app.get(
+    "/api/v1/audit-requests/:id/submission",
+    {
+      preHandler: [P("audit_request.read")],
+      config: {
+        auditRead: {
+          resourceKind: "audit_request",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
+    h.get,
+  );
+  app.post(
+    "/api/v1/audit-requests/:id/submission-receipt",
+    { preHandler: [P("audit_request.submit"), STEP_UP("audit_request.submit"), IDEMPOTENT] },
+    (request, reply) => h.receipt(request, reply, request.body),
+  );
+}
+
+/** Mount the four subjects' submission routes. */
 export function registerSubmissionRoutes(app: FastifyInstance, deps: SubmissionRouteDeps): void {
+  registerAuditSubmissionRoutes(app, deps);
   registerAdrSubmissionRoutes(app, deps);
   registerAppealSubmissionRoutes(app, deps);
   registerReopeningSubmissionRoutes(app, deps);

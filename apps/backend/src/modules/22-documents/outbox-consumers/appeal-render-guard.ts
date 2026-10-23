@@ -26,6 +26,7 @@ export interface RenderGuardRefusal {
 
 const APPEAL_PACKET_TEMPLATE_KEY = "appeal_packet";
 const ADR_PACKET_TEMPLATE_KEY = "adr_response_packet";
+const AUDIT_PACKET_TEMPLATE_KEY = "audit_response_packet";
 
 /** The document ids an ADR response payload names (its enclosures), tolerant of shape. */
 export function adrEnclosureIds(content: Record<string, unknown>): string[] {
@@ -52,7 +53,11 @@ export function appealEnclosureIds(content: Record<string, unknown>): string[] {
 
 export function buildAppealPacketRenderGuard(documents: () => AppealRenderGuardDocuments) {
   return async (request: RenderGuardRequest): Promise<RenderGuardRefusal | null> => {
-    const isAdr = request.templateKey === ADR_PACKET_TEMPLATE_KEY;
+    // The audit response payload names its enclosures the same way (`enclosures[].documentId`) and is likewise the
+    // record of what WAS filed, so it takes the ADR branch.
+    const isAdr =
+      request.templateKey === ADR_PACKET_TEMPLATE_KEY ||
+      request.templateKey === AUDIT_PACKET_TEMPLATE_KEY;
     if (request.templateKey !== APPEAL_PACKET_TEMPLATE_KEY && !isAdr) return null;
     const ids = isAdr ? adrEnclosureIds(request.content) : appealEnclosureIds(request.content);
     for (const documentId of ids) {

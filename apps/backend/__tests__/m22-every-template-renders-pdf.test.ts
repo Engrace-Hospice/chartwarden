@@ -59,6 +59,7 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
   const strictKeys = new Set([
     "appeal_packet",
     "adr_response_packet",
+    "audit_response_packet",
     "cti",
     "f2f",
     "nor",
@@ -124,7 +125,7 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
     }
   });
 
-  it.each([...strictKeys].filter((k) => k !== "appeal_packet" && k !== "adr_response_packet"))(
+  it.each([...strictKeys].filter((k) => k !== "appeal_packet" && k !== "adr_response_packet" && k !== "audit_response_packet"))(
     "%s: a hostile or id-only payload fails closed with a typed error (retry -> DLQ), never a blank form",
     (key) => {
       for (const payload of [

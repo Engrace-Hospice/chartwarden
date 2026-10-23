@@ -193,6 +193,12 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "adr_response_packet",
     contentField: "payload",
   },
+  // M25 milestone 7a-2 - the cover sheet and enclosure index of a filed audit response, filed against the request.
+  "m25.audit_response_packet.render_requested": {
+    aggregateIdFields: ["auditRequestId"],
+    templateKey: "audit_response_packet",
+    contentField: "payload",
+  },
   // M27 §4.10 — ONE wire name, THREE artifacts, discriminated by `artifactKind`. The aggregate is the
   // SUBMISSION (`submissionId`), not the cost report: a reopened report submits again, and filing both
   // against `costReportId` would make the second render an idempotent skip of the first.

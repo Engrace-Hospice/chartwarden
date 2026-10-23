@@ -15,6 +15,8 @@ export interface AuditNoDeadlineRow {
   /** True when the request has at least one unsatisfied recorded deadline. */
   readonly hasDeadline: boolean;
   readonly alreadyAlerted: boolean;
+  /** 7a-2: a person attested the request letter states no due date, so there is nothing to chase. */
+  readonly noneStatedAttested?: boolean;
 }
 
 export interface AuditNoDeadlineStore {

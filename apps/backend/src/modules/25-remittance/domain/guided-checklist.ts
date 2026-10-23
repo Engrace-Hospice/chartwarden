@@ -13,6 +13,7 @@ const WHAT: Readonly<Record<SubmissionPurpose, string>> = {
   appeal_request: "appeal request",
   reopening_request: "reopening request",
   qic_escalation_request: "escalation request",
+  audit_response: "audit response",
 };
 
 export function buildGuidedChecklist(input: {

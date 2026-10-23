@@ -3760,6 +3760,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit-requests/{id}/deadline-none-stated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attest that the request letter states no due date (only while no deadline is recorded; once made it never changes; If-Match) */
+        post: operations["postApiV1AuditrequestsByIdDeadlinenonestated"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach an M22 document to the audit response under a live claim of the request (appeal enclosure rules; If-Match) */
+        post: operations["postApiV1AuditrequestsByIdDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach a document from the audit response while it is in assembly (If-Match) */
+        delete: operations["deleteApiV1AuditrequestsByIdDocumentsByDocumentId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-requests/{id}/recorded-deadlines": {
         parameters: {
             query?: never;
@@ -3812,6 +3863,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit-requests/{id}/response-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace the response checklist typed from the request letter while the audit request is open for assembly (If-Match; nothing is seeded) */
+        put: operations["putApiV1AuditrequestsByIdResponseitems"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/sign-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign off the response packet; the reviewer must differ from who sent it to review (If-Match) */
+        post: operations["postApiV1AuditrequestsByIdSignoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-requests/{id}/state": {
         parameters: {
             query?: never;
@@ -3823,6 +3908,57 @@ export interface paths {
         put?: never;
         /** Move an audit request forward, or withdraw it (If-Match) */
         post: operations["postApiV1AuditrequestsByIdState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this audit response: status, proof and adapter availability */
+        get: operations["getApiV1AuditrequestsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Amend the receipt of a filed audit response: step-up, the original receipt stays frozen (If-Match) */
+        post: operations["postApiV1AuditrequestsByIdSubmissionreceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-requests/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the filed audit response with its proof of submission: step-up, frozen manifest, retained PDF (If-Match) */
+        post: operations["postApiV1AuditrequestsByIdSubmit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -35995,6 +36131,8 @@ export interface operations {
                     dueOn: string;
                     sourceNote: string;
                     noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
                 };
             };
         };
@@ -36032,6 +36170,8 @@ export interface operations {
                     dueOn?: string;
                     sourceNote?: string;
                     noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
                 };
             };
         };
@@ -36433,7 +36573,7 @@ export interface operations {
                             receivedOn: string;
                             state: string;
                             claimCount: number;
-                            dueState: "no_deadline_recorded" | "open" | "past" | "not_applicable";
+                            dueState: "no_deadline_recorded" | "none_stated" | "open" | "past" | "not_applicable";
                             nextDueAt: string | null;
                             version: number;
                             createdAt: string;
@@ -36511,7 +36651,7 @@ export interface operations {
                         receivedOn: string;
                         state: string;
                         claimCount: number;
-                        dueState: "no_deadline_recorded" | "open" | "past" | "not_applicable";
+                        dueState: "no_deadline_recorded" | "none_stated" | "open" | "past" | "not_applicable";
                         nextDueAt: string | null;
                         version: number;
                         createdAt: string;
@@ -36548,6 +36688,28 @@ export interface operations {
                             eventKind: string;
                             occurredAt: string;
                         }[];
+                        response: {
+                            items: {
+                                label: string;
+                                state: "pending" | "ready" | "not_applicable";
+                            }[];
+                            documents: {
+                                id: string;
+                                claimId: string;
+                                documentId: string;
+                                attachedAt: string;
+                            }[];
+                            sentToReviewByMembershipId: string | null;
+                            reviewedByMembershipId: string | null;
+                            reviewedAt: string | null;
+                            deadlineNoneStatedAt: string | null;
+                            filing: {
+                                channel: string;
+                                confirmationRef: string;
+                                filedAt: string;
+                                filedLate: boolean;
+                            } | null;
+                        };
                     };
                 };
             };
@@ -36656,6 +36818,97 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AuditrequestsByIdDeadlinenonestated: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    claimId: string;
+                    /** Format: uuid */
+                    documentId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AuditrequestsByIdDocumentsByDocumentId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AuditrequestsByIdRecordeddeadlines: {
         parameters: {
             query?: never;
@@ -36712,6 +36965,8 @@ export interface operations {
                     dueOn: string;
                     sourceNote: string;
                     noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
                 };
             };
         };
@@ -36749,6 +37004,8 @@ export interface operations {
                     dueOn?: string;
                     sourceNote?: string;
                     noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
                 };
             };
         };
@@ -36803,6 +37060,69 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1AuditrequestsByIdResponseitems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    items: {
+                        label: string;
+                        state: "pending" | "ready" | "not_applicable";
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdSignoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AuditrequestsByIdState: {
         parameters: {
             query?: never;
@@ -36816,8 +37136,150 @@ export interface operations {
             content: {
                 "application/json": {
                     to: "in_assembly" | "in_review" | "responded" | "closed" | "withdrawn";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditrequestsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
                     /** Format: date-time */
-                    respondedAt?: string;
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuditrequestsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channel: "esmd" | "fax" | "mail" | "other";
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    filedAt: string;
+                    lateAcknowledged?: boolean;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                    /** Format: uuid */
+                    receiptClaimId?: string;
                 };
             };
         };

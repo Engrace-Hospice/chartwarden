@@ -119,6 +119,7 @@ export const AUDIT_STATE_TONE: Record<string, StatusTone> = {
 /** audit_request dueState → tone. A case with no recorded due date is loud: it is not "fine", it is unknown. */
 export const AUDIT_DUE_TONE: Record<string, StatusTone> = {
   no_deadline_recorded: "error",
+  none_stated: "neutral",
   open: "progress",
   past: "error",
   not_applicable: "neutral",

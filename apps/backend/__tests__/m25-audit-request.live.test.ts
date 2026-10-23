@@ -5,7 +5,7 @@
  * Proves what the pure suites cannot: a RAC / UPIC / SMRC / other request is logged for one or many claims of one
  * provider entity (another tenant's claim, ADR or denial reads as absent; a mixed entity is refused); no due date is
  * computed - a request with none reads "no deadline recorded" and raises exactly one alert after two days, and a typed
- * deadline (source note required, no notice document yet) clears it; the state machine moves forward only and a
+ * deadline (source note required; a notice document only after the document seam validates it) clears it; the state machine moves forward only and a
  * withdrawn or closed request is frozen in the database (its claims too); a claim is soft-removed, never deleted, and
  * appears once; the audit trail records the writes without the free text; another tenant sees nothing; the routes
  * gate on audit_request.read / audit_request.manage.
@@ -304,7 +304,9 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
           },
         ),
       );
-      expect(withDoc?.code).toBe("NOTICE_DOCUMENT_UNSUPPORTED");
+      // 7a-2: a notice document is accepted on an audit deadline, but only after the document seam validates it
+      // (this service has no source port bound, so it is refused rather than linked unchecked).
+      expect(withDoc?.code).toBe("NOTICE_DOCUMENT_UNAVAILABLE");
       const d = await tier().createDeadline(
         A(),
         { kind: "audit_request", id },
@@ -343,52 +345,34 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
         "UPDATE audit_request SET created_at = now() - interval '5 days' WHERE id=$1",
         [id],
       );
-      await audit().moveAuditRequest(A(), id, "withdrawn", {}, 1);
+      await audit().moveAuditRequest(A(), id, "withdrawn", 1);
       expect(noDeadlineAlerts(await cron(), id)).toEqual([]);
     });
   });
 
   describe("state machine and freeze", () => {
-    it("moves forward only, records the response time, and freezes a closed request in the database", async () => {
+    it("moves forward only, refuses a bare move to responded, and freezes a withdrawn request in the database", async () => {
       const { id } = await audit().createAuditRequest(A(), intake());
       const v = () => fx.ver("audit_request", id);
       expect(
-        (await fx.refused(audit().moveAuditRequest(A(), id, "responded", {}, await v())))?.code,
+        (await fx.refused(audit().moveAuditRequest(A(), id, "responded", await v())))?.code,
       ).toBe("INVALID_TRANSITION");
-      await audit().moveAuditRequest(A(), id, "in_assembly", {}, await v());
-      await audit().moveAuditRequest(A(), id, "in_review", {}, await v());
+      await audit().moveAuditRequest(A(), id, "in_assembly", await v());
+      await audit().moveAuditRequest(A(), id, "in_review", await v());
+      // Milestone 7a-2: a response is recorded by filing a signed-off packet with its proof, never by a bare move.
       expect(
-        (
-          await fx.refused(
-            audit().moveAuditRequest(
-              A(),
-              id,
-              "responded",
-              { respondedAt: new Date(Date.now() + 864e5).toISOString() },
-              await v(),
-            ),
-          )
-        )?.code,
-      ).toBe("AUDIT_RESPONDED_IN_FUTURE");
-      expect(
-        (await fx.refused(audit().moveAuditRequest(A(), id, "in_review", {}, 1)))?.code,
-      ).toBeTruthy();
-      await audit().moveAuditRequest(
-        A(),
-        id,
-        "responded",
-        { respondedAt: new Date(Date.now() - 3_600_000).toISOString() },
-        await v(),
-      );
-      await audit().moveAuditRequest(A(), id, "closed", {}, await v());
+        (await fx.refused(audit().moveAuditRequest(A(), id, "responded", await v())))?.code,
+      ).toBe("AUDIT_RESPONSE_REQUIRES_FILING");
+      expect((await fx.refused(audit().moveAuditRequest(A(), id, "in_review", 1)))?.code).toBeTruthy();
+      await audit().moveAuditRequest(A(), id, "withdrawn", await v());
       const row = (
         await fx.admin.query(
           "SELECT state, responded_at, closed_at FROM audit_request WHERE id=$1",
           [id],
         )
       ).rows[0];
-      expect(row.state).toBe("closed");
-      expect(row.responded_at).not.toBeNull();
+      expect(row.state).toBe("withdrawn");
+      expect(row.responded_at).toBeNull();
       expect(row.closed_at).not.toBeNull();
       const msg = await fx.dbMessage(
         fx.asApp((tx) => tx.execute(sql`UPDATE audit_request SET scope_note='x' WHERE id=${id}`)),
@@ -498,7 +482,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
         A(),
         intake({ claimIds: [], providerEntityId: fx.pe1 }),
       );
-      await audit().moveAuditRequest(A(), id, "withdrawn", {}, 1);
+      await audit().moveAuditRequest(A(), id, "withdrawn", 1);
       const frozen = await fx.dbMessage(
         fx.asApp((tx) =>
           tx.execute(

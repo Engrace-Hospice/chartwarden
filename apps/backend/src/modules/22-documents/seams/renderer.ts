@@ -213,6 +213,13 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "ADR Response Packet",
   },
+  // M25 — the cover sheet and enclosure index of a filed audit response (milestone 7a-2, mig 1174). Retained as the
+  // record of what went to the audit contractor.
+  audit_response_packet: {
+    aggregateType: "audit_response_packet",
+    retentionClass: "compliance",
+    defaultTitle: "Audit Response Packet",
+  },
   // M25 — the manual (no-appeal) denial-resolution letter, filed against `denial_case`. F-144 (#248):
   // catalogued (`m25.denial_resolution_letter.render_requested`) and never emitted before this pass.
   denial_resolution_letter: {

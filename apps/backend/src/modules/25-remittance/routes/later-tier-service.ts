@@ -46,6 +46,8 @@ export interface RecordedDeadlineInput {
   /** Where the date came from (the notice, page, paragraph). Required. */
   readonly sourceNote: string;
   readonly noticeDocumentId?: string | null;
+  /** An audit request covering several claims: the claim whose patient owns the notice document. */
+  readonly noticeClaimId?: string;
 }
 
 export interface RecordedDeadlinePatch {
@@ -53,6 +55,7 @@ export interface RecordedDeadlinePatch {
   readonly dueOn?: string;
   readonly sourceNote?: string;
   readonly noticeDocumentId?: string | null;
+  readonly noticeClaimId?: string;
 }
 
 export interface TierDetailView {
@@ -203,6 +206,7 @@ export function buildDrizzleLaterTierService(
         providerEntityId: a.providerEntityId,
         finished: a.state === "closed" || a.state === "withdrawn",
         claimId: a.claimId as string | null,
+        claimIds: [a.claimId] as readonly string[],
       };
     }
     const scope = providerEntityScopeCondition(AR.providerEntityId, actor.providerEntityScope);
@@ -221,12 +225,12 @@ export function buildDrizzleLaterTierService(
           eq(schema.auditRequestClaim.auditRequestId, subject.id),
           isNull(schema.auditRequestClaim.removedAt),
         ),
-      )
-      .limit(2);
+      );
     return {
       providerEntityId: rows[0].providerEntityId,
       finished: rows[0].state === "closed" || rows[0].state === "withdrawn",
       claimId: live.length === 1 ? (live[0]?.claimId ?? null) : null,
+      claimIds: live.map((l) => l.claimId) as readonly string[],
     };
   }
 
@@ -242,18 +246,25 @@ export function buildDrizzleLaterTierService(
     return zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE];
   }
 
-  /** A notice document is validated against the appeal's claim patient (the receipt-document rules); audits take none yet. */
+  /**
+   * A notice document is validated against a claim's patient (the receipt-document rules). An appeal has one claim; an
+   * audit request names the live claim whose patient owns the notice (implicit when the request covers exactly one).
+   */
   async function checkNoticeDocument(
     organizationId: string,
     subject: DeadlineSubject,
-    claimId: string | null,
+    claimIds: readonly string[],
+    noticeClaimId: string | undefined,
     documentId: string | null | undefined,
   ): Promise<void> {
     if (!documentId) return;
-    if (subject.kind !== "appeal" || !claimId) {
+    const claimId = noticeClaimId ?? (claimIds.length === 1 ? claimIds[0] : undefined);
+    if (!claimId || !claimIds.includes(claimId)) {
       throw unprocessable(
-        "NOTICE_DOCUMENT_UNSUPPORTED",
-        "a notice document can be linked to an appeal's deadline only; describe an audit request's source in the source note",
+        "NOTICE_DOCUMENT_CLAIM_REQUIRED",
+        subject.kind === "audit_request"
+          ? "name the claim of this request whose patient owns the notice document"
+          : "the claim cannot be determined to validate the document",
       );
     }
     if (!ports.sources) {
@@ -412,7 +423,13 @@ export function buildDrizzleLaterTierService(
       return withOrgContext(db, actor, async (tx) => {
         const s = await loadSubject(tx, actor, subject);
         if (s.finished) throw subjectFinished();
-        await checkNoticeDocument(actor.organizationId, subject, s.claimId, input.noticeDocumentId);
+        await checkNoticeDocument(
+          actor.organizationId,
+          subject,
+          s.claimIds,
+          input.noticeClaimId,
+          input.noticeDocumentId,
+        );
         const derived = deriveRecordedDeadline(input.dueOn, await zonesFor(tx, s.providerEntityId));
         const inserted = await tx
           .insert(RD)
@@ -457,7 +474,8 @@ export function buildDrizzleLaterTierService(
           await checkNoticeDocument(
             actor.organizationId,
             subject,
-            s.claimId,
+            s.claimIds,
+            patch.noticeClaimId,
             patch.noticeDocumentId,
           );
         }

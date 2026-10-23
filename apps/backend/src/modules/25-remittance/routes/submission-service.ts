@@ -11,8 +11,8 @@
 // `receipt_amendments`. No outbox events (nothing consumes them); the write-audit trigger and the rows are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   type AmendmentRefusal,
   type CancelRefusal,
@@ -48,7 +48,7 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type AttemptRow = typeof schema.submissionAttempt.$inferSelect;
 const SA = schema.submissionAttempt;
 
-export type SubmissionSubjectKind = "adr" | "appeal" | "reopening";
+export type SubmissionSubjectKind = "adr" | "appeal" | "reopening" | "audit";
 
 export interface RecordFilingAttemptInput {
   readonly organizationId: string;
@@ -70,6 +70,7 @@ const subjectColumn = {
   appeal_request: SA.appealCaseId,
   qic_escalation_request: SA.appealCaseId,
   reopening_request: SA.reopeningCaseId,
+  audit_response: SA.auditRequestId,
 } as const;
 
 const subjectValues = (purpose: SubmissionPurpose, subjectId: string) =>
@@ -77,7 +78,9 @@ const subjectValues = (purpose: SubmissionPurpose, subjectId: string) =>
     ? { adrCaseId: subjectId }
     : purpose === "reopening_request"
       ? { reopeningCaseId: subjectId }
-      : { appealCaseId: subjectId };
+      : purpose === "audit_response"
+        ? { auditRequestId: subjectId }
+        : { appealCaseId: subjectId };
 
 /**
  * Insert the attempt for a filing, inside the caller's transaction. Refuses (409) when a live attempt already exists for
@@ -251,7 +254,8 @@ const dayOf = (d: Date | null): string | null => (d === null ? null : d.toISOStr
 
 interface Subject {
   readonly providerEntityId: string;
-  readonly claimId: string;
+  /** The claim whose patient owns the case's documents; null for an audit request covering several claims. */
+  readonly claimId: string | null;
   readonly macName: string | null;
   readonly deadline: string | null;
   readonly defaultPurpose: SubmissionPurpose;
@@ -278,6 +282,33 @@ async function loadSubject(
       macName: r.macName,
       deadline: dayOf(r.responseDueAt),
       defaultPurpose: "adr_response",
+    };
+  }
+  if (kind === "audit") {
+    const T = schema.auditRequest;
+    const scope = providerEntityScopeCondition(T.providerEntityId, actor.providerEntityScope);
+    const [r] = await tx
+      .select()
+      .from(T)
+      .where(scope ? and(eq(T.id, id), scope) : eq(T.id, id))
+      .limit(1);
+    if (!r) throw new NotFoundError("audit request");
+    const live = await tx
+      .select({ claimId: schema.auditRequestClaim.claimId })
+      .from(schema.auditRequestClaim)
+      .where(
+        and(
+          eq(schema.auditRequestClaim.auditRequestId, id),
+          isNull(schema.auditRequestClaim.removedAt),
+        ),
+      );
+    return {
+      providerEntityId: r.providerEntityId,
+      claimId: live.length === 1 ? (live[0]?.claimId ?? null) : null,
+      macName: null,
+      // The deadline shown to the person is the one they typed (a recorded deadline), if any.
+      deadline: null,
+      defaultPurpose: "audit_response",
     };
   }
   if (kind === "reopening") {
@@ -319,7 +350,9 @@ const subjectFilter = (kind: SubmissionSubjectKind, id: string) =>
     ? eq(SA.adrCaseId, id)
     : kind === "reopening"
       ? eq(SA.reopeningCaseId, id)
-      : eq(SA.appealCaseId, id);
+      : kind === "audit"
+        ? eq(SA.auditRequestId, id)
+        : eq(SA.appealCaseId, id);
 
 function amendmentsOf(value: unknown): SubmissionAttemptView["amendments"] {
   if (!Array.isArray(value)) return [];
@@ -383,9 +416,16 @@ export function buildDrizzleSubmissionService(
 
   async function validateReceiptDocument(
     organizationId: string,
-    claimId: string,
+    claimId: string | null,
     documentId: string,
   ): Promise<void> {
+    if (claimId === null) {
+      throw new ChartWardenError(
+        "SUBMISSION_RECEIPT_DOCUMENT_UNSUPPORTED",
+        "a receipt document cannot be linked to a filing that covers several patients' claims; keep it with the filing's proof elsewhere",
+        422,
+      );
+    }
     const claim = await sources.claims().claimCopyForAppeal(organizationId, claimId);
     if (!claim) {
       throw new ChartWardenError(
@@ -405,7 +445,8 @@ export function buildDrizzleSubmissionService(
   }
 
   /** The claim's patient for the read-audit trail. null only when the claim is not found; a real failure surfaces. */
-  async function patientOf(organizationId: string, claimId: string): Promise<string | null> {
+  async function patientOf(organizationId: string, claimId: string | null): Promise<string | null> {
+    if (claimId === null) return null;
     return (await sources.claims().claimCopyForAppeal(organizationId, claimId))?.patientId ?? null;
   }
 

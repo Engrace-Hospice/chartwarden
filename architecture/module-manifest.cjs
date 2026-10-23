@@ -891,6 +891,7 @@ exports.MODULES = [
       "submission_attempt",
       "audit_request",
       "audit_request_claim",
+      "audit_request_document",
       "audit_request_event",
       "appeal_tier_detail",
       "recorded_deadline",

@@ -235,7 +235,7 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
             .leftJoin(schema.adrCase, eq(schema.adrCase.id, SA.adrCaseId))
             .leftJoin(AC, eq(AC.id, SA.appealCaseId))
             .leftJoin(schema.reopeningCase, eq(schema.reopeningCase.id, SA.reopeningCaseId))
-            .where(sql`${SA.status} = 'needs_manual'`)
+            .where(sql`${SA.status} = 'needs_manual' AND ${SA.auditRequestId} IS NULL`)
             .limit(100000);
           return rows.map((r) => ({
             id: r.id,
@@ -330,6 +330,7 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
               state: AR.state,
               createdAt: AR.createdAt,
               alerted: AR.noDeadlineAlertedAt,
+              noneStated: AR.deadlineNoneStatedAt,
               openDeadlines: sql<number>`(SELECT count(*)::int FROM recorded_deadline d WHERE d.audit_request_id = ${AR.id} AND d.satisfied_on IS NULL)`,
             })
             .from(AR)
@@ -341,6 +342,7 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
             createdAt: r.createdAt.toISOString(),
             hasDeadline: r.openDeadlines > 0,
             alreadyAlerted: r.alerted !== null,
+            noneStatedAttested: r.noneStated !== null,
           }));
         },
       };

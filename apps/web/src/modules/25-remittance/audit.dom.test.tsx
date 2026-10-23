@@ -47,6 +47,15 @@ const auditDetail = () => ({
   claims: [{ id: "l1", claimId: CLAIM, claimControlNumber: "CCN-100", dateOfServiceNote: null }],
   deadlines: auditDeadlines,
   events: [],
+  response: {
+    items: [],
+    documents: [],
+    sentToReviewByMembershipId: null,
+    reviewedByMembershipId: null,
+    reviewedAt: null,
+    deadlineNoneStatedAt: null,
+    filing: null,
+  },
 });
 const deadline = (over: Record<string, unknown>) => ({
   id: "ffffffff-6666-4666-8666-ffffffffffff",
@@ -253,7 +262,8 @@ describe("M25 audit recorded deadlines", () => {
       target: { value: "2099-03-13" },
     });
     expect(submit().disabled).toBe(true);
-    expect(within(dialog).queryByLabelText(/Notice document/)).toBeNull();
+    // 7a-2: an audit deadline takes a notice document too (validated server-side against a claim's patient).
+    expect(within(dialog).getByLabelText(/Notice document/)).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText(/Source note/), {
       target: { value: "Letter p.2" },
     });
@@ -265,6 +275,27 @@ describe("M25 audit recorded deadlines", () => {
       path: `/api/v1/audit-requests/${AUDIT}/recorded-deadlines`,
       body: { label: "Records due", dueOn: "2099-03-13", sourceNote: "Letter p.2" },
     });
+    expect(calls[0]?.body).not.toHaveProperty("noticeDocumentId");
+  });
+
+  it("posts the notice document typed for an audit deadline (a one-claim request names no claim)", async () => {
+    await openRecordModal();
+    const dialog = await screen.findByRole("dialog");
+    const doc = "99999999-9999-4999-8999-999999999999";
+    fireEvent.change(within(dialog).getByLabelText("What is due"), {
+      target: { value: "Records due" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Due date (from the notice)"), {
+      target: { value: "2099-03-13" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Source note/), {
+      target: { value: "Letter p.2" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Notice document/), { target: { value: doc } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record deadline" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({ noticeDocumentId: doc });
+    expect(calls[0]?.body).not.toHaveProperty("noticeClaimId");
   });
 
   it("satisfies a deadline with its own version as If-Match", async () => {

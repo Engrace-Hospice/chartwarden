@@ -604,6 +604,12 @@ import {
   AuditPatchRequestSchema as M25AuditPatchRequestSchema,
   AuditVersionedResultSchema as M25AuditVersionedResultSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/audit-request.routes";
+import {
+  AuditAttachDocumentRequestSchema as M25AuditAttachDocumentRequestSchema,
+  AuditResponseItemsRequestSchema as M25AuditResponseItemsRequestSchema,
+  AuditResponseVersionedResultSchema as M25AuditResponseVersionedResultSchema,
+  AuditSubmitRequestSchema as M25AuditSubmitRequestSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/audit-response.routes";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
   LaterTierViewSchema as M25LaterTierViewSchema,
@@ -8520,6 +8526,49 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
     response: M25CaseViewSchema,
+  },
+  // ── audit-response.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-2) ─────────────────────────────
+  "PUT /api/v1/audit-requests/:id/response-items": {
+    summary:
+      "Replace the response checklist typed from the request letter while the audit request is open for assembly (If-Match; nothing is seeded)",
+    body: M25AuditResponseItemsRequestSchema,
+    response: M25AuditResponseVersionedResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/documents": {
+    summary:
+      "Attach an M22 document to the audit response under a live claim of the request (appeal enclosure rules; If-Match)",
+    body: M25AuditAttachDocumentRequestSchema,
+    response: M25AuditResponseVersionedResultSchema,
+  },
+  "DELETE /api/v1/audit-requests/:id/documents/:documentId": {
+    summary: "Detach a document from the audit response while it is in assembly (If-Match)",
+    response: M25AuditResponseVersionedResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/deadline-none-stated": {
+    summary:
+      "Attest that the request letter states no due date (only while no deadline is recorded; once made it never changes; If-Match)",
+    response: M25AuditResponseVersionedResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/sign-off": {
+    summary:
+      "Sign off the response packet; the reviewer must differ from who sent it to review (If-Match)",
+    response: M25AuditResponseVersionedResultSchema,
+  },
+  "POST /api/v1/audit-requests/:id/submit": {
+    summary:
+      "Record the filed audit response with its proof of submission: step-up, frozen manifest, retained PDF (If-Match)",
+    body: M25AuditSubmitRequestSchema,
+    response: M25AuditResponseVersionedResultSchema,
+  },
+  "GET /api/v1/audit-requests/:id/submission": {
+    summary: "Submission attempts of this audit response: status, proof and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/audit-requests/:id/submission-receipt": {
+    summary:
+      "Amend the receipt of a filed audit response: step-up, the original receipt stays frozen (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
   },
   "GET /api/v1/adrs/:id/submission": {
     summary:

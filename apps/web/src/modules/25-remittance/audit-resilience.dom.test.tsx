@@ -90,6 +90,15 @@ const auditDetail = () => ({
     },
   ],
   events: [{ id: "e1", eventKind: "received", occurredAt: "2026-02-01T00:00:00.000Z" }],
+  response: {
+    items: [],
+    documents: [],
+    sentToReviewByMembershipId: null,
+    reviewedByMembershipId: null,
+    reviewedAt: null,
+    deadlineNoneStatedAt: null,
+    filing: null,
+  },
 });
 
 const json = (status: number, body: unknown) =>

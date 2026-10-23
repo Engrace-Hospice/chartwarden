@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { registerAdrRoutes } from "./adr.routes";
 import { registerAppealRoutes } from "./appeals.routes";
 import { registerAuditRequestRoutes } from "./audit-request.routes";
+import { registerAuditResponseRoutes } from "./audit-response.routes";
 import { registerCaseViewRoutes } from "./case-view.routes";
 import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
@@ -34,6 +35,7 @@ export { registerTaxonomyRoutes, type TaxonomyRouteDeps } from "./taxonomy.route
 export { registerInternalRoutes, type InternalRouteDeps } from "./internal.routes";
 export { registerSubmissionRoutes, type SubmissionRouteDeps } from "./submission.routes";
 export { registerAuditRequestRoutes, type AuditRequestRouteDeps } from "./audit-request.routes";
+export { registerAuditResponseRoutes, type AuditResponseRouteDeps } from "./audit-response.routes";
 export { registerLaterTierRoutes, type LaterTierRouteDeps } from "./later-tier.routes";
 export { registerCaseViewRoutes, type CaseViewRouteDeps } from "./case-view.routes";
 
@@ -63,6 +65,8 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
         auditRequestService: services.auditRequestService,
         laterTierService: services.laterTierService,
       });
+      // Milestone 7a-2: the response packet (the audit request service carries the packet operations).
+      registerAuditResponseRoutes(app, { auditResponse: services.auditRequestService });
     }
   }
   if (services.caseViewService) {

@@ -77,16 +77,25 @@ export function checkAuditCreate(input: {
   return null;
 }
 
-export type AuditDueState = "no_deadline_recorded" | "open" | "past" | "not_applicable";
+export type AuditDueState =
+  | "no_deadline_recorded"
+  /** 7a-2: a person attested the request letter states no due date. */
+  | "none_stated"
+  | "open"
+  | "past"
+  | "not_applicable";
 
 /** Derived on read from the earliest open recorded deadline (null = none). A finished request has no due state. */
 export function auditDueState(input: {
   readonly state: AuditState;
   readonly nextDueAt: Date | null;
   readonly now: Date;
+  readonly noneStatedAttested?: boolean;
 }): AuditDueState {
   if (isAuditTerminal(input.state)) return "not_applicable";
-  if (input.nextDueAt === null) return "no_deadline_recorded";
+  if (input.nextDueAt === null) {
+    return input.noneStatedAttested === true ? "none_stated" : "no_deadline_recorded";
+  }
   return input.now.getTime() > input.nextDueAt.getTime() ? "past" : "open";
 }
 
@@ -98,10 +107,12 @@ export function shouldAlertNoDeadline(
     readonly createdAt: Date;
     readonly hasDeadline: boolean;
     readonly alreadyAlerted: boolean;
+    /** 7a-2: a person attested the request letter states no due date; nothing is left to chase. */
+    readonly noneStatedAttested?: boolean;
   },
   now: Date,
 ): boolean {
-  if (row.hasDeadline || row.alreadyAlerted) return false;
+  if (row.hasDeadline || row.alreadyAlerted || row.noneStatedAttested === true) return false;
   if (isAuditTerminal(row.state as AuditState)) return false;
   return now.getTime() - row.createdAt.getTime() >= AUDIT_NO_DEADLINE_ALERT_DAYS * MS_PER_DAY;
 }

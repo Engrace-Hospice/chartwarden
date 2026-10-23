@@ -72,6 +72,7 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m20.safety.incident_report_requested", // safety_incident_report
   "m25.appeal_packet.render_requested", // appeal_packet
   "m25.adr_packet.render_requested", // adr_response_packet
+  "m25.audit_response_packet.render_requested", // audit_response_packet
   "m27.artifact.render_requested", // cost_report_ecr | cost_report_pi | cost_report_supporting_doc
   "m37.body_release.document_requested", // body_release_authorization
   // ── F-100 — M6's six CoP compliance documents. Unlike every other source module, M6 emits NO

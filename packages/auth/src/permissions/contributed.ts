@@ -3619,6 +3619,20 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // Milestone 7a-2 (migration 1175; granted by 1176): sign off an audit response packet (a person other than whoever
+  // sent it to review) / record the filing (also step-up gated).
+  "audit_request.review": {
+    resource: "audit_request",
+    action: "review",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "audit_request.submit": {
+    resource: "audit_request",
+    action: "submit",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   // Record the ALJ / Council / federal-court facts and the deadlines typed from a notice.
   "appeal.tier_record": {
     resource: "appeal_case",
