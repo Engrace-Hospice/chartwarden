@@ -964,6 +964,8 @@ export const MODULES: ModuleDef[] = [
       "audit_request",
       "audit_request_claim",
       "audit_request_event",
+      "adr_readiness_review",
+      "adr_readiness_finding",
       "appeal_tier_detail",
       "recorded_deadline",
       "denial_case",
