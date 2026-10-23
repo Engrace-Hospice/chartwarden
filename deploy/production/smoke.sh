@@ -198,6 +198,37 @@ for expected in \
 done
 ok "web app carries the §9.6 security headers (CSP frame-ancestors, X-Frame-Options, nosniff, Referrer-Policy, HSTS)"
 
+# ADR-0049 — per-tenant subdomains. Only on an install that sets CHARTWARDEN_SMOKE_TENANT_URL (a provisioned sample
+# tenant, e.g. https://sample.<base>); the demo leaves it unset and these probes do not run.
+tenant_url=${CHARTWARDEN_SMOKE_TENANT_URL:-$(env_value CHARTWARDEN_SMOKE_TENANT_URL)}
+if [ -n "$tenant_url" ]; then
+  tenant_info=$($CURL "$tenant_url/api/v1/public/tenant" || true)
+  echo "$tenant_info" | grep -q '"status":"active"' \
+    || fail "tier3/tenant" "$tenant_url/api/v1/public/tenant did not report an active organization (wildcard DNS/cert, vhost, or TENANT_BASE_DOMAIN)"
+  ok "tenant host $tenant_url resolves to an active organization"
+
+  # A label nobody owns must be refused by the API, not served: the wildcard vhost answers every host.
+  tenant_scheme=${tenant_url%%://*}
+  tenant_base=${tenant_url#*://}; tenant_base=${tenant_base#*.}
+  unknown_resp=$(curl --silent --max-time 10 -w '\n%{http_code}' "$tenant_scheme://smoke-no-such-tenant.$tenant_base/api/v1/public/tenant" || true)
+  unknown_code=${unknown_resp##*
+}
+  # The code in the body proves the API's host guard refused it, not a proxy or a route 404.
+  { [ "$unknown_code" = "404" ] && printf '%s' "$unknown_resp" | grep -q 'TENANT_HOST_UNKNOWN'; } \
+    || fail "tier3/tenant-unknown" "an unprovisioned tenant host answered $unknown_code, expected 404 TENANT_HOST_UNKNOWN"
+  ok "an unprovisioned tenant host is refused (404)"
+
+  # The portal build must answer EVERY /portal/ path (deep-link reload, magic-link return) with its own document,
+  # never the staff SPA's fallback.
+  portal_doc=$($CURL "$tenant_url/portal/p/smoke/care-plan" || true)
+  echo "$portal_doc" | grep -q '/portal/assets/' \
+    || fail "tier3/portal" "$tenant_url/portal/p/smoke/care-plan did not serve the portal document (the staff SPA may be shadowing /portal/)"
+  portal_return=$($CURL "$tenant_url/portal/signed-in" || true)
+  echo "$portal_return" | grep -q '/portal/assets/' \
+    || fail "tier3/portal" "$tenant_url/portal/signed-in did not serve the portal document"
+  ok "portal served under /portal/ for a deep link and the magic-link return"
+fi
+
 # ── tier 4: a real session, and a tenant-scoped read ────────────────────────────────────────────────
 #
 # The synthetic account should hold the LEAST privilege that still proves the stack: it needs to

@@ -58,6 +58,16 @@ describe("deploy/production SPA security headers (SECURITY_HARDENING §9.6)", ()
     );
   });
 
+  it("the real-environment build can pin img-src/frame-src to the storage origin, and the demo default is unchanged", () => {
+    const dockerfile = read("Dockerfile.web");
+    expect(dockerfile).toContain('ARG CSP_STORAGE_ORIGIN=""');
+    // The sed target must exist in the snippet: both directives end in ` https:;`.
+    const csp = snippet.match(/Content-Security-Policy "([^"]*)"/)?.[1] ?? "";
+    expect(csp).toMatch(/img-src [^;]* https:;/);
+    expect(csp).toMatch(/frame-src [^;]* https:;/);
+    expect(read(".github/workflows/release-tenant-web.yml")).toContain("CSP_STORAGE_ORIGIN=https://storage.");
+  });
+
   it("smoke.sh asserts the headers on the live SPA response", () => {
     const smoke = read("deploy/production/smoke.sh");
     expect(smoke).toContain("content-security-policy:");

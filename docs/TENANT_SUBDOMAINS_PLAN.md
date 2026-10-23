@@ -221,12 +221,21 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
 - Real-environment env file (`TENANT_BASE_DOMAIN`, `PASSKEY_RP_ID`, `BETTER_AUTH_URL`, `TRUSTED_PROXY_CIDRS`),
   own database and secrets. Widen nginx `server_name` to `*.chartwarden.com` on the VPS interim, or ingress
   path rules on Talos. Path routing: `/api/` backend, `/portal/` portal SPA, `/` staff SPA.
-- CSP: `img-src` and `connect-src` to `'self'` plus the explicit `storage.` host.
+- CSP: `img-src` and `frame-src` to `'self'` plus the explicit `storage.` host (done in the tenant image build; `connect-src` needs no change, nothing fetches storage directly).
 - Ops runbook section; `smoke.sh` probes a sample tenant host and a wrong-tenant request.
 - Edge must serve the portal build for EVERY `/portal/*` path (a deep-link reload such as `/portal/p/<id>/care-plan`, and the
   magic-link return `/portal/signed-in`) with its own `index.html` fallback, and must not shadow it with the staff SPA's
   fallback. `smoke.sh` probes a deep `/portal/` path and asserts the portal document (not the staff one) comes back.
 - Pass `VITE_TENANT_BASE_DOMAIN` (= `TENANT_BASE_DOMAIN`) as a build arg to `Dockerfile.web` so `app.<base>` shows the landing.
+
+**Phase 5 build notes (code and config done; DNS/certificate/Pangolin pending the DNS-control confirmation).**
+`Dockerfile.web` now builds and ships the portal under `/portal/` (the production stack had no portal at all before);
+`web-nginx.conf` gives it its own fallback (verified against the built image: deep link, `/portal/signed-in`, a missing
+asset 404, `/portal` 308). `nginx/chartwarden-tenant.conf` is the apex + wildcard vhost (overwrites `X-Forwarded-Host`).
+`.env.tenant.example` + an optional `TENANT_BASE_DOMAIN` mode in `bootstrap-vps.sh`, `smoke.sh` tenant probes, and
+`deploy/production/TENANT_EDGE.md` (runbook). Open: the real-environment release workflow (the build arg is baked, so it
+needs its own image build), and the CSP tightening, both now done: the `CSP_STORAGE_ORIGIN` build arg in `Dockerfile.web` narrows `img-src`/`frame-src`
+to the `storage.` host in the tenant image; the demo image keeps the shared snippet.
 
 ### Phase 6 — provisioning (PR B)
 - M34 tenant provisioning validates the slug (Phase 1 rules) and audits the action. No per-tenant DNS,

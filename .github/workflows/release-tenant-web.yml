@@ -1,0 +1,82 @@
+# ADR-0049 — the web image for the real (per-tenant-subdomain) environment.
+#
+# `VITE_TENANT_BASE_DOMAIN` is baked into the web bundle, so this environment cannot reuse the demo's
+# `chartwarden-web` image. This builds a separate `chartwarden-web-tenant` image, scanned and signed like the demo's.
+# It is MANUAL ONLY (workflow_dispatch): Actions minutes are metered and the real environment is not auto-deployed.
+# The backend image is the same one the demo uses (`chartwarden:sha-<sha>`, built by deploy.yml); only the web differs.
+name: Release tenant web image
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_domain:
+        description: Tenant base domain baked into the bundle (no scheme, port or wildcard)
+        required: true
+        default: chartwarden.com
+      ref:
+        description: Commit SHA to build (default is the dispatched ref's head)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build, scan and sign the tenant web image
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      BASE_DOMAIN: ${{ inputs.base_domain }}
+    steps:
+      - name: Validate base domain
+        run: |
+          case "$BASE_DOMAIN" in
+            *[!a-z0-9.-]* | .* | *. | *..* | "") echo "base_domain must be a bare lowercase domain" >&2; exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Resolve release SHA
+        run: echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push tenant web image
+        id: build_web
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.web
+          push: true
+          tags: ghcr.io/engrace-hospice/chartwarden-web-tenant:sha-${{ env.RELEASE_SHA }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-args: |
+            VITE_TENANT_BASE_DOMAIN=${{ inputs.base_domain }}
+            CSP_STORAGE_ORIGIN=https://storage.${{ inputs.base_domain }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan tenant web image (HIGH/CRITICAL fail the release)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ghcr.io/engrace-hospice/chartwarden-web-tenant@${{ steps.build_web.outputs.digest }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign image
+        env:
+          WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+          COSIGN_YES: "true"
+        run: |
+          test -n "$WEB_DIGEST" || { echo "build reported no digest" >&2; exit 1; }
+          cosign sign "ghcr.io/engrace-hospice/chartwarden-web-tenant@${WEB_DIGEST}"
+          echo "image: ghcr.io/engrace-hospice/chartwarden-web-tenant:sha-${RELEASE_SHA}@${WEB_DIGEST}" >> "$GITHUB_STEP_SUMMARY"
