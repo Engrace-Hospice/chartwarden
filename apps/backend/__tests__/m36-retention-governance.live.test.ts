@@ -1357,6 +1357,36 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       );
     });
 
+    it("COUNTERSIGN is refused once the fallback is closed: the setting turned off (or a second officer added) between self-approval and countersign leaves the row non-final", async () => {
+      await setFlag(true);
+      const { id } = await requestOne();
+      expect((await gov("POST", `/redactions/${id}/self-approve`, soleLogin)).statusCode).toBe(200);
+      await setFlag(false);
+      const off = await gov("POST", `/redactions/${id}/countersign`, counterLogin);
+      expect(off.statusCode).toBe(403);
+      expect(off.body).toContain("REDACTION_FALLBACK_UNAVAILABLE");
+      expect(await stateOf(id)).toMatchObject({ approved: false, countersigned: false });
+      expect(await auditCount("m36.redaction.countersigned", id)).toBe(0);
+      // a second eligible officer closes it too
+      await setFlag(true);
+      await admin.query(
+        `UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2`,
+        [second.userId, ORG_3],
+      );
+      const two = await gov("POST", `/redactions/${id}/countersign`, counterLogin);
+      expect(two.statusCode).toBe(403);
+      expect(two.body).toContain("REDACTION_FALLBACK_UNAVAILABLE");
+      expect((await stateOf(id))?.approved).toBe(false);
+      await admin.query(
+        `UPDATE membership SET status='suspended' WHERE user_id=$1 AND organization_id=$2`,
+        [second.userId, ORG_3],
+      );
+      // reopened: the same row can be countersigned
+      const done = await gov("POST", `/redactions/${id}/countersign`, counterLogin);
+      expect(done.statusCode, done.body).toBe(200);
+      expect((await stateOf(id))?.approved).toBe(true);
+    });
+
     it("COUNTERSIGN by the requester is refused by the database too (CHECK and guard), even if a caller bypassed the service", async () => {
       await setFlag(true);
       const { id } = await requestOne();

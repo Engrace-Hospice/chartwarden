@@ -339,6 +339,9 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
             409,
           );
         }
+        // Same gate as the self-approval: a fallback row is completed only while the fallback is still open (flag on, exactly one eligible
+        // approver). Turn the setting off, or add a second officer, and the row must go through the ordinary two-person approval instead.
+        await assertFallbackOpen(tx, actor);
         const [row] = await tx
           .update(RED)
           .set({ countersignedBy: actor.userId, approvedBy: existing.requestedBy })

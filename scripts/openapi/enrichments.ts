@@ -10281,7 +10281,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/governance/redactions/:id/countersign": {
     summary:
-      "Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off",
+      "Second role (org admin or privacy officer; messaging.redact.countersign + a fresh step-up for `messaging.redact.countersign`, else 403 STEP_UP_REQUIRED): countersign a sole officer's self-approved redaction within its 72 hour period, which makes it final (the mask applies to every reader). Never the requester (403 REDACTION_COUNTERSIGN_SELF, and the database refuses it too); 403 REDACTION_FALLBACK_UNAVAILABLE when the fallback has since closed (the tenant setting turned off or a second officer added: the row then needs an ordinary two-person approval); 409 REDACTION_COUNTERSIGN_LAPSED after the period (it stays non-final), 409 REDACTION_NOT_AWAITING_COUNTERSIGN; 404 unknown or another tenant's redaction. Audited by the row's trigger and m36.redaction.countersigned. PROVISIONAL pending compliance sign-off",
     response: M36RedactionResponseSchema,
   },
 
