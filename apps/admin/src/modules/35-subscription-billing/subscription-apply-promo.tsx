@@ -1,4 +1,11 @@
-import { Button, Panel, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Panel,
+  TextField,
+  stashStepUpDraft,
+  useApiClient,
+  useStepUpDraft,
+} from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Apply promo to a subscription
 // (`/admin/subscriptions/:id/apply_promo`, promo.admin.apply). POST /api/admin/subscriptions/:id/apply_promo
 // (step-up + Idempotency-Key + the §4.8 `promo_applicable_to_subscription` ABAC gate, enforced server-side).
@@ -7,13 +14,18 @@ import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
+import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
+import { useSubscriptionGate } from "./use-subscription-gate";
 
 export function SubscriptionApplyPromo(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [code, setCode] = useState("");
+  const { gate, retry } = useSubscriptionGate(id);
+  // A step-up refusal sends the operator to /step-up and back; the typed code is restored.
+  const draftKey = `subscription-apply-promo:${id ?? ""}`;
+  const restored = useStepUpDraft<string>(draftKey);
+  const [code, setCode] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -52,28 +64,38 @@ export function SubscriptionApplyPromo(): JSX.Element {
             </p>
           </div>
         </header>
-        <div className="max-w-xl">
-          <Panel title="Promo" icon="receipt">
-            <div className="grid gap-4">
-              <TextField
-                id="promo-code"
-                label="Promo code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. LAUNCH25"
-              />
-              {outcome ? <OutcomeBanner {...outcome} /> : null}
-              <div className="wx-action-row is-end">
-                <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
-                  Cancel
-                </Button>
-                <Button loading={busy} disabled={!code.trim()} onClick={() => void submit()}>
-                  Apply promo
-                </Button>
+        {gate === "loading" ? (
+          <StateLoading label="Loading subscription…" />
+        ) : gate === "missing" ? (
+          <StateError message="Subscription not found." />
+        ) : gate === "error" ? (
+          <StateError message="Subscription unavailable." onRetry={retry} />
+        ) : (
+          <div className="max-w-xl">
+            <Panel title="Promo" icon="receipt">
+              <div className="grid gap-4">
+                <TextField
+                  id="promo-code"
+                  label="Promo code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="e.g. LAUNCH25"
+                />
+                {outcome ? (
+                  <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(draftKey, code)} />
+                ) : null}
+                <div className="wx-action-row is-end">
+                  <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
+                    Cancel
+                  </Button>
+                  <Button loading={busy} disabled={!code.trim()} onClick={() => void submit()}>
+                    Apply promo
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Panel>
-        </div>
+            </Panel>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,14 @@
 import {
   Button,
+  type FieldErrors,
   Glyph,
   InlineAlert,
   ReverifyLink,
   SelectField,
   TextField,
+  focusFirstInvalid,
   isStepUpRequired,
+  isValid,
   useApiClient,
   useDrawerA11y,
 } from "@chartwarden/ui";
@@ -59,6 +62,29 @@ function stashDraft(draft: Draft): void {
   }
 }
 
+/** Per-field messages for the New tenant form; empty when it can be submitted (#597, F-042). */
+export function tenantProvisionErrors(
+  form: Pick<Draft, "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName">,
+): FieldErrors<"legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> {
+  const errors: FieldErrors<
+    "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"
+  > = {};
+  const name = form.legalName.trim();
+  if (name.length < NAME_MIN)
+    errors.legalName = `Enter the legal business name (at least ${NAME_MIN} characters).`;
+  const email = (value: string, missing: string): string | undefined =>
+    value.trim() === ""
+      ? missing
+      : EMAIL_SHAPE.test(value.trim())
+        ? undefined
+        : "Enter a valid email address, e.g. name@example.com.";
+  errors.billingEmail = email(form.billingEmail, "Enter the billing contact email.");
+  errors.breachEmail = email(form.breachEmail, "Enter the breach notification email.");
+  errors.adminEmail = email(form.adminEmail, "Enter the first admin's email.");
+  if (form.adminName.trim() === "") errors.adminName = "Enter the first admin's full name.";
+  return Object.fromEntries(Object.entries(errors).filter(([, v]) => v !== undefined));
+}
+
 type Outcome = { ok: true } | { ok: false; message: string; stepUp: boolean };
 
 /** The server's own message from the error envelope, when it carries one. */
@@ -90,17 +116,19 @@ export function TenantProvisionDrawer({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const name = legalName.trim();
-  const valid =
-    name.length >= NAME_MIN &&
-    name.length <= NAME_MAX &&
-    EMAIL_SHAPE.test(billingEmail.trim()) &&
-    EMAIL_SHAPE.test(breachEmail.trim()) &&
-    EMAIL_SHAPE.test(adminEmail.trim()) &&
-    adminName.trim().length > 0;
+  // Errors appear after the first submit attempt; the button stays enabled so a refusal always explains itself.
+  const [attempted, setAttempted] = useState(false);
+  const fieldValues = { legalName, billingEmail, breachEmail, adminEmail, adminName };
+  const errors = attempted ? tenantProvisionErrors(fieldValues) : {};
 
   async function submit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    if (!valid || busy || accepted) return;
+    if (busy || accepted) return;
+    if (!isValid(tenantProvisionErrors(fieldValues))) {
+      setAttempted(true);
+      focusFirstInvalid(e.currentTarget);
+      return;
+    }
     setBusy(true);
     setOutcome(null);
     let error: unknown;
@@ -158,11 +186,13 @@ export function TenantProvisionDrawer({
           <Glyph name="close" size={16} />
         </Button>
       </header>
-      <form className="wx-drawer-body" onSubmit={(e) => void submit(e)}>
+      <form className="wx-drawer-body" onSubmit={(e) => void submit(e)} noValidate>
         <section className="wx-drawer-card">
           <TextField
             id="prov-legal-name"
             label="Legal business name"
+            required
+            error={errors.legalName}
             value={legalName}
             maxLength={NAME_MAX}
             onChange={(e) => setLegalName(e.target.value)}
@@ -178,6 +208,8 @@ export function TenantProvisionDrawer({
           <TextField
             id="prov-billing-email"
             label="Billing contact email"
+            required
+            error={errors.billingEmail}
             type="email"
             value={billingEmail}
             onChange={(e) => setBillingEmail(e.target.value)}
@@ -185,6 +217,8 @@ export function TenantProvisionDrawer({
           <TextField
             id="prov-breach-email"
             label="Breach notification email"
+            required
+            error={errors.breachEmail}
             type="email"
             value={breachEmail}
             onChange={(e) => setBreachEmail(e.target.value)}
@@ -194,6 +228,8 @@ export function TenantProvisionDrawer({
           <TextField
             id="prov-admin-name"
             label="First admin full name"
+            required
+            error={errors.adminName}
             value={adminName}
             maxLength={ADMIN_NAME_MAX}
             onChange={(e) => setAdminName(e.target.value)}
@@ -201,6 +237,8 @@ export function TenantProvisionDrawer({
           <TextField
             id="prov-admin-email"
             label="First admin email"
+            required
+            error={errors.adminEmail}
             type="email"
             value={adminEmail}
             onChange={(e) => setAdminEmail(e.target.value)}
@@ -223,7 +261,7 @@ export function TenantProvisionDrawer({
           </div>
         ) : null}
         <div className="wx-drawer-actions">
-          <Button type="submit" disabled={!valid || busy || accepted}>
+          <Button type="submit" disabled={busy || accepted}>
             {busy ? "Requesting…" : accepted ? "Requested" : "Provision tenant"}
           </Button>
           <Button tone="secondary" onClick={onClose}>

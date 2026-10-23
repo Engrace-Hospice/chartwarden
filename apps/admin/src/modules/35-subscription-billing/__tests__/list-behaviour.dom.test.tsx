@@ -1,8 +1,8 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — shared list behaviour of the four drawer lists (plans, promos,
 // subscriptions, refunds): a stale ?param is cleared with a notice, Enter opens a row's drawer, Escape closes it and
 // hands focus back to the row; plus the create-plan form (Enter submits, a non-numeric price cannot be submitted).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -186,7 +186,10 @@ describe("create plan form", () => {
     await screen.findByRole("complementary", { name: "New plan" });
   };
   const fill = (label: string, value: string): void => {
-    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    // Required fields carry a visible "*" after the label text, so match the start of it.
+    fireEvent.change(screen.getByLabelText(new RegExp(`^${label.replace(/[()]/g, "\\$&")}`)), {
+      target: { value },
+    });
   };
 
   it("submits on Enter (form submit) with the price converted to cents", async () => {
@@ -203,16 +206,17 @@ describe("create plan form", () => {
     expect(post?.body?.basePriceCents).toBe(1234);
   });
 
-  it("keeps submit disabled and posts nothing for a non-numeric price", async () => {
+  it("says why a bad slug or price is refused and posts nothing (#597)", async () => {
     const calls = mount(<PlansList />, "/x", [PLAN]);
     await openForm();
-    fill("Slug", "team");
+    fill("Slug", "Bad Slug!");
     fill("Name", "Team");
     fill("Base price (USD)", "abc");
     const button = screen.getByRole("button", { name: "Create draft" });
-    expect(button.hasAttribute("disabled")).toBe(true);
-    const form = button.closest("form");
-    if (form) fireEvent.submit(form);
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(button);
+    expect(await screen.findByText(/Use lowercase letters, numbers and hyphens only/)).toBeTruthy();
+    expect(screen.getByText(/Enter a number of dollars/)).toBeTruthy();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 });

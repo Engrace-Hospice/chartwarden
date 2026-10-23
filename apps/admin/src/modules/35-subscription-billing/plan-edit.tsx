@@ -17,6 +17,7 @@ import {
   StateError,
   StateLoading,
   failureOutcome,
+  isNotFound,
 } from "./ui";
 
 type PlanDetail =
@@ -29,6 +30,7 @@ export function PlanEdit(): JSX.Element {
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [meter, setMeter] = useState({
@@ -48,10 +50,13 @@ export function PlanEdit(): JSX.Element {
     }
     setLoading(true);
     setError(null);
+    setNotFound(false);
     const res = await client.GET("/api/admin/plans/{id}", { params: { path: { id } } });
     if (!isCurrent()) return;
     if (res.error) {
-      setError("Plan unavailable.");
+      // A 404 is final: retrying cannot bring the record back, so no "Try again" (#597, F-044).
+      setNotFound(isNotFound(res));
+      setError(isNotFound(res) ? "Plan not found." : "Plan unavailable.");
       setLoading(false);
       return;
     }
@@ -138,7 +143,12 @@ export function PlanEdit(): JSX.Element {
   );
   if (loading) return frame(<StateLoading label="Loading plan…" />);
   if (error || !plan)
-    return frame(<StateError message={error ?? "Plan not found."} onRetry={() => void load()} />);
+    return frame(
+      <StateError
+        message={error ?? "Plan not found."}
+        onRetry={notFound ? undefined : () => void load()}
+      />,
+    );
 
   return (
     <div className="wx-list-drawer has-drawer">

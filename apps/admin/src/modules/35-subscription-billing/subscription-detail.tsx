@@ -18,7 +18,7 @@ import {
   subscriptionTone,
   usageThresholdTone,
 } from "./status";
-import { DrawerHead, StateError, StateLoading } from "./ui";
+import { DrawerHead, StateError, StateLoading, isNotFound } from "./ui";
 
 type AdminSub =
   operations["getApiAdminSubscriptionsById"]["responses"][200]["content"]["application/json"];
@@ -36,6 +36,7 @@ export function SubscriptionDetail(): JSX.Element {
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const guard = useRequestGuard();
   const load = useCallback(async () => {
@@ -47,10 +48,13 @@ export function SubscriptionDetail(): JSX.Element {
     }
     setLoading(true);
     setError(null);
+    setNotFound(false);
     const res = await client.GET("/api/admin/subscriptions/{id}", { params: { path: { id } } });
     if (!isCurrent()) return;
     if (res.error) {
-      setError("Subscription unavailable.");
+      // A 404 is final: retrying cannot bring the record back, so no "Try again" (#597, F-044).
+      setNotFound(isNotFound(res));
+      setError(isNotFound(res) ? "Subscription not found." : "Subscription unavailable.");
       setLoading(false);
       return;
     }
@@ -86,7 +90,10 @@ export function SubscriptionDetail(): JSX.Element {
           {loading ? (
             <StateLoading label="Loading subscription…" />
           ) : (
-            <StateError message={error ?? "Subscription not found."} onRetry={() => void load()} />
+            <StateError
+              message={error ?? "Subscription not found."}
+              onRetry={notFound ? undefined : () => void load()}
+            />
           )}
         </div>
       </div>

@@ -20,9 +20,9 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
 import { InvitationCard } from "./invitation-card";
 import { ProvisioningCard } from "./provisioning-card";
+import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
 
 interface StatusEvent {
@@ -72,6 +72,7 @@ export function TenantOverview(): JSX.Element {
   const [tenant, setTenant] = useState<TenantOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const navigate = useNavigate();
   const [shredOpen, setShredOpen] = useState(false);
   const [transitionOpen, setTransitionOpen] = useState(false);
@@ -91,14 +92,21 @@ export function TenantOverview(): JSX.Element {
       if (!silent) {
         setLoading(true);
         setError(null);
+        setNotFound(false);
       }
-      const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
+      const {
+        data,
+        error: err,
+        response,
+      } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
         params: { path: { orgSlug } },
       });
       if (!isCurrent()) return;
       if (err) {
         if (silent) return;
-        setError("Tenant not found.");
+        // A 404 is final: retrying cannot make the tenant appear, so the page offers no "Try again" (#597, F-044).
+        setNotFound(response?.status === 404);
+        setError(response?.status === 404 ? "Tenant not found." : "Could not load this tenant.");
         setLoading(false);
         return;
       }
@@ -185,9 +193,11 @@ export function TenantOverview(): JSX.Element {
         <div className="wx-list-drawer-main">
           <div className="wx-list-state" role="alert">
             <InlineAlert tone="error">{error ?? "No tenant."}</InlineAlert>
-            <Button tone="secondary" onClick={() => void load()}>
-              Try again
-            </Button>
+            {notFound ? null : (
+              <Button tone="secondary" onClick={() => void load()}>
+                Try again
+              </Button>
+            )}
           </div>
         </div>
       </div>
