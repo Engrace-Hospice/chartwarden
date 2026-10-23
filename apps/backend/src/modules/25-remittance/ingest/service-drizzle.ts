@@ -44,6 +44,10 @@ type AdviceContext = {
   payerKind: ReceiveAdviceInput["payerKind"];
 };
 
+export type PayeeNpiLookup = (organizationId: string, providerEntityId: string) => Promise<string | null>;
+/** Explicit opt-out of the payee check, for tests that are not about it. */
+export const PAYEE_UNCHECKED = "unchecked" as const;
+
 export interface M25IngestDrizzleDeps {
   readonly client: X12835WorkerClient;
   readonly outbox?: WriteOutboxPort;
@@ -57,10 +61,11 @@ export interface M25IngestDrizzleDeps {
   /**
    * #659 — the tenant's own NPI for a provider entity (null when unknown). When bound, an 835 whose payee
    * (N1*PE, N103=XX) is not that NPI is refused before anything is stored or posted, so a file addressed to
-   * another provider can never post into this tenant. Unbound = no payee check (tests only; both composition
-   * roots bind it). The TIN is sealed per tenant (M2) and the PTAN has no tenant column, so neither is compared.
+   * another provider can never post into this tenant. Required so a composition root cannot drop the guard
+   * silently; tests that do not exercise it pass {@link PAYEE_UNCHECKED}. The TIN is sealed per tenant (M2) and the
+   * PTAN has no tenant column, so neither is compared. A payee identified only by tax id (FI) is refused.
    */
-  readonly payeeNpi?: (organizationId: string, providerEntityId: string) => Promise<string | null>;
+  readonly payeeNpi: PayeeNpiLookup | typeof PAYEE_UNCHECKED;
   /**
    * Ops-visibility hook: called when `postAdvice` fails on a RETRYABLE degraded parse (e.g. no staged-object
    * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
@@ -130,8 +135,8 @@ export function buildDrizzleM25IngestService(
     providerEntityId: string,
     payee: ParsedRemittanceAdvice["payee"],
   ): Promise<string | null> {
-    if (!deps.payeeNpi) return null;
-    const expected = await deps.payeeNpi(organizationId, providerEntityId);
+    if (deps.payeeNpi === PAYEE_UNCHECKED) return null;
+    const expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim();
     if (!expected) return "payee check: the provider entity has no NPI on file";
     if (payee?.idQualifier !== "XX" || !payee.id)
       return "payee check: the 835 payee carries no NPI (N103 XX)";

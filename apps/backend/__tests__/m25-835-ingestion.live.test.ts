@@ -48,12 +48,20 @@ import type {
   ReceiveAdviceInput,
   TerminologyLookupPort,
 } from "../src/modules/25-remittance/ingest/service";
-import { buildDrizzleM25IngestService } from "../src/modules/25-remittance/ingest/service-drizzle";
+import {
+  PAYEE_UNCHECKED,
+  buildDrizzleM25IngestService,
+} from "../src/modules/25-remittance/ingest/service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PE_A = "00000000-0000-0000-0000-0000000000a1";
@@ -366,6 +374,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     );
     const emissions: string[] = [];
     const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client,
       terminology,
       claims: { medicare: claims },
@@ -501,6 +510,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       ],
     };
     const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([[objectKey, parsed]])),
       claims: {
         medicare: fakeClaims(
@@ -542,6 +552,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       claims: [],
     };
     const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([[objectKey, parsed]])),
     });
     const input: ReceiveAdviceInput = {
@@ -569,6 +580,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
   it("a malformed (non-X12) file persists NOTHING — no advice row, no dedup key consumed", async () => {
     const actor: M25IngestActor = { organizationId: ORG_A };
     const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map()),
     });
     const before = await admin.query(
@@ -617,6 +629,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       claims: [okClaim, { ...okClaim, patientControlNumber: "PCN-OK-2", payerIcn: "ICN-OK-2" }],
     };
     const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([[objectKey, parsed]])),
       claims: { medicare: throwingOnNthClaims(2) }, // first claim's candidate lookup succeeds, second throws
     });
@@ -658,6 +671,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       claims: [],
     };
     const receiveService = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([[objectKey, okParsed]])),
     });
     const received = await receiveService.receiveAdvice(actor, {
@@ -671,6 +685,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     if (received.outcome !== "queued") throw new Error("unreachable");
 
     const postService = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([[objectKey, "degraded"]])),
     });
     const posted = await postService.postAdvice(actor, received.adviceId);
@@ -683,6 +698,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     // Operator-actionable: a THIRD call (simulating `remittance.replay`'s re-emit → dispatcher redelivery)
     // against a NOW-healthy client succeeds — proves the failed row is genuinely replayable, not stuck.
     const replayService = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([[objectKey, okParsed]])),
     });
     const replayed = await replayService.postAdvice(actor, received.adviceId);
@@ -708,6 +724,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const objectKey = "minio/raw-ts-parser.835";
     const raw = buildFullEdi("000000202", "0202", "500.00");
     const service = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       // Real client: NO port, NO sidecar. `postAdvice` re-reads the staged object through `readRaw`.
       client: createX12835Client({ readRaw: async (key) => (key === objectKey ? raw : "") }),
       terminology: fakeTerminology({}),
@@ -771,7 +788,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       ];
       const [first, ...rest] = sets;
       if (!first) throw new Error("need a set");
-      const seg = (st02: string, b: string[]) => `${b.map((x) => `${x}~`).join("")}SE*${b.length + 2}*${st02}~`;
+      const seg = (st02: string, b: string[]) =>
+        `${b.map((x) => `${x}~`).join("")}SE*${b.length + 2}*${st02}~`;
       return (
         buildRawEdi(isa13, first.st02) +
         seg(first.st02, body(first.icn, first.npi)) +
@@ -865,10 +883,10 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const key = "minio/wrong-payee.835";
       const raw = buildEdiSets("000000703", [{ st02: "0721", icn: "ICN-W1", npi: "1999999984" }]);
       const client = createX12835Client({ readRaw: async () => raw });
-      const received = await buildDrizzleM25IngestService(handle.db, { client }).receiveAdvice(
-        actor,
-        input(key, raw),
-      );
+      const received = await buildDrizzleM25IngestService(handle.db, {
+        client,
+        payeeNpi: PAYEE_UNCHECKED,
+      }).receiveAdvice(actor, input(key, raw));
       expect(received.outcome).toBe("queued");
       if (received.outcome !== "queued") throw new Error("unreachable");
 
@@ -904,6 +922,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const actor: M25IngestActor = { organizationId: ORG_A };
       const events: unknown[] = [];
       const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
         client: createX12835Client(), // no readRaw wired
         onRetryableParseDegraded: (e) => events.push(e),
         outbox: { async publish() {} },
@@ -928,6 +947,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const actor: M25IngestActor = { organizationId: ORG_A };
       const events: Array<{ code: string }> = [];
       const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
         client: createX12835Client({
           readRaw: () => Promise.reject(new Error("https://minio.internal:9000/secret-bucket")),
         }),
@@ -952,6 +972,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const events: unknown[] = [];
       const staged = buildFullEdi("000090303", "9303", "499.99"); // unbalanced BPR02
       const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
         client: createX12835Client({ readRaw: async () => staged }),
         onRetryableParseDegraded: (e) => events.push(e),
         outbox: { async publish() {} },
@@ -970,6 +991,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     it("a retryable degrade at RECEIVE persists nothing (no advice row to fail)", async () => {
       const actor: M25IngestActor = { organizationId: ORG_A };
       const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
         client: fakeClient(new Map()), // fakeClient degrades every key
         outbox: { async publish() {} },
       });
@@ -1026,6 +1048,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       // registered in `beforeAll`, exactly as `index.ts`'s composition root wires it.
       const claims = buildM23BackedClaimMatchCandidateProvider();
       const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
         client: fakeClient(new Map([[objectKey, parsed]])),
         terminology,
         claims: { medicare: claims },
@@ -1098,6 +1121,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       };
       const claims = buildM23BackedClaimMatchCandidateProvider();
       const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
         client: fakeClient(new Map([[objectKey, parsed]])),
         claims: { medicare: claims },
       });
@@ -1144,9 +1168,11 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       claims: [],
     });
     const serviceA = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([["minio/org-a.835", parsedFor(11)]])),
     });
     const serviceB = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
       client: fakeClient(new Map([["minio/org-b.835", parsedFor(22)]])),
     });
     const rawEdi = buildRawEdi(isa, st);
