@@ -1,4 +1,10 @@
-import { Button, CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  CenteredCardLayout,
+  EmptyState,
+  LoadingSpinner,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Organization Select (M2 Auth, Track A).
 // Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "Organization select" (/login/organization).
 // A multi-org user picks the org that binds the session (one-time). Backed by the real M2 routes
@@ -33,15 +39,18 @@ type LoadState =
  * first org_admin has no passkey yet, and the passkey screen inside the shell sits behind the pre-org guard, so
  * the refusal links to the chromeless `/login/passkey` instead of a dead "contact your administrator".
  */
-function selectionFailure(error: unknown, tenant?: TenantInfo | null): Extract<LoadState, { kind: "error" }> {
+function selectionFailure(
+  error: unknown,
+  tenant?: TenantInfo | null,
+): Extract<LoadState, { kind: "error" }> {
   const envelope = (error as { error?: { code?: unknown; message?: unknown } } | null)?.error;
   // ADR-0049: a tenant host binds only its own organization. Name it when the public lookup told us.
   if (envelope?.code === "TENANT_HOST_MISMATCH") {
     return {
       kind: "error",
       message: tenant?.displayName
-        ? `This address belongs to ${tenant.displayName}, and your account is not a member of it. Sign out and sign in with an account that is.`
-        : "Your account is not a member of the organization at this address. Sign out and sign in with an account that is.",
+        ? `This address belongs to ${tenant.displayName}, and only its members can work here. Sign out and sign in with an account that is a member, or open your other organization at its own address.`
+        : "Only members of the organization at this address can work here. Sign out and sign in with an account that is a member, or open your other organization at its own address.",
     };
   }
   if (envelope?.code === "MFA_ENROLMENT_REQUIRED" && typeof envelope.message === "string") {
@@ -69,7 +78,11 @@ export function OrganizationSelect(): JSX.Element {
   const [selecting, setSelecting] = useState<string | null>(null);
 
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
+  // "Try again" re-runs the load below. A page reload is not an option: the picker lives before an organization is bound,
+  // and a reload there sent the person to /expired.
+  const [attempt, setAttempt] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the load on "Try again".
   useEffect(() => {
     let active = true;
     (async () => {
@@ -110,7 +123,9 @@ export function OrganizationSelect(): JSX.Element {
         if (!active || failure === null) return;
         // Could not bind: a wrong-organization refusal gets its own explanation, anything else falls back to the
         // picker so the person can retry with a click.
-        if ((failure as { error?: { code?: unknown } } | null)?.error?.code === "TENANT_HOST_MISMATCH") {
+        if (
+          (failure as { error?: { code?: unknown } } | null)?.error?.code === "TENANT_HOST_MISMATCH"
+        ) {
           setState(selectionFailure(failure, hostTenant));
           return;
         }
@@ -118,12 +133,19 @@ export function OrganizationSelect(): JSX.Element {
       if (!active) return;
       setState({ kind: "ready", memberships });
     })().catch(() => {
-      if (active) setState({ kind: "error", message: "Something went wrong loading your organizations." });
+      if (active)
+        setState({ kind: "error", message: "Something went wrong loading your organizations." });
     });
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, attempt]);
+
+  function retry(): void {
+    setSelecting(null);
+    setState({ kind: "loading" });
+    setAttempt((n) => n + 1);
+  }
 
   /** POST the binding; `null` on success (the page is reloading), else the refusal (a thrown request is one too). */
   async function bind(organizationId: string): Promise<unknown> {
@@ -172,7 +194,7 @@ export function OrganizationSelect(): JSX.Element {
           <EmptyState title="Unavailable" description={state.message} />
           {state.action ? <a href={state.action.href}>{state.action.label}</a> : null}
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-            <Button tone="secondary" onClick={() => window.location.reload()}>
+            <Button tone="secondary" onClick={retry}>
               Try again
             </Button>
             <Button tone="tertiary" onClick={() => void signOutAndRestart()}>
