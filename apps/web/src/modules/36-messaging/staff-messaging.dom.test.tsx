@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
@@ -331,7 +331,9 @@ describe("M36 messaging organization switching", () => {
           requestedChannelId &&
           !path.endsWith("/pins") &&
           !path.endsWith("/draft") &&
-          !path.endsWith("/snooze")
+          !path.endsWith("/snooze") &&
+          // WP 6.6 (ADR-0096 D18): the thread's external-partner banner reads the channel detail once per channel.
+          path !== "/api/v1/messaging/channels/{id}"
         )
           messageLoads.push(requestedChannelId);
         return Promise.resolve({ data: { messages: [] }, error: undefined });

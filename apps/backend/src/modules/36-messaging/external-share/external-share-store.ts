@@ -5,6 +5,8 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
+  EXTERNAL_SESSION_IDLE_MINUTES,
+  EXTERNAL_SESSION_MAX_HOURS,
   EXTERNAL_SHARE_CHANNEL_KINDS,
   EXTERNAL_SHARE_MAX_CODE_ATTEMPTS,
   type ExternalSessionStage,
@@ -55,6 +57,8 @@ export interface NewShare {
   readonly expiresInDays: number;
   readonly inviteTokenHash: string;
   readonly codeHash: string;
+  /** D15: the creator's confirmation, stored on the share and CHECKed true. */
+  readonly minimumNecessaryAcknowledged: true;
 }
 
 export interface StaffTx {
@@ -70,6 +74,20 @@ export interface StaffTx {
   /** Null when the share is already revoked. */
   revoke(id: string, userId: string): Promise<ShareRow | null>;
   listShares(): Promise<ShareRow[]>;
+  /**
+   * D14: replace the invitation and the code of a LIVE share, start the counter from zero and bump the generation, which kills every older session.
+   * Null when the share is revoked or expired. The guard trigger makes this the only path that resets the counter.
+   */
+  reissue(
+    id: string,
+    userId: string,
+    inviteTokenHash: string,
+    codeHash: string,
+  ): Promise<ShareRow | null>;
+  /** D18: the live (unrevoked, unexpired, database clock) share on a channel that expires last, or null. Read live every time. */
+  activeIndicator(
+    channelId: string,
+  ): Promise<{ readonly partnerKind: ExternalSharePartnerKind; readonly expiresAt: Date } | null>;
 }
 
 export interface StaffActor {
@@ -111,10 +129,15 @@ export interface PartnerTx {
   ): Promise<{ readonly shareId: string; readonly expiresAt: Date } | null>;
   /** Born against the redeemed share and bounded by its expiry (the guard also checks). */
   insertSession(shareId: string, tokenHash: string): Promise<{ readonly sessionId: string }>;
+  /**
+   * D4/D13: ONE statement that decides liveness AND records the request: the share is unrevoked and unexpired, the session is of the share's
+   * current invitation generation, under its absolute lifetime and idle for under 30 minutes, all on the database clock; a hit touches last_seen_at.
+   */
   resolveSession(tokenHash: string): Promise<LiveSession | null>;
   /** Counts the attempt FIRST (atomically, capped at 5) and returns the stored code hash; null when the share is locked or gone. */
   takeCodeAttempt(shareId: string): Promise<string | null>;
-  activate(sessionId: string): Promise<void>;
+  /** enrolment -> active AND the bearer hash is replaced in one update (D13): the enrolment token is dead from this commit on. */
+  activate(sessionId: string, newTokenHash: string): Promise<void>;
   /** Visible messages (ADR-0096 D2) after the cursor, at most `limit`, oldest first. */
   visibleMessages(
     live: LiveSession,
@@ -122,7 +145,7 @@ export interface PartnerTx {
     limit: number,
   ): Promise<PartnerRawMessage[]>;
   /** The audit trail row; the database guard refuses it unless the session is active and the share live NOW. */
-  recordRead(live: LiveSession, messageCount: number): Promise<void>;
+  recordRead(live: LiveSession, messageCount: number, withheldCount: number): Promise<void>;
 }
 
 export interface SharePartnerStore {
@@ -216,6 +239,7 @@ export function createDrizzleShareStaffStore(db: DbClient): ShareStaffStore {
                   expiresAt: sql`now() + make_interval(days => ${input.expiresInDays})`,
                   inviteTokenHash: input.inviteTokenHash,
                   codeHash: input.codeHash,
+                  minimumNecessaryAcknowledged: input.minimumNecessaryAcknowledged,
                 })
                 .returning({ id: S.id });
               if (!inserted) throw new Error("external share insert returned no row");
@@ -231,6 +255,49 @@ export function createDrizzleShareStaffStore(db: DbClient): ShareStaffStore {
                 .where(and(eq(S.organizationId, orgId), eq(S.id, id), isNull(S.revokedAt)))
                 .returning({ id: S.id });
               return done.length > 0 ? byId(id) : null;
+            },
+            async reissue(id, userId, inviteTokenHash, codeHash) {
+              const done = await tx
+                .update(S)
+                .set({
+                  inviteTokenHash,
+                  codeHash,
+                  inviteGeneration: sql`${S.inviteGeneration} + 1`,
+                  inviteRedeemedAt: null,
+                  codeAttempts: 0,
+                  reissuedBy: userId,
+                })
+                .where(
+                  and(
+                    eq(S.organizationId, orgId),
+                    eq(S.id, id),
+                    isNull(S.revokedAt),
+                    sql`${S.expiresAt} > now()`,
+                  ),
+                )
+                .returning({ id: S.id });
+              return done.length > 0 ? byId(id) : null;
+            },
+            async activeIndicator(channelId) {
+              const [row] = await tx
+                .select({ partnerKind: S.partnerKind, expiresAt: S.expiresAt })
+                .from(S)
+                .where(
+                  and(
+                    eq(S.organizationId, orgId),
+                    eq(S.channelId, channelId),
+                    isNull(S.revokedAt),
+                    sql`${S.expiresAt} > now()`,
+                  ),
+                )
+                .orderBy(desc(S.expiresAt))
+                .limit(1);
+              return row
+                ? {
+                    partnerKind: row.partnerKind as ExternalSharePartnerKind,
+                    expiresAt: row.expiresAt,
+                  }
+                : null;
             },
             async listShares() {
               const rows = await selectShares(tx)
@@ -275,39 +342,43 @@ export function createDrizzleSharePartnerStore(db: DbClient): SharePartnerStore 
                 organizationId,
                 shareId,
                 tokenHash,
-                expiresAt: sql`(SELECT s.expires_at FROM message_external_share s WHERE s.organization_id = ${organizationId} AND s.id = ${shareId})`,
+                // Never past the share, never past the absolute session lifetime.
+                expiresAt: sql`LEAST((SELECT s.expires_at FROM message_external_share s WHERE s.organization_id = ${organizationId} AND s.id = ${shareId}), now() + make_interval(hours => ${EXTERNAL_SESSION_MAX_HOURS}))`,
+                inviteGeneration: sql`(SELECT s.invite_generation FROM message_external_share s WHERE s.organization_id = ${organizationId} AND s.id = ${shareId})`,
               })
               .returning({ sessionId: X.id });
             if (!inserted) throw new Error("external session insert returned no row");
             return inserted;
           },
           async resolveSession(tokenHash) {
-            const [row] = await tx
-              .select({
-                organizationId: S.organizationId,
-                sessionId: X.id,
-                shareId: S.id,
-                stage: X.stage,
-                channelId: S.channelId,
-                channelKind: CH.channelKind,
-                partnerName: S.partnerName,
-                shareExpiresAt: S.expiresAt,
-                sharedFrom: S.sharedFrom,
-              })
-              .from(X)
-              .innerJoin(S, and(eq(S.organizationId, X.organizationId), eq(S.id, X.shareId)))
-              .innerJoin(CH, and(eq(CH.organizationId, S.organizationId), eq(CH.id, S.channelId)))
-              .where(
-                and(
-                  eq(X.organizationId, organizationId),
-                  eq(X.tokenHash, tokenHash),
-                  sql`${X.expiresAt} > now()`,
-                  isNull(S.revokedAt),
-                  sql`${S.expiresAt} > now()`,
-                ),
-              )
-              .limit(1);
-            return row ? { ...row, stage: row.stage as ExternalSessionStage } : null;
+            const res = await tx.execute(sql`
+              UPDATE message_external_session x SET last_seen_at = now()
+                FROM message_external_share s, channel c
+               WHERE x.organization_id = ${organizationId} AND x.token_hash = ${tokenHash}
+                 AND s.organization_id = x.organization_id AND s.id = x.share_id
+                 AND c.organization_id = s.organization_id AND c.id = s.channel_id
+                 AND x.expires_at > now()
+                 AND x.last_seen_at > now() - make_interval(mins => ${EXTERNAL_SESSION_IDLE_MINUTES})
+                 AND x.invite_generation = s.invite_generation
+                 AND s.revoked_at IS NULL AND s.expires_at > now()
+              RETURNING x.id AS "sessionId", s.id AS "shareId", x.stage AS "stage", s.channel_id AS "channelId",
+                        c.channel_kind::text AS "channelKind", s.partner_name AS "partnerName",
+                        s.expires_at AS "shareExpiresAt", s.shared_from AS "sharedFrom"`);
+            const rows =
+              (res as unknown as { rows?: unknown[] }).rows ?? (res as unknown as unknown[]);
+            const r = (rows as Array<Record<string, unknown>>)[0];
+            if (!r) return null;
+            return {
+              organizationId,
+              sessionId: String(r.sessionId),
+              shareId: String(r.shareId),
+              stage: String(r.stage) as ExternalSessionStage,
+              channelId: String(r.channelId),
+              channelKind: String(r.channelKind),
+              partnerName: String(r.partnerName),
+              shareExpiresAt: new Date(r.shareExpiresAt as string | Date),
+              sharedFrom: new Date(r.sharedFrom as string | Date),
+            };
           },
           async takeCodeAttempt(shareId) {
             const rows = await tx
@@ -325,10 +396,10 @@ export function createDrizzleSharePartnerStore(db: DbClient): SharePartnerStore 
               .returning({ codeHash: S.codeHash });
             return rows[0]?.codeHash ?? null;
           },
-          async activate(sessionId) {
+          async activate(sessionId, newTokenHash) {
             await tx
               .update(X)
-              .set({ stage: "active", activatedAt: sql`now()` })
+              .set({ stage: "active", activatedAt: sql`now()`, tokenHash: newTokenHash })
               .where(
                 and(
                   eq(X.organizationId, organizationId),
@@ -391,12 +462,13 @@ export function createDrizzleSharePartnerStore(db: DbClient): SharePartnerStore 
               createdAtText: String(r.createdAtText),
             }));
           },
-          async recordRead(live, messageCount) {
+          async recordRead(live, messageCount, withheldCount) {
             await tx.insert(R).values({
               organizationId,
               shareId: live.shareId,
               sessionId: live.sessionId,
               messageCount,
+              withheldCount,
             });
           },
         }),

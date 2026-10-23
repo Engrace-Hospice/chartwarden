@@ -4,6 +4,7 @@
 // stored as HASHES only; nothing here is a message body.
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   foreignKey,
   index,
@@ -46,6 +47,12 @@ export const messageExternalShares = pgTable(
     inviteRedeemedAt: timestamp("invite_redeemed_at", { withTimezone: true }),
     codeHash: text("code_hash").notNull(),
     codeAttempts: integer("code_attempts").notNull().default(0),
+    /** Bumped only by a staff REISSUE (guard): every session of an older generation is dead. */
+    inviteGeneration: integer("invite_generation").notNull().default(1),
+    reissuedAt: timestamp("reissued_at", { withTimezone: true }),
+    reissuedBy: uuid("reissued_by").references(() => users.id),
+    /** The creator confirmed the minimum-necessary statement (ADR-0096 D15); CHECKed true. */
+    minimumNecessaryAcknowledged: boolean("minimum_necessary_acknowledged").notNull(),
   },
   (t) => ({
     orgIdUnique: unique("message_external_share_org_id_unique").on(t.organizationId, t.id),
@@ -85,6 +92,15 @@ export const messageExternalShares = pgTable(
       sql`(${t.revokedAt} IS NULL) = (${t.revokedBy} IS NULL)`,
     ),
     attempts: check("message_external_share_attempts", sql`${t.codeAttempts} BETWEEN 0 AND 5`),
+    generation: check("message_external_share_generation", sql`${t.inviteGeneration} >= 1`),
+    reissuePair: check(
+      "message_external_share_reissue_pair",
+      sql`(${t.reissuedAt} IS NULL) = (${t.reissuedBy} IS NULL)`,
+    ),
+    acknowledged: check(
+      "message_external_share_acknowledged",
+      sql`${t.minimumNecessaryAcknowledged} = true`,
+    ),
   }),
 );
 
@@ -102,6 +118,9 @@ export const messageExternalSessions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
+    /** Touched by the partner request that resolves the session; idle past 30 minutes kills it (ADR-0096 D13). */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    inviteGeneration: integer("invite_generation").notNull(),
   },
   (t) => ({
     orgIdUnique: unique("message_external_session_org_id_unique").on(t.organizationId, t.id),
@@ -113,6 +132,10 @@ export const messageExternalSessions = pgTable(
     }).onDelete("cascade"),
     byShare: index("message_external_session_share_idx").on(t.organizationId, t.shareId),
     stage: check("message_external_session_stage", sql`${t.stage} IN ('enrolment', 'active')`),
+    lifetime: check(
+      "message_external_session_lifetime",
+      sql`${t.expiresAt} <= ${t.createdAt} + interval '12 hours'`,
+    ),
     stagePair: check(
       "message_external_session_stage_pair",
       sql`(${t.stage} = 'active') = (${t.activatedAt} IS NOT NULL)`,
@@ -131,6 +154,8 @@ export const messageExternalShareReads = pgTable(
     sessionId: uuid("session_id").notNull(),
     readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
     messageCount: integer("message_count").notNull(),
+    /** Messages the identifier matcher left out of this page (ADR-0096 D16); a count, never content. */
+    withheldCount: integer("withheld_count").notNull().default(0),
   },
   (t) => ({
     shareFk: foreignKey({
@@ -150,6 +175,7 @@ export const messageExternalShareReads = pgTable(
     ),
     bySession: index("message_external_share_read_session_idx").on(t.organizationId, t.sessionId),
     count: check("message_external_share_read_count", sql`${t.messageCount} >= 0`),
+    withheld: check("message_external_share_read_withheld", sql`${t.withheldCount} >= 0`),
   }),
 );
 

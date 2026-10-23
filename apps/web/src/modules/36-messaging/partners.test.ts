@@ -7,6 +7,7 @@ const ok = {
   partnerKind: "pharmacy" as const,
   baaReference: "BAA-1",
   days: "7",
+  acknowledged: true,
 };
 
 describe("validateShareDraft", () => {
@@ -17,6 +18,9 @@ describe("validateShareDraft", () => {
     expect(validateShareDraft({ ...ok, channelId: "x" })).toMatch(/UUID/);
     expect(validateShareDraft({ ...ok, partnerName: "  " })).toMatch(/name/);
     expect(validateShareDraft({ ...ok, baaReference: "" })).toMatch(/agreement/);
+  });
+  it("requires the minimum-necessary confirmation", () => {
+    expect(validateShareDraft({ ...ok, acknowledged: false })).toMatch(/Confirm/);
   });
   it("bounds the days to 1..30 whole numbers", () => {
     for (const days of ["0", "31", "1.5", "abc", ""])

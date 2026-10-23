@@ -10,6 +10,10 @@
 --   * message_external_share_read: one insert-only row per partner read. Its guard refuses the row unless the session is ACTIVE and the share
 --     is neither revoked nor expired NOW, so a read that cannot be recorded (or that follows a revoke) is refused by the database as well.
 --   * Every guard is SECURITY INVOKER: its reads run under the caller's own org RLS.
+--   * Session life (ADR-0096 D13): a session dies after 30 idle minutes (last_seen_at, touched by the partner request that resolves it) or 12 hours
+--     absolute (expires_at, CHECKed), whichever is first and never past the share. The bearer is ROTATED on activation (token_hash changes with the
+--     stage). A staff REISSUE bumps invite_generation: every session of an older generation is dead, the invitation and the code are new, and it is
+--     the ONLY path that resets code_attempts or clears invite_redeemed_at (D14). minimum_necessary_acknowledged is CHECKed true (D15).
 CREATE TABLE "message_external_share" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,
@@ -28,6 +32,10 @@ CREATE TABLE "message_external_share" (
   "invite_redeemed_at" timestamptz,
   "code_hash" text NOT NULL,
   "code_attempts" integer DEFAULT 0 NOT NULL,
+  "invite_generation" integer DEFAULT 1 NOT NULL,
+  "reissued_at" timestamptz,
+  "reissued_by" uuid REFERENCES "user"("id"),
+  "minimum_necessary_acknowledged" boolean NOT NULL,
   CONSTRAINT "message_external_share_org_id_unique" UNIQUE ("organization_id", "id"),
   CONSTRAINT "message_external_share_invite_unique" UNIQUE ("invite_token_hash"),
   CONSTRAINT "message_external_share_kind" CHECK ("partner_kind" IN ('pharmacy', 'dme', 'other')),
@@ -37,6 +45,9 @@ CREATE TABLE "message_external_share" (
   CONSTRAINT "message_external_share_expiry" CHECK ("expires_at" > "shared_from" AND "expires_at" <= "shared_from" + interval '30 days'),
   CONSTRAINT "message_external_share_revoke_pair" CHECK (("revoked_at" IS NULL) = ("revoked_by" IS NULL)),
   CONSTRAINT "message_external_share_attempts" CHECK ("code_attempts" BETWEEN 0 AND 5),
+  CONSTRAINT "message_external_share_generation" CHECK ("invite_generation" >= 1),
+  CONSTRAINT "message_external_share_reissue_pair" CHECK (("reissued_at" IS NULL) = ("reissued_by" IS NULL)),
+  CONSTRAINT "message_external_share_acknowledged" CHECK ("minimum_necessary_acknowledged" = true),
   CONSTRAINT "message_external_share_channel_fk"
     FOREIGN KEY ("organization_id", "channel_id")
     REFERENCES "channel"("organization_id", "id") ON DELETE CASCADE
@@ -44,6 +55,7 @@ CREATE TABLE "message_external_share" (
 CREATE INDEX "message_external_share_channel_idx" ON "message_external_share" ("organization_id", "channel_id");--> statement-breakpoint
 CREATE INDEX "message_external_share_live_idx" ON "message_external_share" ("organization_id", "expires_at") WHERE "revoked_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "message_external_share_created_by_idx" ON "message_external_share" ("created_by", "created_at");--> statement-breakpoint
+CREATE INDEX "message_external_share_reissued_by_idx" ON "message_external_share" ("reissued_by") WHERE "reissued_by" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "message_external_share_revoked_by_idx" ON "message_external_share" ("revoked_by") WHERE "revoked_by" IS NOT NULL;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION message_external_share_guard() RETURNS trigger
@@ -57,9 +69,31 @@ BEGIN
     NEW.shared_from := now();
     NEW.created_at := now();
     NEW.revoked_at := NULL; NEW.revoked_by := NULL; NEW.invite_redeemed_at := NULL; NEW.code_attempts := 0;
+    NEW.invite_generation := 1; NEW.reissued_at := NULL; NEW.reissued_by := NULL;
     RETURN NEW;
   END IF;
-  -- Everything except the three lifecycle facts is frozen for good (channel, partner, expiry, shared_from, hashes).
+  -- REISSUE: the one explicit staff action that replaces the invitation and the code, starts the counter from zero and kills every older session.
+  IF NEW.invite_generation IS DISTINCT FROM OLD.invite_generation THEN
+    IF (to_jsonb(NEW) - ARRAY['invite_token_hash','code_hash','invite_generation','invite_redeemed_at','code_attempts','reissued_at','reissued_by'])
+       IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['invite_token_hash','code_hash','invite_generation','invite_redeemed_at','code_attempts','reissued_at','reissued_by']) THEN
+      RAISE EXCEPTION 'message_external_share_immutable: a reissue changes only the invitation, the code and the counters' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.invite_generation <> OLD.invite_generation + 1 OR OLD.revoked_at IS NOT NULL OR OLD.expires_at <= now() THEN
+      RAISE EXCEPTION 'message_external_share_reissue: only a live share is reissued, one generation at a time' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.reissued_by IS DISTINCT FROM v_actor THEN
+      RAISE EXCEPTION 'message_external_share_reissue_actor: a reissue is recorded only by the acting user' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.invite_token_hash = OLD.invite_token_hash OR NEW.code_hash = OLD.code_hash THEN
+      RAISE EXCEPTION 'message_external_share_reissue_secrets: a reissue needs a new invitation AND a new code' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.invite_redeemed_at IS NOT NULL OR NEW.code_attempts <> 0 THEN
+      RAISE EXCEPTION 'message_external_share_reissue_reset: a reissue starts unredeemed with zero attempts' USING ERRCODE = 'check_violation';
+    END IF;
+    NEW.reissued_at := now();
+    RETURN NEW;
+  END IF;
+  -- Everything except the three lifecycle facts is frozen for good (channel, partner, expiry, shared_from, hashes, generation, acknowledgement).
   IF (to_jsonb(NEW) - ARRAY['revoked_at','revoked_by','invite_redeemed_at','code_attempts'])
      IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['revoked_at','revoked_by','invite_redeemed_at','code_attempts']) THEN
     RAISE EXCEPTION 'message_external_share_immutable: only revoke, redemption and the attempt counter change' USING ERRCODE = 'check_violation';
@@ -94,9 +128,12 @@ CREATE TABLE "message_external_session" (
   "created_at" timestamptz DEFAULT now() NOT NULL,
   "expires_at" timestamptz NOT NULL,
   "activated_at" timestamptz,
+  "last_seen_at" timestamptz DEFAULT now() NOT NULL,
+  "invite_generation" integer NOT NULL,
   CONSTRAINT "message_external_session_org_id_unique" UNIQUE ("organization_id", "id"),
   CONSTRAINT "message_external_session_token_unique" UNIQUE ("token_hash"),
   CONSTRAINT "message_external_session_stage" CHECK ("stage" IN ('enrolment', 'active')),
+  CONSTRAINT "message_external_session_lifetime" CHECK ("expires_at" <= "created_at" + interval '12 hours'),
   CONSTRAINT "message_external_session_stage_pair" CHECK (("stage" = 'active') = ("activated_at" IS NOT NULL)),
   CONSTRAINT "message_external_session_share_fk"
     FOREIGN KEY ("organization_id", "share_id")
@@ -108,24 +145,32 @@ CREATE OR REPLACE FUNCTION message_external_session_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    NEW.stage := 'enrolment'; NEW.activated_at := NULL; NEW.created_at := now();
-    -- Born only against a live, redeemed share, and never outliving it.
+    NEW.stage := 'enrolment'; NEW.activated_at := NULL; NEW.created_at := now(); NEW.last_seen_at := now();
+    -- Born only against a live, redeemed share of the CURRENT invitation generation, never outliving the share or 12 hours.
     IF NOT EXISTS (
       SELECT 1 FROM message_external_share s
        WHERE s.organization_id = NEW.organization_id AND s.id = NEW.share_id
          AND s.revoked_at IS NULL AND s.expires_at > now() AND s.invite_redeemed_at IS NOT NULL
-         AND NEW.expires_at <= s.expires_at AND NEW.expires_at > now()) THEN
-      RAISE EXCEPTION 'message_external_session_share: a session needs a live, redeemed share and cannot outlive it' USING ERRCODE = 'check_violation';
+         AND s.invite_generation = NEW.invite_generation
+         AND NEW.expires_at <= s.expires_at AND NEW.expires_at > now() AND NEW.expires_at <= now() + interval '12 hours') THEN
+      RAISE EXCEPTION 'message_external_session_share: a session needs a live, redeemed share of the current invitation and cannot outlive it or 12 hours' USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
   END IF;
-  IF (to_jsonb(NEW) - ARRAY['stage','activated_at']) IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['stage','activated_at']) THEN
-    RAISE EXCEPTION 'message_external_session_immutable: only the stage changes' USING ERRCODE = 'check_violation';
+  IF (to_jsonb(NEW) - ARRAY['stage','activated_at','token_hash','last_seen_at'])
+     IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['stage','activated_at','token_hash','last_seen_at']) THEN
+    RAISE EXCEPTION 'message_external_session_immutable: only the stage, the bearer hash and the last-seen instant change' USING ERRCODE = 'check_violation';
   END IF;
-  IF NOT (OLD.stage = 'enrolment' AND NEW.stage = 'active') THEN
-    RAISE EXCEPTION 'message_external_session_stage: enrolment -> active, once' USING ERRCODE = 'check_violation';
+  IF NEW.stage IS DISTINCT FROM OLD.stage OR NEW.token_hash IS DISTINCT FROM OLD.token_hash THEN
+    -- Activation ROTATES the bearer: the stage and the hash change together, once.
+    IF NOT (OLD.stage = 'enrolment' AND NEW.stage = 'active' AND NEW.token_hash <> OLD.token_hash) THEN
+      RAISE EXCEPTION 'message_external_session_stage: enrolment -> active rotates the bearer, once' USING ERRCODE = 'check_violation';
+    END IF;
+    NEW.activated_at := now();
+  ELSIF NEW.activated_at IS DISTINCT FROM OLD.activated_at THEN
+    RAISE EXCEPTION 'message_external_session_immutable: the activation instant is set by the activation' USING ERRCODE = 'check_violation';
   END IF;
-  NEW.activated_at := now();
+  NEW.last_seen_at := now();
   RETURN NEW;
 END $$;--> statement-breakpoint
 CREATE TRIGGER "trg_message_external_session_guard"
@@ -139,7 +184,9 @@ CREATE TABLE "message_external_share_read" (
   "session_id" uuid NOT NULL,
   "read_at" timestamptz DEFAULT now() NOT NULL,
   "message_count" integer NOT NULL,
+  "withheld_count" integer DEFAULT 0 NOT NULL,
   CONSTRAINT "message_external_share_read_count" CHECK ("message_count" >= 0),
+  CONSTRAINT "message_external_share_read_withheld" CHECK ("withheld_count" >= 0),
   CONSTRAINT "message_external_share_read_share_fk"
     FOREIGN KEY ("organization_id", "share_id")
     REFERENCES "message_external_share"("organization_id", "id") ON DELETE CASCADE,
@@ -158,7 +205,8 @@ BEGIN
     SELECT 1 FROM message_external_session x
       JOIN message_external_share s ON s.organization_id = x.organization_id AND s.id = x.share_id
      WHERE x.organization_id = NEW.organization_id AND x.id = NEW.session_id AND s.id = NEW.share_id
-       AND x.stage = 'active' AND x.expires_at > now()
+       AND x.stage = 'active' AND x.expires_at > now() AND x.last_seen_at > now() - interval '30 minutes'
+       AND x.invite_generation = s.invite_generation
        AND s.revoked_at IS NULL AND s.expires_at > now()) THEN
     RAISE EXCEPTION 'message_external_share_read_live: a read is recorded only for an active session of a live share' USING ERRCODE = 'check_violation';
   END IF;
@@ -188,9 +236,9 @@ CREATE POLICY "message_external_share_read_org_isolation" ON "message_external_s
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT ON "message_external_share" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("revoked_at", "revoked_by", "invite_redeemed_at", "code_attempts") ON "message_external_share" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("revoked_at", "revoked_by", "invite_redeemed_at", "code_attempts", "invite_token_hash", "code_hash", "invite_generation", "reissued_at", "reissued_by") ON "message_external_share" TO chartwarden_app;--> statement-breakpoint
 GRANT SELECT, INSERT ON "message_external_session" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("stage", "activated_at") ON "message_external_session" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("stage", "activated_at", "token_hash", "last_seen_at") ON "message_external_session" TO chartwarden_app;--> statement-breakpoint
 GRANT SELECT, INSERT ON "message_external_share_read" TO chartwarden_app;--> statement-breakpoint
 
 -- The 1107 PHI audit pattern. The share audit row omits the two hashes, the BAA reference and the partner label; the session row omits its hash.
@@ -229,6 +277,7 @@ CREATE OR REPLACE FUNCTION audit_phi_write_message_external_session() RETURNS tr
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb;
 BEGIN
+  IF TG_OP = 'UPDATE' AND (to_jsonb(NEW) - 'last_seen_at') = (to_jsonb(OLD) - 'last_seen_at') THEN RETURN NEW; END IF;
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE')
     THEN public.audit_scrub(to_jsonb(OLD) - 'token_hash', ARRAY[]::text[]) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE')

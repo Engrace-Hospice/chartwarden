@@ -91,6 +91,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
+import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import {
   createAckQueueNoticeEvaluator,
   registerAckQueueMetrics,
@@ -5177,8 +5178,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   onStoreError: (err) =>
                     app.log.warn({ err }, "external partner share rate-limit store error"),
                 });
+              // D17: fail closed when per-address budgets could not key on a real client address (production without TRUSTED_PROXY_CIDRS).
+              const access = partnerAccessAvailability(process.env);
+              if (access.warning) app.log.warn(access.warning);
               return {
                 flags: featureFlagReader,
+                partnerAccessAvailable: access.available,
                 redeemIpLimiter: budget("m36-partner-redeem:ip", 20, 15 * 60 * 1000),
                 verifyIpLimiter: budget("m36-partner-verify:ip", 30, 15 * 60 * 1000),
                 bearerIpLimiter: budget("m36-partner-bearer:ip", 300, 60 * 1000),

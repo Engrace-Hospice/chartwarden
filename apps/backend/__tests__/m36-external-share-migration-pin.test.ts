@@ -4,6 +4,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  EXTERNAL_SESSION_IDLE_MINUTES,
+  EXTERNAL_SESSION_MAX_HOURS,
   EXTERNAL_SESSION_STAGES,
   EXTERNAL_SHARE_MAX_CODE_ATTEMPTS,
   EXTERNAL_SHARE_MAX_DAYS,
@@ -58,10 +60,10 @@ describe("migration 1180 external partner share", () => {
 
   it("the app role updates only the lifecycle columns and the read trail never updates", () => {
     expect(sql).toContain(
-      `GRANT UPDATE ("revoked_at", "revoked_by", "invite_redeemed_at", "code_attempts") ON "message_external_share" TO chartwarden_app`,
+      `GRANT UPDATE ("revoked_at", "revoked_by", "invite_redeemed_at", "code_attempts", "invite_token_hash", "code_hash", "invite_generation", "reissued_at", "reissued_by") ON "message_external_share" TO chartwarden_app`,
     );
     expect(sql).toContain(
-      `GRANT UPDATE ("stage", "activated_at") ON "message_external_session" TO chartwarden_app`,
+      `GRANT UPDATE ("stage", "activated_at", "token_hash", "last_seen_at") ON "message_external_session" TO chartwarden_app`,
     );
     expect(sql).toContain(
       `GRANT SELECT, INSERT ON "message_external_share_read" TO chartwarden_app`,
@@ -82,15 +84,46 @@ describe("migration 1180 external partner share", () => {
     expect(sql).toContain("a share is recorded only by its creator");
     expect(sql).toContain("a share is revoked once, by the acting user");
     expect(sql).toContain("the invitation is single use");
-    expect(sql).toContain("a session needs a live, redeemed share and cannot outlive it");
+    expect(sql).toContain("a session needs a live, redeemed share of the current invitation");
     expect(sql).toContain(
-      "x.stage = 'active' AND x.expires_at > now() AND s.revoked_at IS NULL AND s.expires_at > now()",
+      "x.stage = 'active' AND x.expires_at > now() AND x.last_seen_at > now() - interval '30 minutes' AND x.invite_generation = s.invite_generation AND s.revoked_at IS NULL AND s.expires_at > now()",
     );
     expect(
       sql.match(
         /FUNCTION message_external_\w+_guard\(\) RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER/g,
       )?.length,
     ).toBe(3);
+  });
+
+  it("session life is pinned to the constants: absolute CHECK and insert guard, idle in the read guard (D13)", () => {
+    const hours = `interval '${EXTERNAL_SESSION_MAX_HOURS} hours'`;
+    expect(sql).toContain(`CHECK ("expires_at" <= "created_at" + ${hours})`);
+    expect(sql).toContain(`NEW.expires_at <= now() + ${hours}`);
+    expect(schema).toContain(hours);
+    expect(sql).toContain(
+      `x.last_seen_at > now() - interval '${EXTERNAL_SESSION_IDLE_MINUTES} minutes'`,
+    );
+    expect(sql).toContain("x.invite_generation = s.invite_generation");
+  });
+
+  it("the attempt counter and the redemption reset only through the reissue branch, and the bearer rotates with the stage (D13, D14)", () => {
+    expect(sql).toContain("a reissue needs a new invitation AND a new code");
+    expect(sql).toContain("a reissue starts unredeemed with zero attempts");
+    expect(sql).toContain("only a live share is reissued, one generation at a time");
+    expect(sql).toContain("a reissue is recorded only by the acting user");
+    expect(sql).toContain("the counter only goes up by one");
+    expect(sql).toContain("the invitation is single use");
+    expect(sql).toContain("enrolment -> active rotates the bearer, once");
+    expect(sql).toContain("AND s.invite_generation = NEW.invite_generation");
+    expect(sql).toContain("(to_jsonb(NEW) - 'last_seen_at') = (to_jsonb(OLD) - 'last_seen_at')");
+  });
+
+  it("the minimum-necessary acknowledgement is a CHECKed column and the read trail counts withheld messages (D15, D16)", () => {
+    expect(sql).toContain(`CHECK ("minimum_necessary_acknowledged" = true)`);
+    expect(sql).toContain('"minimum_necessary_acknowledged" boolean NOT NULL');
+    expect(schema).toContain("minimum_necessary_acknowledged");
+    expect(sql).toContain('"withheld_count" integer DEFAULT 0 NOT NULL');
+    expect(sql).not.toContain("withheld_text");
   });
 
   it("grants the permission to compliance_officer, administrator and org_admin only", () => {

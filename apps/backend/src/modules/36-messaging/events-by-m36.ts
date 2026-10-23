@@ -710,6 +710,18 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m36.external_share.reissued",
+    moduleOwner: "m36",
+    description:
+      "An external partner share's invitation and verification code were replaced by staff (WP 6.6, ADR-0096 D14); every session of the older invitation is dead and the attempt counter restarted. The share id, the channel id, the actor and one instant; never the invitation or the code. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, shareId: id, channelId: id, reissuedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.external_share.revoked",
     moduleOwner: "m36",
     description:

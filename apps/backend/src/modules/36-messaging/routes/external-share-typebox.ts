@@ -35,6 +35,8 @@ export const CreateExternalShareBodySchema = Type.Object(
     partnerKind: PartnerKind,
     baaReference: Type.String({ minLength: 1, maxLength: EXTERNAL_SHARE_BAA_MAX + 100 }),
     expiresInDays: Type.Optional(Type.Integer({ minimum: 1, maximum: EXTERNAL_SHARE_MAX_DAYS })),
+    // D15: REQUIRED. The creator confirms an outside party reads this and that patient names in free text are NOT filtered.
+    acknowledgedMinimumNecessary: Type.Literal(true),
   },
   { additionalProperties: false },
 );
@@ -80,6 +82,14 @@ export const PartnerVerifyBodySchema = Type.Object(
   { code: Type.String({ pattern: "^\\d{8}$" }) },
   { additionalProperties: false },
 );
+/** What verify returns: the state plus the NEW active-stage bearer (shown once; null when the session was already active). */
+export const PartnerVerifiedResponseSchema = Type.Object({
+  shareId: Uuid,
+  stage: Stage,
+  partnerName: Type.String(),
+  expiresAt: Instant,
+  sessionToken: NullableString,
+});
 export const PartnerStateResponseSchema = Type.Object({
   shareId: Uuid,
   stage: Stage,

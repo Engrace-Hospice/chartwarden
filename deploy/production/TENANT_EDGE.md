@@ -43,6 +43,12 @@ the overlay by hand. This environment gets its **own** database, object store an
 | `TRUSTED_ORIGINS` includes `https://<base>` | without the apex, sign-in there fails `INVALID_ORIGIN` |
 | `TRUSTED_PROXY_CIDRS` = the proxy only | `X-Forwarded-Host` is honoured from these peers and nobody else |
 
+`TRUSTED_PROXY_CIDRS` also decides what `request.ip` is, and therefore what every per-address rate budget is keyed on (public signup,
+auditor redeem, **external partner access**). **Messaging external partner access (ADR-0096 D17) fails closed without it:** with
+`NODE_ENV=production` and the variable unset or empty the partner routes are not mounted (one warning is logged at boot) and
+creating or reissuing a partner share answers `PARTNER_ACCESS_UNAVAILABLE` (HTTP 503, "partner access needs trusted proxy
+configuration"). List only the real proxy hops: a hop the caller controls lets a spoofed `X-Forwarded-For` pick its own budget bucket.
+
 **The reverse proxy must overwrite `X-Forwarded-Host`** (the shipped vhost sets it to `$host`). A proxy that forwards
 the client's value lets a caller choose their own tenant host for every request. The API must not be reachable except
 through that proxy. If Pangolin sits in front of nginx, list the Pangolin peer **and** make sure it too overwrites

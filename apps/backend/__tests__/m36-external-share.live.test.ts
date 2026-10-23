@@ -28,6 +28,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { partnerNotificationText } from "../src/modules/36-messaging/external-share/external-share-secrets";
 import {
   type AttemptLimiter,
@@ -39,6 +40,10 @@ import {
 } from "../src/modules/36-messaging/external-share/external-share-store";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { registerExternalShareRoutes } from "../src/modules/36-messaging/routes/external-share-routes";
+import {
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+  registerMessagingRoutes,
+} from "../src/modules/36-messaging/routes/messaging-routes";
 import {
   type LiveKit,
   STAFF_KEYS,
@@ -56,7 +61,8 @@ const ORG_B = "22222222-2222-4222-8222-22220a960002";
 const API = "/api/v1/messaging/external-shares";
 const PARTNER = "/api/v1/messaging/partner";
 const MANAGE_KEYS = ["messaging.read", "messaging.share.manage"];
-const MARKER = `PLAIN-MARKER-${randomUUID()}`;
+// No digit runs: the partner identifier matcher withholds any message holding 6 or more digits in a row (ADR-0096 D16).
+const MARKER = `PLAIN-MARKER-${randomUUID().replace(/[0-9]/g, (c) => "ghijklmnop"[Number(c)] ?? "x")}`;
 const HOUR_MS = 3_600_000;
 
 type Row = Record<string, unknown>;
@@ -75,6 +81,8 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
   let on: FastifyInstance;
   let off: FastifyInstance;
   let limited: FastifyInstance;
+  let banner: FastifyInstance;
+  let bannerOff: FastifyInstance;
   let stepUpFresh = true;
   const flagOn = true;
   let readBudget = 1_000;
@@ -83,8 +91,8 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
   let outsider: string;
   const bodyCipher = createMessageBodyCipher({ kek: randomBytes(32), sealScheme: "legacy" });
 
-  const mkServer = (flag: boolean, readLimiter?: AttemptLimiter): FastifyInstance => {
-    const service = createExternalShareService({
+  const mkService = (flag: boolean, readLimiter?: AttemptLimiter) =>
+    createExternalShareService({
       staffStore: createDrizzleShareStaffStore(kit.handle.db),
       partnerStore: createDrizzleSharePartnerStore(kit.handle.db),
       outbox: catalogOutbox() as never,
@@ -93,6 +101,8 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       canViewChannel: kit.service.canViewChannel,
       ...(readLimiter ? { readLimiter } : {}),
     });
+  const mkServer = (flag: boolean, readLimiter?: AttemptLimiter): FastifyInstance => {
+    const service = mkService(flag, readLimiter);
     const server = buildServer({
       db: kit.handle.db,
       authenticate: headerAuth,
@@ -100,6 +110,23 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       idempotencyStore: createDbIdempotencyStore(kit.handle.db),
     });
     registerExternalShareRoutes(server, { service });
+    return server;
+  };
+
+  /** The messaging routes with the member banner wired (the channel detail), over the same service as the share routes. */
+  const mkBannerServer = (flag: boolean): FastifyInstance => {
+    const service = mkService(flag);
+    const server = buildServer({
+      db: kit.handle.db,
+      authenticate: headerAuth,
+      security: { rateLimitEnabled: false },
+      idempotencyStore: createDbIdempotencyStore(kit.handle.db),
+    });
+    registerMessagingRoutes(server, {
+      service: kit.service,
+      announcements: createDbAnnouncementService(kit.handle.db),
+      externalShare: { indicator: service.indicator },
+    });
     return server;
   };
 
@@ -197,6 +224,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       partnerName: "Northside Pharmacy",
       partnerKind: "pharmacy",
       baaReference: "BAA-2026-0042",
+      acknowledgedMinimumNecessary: true,
       ...over,
     });
     expect(res.statusCode, res.body).toBe(201);
@@ -215,7 +243,10 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     });
     expect(v.statusCode, v.body).toBe(200);
     expect(v.json().stage).toBe("active");
-    return bearer;
+    // D13: verify returns a NEW bearer; the enrolment one is dead from here on.
+    const active = v.json().sessionToken as string;
+    expect(active).not.toBe(bearer);
+    return active;
   };
   const read = (m: { id: string }, bearer: string, server = on, query = "") =>
     partner(server, "GET", `${PARTNER}/shares/${m.id}/messages${query}`, bearer);
@@ -247,6 +278,11 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     kit = await bootLiveKit(DB_URL as string, ORG_A, ORG_B, "adr96");
     const registry = createPredicateRegistry();
     registry.register("step_up_recent", async () => stepUpFresh);
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return kit.service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
+    });
     registerAbacRegistry(registry);
     author = await kit.seedUser("author", ORG_A, STAFF_KEYS);
     clinical = await kit.seedUser("clinical", ORG_A, STAFF_KEYS);
@@ -254,11 +290,25 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     on = mkServer(true);
     off = mkServer(false);
     limited = mkServer(true, { consume: async () => ({ allowed: --readBudget >= 0 }) });
-    await Promise.all([on.ready(), off.ready(), limited.ready()]);
+    banner = mkBannerServer(true);
+    bannerOff = mkBannerServer(false);
+    await Promise.all([
+      on.ready(),
+      off.ready(),
+      limited.ready(),
+      banner.ready(),
+      bannerOff.ready(),
+    ]);
   }, 120_000);
 
   afterAll(async () => {
-    await Promise.all([on?.close(), off?.close(), limited?.close()]);
+    await Promise.all([
+      on?.close(),
+      off?.close(),
+      limited?.close(),
+      banner?.close(),
+      bannerOff?.close(),
+    ]);
     await kit?.close();
   });
 
@@ -277,6 +327,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         partnerName: "P",
         partnerKind: "dme",
         baaReference: "B",
+        acknowledgedMinimumNecessary: true,
       });
       expect(res.statusCode).toBe(404);
       expect(res.body).not.toContain("STEP_UP");
@@ -314,7 +365,13 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
 
     it("a clinical role is 403 on create, list and revoke; a missing step-up is 403 on create and revoke", async () => {
       stepUpFresh = true;
-      const body = { channelId: channel, partnerName: "P", partnerKind: "dme", baaReference: "B" };
+      const body = {
+        channelId: channel,
+        partnerName: "P",
+        partnerKind: "dme",
+        baaReference: "B",
+        acknowledgedMinimumNecessary: true,
+      };
       expect((await staff(on, "POST", API, clinical, body)).statusCode).toBe(403);
       expect((await staff(on, "GET", API, clinical)).statusCode).toBe(403);
       expect((await staff(on, "DELETE", `${API}/${randomUUID()}`, clinical)).statusCode).toBe(403);
@@ -333,6 +390,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         partnerName: "P",
         partnerKind: "dme",
         baaReference: "B",
+        acknowledgedMinimumNecessary: true,
       });
       const refused = [
         await mkChannel(kit, "care_team", randomUUID(), [author]),
@@ -350,7 +408,13 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     it("validates the body: expiry above 30 days, an empty BAA reference and a bad kind are 422", async () => {
       stepUpFresh = true;
       const mgr = await newManager();
-      const ok = { channelId: channel, partnerName: "P", partnerKind: "dme", baaReference: "B" };
+      const ok = {
+        channelId: channel,
+        partnerName: "P",
+        partnerKind: "dme",
+        baaReference: "B",
+        acknowledgedMinimumNecessary: true,
+      };
       for (const bad of [
         { ...ok, expiresInDays: 31 },
         { ...ok, baaReference: "   " },
@@ -417,7 +481,9 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         code: made.code,
       });
       expect(good.json().stage).toBe("active");
-      expect((await read(made, bearer)).statusCode).toBe(200);
+      // The enrolment token was rotated away: only the new one reads.
+      expect((await read(made, bearer)).statusCode).toBe(404);
+      expect((await read(made, good.json().sessionToken)).statusCode).toBe(200);
     });
 
     it("five wrong codes lock the share for good: even the right code is then a 404, and the counter never resets", async () => {
@@ -475,7 +541,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         await tx("UPDATE message_external_share SET invite_token_hash = 'x' WHERE id=$1", [
           made.id,
         ]),
-      ).toMatch(/permission denied/);
+      ).toMatch(/permission denied|immutable/);
     });
   });
 
@@ -682,7 +748,12 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
       stepUpFresh = true;
       const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
       const mgr = await newManager(); // holds messaging.share.manage, is NOT a member
-      const body = { partnerName: "P", partnerKind: "dme", baaReference: "B" };
+      const body = {
+        partnerName: "P",
+        partnerKind: "dme",
+        baaReference: "B",
+        acknowledgedMinimumNecessary: true,
+      };
       const outsiderRes = await staff(on, "POST", API, mgr, { ...body, channelId: channel });
       const unknownRes = await staff(on, "POST", API, mgr, { ...body, channelId: randomUUID() });
       expect(outsiderRes.statusCode).toBe(404);
@@ -710,6 +781,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         partnerName: "P",
         partnerKind: "dme",
         baaReference: "B",
+        acknowledgedMinimumNecessary: true,
       });
       expect(res.statusCode).toBe(404);
       expect(
@@ -816,6 +888,491 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         expect(String(r.after)).not.toContain(made.code);
         expect(String(r.after)).not.toContain("code_hash");
       }
+    });
+  });
+
+  // ── ADR-0096 D13 to D18 ───────────────────────────────────────────────────────────────────────────────────────────────────
+  /** Setup-only: the session guard forces last_seen_at := now() on any update, so ageing a session fixtures it with the guard off. */
+  const withSessionGuardOff = async <T>(fn: () => Promise<T>): Promise<T> => {
+    await kit.admin.query(
+      "ALTER TABLE message_external_session DISABLE TRIGGER trg_message_external_session_guard",
+    );
+    try {
+      return await fn();
+    } finally {
+      await kit.admin.query(
+        "ALTER TABLE message_external_session ENABLE TRIGGER trg_message_external_session_guard",
+      );
+    }
+  };
+  const idleFor = (shareId: string, minutes: number) =>
+    withSessionGuardOff(() =>
+      kit.admin.query(
+        "UPDATE message_external_session SET last_seen_at = now() - make_interval(mins => $2) WHERE share_id=$1",
+        [shareId, minutes],
+      ),
+    );
+  /** Runs one statement as the app role for `user`; null when it ran (rolled back), else the database message. */
+  const appRun = async (
+    user: string,
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<string | null> => {
+    await kit.appConn.query("BEGIN");
+    try {
+      await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+      await kit.appConn.query("SELECT set_config('app.user_id', $1, true)", [user]);
+      await kit.appConn.query(sql, params);
+      return null;
+    } catch (err) {
+      return (err as Error).message;
+    } finally {
+      await kit.appConn.query("ROLLBACK").catch(() => undefined);
+    }
+  };
+  const REISSUE = (id: string) => `${API}/${id}/reissue`;
+  const stateOf = (made: { id: string }, bearer: string, server = on) =>
+    partner(server, "GET", `${PARTNER}/shares/${made.id}`, bearer);
+
+  describe("session life, rotation and reissue (D13, D14)", () => {
+    it("IDLE: 31 minutes without a request kills the bearer; every accepted request restarts the clock", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const bearer = await activate(made);
+      await idleFor(made.id, 29);
+      expect((await stateOf(made, bearer)).statusCode).toBe(200); // accepted: last_seen_at is now again
+      await idleFor(made.id, 29);
+      expect((await read(made, bearer)).statusCode).toBe(200);
+      await idleFor(made.id, 31);
+      for (const res of [await stateOf(made, bearer), await read(made, bearer)]) {
+        expect(res.statusCode).toBe(404);
+      }
+      // A rejected request does not revive it.
+      expect((await stateOf(made, bearer)).statusCode).toBe(404);
+    });
+
+    it("ABSOLUTE: 12 hours kills it even when it was used a second ago; the session never outlives 12 hours or the share", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]), {
+        expiresInDays: 30,
+      });
+      const bearer = await activate(made);
+      const row = (
+        await q(
+          "SELECT extract(epoch FROM (expires_at - created_at)) AS life, expires_at <= (SELECT expires_at FROM message_external_share WHERE id=$1) AS within FROM message_external_session WHERE share_id=$1",
+          [made.id],
+        )
+      )[0] as Row;
+      expect(Number(row.life)).toBeLessThanOrEqual(12 * 3600);
+      expect(row.within).toBe(true);
+      expect((await stateOf(made, bearer)).statusCode).toBe(200);
+      await withSessionGuardOff(() =>
+        kit.admin.query(
+          "UPDATE message_external_session SET created_at = created_at - interval '13 hours', expires_at = expires_at - interval '13 hours' WHERE share_id=$1",
+          [made.id],
+        ),
+      );
+      expect((await stateOf(made, bearer)).statusCode).toBe(404);
+      expect((await read(made, bearer)).statusCode).toBe(404);
+    });
+
+    it("the database refuses a session past 12 hours, and a last-seen touch alone leaves no audit row", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const bearer = await activate(made);
+      const before = await kit.count(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='message_external_session'",
+      );
+      await stateOf(made, bearer);
+      await stateOf(made, bearer);
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='message_external_session'",
+        ),
+      ).toBe(before);
+      const bad = await withSessionGuardOff(() =>
+        kit.admin
+          .query(
+            "UPDATE message_external_session SET expires_at = created_at + interval '13 hours' WHERE share_id=$1",
+            [made.id],
+          )
+          .then(
+            () => null,
+            (e: Error) => e.message,
+          ),
+      );
+      expect(bad).toMatch(/lifetime|violates check/);
+    });
+
+    it("ROTATION: the enrolment token is useless once verify has returned the active one", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const enrolment = (await redeem(made)).json().sessionToken as string;
+      expect((await stateOf(made, enrolment)).statusCode).toBe(200);
+      const verified = await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, enrolment, {
+        code: made.code,
+      });
+      expect(verified.statusCode, verified.body).toBe(200);
+      const active = verified.json().sessionToken as string;
+      expect(active).not.toBe(enrolment);
+      expect((await stateOf(made, enrolment)).statusCode).toBe(404);
+      expect((await read(made, enrolment)).statusCode).toBe(404);
+      expect(
+        (
+          await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, enrolment, {
+            code: made.code,
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect((await stateOf(made, active)).json().stage).toBe("active");
+      // Verify on the active bearer rotates nothing and returns no token.
+      const again = await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, active, {
+        code: made.code,
+      });
+      expect(again.statusCode).toBe(200);
+      expect(again.json().sessionToken).toBeNull();
+      // Only the hash of the new bearer is stored.
+      const text = JSON.stringify(
+        await q("SELECT * FROM message_external_session WHERE share_id=$1", [made.id]),
+      );
+      expect(text).not.toContain(active);
+      expect(text).not.toContain(enrolment);
+    });
+
+    it("REISSUE: new invitation and NEW code, the old session, invitation and code are dead, the counter restarts, and it is audited without secrets", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const made = await mk(channel);
+      const unredeemed = await mk(channel);
+      const bearer = await activate(made);
+      const wrong = made.code === "00000000" ? "11111111" : "00000000";
+      // Burn attempts on a second redeemed-but-unverified session of another share to prove the reset: use `unredeemed`'s enrolment session.
+      const burner = (await redeem(unredeemed)).json().sessionToken as string;
+      for (let i = 0; i < 3; i += 1) {
+        await partner(on, "POST", `${PARTNER}/shares/${unredeemed.id}/verify`, burner, {
+          code: unredeemed.code === wrong ? "22222222" : wrong,
+        });
+      }
+      expect(Number((await shareRow(unredeemed.id)).code_attempts)).toBe(3);
+
+      const mgr = await newManager();
+      stepUpFresh = true;
+      const res = await staff(on, "POST", REISSUE(unredeemed.id), mgr);
+      expect(res.statusCode, res.body).toBe(200);
+      const fresh = res.json();
+      expect(fresh.inviteToken).not.toBe(unredeemed.inviteToken);
+      expect(fresh.verificationCode).toMatch(/^\d{8}$/);
+      const row = await shareRow(unredeemed.id);
+      expect(Number(row.code_attempts)).toBe(0);
+      expect(row.invite_redeemed_at).toBeNull();
+      expect(Number(row.invite_generation)).toBe(2);
+      expect(row.reissued_by).toBe(mgr);
+      expect(JSON.stringify(row)).not.toContain(fresh.inviteToken);
+      expect(JSON.stringify(row)).not.toContain(fresh.verificationCode);
+      // The old session (enrolment, of generation 1) and the old invitation are dead.
+      expect((await stateOf(unredeemed, burner)).statusCode).toBe(404);
+      expect((await redeem(unredeemed)).statusCode).toBe(404); // the OLD invitation token
+      // The new invitation works; the OLD code does not (and is counted); the NEW one does.
+      const next = await partner(on, "POST", `${PARTNER}/redeem`, undefined, {
+        organizationId: ORG_A,
+        token: fresh.inviteToken,
+      });
+      expect(next.statusCode, next.body).toBe(200);
+      const nextBearer = next.json().sessionToken as string;
+      const oldCode = await partner(
+        on,
+        "POST",
+        `${PARTNER}/shares/${unredeemed.id}/verify`,
+        nextBearer,
+        { code: unredeemed.code },
+      );
+      expect(oldCode.statusCode).toBe(422);
+      expect(Number((await shareRow(unredeemed.id)).code_attempts)).toBe(1);
+      const okCode = await partner(
+        on,
+        "POST",
+        `${PARTNER}/shares/${unredeemed.id}/verify`,
+        nextBearer,
+        { code: fresh.verificationCode },
+      );
+      expect(okCode.json().stage).toBe("active");
+      // An ACTIVE session of the older generation dies the same way.
+      const activeBeforeReissue = await mk(channel);
+      const activeBearer = await activate(activeBeforeReissue);
+      expect((await stateOf(activeBeforeReissue, activeBearer)).statusCode).toBe(200);
+      expect((await staff(on, "POST", REISSUE(activeBeforeReissue.id), mgr)).statusCode).toBe(200);
+      expect((await stateOf(activeBeforeReissue, activeBearer)).statusCode).toBe(404);
+      expect((await read(activeBeforeReissue, activeBearer)).statusCode).toBe(404);
+      // The untouched share keeps working.
+      expect((await stateOf(made, bearer)).statusCode).toBe(200);
+      // Audit: the update is recorded with the generation and the actor, never a hash or a code; the event is PHI-free.
+      const audit = await q(
+        "SELECT after::text AS after FROM audit_event WHERE resource_id::text = $1 AND event_type = 'message_external_share.update' AND (after->>'invite_generation')::int = 2",
+        [unredeemed.id],
+      );
+      expect(audit.length).toBeGreaterThan(0);
+      for (const r of audit) {
+        expect(String(r.after)).toContain("reissued_by");
+        expect(String(r.after)).not.toContain("code_hash");
+        expect(String(r.after)).not.toContain(fresh.verificationCode);
+      }
+      const events = await q(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m36.external_share.reissued'",
+        [unredeemed.id],
+      );
+      expect(events).toHaveLength(1);
+      expect(Object.keys(events[0]?.payload as object).sort()).toEqual([
+        "at",
+        "channelId",
+        "organizationId",
+        "reissuedBy",
+        "shareId",
+      ]);
+    });
+
+    it("the counter and the redemption cannot be reset any other way (the database refuses, as the app role)", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const bearer = (await redeem(made)).json().sessionToken as string;
+      const wrong = made.code === "00000000" ? "11111111" : "00000000";
+      await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, bearer, { code: wrong });
+      const mgr = await newManager();
+      expect(
+        await appRun(mgr, "UPDATE message_external_share SET code_attempts = 0 WHERE id=$1", [
+          made.id,
+        ]),
+      ).toMatch(/attempts/);
+      expect(
+        await appRun(
+          mgr,
+          "UPDATE message_external_share SET invite_redeemed_at = NULL WHERE id=$1",
+          [made.id],
+        ),
+      ).toMatch(/single use/);
+      expect(
+        await appRun(
+          mgr,
+          "UPDATE message_external_share SET invite_generation = invite_generation + 1 WHERE id=$1",
+          [made.id],
+        ),
+      ).toMatch(/reissue/);
+      expect(
+        await appRun(mgr, "UPDATE message_external_share SET invite_token_hash = 'x' WHERE id=$1", [
+          made.id,
+        ]),
+      ).toMatch(/immutable/);
+      expect(
+        await appRun(mgr, "UPDATE message_external_share SET code_hash = 'x' WHERE id=$1", [
+          made.id,
+        ]),
+      ).toMatch(/immutable/);
+      const reissueSet = (extra: string) =>
+        `UPDATE message_external_share SET invite_generation = invite_generation + 1, invite_token_hash = 'n1', code_hash = 'n2', invite_redeemed_at = NULL, code_attempts = 0${extra} WHERE id=$1`;
+      // The explicit path needs: the acting user as reissued_by, NEW secrets, zero attempts, a live share.
+      expect(await appRun(mgr, reissueSet(""), [made.id])).toMatch(/actor/);
+      expect(await appRun(mgr, reissueSet(`, reissued_by = '${randomUUID()}'`), [made.id])).toMatch(
+        /actor|foreign key|violates/,
+      );
+      expect(await appRun(mgr, reissueSet(`, reissued_by = '${mgr}'`), [made.id])).toBeNull();
+      expect(
+        await appRun(
+          mgr,
+          `UPDATE message_external_share SET invite_generation = invite_generation + 1, invite_token_hash = invite_token_hash, code_hash = 'n2', invite_redeemed_at = NULL, code_attempts = 0, reissued_by = '${mgr}' WHERE id=$1`,
+          [made.id],
+        ),
+      ).toMatch(/new invitation AND a new code/);
+      expect(
+        await appRun(
+          mgr,
+          `UPDATE message_external_share SET invite_generation = invite_generation + 2, invite_token_hash = 'n1', code_hash = 'n2', invite_redeemed_at = NULL, code_attempts = 0, reissued_by = '${mgr}' WHERE id=$1`,
+          [made.id],
+        ),
+      ).toMatch(/one generation/);
+      expect(
+        await appRun(
+          mgr,
+          `UPDATE message_external_share SET invite_generation = invite_generation + 1, invite_token_hash = 'n1', code_hash = 'n2', code_attempts = 1, reissued_by = '${mgr}' WHERE id=$1`,
+          [made.id],
+        ),
+      ).toMatch(/zero attempts/);
+      // Sessions: the bearer hash changes only with the stage; the lifetime columns are frozen.
+      expect(
+        await appRun(
+          mgr,
+          "UPDATE message_external_session SET token_hash = 'zzz' WHERE share_id=$1",
+          [made.id],
+        ),
+      ).toMatch(/rotates the bearer/);
+      expect(
+        await appRun(
+          mgr,
+          "UPDATE message_external_session SET expires_at = expires_at + interval '1 hour' WHERE share_id=$1",
+          [made.id],
+        ),
+      ).toMatch(/permission denied|immutable/);
+      expect(
+        await appRun(
+          mgr,
+          "UPDATE message_external_session SET stage = 'active', token_hash = token_hash WHERE share_id=$1",
+          [made.id],
+        ),
+      ).toMatch(/rotates the bearer/);
+      // A revoked share cannot be reissued at the database either.
+      stepUpFresh = true;
+      expect((await staff(on, "DELETE", `${API}/${made.id}`, mgr)).statusCode).toBe(200);
+      expect(await appRun(mgr, reissueSet(`, reissued_by = '${mgr}'`), [made.id])).toMatch(
+        /live share/,
+      );
+    });
+
+    it("reissue is gated: flag off 404, clinical role 403, no step-up 403, a revoked share 409, an unknown share 404", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "discipline", randomUUID(), [author]));
+      const mgr = await newManager();
+      stepUpFresh = true;
+      expect((await staff(off, "POST", REISSUE(made.id), mgr)).statusCode).toBe(404);
+      expect((await staff(on, "POST", REISSUE(made.id), clinical)).statusCode).toBe(403);
+      stepUpFresh = false;
+      expect((await staff(on, "POST", REISSUE(made.id), mgr)).statusCode).toBe(403);
+      stepUpFresh = true;
+      expect((await staff(on, "POST", REISSUE(randomUUID()), mgr)).statusCode).toBe(404);
+      expect((await staff(on, "DELETE", `${API}/${made.id}`, mgr)).statusCode).toBe(200);
+      expect((await staff(on, "POST", REISSUE(made.id), mgr)).statusCode).toBe(409);
+      expect(
+        (await staff(outsiderServer(), "POST", REISSUE(made.id), outsider, undefined, ORG_B))
+          .statusCode,
+      ).toBe(404);
+    });
+  });
+
+  const outsiderServer = () => on;
+
+  describe("minimum necessary and identifiers (D15, D16)", () => {
+    it("create REQUIRES the acknowledgement (422 without it) and stores and audits it", async () => {
+      await clearShares();
+      stepUpFresh = true;
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const mgr = await newManager();
+      await join(mgr, channel);
+      const body = { channelId: channel, partnerName: "P", partnerKind: "dme", baaReference: "B" };
+      for (const bad of [{}, { acknowledgedMinimumNecessary: false }]) {
+        expect((await staff(on, "POST", API, mgr, { ...body, ...bad })).statusCode).toBe(422);
+      }
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message_external_share WHERE channel_id=$1",
+          [channel],
+        ),
+      ).toBe(0);
+      const ok = await staff(on, "POST", API, mgr, { ...body, acknowledgedMinimumNecessary: true });
+      expect(ok.statusCode, ok.body).toBe(201);
+      expect((await shareRow(ok.json().id)).minimum_necessary_acknowledged).toBe(true);
+      const audit = await q(
+        "SELECT after::text AS after FROM audit_event WHERE resource_id::text=$1 AND event_type='message_external_share.insert'",
+        [ok.json().id],
+      );
+      expect(String(audit[0]?.after)).toContain("minimum_necessary_acknowledged");
+      expect(
+        await appRun(
+          mgr,
+          "UPDATE message_external_share SET minimum_necessary_acknowledged = false WHERE id=$1",
+          [ok.json().id],
+        ),
+      ).toMatch(/permission denied|immutable/);
+    });
+
+    it("a message with an identifier is WITHHELD (omitted), ordinary clinical shorthand passes, and the trail counts the withheld ones without content", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const made = await mk(channel);
+      await seedMessage(channel, `${MARKER} give 2 tabs of 5 mg at 10:30, room 214`);
+      await seedMessage(channel, `${MARKER} DOB 4/12/1950 is on the chart`);
+      await seedMessage(channel, `${MARKER} her number is 555-123-4567`);
+      await seedMessage(channel, `${MARKER} refill ready for pickup`);
+      await seedMessage(channel, `${MARKER} mrn A12345 please confirm`);
+      const bearer = await activate(made);
+      const res = await read(made, bearer);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(bodies(res)).toEqual([
+        `${MARKER} give 2 tabs of 5 mg at 10:30, room 214`,
+        `${MARKER} refill ready for pickup`,
+      ]);
+      expect(res.body).not.toContain("1950");
+      expect(res.body).not.toContain("555-123");
+      const trail = await q(
+        "SELECT message_count, withheld_count FROM message_external_share_read WHERE share_id=$1",
+        [made.id],
+      );
+      expect(trail.map((r) => [Number(r.message_count), Number(r.withheld_count)])).toEqual([
+        [2, 3],
+      ]);
+      expect(
+        JSON.stringify(
+          await q("SELECT * FROM message_external_share_read WHERE share_id=$1", [made.id]),
+        ),
+      ).not.toContain("1950");
+    });
+  });
+
+  describe("member banner (D18)", () => {
+    const detail = (server: FastifyInstance, user: string, channel: string) =>
+      staff(server, "GET", `/api/v1/messaging/channels/${channel}`, user);
+
+    it("a member sees the indicator while a share is active; it names the kind and expiry and nothing else", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const before = await detail(banner, author, channel);
+      expect(before.statusCode, before.body).toBe(200);
+      expect(before.json().externalShare).toBeUndefined();
+      const made = await mk(channel, { partnerKind: "dme" });
+      const res = await detail(banner, author, channel);
+      expect(res.statusCode, res.body).toBe(200);
+      const share = res.json().externalShare;
+      expect(share).toMatchObject({ active: true, partnerKind: "dme" });
+      expect(Object.keys(share).sort()).toEqual(["active", "expiresAt", "partnerKind"]);
+      expect(new Date(share.expiresAt).getTime()).toBeGreaterThan(Date.now());
+      expect(JSON.stringify(share)).not.toContain(made.id);
+      expect(JSON.stringify(share)).not.toContain("Northside");
+    });
+
+    it("a non-member never sees it (the channel is refused outright)", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await mk(channel);
+      const res = await detail(banner, clinical, channel);
+      expect([403, 404]).toContain(res.statusCode);
+      expect(res.body).not.toContain("externalShare");
+    });
+
+    it("revoked, expired and flag-off all remove it on the next read (flag off cuts partner reads, so the banner follows)", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const revoked = await mk(channel);
+      const mgr = await newManager();
+      stepUpFresh = true;
+      expect((await detail(banner, author, channel)).json().externalShare?.active).toBe(true);
+      expect((await detail(bannerOff, author, channel)).json().externalShare).toBeUndefined();
+      expect((await staff(on, "DELETE", `${API}/${revoked.id}`, mgr)).statusCode).toBe(200);
+      expect((await detail(banner, author, channel)).json().externalShare).toBeUndefined();
+      const expiring = await mk(channel, { expiresInDays: 1 });
+      expect((await detail(banner, author, channel)).json().externalShare?.active).toBe(true);
+      await withShareGuardOff(() =>
+        kit.admin.query(
+          "UPDATE message_external_share SET shared_from = shared_from - interval '2 days', created_at = created_at - interval '2 days', expires_at = expires_at - interval '2 days' WHERE id=$1",
+          [expiring.id],
+        ),
+      );
+      expect((await detail(banner, author, channel)).json().externalShare).toBeUndefined();
+    });
+
+    it("with two active shares the banner shows the one that ends last", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await mk(channel, { expiresInDays: 2 });
+      await mk(channel, { expiresInDays: 9 });
+      const share = (await detail(banner, author, channel)).json().externalShare;
+      const days = (new Date(share.expiresAt).getTime() - Date.now()) / 86_400_000;
+      expect(days).toBeGreaterThan(8);
     });
   });
 

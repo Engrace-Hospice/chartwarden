@@ -55,6 +55,8 @@ function staffFake(over: Partial<StaffTx> = {}) {
     getShare: async () => row(),
     revoke: async () => row({ revokedAt: new Date() }),
     listShares: async () => [],
+    reissue: async () => row({ codeAttempts: 0 }),
+    activeIndicator: async () => null,
     ...over,
   };
   const store: ShareStaffStore = { run: async (_a, fn) => fn(tx) };
@@ -67,6 +69,7 @@ const validBody = {
   partnerName: " Northside ",
   partnerKind: "pharmacy" as const,
   baaReference: "BAA-1",
+  acknowledgedMinimumNecessary: true as const,
 };
 const flags = (on: boolean) => ({ forOrg: async () => ({ [EXTERNAL_PARTNERS_FLAG_KEY]: on }) });
 
@@ -216,7 +219,14 @@ describe("staff side", () => {
 // ── partner side ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const CODE = "12345678";
 function partnerFake(live: Partial<LiveSession> | null, over: Partial<PartnerTx> = {}) {
-  const calls = { attempts: 0, activated: 0, reads: [] as number[], runs: 0 };
+  const calls = {
+    attempts: 0,
+    activated: 0,
+    reads: [] as number[],
+    withheld: [] as number[],
+    rotatedTo: null as string | null,
+    runs: 0,
+  };
   const session: LiveSession | null = live && {
     organizationId: ORG,
     sessionId: randomUUID(),
@@ -238,12 +248,14 @@ function partnerFake(live: Partial<LiveSession> | null, over: Partial<PartnerTx>
       calls.attempts += 1;
       return calls.attempts > 5 ? null : hashVerificationCode(CODE);
     },
-    activate: async () => {
+    activate: async (_id, hash) => {
       calls.activated += 1;
+      calls.rotatedTo = hash;
     },
     visibleMessages: async () => [],
-    recordRead: async (_l, n) => {
+    recordRead: async (_l, n, w) => {
       calls.reads.push(n);
+      calls.withheld.push(w);
     },
     ...over,
   };
@@ -603,5 +615,187 @@ describe("ADR-0096 review fixes", () => {
       statusCode: 429,
     });
     expect(p.calls.runs).toBe(0);
+  });
+});
+
+describe("ADR-0096 D13-D18", () => {
+  it("create refuses a missing or false minimum-necessary acknowledgement with a 422 and writes nothing", async () => {
+    for (const bad of [undefined, false, "true"]) {
+      const { store, inserted } = staffFake();
+      const svc = createExternalShareService({
+        staffStore: store,
+        partnerStore: {} as never,
+        canViewChannel: async () => true,
+        outbox: outbox(),
+        flags: flags(true),
+      });
+      await expect(
+        svc.create(actor, { ...validBody, acknowledgedMinimumNecessary: bad as never }),
+      ).rejects.toMatchObject({ statusCode: 422 });
+      expect(inserted).toHaveLength(0);
+    }
+  });
+
+  it("create stores the acknowledgement on the share", async () => {
+    const { store, inserted } = staffFake();
+    const svc = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      canViewChannel: async () => true,
+      outbox: outbox(),
+      flags: flags(true),
+    });
+    await svc.create(actor, validBody);
+    expect(inserted[0]).toMatchObject({ minimumNecessaryAcknowledged: true });
+  });
+
+  it("create and reissue answer PARTNER_ACCESS_UNAVAILABLE (503) when partner access is unavailable, and write nothing", async () => {
+    const { store, inserted } = staffFake();
+    const svc = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      canViewChannel: async () => true,
+      outbox: outbox(),
+      flags: flags(true),
+      partnerAccessAvailable: false,
+    });
+    await expect(svc.create(actor, validBody)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "PARTNER_ACCESS_UNAVAILABLE",
+      message: "partner access needs trusted proxy configuration",
+    });
+    await expect(svc.reissue(actor, randomUUID())).rejects.toMatchObject({ statusCode: 503 });
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("reissue returns a NEW invitation and code once, publishes a PHI-free event, and refuses a dead share with 409", async () => {
+    const ob = outbox();
+    const calls: string[][] = [];
+    const { store } = staffFake({
+      reissue: async (_id, _u, tokenHash, codeHash) => {
+        calls.push([tokenHash, codeHash]);
+        return row();
+      },
+    });
+    const svc = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      outbox: ob,
+      flags: flags(true),
+    });
+    const a = await svc.reissue(actor, randomUUID());
+    const b = await svc.reissue(actor, randomUUID());
+    expect(a.inviteToken).toHaveLength(43);
+    expect(a.inviteToken).not.toBe(b.inviteToken);
+    expect(a.verificationCode).toMatch(/^\d{8}$/);
+    expect(JSON.stringify(calls)).not.toContain(a.inviteToken);
+    expect(JSON.stringify(calls)).not.toContain(a.verificationCode);
+    expect(ob.publish).toHaveBeenCalledTimes(2);
+    const dead = staffFake({ reissue: async () => null });
+    const svc2 = createExternalShareService({
+      staffStore: dead.store,
+      partnerStore: {} as never,
+      outbox: outbox(),
+      flags: flags(true),
+    });
+    await expect(svc2.reissue(actor, randomUUID())).rejects.toMatchObject({ statusCode: 409 });
+    const off = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      outbox: outbox(),
+      flags: flags(false),
+    });
+    await expect(off.reissue(actor, randomUUID())).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("verify ROTATES the bearer: the activation stores a fresh hash and returns a new org-bound token once; an already-active verify rotates nothing", async () => {
+    const shareId = randomUUID();
+    const p = partnerFake({ shareId, stage: "enrolment" });
+    const svc = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: p.store,
+      flags: flags(true),
+    });
+    const old = bearerFor();
+    const out = await svc.verify(old, shareId, { code: CODE }, { ip: "i" });
+    expect(out.stage).toBe("active");
+    expect(out.sessionToken?.startsWith(`${ORG}.`)).toBe(true);
+    expect(out.sessionToken).not.toBe(old);
+    expect(p.calls.rotatedTo).toBe(hashPartnerToken(out.sessionToken?.slice(ORG.length + 1) ?? ""));
+    const active = partnerFake({ shareId, stage: "active" });
+    const svc2 = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: active.store,
+      flags: flags(true),
+    });
+    expect(
+      (await svc2.verify(bearerFor(), shareId, { code: CODE }, { ip: "i" })).sessionToken,
+    ).toBeNull();
+    expect(active.calls.rotatedTo).toBeNull();
+  });
+
+  it("messages WITHHOLD (omit) a message that carries an identifier, count it for the trail, and still return the rest", async () => {
+    const shareId = randomUUID();
+    const bodies: Record<string, string> = {
+      c1: "refill ready for pickup",
+      c2: "patient DOB 4/12/1950 needs a call",
+      c3: "give 2 tabs at 10:30",
+      c4: "reach her at 555-123-4567",
+    };
+    const mk = (n: number) => ({
+      id: randomUUID(),
+      authorName: "Ann",
+      bodyCipher: Buffer.from(`c${n}`),
+      bodyKind: "plain",
+      status: "sent",
+      createdAtText: `2026-10-23 10:00:0${n}.000001+00`,
+    });
+    const rows = [mk(1), mk(2), mk(3), mk(4)];
+    const p = partnerFake({ shareId }, { visibleMessages: async () => rows });
+    const svc = createExternalShareService({
+      staffStore: {} as never,
+      partnerStore: p.store,
+      flags: flags(true),
+      cipher: { open: async (_o, c) => bodies[c.toString()] ?? "" },
+    });
+    const page = await svc.messages(bearerFor(), shareId, {}, { ip: "i" });
+    expect(page.messages.map((m) => m.body)).toEqual([
+      "refill ready for pickup",
+      "give 2 tabs at 10:30",
+    ]);
+    expect(JSON.stringify(page)).not.toContain("1950");
+    expect(JSON.stringify(page)).not.toContain("555");
+    expect(p.calls.reads).toEqual([2]);
+    expect(p.calls.withheld).toEqual([2]);
+  });
+
+  it("indicator: null when the flag is off or nothing is active; the partner kind and expiry otherwise", async () => {
+    const expiresAt = new Date(Date.now() + 86_400_000);
+    const { store } = staffFake({
+      activeIndicator: async () => ({ partnerKind: "dme", expiresAt }),
+    });
+    const on = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      flags: flags(true),
+    });
+    expect(await on.indicator(actor, CHANNEL)).toEqual({
+      active: true,
+      partnerKind: "dme",
+      expiresAt: expiresAt.toISOString(),
+    });
+    const off = createExternalShareService({
+      staffStore: store,
+      partnerStore: {} as never,
+      flags: flags(false),
+    });
+    expect(await off.indicator(actor, CHANNEL)).toBeNull();
+    const none = staffFake();
+    const svc = createExternalShareService({
+      staffStore: none.store,
+      partnerStore: {} as never,
+      flags: flags(true),
+    });
+    expect(await svc.indicator(actor, CHANNEL)).toBeNull();
   });
 });

@@ -101,6 +101,9 @@ async function fillDialog(user: ReturnType<typeof userEvent.setup>) {
   await user.type(within(dialog).getByLabelText("Conversation id"), CHANNEL);
   await user.type(within(dialog).getByLabelText("Partner name"), "Northside Pharmacy");
   await user.type(within(dialog).getByLabelText("Business associate agreement reference"), "BAA-1");
+  await user.click(
+    within(dialog).getByRole("checkbox", { name: /patient names[\s\S]*NOT filtered/ }),
+  );
   return dialog;
 }
 
@@ -132,6 +135,7 @@ describe("create", () => {
         partnerKind: "pharmacy",
         baaReference: "BAA-1",
         expiresInDays: 7,
+        acknowledgedMinimumNecessary: true,
       },
     });
     await act(async () => g.resolve(ok(created())));
@@ -186,6 +190,10 @@ describe("create", () => {
     await user.type(within(dialog).getByLabelText("Conversation id"), CHANNEL);
     await user.type(within(dialog).getByLabelText("Partner name"), "P");
     await user.type(within(dialog).getByLabelText("Business associate agreement reference"), "B");
+    await user.click(within(dialog).getByRole("button", { name: "Create share" }));
+    expect(within(dialog).getByRole("alert").textContent).toMatch(/Confirm the statement/);
+    expect(POST).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("checkbox"));
     await user.click(within(dialog).getByRole("button", { name: "Create share" }));
     const text = (await within(dialog).findByRole("alert")).textContent ?? "";
     expect(text).toMatch(/cannot be shared/);
@@ -250,5 +258,44 @@ describe("loading and refresh", () => {
     await screen.findByText("Northside Pharmacy");
     const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
+  });
+});
+
+describe("reissue", () => {
+  it("sends one request on a double click, shows the NEW secrets once (Escape cannot dismiss them) and drops them on dismissal", async () => {
+    const user = userEvent.setup();
+    const g = gate<Reply>();
+    const { POST } = mount({ post: () => g.promise });
+    const button = await screen.findByRole("button", { name: "Reissue invitation" });
+    await user.dblClick(button);
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(POST.mock.calls[0]?.[0]).toBe("/api/v1/messaging/external-shares/{id}/reissue");
+    await act(async () => g.resolve(ok({ ...created(), verificationCode: "87654321" })));
+    const secrets = await screen.findByRole("dialog", { name: "Partner access created" });
+    expect(within(secrets).getByText("87654321")).toBeTruthy();
+    expect(within(secrets).getByRole("heading").textContent).toMatch(/Invitation reissued/);
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Partner access created" })).toBeTruthy();
+    await user.click(within(secrets).getByRole("button", { name: "I have passed these on" }));
+    expect(screen.queryByText("87654321")).toBeNull();
+  });
+
+  it.each([
+    [409, /no longer active/],
+    [404, /no longer available/],
+    [500, /could not be reissued/],
+  ])("a %i answer is in reissue wording, never export wording", async (status, pattern) => {
+    const user = userEvent.setup();
+    mount({ post: () => fail(status) });
+    await user.click(await screen.findByRole("button", { name: "Reissue invitation" }));
+    const text = (await screen.findByText(pattern)).textContent ?? "";
+    expect(text).not.toMatch(/export/i);
+  });
+
+  it("is offered only for an active share", async () => {
+    mount({ list: () => ok({ shares: [share({ status: "revoked" })] }) });
+    await screen.findByText("Northside Pharmacy");
+    expect(screen.queryByRole("button", { name: "Reissue invitation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revoke now" })).toBeNull();
   });
 });

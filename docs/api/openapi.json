@@ -164071,6 +164071,40 @@
                           }
                         }
                       }
+                    },
+                    "externalShare": {
+                      "type": "object",
+                      "required": [
+                        "active",
+                        "partnerKind",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "active": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "partnerKind": {
+                          "anyOf": [
+                            {
+                              "const": "pharmacy",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "expiresAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -177441,7 +177475,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day",
+        "summary": "Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). The body must carry `acknowledgedMinimumNecessary: true` (an outside party reads the conversation; patient names in free text are NOT filtered; messages with a date of birth, record/phone number, email or street address are withheld). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 503 PARTNER_ACCESS_UNAVAILABLE when the deployment has no trusted proxy configuration. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day",
         "parameters": [],
         "responses": {
           "201": {
@@ -177588,7 +177622,8 @@
                   "channelId",
                   "partnerName",
                   "partnerKind",
-                  "baaReference"
+                  "baaReference",
+                  "acknowledgedMinimumNecessary"
                 ],
                 "properties": {
                   "channelId": {
@@ -177625,6 +177660,10 @@
                     "minimum": 1,
                     "maximum": 30,
                     "type": "integer"
+                  },
+                  "acknowledgedMinimumNecessary": {
+                    "const": true,
+                    "type": "boolean"
                   }
                 }
               }
@@ -177758,6 +177797,159 @@
                     },
                     "codeLocked": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/external-shares/{id}/reissue": {
+      "post": {
+        "operationId": "postApiV1MessagingExternalsharesByIdReissue",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reissue the invitation of an ACTIVE partner share (messaging.share.manage + a fresh step-up; 404 while the tenant flag is off; 409 when the share is revoked or expired; 503 PARTNER_ACCESS_UNAVAILABLE without trusted proxy configuration). A new single-use invitation AND a NEW 8-digit code are returned once; every session and the old code of the earlier invitation are dead, and the attempt counter restarts. This is the only way to reset it. Publishes m36.external_share.reissued (ids only)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "channelId",
+                    "channelTitle",
+                    "partnerName",
+                    "partnerKind",
+                    "status",
+                    "sharedFrom",
+                    "expiresAt",
+                    "createdAt",
+                    "createdBy",
+                    "revokedAt",
+                    "redeemed",
+                    "codeLocked",
+                    "organizationId",
+                    "inviteToken",
+                    "verificationCode"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "channelTitle": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "partnerName": {
+                      "type": "string"
+                    },
+                    "partnerKind": {
+                      "anyOf": [
+                        {
+                          "const": "pharmacy",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dme",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sharedFrom": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "createdBy": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "redeemed": {
+                      "type": "boolean"
+                    },
+                    "codeLocked": {
+                      "type": "boolean"
+                    },
+                    "organizationId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "inviteToken": {
+                      "type": "string"
+                    },
+                    "verificationCode": {
+                      "type": "string"
                     }
                   }
                 }
@@ -184132,7 +184324,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references or redactions. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned",
+        "summary": "PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references, redaction rows, urgent or targeted messages, acknowledgment requests, legal holds, or a high-signal identifier in the text (withheld, never masked; names are NOT detected). The session dies after 30 idle minutes or 12 hours. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned",
         "parameters": [
           {
             "name": "shareId",
@@ -184224,7 +184416,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "PARTNER (Authorization: Bearer): prove the out-of-band 8-digit code to activate the session. Five wrong attempts lock the share for good (404 afterwards); a wrong code is 422 EXTERNAL_SHARE_CODE_INVALID",
+        "summary": "PARTNER (Authorization: Bearer): prove the out-of-band 8-digit code to activate the session. Activation ROTATES the bearer: the response carries the NEW active-stage `sessionToken` (once) and the enrolment token is dead from then on. Five wrong attempts lock the share for good (404 afterwards, until staff reissue the invitation); a wrong code is 422 EXTERNAL_SHARE_CODE_INVALID. The bearer is resolved before the body is validated (an unauthenticated caller never sees a 422)",
         "parameters": [
           {
             "name": "shareId",
@@ -184246,7 +184438,8 @@
                     "shareId",
                     "stage",
                     "partnerName",
-                    "expiresAt"
+                    "expiresAt",
+                    "sessionToken"
                   ],
                   "properties": {
                     "shareId": {
@@ -184271,6 +184464,16 @@
                     "expiresAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "sessionToken": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }

@@ -14972,7 +14972,7 @@ export interface paths {
         /** The tenant's partner shares, newest first (messaging.share.manage; never depends on the flag): ids, partner label, kind, status (active, expired, revoked), instants and whether the invitation was redeemed or the code locked. No token, code or message */
         get: operations["getApiV1MessagingExternalshares"];
         put?: never;
-        /** Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day */
+        /** Share ONE conversation read-only with an external partner (messaging.share.manage + a fresh step-up; 404 while the tenant flag messaging.external_partners is off). Only discipline, location and on_call channels, and only for a creator who is a member of the channel (no break-glass bypass); a care_team, bereavement, announcement, direct-message, unknown or non-member channel is the same 404. Expiry 1 to 30 days (default 7). The body must carry `acknowledgedMinimumNecessary: true` (an outside party reads the conversation; patient names in free text are NOT filtered; messages with a date of birth, record/phone number, email or street address are withheld). Returns the one-time invitation token and the 8-digit code ONCE; the creator gives them to the partner through different channels. 503 PARTNER_ACCESS_UNAVAILABLE when the deployment has no trusted proxy configuration. 429 EXTERNAL_SHARE_LIMIT beyond 10 live shares or 3 created per day */
         post: operations["postApiV1MessagingExternalshares"];
         delete?: never;
         options?: never;
@@ -14992,6 +14992,23 @@ export interface paths {
         post?: never;
         /** Revoke a partner share now (messaging.share.manage + a fresh step-up; never depends on the flag). The partner's very next request is a 404 (nothing is cached). 409 when already revoked; publishes m36.external_share.revoked (ids only) */
         delete: operations["deleteApiV1MessagingExternalsharesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/external-shares/{id}/reissue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reissue the invitation of an ACTIVE partner share (messaging.share.manage + a fresh step-up; 404 while the tenant flag is off; 409 when the share is revoked or expired; 503 PARTNER_ACCESS_UNAVAILABLE without trusted proxy configuration). A new single-use invitation AND a NEW 8-digit code are returned once; every session and the old code of the earlier invitation are dead, and the attempt counter restarts. This is the only way to reset it. Publishes m36.external_share.reissued (ids only) */
+        post: operations["postApiV1MessagingExternalsharesByIdReissue"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -15486,7 +15503,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references or redactions. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned */
+        /** PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references, redaction rows, urgent or targeted messages, acknowledgment requests, legal holds, or a high-signal identifier in the text (withheld, never masked; names are NOT detected). The session dies after 30 idle minutes or 12 hours. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned */
         get: operations["getApiV1MessagingPartnerSharesByShareIdMessages"];
         put?: never;
         post?: never;
@@ -15505,7 +15522,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** PARTNER (Authorization: Bearer): prove the out-of-band 8-digit code to activate the session. Five wrong attempts lock the share for good (404 afterwards); a wrong code is 422 EXTERNAL_SHARE_CODE_INVALID */
+        /** PARTNER (Authorization: Bearer): prove the out-of-band 8-digit code to activate the session. Activation ROTATES the bearer: the response carries the NEW active-stage `sessionToken` (once) and the enrolment token is dead from then on. Five wrong attempts lock the share for good (404 afterwards, until staff reissue the invitation); a wrong code is 422 EXTERNAL_SHARE_CODE_INVALID. The bearer is resolved before the body is validated (an unauthenticated caller never sees a 422) */
         post: operations["postApiV1MessagingPartnerSharesByShareIdVerify"];
         delete?: never;
         options?: never;
@@ -66594,6 +66611,13 @@ export interface operations {
                             source: "auto" | "manual";
                             displayName?: string | null;
                         }[];
+                        externalShare?: {
+                            /** @constant */
+                            active: true;
+                            partnerKind: "pharmacy" | "dme" | "other";
+                            /** Format: date-time */
+                            expiresAt: string;
+                        };
                     };
                 };
             };
@@ -69887,6 +69911,8 @@ export interface operations {
                     partnerKind: "pharmacy" | "dme" | "other";
                     baaReference: string;
                     expiresInDays?: number;
+                    /** @constant */
+                    acknowledgedMinimumNecessary: true;
                 };
             };
         };
@@ -69958,6 +69984,50 @@ export interface operations {
                         revokedAt: string | null;
                         redeemed: boolean;
                         codeLocked: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingExternalsharesByIdReissue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        channelTitle: string | null;
+                        partnerName: string;
+                        partnerKind: "pharmacy" | "dme" | "other";
+                        status: "active" | "expired" | "revoked";
+                        /** Format: date-time */
+                        sharedFrom: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        createdBy: string;
+                        revokedAt: string | null;
+                        redeemed: boolean;
+                        codeLocked: boolean;
+                        organizationId: string;
+                        inviteToken: string;
+                        verificationCode: string;
                     };
                 };
             };
@@ -71557,6 +71627,7 @@ export interface operations {
                         partnerName: string;
                         /** Format: date-time */
                         expiresAt: string;
+                        sessionToken: string | null;
                     };
                 };
             };

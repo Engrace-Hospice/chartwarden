@@ -33,6 +33,13 @@ export const EXTERNAL_SHARE_MAX_PER_CREATOR_DAY = 3;
 export const EXTERNAL_PARTNER_READS_PER_MINUTE = 60;
 export const EXTERNAL_PARTNER_PAGE_MAX = 50;
 
+/**
+ * D13: a partner session dies after this many idle minutes (since the last accepted partner request, database clock) or after this many hours
+ * in total, whichever comes first and never past the share's own expiry. Pinned against the SQL in migration 1180 (CHECK + read guard).
+ */
+export const EXTERNAL_SESSION_IDLE_MINUTES = 30;
+export const EXTERNAL_SESSION_MAX_HOURS = 12;
+
 /** D9: the ONLY text a partner notification may carry. A constant: there is no parameter through which content could enter. */
 export const EXTERNAL_PARTNER_NOTIFICATION_TEXT =
   "You have a new secure message. Sign in with your link to read it.";
@@ -40,6 +47,10 @@ export const EXTERNAL_PARTNER_NOTIFICATION_TEXT =
 /** Trail-only outbox events (ids and instants only). */
 export const EXTERNAL_SHARE_EVENT_CREATED = "m36.external_share.created";
 export const EXTERNAL_SHARE_EVENT_REVOKED = "m36.external_share.revoked";
+export const EXTERNAL_SHARE_EVENT_REISSUED = "m36.external_share.reissued";
+
+/** D17: the code returned (409/503-style) when the deployment cannot key per-address budgets on a real client address. */
+export const EXTERNAL_PARTNER_ACCESS_UNAVAILABLE_CODE = "PARTNER_ACCESS_UNAVAILABLE";
 
 export interface CreateExternalShareRequest {
   readonly channelId: string;
@@ -48,6 +59,10 @@ export interface CreateExternalShareRequest {
   readonly baaReference: string;
   /** Days until expiry; default 7, at most 30. */
   readonly expiresInDays?: number | undefined;
+  /**
+   * D15: REQUIRED true. The creator confirms the conversation will be read by an outside party and that patient names in free text are NOT filtered.
+   */
+  readonly acknowledgedMinimumNecessary: true;
 }
 
 export type ExternalShareStatus = "active" | "expired" | "revoked";
@@ -74,6 +89,18 @@ export interface CreatedExternalShareDto extends ExternalShareDto {
   readonly organizationId: string;
   readonly inviteToken: string;
   readonly verificationCode: string;
+}
+
+/** D13: what verify returns. `sessionToken` is the NEW active-stage bearer, shown once; null when the session was already active (nothing rotated). */
+export interface PartnerVerifiedDto extends PartnerShareStateDto {
+  readonly sessionToken: string | null;
+}
+
+/** D18: on the channel detail a member already reads. Present only while an ACTIVE share exists and partner access is on. */
+export interface ExternalShareIndicatorDto {
+  readonly active: true;
+  readonly partnerKind: ExternalSharePartnerKind;
+  readonly expiresAt: string;
 }
 
 /** The partner's view of their own share: no channel id, no staff identity. */

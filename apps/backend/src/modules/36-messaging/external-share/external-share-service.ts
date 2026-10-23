@@ -9,6 +9,7 @@ import {
   type CreatedExternalShareDto,
   DegradedError,
   EXTERNAL_PARTNERS_FLAG_KEY,
+  EXTERNAL_PARTNER_ACCESS_UNAVAILABLE_CODE,
   EXTERNAL_PARTNER_PAGE_MAX,
   EXTERNAL_SHARE_BAA_MAX,
   EXTERNAL_SHARE_CHANNEL_KINDS,
@@ -20,13 +21,16 @@ import {
   EXTERNAL_SHARE_NAME_MAX,
   EXTERNAL_SHARE_PARTNER_KINDS,
   type ExternalShareDto,
+  type ExternalShareIndicatorDto,
   type ExternalSharePartnerKind,
   NotFoundError,
   type PartnerMessageDto,
   type PartnerMessagesDto,
   type PartnerShareStateDto,
+  type PartnerVerifiedDto,
   RateLimitedError,
   ValidationError,
+  containsPartnerIdentifier,
 } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { MessageBodyCipher } from "../messaging-write-core";
@@ -63,6 +67,11 @@ export const EXTERNAL_SHARE_LIMIT_CODE = "EXTERNAL_SHARE_LIMIT";
 export const EXTERNAL_SHARE_CODE_INVALID = "EXTERNAL_SHARE_CODE_INVALID";
 
 export interface ExternalShareServiceDeps {
+  /**
+   * D17: false when the deployment cannot key per-address budgets on a real client address (production without TRUSTED_PROXY_CIDRS). Creating and
+   * reissuing then fail with {@link EXTERNAL_PARTNER_ACCESS_UNAVAILABLE_CODE} (503) so a share nobody can use is never made. Default true.
+   */
+  readonly partnerAccessAvailable?: boolean | undefined;
   readonly staffStore: ShareStaffStore;
   readonly partnerStore: SharePartnerStore;
   /** Required for every staff write: it announces itself on the outbox in the same transaction. Absent => the write throws (nothing is written). */
@@ -99,6 +108,10 @@ export interface ExternalShareService {
   create(actor: StaffActor, body: CreateExternalShareRequest): Promise<CreatedExternalShareDto>;
   list(actor: StaffActor): Promise<ExternalShareDto[]>;
   revoke(actor: StaffActor, shareId: string): Promise<ExternalShareDto>;
+  /** D14: new invitation and NEW code for a live share; the old sessions and the old code die; the secrets are returned once. */
+  reissue(actor: StaffActor, shareId: string): Promise<CreatedExternalShareDto>;
+  /** D18: the live banner fact for a member of the channel, or null (flag off, no active share). */
+  indicator(actor: StaffActor, channelId: string): Promise<ExternalShareIndicatorDto | null>;
   redeem(
     input: { readonly organizationId: string; readonly token: string },
     meta: PartnerRequestMeta,
@@ -119,7 +132,7 @@ export interface ExternalShareService {
     shareId: string,
     rawBody: unknown,
     meta: PartnerRequestMeta,
-  ): Promise<PartnerShareStateDto>;
+  ): Promise<PartnerVerifiedDto>;
   /** `rawQuery` is validated only AFTER the bearer resolves. */
   messages(
     bearer: string | null,
@@ -163,6 +176,12 @@ function validateCreate(body: CreateExternalShareRequest): {
   readonly baaReference: string;
   readonly expiresInDays: number;
 } {
+  if ((body as { acknowledgedMinimumNecessary?: unknown }).acknowledgedMinimumNecessary !== true) {
+    invalid(
+      "acknowledgedMinimumNecessary",
+      "confirm that an outside party will read this conversation and that patient names in free text are not filtered",
+    );
+  }
   if (!UUID_RE.test(body.channelId ?? "")) invalid("channelId", "a conversation id");
   const partnerName = (body.partnerName ?? "").trim();
   if (partnerName.length < 1 || partnerName.length > EXTERNAL_SHARE_NAME_MAX) {
@@ -249,6 +268,16 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
     });
   }
 
+  const assertAvailable = (): void => {
+    if (deps.partnerAccessAvailable === false) {
+      throw new ChartWardenError(
+        EXTERNAL_PARTNER_ACCESS_UNAVAILABLE_CODE,
+        "partner access needs trusted proxy configuration",
+        503,
+      );
+    }
+  };
+
   const stateOf = (
     live: LiveSession,
     stage: PartnerShareStateDto["stage"],
@@ -264,6 +293,7 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
 
     async create(actor, body) {
       if (!(await isEnabled(actor.organizationId))) throw new NotFoundError("conversation");
+      assertAvailable();
       const input = validateCreate(body);
       const outbox = deps.outbox;
       if (!outbox)
@@ -299,6 +329,7 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
           ...input,
           inviteTokenHash: hashPartnerToken(inviteToken),
           codeHash: hashVerificationCode(verificationCode),
+          minimumNecessaryAcknowledged: true,
         });
         await publishExternalShareEvent(outbox, tx.raw, {
           kind: "created",
@@ -339,6 +370,46 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
       });
     },
 
+    async reissue(actor, shareId) {
+      if (!(await isEnabled(actor.organizationId))) throw new NotFoundError("share", shareId);
+      assertAvailable();
+      const outbox = deps.outbox;
+      if (!outbox)
+        throw new DegradedError("messaging", "the outbox is not configured; nothing was reissued");
+      const inviteToken = newPartnerToken();
+      const verificationCode = newVerificationCode();
+      const row = await deps.staffStore.run(actor, async (tx) => {
+        const existing = await tx.getShare(shareId);
+        if (!existing) throw new NotFoundError("share", shareId);
+        const reissued = await tx.reissue(
+          shareId,
+          actor.userId,
+          hashPartnerToken(inviteToken),
+          hashVerificationCode(verificationCode),
+        );
+        if (!reissued) throw new ConflictError("only an active share can be reissued");
+        await publishExternalShareEvent(outbox, tx.raw, {
+          kind: "reissued",
+          orgId: actor.organizationId,
+          shareId,
+          channelId: reissued.channelId,
+          actorUserId: actor.userId,
+          at: reissued.dbNow,
+        });
+        return reissued;
+      });
+      return { ...toDto(row), organizationId: actor.organizationId, inviteToken, verificationCode };
+    },
+
+    async indicator(actor, channelId) {
+      // Partner reads stop the moment the flag is off (D11), so the banner follows the same rule: no flag, no banner.
+      if (!(await isEnabled(actor.organizationId))) return null;
+      const live = await deps.staffStore.run(actor, (tx) => tx.activeIndicator(channelId));
+      return live
+        ? { active: true, partnerKind: live.partnerKind, expiresAt: live.expiresAt.toISOString() }
+        : null;
+    },
+
     async redeem(input, meta) {
       // The per-address budget BEFORE any database work: a flood costs a counter increment, not a query.
       await spend(deps.redeemIpLimiter, meta.ip, "invitation attempts");
@@ -369,18 +440,21 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
       const outcome = await withLive(bearer, shareId, async (tx, live) => {
         // Past this point the caller holds a live bearer, so a validation message is no oracle.
         const code = codeOf(rawBody);
-        if (live.stage === "active") return { ok: true as const, live };
+        if (live.stage === "active") return { ok: true as const, live, rotated: null };
         // The attempt is counted (and committed) BEFORE the code is compared, so a wrong code cannot be retried for free.
         const stored = await tx.takeCodeAttempt(live.shareId);
         if (stored === null) throw shareNotFound(); // locked (5 attempts) or no longer live
-        if (!verifyVerificationCode(code, stored)) return { ok: false as const, live };
-        await tx.activate(live.sessionId);
-        return { ok: true as const, live };
+        if (!verifyVerificationCode(code, stored))
+          return { ok: false as const, live, rotated: null };
+        // D13: activation ROTATES the bearer. The enrolment token is replaced in the same update, so one captured earlier is useless from here on.
+        const fresh = newPartnerToken();
+        await tx.activate(live.sessionId, hashPartnerToken(fresh));
+        return { ok: true as const, live, rotated: formatSessionToken(live.organizationId, fresh) };
       });
       if (!outcome.ok) {
         throw new ChartWardenError(EXTERNAL_SHARE_CODE_INVALID, "that code is not correct", 422);
       }
-      return stateOf(outcome.live, "active");
+      return { ...stateOf(outcome.live, "active"), sessionToken: outcome.rotated };
     },
 
     async messages(bearer, shareId, rawQuery, meta) {
@@ -398,6 +472,7 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
         const rows = await tx.visibleMessages(live, after, limit + 1);
         const page = rows.slice(0, limit);
         const out: PartnerMessageDto[] = [];
+        let withheld = 0;
         for (const r of page) {
           let plaintext: string;
           try {
@@ -413,6 +488,11 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
             plaintext,
           );
           if (decoded.unreadable) continue; // never show a guess
+          // D16: a message that carries a high-signal identifier is WITHHELD (omitted), never masked. The text is not logged or kept.
+          if (containsPartnerIdentifier(decoded.body)) {
+            withheld += 1;
+            continue;
+          }
           out.push({
             messageId: r.id,
             authorName: r.authorName,
@@ -423,7 +503,7 @@ export function createExternalShareService(deps: ExternalShareServiceDeps): Exte
         }
         // The trail row is written BEFORE any byte leaves; the database guard refuses it for a revoked or expired share.
         try {
-          await tx.recordRead(live, out.length);
+          await tx.recordRead(live, out.length, withheld);
         } catch {
           throw shareNotFound();
         }

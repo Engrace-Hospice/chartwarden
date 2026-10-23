@@ -331,6 +331,8 @@ export function mountMessagingRoutes(
       verifyIpLimiter?: _ExternalShareLimiter | undefined;
       bearerIpLimiter?: _ExternalShareLimiter | undefined;
       readLimiter?: _ExternalShareLimiter | undefined;
+      /** D17: false => partner routes are not mounted and create / reissue answer PARTNER_ACCESS_UNAVAILABLE (503). Default true. */
+      partnerAccessAvailable?: boolean | undefined;
     };
   } = {},
 ): void {
@@ -349,9 +351,22 @@ export function mountMessagingRoutes(
     canViewChannel: service.canViewChannel,
     displayName: _createMentionActorNameResolver(db),
   });
+  // WP 6.6 (ADR-0096): ONE service serves the staff and partner routes AND the member banner on the channel detail.
+  const externalShareService = opts.externalShare
+    ? _createExternalShareService({
+        staffStore: _createDrizzleShareStaffStore(db),
+        partnerStore: _createDrizzleSharePartnerStore(db),
+        outbox: opts.outbox,
+        cipher: _createMessageBodyCipher(),
+        // Membership only: the plain visibility predicate, never the break-glass read grant (ADR-0096 D1).
+        canViewChannel: service.canViewChannel,
+        ...opts.externalShare,
+      })
+    : undefined;
   _registerMessagingRoutes(app, {
     service,
     announcements,
+    ...(externalShareService ? { externalShare: { indicator: externalShareService.indicator } } : {}),
     ...(opts.presence ? { presence: opts.presence } : {}),
     ...(opts.clinicalLinks ? { clinicalLinks: opts.clinicalLinks } : {}),
     ...(opts.sbar ? { sbar: opts.sbar } : {}),
@@ -493,17 +508,10 @@ export function mountMessagingRoutes(
   }
   // WP 6.6 (ADR-0096, PROPOSED) - external partner share: a read-only, expiring, single-conversation grant for a non-workforce partner. Creating is
   // behind the tenant flag `messaging.external_partners`, and so is every partner route; revoking is not (a share that exists stays revocable).
-  if (opts.externalShare) {
+  if (externalShareService) {
     _registerExternalShareRoutes(app, {
-      service: _createExternalShareService({
-        staffStore: _createDrizzleShareStaffStore(db),
-        partnerStore: _createDrizzleSharePartnerStore(db),
-        outbox: opts.outbox,
-        cipher: _createMessageBodyCipher(),
-        // Membership only: the plain visibility predicate, never the break-glass read grant (ADR-0096 D1).
-        canViewChannel: service.canViewChannel,
-        ...opts.externalShare,
-      }),
+      service: externalShareService,
+      partnerRoutes: opts.externalShare?.partnerAccessAvailable !== false,
     });
   }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own

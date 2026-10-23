@@ -54,6 +54,8 @@ export interface PartnerActions {
     body: CreateExternalShareRequest,
   ) => Promise<ExportResult<CreatedExternalShareDto>>;
   readonly revoke: (id: string) => Promise<ExportResult<ExternalShareDto>>;
+  /** D14: new invitation AND new code for an active share; the secrets come back once. */
+  readonly reissue: (id: string) => Promise<ExportResult<CreatedExternalShareDto>>;
 }
 
 export function usePartnerActions(): PartnerActions {
@@ -64,6 +66,18 @@ export function usePartnerActions(): PartnerActions {
         if (!client) return { kind: "failed" };
         try {
           return classify(typed<CreatedExternalShareDto>(await loose(client).POST(BASE, { body })));
+        } catch {
+          return { kind: "failed" };
+        }
+      },
+      async reissue(id) {
+        if (!client) return { kind: "failed" };
+        try {
+          return classify(
+            typed<CreatedExternalShareDto>(
+              await loose(client).POST(`${BASE}/{id}/reissue`, { params: { path: { id } } }),
+            ),
+          );
         } catch {
           return { kind: "failed" };
         }

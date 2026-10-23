@@ -8,7 +8,7 @@
 // PARTNER (NOT a user session: a bearer minted by redeeming a one-time invitation; ADR-0096 D5). Every route answers the uniform 404 when the
 // flag is off, the bearer is unknown/expired/revoked, or the share id is not the bearer's own. These routes read the Authorization header, which is a
 // SERVER-minted, hash-checked single-share token, never a claim (arch:request-header-auth: verified).
-//   POST /api/v1/messaging/partner/redeem                       invitation -> enrolment-stage bearer (single use; budgeted per client address and org)
+//   POST /api/v1/messaging/partner/redeem                       invitation -> enrolment-stage bearer (single use; budgeted per client address)
 //   GET  /api/v1/messaging/partner/shares/:shareId              state (enrolment or active)
 //   POST /api/v1/messaging/partner/shares/:shareId/verify       the out-of-band 8-digit code -> active (5 attempts per share)
 //   GET  /api/v1/messaging/partner/shares/:shareId/messages     the shared conversation, oldest first, active stage only; every read leaves a trail row
@@ -32,6 +32,7 @@ import {
   PartnerRedeemResponseSchema,
   PartnerShareParamsSchema,
   PartnerStateResponseSchema,
+  PartnerVerifiedResponseSchema,
 } from "./external-share-typebox";
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
@@ -43,6 +44,11 @@ const MANAGE_STEP_UP = requireStepUp(EXTERNAL_SHARE_MANAGE_STEP_UP_KEY) as PreHa
 
 export interface ExternalShareRouteDeps {
   readonly service: ExternalShareService;
+  /**
+   * D17: false => the PARTNER routes are not mounted (they answer the framework's 404) because per-address budgets would be keyed on a proxy address.
+   * Staff create, list, reissue and revoke are always mounted. Default true.
+   */
+  readonly partnerRoutes?: boolean | undefined;
 }
 
 function staffOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -123,6 +129,20 @@ export function registerExternalShareRoutes(
     },
   );
 
+  app.post(
+    "/api/v1/messaging/external-shares/:id/reissue",
+    {
+      preHandler: [requireUuidParams("id"), MANAGE, FLAG_ON, MANAGE_STEP_UP],
+      schema: { response: { 200: CreatedExternalShareResponseSchema } },
+    },
+    async (request, reply) => {
+      const { id } = parse(ExternalShareIdParamsSchema, request.params);
+      return noStore(reply).send(await service.reissue(staffOf(request), id));
+    },
+  );
+
+  if (deps.partnerRoutes === false) return;
+
   // ── partner surface ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   app.post(
@@ -156,7 +176,7 @@ export function registerExternalShareRoutes(
 
   app.post(
     "/api/v1/messaging/partner/shares/:shareId/verify",
-    { preHandler: [SHARE_ID_OK], schema: { response: { 200: PartnerStateResponseSchema } } },
+    { preHandler: [SHARE_ID_OK], schema: { response: { 200: PartnerVerifiedResponseSchema } } },
     async (request, reply) => {
       const { shareId } = parse(PartnerShareParamsSchema, request.params);
       return noStore(reply).send(

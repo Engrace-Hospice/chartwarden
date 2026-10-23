@@ -52,6 +52,8 @@ interface Draft {
   readonly partnerKind: ExternalSharePartnerKind;
   readonly baaReference: string;
   readonly days: string;
+  /** D15: the minimum-necessary confirmation; the API refuses a share without it. */
+  readonly acknowledged: boolean;
 }
 const EMPTY: Draft = {
   channelId: "",
@@ -59,6 +61,7 @@ const EMPTY: Draft = {
   partnerKind: "pharmacy",
   baaReference: "",
   days: String(EXTERNAL_SHARE_DEFAULT_DAYS),
+  acknowledged: false,
 };
 
 /** The first thing wrong with the draft, as a sentence, or null when it can be sent. */
@@ -70,13 +73,14 @@ export function validateShareDraft(draft: Draft): string | null {
   if (!Number.isInteger(days) || days < 1 || days > EXTERNAL_SHARE_MAX_DAYS) {
     return `Choose 1 to ${EXTERNAL_SHARE_MAX_DAYS} days.`;
   }
+  if (!draft.acknowledged) return "Confirm the statement about what the partner will see.";
   return null;
 }
 
 /** Sentences for a failed share action, specific to partner shares (never the export wording). A stale step-up navigates and says nothing. */
 function useShareFailureText(): (
   result: ExportResult<unknown>,
-  action: "create" | "revoke",
+  action: "create" | "revoke" | "reissue",
 ) => string | null {
   const stepUpText = useFailureText();
   return (result, action) => {
@@ -94,7 +98,9 @@ function useShareFailureText(): (
           ? "Too many partner shares. Revoke one, or try again tomorrow."
           : "Too many requests. Wait a moment and try again.";
       case "conflict":
-        return "That share has already been revoked.";
+        return action === "reissue"
+          ? "That share is no longer active, so its invitation cannot be reissued."
+          : "That share has already been revoked.";
       case "invalid":
         return "Check the details and try again.";
       case "denied":
@@ -103,8 +109,10 @@ function useShareFailureText(): (
           : "You do not have permission to manage partner shares.";
       default:
         return action === "create"
-          ? "The share could not be created. Nothing was shared; try again."
-          : "The share could not be revoked. It may still be active; check the list and try again.";
+          ? "The share could not be created. Nothing was shared. If this keeps happening, partner access may not be available on this deployment."
+          : action === "reissue"
+            ? "The invitation could not be reissued. The old invitation and code may still be valid; check the list and try again."
+            : "The share could not be revoked. It may still be active; check the list and try again.";
     }
   };
 }
@@ -195,6 +203,19 @@ function CreateDialog({
           value={draft.days}
           onChange={(e) => set({ days: e.target.value })}
         />
+        <label className="wx-export-choice">
+          <input
+            type="checkbox"
+            checked={draft.acknowledged}
+            onChange={(e) => set({ acknowledged: e.target.checked })}
+          />
+          <span>
+            I understand that an outside party will read this conversation, and that patient names
+            written in the messages are NOT filtered. Messages containing a date of birth, a record,
+            account or phone number, an email or a street address are withheld, but names and
+            indirect details are not detected.
+          </span>
+        </label>
         {!online ? (
           <p className="wx-export-error" role="alert">
             You are offline. Sharing needs a connection and is never queued.
@@ -224,12 +245,21 @@ function CreateDialog({
  */
 function Secrets({
   made,
+  reissued,
   onDone,
-}: { readonly made: CreatedExternalShareDto; readonly onDone: () => void }): JSX.Element {
+}: {
+  readonly made: CreatedExternalShareDto;
+  readonly reissued: boolean;
+  readonly onDone: () => void;
+}): JSX.Element {
   return (
     <Modal open ariaLabel="Partner access created" dismissOnScrim={false} width="40rem">
       <div className="wx-export-dialog">
-        <h2>Partner access created for {made.partnerName}</h2>
+        <h2>
+          {reissued
+            ? `Invitation reissued for ${made.partnerName}`
+            : `Partner access created for ${made.partnerName}`}
+        </h2>
         <p>
           This is the only time these are shown. Give the partner the invitation and the code
           through <strong>different channels</strong> (for example, send the invitation, then read
@@ -269,10 +299,12 @@ function Row({
   share,
   busy,
   onRevoke,
+  onReissue,
 }: {
   readonly share: ExternalShareDto;
   readonly busy: boolean;
   readonly onRevoke: (share: ExternalShareDto) => void;
+  readonly onReissue: (share: ExternalShareDto) => void;
 }): JSX.Element {
   const online = useOnlineStatus();
   const titleId = `wx-share-${share.id}`;
@@ -303,6 +335,18 @@ function Row({
           label={STATUS_LABELS[share.status]}
         />
         {share.status === "active" ? (
+          <Button
+            type="button"
+            tone="secondary"
+            size="lg"
+            disabled={busy || !online}
+            aria-describedby={titleId}
+            onClick={() => onReissue(share)}
+          >
+            Reissue invitation
+          </Button>
+        ) : null}
+        {share.status === "active" ? (
           // The visible text is the whole accessible name (WCAG 2.5.3); the partner is named by the description.
           <Button
             type="button"
@@ -330,7 +374,10 @@ export function ExternalPartners(): JSX.Element {
   const statusRef = useRef<HTMLOutputElement>(null);
   const [creating, setCreating] = useState(false);
   const [creatingBusy, setCreatingBusy] = useState(false);
-  const [made, setMade] = useState<CreatedExternalShareDto | null>(null);
+  const [made, setMade] = useState<{
+    readonly share: CreatedExternalShareDto;
+    readonly reissued: boolean;
+  } | null>(null);
   // `seq` keys the live region so an identical message is announced again.
   const [message, setMessage] = useState<{ text: string | null; seq: number }>({
     text: null,
@@ -349,17 +396,38 @@ export function ExternalPartners(): JSX.Element {
       partnerKind: draft.partnerKind,
       baaReference: draft.baaReference.trim(),
       expiresInDays: Number(draft.days),
+      acknowledgedMinimumNecessary: true,
     });
     inFlight.current = false;
     setCreatingBusy(false);
     if (result.kind === "ok") {
       // The secrets come back exactly once: surface them whatever happened to the dialog.
-      setMade(result.data);
+      setMade({ share: result.data, reissued: false });
       setCreating(false);
       reload();
       return null;
     }
     return failureText(result, "create");
+  };
+
+  const reissue = (share: ExternalShareDto): void => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    say(null);
+    void actions.reissue(share.id).then((result) => {
+      inFlight.current = false;
+      setBusy(false);
+      if (result.kind === "ok") {
+        // The new secrets come back exactly once; the old invitation, code and sessions are already dead.
+        setMade({ share: result.data, reissued: true });
+        reload();
+        return;
+      }
+      say(failureText(result, "reissue"));
+      if (result.kind === "conflict" || result.kind === "not_available") reload();
+      statusRef.current?.focus();
+    });
   };
 
   const revoke = (share: ExternalShareDto): void => {
@@ -428,7 +496,13 @@ export function ExternalPartners(): JSX.Element {
             ) : (
               <ul className="wx-export-rows" aria-label="Partner shares">
                 {shares.map((s) => (
-                  <Row key={s.id} share={s} busy={busy || creatingBusy} onRevoke={revoke} />
+                  <Row
+                    key={s.id}
+                    share={s}
+                    busy={busy || creatingBusy}
+                    onRevoke={revoke}
+                    onReissue={reissue}
+                  />
                 ))}
               </ul>
             )
@@ -444,10 +518,11 @@ export function ExternalPartners(): JSX.Element {
       ) : null}
       {made ? (
         <Secrets
-          made={made}
+          made={made.share}
+          reissued={made.reissued}
           onDone={() => {
             setMade(null);
-            say("Partner access created. The invitation and code are no longer shown.");
+            say("The invitation and code are no longer shown.");
           }}
         />
       ) : null}
