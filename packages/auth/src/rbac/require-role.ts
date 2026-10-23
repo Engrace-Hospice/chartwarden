@@ -109,6 +109,8 @@ export function resetEffectivePermissionResolver(): void {
 export function resolveActorPermissions(
   actor: Pick<HttpRequestContext, "organizationId" | "userId">,
 ): Promise<ReadonlySet<string>> | ReadonlySet<string> {
+  // The service principal's userId is the literal "system", not a uuid (#678): it has no membership grants.
+  if (actor.userId === "system") return new Set<string>();
   return effectivePermissionResolver(actor as HttpRequestContext);
 }
 
@@ -120,6 +122,15 @@ export function resolveActorPermissions(
 export type PermissionKeyInput = PermissionKey | (string & {});
 
 /**
+ * What the verified service-to-service principal (`actorKind === "system"`, set only by the shared-secret
+ * branch of the authenticate hook) may hold: the `*_internal` seam keys and nothing else, so a service token
+ * can never satisfy a user-facing route's permission.
+ */
+export function isSystemGrant(key: string): boolean {
+  return key.endsWith("_internal");
+}
+
+/**
  * RBAC gate (§4.1, §2.2). Resolves the actor's effective permission set via the registered
  * resolver and denies (403) unless `key` is present. Deny by default: with no resolver the
  * set is empty and every route fails closed.
@@ -128,6 +139,12 @@ export function requirePermission(key: PermissionKeyInput): GuardHandler {
   return async (request) => {
     const ctx = request.context;
     if (!ctx?.organizationId) throw new UnauthorizedError();
+    if (ctx.attributes?.actorKind === "system") {
+      // #678: a service principal has no membership row (its userId is the literal "system", not a uuid),
+      // so it never reaches the resolver; it holds exactly the explicit system grants.
+      if (!isSystemGrant(key)) throw new ForbiddenError(`requires permission '${key}'`);
+      return;
+    }
     const granted = await effectivePermissionResolver(ctx);
     if (!granted.has(key)) {
       throw new ForbiddenError(`requires permission '${key}'`);
