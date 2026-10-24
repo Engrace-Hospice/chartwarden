@@ -39,6 +39,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
 | `bun run arch:ai-governance` | AI capability catalog ↔ per-capability docs parity (AI Governance §4.1/§4.4). |
+| `bun run arch:ai-messaging-readonly` | The M36 AI folder (`36-messaging/ai/`) imports no send/order/write path; the two messaging capabilities are high-risk HITL; the live proof exists (ADR-0095 §4). |
 | `bun run status:matrix` / `arch:status-matrix` | (re)generate / freshness-check the per-module implementation-status matrix (`audit/implementation-status/`); hard-fails on orphan (unowned) schema/migration tables. |
 | `bun run ui:parity` / `arch:ui-parity` | (re)generate / freshness-check the UI implementation-parity report (`audit/ui-parity/`); hard-fails on duplicate screen id/path, unknown `requiredPermission`, or an unregistered `screens.ts`. |
 | `bun run arch:fitness` | all of the above (parity + every fitness gate, including the report freshness checks). |

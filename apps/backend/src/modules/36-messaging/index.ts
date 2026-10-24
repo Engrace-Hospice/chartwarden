@@ -217,6 +217,7 @@ import {
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
+import type { AiRouteDeps as _AiRouteDeps } from "./routes/ai-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
 import {
@@ -270,7 +271,12 @@ export function mountMessagingRoutes(
     sendEndpointVerificationCode?: EndpointVerificationSender;
     outbox?: MessagingOutboxPort;
     /** WP 1.5: object storage + malware scanner. No scanner => attachments stay pending (nothing is delivered). */
-    attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
+    attachments?: {
+      storage: AttachmentStoragePort;
+      scanner?: ScanPort | undefined;
+      /** WP 6.3 (ADR-0094): the tenant flag `messaging.voice_notes`. Omitted => audio uploads are refused (415). */
+      voiceNotesEnabled?: ((orgId: string) => Promise<boolean>) | undefined;
+    };
     /** WP 2.7b: global search. Omitted => inert (throwing key provider, fail-closed limiter, flags OFF). */
     globalSearch?: GlobalSearchMountOptions;
     /** WP 2.7b C4: true only once the ADR-0058 P2 per-route rate limit covers the search routes. Default false => ON refused. */
@@ -304,6 +310,8 @@ export function mountMessagingRoutes(
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     };
+    /** WP 6.5 (ADR-0095, PROPOSED): AI summaries and reply drafts (flag `messaging.ai.enabled`). Omitted => the panel is absent and every call is the uniform 404. */
+    ai?: _AiRouteDeps;
     /** ADR-0082: the optional budget of the after-hours thread-line read. */
     afterHoursTriageRateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
@@ -433,6 +441,7 @@ export function mountMessagingRoutes(
       ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
     ...(opts.afterHoursTriageRateLimit ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit } : {}),
+    ...(opts.ai ? { ai: opts.ai } : {}),
     deliveryTarget: {
       service: _createDeliveryTargetService({
         read: _createDbDeliveryTargetReader(db),
@@ -468,6 +477,7 @@ export function mountMessagingRoutes(
         db,
         storage: opts.attachments.storage,
         scanner: opts.attachments.scanner,
+        voiceNotesEnabled: opts.attachments.voiceNotesEnabled,
         outbox: opts.outbox,
         canViewChannel: service.canViewChannel,
       }),
@@ -585,6 +595,9 @@ export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
 export { buildDeathBoardDeps } from "./death-board/deps";
+// WP 6.5 (ADR-0095): AI summaries and reply drafts. The port is injected by the boot (M32's governed pipeline); absent = "AI unavailable".
+export { buildAiDeps } from "./ai/binding";
+export { UNAVAILABLE_AI_PORT } from "./ai/unavailable-ai-port";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";
@@ -704,6 +717,7 @@ export {
   scheduleM36AttachmentScanJobs,
 } from "./attachments/attachment-scan-worker";
 export { registerAttachmentRoutes } from "./routes/attachment-routes";
+export { buildVoiceNotesEnabled } from "./attachments/voice-notes-flag";
 
 // WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @chartwarden/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";

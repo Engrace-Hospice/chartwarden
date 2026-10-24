@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1771,
-    "coveredRoutes": 1771,
-    "directRoutesReferenced": 1642
+    "routes": 1790,
+    "coveredRoutes": 1790,
+    "directRoutesReferenced": 1658
   },
   "modules": [
     {
@@ -386,6 +386,7 @@
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
@@ -405,7 +406,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 111,
+      "routes": 126,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
@@ -413,6 +414,7 @@
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-payer-guard.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
@@ -420,7 +422,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 95
+      "directRoutesReferenced": 107
     },
     {
       "module": "26-cap",
@@ -493,7 +495,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ai-platform-inject.test.ts",
-        "apps/backend/__tests__/auth.live.test.ts"
+        "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/m36-ai.live.test.ts"
       ],
       "directRoutesReferenced": 32
     },
@@ -531,7 +534,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 183,
+      "routes": 187,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -544,6 +547,7 @@
         "apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-afterhours-triage-routes.test.ts",
+        "apps/backend/__tests__/m36-ai.live.test.ts",
         "apps/backend/__tests__/m36-alarm-ingest-routes.test.ts",
         "apps/backend/__tests__/m36-alarm-ingest.live.test.ts",
         "apps/backend/__tests__/m36-announcements.live.test.ts",
@@ -617,7 +621,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 150
+      "directRoutesReferenced": 154
     },
     {
       "module": "37-ipu",

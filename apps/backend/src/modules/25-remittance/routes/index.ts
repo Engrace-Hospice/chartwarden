@@ -28,6 +28,11 @@ export {
 export { buildDrizzleLaterTierService, type LaterTierService } from "./later-tier-service";
 export { buildDrizzleCaseViewService, type CaseViewService } from "./case-view-service";
 export {
+  buildDrizzlePayerAppealPathService,
+  type PayerAppealPathService,
+} from "./payer-appeal-path-service";
+export { buildDrizzlePayerAppealService, type PayerAppealService } from "./payer-appeal-service";
+export {
   buildDrizzleSubmissionService,
   type SubmissionService,
 } from "./submission-service";
@@ -39,6 +44,8 @@ import type { AuditRequestService } from "./audit-request-service";
 import type { CaseViewService } from "./case-view-service";
 import type { DenialRouteService } from "./denial-route-service";
 import type { LaterTierService } from "./later-tier-service";
+import type { PayerAppealPathService } from "./payer-appeal-path-service";
+import type { PayerAppealService } from "./payer-appeal-service";
 import type { QicService } from "./qic-service";
 import type { M25ReadService } from "./read-service";
 import type { ReopeningService } from "./reopening-service";
@@ -73,6 +80,10 @@ export interface M25RouteServices {
   readonly laterTierService?: LaterTierService;
   /** The one claim-keyed case view (milestone 7a-1); the route mounts only when supplied. */
   readonly caseViewService?: CaseViewService;
+  /** The organization's payer appeal paths (milestone 12a-1); the routes mount only when supplied. */
+  readonly payerAppealPathService?: PayerAppealPathService;
+  /** Payer appeal cases keyed on the denial (milestone 12a-1); the routes mount only when supplied. */
+  readonly payerAppealService?: PayerAppealService;
   /** Advisory ADR documentation readiness (milestone 8a-1); the routes mount only when supplied. */
   readonly adrReadinessService?: AdrReadinessService;
 }

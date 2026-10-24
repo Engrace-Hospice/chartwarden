@@ -63,6 +63,14 @@ export const AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/** M36 WP 6.5 (ADR-0095): the AI summary / draft / outcome routes, 30/min/user and 300/min/org. Fail-open: an availability control; the per-user, per-channel hourly quotas in the service are the cost and disclosure controls and fail CLOSED. */
+export const AI_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 30,
+  perOrg: 300,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.9 (ADR-0098): the death-board routes (a list scans up to 100 boards), 30/min/user and 300/min/org. Fail-open: an availability control. */
 export const DEATH_BOARD_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 30,

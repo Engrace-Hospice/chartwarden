@@ -178,7 +178,19 @@ export interface AiInvocationLedgerStore {
     invocationId: string,
     invokedAt: string,
     outcome: AiInvocationHitlOutcome,
+    guard?: AiHitlOutcomeGuard,
   ): Promise<void>;
+}
+
+/**
+ * Narrows the one legal UPDATE to the rows a consumer is entitled to decide on (ADR-0095): the row must be THIS actor's call, one of THESE
+ * capabilities, about THIS entity, and still open (`pending`, or `accepted` so a later edit can refine it). Without a guard the update is
+ * unchanged. A guarded update that matches nothing throws like an unguarded one, so the caller cannot tell "not yours" from "not there".
+ */
+export interface AiHitlOutcomeGuard {
+  readonly actorMembershipId: string;
+  readonly capabilityKeys: readonly string[];
+  readonly consumerEntityId: string;
 }
 
 /**
@@ -309,10 +321,17 @@ export function createInMemoryAiInvocationStores(seed: InMemoryAiInvocationSeed 
         )
         .reduce((sum, a) => sum + a.inputTokens + a.outputTokens, 0);
     },
-    recordHitlOutcome: async (organizationId, invocationId, invokedAt, outcome) => {
+    recordHitlOutcome: async (organizationId, invocationId, invokedAt, outcome, guard) => {
       const row = invocationRows.find(
         (r) =>
-          r.id === invocationId && r.organizationId === organizationId && r.invokedAt === invokedAt,
+          r.id === invocationId &&
+          r.organizationId === organizationId &&
+          r.invokedAt === invokedAt &&
+          (guard === undefined ||
+            (r.actorMembershipId === guard.actorMembershipId &&
+              guard.capabilityKeys.includes(r.capabilityKey) &&
+              r.consumerContextRef.entityId === guard.consumerEntityId &&
+              (r.hitlOutcome === "pending" || r.hitlOutcome === "accepted"))),
       );
       if (row === undefined) {
         throw new Error(

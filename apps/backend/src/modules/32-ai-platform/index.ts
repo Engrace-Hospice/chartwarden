@@ -94,6 +94,8 @@ export { createAiPayloadCipher, type AiPayloadKeyProvider } from "./invocation/p
 export { createOrganizationSettingsAiTokenBudgetResolver } from "./invocation/token-budget-settings";
 export { createRuleBasedAiChartContextValidator } from "./invocation/chart-context-rules";
 export { createDrizzleAiSeamActorResolver } from "./seams/actor-resolver-drizzle";
+// ADR-0095 (M36 WP 6.5): the MessagingAiPort over the governed pipeline.
+export { createMessagingAiPort } from "./seams/messaging-ai";
 export {
   DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
   DOCLENS_DOCUMENT_TYPES,

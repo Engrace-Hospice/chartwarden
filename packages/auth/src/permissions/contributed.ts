@@ -451,6 +451,15 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 6.5 (ADR-0095, PROPOSED): ask for an AI summary or reply draft of a conversation the caller can read. Needs the tenant flag
+  //     messaging.ai.enabled AND current membership of the channel (re-checked at call time); the model sees only a minimised, pseudonymised
+  //     copy of what the caller can read. Migration 1220 grants it to administrator and org_admin only; the clinical lead names who else. ---
+  "messaging.ai.use": {
+    resource: "message_ai",
+    action: "use",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. MANAGE creates, rotates and disables a third-party alarm source (a fresh
   //     step-up each time). Migration 1250 grants it to compliance_officer, administrator, org_admin only. The tenant flag
   //     messaging.alarm_ingest is off by default. ---
@@ -3685,6 +3694,39 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     action: "tier_record",
     category: "billing",
     abac: "provider_entity_scope",
+  },
+  // --- payer (commercial / Medicare Advantage) appeals (milestone 12a-1; migration 1206, granted by 1209) ---
+  // `payer_appeal.*` works a case at one level of a payer's own path; `payer_appeal_path.*` is the organization's own
+  // path data (nothing is seeded). `.verify` is the second person who checks a draft path against the contract.
+  "payer_appeal.read": {
+    resource: "payer_appeal_case",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "payer_appeal.manage": {
+    resource: "payer_appeal_case",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "payer_appeal_path.read": {
+    resource: "payer_appeal_path",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "payer_appeal_path.manage": {
+    resource: "payer_appeal_path",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
+  "payer_appeal_path.verify": {
+    resource: "payer_appeal_path",
+    action: "verify",
+    category: "billing",
+    abac: "none",
   },
   // --- taxonomy surface ---
   "taxonomy.read": {

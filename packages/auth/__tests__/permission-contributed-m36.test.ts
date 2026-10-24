@@ -55,6 +55,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.export.approve",
         "messaging.export.download",
         "messaging.share.manage",
+        "messaging.ai.use",
         "messaging.alarm_ingest.manage",
         "alert.inbox.self",
       ].sort(),
@@ -98,6 +99,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.export.approve",
       "messaging.export.download",
       "messaging.share.manage",
+      "messaging.ai.use",
       "messaging.alarm_ingest.manage",
       "alert.inbox.self",
     ] as const) {

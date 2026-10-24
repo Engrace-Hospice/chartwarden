@@ -603,6 +603,25 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/audit-response.routes";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
+  DenialCaseViewSchema as M25DenialCaseViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import {
+  PayerAppealPathListQuerySchema as M25PayerAppealPathListQuerySchema,
+  PayerAppealPathPageSchema as M25PayerAppealPathPageSchema,
+  PayerAppealPathRequestSchema as M25PayerAppealPathRequestSchema,
+  PayerAppealPathViewSchema as M25PayerAppealPathViewSchema,
+  PayerAppealVersionedResultSchema as M25PayerAppealPathVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes";
+import {
+  PayerAppealCaseViewSchema as M25PayerAppealCaseViewSchema,
+  PayerAppealDenialViewSchema as M25PayerAppealDenialViewSchema,
+  PayerAppealMoveRequestSchema as M25PayerAppealMoveRequestSchema,
+  PayerAppealNoticeRequestSchema as M25PayerAppealNoticeRequestSchema,
+  PayerAppealOpenRequestSchema as M25PayerAppealOpenRequestSchema,
+  PayerAppealOpenedSchema as M25PayerAppealOpenedSchema,
+  PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -1430,6 +1449,14 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
+// M36 WP 6.5 AI summaries and reply drafts (ADR-0095, PROPOSED).
+import {
+  AiDraftResponseSchema as M36AiDraftResponseSchema,
+  AiOutcomeBodySchema as M36AiOutcomeBodySchema,
+  AiRequestBodySchema as M36AiRequestBodySchema,
+  AiStatusResponseSchema as M36AiStatusResponseSchema,
+  AiSummaryResponseSchema as M36AiSummaryResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/ai-typebox";
 // M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
 import {
   DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
@@ -8669,6 +8696,83 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
     response: M25CaseViewSchema,
   },
+  "GET /api/v1/denials/:denialCaseId/case-view": {
+    summary:
+      "The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline",
+    response: M25DenialCaseViewSchema,
+  },
+  // ── payer-appeal-path.routes.ts / payer-appeal.routes.ts (hospice ADR/TPE/QIC PRD, milestone 12a-1) ──
+  "GET /api/v1/payer-appeal-paths": {
+    summary: "The organization's payer appeal paths (written by a person; none are seeded)",
+    query: M25PayerAppealPathListQuerySchema,
+    response: M25PayerAppealPathPageSchema,
+  },
+  "GET /api/v1/payer-appeal-paths/:id": {
+    summary: "One payer appeal path with its levels, source notes and verification",
+    response: M25PayerAppealPathViewSchema,
+  },
+  "POST /api/v1/payer-appeal-paths": {
+    summary:
+      "Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it",
+    body: M25PayerAppealPathRequestSchema,
+    response: M25PayerAppealPathVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/verify": {
+    summary:
+      "Verify a draft path as a person other than its author; it becomes active and frozen (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/retire": {
+    summary: "Retire a draft or active path; cases opened under it keep their snapshot (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened",
+    response: M25PayerAppealDenialViewSchema,
+  },
+  "POST /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date",
+    body: M25PayerAppealOpenRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+    status: 201,
+  },
+  "GET /api/v1/payer-appeals/:id": {
+    summary: "One payer appeal level with its deadline derivation, recorded deadlines and decision",
+    response: M25PayerAppealCaseViewSchema,
+  },
+  "PUT /api/v1/payer-appeals/:id/notice": {
+    summary: "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
+    body: M25PayerAppealNoticeRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/state": {
+    summary: "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
+    body: M25PayerAppealMoveRequestSchema,
+    response: M25PayerAppealVersionedSchema,
+  },
+  "GET /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this payer appeal level, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Record a due date typed from a payer notice (the source note is required)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
   // ── audit-response.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-2) ─────────────────────────────
   "PUT /api/v1/audit-requests/:id/response-items": {
     summary:
@@ -10038,7 +10142,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // WP 1.5 attachments (scan-gated; every refusal is the 404 a random id gets)
   "POST /api/v1/messaging/attachments/uploads": {
     summary:
-      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
+      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type (audio/webm and audio/mp4 voice notes are allowed only while the tenant flag messaging.voice_notes is on, and are capped at 8,000,000 bytes), 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36AuthorizeAttachmentBodySchema,
     response: M36AuthorizeAttachmentResponseSchema,
@@ -10731,6 +10835,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/export/:id/download": {
     summary:
       "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
+  },
+
+  // AI summaries and reply drafts (WP 6.5, ADR-0095 PROPOSED)
+  "GET /api/v1/messaging/ai/status": {
+    summary:
+      "Whether the AI summary panel is offered to the caller (WP 6.5, ADR-0095 PROPOSED; messaging.read): true only when the tenant flag `messaging.ai.enabled` is on AND the caller holds `messaging.ai.use`. A single boolean; any failure reads as false. It does not say whether a model is bound (a call may still answer AI unavailable). Never cached",
+    response: M36AiStatusResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/summaries": {
+    summary:
+      "An AI summary of the part of this conversation the caller can read (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + the channel_visibility MEMBERSHIP predicate, never the break-glass read variant; membership and permission are checked again immediately before the model is called and once more before the answer is returned). Optional `thread_root_message_id` summarises one reply thread. The input is the caller's own thread read, bounded to the newest 50 messages of the last 14 days, with redacted, deleted, legally held, system and unreadable messages EXCLUDED (the model sees only the placeholder; `withheld_count` is a bare count), senders replaced by a role token and alias, the patient by [PATIENT], times relative, identifiers masked. ONLY a patient's care-team channel is eligible (any other kind may name other patients in free text and is refused as AI_NOT_AVAILABLE_FOR_CHANNEL). A pending (requested, not approved) redaction also withholds a message; `withheld_count` leaves legally held messages out (a hold's existence is not for readers). Fewer than 3 includable messages, or a model that says so, is `status: insufficient_context` with no points (the model is not called for the former). Every point has `confidence` and `sources` mapped server-side from opaque refs to message ids of THIS conversation that were sent (an invented or withheld ref is dropped and the point demoted; a point with no valid source is discarded); text is plain (links, markup and images are stripped); an answer that states a dose, order or diagnosis is refused with 422 AI_OUTPUT_REFUSED. 404 AI_NOT_ENABLED while the tenant flag is off; 422 AI_NOT_AVAILABLE_FOR_CHANNEL for a Part 2 patient (generic; the model is never called); 429 over the limits (10 per user per hour, 3 per channel per 10 minutes; a quota store outage refuses); 503 AI_UNAVAILABLE for every other refusal (M32 gates, no BAA-covered backend, vendor error, invalid answer twice). Nothing is stored by M36; the only server copy is M32's encrypted ai_invocation row. Writes one m36.ai.summary_viewed audit row (ids and counts). Never cached; no Idempotency-Key",
+    body: M36AiRequestBodySchema,
+    response: M36AiSummaryResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/draft-replies": {
+    summary:
+      "Up to two AI draft replies for the COMPOSER (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + messaging.send + the channel_visibility membership predicate; not for an archived channel). Same input rules, gates, limits (20 per user per hour) and refusals as summaries. The draft is returned in the response only: it is never written to the message store or the drafts store and never queued or sent; a human edits it and sends through the normal send path. Plain text only; no attachments, mentions or orders. Never cached",
+    body: M36AiRequestBodySchema,
+    response: M36AiDraftResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/ai-outcomes": {
+    summary:
+      "Record what the person did with an AI answer (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + channel_visibility): accepted, edited or rejected, on the M32 ai_invocation row. Only the actor's own call, about THIS channel, by a messaging capability, and only while the outcome is still open (pending, or accepted which may be refined to edited): anything else, including an unknown id, is the same 404. 204",
+    body: M36AiOutcomeBodySchema,
+    status: 204,
   },
 
   // death-event coordination board (WP 6.9, ADR-0098 PROPOSED)

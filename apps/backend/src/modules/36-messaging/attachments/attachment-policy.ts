@@ -1,6 +1,11 @@
 // apps/backend/src/modules/36-messaging/attachments/attachment-policy.ts — WP 1.5: what a chat attachment may be, and
 // the opaque storage key it lives under. Pure; no I/O.
-import { ChartWardenError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  MAX_VOICE_NOTE_BYTES,
+  VOICE_NOTE_MIME_TYPES,
+  isVoiceNoteMimeType,
+} from "@chartwarden/types";
 
 /** 25 MB: the M22 verified-upload ceiling is 25 MiB; messaging stays under it (and under the 1075 CHECK). */
 export const MAX_ATTACHMENT_BYTES = 25_000_000;
@@ -12,7 +17,10 @@ export const ATTACHMENT_ACCESS_TTL_SECONDS = 120;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-/** The M22 document types plus plain text. Executables, archives, scripts and HTML are not on it. */
+/**
+ * The M22 document types plus plain text, plus the two voice-note types (WP 6.3, ADR-0094). Executables, archives, scripts and HTML
+ * are not on it. The audio types are on the list but authorize admits them only while the tenant's `messaging.voice_notes` flag is on.
+ */
 export const ATTACHMENT_MIME_ALLOWLIST: ReadonlySet<string> = new Set([
   "application/pdf",
   "image/jpeg",
@@ -20,6 +28,7 @@ export const ATTACHMENT_MIME_ALLOWLIST: ReadonlySet<string> = new Set([
   "image/tiff",
   DOCX,
   "text/plain",
+  ...VOICE_NOTE_MIME_TYPES,
 ]);
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -174,19 +183,33 @@ export function sanitizeFileName(raw: string): string {
   return name;
 }
 
+export interface AuthorizeOptions {
+  /** The tenant flag `messaging.voice_notes`. Absent or false => an audio type is refused exactly like any other disallowed type. */
+  readonly voiceNotesEnabled?: boolean;
+}
+
 /** Validate an authorize request at the trust boundary; returns the normalised copy. */
-export function validateAuthorizeInput(input: AuthorizeInput): AuthorizeInput {
-  if (!ATTACHMENT_MIME_ALLOWLIST.has(input.contentType)) {
-    throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "attachment content type is not allowed", 415);
-  }
+export function validateAuthorizeInput(
+  input: AuthorizeInput,
+  options: AuthorizeOptions = {},
+): AuthorizeInput {
+  const isVoice = isVoiceNoteMimeType(input.contentType);
   if (
-    !Number.isSafeInteger(input.byteSize) ||
-    input.byteSize < 1 ||
-    input.byteSize > MAX_ATTACHMENT_BYTES
+    !ATTACHMENT_MIME_ALLOWLIST.has(input.contentType) ||
+    (isVoice && !options.voiceNotesEnabled)
   ) {
     throw new ChartWardenError(
+      "UNSUPPORTED_MEDIA_TYPE",
+      "attachment content type is not allowed",
+      415,
+    );
+  }
+  // A voice note has its own, lower byte cap (the global ceiling is unchanged); the server never parses duration.
+  const maxBytes = isVoice ? MAX_VOICE_NOTE_BYTES : MAX_ATTACHMENT_BYTES;
+  if (!Number.isSafeInteger(input.byteSize) || input.byteSize < 1 || input.byteSize > maxBytes) {
+    throw new ChartWardenError(
       "UPLOAD_SIZE_INVALID",
-      `attachment byteSize must be between 1 and ${MAX_ATTACHMENT_BYTES}`,
+      `attachment byteSize must be between 1 and ${maxBytes}`,
       422,
     );
   }
