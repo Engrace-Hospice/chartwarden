@@ -144,10 +144,10 @@ describe("AI summary panel", () => {
   it("makes a citation a link only for a message that is loaded; the other stays plain text", async () => {
     const { jump } = mount();
     fireEvent.click(await screen.findByRole("button", { name: "AI summary" }));
-    const cite = await screen.findByRole("button", { name: "Source message 1" });
+    const cite = await screen.findByRole("button", { name: "[1] source message" });
     fireEvent.click(cite);
     expect(jump).toHaveBeenCalledWith("m-loaded");
-    expect(screen.queryByRole("button", { name: "Source message 2" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "[2] source message" })).toBeNull();
     expect(screen.getByText("[2]")).toBeTruthy();
   });
 
@@ -256,6 +256,44 @@ describe("AI summary panel", () => {
     // the only POSTs are: the summary, the draft, and (after the click) the decision - never a message
     const paths = POST.mock.calls.map((c) => c[0]);
     expect(paths.filter((p) => !(p === SUMMARY || p === DRAFT || p === OUTCOME))).toEqual([]);
+  });
+
+  it("closing records rejected only for an unused answer; after a copy it stays accepted; reopening asks again", async () => {
+    let n = 0;
+    const { POST } = mount({
+      summary: () => {
+        n += 1;
+        return {
+          data: summary({ invocation_id: `11111111-1111-4111-8111-11111111111${n}` }),
+          response: { status: 200 },
+        };
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "AI summary" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Copy to draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close AI summary" }));
+    await act(async () => undefined);
+    expect(outcomes(POST)).toEqual(["accepted"]);
+    fireEvent.click(screen.getByRole("button", { name: "AI summary" }));
+    await screen.findByText("Pain reported since morning");
+    expect(POST.mock.calls.filter((c) => c[0] === SUMMARY)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Close AI summary" }));
+    await waitFor(() => expect(outcomes(POST)).toEqual(["accepted", "rejected"]));
+  });
+
+  it("Cancel while generating closes the panel and ignores the late answer", async () => {
+    let release: (v: unknown) => void = () => undefined;
+    mount({
+      summary: () =>
+        new Promise((r) => {
+          release = r;
+        }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "AI summary" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    release({ data: summary(), response: { status: 200 } });
+    await act(async () => undefined);
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   it("closes with Escape and has no axe violations", async () => {

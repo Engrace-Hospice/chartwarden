@@ -1251,7 +1251,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id/presence", // WP 2.12: the guard answers before the (off) tenant flag
       "GET /api/v1/messaging/channels/:id/afterhours-triage", // ADR-0082: messaging.read + channel_visibility answer before the service/flag
     ];
-    it("AI routes (WP 6.5): org B and an in-org non-member get a random id's answer, a member reaches the service (503 AI unavailable), and nothing is written", async () => {
+    it("AI routes (WP 6.5): org B and an in-org non-member get a random id's answer, a member reaches the service (422, AI is care-team only), and nothing is written", async () => {
       const before = await fingerprint();
       for (const attacker of [bUser, outsider]) {
         for (const id of [dmA, locA, careTeamA]) {
@@ -1265,9 +1265,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           );
         }
       }
-      // non-vacuous: a real member passes every guard and the production-default port answers "AI unavailable" (no model is wired)
+      // non-vacuous: a real member passes every guard and the service refuses a non-care-team channel (422, generic) before any model could be reached
       const member = await call("POST /api/v1/messaging/channels/:id/summaries", u2, { id: dmA }, {});
-      expect(member.statusCode, member.body).toBe(503);
+      expect(member.statusCode, member.body).toBe(422);
       expect((await call("GET /api/v1/messaging/ai/status", u2)).json()).toEqual({ enabled: true });
       expect(await fingerprint()).toEqual(before);
     });

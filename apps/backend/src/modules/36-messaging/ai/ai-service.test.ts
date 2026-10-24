@@ -125,7 +125,7 @@ describe("summarize - the disclosure", () => {
     expect(sent.patientId).toBe("p-1");
     expect(out.status).toBe("ok");
     expect(out.included_count).toBe(3);
-    expect(out.withheld_count).toBe(2);
+    expect(out.withheld_count).toBe(1); // the held message is not counted for a reader (a hold is not for readers to learn)
     // the browser gets the real name back, built from the id M36 mapped, not from the model
     expect(out.points[0]?.text).toBe("Rita Alvarez reports uncontrolled pain");
     expect(out.points[0]?.sources[0]?.message_id).toBe("a");
@@ -241,6 +241,26 @@ describe("summarize - gates fail closed", () => {
       code: AI_NOT_AVAILABLE_FOR_CHANNEL,
     });
     expect(port.requests).toHaveLength(0);
+  });
+
+  it("is refused on any channel that is not a patient's care-team channel (free text may name other patients), and the model is never called", async () => {
+    const { service, port } = build({
+      channelFacts: async () => ({ patientId: null, archived: false }),
+    });
+    await expect(service.summarize(ME, CH, null)).rejects.toMatchObject({
+      code: AI_NOT_AVAILABLE_FOR_CHANNEL,
+    });
+    await expect(service.draftReply(ME, CH, null)).rejects.toMatchObject({
+      code: AI_NOT_AVAILABLE_FOR_CHANNEL,
+    });
+    expect(port.requests).toHaveLength(0);
+  });
+
+  it("a failing release (audit write) discards the answer: ledger rejected, nothing returned", async () => {
+    const { service, port } = build({ audit: async () => Promise.reject(new Error("audit down")) });
+    port.script(GOOD_SUMMARY);
+    await expect(service.summarize(ME, CH, null)).rejects.toThrow("audit down");
+    expect(port.outcomes.map((o) => o.outcome)).toEqual(["rejected"]);
   });
 
   it("the production default port answers AI unavailable", async () => {

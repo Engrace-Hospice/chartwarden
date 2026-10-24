@@ -122,8 +122,14 @@ export function createMessagingAiPort(deps: MessagingAiPortDeps): MessagingAiPor
           },
         );
         return "recorded";
-      } catch {
-        return "not_found";
+      } catch (err) {
+        // "No row matched" (not yours, not there, final) is the guarded update's only expected failure; anything else is an outage and must not be a quiet 404.
+        if (err instanceof Error && /not found/i.test(err.message)) return "not_found";
+        deps.warn?.("messaging AI outcome could not be recorded", {
+          organizationId: input.organizationId,
+          error: err instanceof Error ? err.name : "unknown",
+        });
+        throw err;
       }
     },
   };

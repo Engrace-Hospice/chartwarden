@@ -24,6 +24,7 @@ import { MESSAGING_AI_FLAG_KEY, MESSAGING_AI_USE_PERMISSION } from "@chartwarden
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
+import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
 import { buildLiveAiInvocationPipeline } from "../src/modules/32-ai-platform/live-pipeline";
 import { createMessagingAiPort } from "../src/modules/32-ai-platform/seams/messaging-ai";
@@ -47,6 +48,7 @@ const SECRET = "WP65-SECRET";
 const LOCAL_BACKEND = "local-llama-3.1-8b-instruct";
 const CAPABILITIES = ["messaging_summarize", "messaging_draft_reply"] as const;
 const PATIENT_NAME = "Margaretta Hollisworth";
+const PATIENT_MAIN = randomUUID();
 
 describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
   let kit: LiveKit;
@@ -170,7 +172,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
     noPerm = await kit.seedUser("noperm", ORG_A, STAFF_KEYS);
     outsider = await kit.seedUser("outsider", ORG_A, AI_KEYS);
     otherOrgUser = await kit.seedUser("other-org", ORG_B, AI_KEYS);
-    channel = await mkChannel(kit, "location", randomUUID(), [asker, colleague, noPerm]);
+    channel = await mkChannel(kit, "care_team", PATIENT_MAIN, [asker, colleague, noPerm]);
 
     // M5 stubs the care_team scrub and Part 2 refusal read through the seam registry.
     registerSeam("PatientReader", {
@@ -298,12 +300,15 @@ describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
         }),
       },
       actors: {
-        resolve: async (_org, userId) => ({
-          actorMembershipId: await membershipOf(userId),
-          actorRole: "registered_nurse",
-          providerEntityId: providerEntity,
-          locationId: null,
-        }),
+        resolve: async (_org, userId) =>
+          userId === null
+            ? null
+            : {
+                actorMembershipId: await membershipOf(userId),
+                actorRole: "registered_nurse",
+                providerEntityId: providerEntity,
+                locationId: null,
+              },
       },
     });
 
@@ -319,6 +324,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
         db: kit.handle.db,
         authenticate: headerAuth,
         security: { rateLimitEnabled: false },
+        idempotencyStore: createDbIdempotencyStore(kit.handle.db),
       });
       registerMessagingRoutes(s, {
         service: kit.service,
@@ -373,7 +379,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
         label: "AI summary - draft - not verified",
         status: "ok",
         included_count: 3,
-        withheld_count: 3,
+        withheld_count: 2,
       });
       expect(body.points[0].sources[0].message_id).toBe(first);
       expect(body.points[0].text).toContain("wp65 colleague"); // the real name, put back for the reader after the model
@@ -409,7 +415,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
         capability_key: "messaging_summarize",
         status: "completed",
         hitl_outcome: "pending",
-        patient_id: null,
+        patient_id: PATIENT_MAIN,
         leaked: false,
       });
       expect(rows[0]?.consumer_context_ref).toMatchObject({
@@ -523,6 +529,79 @@ describe.skipIf(!DB_URL)("M36 WP 6.5 AI summaries - LIVE Postgres", () => {
       expect(
         (await call(asker, "GET", "/api/v1/messaging/ai/status", undefined, ORG_A, appOff)).json(),
       ).toEqual({ enabled: false });
+    });
+  });
+
+  describe("5. review hardening", () => {
+    it("the idempotency middleware keeps NO copy of a summary or draft, even when the client sends an Idempotency-Key", async () => {
+      // a fresh conversation: the earlier tests spent the per-channel summary quota of the shared one
+      const channel = await mkChannel(kit, "care_team", randomUUID(), [asker, colleague]);
+      for (const t of ["one", "two", "three"]) await say(colleague, channel, `${SECRET} ${t}`);
+      modelAnswer = summaryAnswer("m1");
+      const key = `wp65-${randomUUID()}`;
+      const res = await app.inject({
+        method: "POST",
+        url: summariesUrl(channel),
+        headers: as(asker, ORG_A, key),
+        payload: {},
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      const stored = await kit.one("SELECT 1 FROM idempotency_key WHERE key=$1", [key]);
+      expect(stored).toHaveLength(0);
+      const drafts = await app.inject({
+        method: "POST",
+        url: draftsUrl(channel),
+        headers: as(asker, ORG_A, `${key}-d`),
+        payload: {},
+      });
+      expect([200, 422, 503]).toContain(drafts.statusCode);
+      expect(
+        await kit.one("SELECT 1 FROM idempotency_key WHERE key LIKE $1", [`${key}%`]),
+      ).toHaveLength(0);
+    });
+
+    it("a long reply thread is summarised from its NEWEST replies, and a requested (unapproved) redaction is withheld", async () => {
+      const channel = await mkChannel(kit, "care_team", randomUUID(), [asker, colleague]);
+      const root = await say(colleague, channel, `${SECRET}-ROOT`);
+      let lastId = "";
+      for (let i = 1; i <= 60; i += 1) {
+        lastId = (
+          await kit.service.sendMessage(ORG_A, {
+            channelId: channel,
+            authorUserId: i % 2 ? colleague : asker,
+            body: `${SECRET} reply-${i}`,
+            parentMessageId: root,
+          })
+        ).messageId;
+      }
+      const pending = (
+        await kit.service.sendMessage(ORG_A, {
+          channelId: channel,
+          authorUserId: colleague,
+          body: `${SECRET}-PENDING-REDACTION-TEXT`,
+          parentMessageId: root,
+        })
+      ).messageId;
+      await kit.admin.query("BEGIN");
+      await kit.admin.query("SELECT set_config('app.user_id', $1, true)", [colleague]);
+      await kit.admin.query(
+        "INSERT INTO message_redaction (organization_id, message_id, requested_by, reason) VALUES ($1,$2,$3,$4)",
+        [ORG_A, pending, colleague, "requested but not yet approved"],
+      );
+      await kit.admin.query("COMMIT");
+      // sit well inside the 14-day window; reset the per-channel quota the earlier tests spent
+      modelAnswer = summaryAnswer("m49");
+      const before = seen.length;
+      const res = await call(asker, "POST", summariesUrl(channel), {
+        thread_root_message_id: root,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      const sent = JSON.stringify(seen[before]);
+      expect(sent).toContain("reply-60");
+      expect(sent).not.toContain("reply-1 ");
+      expect(sent).not.toContain("PENDING-REDACTION-TEXT");
+      expect(res.json().points[0].sources[0].message_id).toBeTruthy();
+      expect(lastId).not.toBe("");
     });
   });
 

@@ -16,6 +16,7 @@ const input: ThreadInput = {
   aliasToDisplayName: new Map([["Sender A", "Rita Alvarez"]]),
   includedCount: 2,
   withheldCount: 1,
+  withheldVisibleCount: 1,
   firstSentMessageId: "real-1",
   lastSentMessageId: "real-3",
   inputHash: "h",

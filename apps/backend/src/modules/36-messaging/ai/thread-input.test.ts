@@ -166,6 +166,28 @@ describe("buildThreadInput - what reaches the model", () => {
     expect([...input.sentRefToMessageId.keys()]).toEqual(["m1", "m7", "m8"]);
   });
 
+  it("withholds a system-kind message even when it carries an author id, and does not count a held one for readers", () => {
+    const messages = [
+      msg("a", RITA, "visible", 30),
+      msg("b", RITA, "SYSTEM-KIND-TEXT", 20, { bodyKind: "system" } as never),
+      msg("c", DANA, "HELD-TEXT", 10, { legalHold: true }),
+    ];
+    const input = buildThreadInput({ ...base, messages });
+    expect(input.promptText).not.toContain("SYSTEM-KIND-TEXT");
+    expect(input.withheldCount).toBe(2);
+    expect(input.withheldVisibleCount).toBe(1);
+  });
+
+  it("scrubs names across invisible characters, accents and fullwidth forms", () => {
+    const input = buildThreadInput({
+      ...base,
+      patientNames: ["José Núñez"],
+      messages: [msg("a", RITA, "José N​úñez and Jose Nunez, ５０ mg", 5)],
+    });
+    expect(input.promptText).not.toMatch(/Jos|Nuñ|Nú|Nunez/i);
+    expect(input.promptText).toContain("[PATIENT]");
+  });
+
   it("bounds the window to the newest N messages and D days", () => {
     const many = Array.from({ length: 80 }, (_, i) => msg(`n${i}`, RITA, `body ${i}`, 80 - i));
     const kept = windowOf(many, NOW);

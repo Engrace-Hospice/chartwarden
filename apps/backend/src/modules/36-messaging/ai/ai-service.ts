@@ -154,7 +154,10 @@ export function createAiService(deps: AiServiceDeps): AiService {
       "AI is not available for this conversation.",
       422,
     );
-    if (facts.patientId) {
+    // AI is offered only on a patient's care-team channel: that is the only place the patient is named by structure, so the Part 2 refusal and
+    // [PATIENT] scrubbing are complete there. Any other kind (dm, group, location, discipline, on-call) may name patients in free text and is refused.
+    if (!facts.patientId) throw notForChannel;
+    {
       const restricted = await deps
         .isPart2Restricted(actor.orgId, facts.patientId)
         .catch(() => true);
@@ -269,6 +272,23 @@ export function createAiService(deps: AiServiceDeps): AiService {
     });
   }
 
+  /** Last gate before an answer is shown: still entitled, and the access is audited. Any failure discards the answer (ledger: rejected). */
+  async function release(
+    actor: AiActor,
+    channelId: string,
+    kind: AiKind,
+    call: Extract<MessagingAiCompletion, { available: true }>,
+    input: ReturnType<typeof buildThreadInput>,
+  ): Promise<void> {
+    try {
+      await stillEntitled(actor, channelId);
+      await audited(actor, channelId, kind, call, input);
+    } catch (err) {
+      await discard(actor, channelId, call);
+      throw err;
+    }
+  }
+
   return {
     async enabledFor(orgId, userId) {
       if (!(await flagOn(orgId))) return false;
@@ -280,7 +300,7 @@ export function createAiService(deps: AiServiceDeps): AiService {
       const base = {
         label: MESSAGING_AI_SUMMARY_LABEL,
         included_count: input.includedCount,
-        withheld_count: input.withheldCount,
+        withheld_count: input.withheldVisibleCount,
         input_hash: input.inputHash,
       } as const;
       if (input.includedCount < MESSAGING_AI_LIMITS.minMessagesToSummarise) {
@@ -295,14 +315,14 @@ export function createAiService(deps: AiServiceDeps): AiService {
         };
       }
       await consume(
-        `m36-ai:sum:user:${actor.orgId}:${actor.userId}`,
-        HOUR_MS,
-        MESSAGING_AI_LIMITS.summariesPerUserPerHour,
-      );
-      await consume(
         `m36-ai:sum:chan:${actor.orgId}:${channelId}`,
         TEN_MINUTES_MS,
         MESSAGING_AI_LIMITS.summariesPerChannelPerTenMinutes,
+      );
+      await consume(
+        `m36-ai:sum:user:${actor.orgId}:${actor.userId}`,
+        HOUR_MS,
+        MESSAGING_AI_LIMITS.summariesPerUserPerHour,
       );
       await stillEntitled(actor, channelId);
 
@@ -322,8 +342,7 @@ export function createAiService(deps: AiServiceDeps): AiService {
             422,
           );
         }
-        await stillEntitled(actor, channelId);
-        await audited(actor, channelId, "summary", call, input);
+        await release(actor, channelId, "summary", call, input);
         const tooLittle = parsed.insufficientContext || parsed.points.length === 0;
         return {
           ...base,
@@ -369,15 +388,14 @@ export function createAiService(deps: AiServiceDeps): AiService {
             422,
           );
         }
-        await stillEntitled(actor, channelId);
-        await audited(actor, channelId, "draft", call, input);
+        await release(actor, channelId, "draft", call, input);
         return {
           label: MESSAGING_AI_DRAFT_LABEL,
           invocation_id: call.invocationId,
           invoked_at: call.invokedAt,
           drafts: parsed.drafts,
           included_count: input.includedCount,
-          withheld_count: input.withheldCount,
+          withheld_count: input.withheldVisibleCount,
         };
       }
       throw unavailable();

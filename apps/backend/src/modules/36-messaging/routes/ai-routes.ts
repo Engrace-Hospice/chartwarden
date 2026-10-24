@@ -87,6 +87,7 @@ export function registerAiRoutes(
     {
       preHandler: [requireUuidParams("id"), guards.useAi, guards.viewChannel, ...limited],
       schema: { response: { 200: AiSummaryResponseSchema } },
+      config: { noIdempotencyCapture: true },
     },
     async (request, reply) => {
       const actor = actorOf(request);
@@ -103,6 +104,7 @@ export function registerAiRoutes(
     {
       preHandler: [requireUuidParams("id"), guards.useAi, guards.sendToChannel, ...limited],
       schema: { response: { 200: AiDraftResponseSchema } },
+      config: { noIdempotencyCapture: true },
     },
     async (request, reply) => {
       const actor = actorOf(request);
@@ -118,6 +120,7 @@ export function registerAiRoutes(
     "/api/v1/messaging/channels/:id/ai-outcomes",
     {
       preHandler: [requireUuidParams("id"), guards.useAi, guards.viewChannel, ...limited],
+      config: { noIdempotencyCapture: true },
     },
     async (request, reply) => {
       const actor = actorOf(request);

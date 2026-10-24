@@ -39,12 +39,15 @@ const DENYLIST: readonly RegExp[] = [
   /\byou\s+should\s+(?:give|increase|decrease|stop|start|order|administer|call 911)\b/i,
   /\b(?:diagnos(?:is|ed|e)|prognos(?:is|es)|differential|likely\s+(?:has|have|due to)|consistent\s+with|rule[s]?\s+out)\b/i,
   /\b(?:place|enter|write)\s+an?\s+order\b/i,
+  /\b\d+(?:[.,]\d+)?\s?(?:milligrams?|micrograms?|grams?|millilitres?|milliliters?|tablets?|pills?|patches|puffs?|drops?)\b/i,
+  /\b(?:double|halve|up|bump|wean|bolus)\s+(?:the\s+)?(?:dose|dosage|medication|morphine|opioid|infusion|pump|oxygen|rate)\b/i,
   /\b(?:stat|prn|new|standing)\s+orders?\b/i,
   /\bshould\s+(?:be\s+)?(?:given|started|stopped|increased|decreased|ordered|prescribed|held|discontinued)\b/i,
 ];
 
 export function violatesDenylist(text: string): boolean {
-  return DENYLIST.some((pattern) => pattern.test(text));
+  const folded = text.normalize("NFKC");
+  return DENYLIST.some((pattern) => pattern.test(folded));
 }
 
 const MARKDOWN_LINK = /!?\[([^\]]*)\]\([^)]*\)/g;

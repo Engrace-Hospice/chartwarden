@@ -4503,6 +4503,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     draftReply: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).draftReply(request),
     recordOutcome: (input) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).recordOutcome(input),
   };
+  if (dbHandle && !rateLimitStore) {
+    console.warn(
+      "M36 AI quotas use a per-replica in-memory store (no REDIS_URL): the per-user and per-channel limits are not shared across replicas or restarts",
+    );
+  }
   const m36Ai = dbHandle
     ? buildAiDeps({
         db: dbHandle.db,

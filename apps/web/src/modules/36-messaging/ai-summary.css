@@ -126,3 +126,8 @@
     box-shadow: var(--shadow-overlay, 0 0 0 1px var(--color-card-border));
   }
 }
+
+.wx-ai-title {
+  margin: 0;
+  font-size: 1rem;
+}

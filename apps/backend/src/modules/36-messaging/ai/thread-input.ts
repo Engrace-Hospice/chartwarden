@@ -38,6 +38,8 @@ export interface ThreadInput {
   readonly aliasToDisplayName: ReadonlyMap<string, string>;
   readonly includedCount: number;
   readonly withheldCount: number;
+  /** The count a READER may see: a legal hold's existence is not for ordinary readers (ADR-0086), so held messages are left out of it. */
+  readonly withheldVisibleCount: number;
   readonly firstSentMessageId: string | null;
   readonly lastSentMessageId: string | null;
   /** sha256 over the sent message ids: unchanged thread, unchanged hash. */
@@ -51,6 +53,7 @@ function isWithheld(message: ResolvedMessage): boolean {
     message.legalHold === true ||
     message.bodyUnreadable === true ||
     message.authorUserId === null ||
+    message.bodyKind === "system" ||
     message.body.trim().length === 0
   );
 }
@@ -96,10 +99,12 @@ export function buildThreadInput(args: ThreadInputArgs): ThreadInput {
   const sentAtByMessageId = new Map<string, string>();
   const sentIds: string[] = [];
   let withheldCount = 0;
+  let heldCount = 0;
   window.forEach((message, index) => {
     const ref = `m${index + 1}`;
     if (isWithheld(message)) {
       withheldCount += 1;
+      if (message.legalHold === true) heldCount += 1;
       lines.push(`${ref} | ${MESSAGING_AI_WITHHELD_PLACEHOLDER}`);
       return;
     }
@@ -138,6 +143,7 @@ export function buildThreadInput(args: ThreadInputArgs): ThreadInput {
     aliasToDisplayName,
     includedCount: sentIds.length,
     withheldCount,
+    withheldVisibleCount: withheldCount - heldCount,
     firstSentMessageId: sentIds[0] ?? null,
     lastSentMessageId: sentIds[sentIds.length - 1] ?? null,
     inputHash: createHash("sha256").update(sentIds.join(",")).digest("hex"),

@@ -70,7 +70,7 @@ WP 6.5 wants a thread summary with source-message citations and uncertainty, and
 - **Contract** `packages/types/src/messaging-ai.ts`; permission `messaging.ai.use` (migration 1220, administrator and org_admin only); audit action `m36.ai.summary_viewed`; **web** `ai-summary-panel.tsx`, `use-ai-assist.ts`, header button.
 - **Tests**: unit (input, output, service, adapter over the real pipeline with in-memory stores, gate, web panel with axe) and the live suite `m36-ai.live.test.ts` plus the tenant-IDOR suite rows. No external model is ever called; the only model in any test is an in-process scripted backend.
 
-Differences from the proposal above, all deliberate: the port lives in `@chartwarden/types` (no M36 to M32 manifest edge); a break-glass grantee does not get AI; the Part 2 refusal is generic; the capabilities carry no backend (no vendor decision was made); "accepted" can be refined to "edited" once; the outcome is recorded as `rejected` automatically when the answer is discarded (invalid twice, or a dose / order / diagnosis was refused).
+Differences from the proposal above, all deliberate: **AI is offered only on a patient's care-team channel** (security review: in any other channel kind a patient can be named in free text, which neither the `[PATIENT]` scrub nor the Part 2 refusal could cover; widening needs both done per mentioned patient); a redaction that is requested but not yet approved also withholds the message; `withheld_count` omits held messages because a hold's existence is not for ordinary readers (ADR-0086); the idempotency middleware is opted out on all three POSTs (`noIdempotencyCapture`), because its cached body would be a server-side copy of a summary; a long reply thread is paged to the end so the window is the newest replies; scrubbing folds fullwidth forms, accents and invisible characters before matching; the port lives in `@chartwarden/types` (no M36 to M32 manifest edge); a break-glass grantee does not get AI; the Part 2 refusal is generic; the capabilities carry no backend (no vendor decision was made); "accepted" can be refined to "edited" once; the outcome is recorded as `rejected` automatically when the answer is discarded (invalid twice, or a dose / order / diagnosis was refused).
 
 ## Not done / out of scope
 
@@ -92,6 +92,9 @@ No vendor, region, model, BAA or ZDR is chosen; no `ai_prompt_template` row or b
 12. Who holds `messaging.ai.use` (built: administrator and org_admin only; every clinical role needs the clinical lead's decision).
 
 ## Unverified
+
+- Residual PHI the code cannot remove: names of people who are neither authors nor the patient, nicknames, names of two letters or fewer, free-text dates of birth and addresses in unusual formats. This is why the call is BAA-only and the label says not verified.
+- The per-channel summary quota (3 per 10 minutes) lets one member use a channel's allowance; the quota counts requests, so a retry after an invalid answer is a second vendor call under one unit; redaction, hold and delete state are read once before dispatch (a window of seconds). The quota store is per replica unless `REDIS_URL` is set (the boot says so).
 
 - The capability rows, ruleset, permission and flag now exist (see Built). Still unbuilt: any prompt template row, backend row, evaluation or stage-4 approval.
 - Backend `baa_reference` and `zdr_status` are `null` in the seed; the BAA with the intended vendor is recorded in governance 9.2 as "in progress" and may be out of date.

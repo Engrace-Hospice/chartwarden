@@ -89,13 +89,15 @@ export function AiSummaryPanel(props: AiSummaryPanelProps): JSX.Element {
       }}
     >
       <header>
-        <strong>{view.phase === "drafts" ? AI_DRAFTS_TITLE : AI_PANEL_TITLE}</strong>
+        <h2 className="wx-ai-title">
+          {view.phase === "drafts" ? AI_DRAFTS_TITLE : AI_PANEL_TITLE}
+        </h2>
         <button ref={closeRef} type="button" onClick={props.onClose} aria-label="Close AI summary">
           <Glyph name="close" size={17} />
         </button>
       </header>
       <p className="wx-ai-guardrail">{AI_GUARDRAIL}</p>
-      <div aria-live="polite" className="wx-ai-body">
+      <div className="wx-ai-body">
         {view.phase === "generating" ? (
           <div className="wx-ai-generating">
             <p>
@@ -158,7 +160,7 @@ function SummaryBody(props: AiSummaryPanelProps & { data: MessagingAiSummaryDto 
                   key={source.message_id}
                   type="button"
                   className="wx-ai-cite"
-                  aria-label={`Source message ${source.n}`}
+                  aria-label={`[${source.n}] source message`}
                   onClick={() => props.onJump(source.message_id)}
                 >
                   [{source.n}]
@@ -180,13 +182,15 @@ function SummaryBody(props: AiSummaryPanelProps & { data: MessagingAiSummaryDto 
       </p>
       <p className="wx-ai-note">{AI_NOT_A_SUBSTITUTE}</p>
       <div className="wx-ai-actions">
-        <button type="button" onClick={() => props.onCopyToDraft(copyText)}>
-          {AI_COPY_TO_DRAFT}
-        </button>
         {props.canDraft ? (
-          <button type="button" onClick={props.onDraftReply}>
-            {AI_DRAFT_REPLY}
-          </button>
+          <>
+            <button type="button" onClick={() => props.onCopyToDraft(copyText)}>
+              {AI_COPY_TO_DRAFT}
+            </button>
+            <button type="button" onClick={props.onDraftReply}>
+              {AI_DRAFT_REPLY}
+            </button>
+          </>
         ) : null}
         <button type="button" onClick={props.onRegenerate}>
           {AI_REGENERATE}
@@ -208,12 +212,15 @@ function DraftsBody(
     <>
       <ol className="wx-ai-drafts">
         {props.drafts.map((text, index) => (
-          <li key={text}>
+          // biome-ignore lint/suspicious/noArrayIndexKey: a static list of at most two drafts, identical texts are possible
+          <li key={`${index}|${text}`}>
             <p>{text}</p>
-            <button type="button" onClick={() => props.onCopyToDraft(text)}>
-              {AI_COPY_TO_DRAFT}
-              <span className="wx-visually-hidden"> {index + 1}</span>
-            </button>
+            {props.canDraft ? (
+              <button type="button" onClick={() => props.onCopyToDraft(text)}>
+                {AI_COPY_TO_DRAFT}
+                <span className="wx-visually-hidden"> {index + 1}</span>
+              </button>
+            ) : null}
             {props.copiedText === text ? <output> {AI_COPIED}</output> : null}
           </li>
         ))}

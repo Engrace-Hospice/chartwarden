@@ -35,7 +35,23 @@ interface AiClient {
   ): Promise<{ data?: unknown; error?: unknown; response?: { status: number } }>;
 }
 
-/** The panel is absent unless the tenant flag AND the caller's permission say yes. Any failure reads as off. */
+const sharedStatus = new WeakMap<object, Promise<boolean>>();
+
+function readStatus(client: AiClient): Promise<boolean> {
+  const cached = sharedStatus.get(client);
+  if (cached) return cached;
+  const forget = (): false => {
+    sharedStatus.delete(client);
+    return false;
+  };
+  const read = Promise.resolve()
+    .then(() => client.GET(STATUS_PATH))
+    .then((res) => (res?.data ? res.data.enabled === true : forget()), forget);
+  sharedStatus.set(client, read);
+  return read;
+}
+
+/** The panel is absent unless the tenant flag AND the caller's permission say yes. Any failure reads as off. One read per client. */
 export function useAiEnabled(): boolean {
   const client = useOptionalApiClient();
   const [enabled, setEnabled] = useState(false);
@@ -45,12 +61,9 @@ export function useAiEnabled(): boolean {
       setEnabled(false);
       return;
     }
-    void Promise.resolve()
-      .then(() => (client as unknown as AiClient).GET(STATUS_PATH))
-      .then(
-        (res) => live && setEnabled(res?.data?.enabled === true),
-        () => live && setEnabled(false),
-      );
+    void readStatus(client as unknown as AiClient).then((on) => {
+      if (live) setEnabled(on);
+    });
     return () => {
       live = false;
     };
@@ -168,23 +181,26 @@ export function useAiAssist(channelId: string, draft: string) {
   return {
     open,
     view,
-    /** Opening is the explicit click: it generates (unless a result is already in memory). */
+    /** Opening is the explicit click and ALWAYS asks again: a stale summary of a live conversation is a hazard (H-08). */
     toggle: (): void => {
       if (open) {
-        // Closing without copying anything is a rejection of what was shown.
-        if (!copied.current) settle("rejected");
+        settle("rejected"); // no-op when the shown answer was already used or rejected
         setOpen(false);
+        setView({ phase: "idle" });
         return;
       }
       setOpen(true);
-      if (view.phase === "idle" || view.phase === "problem") void run("summary", null);
+      void run("summary", null);
     },
     close: (): void => {
-      if (!copied.current) settle("rejected");
+      settle("rejected");
       setOpen(false);
+      setView({ phase: "idle" });
     },
+    /** Cancel returns to the summary being read (when drafting) or closes the panel. */
     cancel: (): void => {
       generation.current += 1;
+      setOpen(false);
       setView({ phase: "idle" });
     },
     regenerate: (): void => {
@@ -194,6 +210,7 @@ export function useAiAssist(channelId: string, draft: string) {
     notUseful: (): void => {
       settle("rejected");
       setOpen(false);
+      setView({ phase: "idle" });
     },
     draftReply: (): void => {
       void run("draft", view.phase === "summary" ? view.data : null);

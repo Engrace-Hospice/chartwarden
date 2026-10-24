@@ -63,6 +63,19 @@ export function stripControlChars(text: string): string {
   return out;
 }
 
+/**
+ * Compatibility-normalise (fullwidth to ASCII), drop invisible format characters (zero-width joiners, soft hyphens, bidi marks, BOM) and fold
+ * accents, so "Jos\u00e9", "J\u200bohn" and a fullwidth digit cannot slip past a name or identifier match. Applied to the body AND the names.
+ */
+export function foldForMatching(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/\p{Cf}/gu, "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .normalize("NFC");
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -71,7 +84,7 @@ function escapeRegExp(value: string): string {
 function namePatterns(names: readonly string[]): RegExp[] {
   const parts = new Set<string>();
   for (const name of names) {
-    const trimmed = name.trim();
+    const trimmed = foldForMatching(name).trim();
     if (trimmed.length >= 3) parts.add(trimmed);
     for (const part of trimmed.split(/[\s,]+/)) if (part.length >= 3) parts.add(part);
   }
@@ -92,7 +105,7 @@ export interface ScrubContext {
  * fixed-shape identifiers, then whitespace collapse (so a body can never forge a second message line) and delimiter neutralisation.
  */
 export function scrubBody(raw: string, ctx: ScrubContext, maxChars: number): string {
-  let text = stripControlChars(raw);
+  let text = foldForMatching(stripControlChars(raw));
   for (const pattern of namePatterns(ctx.patientNames))
     text = text.replace(pattern, MESSAGING_AI_PATIENT_TOKEN);
   for (const [name, label] of ctx.participantLabels) {
