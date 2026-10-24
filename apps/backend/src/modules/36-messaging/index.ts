@@ -145,12 +145,11 @@ export {
 
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createAckBroadcastService as _createAckBroadcastService } from "./ack-broadcast/ack-broadcast-service";
 import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
-import { buildSmartInboxService as _buildSmartInboxService, smartInboxFlag as _smartInboxFlag } from "./inbox/binding";
-import { createAckBroadcastService as _createAckBroadcastService } from "./ack-broadcast/ack-broadcast-service";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
@@ -167,17 +166,16 @@ import type {
   ExportPermissionCheck as _ExportPermissionCheck,
 } from "./export/export-ports";
 import { createExportService as _createExportService } from "./export/export-service";
+import { createDrizzleExportStore as _createDrizzleExportStore } from "./export/export-store";
 import {
-  type AttemptLimiter as _ExternalShareLimiter,
   type ExternalShareFlagReader as _ExternalShareFlagReader,
+  type AttemptLimiter as _ExternalShareLimiter,
   createExternalShareService as _createExternalShareService,
 } from "./external-share/external-share-service";
 import {
   createDrizzleSharePartnerStore as _createDrizzleSharePartnerStore,
   createDrizzleShareStaffStore as _createDrizzleShareStaffStore,
 } from "./external-share/external-share-store";
-import { createMessageBodyCipher as _createMessageBodyCipher } from "./messaging-write-core";
-import { createDrizzleExportStore as _createDrizzleExportStore } from "./export/export-store";
 import {
   type GlobalSearchMountOptions,
   mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
@@ -190,12 +188,17 @@ import {
   createRetentionGovernanceService as _createRetentionGovernanceService,
 } from "./governance/retention-governance-service";
 import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/binding";
+import {
+  buildSmartInboxService as _buildSmartInboxService,
+  smartInboxFlag as _smartInboxFlag,
+} from "./inbox/binding";
 import { createMentionActorNameResolver as _createMentionActorNameResolver } from "./mention-non-member-service-db";
 import {
   createDbMessagingRouteService as _createDbMessagingRouteService,
   isActiveMessagingUser as _isActiveMessagingUser,
 } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
+import { createMessageBodyCipher as _createMessageBodyCipher } from "./messaging-write-core";
 import {
   type OffboardingBindingInput as _OffboardingBindingInput,
   buildOffboardingService as _buildOffboardingService,
@@ -287,7 +290,9 @@ export function mountMessagingRoutes(
     /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
     snoozeReminders?: _SnoozeReminderRouteDeps;
     /** WP 6.1 (ADR-0091): the smart work inbox. `flags` is the platform flag reader for `messaging.smart_inbox`; omitted => off. */
-    smartInbox?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
+    smartInbox?: {
+      flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+    };
     /** WP 6.8 (ADR-0097): acknowledge-required broadcast. `flags` reads `messaging.ack_broadcast` (absent = off); `rateLimit` is the optional route budget. */
     ackBroadcast?: {
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
@@ -379,7 +384,9 @@ export function mountMessagingRoutes(
   _registerMessagingRoutes(app, {
     service,
     announcements,
-    ...(externalShareService ? { externalShare: { indicator: externalShareService.indicator } } : {}),
+    ...(externalShareService
+      ? { externalShare: { indicator: externalShareService.indicator } }
+      : {}),
     ...(opts.presence ? { presence: opts.presence } : {}),
     ...(opts.clinicalLinks ? { clinicalLinks: opts.clinicalLinks } : {}),
     ...(opts.sbar ? { sbar: opts.sbar } : {}),

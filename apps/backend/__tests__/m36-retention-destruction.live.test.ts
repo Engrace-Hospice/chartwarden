@@ -1686,9 +1686,10 @@ describe.skipIf(!DB_URL)(
         expect(n, `${table} gone with the message`).toBe(0);
       }
       expect(
-        await kit.count("SELECT count(*)::int AS n FROM message_ack_broadcast_recipient WHERE broadcast_id=$1", [
-          broadcast,
-        ]),
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message_ack_broadcast_recipient WHERE broadcast_id=$1",
+          [broadcast],
+        ),
         "message_ack_broadcast_recipient gone with its broadcast",
       ).toBe(0);
       // The channel member row stays; only its pointer to the destroyed message is cleared.

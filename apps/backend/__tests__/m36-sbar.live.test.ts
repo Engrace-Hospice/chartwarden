@@ -39,7 +39,10 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
-import { CHANNEL_VISIBILITY_PREDICATE, CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/index";
+import {
+  CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+} from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";

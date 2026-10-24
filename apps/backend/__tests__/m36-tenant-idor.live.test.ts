@@ -60,7 +60,6 @@ import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-requests/open-request-lookup";
 import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
 import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
-import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
@@ -73,6 +72,7 @@ import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-s
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
+import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import {
   buildMedicationQuestionDeps,
   createDbChannelFactsLookup,

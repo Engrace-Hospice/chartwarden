@@ -41,14 +41,22 @@ import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-s
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-link/clinical-link-store-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
-import { CHANNEL_VISIBILITY_PREDICATE, CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/index";
+import {
+  CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+} from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000c0001";
 const ORG_B = "22222222-2222-4222-8222-2222000c0002";
