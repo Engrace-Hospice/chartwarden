@@ -65,7 +65,11 @@ export const RecordedDeadlineSatisfyRequestSchema = Type.Object({
 
 export const RecordedDeadlineViewSchema = Type.Object({
   id: Type.String(),
-  subjectKind: Type.Union([Type.Literal("appeal"), Type.Literal("audit_request")]),
+  subjectKind: Type.Union([
+    Type.Literal("appeal"),
+    Type.Literal("audit_request"),
+    Type.Literal("payer_appeal"),
+  ]),
   subjectId: Type.String(),
   label: Type.String(),
   dueOn: Type.String(),

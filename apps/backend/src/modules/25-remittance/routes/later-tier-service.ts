@@ -37,7 +37,8 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 export type DeadlineSubject =
   | { readonly kind: "appeal"; readonly id: string }
-  | { readonly kind: "audit_request"; readonly id: string };
+  | { readonly kind: "audit_request"; readonly id: string }
+  | { readonly kind: "payer_appeal"; readonly id: string };
 
 export interface RecordedDeadlineInput {
   readonly label: string;
@@ -180,6 +181,8 @@ export function buildDrizzleLaterTierService(
   const TD = schema.appealTierDetail;
   const RD = schema.recordedDeadline;
   const AREV = schema.auditRequestEvent;
+  const PAC = schema.payerAppealCase;
+  const PAEV = schema.payerAppealCaseEvent;
 
   const detailView = (r: typeof TD.$inferSelect): TierDetailView => ({
     id: r.id,
@@ -218,6 +221,23 @@ export function buildDrizzleLaterTierService(
         claimIds: [a.claimId] as readonly string[],
       };
     }
+    if (subject.kind === "payer_appeal") {
+      const psc = providerEntityScopeCondition(PAC.providerEntityId, actor.providerEntityScope);
+      const found = await tx
+        .select()
+        .from(PAC)
+        .where(psc ? and(eq(PAC.id, subject.id), psc) : eq(PAC.id, subject.id))
+        .limit(1);
+      if (!found[0]) throw new NotFoundError("payer appeal case");
+      return {
+        providerEntityId: found[0].providerEntityId,
+        finished: found[0].state === "closed" || found[0].state === "withdrawn",
+        signedOff: false,
+        state: found[0].state,
+        claimId: found[0].claimId,
+        claimIds: (found[0].claimId ? [found[0].claimId] : []) as readonly string[],
+      };
+    }
     const scope = providerEntityScopeCondition(AR.providerEntityId, actor.providerEntityScope);
     const rows = await tx
       .select()
@@ -247,7 +267,11 @@ export function buildDrizzleLaterTierService(
   }
 
   const subjectFilter = (subject: DeadlineSubject) =>
-    subject.kind === "appeal" ? eq(RD.appealCaseId, subject.id) : eq(RD.auditRequestId, subject.id);
+    subject.kind === "appeal"
+      ? eq(RD.appealCaseId, subject.id)
+      : subject.kind === "payer_appeal"
+        ? eq(RD.payerAppealCaseId, subject.id)
+        : eq(RD.auditRequestId, subject.id);
 
   async function zonesFor(tx: Tx, providerEntityId: string): Promise<readonly string[]> {
     const zones = (
@@ -306,6 +330,16 @@ export function buildDrizzleLaterTierService(
     eventKind: string,
     deadlineId: string,
   ) {
+    if (subject.kind === "payer_appeal") {
+      await tx.insert(PAEV).values({
+        organizationId: actor.organizationId,
+        payerAppealCaseId: subject.id,
+        eventKind,
+        eventPayload: { deadlineId },
+        actorMembershipId: actor.membershipId,
+      });
+      return;
+    }
     if (subject.kind !== "audit_request") return;
     await tx.insert(AREV).values({
       organizationId: actor.organizationId,
@@ -451,6 +485,7 @@ export function buildDrizzleLaterTierService(
             providerEntityId: s.providerEntityId,
             appealCaseId: subject.kind === "appeal" ? subject.id : null,
             auditRequestId: subject.kind === "audit_request" ? subject.id : null,
+            payerAppealCaseId: subject.kind === "payer_appeal" ? subject.id : null,
             label: input.label.trim(),
             dueOn: input.dueOn,
             zone: derived.zone,

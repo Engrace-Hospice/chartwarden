@@ -132,6 +132,13 @@ BEGIN
     IF NEW.status <> 'draft' THEN
       RAISE EXCEPTION 'M25_PAYER_PATH_BORN_DRAFT: a payer appeal path is created as a draft and verified by a second person';
     END IF;
+    -- The author is the caller: when the session names a user, the authoring membership must be that user's, so a body cannot
+    -- claim someone else wrote the path (which would let the real author "verify" it).
+    IF coalesce(NULLIF(current_setting('app.user_id', true), ''), '') <> '' AND NOT EXISTS (
+         SELECT 1 FROM membership m WHERE m.id = NEW.authored_by_membership_id AND m.organization_id = NEW.organization_id
+            AND m.user_id = NULLIF(current_setting('app.user_id', true), '')::uuid) THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_AUTHOR: the authoring membership is not the caller''s';
+    END IF;
     IF NEW.supersedes_path_id IS NOT NULL THEN
       SELECT payer_id, program, lower(btrim(coalesce(contract_label, ''))) AS label INTO v_prior
         FROM payer_appeal_path WHERE id = NEW.supersedes_path_id AND organization_id = NEW.organization_id;
@@ -158,8 +165,9 @@ BEGIN
     IF NEW.verified_by_membership_id IS NULL OR NEW.verified_by_membership_id = OLD.authored_by_membership_id THEN
       RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: a payer appeal path is activated by a person other than its author';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id) THEN
-      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: the verifier is not a member of this organization';
+    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id
+         AND (coalesce(NULLIF(current_setting('app.user_id', true), ''), '') = '' OR m.user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)) THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: the verifier is not the caller, or not a member of this organization';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM payer_appeal_path_level l WHERE l.path_id = OLD.id) THEN
       RAISE EXCEPTION 'M25_PAYER_PATH_NO_LEVELS: a path with no levels cannot be activated';
@@ -176,7 +184,9 @@ CREATE OR REPLACE FUNCTION m25_payer_appeal_path_level_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE v_status text;
 BEGIN
-  SELECT status INTO v_status FROM payer_appeal_path WHERE id = NEW.path_id AND organization_id = NEW.organization_id;
+  -- FOR SHARE: a concurrent activation (an UPDATE of the parent) waits for this insert, and this insert waits for it, so a level
+  -- can never slip into a path that is being activated.
+  SELECT status INTO v_status FROM payer_appeal_path WHERE id = NEW.path_id AND organization_id = NEW.organization_id FOR SHARE;
   IF v_status IS NULL THEN
     RAISE EXCEPTION 'M25_PAYER_PATH_LEVEL_PARENT: payer_appeal_path % is not visible to this organization', NEW.path_id;
   END IF;

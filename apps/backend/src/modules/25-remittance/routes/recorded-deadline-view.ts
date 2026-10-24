@@ -13,7 +13,7 @@ export type RecordedDeadlineRow = typeof schema.recordedDeadline.$inferSelect;
 
 export interface RecordedDeadlineView {
   readonly id: string;
-  readonly subjectKind: "appeal" | "audit_request";
+  readonly subjectKind: "appeal" | "audit_request" | "payer_appeal";
   readonly subjectId: string;
   readonly label: string;
   /** The date as typed from the notice (YYYY-MM-DD). */
@@ -31,8 +31,8 @@ export interface RecordedDeadlineView {
 export function viewRecordedDeadline(r: RecordedDeadlineRow, now: Date): RecordedDeadlineView {
   return {
     id: r.id,
-    subjectKind: r.appealCaseId ? "appeal" : "audit_request",
-    subjectId: (r.appealCaseId ?? r.auditRequestId) as string,
+    subjectKind: r.appealCaseId ? "appeal" : r.payerAppealCaseId ? "payer_appeal" : "audit_request",
+    subjectId: (r.appealCaseId ?? r.payerAppealCaseId ?? r.auditRequestId) as string,
     label: r.label,
     dueOn: r.dueOn,
     zone: r.zone,

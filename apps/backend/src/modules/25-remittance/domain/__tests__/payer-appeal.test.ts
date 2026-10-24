@@ -67,7 +67,7 @@ describe("derivePayerLevelDeadline", () => {
     const d = derivePayerLevelDeadline(cal(10), "2026-03-02", ["America/New_York"]);
     expect(d?.lastFilingDay).toBe("2026-03-12");
     expect(d?.presumedReceiptOn).toBeNull();
-    expect(d?.deadlineAt.toISOString()).toBe("2026-03-13T04:59:59.999Z");
+    expect(d?.deadlineAt.toISOString()).toBe("2026-03-13T03:59:59.999Z");
   });
   it("applies a receipt presumption only when the row states one", () => {
     const d = derivePayerLevelDeadline(cal(10, { receiptPresumptionDays: 3 }), "2026-03-02", [

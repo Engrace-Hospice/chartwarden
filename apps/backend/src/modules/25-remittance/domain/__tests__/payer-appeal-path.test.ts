@@ -192,7 +192,7 @@ describe("the payer-appeal domain files encode no payer window", () => {
     const src = readFileSync(join(__dirname, "..", file), "utf8");
     const offenders = src
       .split("\n")
-      .filter((l) => !/\bbound\b/i.test(l))
+      .filter((l) => !/\bbound\b/i.test(l) && !/^\s*(\/\*|\*)/.test(l))
       .map((l) => l.replace(/\/\/.*$/, "").replace(/"[^"]*"/g, '""'))
       .flatMap((l) => l.match(/(?<![\w.])\d+(?:\.\d+)?(?![\w])/g) ?? [])
       .filter((n) => n !== "0" && n !== "1");
