@@ -201,3 +201,55 @@ export function computeAssessmentWindowDeadline(
   const electionDate = localDateOfInstant(electedAt.toISOString(), timeZone);
   return new Date(endOfOrgDayInstant(comprehensiveAssessmentDueOn(electionDate), timeZone));
 }
+
+// ── typed wall-clock times (NOMNC / expedited review, milestone 10a) ─────────────────────────────────────
+
+/** Why a typed local date + time could not become an instant. Nothing is ever defaulted. */
+export type WallTimeRefusal =
+  | "DATE_REQUIRED"
+  | "TIME_REQUIRED"
+  | "DATE_INVALID"
+  | "TIME_INVALID"
+  | "TIME_NONEXISTENT";
+
+export type WallTimeResult =
+  | { readonly ok: true; readonly instant: string }
+  | { readonly ok: false; readonly code: WallTimeRefusal };
+
+const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_SHAPE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * The UTC instant of the wall-clock minute `date` `time` (`HH:MM`, 24h) in `timeZone`, to the minute. A missing
+ * date or time is REFUSED (never defaulted to noon or end of day); a local time that does not exist (the spring
+ * DST gap) is refused; an ambiguous one (the autumn overlap) takes the EARLIER instant, so a typed deadline is
+ * never later than the person meant.
+ */
+export function wallTimeToOrgInstant(
+  date: string | null | undefined,
+  time: string | null | undefined,
+  timeZone: string,
+): WallTimeResult {
+  if (!date) return { ok: false, code: "DATE_REQUIRED" };
+  if (!time) return { ok: false, code: "TIME_REQUIRED" };
+  if (!DATE_SHAPE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+    return { ok: false, code: "DATE_INVALID" };
+  }
+  if (!TIME_SHAPE.test(time)) return { ok: false, code: "TIME_INVALID" };
+  const wallUTC = Date.parse(`${date}T${time}:00Z`);
+  if (Number.isNaN(wallUTC) || new Date(wallUTC).toISOString().slice(0, 10) !== date) {
+    return { ok: false, code: "DATE_INVALID" };
+  }
+  // Candidate offsets bracket any transition within a day of the wall time; keep those that round-trip.
+  const offsets = new Set([
+    tzOffsetMs(wallUTC - 86_400_000, timeZone),
+    tzOffsetMs(wallUTC + 86_400_000, timeZone),
+  ]);
+  const valid = [...offsets]
+    .map((off) => wallUTC - off)
+    .filter((utc) => utc + tzOffsetMs(utc, timeZone) === wallUTC)
+    .sort((a, b) => a - b);
+  const earliest = valid[0];
+  if (earliest === undefined) return { ok: false, code: "TIME_NONEXISTENT" };
+  return { ok: true, instant: new Date(earliest).toISOString() };
+}

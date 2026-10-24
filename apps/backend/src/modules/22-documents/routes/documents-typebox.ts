@@ -260,6 +260,16 @@ export const SignedUrlRequest = Type.Object({
   purpose: lit(ACCESS_PURPOSE),
   recipientMembershipId: Type.Optional(Type.String({ format: "uuid" })),
   recipientClass: Type.Optional(Type.String({ maxLength: 128 })),
+  /** §4.12 — the out-of-network recipient of a `disclosure` / `survey_export` presign: an M40 entity of
+   *  a kind with a canonical registry table (facility, payer; the other kinds have none yet). Both or
+   *  neither: a half-supplied pair is dropped and the service refuses the external purpose (403). */
+  recipientKind: Type.Optional(
+    Type.Union([
+      Type.Literal("facility"),
+      Type.Literal("payer"),
+    ]),
+  ),
+  recipientEntityId: Type.Optional(Type.String({ format: "uuid" })),
   ttlSeconds: Type.Optional(Type.Integer({ minimum: 30, maximum: 3600 })),
 });
 

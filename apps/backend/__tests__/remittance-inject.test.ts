@@ -181,6 +181,7 @@ function createM25Backend(): {
       dollarValue: string;
       taxonomyStatus: string;
       version: number;
+      payerKind: "medicare" | "medicaid" | "commercial" | "unknown";
     }
   >();
   const appeals = new Map<string, AppealDetail>();
@@ -234,6 +235,7 @@ function createM25Backend(): {
     dollarValue: "300.00",
     taxonomyStatus: "mapped",
     version: 1,
+    payerKind: "medicare",
   });
 
   appeals.set(APPEAL, {

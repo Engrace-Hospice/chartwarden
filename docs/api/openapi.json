@@ -29490,6 +29490,1210 @@
         }
       }
     },
+    "/api/v1/admissions/{id}/expedited-deadlines/{deadlineId}": {
+      "patch": {
+        "operationId": "patchApiV1AdmissionsByIdExpediteddeadlinesByDeadlineId",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Edit a typed deadline or mark it met",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "subject",
+                    "subjectId",
+                    "kind",
+                    "label",
+                    "dueAt",
+                    "dueLocal",
+                    "zone",
+                    "sourceNote",
+                    "noticeDocumentId",
+                    "satisfiedAt",
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "anyOf": [
+                        {
+                          "const": "notice",
+                          "type": "string"
+                        },
+                        {
+                          "const": "review",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "appeal_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denc_delivery",
+                          "type": "string"
+                        },
+                        {
+                          "const": "records_to_qio",
+                          "type": "string"
+                        },
+                        {
+                          "const": "qio_decision",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "dueLocal": {
+                      "type": "string"
+                    },
+                    "zone": {
+                      "type": "string"
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "noticeDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "satisfiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "due_soon",
+                          "type": "string"
+                        },
+                        {
+                          "const": "past",
+                          "type": "string"
+                        },
+                        {
+                          "const": "satisfied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "label": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "sourceNote": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "satisfy": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/expedited-reviews/{reviewId}": {
+      "patch": {
+        "operationId": "patchApiV1AdmissionsByIdExpeditedreviewsByReviewId",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record the DENC / records-sent facts or the QIO decision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "nomncNoticeId",
+                    "state",
+                    "qioName",
+                    "qioReference",
+                    "qioNotifiedAt",
+                    "requestedByKind",
+                    "dencDeliveredAt",
+                    "dencDocumentId",
+                    "recordsSentAt",
+                    "recordsSentNote",
+                    "decisionOutcome",
+                    "decisionReceivedAt",
+                    "decisionNote",
+                    "decisionDocumentId",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "nomncNoticeId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "decided",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "qioName": {
+                      "type": "string"
+                    },
+                    "qioReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qioNotifiedAt": {
+                      "type": "string"
+                    },
+                    "requestedByKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dencDeliveredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dencDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsSentAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsSentNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionOutcome": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "discharge_upheld",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge_reversed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionReceivedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "qioReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dencDelivered": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "dencDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dencDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recordsSent": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "recordsSentNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "decision": {
+                    "type": "object",
+                    "required": [
+                      "outcome",
+                      "received"
+                    ],
+                    "properties": {
+                      "outcome": {
+                        "anyOf": [
+                          {
+                            "const": "discharge_upheld",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_reversed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "received": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "anyOf": [
+                              {
+                                "maxLength": 10,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "time": {
+                            "anyOf": [
+                              {
+                                "maxLength": 5,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "note": {
+                        "anyOf": [
+                          {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "decisionDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "decisionDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/expedited-reviews/{reviewId}/deadlines": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdExpeditedreviewsByReviewIdDeadlines",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Type a DENC / records / decision deadline from the QIO's call (date AND time, source note)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "subject",
+                    "subjectId",
+                    "kind",
+                    "label",
+                    "dueAt",
+                    "dueLocal",
+                    "zone",
+                    "sourceNote",
+                    "noticeDocumentId",
+                    "satisfiedAt",
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "anyOf": [
+                        {
+                          "const": "notice",
+                          "type": "string"
+                        },
+                        {
+                          "const": "review",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "appeal_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denc_delivery",
+                          "type": "string"
+                        },
+                        {
+                          "const": "records_to_qio",
+                          "type": "string"
+                        },
+                        {
+                          "const": "qio_decision",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "dueLocal": {
+                      "type": "string"
+                    },
+                    "zone": {
+                      "type": "string"
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "noticeDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "satisfiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "due_soon",
+                          "type": "string"
+                        },
+                        {
+                          "const": "past",
+                          "type": "string"
+                        },
+                        {
+                          "const": "satisfied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "due",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "appeal_request",
+                        "type": "string"
+                      },
+                      {
+                        "const": "denc_delivery",
+                        "type": "string"
+                      },
+                      {
+                        "const": "records_to_qio",
+                        "type": "string"
+                      },
+                      {
+                        "const": "qio_decision",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "label": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "sourceNote": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/expedited-reviews/{reviewId}/withdraw": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdExpeditedreviewsByReviewIdWithdraw",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Withdraw an open QIO review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "nomncNoticeId",
+                    "state",
+                    "qioName",
+                    "qioReference",
+                    "qioNotifiedAt",
+                    "requestedByKind",
+                    "dencDeliveredAt",
+                    "dencDocumentId",
+                    "recordsSentAt",
+                    "recordsSentNote",
+                    "decisionOutcome",
+                    "decisionReceivedAt",
+                    "decisionNote",
+                    "decisionDocumentId",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "nomncNoticeId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "decided",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "qioName": {
+                      "type": "string"
+                    },
+                    "qioReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qioNotifiedAt": {
+                      "type": "string"
+                    },
+                    "requestedByKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dencDeliveredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dencDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsSentAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsSentNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionOutcome": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "discharge_upheld",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge_reversed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionReceivedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admissions/{id}/face-to-face": {
       "post": {
         "operationId": "postApiV1AdmissionsByIdFacetoface",
@@ -29785,6 +30989,2239 @@
                         "type": "boolean"
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/nomnc": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByIdNomnc",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "NOMNC delivery record, history, QIO review, typed deadlines and the prompts for what is missing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dischargeReason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "timeZone",
+                    "activeNotice",
+                    "history",
+                    "review",
+                    "deadlines",
+                    "prompts"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "activeNotice": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "admissionId",
+                            "patientId",
+                            "status",
+                            "servicesEndOn",
+                            "deliveredAt",
+                            "deliveredByUserId",
+                            "recipientKind",
+                            "representativeName",
+                            "deliveryNote",
+                            "acknowledgementKind",
+                            "acknowledgementNote",
+                            "documentId",
+                            "sourceNote",
+                            "supersededById",
+                            "withdrawnReason",
+                            "version",
+                            "createdAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "patientId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "superseded",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "withdrawn",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "servicesEndOn": {
+                              "type": "string"
+                            },
+                            "deliveredAt": {
+                              "type": "string"
+                            },
+                            "deliveredByUserId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recipientKind": {
+                              "anyOf": [
+                                {
+                                  "const": "beneficiary",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "representative",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "representativeName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deliveryNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "acknowledgementKind": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "signed",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "refused",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "other",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "acknowledgementNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "documentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "sourceNote": {
+                              "type": "string"
+                            },
+                            "supersededById": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "withdrawnReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "type": "integer"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "admissionId",
+                          "patientId",
+                          "status",
+                          "servicesEndOn",
+                          "deliveredAt",
+                          "deliveredByUserId",
+                          "recipientKind",
+                          "representativeName",
+                          "deliveryNote",
+                          "acknowledgementKind",
+                          "acknowledgementNote",
+                          "documentId",
+                          "sourceNote",
+                          "supersededById",
+                          "withdrawnReason",
+                          "version",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "withdrawn",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "servicesEndOn": {
+                            "type": "string"
+                          },
+                          "deliveredAt": {
+                            "type": "string"
+                          },
+                          "deliveredByUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recipientKind": {
+                            "anyOf": [
+                              {
+                                "const": "beneficiary",
+                                "type": "string"
+                              },
+                              {
+                                "const": "representative",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "representativeName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deliveryNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "signed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "refused",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgementNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "documentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "withdrawnReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "review": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "admissionId",
+                            "nomncNoticeId",
+                            "state",
+                            "qioName",
+                            "qioReference",
+                            "qioNotifiedAt",
+                            "requestedByKind",
+                            "dencDeliveredAt",
+                            "dencDocumentId",
+                            "recordsSentAt",
+                            "recordsSentNote",
+                            "decisionOutcome",
+                            "decisionReceivedAt",
+                            "decisionNote",
+                            "decisionDocumentId",
+                            "version",
+                            "createdAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "nomncNoticeId": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "decided",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "withdrawn",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "qioName": {
+                              "type": "string"
+                            },
+                            "qioReference": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "qioNotifiedAt": {
+                              "type": "string"
+                            },
+                            "requestedByKind": {
+                              "anyOf": [
+                                {
+                                  "const": "beneficiary",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "representative",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unknown",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "dencDeliveredAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "dencDocumentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordsSentAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordsSentNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "decisionOutcome": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "discharge_upheld",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "discharge_reversed",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "other",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "decisionReceivedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "decisionNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "decisionDocumentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "type": "integer"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subject",
+                          "subjectId",
+                          "kind",
+                          "label",
+                          "dueAt",
+                          "dueLocal",
+                          "zone",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedAt",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "anyOf": [
+                              {
+                                "const": "notice",
+                                "type": "string"
+                              },
+                              {
+                                "const": "review",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "denc_delivery",
+                                "type": "string"
+                              },
+                              {
+                                "const": "records_to_qio",
+                                "type": "string"
+                              },
+                              {
+                                "const": "qio_decision",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "label": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "dueLocal": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "prompts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "severity",
+                          "message"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "warn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "info",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdNomnc",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record a NOMNC delivery as typed (date AND time, source note); supersedes the active record when asked",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "patientId",
+                    "status",
+                    "servicesEndOn",
+                    "deliveredAt",
+                    "deliveredByUserId",
+                    "recipientKind",
+                    "representativeName",
+                    "deliveryNote",
+                    "acknowledgementKind",
+                    "acknowledgementNote",
+                    "documentId",
+                    "sourceNote",
+                    "supersededById",
+                    "withdrawnReason",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "servicesEndOn": {
+                      "type": "string"
+                    },
+                    "deliveredAt": {
+                      "type": "string"
+                    },
+                    "deliveredByUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "representativeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "refused",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withdrawnReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "servicesEndOn",
+                  "delivered",
+                  "recipientKind",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "supersedesId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "servicesEndOn": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "delivered": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "recipientKind": {
+                    "anyOf": [
+                      {
+                        "const": "beneficiary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "representative",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "representativeName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "deliveryNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "acknowledgementKind": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "signed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "refused",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "acknowledgementNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "documentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "documentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceNote": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/nomnc/{noticeId}": {
+      "patch": {
+        "operationId": "patchApiV1AdmissionsByIdNomncByNoticeId",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record the acknowledgement, attach the copy, or amend the delivery note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noticeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "patientId",
+                    "status",
+                    "servicesEndOn",
+                    "deliveredAt",
+                    "deliveredByUserId",
+                    "recipientKind",
+                    "representativeName",
+                    "deliveryNote",
+                    "acknowledgementKind",
+                    "acknowledgementNote",
+                    "documentId",
+                    "sourceNote",
+                    "supersededById",
+                    "withdrawnReason",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "servicesEndOn": {
+                      "type": "string"
+                    },
+                    "deliveredAt": {
+                      "type": "string"
+                    },
+                    "deliveredByUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "representativeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "refused",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withdrawnReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "deliveryNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "acknowledgementKind": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "signed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "refused",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "acknowledgementNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "documentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "documentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/nomnc/{noticeId}/deadlines": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdNomncByNoticeIdDeadlines",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Type a deadline from the notice (date AND time, mandatory source note)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noticeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "subject",
+                    "subjectId",
+                    "kind",
+                    "label",
+                    "dueAt",
+                    "dueLocal",
+                    "zone",
+                    "sourceNote",
+                    "noticeDocumentId",
+                    "satisfiedAt",
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "anyOf": [
+                        {
+                          "const": "notice",
+                          "type": "string"
+                        },
+                        {
+                          "const": "review",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "appeal_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denc_delivery",
+                          "type": "string"
+                        },
+                        {
+                          "const": "records_to_qio",
+                          "type": "string"
+                        },
+                        {
+                          "const": "qio_decision",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "dueLocal": {
+                      "type": "string"
+                    },
+                    "zone": {
+                      "type": "string"
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "noticeDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "satisfiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "due_soon",
+                          "type": "string"
+                        },
+                        {
+                          "const": "past",
+                          "type": "string"
+                        },
+                        {
+                          "const": "satisfied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "due",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "appeal_request",
+                        "type": "string"
+                      },
+                      {
+                        "const": "denc_delivery",
+                        "type": "string"
+                      },
+                      {
+                        "const": "records_to_qio",
+                        "type": "string"
+                      },
+                      {
+                        "const": "qio_decision",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "label": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "sourceNote": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/nomnc/{noticeId}/expedited-review": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdNomncByNoticeIdExpeditedreview",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noticeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "nomncNoticeId",
+                    "state",
+                    "qioName",
+                    "qioReference",
+                    "qioNotifiedAt",
+                    "requestedByKind",
+                    "dencDeliveredAt",
+                    "dencDocumentId",
+                    "recordsSentAt",
+                    "recordsSentNote",
+                    "decisionOutcome",
+                    "decisionReceivedAt",
+                    "decisionNote",
+                    "decisionDocumentId",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "nomncNoticeId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "decided",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "qioName": {
+                      "type": "string"
+                    },
+                    "qioReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qioNotifiedAt": {
+                      "type": "string"
+                    },
+                    "requestedByKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dencDeliveredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dencDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsSentAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsSentNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionOutcome": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "discharge_upheld",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge_reversed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionReceivedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "qioName",
+                  "qioNotified",
+                  "requestedByKind"
+                ],
+                "properties": {
+                  "qioName": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "qioReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "qioNotified": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "anyOf": [
+                          {
+                            "maxLength": 10,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "time": {
+                        "anyOf": [
+                          {
+                            "maxLength": 5,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "requestedByKind": {
+                    "anyOf": [
+                      {
+                        "const": "beneficiary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "representative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/nomnc/{noticeId}/withdraw": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdNomncByNoticeIdWithdraw",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Withdraw an active NOMNC record (reason required)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noticeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "patientId",
+                    "status",
+                    "servicesEndOn",
+                    "deliveredAt",
+                    "deliveredByUserId",
+                    "recipientKind",
+                    "representativeName",
+                    "deliveryNote",
+                    "acknowledgementKind",
+                    "acknowledgementNote",
+                    "documentId",
+                    "sourceNote",
+                    "supersededById",
+                    "withdrawnReason",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "servicesEndOn": {
+                      "type": "string"
+                    },
+                    "deliveredAt": {
+                      "type": "string"
+                    },
+                    "deliveredByUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientKind": {
+                      "anyOf": [
+                        {
+                          "const": "beneficiary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "representative",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "representativeName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "refused",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgementNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withdrawnReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "reason"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
                   }
                 }
               }
@@ -85214,7 +88651,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+        "summary": "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
         "parameters": [
           {
             "name": "claimId",
@@ -101300,7 +104737,8 @@
                           "status",
                           "patientAddressId",
                           "externalFacilityId",
-                          "rescheduledIntoVisitId"
+                          "rescheduledIntoVisitId",
+                          "cancellationReasonCode"
                         ],
                         "properties": {
                           "id": {
@@ -101477,6 +104915,16 @@
                             "anyOf": [
                               {
                                 "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancellationReasonCode": {
+                            "anyOf": [
+                              {
                                 "type": "string"
                               },
                               {
@@ -101752,6 +105200,7 @@
                       "items": {
                         "type": "object",
                         "required": [
+                          "payerKind",
                           "id",
                           "providerEntityId",
                           "claimId",
@@ -101769,6 +105218,27 @@
                           "version"
                         ],
                         "properties": {
+                          "payerKind": {
+                            "description": "Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced)",
+                            "anyOf": [
+                              {
+                                "const": "medicare",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medicaid",
+                                "type": "string"
+                              },
+                              {
+                                "const": "commercial",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
                           "id": {
                             "format": "uuid",
                             "type": "string"
@@ -101894,6 +105364,7 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "payerKind",
                     "id",
                     "providerEntityId",
                     "claimId",
@@ -101911,6 +105382,27 @@
                     "version"
                   ],
                   "properties": {
+                    "payerKind": {
+                      "description": "Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced)",
+                      "anyOf": [
+                        {
+                          "const": "medicare",
+                          "type": "string"
+                        },
+                        {
+                          "const": "medicaid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "commercial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
                     "id": {
                       "format": "uuid",
                       "type": "string"
@@ -102004,7 +105496,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening",
+        "summary": "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply)",
         "parameters": [
           {
             "name": "id",
@@ -102094,7 +105586,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3)",
+        "summary": "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID",
         "parameters": [
           {
             "name": "id",
@@ -104054,14 +107546,14 @@
         "tags": [
           "06-admission"
         ],
-        "summary": "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+        "summary": "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause); milestone 10a adds the open QIO reviews and the NOMNC records with no appeal-request deadline typed (both need nomnc.read)",
         "parameters": [
           {
             "name": "bucket",
             "in": "query",
             "required": true,
             "schema": {
-              "description": "\"ready\": active / on-hold admissions with no discharge on file (a discharge, transfer-out, revocation or death can be recorded). \"needs_details\": discharged / bereavement admissions whose stay-ending record lacks the place of death or the receiving care setting the final claim needs. \"awaiting_cosign\": for-cause discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause). \"recently_discharged\": live discharges, revocations and transfers-out of the last 90 days (never deaths) whose patient has no later admission — the readmission candidates.",
+              "description": "\"ready\": active / on-hold admissions with no discharge on file (a discharge, transfer-out, revocation or death can be recorded). \"needs_details\": discharged / bereavement admissions whose stay-ending record lacks the place of death or the receiving care setting the final claim needs. \"awaiting_cosign\": for-cause discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause). \"recently_discharged\": live discharges, revocations and transfers-out of the last 90 days (never deaths) whose patient has no later admission — the readmission candidates. \"qio_review_open\": admissions with an open QIO expedited review, soonest typed deadline first (requires nomnc.read). \"nomnc_no_deadline\": active NOMNC records with no appeal-request deadline typed yet (requires nomnc.read).",
               "anyOf": [
                 {
                   "const": "ready",
@@ -104077,6 +107569,14 @@
                 },
                 {
                   "const": "recently_discharged",
+                  "type": "string"
+                },
+                {
+                  "const": "qio_review_open",
+                  "type": "string"
+                },
+                {
+                  "const": "nomnc_no_deadline",
                   "type": "string"
                 }
               ]
@@ -104213,6 +107713,30 @@
                               {
                                 "format": "date",
                                 "description": "The discharge / transfer effective date (needs_details, awaiting_cosign).",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextDeadlineAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "description": "qio_review_open only: the soonest unsatisfied typed deadline; null = none typed.",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "noticeDeliveredAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "description": "nomnc_no_deadline only: when the notice was delivered, as typed.",
                                 "type": "string"
                               },
                               {
@@ -111807,6 +115331,32 @@
             "required": false,
             "schema": {
               "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "recipientKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "facility",
+                  "type": "string"
+                },
+                {
+                  "const": "payer",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "recipientEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },
@@ -153263,7 +156813,8 @@
                           "status",
                           "patientAddressId",
                           "externalFacilityId",
-                          "rescheduledIntoVisitId"
+                          "rescheduledIntoVisitId",
+                          "cancellationReasonCode"
                         ],
                         "properties": {
                           "id": {
@@ -153440,6 +156991,16 @@
                             "anyOf": [
                               {
                                 "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancellationReasonCode": {
+                            "anyOf": [
+                              {
                                 "type": "string"
                               },
                               {
@@ -245359,6 +248920,64 @@
                             "type": "string"
                           }
                         ]
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "visitSetting": {
+                        "anyOf": [
+                          {
+                            "const": "patient_home",
+                            "type": "string"
+                          },
+                          {
+                            "const": "facility",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient_unit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "telephonic",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "patientAddressId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timeOfDayStart": {
+                        "type": "string"
+                      },
+                      "timeOfDayEnd": {
+                        "type": "string"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      },
+                      "startDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "count": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -245481,6 +249100,64 @@
                         {
                           "const": "discontinued",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeOfDayStart": {
+                      "type": "string"
+                    },
+                    "timeOfDayEnd": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "count": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     }
@@ -245801,6 +249478,64 @@
                         {
                           "const": "discontinued",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeOfDayStart": {
+                      "type": "string"
+                    },
+                    "timeOfDayEnd": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "count": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     }
@@ -270347,6 +274082,42 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/scheduling/context": {
+      "get": {
+        "operationId": "getApiV1SchedulingContext",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Organization service timezone for authorized scheduling forms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "timeZone"
+                  ],
+                  "properties": {
+                    "timeZone": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -316774,6 +320545,39 @@
                         "format": "date",
                         "type": "string"
                       },
+                      "source": {
+                        "type": "string"
+                      },
+                      "suggestedMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "proposedStartedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "proposedEndedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "publishedAsVisitId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "status": {
                         "anyOf": [
                           {
@@ -316918,6 +320722,39 @@
                       "format": "date",
                       "type": "string"
                     },
+                    "source": {
+                      "type": "string"
+                    },
+                    "suggestedMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "proposedStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "proposedEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "publishedAsVisitId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "status": {
                       "anyOf": [
                         {
@@ -317010,7 +320847,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -317193,6 +321031,16 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -317285,7 +321133,8 @@
                       "status",
                       "patientAddressId",
                       "externalFacilityId",
-                      "rescheduledIntoVisitId"
+                      "rescheduledIntoVisitId",
+                      "cancellationReasonCode"
                     ],
                     "properties": {
                       "id": {
@@ -317468,6 +321317,16 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "cancellationReasonCode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -317511,7 +321370,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -317688,6 +321548,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -317903,7 +321773,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318080,6 +321951,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318137,7 +322018,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318314,6 +322196,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318481,7 +322373,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318658,6 +322551,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318737,7 +322640,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318914,6 +322818,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318999,7 +322913,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -319176,6 +323091,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -319255,7 +323180,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -319432,6 +323358,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -319521,7 +323457,8 @@
                         "status",
                         "patientAddressId",
                         "externalFacilityId",
-                        "rescheduledIntoVisitId"
+                        "rescheduledIntoVisitId",
+                        "cancellationReasonCode"
                       ],
                       "properties": {
                         "id": {
@@ -319698,6 +323635,16 @@
                           "anyOf": [
                             {
                               "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cancellationReasonCode": {
+                          "anyOf": [
+                            {
                               "type": "string"
                             },
                             {
@@ -319723,7 +323670,8 @@
                         "status",
                         "patientAddressId",
                         "externalFacilityId",
-                        "rescheduledIntoVisitId"
+                        "rescheduledIntoVisitId",
+                        "cancellationReasonCode"
                       ],
                       "properties": {
                         "id": {
@@ -319900,6 +323848,16 @@
                           "anyOf": [
                             {
                               "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cancellationReasonCode": {
+                          "anyOf": [
+                            {
                               "type": "string"
                             },
                             {
@@ -319995,7 +323953,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -320172,6 +324131,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -321363,7 +325332,8 @@
                           "status",
                           "patientAddressId",
                           "externalFacilityId",
-                          "rescheduledIntoVisitId"
+                          "rescheduledIntoVisitId",
+                          "cancellationReasonCode"
                         ],
                         "properties": {
                           "id": {
@@ -321540,6 +325510,16 @@
                             "anyOf": [
                               {
                                 "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancellationReasonCode": {
+                            "anyOf": [
+                              {
                                 "type": "string"
                               },
                               {

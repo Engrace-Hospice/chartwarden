@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1770,
-    "enriched": 1770,
+    "routes": 1781,
+    "enriched": 1781,
     "deficit": 0,
-    "mutating": 1001,
+    "mutating": 1010,
     "mutatingNoBody": 1,
-    "gets": 717,
+    "gets": 719,
     "getsNoResponse": 9
   },
   "modules": [
@@ -51,12 +51,12 @@
     },
     {
       "module": "06-admission",
-      "routes": 88,
-      "enriched": 88,
+      "routes": 98,
+      "enriched": 98,
       "deficit": 0,
-      "mutating": 63,
+      "mutating": 72,
       "mutatingNoBody": 0,
-      "gets": 25,
+      "gets": 26,
       "getsNoResponse": 0
     },
     {
@@ -161,12 +161,12 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 38,
-      "enriched": 38,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
       "mutating": 20,
       "mutatingNoBody": 0,
-      "gets": 16,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
