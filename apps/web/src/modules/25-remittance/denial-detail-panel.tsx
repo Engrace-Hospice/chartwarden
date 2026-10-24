@@ -68,6 +68,16 @@ const LABEL: Record<DenialAction["kind"], string> = {
   appeal: "Open appeal",
 };
 
+const PAYER_LABEL: Record<string, string> = {
+  medicare: "Medicare",
+  medicaid: "Medicaid",
+  commercial: "Commercial",
+  unknown: "Payer not known",
+};
+
+const MEDICAID_APPEAL_REASON =
+  "Medicaid denials follow the state's path; the Medicaid appeal path is not available yet.";
+
 const REASON_FLOOR: Partial<Record<DenialAction["kind"], number>> = {
   escalate: MIN_REASON.escalate,
   resolve: MIN_REASON.resolve,
@@ -222,7 +232,14 @@ export function DenialDetailPanel({
     onClose();
   }
 
-  const available = denial ? (ACTIONS_BY_STATE[denial.state] ?? []) : [];
+  const payerKind = denial?.payerKind ?? "unknown";
+  const isMedicaid = payerKind === "medicaid";
+  // A Medicaid denial follows the state's path, not the CMS tiers, so the Medicare appeal action is not offered.
+  const available = (denial ? (ACTIONS_BY_STATE[denial.state] ?? []) : []).filter(
+    (kind) => !(isMedicaid && kind === "appeal"),
+  );
+  const medicaidAppealBlocked =
+    isMedicaid && denial !== null && (ACTIONS_BY_STATE[denial.state] ?? []).includes("appeal");
 
   return (
     <ActionRail ariaLabel="Denial case" onClose={closePanel}>
@@ -240,6 +257,14 @@ export function DenialDetailPanel({
               ],
               ["Category", humanize(denial.category)],
               ["Source", humanize(denial.source)],
+              [
+                "Payer",
+                <StatusPill
+                  key="p"
+                  label={PAYER_LABEL[payerKind]}
+                  tone={payerKind === "unknown" ? "warning" : "neutral"}
+                />,
+              ],
               ["Aging", denial.agingBucketLabel],
               ["Value", money(denial.dollarValue)],
               [
@@ -287,7 +312,30 @@ export function DenialDetailPanel({
                   {kind === "appeal" && route === "reopening" ? "Appeal anyway" : LABEL[kind]}
                 </Button>
               ))}
-              {available.length === 0 ? <Hint>No action is available from this state.</Hint> : null}
+              {medicaidAppealBlocked ? (
+                <>
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    disabled
+                    aria-describedby="medicaid-appeal-reason"
+                  >
+                    Open appeal
+                  </Button>
+                  <Hint>
+                    <span id="medicaid-appeal-reason">{MEDICAID_APPEAL_REASON}</span>
+                  </Hint>
+                </>
+              ) : null}
+              {payerKind === "unknown" ? (
+                <Hint>
+                  Payer not known: this denial has no linked remittance, so the Medicare appeal
+                  tiers are offered as before.
+                </Hint>
+              ) : null}
+              {available.length === 0 && !medicaidAppealBlocked ? (
+                <Hint>No action is available from this state.</Hint>
+              ) : null}
             </ButtonRow>
           ) : (
             <>

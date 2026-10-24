@@ -161,6 +161,18 @@ export interface MedicaidClaimMatchProvider {
     keys: { readonly claimControlNumber?: string },
   ): Promise<MedicaidClaimMatchCandidateRow[]>;
   patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
+  /**
+   * M25 milestone 11 (11a-1) - the facts M25 needs to render a Medicaid claim on the case view and (later) to
+   * prefill a Medicaid appeal: the claim's service state, its MCO (null = fee-for-service / Open Card) and its
+   * provider entity. `null` when the claim does not exist or RLS hides it - fail closed, never a guess.
+   */
+  claimContext(orgId: string, claimId: string): Promise<MedicaidClaimContext | null>;
+}
+
+export interface MedicaidClaimContext {
+  readonly serviceState: string;
+  readonly mcoId: string | null;
+  readonly providerEntityId: string;
 }
 
 export interface M24SeamImpls {
@@ -403,6 +415,21 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
           .where(and(eq(C.id, claimId), eq(C.organizationId, orgId)))
           .limit(1);
         return rows[0]?.patientId ?? null;
+      });
+    },
+    async claimContext(orgId, claimId) {
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const C = schema.medicaidClaim;
+        const rows = await tx
+          .select({
+            serviceState: C.serviceState,
+            mcoId: C.mcoId,
+            providerEntityId: C.providerEntityId,
+          })
+          .from(C)
+          .where(and(eq(C.id, claimId), eq(C.organizationId, orgId)))
+          .limit(1);
+        return rows[0] ?? null;
       });
     },
   };

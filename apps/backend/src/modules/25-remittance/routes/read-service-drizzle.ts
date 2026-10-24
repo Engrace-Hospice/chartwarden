@@ -7,7 +7,13 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { RegulatoryDecimal } from "@chartwarden/shared/money";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
-import { type AgingBucketLabel, type AppealTier, agingBucketLabel, deriveTierDeadline } from "../domain";
+import {
+  type AgingBucketLabel,
+  type AppealTier,
+  agingBucketLabel,
+  denialPayerKind,
+  deriveTierDeadline,
+} from "../domain";
 import type { M25ReadActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
 import type {
@@ -214,23 +220,32 @@ export function buildDrizzleM25ReadService(
             : undefined,
         ].filter(Boolean);
         const rows = await tx
-          .select()
+          .select({ dc: DC, adviceKind: RA.payerKind })
           .from(DC)
+          .leftJoin(RL, eq(RL.id, DC.remittanceLineId))
+          .leftJoin(RA, eq(RA.id, RL.remittanceAdviceId))
           .where(conds.length ? and(...(conds as [])) : undefined)
           .orderBy(desc(DC.openedAt), desc(DC.id))
           .limit(limit + 1);
-        return page(rows, limit, (r) => ({ createdAt: iso(r.openedAt), id: r.id }), toDenialItem);
+        return page(
+          rows,
+          limit,
+          (r) => ({ createdAt: iso(r.dc.openedAt), id: r.dc.id }),
+          (r) => toDenialItem(r.dc, r.adviceKind),
+        );
       });
     },
 
     async getDenial(actor, id) {
       return withOrgContext(db, actor, async (tx) => {
         const rows = await tx
-          .select()
+          .select({ dc: DC, adviceKind: RA.payerKind })
           .from(DC)
+          .leftJoin(RL, eq(RL.id, DC.remittanceLineId))
+          .leftJoin(RA, eq(RA.id, RL.remittanceAdviceId))
           .where(and(eq(DC.id, id), peScope(DC.providerEntityId, actor)))
           .limit(1);
-        return rows[0] ? toDenialItem(rows[0]) : null;
+        return rows[0] ? toDenialItem(rows[0].dc, rows[0].adviceKind) : null;
       });
     },
 
@@ -397,8 +412,9 @@ export function buildDrizzleM25ReadService(
       receivedAt: iso(r.receivedAt),
     };
   }
-  function toDenialItem(r: typeof DC.$inferSelect): DenialWorklistItem {
+  function toDenialItem(r: typeof DC.$inferSelect, adviceKind: string | null): DenialWorklistItem {
     return {
+      payerKind: denialPayerKind({ adviceKind, source: r.source }),
       id: r.id,
       providerEntityId: r.providerEntityId,
       claimId: r.claimId,

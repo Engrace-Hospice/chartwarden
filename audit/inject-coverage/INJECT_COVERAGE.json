@@ -395,7 +395,8 @@
       "routes": 39,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/billing-medicaid-inject.test.ts"
+        "apps/backend/__tests__/billing-medicaid-inject.test.ts",
+        "apps/backend/__tests__/m25-payer-guard.live.test.ts"
       ],
       "directRoutesReferenced": 39
     },
@@ -409,6 +410,7 @@
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-guard.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",

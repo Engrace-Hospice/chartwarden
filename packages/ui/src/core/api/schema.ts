@@ -6875,7 +6875,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline */
+        /** The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline */
         get: operations["getApiV1ClaimsByClaimIdCaseview"];
         put?: never;
         post?: never;
@@ -8215,7 +8215,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening */
+        /** Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply) */
         post: operations["postApiV1DenialsByIdAppeals"];
         delete?: never;
         options?: never;
@@ -8232,7 +8232,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3) */
+        /** Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID */
         post: operations["postApiV1DenialsByIdAppealsOverride"];
         delete?: never;
         options?: never;
@@ -50594,6 +50594,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
+                            /** @description Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced) */
+                            payerKind: "medicare" | "medicaid" | "commercial" | "unknown";
                             /** Format: uuid */
                             id: string;
                             /** Format: uuid */
@@ -50641,6 +50643,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced) */
+                        payerKind: "medicare" | "medicaid" | "commercial" | "unknown";
                         /** Format: uuid */
                         id: string;
                         /** Format: uuid */

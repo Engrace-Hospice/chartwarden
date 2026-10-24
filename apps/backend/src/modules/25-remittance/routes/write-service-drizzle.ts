@@ -18,6 +18,7 @@ import {
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
+  denialPayerKind,
   deriveTierDeadline,
   isKnownZone,
   nextTier,
@@ -90,6 +91,32 @@ export function buildDrizzleM25WriteService(
       .limit(1);
     if (!rows[0]) throw new NotFoundError("denial case not found");
     return rows[0];
+  }
+
+  /**
+   * The payer of a denial, from the remittance advice of its linked line (the same join resolveNoticeDay makes).
+   * A denial with no linked line (277CA / EVV) is `unknown`.
+   */
+  async function payerOfDenial(tx: M25Tx, denialCaseId: string) {
+    const rows = await tx
+      .select({ adviceKind: RA.payerKind, source: DC.source })
+      .from(DC)
+      .leftJoin(RL, eq(RL.id, DC.remittanceLineId))
+      .leftJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+      .where(eq(DC.id, denialCaseId))
+      .limit(1);
+    return denialPayerKind({ adviceKind: rows[0]?.adviceKind, source: rows[0]?.source });
+  }
+
+  /** Medicare appeal tiers are the CMS chain; a Medicaid denial follows the state's path (not built yet). */
+  async function assertNotMedicaidDenial(tx: M25Tx, denialCaseId: string): Promise<void> {
+    if ((await payerOfDenial(tx, denialCaseId)) === "medicaid") {
+      throw new ChartWardenError(
+        "PAYER_IS_MEDICAID",
+        "this is a Medicaid denial: Medicare appeal tiers do not apply, and the Medicaid appeal path is not available yet",
+        422,
+      );
+    }
   }
 
   /**
@@ -392,6 +419,7 @@ export function buildDrizzleM25WriteService(
         const tier = input.tier ?? "redetermination";
         if (!cur.claimId)
           throw new ChartWardenError("INVALID_STATE", "the denial has no claim to appeal", 409);
+        await assertNotMedicaidDenial(tx, denialCaseId);
         // Milestone 3: a denial the routing rules send to a MAC reopening (a 56900 non-response) is not appealable.
         // The first appeal needs an audited override reason; a later tier follows an appeal that already existed.
         let routeOverride: { reason: string; ruleId: string | null } | null = null;
@@ -639,7 +667,9 @@ export function buildDrizzleM25WriteService(
         });
         // Unfavorable → spawn the next tier (draft) when one exists, anchored on this decision (F04).
         if (input.outcome === "unfavorable") {
-          const nt = nextTier(cur.tier);
+          // Never carry a Medicaid denial up the Medicare chain (an appeal opened before the payer guard existed).
+          const nt =
+            (await payerOfDenial(tx, cur.denialCaseId)) === "medicaid" ? null : nextTier(cur.tier);
           if (nt) {
             // The printed decision-letter date (validated above), not the calendar day of an instant.
             await tx.insert(AC).values({
