@@ -3,7 +3,7 @@
 // (./read-service-drizzle) implements this. DTO discipline: audit-denylisted / free-text columns
 // (remark.free_text, denial.override_payload, appeal.appeal_narrative, assignment.reason) are NEVER
 // projected onto a list/detail view; the taxonomy plain-language is the M38-catalog-fallback merge.
-import type { AgingBucketLabel } from "../domain";
+import type { AgingBucketLabel, DenialPayerKind } from "../domain";
 import type { M25ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 
@@ -33,6 +33,8 @@ export interface RemittanceLineSummary {
 }
 
 export interface DenialWorklistItem {
+  /** Payer of the denied remittance (`unknown` when no advice is linked: 277CA / EVV-sourced). */
+  readonly payerKind: DenialPayerKind;
   readonly id: string;
   readonly providerEntityId: string;
   readonly claimId: string | null;

@@ -88651,7 +88651,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+        "summary": "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
         "parameters": [
           {
             "name": "claimId",
@@ -105200,6 +105200,7 @@
                       "items": {
                         "type": "object",
                         "required": [
+                          "payerKind",
                           "id",
                           "providerEntityId",
                           "claimId",
@@ -105217,6 +105218,27 @@
                           "version"
                         ],
                         "properties": {
+                          "payerKind": {
+                            "description": "Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced)",
+                            "anyOf": [
+                              {
+                                "const": "medicare",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medicaid",
+                                "type": "string"
+                              },
+                              {
+                                "const": "commercial",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
                           "id": {
                             "format": "uuid",
                             "type": "string"
@@ -105342,6 +105364,7 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "payerKind",
                     "id",
                     "providerEntityId",
                     "claimId",
@@ -105359,6 +105382,27 @@
                     "version"
                   ],
                   "properties": {
+                    "payerKind": {
+                      "description": "Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced)",
+                      "anyOf": [
+                        {
+                          "const": "medicare",
+                          "type": "string"
+                        },
+                        {
+                          "const": "medicaid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "commercial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
                     "id": {
                       "format": "uuid",
                       "type": "string"
@@ -105452,7 +105496,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening",
+        "summary": "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply)",
         "parameters": [
           {
             "name": "id",
@@ -105542,7 +105586,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3)",
+        "summary": "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID",
         "parameters": [
           {
             "name": "id",

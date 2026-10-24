@@ -8438,13 +8438,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/denials/:id/appeals": {
     summary:
-      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening",
+      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply)",
     body: M25AppealCreateRequestSchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/appeals/override": {
     summary:
-      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3)",
+      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID",
     body: M25AppealOverrideRequestSchema,
     response: M25VersionedResultSchema,
     status: 201,
@@ -8657,7 +8657,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/claims/:claimId/case-view": {
     summary:
-      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
     response: M25CaseViewSchema,
   },
   // ── audit-response.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-2) ─────────────────────────────

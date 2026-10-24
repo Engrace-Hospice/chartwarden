@@ -731,6 +731,8 @@ jobs:
           - { name: "M25 submission attempts", scripts: "test:m25:submission:live" }
           # Milestone 7a-1 - later tiers (ALJ / Council / federal court record-keeping, recorded deadlines, the case view) and audit request intake.
           - { name: "M25 later tiers", scripts: "test:m25:later-tiers:live" }
+          # Milestone 11a-1 - the Medicaid payer guard (no Medicare tier on a Medicaid denial) and the Medicaid case view.
+          - { name: "M25 payer guard", scripts: "test:m25:payer-guard:live" }
           - { name: "M25 audit requests", scripts: "test:m25:audit-request:live" }
           # Milestone 7a-2 - the audit response packet: typed checklist, sign-off by a second person, the none-stated attestation, filing proof (audit_response attempt) and the retained render request.
           - { name: "M25 audit response", scripts: "test:m25:audit-response:live" }
