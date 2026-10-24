@@ -34,3 +34,4 @@ export * from "./audit-request"; // audit_request, audit_request_claim, audit_re
 export * from "./later-tier"; // appeal_tier_detail, recorded_deadline (milestone 7a-1)
 export * from "./adr-readiness"; // adr_readiness_review, adr_readiness_finding (milestone 8a-1)
 export * from "./payer-appeal"; // payer_appeal_path, payer_appeal_path_level, payer_appeal_case, payer_appeal_case_event (milestone 12a-1)
+export * from "./beneficiary-representative"; // representative_form_version, representative_appointment, beneficiary_appeal, beneficiary_appeal_document, beneficiary_appeal_event (milestone 13a)
