@@ -9,7 +9,7 @@ import { ErrorAlert, Hint, RetryAlert } from "./action-ui";
 import { type TimelineItem, loadCaseView } from "./audit-api";
 import { loadDenialCaseView } from "./payer-appeal-api";
 import { NOT_COMPUTED, NoDueDateAlert } from "./recorded-deadlines";
-import { formatDay, humanize } from "./remittance-status";
+import { REPRESENTATIVE_STATUS_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 
 const UNCONFIRMED = "Window not SME-confirmed";
 
@@ -24,6 +24,15 @@ function Row({ item }: { readonly item: TimelineItem }): JSX.Element {
     <li>
       <strong>{humanize(item.kind)}</strong> · {item.label} · {humanize(item.state)}
       {item.tier ? ` · ${humanize(item.tier)}` : ""} · {formatDay(item.at)}
+      {item.flags?.representativeStatus ? (
+        <>
+          {" "}
+          <StatusPill
+            label={`Representative: ${humanize(item.flags.representativeStatus)}`}
+            tone={toneOf(REPRESENTATIVE_STATUS_TONE, item.flags.representativeStatus)}
+          />
+        </>
+      ) : null}
       {item.deadlineAt ? ` · due ${deadlineText(item)}` : ""}
       {item.deadlineAt && !item.windowConfirmed ? (
         <>

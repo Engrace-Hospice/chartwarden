@@ -22,6 +22,11 @@ const RemittanceWorklist = lazy(() =>
 const PayerAppealPaths = lazy(() =>
   import("./payer-appeal-paths").then((m) => ({ default: m.PayerAppealPaths })),
 );
+const RepresentativeFormSettings = lazy(() =>
+  import("./representative-form-settings").then((m) => ({
+    default: m.RepresentativeFormSettings,
+  })),
+);
 const TpeTracker = lazy(() => import("./tpe-tracker").then((m) => ({ default: m.TpeTracker })));
 const TaxonomyOverlay = lazy(() =>
   import("./taxonomy-overlay").then((m) => ({ default: m.TaxonomyOverlay })),
@@ -86,6 +91,14 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "payer_appeal_path.read",
       screen: PayerAppealPaths,
+    },
+    {
+      id: "remittance.representative-forms",
+      path: "/remittance/representative-forms",
+      title: "Appointment Forms",
+      navGroup: "Billing",
+      requiredPermission: "representative_form.configure",
+      screen: RepresentativeFormSettings,
     },
     {
       id: "remittance.taxonomy",

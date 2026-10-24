@@ -31,6 +31,7 @@ import {
   NoticeAlert,
   ReasonField,
 } from "./action-ui";
+import { BeneficiarySection } from "./beneficiary-section";
 import { CaseViewPanel } from "./case-view-panel";
 import { DenialRoutePanel } from "./denial-route-panel";
 import { PayerAppealPanel } from "./payer-appeal-panel";
@@ -267,6 +268,14 @@ export function DenialDetailPanel({
           ) : hasPermission("appeal.read") ? (
             // A commercial denial has no claim: its timeline is keyed on the denial (the route needs appeal.read).
             <CaseViewPanel key={denialId} denialId={denialId} refreshKey={refreshToken} />
+          ) : null}
+          {denial.claimId ? (
+            <BeneficiarySection
+              key={`beneficiary-${denial.claimId}`}
+              claimId={denial.claimId}
+              refreshKey={refreshToken}
+              onChanged={() => setRefreshToken((n) => n + 1)}
+            />
           ) : null}
           {canReadPayerAppeals ? (
             <PayerAppealPanel
