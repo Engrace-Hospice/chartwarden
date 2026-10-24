@@ -94,8 +94,10 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     fireEvent.change(screen.getByLabelText("Reason for access"), {
       target: { value: "disclosure" },
     });
-    fireEvent.change(screen.getByLabelText("Recipient type"), { target: { value: "facility" } });
-    fireEvent.change(screen.getByPlaceholderText("Search name or identifier..."), { target: { value: "Lakeside" } });
+    fireEvent.change(screen.getByLabelText("Recipient type"), { target: { value: "payer" } });
+    fireEvent.change(screen.getByPlaceholderText("Search name or identifier..."), {
+      target: { value: "Lakeside" },
+    });
     fireEvent.click(await screen.findByText("Lakeside Hospice Partners"));
     const open = screen.getByRole("button", { name: "Open" }) as HTMLButtonElement;
     await waitFor(() => expect(open.disabled).toBe(false));
@@ -103,7 +105,25 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     await waitFor(() => expect(contentCalls()).toHaveLength(1));
     const q = contentCalls()[0]?.searchParams;
     expect(q?.get("purpose")).toBe("disclosure");
-    expect(q?.get("recipientKind")).toBe("facility");
+    expect(q?.get("recipientKind")).toBe("payer");
     expect(q?.get("recipientEntityId")).toBe(PARTNER);
+  });
+
+  it("forgets the chosen partner after a detour through an internal purpose", async () => {
+    mount();
+    const reason = screen.getByLabelText("Reason for access");
+    fireEvent.change(reason, { target: { value: "disclosure" } });
+    fireEvent.change(screen.getByPlaceholderText("Search name or identifier..."), {
+      target: { value: "Lakeside" },
+    });
+    fireEvent.click(await screen.findByText("Lakeside Hospice Partners"));
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Open" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    fireEvent.change(reason, { target: { value: "treatment" } });
+    fireEvent.change(reason, { target: { value: "disclosure" } });
+    expect((screen.getByRole("button", { name: "Open" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

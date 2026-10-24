@@ -50,9 +50,6 @@ const EXTERNAL_PURPOSES: readonly AccessPurpose[] = ["disclosure", "survey_expor
 const RECIPIENT_KIND_LABEL: Record<DisclosureRecipient["kind"], string> = {
   facility: "Facility",
   payer: "Payer",
-  referral_source: "Referral source",
-  dme_vendor: "DME vendor",
-  funeral_home: "Funeral home",
 };
 
 export interface DocumentEditDialogProps {
@@ -217,7 +214,13 @@ export function DocumentPreviewDialog({
           label="Reason for access"
           value={purpose}
           disabled={busy}
-          onChange={(e) => setPurpose(e.target.value as AccessPurpose)}
+          onChange={(e) => {
+            const next = e.target.value as AccessPurpose;
+            setPurpose(next);
+            // A partner picked for one external reason must not survive a detour through an internal one:
+            // the remounted lookup would show a bare id for a recipient the user can no longer read.
+            if (!EXTERNAL_PURPOSES.includes(next)) setRecipientId("");
+          }}
           options={PURPOSES.map((p) => ({ value: p, label: PURPOSE_LABEL[p] ?? p }))}
         />
         {external ? (
@@ -236,6 +239,7 @@ export function DocumentPreviewDialog({
               }))}
             />
             <MdmEntityLookupField
+              key={recipientKind}
               kind={recipientKind}
               label="Recipient"
               value={recipientId}
@@ -246,6 +250,9 @@ export function DocumentPreviewDialog({
               hint="The partner receiving this document. A signed business associate agreement must be on file."
             />
           </>
+        ) : null}
+        {external && recipientId === "" ? (
+          <p style={meta}>Choose a recipient to continue.</p>
         ) : null}
         <p style={meta}>
           Opening this document is recorded in the patient's disclosure accounting (§164.528)

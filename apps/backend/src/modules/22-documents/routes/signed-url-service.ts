@@ -102,7 +102,7 @@ export interface MintedSignedUrl {
 export interface SignedUrlServiceDeps {
   readonly storage: SignedUrlStoragePort;
   readonly resolver: SignedUrlObjectResolver;
-  /** Proves the named recipient is an active M40 entity of the org (default: the opaque M40 seam). */
+  /** Proves the named recipient is an active M40 registry entity (default: the opaque M40 seam). */
   readonly recipients?: DisclosureRecipientResolver;
 }
 
@@ -152,7 +152,7 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
       // §4.12 — external disclosure presigns gate on M40's live BAA status (as-of NOW); fail closed.
       if (isExternalDisclosure(args.purpose)) {
         // The recipient comes from the request (`recipientKind` + `recipientEntityId`) and must resolve to an
-        // active M40 entity of this org; an unresolved recipient cannot be BAA-checked, so it is refused.
+        // active M40 registry entity; an unresolved recipient cannot be BAA-checked, so it is refused.
         const recipient =
           facts.externalRecipient ??
           (args.recipient
@@ -166,6 +166,8 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
         const active = await resolveExternalBaaActive({
           organizationId: args.organizationId,
           recipient,
+          // The registry is global; an executed BAA of THIS org is what ties the recipient to the org.
+          requireExecuted: true,
         });
         if (!active) {
           throw new ForbiddenError("signed-url denied: no active BAA for the external recipient");

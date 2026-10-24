@@ -538,6 +538,14 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
       headers: RN,
     });
     expect(badKind.statusCode).toBe(422);
+
+    // Kinds with no canonical M40 table can never resolve, so the API does not accept them.
+    const noTable = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=dme_vendor&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(noTable.statusCode).toBe(422);
   });
 
   it("records the content download as a document_version read event keyed by the version id (matches the sibling version routes)", async () => {

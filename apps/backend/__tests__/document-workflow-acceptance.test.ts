@@ -664,7 +664,7 @@ describe("M22 §4.12 — the disclosure recipient is resolved from the request, 
       },
     },
   });
-  const args = (recipient?: { kind: "facility" | "dme_vendor"; entityId: string }) => ({
+  const args = (recipient?: { kind: "facility" | "payer"; entityId: string }) => ({
     organizationId: ORG,
     documentId: DOC,
     versionId: VERSION,
@@ -672,20 +672,21 @@ describe("M22 §4.12 — the disclosure recipient is resolved from the request, 
     ...(recipient ? { recipient } : {}),
   });
 
-  function seams(entity: { id: string; status: string } | null, baaActive: boolean) {
+  function seams(
+    entity: { id: string; status: string } | null,
+    baaActive: boolean,
+    baaStatus = baaActive ? "executed" : "missing",
+  ) {
     const baaCalls: Array<{ kind: string; id: string }> = [];
     const resolve = async () => entity;
     registerSeam("MdmEntityProvider", {
       resolveFacility: resolve,
       resolvePayer: resolve,
-      resolveReferralSource: resolve,
-      resolveDmeVendor: resolve,
-      resolveFuneralHome: resolve,
     } as never);
     registerSeam("BaaStatusProvider", {
       baaStatusByMdmEntity: async (i: { kind: string; id: string }) => {
         baaCalls.push({ kind: i.kind, id: i.id });
-        return { isActive: baaActive, status: baaActive ? "executed" : "missing" };
+        return { isActive: baaActive, status: baaStatus };
       },
     } as never);
     return baaCalls;
@@ -705,12 +706,19 @@ describe("M22 §4.12 — the disclosure recipient is resolved from the request, 
     expect(baaCalls).toEqual([]);
   });
 
-  it("refuses (403) an unknown id, even for a kind that needs no BAA, without asking M40 for a BAA", async () => {
+  it("refuses (403) an unknown id without asking M40 for a BAA", async () => {
     const baaCalls = seams(null, true);
-    await expect(
-      svc.mint(args({ kind: "dme_vendor", entityId: ENTITY })),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(svc.mint(args({ kind: "payer", entityId: ENTITY }))).rejects.toMatchObject({
+      statusCode: 403,
+    });
     expect(baaCalls).toEqual([]);
+  });
+
+  it("refuses (403) a registry entity the org has no executed BAA with, even when policy says none is required (n_a)", async () => {
+    seams({ id: ENTITY, status: "active" }, true, "n_a");
+    await expect(svc.mint(args({ kind: "facility", entityId: ENTITY }))).rejects.toMatchObject({
+      statusCode: 403,
+    });
   });
 
   it("refuses (403) a deactivated or provisional entity", async () => {

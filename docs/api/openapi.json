@@ -111823,18 +111823,6 @@
                 {
                   "const": "payer",
                   "type": "string"
-                },
-                {
-                  "const": "referral_source",
-                  "type": "string"
-                },
-                {
-                  "const": "dme_vendor",
-                  "type": "string"
-                },
-                {
-                  "const": "funeral_home",
-                  "type": "string"
                 }
               ]
             }

@@ -1,9 +1,10 @@
 // apps/backend/src/modules/22-documents/outbox-consumers/recipient-resolver.ts — §4.12 recipient resolution.
 //
 // A disclosure / survey-export presign names its out-of-network recipient as an M40 entity (kind + id).
-// The BAA gate (`baa-gate.ts`) only answers "is a BAA active for this id": for a kind that needs no BAA
-// (dme_vendor, funeral_home) or an id nobody owns it can answer "n_a" and let the presign through, so the
-// recipient must first be proven to be a live entity of THIS org. M22 does not depend on M40, so the
+// The canonical facility / payer registry is GLOBAL (org-less rows), so "active" here only means the entity
+// exists and is live in the registry; it says nothing about this org. The tie to the org is the org-scoped
+// BAA record, which the signed-URL service requires to be `executed` (not `n_a`). Only the kinds with a
+// canonical table (facility, payer) can resolve today; the other M40 kinds always resolve null. M22 does not depend on M40, so the
 // provider is read opaquely from the M1 registry (the `baa-gate.ts` precedent) through the structural
 // minimum below. Fail-CLOSED: any error / unregistered seam / unknown or non-active entity ⇒ null.
 import { getSeam } from "../../../bootstrap/index";
@@ -15,24 +16,17 @@ type ResolveOne = (orgId: string, id: string) => Promise<{ id: string; status: s
 export interface RecipientEntityProviderPort {
   resolveFacility: ResolveOne;
   resolvePayer: ResolveOne;
-  resolveReferralSource: ResolveOne;
-  resolveDmeVendor: ResolveOne;
-  resolveFuneralHome: ResolveOne;
 }
 
-const RESOLVER_BY_KIND: Readonly<
-  Record<ExternalRecipientRef["kind"], keyof RecipientEntityProviderPort>
-> = {
-  facility: "resolveFacility",
-  payer: "resolvePayer",
-  referral_source: "resolveReferralSource",
-  dme_vendor: "resolveDmeVendor",
-  funeral_home: "resolveFuneralHome",
-};
+/** The recipient kinds that have a canonical M40 table today. */
+type DisclosureRecipientKind = Extract<ExternalRecipientRef["kind"], "facility" | "payer">;
+
+const RESOLVER_BY_KIND: Readonly<Record<DisclosureRecipientKind, keyof RecipientEntityProviderPort>> =
+  { facility: "resolveFacility", payer: "resolvePayer" };
 
 /** The recipient a disclosure request names (`recipientKind` + `recipientEntityId` on the wire). */
 export interface NamedRecipient {
-  readonly kind: ExternalRecipientRef["kind"];
+  readonly kind: DisclosureRecipientKind;
   readonly entityId: string;
 }
 
@@ -43,7 +37,7 @@ export type DisclosureRecipientResolver = (args: {
 
 /**
  * Resolve the named recipient to the survivor M40 entity (a merged id is chased by the provider, so the
- * BAA is checked against the live row), or null when it is not an active entity of this org.
+ * BAA is checked against the live row), or null when it is unknown or not active in the registry.
  */
 export const resolveDisclosureRecipient: DisclosureRecipientResolver = async ({
   organizationId,
@@ -58,6 +52,6 @@ export const resolveDisclosureRecipient: DisclosureRecipientResolver = async ({
     if (!resolved || resolved.status !== "active") return null;
     return { kind: recipient.kind, mdmEntityId: resolved.id };
   } catch {
-    return null; // fail-closed — an unresolvable recipient cannot be BAA-checked
+    return null; // fail-closed (a seam outage reads as a 403, same as baa-gate.ts) — an unresolvable recipient cannot be BAA-checked
   }
 };
