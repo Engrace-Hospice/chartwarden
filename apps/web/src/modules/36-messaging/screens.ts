@@ -50,6 +50,7 @@ const DeathBoard = lazy(() => import("./death-board").then((m) => ({ default: m.
 const ExternalPartners = lazy(() =>
   import("./partners").then((m) => ({ default: m.ExternalPartners })),
 );
+const PartnerPage = lazy(() => import("./partner-page").then((m) => ({ default: m.PartnerPage })));
 const ExportApprovals = lazy(() =>
   import("./export-approvals").then((m) => ({ default: m.ExportApprovals })),
 );
@@ -204,6 +205,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.share.manage",
       screen: ExternalPartners,
+    },
+    {
+      // WP 6.6 (ADR-0096 D19, proposed): the PARTNER's page, outside the staff shell like /auditor/redeem. The invitation rides the URL fragment; no staff
+      // session or client is used. Usable only while the tenant flag messaging.external_partners is on (every partner API answers the uniform 404 otherwise).
+      id: "messaging.partner-share",
+      path: "/partner/share",
+      title: "Secure message",
+      chrome: false,
+      screen: PartnerPage,
     },
     {
       id: "messaging.saved-replies",

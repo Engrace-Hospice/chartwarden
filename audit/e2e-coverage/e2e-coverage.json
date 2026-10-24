@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 195,
+  "totalStaticWebScreens": 196,
   "e2eReachedCount": 20,
   "axeReachedCount": 185,
   "zeroE2eCoverage": [
@@ -917,6 +917,14 @@
       "axeReached": true
     },
     {
+      "id": "messaging.partner-share",
+      "module": "36-messaging",
+      "path": "/partner/share",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "cap.platform_constants",
       "module": "26-cap",
       "path": "/platform/cap/constants",
@@ -1474,6 +1482,14 @@
       "id": "messaging.notifications",
       "module": "36-messaging",
       "path": "/notifications",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "messaging.partner-share",
+      "module": "36-messaging",
+      "path": "/partner/share",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -2511,6 +2527,14 @@
       "permission": "ai.tenant_opt_in",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "messaging.partner-share",
+      "module": "36-messaging",
+      "path": "/partner/share",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "patient.census",
