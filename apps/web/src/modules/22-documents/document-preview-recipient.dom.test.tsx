@@ -12,11 +12,13 @@ const PARTNER = "cccccccc-3333-4333-8333-cccccccccccc";
 let urls: URL[] = [];
 
 let refuseStepUp = false;
+let dropNetwork = false;
 
 async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const url = new URL(raw, "http://localhost");
   urls.push(url);
+  if (dropNetwork && url.pathname.endsWith("/content")) throw new TypeError("Failed to fetch");
   if (refuseStepUp && url.pathname.endsWith("/content")) {
     return new Response(JSON.stringify({ error: { code: "STEP_UP_REQUIRED", message: "x" } }), {
       status: 403,
@@ -49,8 +51,9 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   });
 }
 
-function mount(opts: { stepUp?: boolean } = {}) {
+function mount(opts: { stepUp?: boolean; offline?: boolean } = {}) {
   refuseStepUp = opts.stepUp === true;
+  dropNetwork = opts.offline === true;
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <ToastProvider>
@@ -144,5 +147,12 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
       "/step-up?returnTo=",
     );
   });
-});
 
+  it("recovers from a network failure instead of sticking on Opening…", async () => {
+    mount({ offline: true });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("could not be reached");
+    const open = screen.getByRole("button", { name: "Open" }) as HTMLButtonElement;
+    expect(open.disabled).toBe(false);
+  });
+});
