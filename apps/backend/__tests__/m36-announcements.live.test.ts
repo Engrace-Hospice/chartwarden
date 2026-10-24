@@ -37,7 +37,6 @@ import {
   CHANNEL_VISIBILITY_PREDICATE,
   CHANNEL_VISIBILITY_READ_PREDICATE,
 } from "../src/modules/36-messaging/index";
-import { CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/routes/messaging-routes";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import {
   channelMemberAdminPredicate,
