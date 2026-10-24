@@ -271,7 +271,11 @@ describe.skipIf(!DB_URL)("M8 encounter addenda on GET /encounters/:id — LIVE P
       authenticate: headerAuth,
       security: { rateLimitEnabled: false },
     });
-    registerEncounterRoutes(app, { service: createDbEncounterRouteService(handle.db) });
+    // GAP-182: the list narrows to the caller's caseload (the "rn" role is not org-wide); stub the M5 lookup.
+    registerEncounterRoutes(app, {
+      service: createDbEncounterRouteService(handle.db),
+      caseloadPatientIds: async () => [PATIENT],
+    });
   }, 180_000);
 
   afterAll(async () => {
