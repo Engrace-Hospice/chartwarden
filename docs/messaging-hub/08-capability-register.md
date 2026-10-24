@@ -129,7 +129,7 @@
 ## Proposed beyond the 88 (not counted above)
 | ID | Capability | Pri | Ph | Ctx | WP | Status |
 |---|---|---|---|---|---|---|
-| X-6.10 | Third-party alarm ingest as alerts (watch only; never a response request, escalation or page; not a nurse-call replacement) | P3 | 6 | NOTIF | 6.10 | built flag-off (ADR-0101, Proposed); no customer need recorded |
+| X-6.10 | Third-party alarm ingest as alerts (watch only; never a response request, escalation or page; not a nurse-call replacement) | P3 | 6 | NOTIF | 6.10 | built flag-off (ADR-0102, Proposed); no customer need recorded |
 
 **Total: 88** (14 + 12 + 10 + 10 + 10 + 12 + 10 + 10). Items marked "have / prove" exist per the M36 spec; Phase 0 must verify them in code and
 attach test evidence before they are counted as done. Add `owner`, `test_ids`, `evidence_links` columns as work packages are cut.

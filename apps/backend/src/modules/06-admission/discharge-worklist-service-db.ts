@@ -9,6 +9,9 @@
 //                    (`missingDischargeDetail`: a completed death without a place of death, or — with no completed
 //                    discharge — a transfer-out without a receiving care setting).
 //   awaiting_cosign  discharge_event status pending_cosign (oldest first).
+//   qio_review_open  (milestone 10a) admissions with an OPEN BFCC-QIO expedited review, a review with NO deadline typed first (the one most in need
+//                    of attention), then soonest typed deadline.
+//   nomnc_no_deadline    (milestone 10a) ACTIVE NOMNC records with no appeal-request deadline typed yet.
 //   recently_discharged  admission discharged / closed (bereavement = a death) that ended ALIVE — a revocation, a
 //                    transfer-out, or a completed non-death discharge — in the last RECENTLY_DISCHARGED_DAYS days,
 //                    whose patient has no later admission: the readmission candidates (newest first).
@@ -31,6 +34,8 @@ const ADM = schema.admissions;
 const DE = schema.dischargeEvents;
 const TE = schema.transferEvents;
 const RE = schema.revocationEvents;
+const QR = schema.expeditedReviews;
+const NN = schema.nomncNotices;
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
@@ -371,6 +376,62 @@ export function createDbDischargeWorklistService(
     return { items, nextCursor: p.nextCursor };
   }
 
+  async function qioReviewOpen(
+    tx: DbClient,
+    filters: SQL[],
+    limit: number,
+    offset: number,
+  ): Promise<DischargeWorklistPage> {
+    const nextDeadline = sql<string | null>`(
+      SELECT min(d.due_at) FROM expedited_deadline d
+      WHERE d.satisfied_at IS NULL
+        AND (d.expedited_review_id = ${QR.id} OR d.nomnc_notice_id = ${QR.nomncNoticeId}))`;
+    const rows = await tx
+      .select({ ...ADMISSION_COLS, nextDeadlineAt: nextDeadline })
+      .from(QR)
+      .innerJoin(ADM, eq(ADM.id, QR.admissionId))
+      .where(and(...filters, eq(QR.state, "open")))
+      .orderBy(sql`${nextDeadline} ASC NULLS FIRST`, asc(QR.qioNotifiedAt), asc(QR.id))
+      .limit(limit + 1)
+      .offset(offset);
+    const p = page(rows, limit, offset);
+    return {
+      items: p.rows.map((r) => ({
+        ...baseItem(r),
+        nextDeadlineAt: r.nextDeadlineAt ? new Date(r.nextDeadlineAt).toISOString() : null,
+      })),
+      nextCursor: p.nextCursor,
+    };
+  }
+
+  async function nomncNoDeadline(
+    tx: DbClient,
+    filters: SQL[],
+    limit: number,
+    offset: number,
+  ): Promise<DischargeWorklistPage> {
+    const rows = await tx
+      .select({ ...ADMISSION_COLS, deliveredAt: NN.deliveredAt })
+      .from(NN)
+      .innerJoin(ADM, eq(ADM.id, NN.admissionId))
+      .where(
+        and(
+          ...filters,
+          eq(NN.status, "active"),
+          sql`NOT EXISTS (SELECT 1 FROM expedited_deadline d
+                          WHERE d.nomnc_notice_id = ${NN.id} AND d.kind = 'appeal_request')`,
+        ),
+      )
+      .orderBy(desc(NN.deliveredAt), asc(NN.id))
+      .limit(limit + 1)
+      .offset(offset);
+    const p = page(rows, limit, offset);
+    return {
+      items: p.rows.map((r) => ({ ...baseItem(r), noticeDeliveredAt: iso(r.deliveredAt) })),
+      nextCursor: p.nextCursor,
+    };
+  }
+
   return {
     async list(
       organizationId: string,
@@ -389,6 +450,8 @@ export function createDbDischargeWorklistService(
         if (query.bucket === "needs_details") return needsDetails(tx, filters, limit, offset);
         if (query.bucket === "recently_discharged")
           return recentlyDischarged(tx, filters, limit, offset);
+        if (query.bucket === "qio_review_open") return qioReviewOpen(tx, filters, limit, offset);
+        if (query.bucket === "nomnc_no_deadline") return nomncNoDeadline(tx, filters, limit, offset);
         return awaitingCosign(tx, filters, limit, offset);
       });
       // The seam opens its own org context, so the names are read after the worklist transaction.

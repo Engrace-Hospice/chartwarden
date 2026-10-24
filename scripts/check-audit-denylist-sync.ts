@@ -77,6 +77,8 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0027_admission_m6_rls_audit_triggers.sql",
       // FY2027 — `election_addendum`'s own table + trigger (42 CFR 418.24(c)).
       "packages/db/migrations/0381_m6_election_addendum.sql",
+      // Milestone 10a — NOMNC delivery / BFCC-QIO expedited review tables + triggers.
+      "packages/db/migrations/1230_m6_nomnc_expedited_review.sql",
     ],
   },
   {

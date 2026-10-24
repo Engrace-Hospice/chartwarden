@@ -361,7 +361,7 @@ export function mountMessagingRoutes(
     /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
     deathBoard?: _DeathBoardRouteDeps;
     /**
-     * WP 6.10 (ADR-0101, PROPOSED): alarm ingest, WATCH ONLY. `flags` is the M1 reader for `messaging.alarm_ingest` (absent or off => the inbound
+     * WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. `flags` is the M1 reader for `messaging.alarm_ingest` (absent or off => the inbound
      * route and create / rotate are refused; list and disable never depend on it). `alerts` is the lazy AlertEmitter seam; the limiters are the
      * composition root's budgets; `ingestAvailable` is the ADR-0096 D17 trusted-proxy gate. Omitted => not mounted.
      */
@@ -559,7 +559,7 @@ export function mountMessagingRoutes(
   }
   // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board; every route is the uniform 404 while the tenant flag is off.
   if (opts.deathBoard) _registerDeathBoardRoutes(app, opts.deathBoard);
-  // WP 6.10 (ADR-0101, PROPOSED) - alarm ingest, WATCH ONLY: a signed third-party alarm becomes an ordinary alert. Never an acknowledgment request,
+  // WP 6.10 (ADR-0102, PROPOSED) - alarm ingest, WATCH ONLY: a signed third-party alarm becomes an ordinary alert. Never an acknowledgment request,
   // never an escalation, never a page by itself. The inbound route and create / rotate are behind the tenant flag `messaging.alarm_ingest`.
   if (opts.alarmIngest) {
     _registerAlarmIngestRoutes(app, {

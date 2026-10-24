@@ -71,6 +71,21 @@ ill** or **for-cause**, a **Notice of Medicare Non-Coverage (NOMNC)** is issued 
 > on the hospice-physician CTI signature). NOMNC remains out of scope of this amendment. Primary sources:
 > `docs/research/FY2027_HOSPICE_COP_RESEARCH.md` §2, §5.
 
+> **Amendment (2026-10-23) — NOMNC delivery and QIO expedited review are M6 record-keeping; every clock is typed
+> (milestone 10a, appeals PRD).** For a `no_longer_terminal` or `for_cause` live discharge the NOMNC is
+> an M6 concern (M06-F09). M6 now owns `nomnc_notice` (who delivered which notice, when, to whom, hanging off
+> `admission` because the notice precedes `discharge_event`), `expedited_review` (the BFCC-QIO fast-track case,
+> 0..1 per notice) and `expedited_deadline` (deadlines a person types from the notice or the QIO's call, to the
+> minute) — migration `1230`. These tables record facts and encode **no CMS, QIO or NOMNC rule**: every
+> deadline is a local date **and** time of day with a mandatory source note, converted in the organization's
+> zone; closed sets are text labels; status and prompts are derived on read; nothing blocks route 39 and
+> nothing is sent. Alerts run on M6's existing 15-minute `admission.window_alert` worker at product
+> boundaries (24 / 4 / 1 hours, plus once when passed), never on M25's nightly `recorded_deadline` scan,
+> which is date-only. The NOMNC is **not rendered** until compliance supplies the CMS-prescribed text
+> (`nomnc` stays a forms-only key). `NOMNC_PROMPT_REASONS` (`no_longer_terminal`, `for_cause`) cites D5 above
+> and is SME-unconfirmed; it drives a non-blocking prompt only. Computed candidate clocks, NOMNC/DENC
+> rendering and the next level after the QIO (10b) wait on SME or compliance facts.
+
 ### D6 — Transfer requires the 418.30 patient-signed statement
 
 A beneficiary may **transfer hospices once per benefit period**; the transfer requires a

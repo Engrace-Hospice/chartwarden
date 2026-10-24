@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - every word the alarm sources screen shows. Provisional, pending the owner decisions in the ADR. The screen
+// M36 WP 6.10 (ADR-0102, PROPOSED) - every word the alarm sources screen shows. Provisional, pending the owner decisions in the ADR. The screen
 // never calls an alarm an emergency, never says anyone is paged, and says on every view that it does not replace the nurse-call system.
 export const TITLE = "Alarm sources";
 export const BREADCRUMB = "Messaging";

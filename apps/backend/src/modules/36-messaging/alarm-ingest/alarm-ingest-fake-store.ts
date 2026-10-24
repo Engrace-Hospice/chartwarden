@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101) - an in-memory AlarmIngestStore and a fake sealing cipher for the unit and route tests (the SQL is proven by the live suite).
+// M36 WP 6.10 (ADR-0102) - an in-memory AlarmIngestStore and a fake sealing cipher for the unit and route tests (the SQL is proven by the live suite).
 import type { AlarmMappingInput } from "@chartwarden/types";
 import type {
   AlarmIngestStore,

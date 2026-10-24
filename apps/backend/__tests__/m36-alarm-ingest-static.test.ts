@@ -1,4 +1,4 @@
-// WP 6.10 (ADR-0101) - static guards: alarm ingest is WATCH ONLY. Its code (the module directory, the routes, the schemas, the migration) must
+// WP 6.10 (ADR-0102) - static guards: alarm ingest is WATCH ONLY. Its code (the module directory, the routes, the schemas, the migration) must
 //   1. never touch the response-request ("acknowledgment") aggregate, the escalation router, the on-call or triage modules, a timer or a queue,
 //   2. never name an urgent, emergency or SOS path or the urgency model,
 //   3. never read or write a message (an alarm is an alert, not a conversation), and import no module outside the alert emitter seam,

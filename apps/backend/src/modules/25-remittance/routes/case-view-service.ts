@@ -11,6 +11,7 @@ import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { type TimelineItem, nextDeadline, sortTimeline, windowUnconfirmed } from "../domain";
 import type { AppealTier } from "../domain";
 import type { M25ReadActor } from "./actor";
+import { medicaidClaimFactsPort } from "./medicaid-claim-facts";
 import { viewRecordedDeadline } from "./recorded-deadline-view";
 import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
@@ -44,7 +45,11 @@ const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() :
 
 export function buildDrizzleCaseViewService(
   db: DbClient,
-  ports: { readonly claims?: ClaimFactsPort } = {},
+  ports: {
+    readonly claims?: ClaimFactsPort;
+    /** The Medicaid fallback lookup, keyed by organization (default: M24's seam). */
+    readonly medicaidClaims?: (organizationId: string) => ClaimFactsPort;
+  } = {},
 ): CaseViewService {
   return {
     async getCaseView(actor, claimId, options) {
@@ -52,7 +57,13 @@ export function buildDrizzleCaseViewService(
         // The claim must resolve under RLS and inside the actor's provider scope, else it reads as absent (404). A claim
         // that is real but has no ADR / appeal / audit yet is a legitimate empty view (200). The patient named for the
         // read audit is this resolved claim's, so an out-of-scope claim is never attributed.
-        const claim = await (ports.claims ?? m23ClaimFactsPort).byId(tx, claimId);
+        // M23 (Medicare) first; a miss falls back to M24 (Medicaid) through its seam, so a Medicaid claim renders.
+        const claim =
+          (await (ports.claims ?? m23ClaimFactsPort).byId(tx, claimId)) ??
+          (await (ports.medicaidClaims ?? medicaidClaimFactsPort)(actor.organizationId).byId(
+            tx,
+            claimId,
+          ));
         const scope = actor.providerEntityScope;
         if (!claim || (scope !== undefined && !scope.includes(claim.providerEntityId))) {
           throw new NotFoundError("claim");

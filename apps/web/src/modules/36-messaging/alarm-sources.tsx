@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - "Alarm sources": a READ-ONLY list of the outside systems allowed to send an alarm notice into ChartWarden. Per
+// M36 WP 6.10 (ADR-0102, PROPOSED) - "Alarm sources": a READ-ONLY list of the outside systems allowed to send an alarm notice into ChartWarden. Per
 // source: its name, whether it is active (a word, never colour alone), what each alarm code becomes and the most urgent it can ever be, when it last
 // delivered, and what happened to the alarms of the last 24 hours (alerted, nobody to alert, an unmapped code, still waiting), so a silent drop is a
 // number on this screen. It shows no secret and has no action: the one-time secret is returned only by the API at create and rotate. Every view says

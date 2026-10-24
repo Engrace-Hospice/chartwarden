@@ -1,8 +1,8 @@
 # ChartWarden
 
 **Multi-tenant hospice EHR SaaS** — a specification corpus, architecture-fitness kit, and
-staged-implementation monorepo. All **40 modules** are implemented on `main`
-(status matrix: **🟢 40 · 🟡 0 · ⚪ 0**), spanning the clinical core, field/ops tier, the full
+staged-implementation monorepo. Modules 1-40 are implemented on `main`; M41 (commercial billing) is a placeholder
+(status matrix: **🟢 40 · 🟡 0 · ⚪ 1**), spanning the clinical core, field/ops tier, the full
 revenue cycle, interoperability (FHIR / external interfaces), quality (HQRP), the patient portal,
 the AI platform, and the SaaS/subscription platform.
 
@@ -18,7 +18,7 @@ the AI platform, and the SaaS/subscription platform.
 | **Run the project locally** | [`docs/START_PROJECT.md`](./docs/START_PROJECT.md) — step-by-step local startup guide. |
 | **Build or extend a module** | [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md) — runbook + "how to add a module". |
 | **Read the authoritative architecture** | [`docs/architecture/`](./docs/architecture/) (architecture wins over specs). |
-| **Read a module spec** | [`docs/modules/README.md`](./docs/modules/README.md) (40 specs). |
+| **Read a module spec** | [`docs/modules/README.md`](./docs/modules/README.md) (41 specs). |
 | **Read the design / UI corpus** | [`docs/design/README.md`](./docs/design/README.md) (Lantern system + 113 screen specs). |
 | **See decision records** | [`docs/adr/README.md`](./docs/adr/README.md) (ADR-0001…ADR-0035). |
 

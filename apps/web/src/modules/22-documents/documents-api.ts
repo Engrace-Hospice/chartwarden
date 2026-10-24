@@ -23,7 +23,7 @@
 // Anything that fails between 2 and 4 leaves a `pending` upload row and a staged object, so every
 // failure path calls `DELETE /api/v1/document-uploads/:id`. A row nobody aborts expires on its own
 // after 15 minutes, but relying on that would leave the user's next attempt racing a stale one.
-import type { ApiClient, operations } from "@chartwarden/ui";
+import { type ApiClient, type operations, isStepUpRequired } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,13 @@ export type AccessPurpose = NonNullable<
  */
 export type WriteResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly status: number | null; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly status: number | null;
+      readonly message: string;
+      /** The server wants a fresh step-up before it will do this (403 STEP_UP_REQUIRED). */
+      readonly stepUp?: boolean;
+    };
 
 /**
  * Turn a failure into copy a clinician can act on.
@@ -258,6 +264,16 @@ export async function patchDocument(
   return { ok: true, value: data as DocumentView };
 }
 
+/** §4.12 — the out-of-network partner a `disclosure` / `survey_export` mint is for (an M40 entity). */
+export type DisclosureRecipient = {
+  readonly kind: NonNullable<
+    NonNullable<
+      operations["getApiV1DocumentsByIdVersionsByVersionIdContent"]["parameters"]["query"]
+    >["recipientKind"]
+  >;
+  readonly entityId: string;
+};
+
 /**
  * §4.2 — mint a short-lived signed URL for a version's content.
  *
@@ -270,12 +286,28 @@ export async function mintContentUrl(
   documentId: string,
   versionId: string,
   purpose: AccessPurpose,
+  recipient?: DisclosureRecipient,
 ): Promise<WriteResult<SignedUrlResult>> {
   const { data, error, response } = await client.GET(
     "/api/v1/documents/{id}/versions/{versionId}/content",
-    { params: { path: { id: documentId, versionId }, query: { purpose } } },
+    {
+      params: {
+        path: { id: documentId, versionId },
+        query: {
+          purpose,
+          ...(recipient
+            ? { recipientKind: recipient.kind, recipientEntityId: recipient.entityId }
+            : {}),
+        },
+      },
+    },
   );
-  if (error || !data) return failure(response?.status, error);
+  if (error || !data) {
+    const res = failure<SignedUrlResult>(response?.status, error);
+    return !res.ok && isStepUpRequired(error)
+      ? { ...res, message: "Confirm your identity to release this document.", stepUp: true }
+      : res;
+  }
   return { ok: true, value: data as SignedUrlResult };
 }
 

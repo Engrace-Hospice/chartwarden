@@ -484,6 +484,7 @@ import {
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
+  createNomncService,
   electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
@@ -3896,6 +3897,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
       })
     : null;
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines). Its
+  // routes mount in `mountAdmissionRoutes`; the 15-minute deadline scan runs in M6's `admission.window_alert` worker.
+  const m6Nomnc = dbHandle ? createNomncService({
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        // A linked document must be an ACTIVE M22 version of this org's patient + admission (else 404).
+        documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
+      }) : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
@@ -5005,6 +5014,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               closureFor: (organizationId, q) =>
                 priorElectionClosureForOrg(dbHandle.db, organizationId, q),
             },
+            // Milestone 10a — the NOMNC / expedited-review routes.
+            m6Nomnc ?? undefined,
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Each module's write lifecycle is live (no route
@@ -5199,7 +5210,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.6 external partner share mount
-            // ── WP 6.10 (ADR-0101, PROPOSED) alarm ingest, WATCH ONLY. Flag `messaging.alarm_ingest` (absent = off) gates the inbound route and
+            // ── WP 6.10 (ADR-0102, PROPOSED) alarm ingest, WATCH ONLY. Flag `messaging.alarm_ingest` (absent = off) gates the inbound route and
             // create / rotate; list and disable never. Budgets: per client address before any database work (300/min), then per source after the
             // signature is proven (60/min). The inbound route is mounted only when the ADR-0096 D17 trusted-proxy gate passes (the boot warning for
             // an invalid TRUSTED_PROXY_CIDRS is the external-share one above). The alerts are ordinary M36 alerts through the AlertEmitter seam.

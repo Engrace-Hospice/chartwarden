@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - the Alarm sources screen against a mocked network boundary: it is READ ONLY (no button creates, rotates or disables
+// M36 WP 6.10 (ADR-0102, PROPOSED) - the Alarm sources screen against a mocked network boundary: it is READ ONLY (no button creates, rotates or disables
 // anything and no secret is ever shown), every view says it is a notice and not a nurse-call replacement, a silent drop is a visible number, and the
 // loading, empty, denied, error and refresh-failed states are honest. axe is clean.
 import type { AlarmSourceDto } from "@chartwarden/types";

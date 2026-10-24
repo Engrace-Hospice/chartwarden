@@ -1,4 +1,4 @@
-// WP 6.10 (ADR-0101) - alarm ingest over the route stack and the REAL Authorization Contract, with the REAL service over an in-memory store (the rules
+// WP 6.10 (ADR-0102) - alarm ingest over the route stack and the REAL Authorization Contract, with the REAL service over an in-memory store (the rules
 // are proven in alarm-ingest-service.test.ts, the SQL by m36-alarm-ingest.live.test.ts).
 //
 //   inbound: NO session; the HMAC is the credential; ONE 401 body for everything up to a wrong signature; the raw bytes are what is signed; a body over

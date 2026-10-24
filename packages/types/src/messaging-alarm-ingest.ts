@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - alarm ingest, WATCH ONLY: a third-party alarm (nurse call, bed or fall sensor, monitor) becomes an ordinary
+// M36 WP 6.10 (ADR-0102, PROPOSED) - alarm ingest, WATCH ONLY: a third-party alarm (nurse call, bed or fall sensor, monitor) becomes an ordinary
 // M36 ALERT through the existing alert catalog and fan-out. It is NOT a nurse-call system and NOT an emergency path: it never creates an
 // acknowledgment request, never enters the escalation ladder and never pages by itself (in-app only by default). Constants and DTOs shared by the
 // backend and the web. The closed sets and numeric bounds are pinned against migration 1250 by a test.

@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - the strict inbound body of an alarm. NO free-text field exists: a sender cannot put a patient name, a room or
+// M36 WP 6.10 (ADR-0102, PROPOSED) - the strict inbound body of an alarm. NO free-text field exists: a sender cannot put a patient name, a room or
 // a sentence into an alert. `additionalProperties: false` refuses anything else. The body is also capped at ALARM_INGEST_MAX_BODY_BYTES by the route.
 import {
   ALARM_EVENT_ID_PATTERN,

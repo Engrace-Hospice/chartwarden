@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - the read of /api/v1/messaging/alarm-sources for the alarm sources screen. Read only: creating, rotating and
+// M36 WP 6.10 (ADR-0102, PROPOSED) - the read of /api/v1/messaging/alarm-sources for the alarm sources screen. Read only: creating, rotating and
 // disabling a source is done through the API (a fresh step-up each), and the one-time secret is never shown or kept by this screen.
 import type { AlarmSourceDto } from "@chartwarden/types";
 import type { ApiClient } from "@chartwarden/ui";

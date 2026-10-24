@@ -1,5 +1,5 @@
 /**
- * M36 WP 6.10 (ADR-0101) - alarm ingest, WATCH ONLY, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
+ * M36 WP 6.10 (ADR-0102) - alarm ingest, WATCH ONLY, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, step-up predicate), the REAL alert emitter and fan-out over the seeded platform rules, the real
  * tenant-ring cipher path, and the guard triggers of migration 1250.

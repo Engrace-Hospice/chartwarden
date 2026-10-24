@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101) - alarm ingest, watch only (migration 1250): a sender credential (the HMAC secret sealed under the tenant ring DEK), its
+// M36 WP 6.10 (ADR-0102) - alarm ingest, watch only (migration 1250): a sender credential (the HMAC secret sealed under the tenant ring DEK), its
 // alarm-kind -> catalog-alert-type mappings with a severity ceiling, and one idempotency row per accepted event. Ids, enums, a body digest and
 // counts only: no free text. Names match the migration (pinned by a test); timestamps and the guard transitions are set by database triggers.
 import { sql } from "drizzle-orm";

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/routes/alarm-ingest-routes.ts - WP 6.10 (ADR-0101, PROPOSED): alarm ingest, WATCH ONLY.
+// apps/backend/src/modules/36-messaging/routes/alarm-ingest-routes.ts - WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY.
 //
 // STAFF (a workforce session; messaging.alarm_ingest.manage):
 //   GET  /api/v1/messaging/alarm-sources                    list    (permission; never depends on the flag; the secret is never readable)
@@ -6,7 +6,7 @@
 //   POST /api/v1/messaging/alarm-sources/:id/rotate-secret  rotate  (permission + flag + fresh step-up); the old secret stops verifying at once
 //   POST /api/v1/messaging/alarm-sources/:id/disable        disable (permission + fresh step-up; never depends on the flag); one way
 //
-// INBOUND (NOT a user session: a machine proving a per-source HMAC; ADR-0101 D2). One refusal body for everything up to a wrong signature.
+// INBOUND (NOT a user session: a machine proving a per-source HMAC; ADR-0102 D2). One refusal body for everything up to a wrong signature.
 //   POST /api/v1/messaging/alarm-ingest/events   { eventId, alarmKind, severity?, occurredAt? }  -> 202 { status, outcome }
 // The route reads three headers, all registered in scripts/check-request-header-auth.ts: x-wx-key-id (names WHICH secret to try; verified by the
 // signature that follows), x-wx-signature (the HMAC itself, verified) and x-wx-timestamp (replay freshness only, and it is inside the signed text).

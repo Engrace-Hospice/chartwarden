@@ -1,4 +1,4 @@
-// ADR-0101 - migration 1250, the Drizzle schema, the manifest, the permission mirrors and the code-side constants agree. The structural promises
+// ADR-0102 - migration 1250, the Drizzle schema, the manifest, the permission mirrors and the code-side constants agree. The structural promises
 // (FORCEd RLS on every table, no severity above warn in the database, a secret that is a cipher and never in the audit row, one-way disable,
 // a rotation that bumps the generation by one, an event that settles once, no DELETE for the app role, the permission only for compliance and
 // admin roles) are pinned on the migration text. Behaviour is proven live (m36-alarm-ingest.live.test.ts).

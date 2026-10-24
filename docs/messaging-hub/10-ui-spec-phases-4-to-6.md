@@ -546,7 +546,7 @@ what was shared with you." States: S0 plus *share expired*, *revoked* (partner v
 names the partner and expiry in its confirm button. Acceptance: axe + keyboard; live: partner reads nothing outside scope; revocation is immediate on
 the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on what may be shared.
 
-### 6.10 Alarm sources (read-only list; built flag-off, ADR-0101 Proposed)
+### 6.10 Alarm sources (read-only list; built flag-off, ADR-0102 Proposed)
 
 | | |
 |---|---|
@@ -571,7 +571,7 @@ the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on wh
 | Priority alerts | Priority levels with distinct alerting | Routine / important / urgent / Critical, distinct tone | **Closed-loop acknowledgment with audit**: opened ≠ taken; aide = receipt only; permanent "not the emergency path" | P0 | 4.1, 4.2 (built), G1, G2 |
 | Escalation | Auto-escalate unanswered alerts | Timed tier escalation, backup routing | Visible **ladder visualiser**, supervisor queue with "shown N of M", `failed_unreachable`, restart-safe timers, exactly-once | P0 | 4.4 (built), 4.5, 4.9 |
 | Scheduling | On-call schedules integrated | Read M19 roster | Honest "who covers now" with shift/time-zone correctness; **after-hours triage line routing** into M19 `triage_call` | P0 | **4.12**, **4.13** |
-| Alarm management | Clinical alarm/event routing from devices | Receive system events as alerts | Hospice has little bedside telemetry: P3. Reuse the alert catalog for M-module events; ingest of third-party alarms only on a real customer need. **Built flag-off as watch only (ADR-0101, Proposed):** a signed alarm is an in-app alert, never a response request, an escalation or a page, and never a nurse-call replacement | P3 | **6.10** (built flag-off, watch only) |
+| Alarm management | Clinical alarm/event routing from devices | Receive system events as alerts | Hospice has little bedside telemetry: P3. Reuse the alert catalog for M-module events; ingest of third-party alarms only on a real customer need. **Built flag-off as watch only (ADR-0102, Proposed):** a signed alarm is an in-app alert, never a response request, an escalation or a page, and never a nurse-call replacement | P3 | **6.10** (built flag-off, watch only) |
 | Patient engagement | Secure patient/family messaging | Family can reach the team | **Family/caregiver secure messaging with no app** (one-time link + code, no PHI in SMS/email), routed to the care team; bereavement channel kept after death | P1 | **6.7** |
 | Admin console, LDAP/SAML, PIN, remote lockout | Directory sync, SSO, PIN lock, remote wipe | Central identity, app lock, revoke a lost device | Identity stays M2/M34 (SAML/OIDC via the platform, not a second directory); **tenant-set tighten-only app lock**; revoke kills socket + endpoint; offboarding never leaves an urgent item ownerless | P1 | 5.5, 5.9 (+ M2 SSO, out of scope here) |
 | Archive / export | Retention policies, eDiscovery export | Retention, legal hold, export | Hold as an **overlay**, two-person export, expiring encrypted artefact, destruction certificates (M4), break-glass with mandatory post-review | P1 | 5.6, 5.7, 5.8 |

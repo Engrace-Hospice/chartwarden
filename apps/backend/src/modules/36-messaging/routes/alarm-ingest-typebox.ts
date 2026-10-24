@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox.ts - WP 6.10 (ADR-0101, PROPOSED) schemas for the alarm ingest routes.
+// apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox.ts - WP 6.10 (ADR-0102, PROPOSED) schemas for the alarm ingest routes.
 // Wire keys are camelCase (the contract in packages/types/src/messaging-alarm-ingest.ts). No schema here carries a secret except the one-time
 // credential response; the list shape has no cipher, no hash and no secret.
 import {

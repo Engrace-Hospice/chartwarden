@@ -127,17 +127,17 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
   "x-wx-signature": {
     classification: "verified",
     reason:
-      "HMAC-SHA256 (v1=hex) over `<timestamp>.<keyId>.<raw body>` under the per-source secret, opened from the tenant-DEK envelope and constant-time compared BEFORE the alarm is believed (M36 alarm-ingest/alarm-ingest-service.ts, WP 6.10 / ADR-0101). Every failure up to and including a wrong signature is one 401 body. The alarm becomes an in-app alert only.",
+      "HMAC-SHA256 (v1=hex) over `<timestamp>.<keyId>.<raw body>` under the per-source secret, opened from the tenant-DEK envelope and constant-time compared BEFORE the alarm is believed (M36 alarm-ingest/alarm-ingest-service.ts, WP 6.10 / ADR-0102). Every failure up to and including a wrong signature is one 401 body. The alarm becomes an in-app alert only.",
   },
   "x-wx-key-id": {
     classification: "verified",
     reason:
-      "`<organizationId>.<sourceId>`: names WHICH tenant-scoped secret the signature is checked against; it grants nothing by itself and is itself inside the signed text, so a swapped id fails the HMAC (ADR-0101 D2). An unknown or disabled id is the same 401 as a wrong signature.",
+      "`<organizationId>.<sourceId>`: names WHICH tenant-scoped secret the signature is checked against; it grants nothing by itself and is itself inside the signed text, so a swapped id fails the HMAC (ADR-0102 D2). An unknown or disabled id is the same 401 as a wrong signature.",
   },
   "x-wx-timestamp": {
     classification: "not-authorization",
     reason:
-      "Replay-window freshness (+-300 s, epoch seconds, strict 10-digit shape) only; it is inside the signed text, and authorization is the HMAC above plus the (source, event id) idempotency row (ADR-0101 D2).",
+      "Replay-window freshness (+-300 s, epoch seconds, strict 10-digit shape) only; it is inside the signed text, and authorization is the HMAC above plus the (source, event id) idempotency row (ADR-0102 D2).",
   },
   "x-twilio-signature": {
     classification: "verified",

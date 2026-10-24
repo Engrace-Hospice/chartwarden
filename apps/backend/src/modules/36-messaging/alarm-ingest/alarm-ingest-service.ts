@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - alarm ingest, WATCH ONLY. The service holds every rule; the store holds only SQL.
+// M36 WP 6.10 (ADR-0102, PROPOSED) - alarm ingest, WATCH ONLY. The service holds every rule; the store holds only SQL.
 //
 // INBOUND (a machine, no session): cheap secret-free refusals first (budget per client address, key id / timestamp / signature SHAPE, replay
 // window, tenant flag), then the credential is loaded under its OWN tenant's RLS, its secret is opened from the tenant-DEK envelope and the HMAC is

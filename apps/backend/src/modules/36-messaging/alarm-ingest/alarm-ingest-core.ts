@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - the pure core of alarm ingest: the sender credential, the HMAC signature, the replay window, the severity
+// M36 WP 6.10 (ADR-0102, PROPOSED) - the pure core of alarm ingest: the sender credential, the HMAC signature, the replay window, the severity
 // cap and the body digest. No I/O, no clock (the instant is an argument), no logging. The HMAC key is the per-source secret, which the service
 // opens from its envelope only after the cheap, secret-free checks (key id shape, timestamp window, signature shape) have passed.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";

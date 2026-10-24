@@ -451,7 +451,7 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
-  // --- WP 6.10 (ADR-0101, PROPOSED): alarm ingest, WATCH ONLY. MANAGE creates, rotates and disables a third-party alarm source (a fresh
+  // --- WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. MANAGE creates, rotates and disables a third-party alarm source (a fresh
   //     step-up each time). Migration 1250 grants it to compliance_officer, administrator, org_admin only. The tenant flag
   //     messaging.alarm_ingest is off by default. ---
   "messaging.alarm_ingest.manage": {
@@ -1026,6 +1026,15 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
   "election_addendum.acknowledge": {
     resource: "election_addendum",
     action: "acknowledge",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  // --- Milestone 10a: NOMNC delivery + BFCC-QIO expedited review record-keeping (mig 1230 grants `nomnc.read` to the
+  //     roles holding admission.read and `nomnc.record` to those holding discharge.no_longer_terminal / for_cause) ---
+  "nomnc.read": { resource: "nomnc", action: "read", category: "clinical", abac: "admission.scope" },
+  "nomnc.record": {
+    resource: "nomnc",
+    action: "record",
     category: "clinical",
     abac: "admission.scope",
   },

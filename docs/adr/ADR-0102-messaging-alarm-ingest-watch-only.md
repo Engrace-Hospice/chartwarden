@@ -1,4 +1,4 @@
-# ADR-0101 — Messaging alarm ingest, watch only: a signed third-party alarm becomes an ordinary alert, never a call for help
+# ADR-0102 — Messaging alarm ingest, watch only: a signed third-party alarm becomes an ordinary alert, never a call for help
 
 - **Status:** **Proposed** (2026-10-23). Built behind the tenant flag `messaging.alarm_ingest` (default off). Decisions D1 to D13 are the build team's defaults. The clinical lead, compliance, security and legal have not signed off, and **no customer need is recorded**: WP 6.10 was "not scheduled, only on a real customer need" until the product owner asked for it to be built. See Open owner decisions.
 - **Date:** 2026-10-23

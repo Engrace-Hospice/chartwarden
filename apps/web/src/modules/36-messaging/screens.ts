@@ -210,7 +210,7 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       screen: ExternalPartners,
     },
     {
-      // WP 6.10 (ADR-0101, proposed): a READ-ONLY list of the outside systems allowed to send an alarm notice (watch only: an alert, never a call for
+      // WP 6.10 (ADR-0102, proposed): a READ-ONLY list of the outside systems allowed to send an alarm notice (watch only: an alert, never a call for
       // help). Creating, rotating and disabling a source are API calls with a fresh step-up. Needs messaging.alarm_ingest.manage.
       id: "messaging.alarm-sources",
       path: "/messaging/alarm-sources",

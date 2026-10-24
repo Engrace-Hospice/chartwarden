@@ -369,6 +369,7 @@ export function DischargeWorkflow(): JSX.Element {
 
         {step === "reason" ? (
           <ReasonStep
+            admissionId={admission.id}
             reason={form.reason}
             can={can}
             showError={Boolean(showErrors.reason) && !def}

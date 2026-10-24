@@ -197,7 +197,7 @@ describe("WP 5.7 (ADR-0089) export keys reach NEW tenants' compliance officer an
   });
 });
 
-describe("WP 6.10 (ADR-0101) alarm ingest key: the compliance officer template only", () => {
+describe("WP 6.10 (ADR-0102) alarm ingest key: the compliance officer template only", () => {
   it("the compliance_officer template grants it and no other template does", () => {
     const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];
     expect(grants).toContain("messaging.alarm_ingest.manage");

@@ -2,7 +2,7 @@
 // POST /recurring-visits body onto the `recurring_visit` policy columns. The route used to forward only the
 // RRULE and the service defaulted the window to 09:00-10:00 UTC; the client's window, timezone, dates, count,
 // byday and address are now authoritative (and validated here, once, for any caller of the service).
-import { type ParsedRrule, parseRrule } from "@chartwarden/scheduling";
+import { type ParsedRrule, materializeRecurrence, parseRrule } from "@chartwarden/scheduling";
 import { ValidationError } from "@chartwarden/types";
 
 export interface RecurringPolicyFields {
@@ -70,6 +70,23 @@ export function assertRecurringPolicyValid(input: RecurringPolicyFields): void {
   }
   if (input.byday !== undefined && !sameSet(input.byday, rule.byDay)) {
     fail("byday", "byday must match the RRULE BYDAY");
+  }
+  try {
+    materializeRecurrence(
+      {
+        rule,
+        startDate: input.startDate,
+        endDate: input.endDate ?? null,
+        timeOfDayStart: input.timeOfDayStart,
+        timeOfDayEnd: input.timeOfDayEnd,
+        timeZone: input.timeZone,
+      },
+      input.startDate,
+      400,
+    );
+  } catch (cause) {
+    if (cause instanceof RangeError) fail("timeOfDayStart", cause.message);
+    throw cause;
   }
 }
 

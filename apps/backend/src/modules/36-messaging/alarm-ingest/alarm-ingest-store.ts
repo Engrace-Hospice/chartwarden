@@ -1,4 +1,4 @@
-// M36 WP 6.10 (ADR-0101, PROPOSED) - the storage port of alarm ingest and its Drizzle implementation. The service holds every rule; this is only
+// M36 WP 6.10 (ADR-0102, PROPOSED) - the storage port of alarm ingest and its Drizzle implementation. The service holds every rule; this is only
 // reads and writes inside ONE tenant transaction each. The inbound route has no user: it runs as the system actor (audit rows say so) under
 // the credential's own organisation, so RLS scopes every statement to that one tenant. Staff calls run as the staff member (the audit actor).
 import { type DbClient, schema } from "@chartwarden/db";

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/routes/discharge-worklist-routes.ts — the end-of-episode worklist read
 // behind the web "Discharge / transfer" hub:
 //
-//   GET /api/v1/discharges/worklist?bucket=ready|needs_details|awaiting_cosign&cursor=&limit=
+//   GET /api/v1/discharges/worklist?bucket=ready|needs_details|awaiting_cosign|recently_discharged|qio_review_open|nomnc_no_deadline&cursor=&limit=
 //
 // AUTHORIZATION: `admission.read` for every bucket (the rows are admission facts), plus
 // `discharge.cosign_for_cause` for the awaiting-cosign bucket (only a medical director acts on it). The rows are
@@ -28,11 +28,13 @@ export interface DischargeWorklistRouteDeps {
 
 const ADMISSION_READ = requirePermission("admission.read") as PreHandler;
 const COSIGN = requirePermission("discharge.cosign_for_cause") as PreHandler;
+const NOMNC_READ = requirePermission("nomnc.read") as PreHandler;
 
-/** The awaiting-cosign bucket additionally needs the cosign key; other buckets pass through. */
+/** The awaiting-cosign bucket additionally needs the cosign key, the two NOMNC buckets `nomnc.read`; others pass. */
 const bucketPermission: PreHandler = async (request, reply) => {
   const bucket = (request.query as { bucket?: unknown } | undefined)?.bucket;
   if (bucket === "awaiting_cosign") await COSIGN(request, reply);
+  if (bucket === "qio_review_open" || bucket === "nomnc_no_deadline") await NOMNC_READ(request, reply);
 };
 
 export function registerDischargeWorklistRoutes(

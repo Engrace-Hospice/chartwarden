@@ -1,4 +1,4 @@
--- M36 WP 6.10 (ADR-0101, PROPOSED) - alarm ingest, WATCH ONLY. A third-party alarm becomes an ordinary M36 alert, nothing more: no response
+-- M36 WP 6.10 (ADR-0102, PROPOSED) - alarm ingest, WATCH ONLY. A third-party alarm becomes an ordinary M36 alert, nothing more: no response
 -- request, no routing and no page of its own. Three tables:
 --   * alarm_source: one per sender credential. The HMAC secret is stored ENVELOPE-ENCRYPTED under the tenant ring DEK (secret_cipher): HMAC needs
 --     the key itself, so a hash would not verify anything. Disable is one-way (create a new source to resume). Rotation replaces the cipher and
@@ -224,7 +224,7 @@ CREATE POLICY "alarm_ingest_event_destruction" ON "alarm_ingest_event"
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 
 -- The permission (mirrors 1180). Create, rotate and disable also demand a fresh step-up in the route. PROVISIONAL until compliance confirms the
--- role set (ADR-0101 open items). No clinical, aide or other default role holds it.
+-- role set (ADR-0102 open items). No clinical, aide or other default role holds it.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('messaging.alarm_ingest.manage', 'alarm_source', 'manage', 'compliance', 'none', '')
 ON CONFLICT ("key") DO NOTHING;--> statement-breakpoint
