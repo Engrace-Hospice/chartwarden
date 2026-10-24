@@ -2,7 +2,7 @@
   "totals": {
     "Implemented": 40,
     "Partial": 0,
-    "Placeholder": 0
+    "Placeholder": 1
   },
   "rows": [
     {
@@ -800,6 +800,23 @@
       "liveInfra": {
         "tables": 14,
         "covered": 14
+      }
+    },
+    {
+      "id": 41,
+      "module": "M41 Billing — Commercial",
+      "status": "Placeholder",
+      "spec": true,
+      "schema": false,
+      "migration": false,
+      "routes": false,
+      "enriched": null,
+      "screens": false,
+      "tests": false,
+      "adapter": null,
+      "liveInfra": {
+        "tables": 12,
+        "covered": 0
       }
     }
   ],

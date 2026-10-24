@@ -204,7 +204,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | [`history/`](./history/README.md) | Audit findings (F-0xx), #248 outbox-binding rounds, and per-gate incident history, split by topic (moved out of `CLAUDE.md`). |
 | [`adr/`](./adr/) | Decision records — see [`adr/README.md`](./adr/README.md). |
 | [`../audit/`](../audit/) | Generated audit & fitness-enforcement reports (outside `docs/`) — the source for counts (routes, tables, ADRs, modules); read them instead of trusting a number in prose. |
-| [`audits/`](./audits/) | Gap-analysis reports and the audit prompt (`GAP_ANALYSIS_*.md`), plus live-browser and production-readiness audit folders. |
+| [`audits/`](./audits/) | Gap-analysis reports and the audit prompt (`GAP_ANALYSIS_*.md`), plus live-browser and production-readiness audit folders, and [`audits/billing-e2e/`](./audits/billing-e2e/) (billing scenario-to-test matrix, plan, issue drafts). |
 | [`cartography/`](./cartography/) | Workflow cartographies (admission/intake, patient care, encounters/visits, HOPE) used as audit inputs. |
 | [`research/`](./research/) | Regulatory research notes (e.g. `FY2027_HOSPICE_COP_RESEARCH.md`). |
 | [`reviews/`](./reviews/) | Review prompt templates (architecture compliance, exceedance, red-team, lock-grade, production readiness). |
