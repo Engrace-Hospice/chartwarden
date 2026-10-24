@@ -52,6 +52,7 @@ the 2-second delivery target.
 | 9 | [`09-ui-gap-register.md`](./09-ui-gap-register.md) | UI and screen gaps still to build (audit 2026-10-12), mapped to WPs or marked unscheduled |
 | 10 | [`10-ui-spec-phases-4-to-6.md`](./10-ui-spec-phases-4-to-6.md) | UI specification for Phase 4–6 screens (states, a11y, PHI, acceptance) and the comparison against TigerConnect |
 | 11 | [`11-decision-sheet.md`](./11-decision-sheet.md) | Open sign-offs in one table: owner, provisional default, what it unblocks (draft, nothing decided) |
+| 12 | [`briefs/README.md`](./briefs/README.md) | Per-owner decision briefs (compliance, clinical lead, privacy and counsel, security, M19, product owner) for the open sign-offs of ADR-0082 to 0099, with yes/no/modify answer blocks (draft, nothing decided) |
 
 ## 4. Phase summary
 

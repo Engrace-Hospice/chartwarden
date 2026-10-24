@@ -79,6 +79,19 @@ lead + new ADR), family messaging without an app (6.7, privacy officer + new ADR
 forbidden by default), the self-destruct
 question (UI spec §8; recommended to decline for clinical content), and reconciling native push with ADR-0072 (5.11).
 
+## G. Per-owner briefs (wave 5, 2026-10-23)
+
+The open sign-offs of the Proposed ADRs 0082 to 0099 (the section F items and the open lists inside each ADR) are written out, one document per owner, in [`briefs/README.md`](./briefs/README.md). Each question has an id, the ADR section it comes from, a recommended default with its consequence, what stays blocked, what it unblocks, and a yes / no / modify answer block. They are **not** new rows of this sheet and add no new defaults; answers are copied back here and into the ADRs. Nothing is decided.
+
+| # | Owner | Brief | Questions | Gates |
+|---|---|---|---|---|
+| G1 | COMP (HR joins the analytics items) | [`briefs/brief-compliance-officer.md`](./briefs/brief-compliance-officer.md) | CO-1 to CO-19 | thread-read slices G2/G3; export, analytics, partner share, broadcast and death board going live |
+| G2 | CL (with the bereavement coordinator) | [`briefs/brief-clinical-lead.md`](./briefs/brief-clinical-lead.md) | CL-1 to CL-20 | ladder L2/L3, AI, voice, family messaging, checklist and wording |
+| G3 | COMP + counsel (privacy officer) | [`briefs/brief-privacy-officer-counsel.md`](./briefs/brief-privacy-officer-counsel.md) | PV-1 to PV-13 | family messaging (ADR-0099), voice and AI vendors, partner agreement |
+| G4 | SEC | [`briefs/brief-security.md`](./briefs/brief-security.md) | SE-1 to SE-15 | session policy, officer role, app lock, partner and family-link hardening |
+| G5 | M19 | [`briefs/brief-m19-owner-followup.md`](./briefs/brief-m19-owner-followup.md) | M19-1 to M19-8 | S6 acceptance, L1, physician role |
+| G6 | PO (and operations until named) | [`briefs/brief-product-owner.md`](./briefs/brief-product-owner.md) | PO-1 to PO-12 | flags and order of work, contact page, follow-ups, operations questions |
+
 ## What happens with the answers
 
 Accepted defaults and edits are written into the owning ADRs (0056, 0069, 0071, 0073, 0076, 0078, 0079) and the brief as decided,
