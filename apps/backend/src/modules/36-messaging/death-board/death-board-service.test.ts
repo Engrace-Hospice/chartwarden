@@ -29,6 +29,7 @@ interface Opts {
 }
 
 function build(o: Opts = {}) {
+  const calls = { gate: 0, team: 0 };
   const store = createMemoryDeathBoardStore(() => NOW);
   const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: 1 });
   const alerts = { emit } as unknown as AlertEmitter;
@@ -37,6 +38,7 @@ function build(o: Opts = {}) {
     store,
     part2Gate: {
       async allowedUserIds({ userIds }) {
+        calls.gate += 1;
         if (o.part2Throws) throw new Error("gate down");
         return new Set(userIds.filter((u) => !(o.part2Denied ?? []).includes(u)));
       },
@@ -46,6 +48,7 @@ function build(o: Opts = {}) {
     displayName: async (_o, u) => `user-${u.slice(-4)}`,
     isActiveUser: async (_o, u) => !(o.inactive ?? []).includes(u),
     careTeamMembers: async () => {
+      calls.team += 1;
       if (o.teamThrows) throw new Error("seam down");
       return o.team ?? [RN, NURSE2];
     },
@@ -54,7 +57,7 @@ function build(o: Opts = {}) {
     alerts,
     now: () => NOW,
   });
-  return { service, store, emit };
+  return { service, store, emit, calls };
 }
 
 const actor = (userId: string, supervisor = false): DeathBoardActor => ({
@@ -273,6 +276,57 @@ describe("reassign", () => {
     await t.store.flagNeedsOwner(null as never, { orgId: ORG, itemId: t.itemId });
     const out = await t.service.reassign(actor(SUP, true), t.itemId, NURSE2);
     expect(out.needs_owner).toBe(false);
+  });
+});
+
+describe("reassign: owner-validity rules", () => {
+  it("refuses a flagged item reassigned to its CURRENT owner with 422, not a database 500", async () => {
+    const t = await boardWith();
+    await t.store.flagNeedsOwner(null as never, { orgId: ORG, itemId: t.itemId });
+    expect(await code(t.service.reassign(actor(SUP, true), t.itemId, RN))).toBe(
+      "422:DEATH_BOARD_OWNER_INVALID",
+    );
+    expect(await code(t.service.reassign(actor(RN), t.itemId, RN))).toBe(
+      "422:DEATH_BOARD_OWNER_INVALID",
+    );
+  });
+
+  it("refuses a supervisor naming themselves as the new owner; the owner naming themselves stays a no-op", async () => {
+    const t = await boardWith({ team: [RN, NURSE2, SUP] });
+    const n = t.store.events.length;
+    expect(await code(t.service.reassign(actor(SUP, true), t.itemId, SUP))).toBe(
+      "422:DEATH_BOARD_OWNER_INVALID",
+    );
+    expect(t.store.events.length).toBe(n);
+    expect(await code(t.service.reassign(actor(RN, true), t.itemId, RN))).toBe("ok");
+    expect(t.store.events.length).toBe(n);
+  });
+});
+
+describe("visibility: past owners", () => {
+  it("a past owner loses access (uniform 404); the current owner keeps it", async () => {
+    const t = await boardWith({ team: [] });
+    const missing = await code(t.service.get(actor(STRANGER), t.boardId));
+    await t.service.reassign(actor(SUP, true), t.itemId, NURSE2);
+    // RN still owns the other five items; move them all away.
+    const items = (await t.service.get(actor(SUP, true), t.boardId)).items;
+    for (const i of items) {
+      if (i.owner_user_id === RN) await t.service.reassign(actor(RN), i.id, NURSE2);
+    }
+    expect(await code(t.service.get(actor(RN), t.boardId))).toBe(missing);
+    expect(await code(t.service.history(actor(RN), t.itemId))).toBe(missing);
+    expect(await code(t.service.get(actor(NURSE2), t.boardId))).toBe("ok");
+  });
+});
+
+describe("list: Part 2 gate once per patient", () => {
+  it("evaluates the viewer's Part 2 verdict and the care team once per patient per request", async () => {
+    const t = await boardWith();
+    t.calls.gate = 0;
+    t.calls.team = 0;
+    expect(await t.service.list(actor(NURSE2), 25)).toHaveLength(1);
+    expect(t.calls.gate).toBe(1);
+    expect(t.calls.team).toBe(1);
   });
 });
 

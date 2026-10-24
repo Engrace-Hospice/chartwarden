@@ -97,14 +97,7 @@ export function createMemoryDeathBoardStore(now: () => Date): MemoryDeathBoardSt
       return i && i.organizationId === orgId ? i : null;
     },
     async isInvolved(_tx, _orgId, boardId, userId) {
-      const mine = [...items.values()].filter((i) => i.boardId === boardId);
-      if (mine.some((i) => i.ownerUserId === userId)) return true;
-      const ids = new Set(mine.map((i) => i.id));
-      return events.some(
-        (e) =>
-          ids.has(e.itemId) &&
-          (e.actorUserId === userId || e.fromOwnerUserId === userId || e.toOwnerUserId === userId),
-      );
+      return [...items.values()].some((i) => i.boardId === boardId && i.ownerUserId === userId);
     },
     async complete(_tx, a) {
       const row = items.get(a.itemId);

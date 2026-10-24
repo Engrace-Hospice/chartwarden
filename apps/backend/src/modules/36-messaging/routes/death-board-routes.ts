@@ -6,7 +6,7 @@
 //   POST /api/v1/messaging/death-board-items/:itemId/complete             the OWNER completes the item
 //   POST /api/v1/messaging/death-board-items/:itemId/reassign             {to_user_id}  the owner or a supervisor (messaging.review)
 //
-// The tenant flag `messaging.death_board` is checked FIRST in every handler, before any query or body is parsed: off => the uniform 404 on
+// The tenant flag `messaging.death_board` is checked right after the auth guards in every handler, before any param, query or body is parsed (so flag-off answers are byte-identical): off => the uniform 404 on
 // everything but the list, which answers `200 {enabled:false, boards:[]}` so the web can hide the screen. Org and actor are always the request
 // context. A missing, foreign, Part 2-restricted, not-your-patient or flag-off board is ONE 404. Nothing is deleted; no request header is read.
 // READ AUDIT: every read names the patients it discloses (one event per distinct patient), so the Section 164.528 accounting is complete.
@@ -38,6 +38,8 @@ export interface DeathBoardRouteDeps {
   /** The tenant flag `messaging.death_board`. A throw reads as off (fail closed). */
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
   readonly service: DeathBoardService;
+  /** Per-user / per-org budget (composition root). Absent => unlimited (slice tests only). */
+  readonly rateLimit?: PreHandler | undefined;
 }
 
 const READ = requirePermission("messaging.read") as PreHandler;
@@ -59,6 +61,7 @@ async function actorOf(request: FastifyRequest, reply: FastifyReply): Promise<De
 
 export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardRouteDeps): void {
   const { service } = deps;
+  const limited: PreHandler[] = deps.rateLimit ? [deps.rateLimit] : [];
   const flagOn = (request: FastifyRequest): Promise<boolean> => {
     const orgId = request.context?.organizationId;
     if (!orgId) throw new UnauthorizedError();
@@ -72,7 +75,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
   app.get(
     "/api/v1/messaging/death-boards",
     {
-      preHandler: [READ, PATIENT_READ],
+      preHandler: [READ, PATIENT_READ, ...limited],
       schema: { response: { 200: DeathBoardListResponseSchema } },
       config: {
         auditRead: {
@@ -96,7 +99,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
   app.get(
     "/api/v1/messaging/death-boards/:boardId",
     {
-      preHandler: [requireUuidParams("boardId"), READ, PATIENT_READ, FLAG_ON],
+      preHandler: [READ, PATIENT_READ, FLAG_ON, requireUuidParams("boardId"), ...limited],
       schema: { response: { 200: DeathBoardResponseSchema } },
       config: {
         auditRead: {
@@ -117,7 +120,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
   app.get(
     "/api/v1/messaging/death-board-items/:itemId/history",
     {
-      preHandler: [requireUuidParams("itemId"), READ, PATIENT_READ, FLAG_ON],
+      preHandler: [READ, PATIENT_READ, FLAG_ON, requireUuidParams("itemId"), ...limited],
       schema: { response: { 200: DeathBoardHistoryResponseSchema } },
       config: {
         auditRead: {
@@ -136,7 +139,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
   app.post(
     "/api/v1/messaging/death-board-items/:itemId/complete",
     {
-      preHandler: [requireUuidParams("itemId"), READ, PATIENT_READ, FLAG_ON],
+      preHandler: [READ, PATIENT_READ, FLAG_ON, requireUuidParams("itemId"), ...limited],
       schema: { response: { 200: DeathBoardItemResponseSchema } },
     },
     async (request, reply) => {
@@ -150,7 +153,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
   app.post(
     "/api/v1/messaging/death-board-items/:itemId/reassign",
     {
-      preHandler: [requireUuidParams("itemId"), READ, PATIENT_READ, FLAG_ON],
+      preHandler: [READ, PATIENT_READ, FLAG_ON, requireUuidParams("itemId"), ...limited],
       schema: { response: { 200: DeathBoardItemResponseSchema } },
     },
     async (request, reply) => {

@@ -10,7 +10,10 @@ import { and, asc, eq } from "drizzle-orm";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { isActiveMessagingUser } from "../messaging-route-service-db";
-import { createSeamPart2ChannelGate } from "../part2-channel-gate";
+import {
+  DEATH_BOARD_CONSENT_CALLER_ROUTE,
+  createSeamPart2ChannelGate,
+} from "../part2-channel-gate";
 import { cacheFlagRead } from "../presence/binding";
 import { seamCareTeamMembers, seamPrimaryRn } from "../tasks/binding";
 import type { DeathBoardWarn } from "./death-board-alerts";
@@ -69,7 +72,7 @@ export function buildDeathBoardDeps(input: DeathBoardBindingInput): DeathBoardBi
     service: createDeathBoardService({
       db,
       store: createDbDeathBoardStore(),
-      part2Gate: createSeamPart2ChannelGate(db),
+      part2Gate: createSeamPart2ChannelGate(db, DEATH_BOARD_CONSENT_CALLER_ROUTE),
       patientLabels: input.patientLabels,
       displayName: createMentionActorNameResolver(db),
       isActiveUser: (orgId, userId) =>

@@ -32,6 +32,8 @@ import { getSeam } from "../../bootstrap/index";
 export const SUD_PRIVACY_FLAG = "sud";
 const CONSENT_CALLER_MODULE = "m36";
 const CONSENT_CALLER_ROUTE = "care_team channel membership/visibility";
+/** WP 6.9: the death-board read / owner-eligibility gate is its own disclosure-accounting route label. */
+export const DEATH_BOARD_CONSENT_CALLER_ROUTE = "death_board visibility/ownership";
 
 export interface Part2ChannelGate {
   /**
@@ -122,7 +124,10 @@ interface PrivacyFlagReaderShape {
 }
 
 /** The production gate: M5 privacy flags + M39 evaluator via the seam registry, memberships from M2's table. */
-export function createSeamPart2ChannelGate(db: DbClient): Part2ChannelGate {
+export function createSeamPart2ChannelGate(
+  db: DbClient,
+  callerRoute: string = CONSENT_CALLER_ROUTE,
+): Part2ChannelGate {
   const M = schema.memberships;
   return createPart2ChannelGate({
     async privacyFlags(organizationId, patientId) {
@@ -154,7 +159,7 @@ export function createSeamPart2ChannelGate(db: DbClient): Part2ChannelGate {
         patientId,
         actor: { membershipId },
         callerModule: CONSENT_CALLER_MODULE,
-        callerRoute: CONSENT_CALLER_ROUTE,
+        callerRoute,
       });
     },
   });

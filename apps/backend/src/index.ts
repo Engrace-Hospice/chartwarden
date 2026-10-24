@@ -303,6 +303,7 @@ import {
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
+  DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
@@ -5253,7 +5254,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36Handoffs ? { handoffs: m36Handoffs } : {}),
             // WP 3.8 - lifecycle review queue; off unless the tenant flag `messaging.tasks` is on.
             ...(m36Review ? { review: m36Review } : {}),
-            ...(m36DeathBoard ? { deathBoard: m36DeathBoard } : {}),
+            ...(m36DeathBoard
+              ? {
+                  deathBoard: {
+                    ...m36DeathBoard,
+                    rateLimit: createRouteRateLimit({
+                      store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                      limit: DEATH_BOARD_ROUTE_RATE_LIMIT,
+                      keyPrefix: "m36-death-board",
+                    }),
+                  },
+                }
+              : {}),
             // WP 3.10 - ask a nurse about a medication; off unless tenant flags `messaging.medication_questions` AND `messaging.tasks` are on.
             ...(m36MedicationQuestions ? { medicationQuestions: m36MedicationQuestions } : {}),
             // WP 4.1 - urgent clinical message; off unless tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are on.

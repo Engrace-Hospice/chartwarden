@@ -335,8 +335,6 @@ export function mountMessagingRoutes(
      * share and EVERY partner route are the uniform 404; listing and revoking never depend on it). The limiters are the composition root's budgets.
      * Omitted => not mounted.
      */
-    /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
-    deathBoard?: _DeathBoardRouteDeps;
     externalShare?: {
       flags?: _ExternalShareFlagReader | undefined;
       redeemIpLimiter?: _ExternalShareLimiter | undefined;
@@ -346,6 +344,8 @@ export function mountMessagingRoutes(
       /** D17: false => partner routes are not mounted and create / reissue answer PARTNER_ACCESS_UNAVAILABLE (503). Default true. */
       partnerAccessAvailable?: boolean | undefined;
     };
+    /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
+    deathBoard?: _DeathBoardRouteDeps;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.

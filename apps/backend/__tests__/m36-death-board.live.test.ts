@@ -85,6 +85,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
   // Test knobs the bindings' ports read lazily.
   const careTeam = new Map<string, { rn: string | null; members: string[] }>();
   const part2Denied = new Set<string>();
+  const part2Down = new Set<string>(); // patient ids whose gate throws (fail-closed proof)
   const admissionPatient = new Map<string, string>();
 
   const call = (
@@ -209,8 +210,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
           new Map(ids.map((id) => [id, { displayName: "Ann B.", mrnSuffix: "1234" }] as const)),
         overrides: {
           part2Gate: {
-            allowedUserIds: async ({ patientId, userIds }) =>
-              new Set(userIds.filter((u) => !part2Denied.has(`${u}:${patientId}`))),
+            allowedUserIds: async ({ patientId, userIds }) => {
+              if (part2Down.has(patientId)) throw new Error("gate down");
+              return new Set(userIds.filter((u) => !part2Denied.has(`${u}:${patientId}`)));
+            },
           },
           careTeamMembers: async (_org, patientId) => careTeam.get(patientId)?.members ?? [],
           primaryRn: async (_org, patientId) => careTeam.get(patientId)?.rn ?? null,
@@ -530,6 +533,70 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
       expect((await fetchBoard(rn, boardId)).statusCode).toBe(200);
       const listed = (await call(supervisor, "GET", BOARDS)).json().boards as BoardJson[];
       expect(listed.find((b) => b.id === boardId)).toBeUndefined();
+    });
+
+    it("a flagged item cannot be reassigned to its current owner (422, not a database 500), and a supervisor cannot name themselves", async () => {
+      const { patientId, items } = await boardFor();
+      const itemId = items[0]?.id as string;
+      await kit.admin.query("UPDATE death_board_item SET needs_owner=true WHERE id=$1", [itemId]);
+      for (const user of [supervisor, rn]) {
+        const res = await call(user, "POST", `${ITEMS}/${itemId}/reassign`, { to_user_id: rn });
+        expect({ s: res.statusCode, c: code(res) }, user).toEqual({
+          s: 422,
+          c: "DEATH_BOARD_OWNER_INVALID",
+        });
+      }
+      const self = await call(supervisor, "POST", `${ITEMS}/${itemId}/reassign`, {
+        to_user_id: supervisor,
+      });
+      expect({ s: self.statusCode, c: code(self) }).toEqual({
+        s: 422,
+        c: "DEATH_BOARD_OWNER_INVALID",
+      });
+      // a Part 2-refused target is refused on the supervisor path too
+      part2Denied.add(`${nurse2}:${patientId}`);
+      const denied = await call(supervisor, "POST", `${ITEMS}/${itemId}/reassign`, {
+        to_user_id: nurse2,
+      });
+      expect(denied.statusCode).toBe(422);
+      part2Denied.delete(`${nurse2}:${patientId}`);
+      const ok = await call(supervisor, "POST", `${ITEMS}/${itemId}/reassign`, {
+        to_user_id: nurse2,
+      });
+      expect(ok.statusCode).toBe(200);
+      expect((ok.json().item as ItemJson).needs_owner).toBe(false);
+    });
+
+    it("a past owner loses access: the same 404 as a missing board", async () => {
+      const { boardId, items } = await boardFor({ rn, members: [nurse2] });
+      expect((await fetchBoard(rn, boardId)).statusCode).toBe(200);
+      for (const item of items) {
+        const res = await call(supervisor, "POST", `${ITEMS}/${item.id}/reassign`, {
+          to_user_id: nurse2,
+        });
+        expect(res.statusCode).toBe(200);
+      }
+      const missing = await fetchBoard(rn, randomUUID());
+      const past = await fetchBoard(rn, boardId);
+      expect(past.statusCode).toBe(404);
+      expect(strip(past.body)).toBe(strip(missing.body));
+      const hist = await call(rn, "GET", `${ITEMS}/${items[0]?.id}/history`);
+      expect(hist.statusCode).toBe(404);
+      expect((await fetchBoard(nurse2, boardId)).statusCode).toBe(200);
+    });
+
+    it("a supervisor viewer fails closed (404, empty list) when the Part 2 gate cannot answer", async () => {
+      const { patientId, boardId } = await boardFor();
+      part2Down.add(patientId);
+      try {
+        expect((await fetchBoard(supervisor, boardId)).statusCode).toBe(404);
+        expect((await fetchBoard(rn, boardId)).statusCode).toBe(404);
+        const listed = (await call(supervisor, "GET", BOARDS)).json().boards as BoardJson[];
+        expect(listed.find((b) => b.id === boardId)).toBeUndefined();
+      } finally {
+        part2Down.delete(patientId);
+      }
+      expect((await fetchBoard(supervisor, boardId)).statusCode).toBe(200);
     });
 
     it("complete is the owner's alone, explicit and idempotent, stamped by the database clock", async () => {
