@@ -111822,6 +111822,32 @@
             }
           },
           {
+            "name": "recipientKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "facility",
+                  "type": "string"
+                },
+                {
+                  "const": "payer",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "recipientEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "ttlSeconds",
             "in": "query",
             "required": false,

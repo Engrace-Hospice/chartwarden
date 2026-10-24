@@ -53,6 +53,7 @@ import { createVerifiedUploadService } from "./routes/verified-upload";
 import { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
 import {
   createDocumentStorageProvider,
+  createDrizzleStaffMintAccessLog,
   createS3ObjectStore,
   s3ObjectStoreConfigFromEnv,
 } from "./seams/index";
@@ -111,6 +112,7 @@ export function mountDocumentRoutes(
             },
           },
       resolver: backend.objectResolver,
+      accessLog: createDrizzleStaffMintAccessLog(db),
     }),
     referralReader: {
       canAccessReferral(input) {

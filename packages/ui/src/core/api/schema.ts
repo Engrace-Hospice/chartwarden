@@ -53196,6 +53196,8 @@ export interface operations {
                 purpose: "treatment" | "payment" | "operations" | "disclosure" | "patient_access" | "amendment_review" | "survey_export";
                 recipientMembershipId?: string;
                 recipientClass?: string;
+                recipientKind?: "facility" | "payer";
+                recipientEntityId?: string;
                 ttlSeconds?: number;
             };
             header?: never;
