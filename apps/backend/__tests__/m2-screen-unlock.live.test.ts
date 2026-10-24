@@ -49,19 +49,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M2_OUTBOX_EVENTS, createUnlockGuard, mountIdentityRoutes } from "../src/modules/02-identity/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "33333333-3333-4333-8333-333333332001";
 const ORIGIN = "http://localhost:3000";
 const CSRF = { "x-csrf-token": "x" };

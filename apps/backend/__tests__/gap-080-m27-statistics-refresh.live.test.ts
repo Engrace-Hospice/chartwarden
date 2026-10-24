@@ -24,11 +24,11 @@ import { bereavementCensusForOrg } from "../src/modules/16-bereavement/seams/ber
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { runStatisticsRefresh } from "../src/modules/27-cost-report/jobs/m27-jobs";
 import { buildM27StatisticsSeams } from "../src/modules/27-cost-report/jobs/statistics-seams";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG = "11111111-1111-1111-1111-111111111080";
 const OTHER_ORG = "11111111-1111-1111-1111-111111111081";

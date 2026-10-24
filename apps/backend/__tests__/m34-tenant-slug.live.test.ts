@@ -32,21 +32,11 @@ import {
   type DrizzleTenantPlatformDeps,
   createDrizzleTenantPlatformBackend,
 } from "../src/modules/34-saas-tenant-platform/routes/platform/service-drizzle";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_destruction_login",
-  "chartwarden_destruction",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const PLATFORM_PASSWORD = "slug34_platform_live_test";
 const PLATFORM_JOB_ID = "test-m34-tenant-slug";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-44440034ab04";

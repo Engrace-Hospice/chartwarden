@@ -48,18 +48,12 @@ import {
   createDbTerminologyStore,
   registerTerminologyRoutes,
 } from "../src/modules/38-terminology/index";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const NO_PGVECTOR = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "terminology_loader",
-];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG_A = "11111111-1111-4111-8111-111111110901";
 const ORG_B = "22222222-2222-4222-8222-222222220902";

@@ -13,12 +13,12 @@ import {
 } from "../src/modules/10-hope/hope-answer-service";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import { answerHopeForSign } from "./_hope-sign-ready";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "12121212-1212-1212-1212-121212121212";
 const USER = "23232323-2323-2323-2323-232323232323";
 const PATIENT = "34343434-3434-3434-3434-343434343434";

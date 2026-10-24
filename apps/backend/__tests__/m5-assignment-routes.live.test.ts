@@ -36,17 +36,11 @@ import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { registerPatientAssignmentRoutes } from "../src/modules/05-patient/routes/assignment-routes";
 import { createDrizzleCaseloadStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "report_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";
 const ORG_B = "bbbbbbbb-0000-4000-8000-0000000000b1";
 const DON = "d0000000-0000-4000-8000-000000000001"; // org-wide oversight (director_of_nursing)

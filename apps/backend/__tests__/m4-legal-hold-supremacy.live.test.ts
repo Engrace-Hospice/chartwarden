@@ -25,19 +25,11 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleAuditEraserPorts } from "../src/modules/04-audit/erasers/audit-eraser";
 import { runDestructionSweepForOrg } from "../src/modules/04-audit/jobs/audit-job-ops";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "77777777-7777-4777-8777-777777771001";
 const ORG_B = "88888888-8888-4888-8888-888888881002";
 const MARCH = { start: "2026-03-01T00:00:00Z", end: "2026-03-31T23:59:59Z" };

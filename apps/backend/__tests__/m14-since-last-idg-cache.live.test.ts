@@ -41,12 +41,12 @@ import {
 import { buildM14OrderDiscontinuedConsumer } from "../src/modules/14-idg/consumers/m11-since-last-idg";
 import { buildM14MedicationOrderDiscontinuedConsumer } from "../src/modules/14-idg/consumers/m12-since-last-idg";
 import { SINCE_LAST_IDG_TTL_SEC } from "../src/modules/14-idg/consumers/since-last-idg-cache";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";

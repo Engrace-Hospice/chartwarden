@@ -45,11 +45,11 @@ import {
   type MacPortalBreakerState,
   runMacPortalHealth,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 describe.skipIf(!DB_URL)(
   "F-16x (#248) — M23's mac-portal-health producer + M1's system-status consumer — LIVE Postgres",

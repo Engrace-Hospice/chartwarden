@@ -57,11 +57,12 @@ import {
   buildM30WorkerDeps,
   registerM30Workers,
 } from "../src/modules/30-quality/index";
+import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG = "33333333-3333-3333-3333-333333333333";
 const PROVIDER_ENTITY = "00000000-0000-0000-0000-0000000000c1";

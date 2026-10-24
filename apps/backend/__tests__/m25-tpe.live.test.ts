@@ -31,11 +31,11 @@ import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-read
 import { buildServer } from "../src/bootstrap/index";
 import { buildDrizzleTpeService } from "../src/modules/25-remittance/routes/tpe-service";
 import { registerTpeRoutes } from "../src/modules/25-remittance/routes/tpe.routes";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const TPE_TABLES = ["tpe_mac_rule", "tpe_program", "tpe_round", "tpe_round_claim"];

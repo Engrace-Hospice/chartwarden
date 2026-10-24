@@ -27,7 +27,7 @@ import {
   bodyReleaseSweepActor,
   m6LcpAckActor,
 } from "../src/modules/37-ipu/routes/system-actor";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 /**
  * An outbox that PERSISTS NOTHING and VALIDATES EVERYTHING (F-080).
@@ -58,7 +58,7 @@ const VALIDATING_OUTBOX = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MEMBER = "44444444-4444-4444-4444-444444444444";

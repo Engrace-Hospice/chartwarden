@@ -36,12 +36,12 @@ import {
 // GAP-055 — these fixtures drive M18 state through the service, not the capture guards (covered in
 // evv-capture-guards.test.ts / evv-inject.test.ts); the explicit typed system marker says so.
 const SYSTEM_FIXTURE = systemCapture("live-suite fixture");
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { TEST_COORDS_DEK_VERSION, createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 /** The patient-address coordinate every in-geofence capture below is taken at (GAP-054). */
 const ADDRESS_BASELINE = { lat: 45.523, lng: -122.6789 };

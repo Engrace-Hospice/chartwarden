@@ -28,10 +28,10 @@ import {
   type DdeQueueServicePorts,
   buildDdeQueueService,
 } from "../src/modules/23-billing-medicare/services/dde-queue-service";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 export const ORG_A = "11111111-1111-1111-1111-111111111111";
 export const ORG_B = "22222222-2222-2222-2222-222222222222";
 export const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

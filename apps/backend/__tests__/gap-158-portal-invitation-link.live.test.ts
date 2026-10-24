@@ -20,19 +20,11 @@ import { createM31EventEmitter } from "../src/modules/31-portal/events";
 import { M31_OUTBOX_EVENTS } from "../src/modules/31-portal/events-by-m31";
 import { createPortalPhiCipher } from "../src/modules/31-portal/portal-crypto";
 import { createPortalInvitations } from "../src/modules/31-portal/provisioning/invitations";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-4111-8111-111111115811";
 
 describe.skipIf(!DB_URL)("GAP-158 portal invitation -> caregiver link, LIVE Postgres", () => {

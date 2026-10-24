@@ -37,11 +37,11 @@ import {
   wireAlertRuleSeed,
 } from "../src/modules/36-messaging/index";
 import { buildM36QualityAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/quality-alerts";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG_A = "aaaaaaaa-0049-4000-8000-00000000000a";
 const ORG_B = "bbbbbbbb-0049-4000-8000-00000000000b";

@@ -52,19 +52,11 @@ import {
   createDbSessionProofReader,
 } from "../src/modules/02-identity/step-up-adapters-db";
 import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "33333333-3333-4333-8333-333333331001";
 const ORIGIN = "http://localhost:3000";
 

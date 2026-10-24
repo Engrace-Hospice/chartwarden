@@ -61,19 +61,11 @@ import { validateScopeSet } from "../src/modules/31-portal/lifecycle/scope-set";
 import { registerPortalSessionRoutes } from "../src/modules/31-portal/routes/session.routes";
 import { registerPortalSignInRoutes } from "../src/modules/31-portal/routes/sign-in.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-4111-8111-111111120901";
 const ORG_B = "22222222-2222-4222-8222-222222220902";
 const ORG_DOWN = "33333333-3333-4333-8333-333333330903";
