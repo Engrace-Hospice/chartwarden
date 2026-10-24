@@ -43,6 +43,11 @@ export interface UrgentSend {
    * response request, so the send REQUIRES response tracking: with tracking off it is refused (never sent without a record of the role).
    */
   readonly roleAddressed?: string | undefined;
+  /**
+   * ADR-0082: set ONLY by the role-based send while after-hours triage is on. Also asks M19, by an id-only event written in this
+   * transaction, to open (or join) a triage call. Ignored when the port is absent or its flag is off, and on a replay.
+   */
+  readonly requestTriageCall?: boolean | undefined;
 }
 
 /** Request-scoped: authorises the link node(s) exactly as a normal send does (validateRichBodyLinks). */
@@ -94,6 +99,25 @@ export interface UrgentServiceDeps {
         readonly requesterUserId: string;
         readonly assigneeUserId: string;
         readonly addressedRole?: string | undefined;
+      },
+    ) => Promise<{ readonly requestId: string } | void>;
+  };
+  /**
+   * ADR-0082 (flag `messaging.afterhours_triage`, absent = off): writes the after-hours request event and its link row in the send
+   * transaction. `enabled` ERRORS propagate (an after-hours send must never silently lose its request on a blip).
+   */
+  readonly afterHoursTriage?: {
+    readonly enabled: (orgId: string) => Promise<boolean>;
+    /** True when the channel's patient is restricted (Part 2). A throw is read as restricted: no triage request is made (ADR-0082 open compliance question). */
+    readonly isRestricted: (orgId: string, channelId: string) => Promise<boolean>;
+    readonly requestInTx: (
+      tx: unknown,
+      facts: {
+        readonly orgId: string;
+        readonly messageId: string;
+        readonly requestId: string;
+        readonly patientId: string;
+        readonly at: Date;
       },
     ) => Promise<void>;
   };
@@ -201,6 +225,16 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
       const track = tracker ? await tracker.enabled(actor.orgId) : false;
       // A replay of a send that already committed answers with the original even if tracking was turned off since (the core replays).
       if (input.roleAddressed && !track && !isReplay) throw roleSendUntracked();
+      const afterHours = deps.afterHoursTriage;
+      // Fail closed: the request event names the patient, so it is never emitted for a restricted (Part 2) channel or when that cannot be told.
+      // The message itself still goes; the triage call is simply not requested (the same as the flag being off).
+      const askTriage =
+        !!input.requestTriageCall &&
+        track &&
+        !isReplay &&
+        !!afterHours &&
+        (await afterHours.enabled(actor.orgId)) &&
+        !(await afterHours.isRestricted(actor.orgId, input.channelId).catch(() => true));
       const outcome = { hookRan: false };
       const sent = await deps.messaging.sendMessage(actor.orgId, {
         channelId: input.channelId,
@@ -224,7 +258,7 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
             at: clock(),
           });
           if (track && tracker) {
-            await tracker.createInTx(tx, {
+            const created = await tracker.createInTx(tx, {
               orgId: actor.orgId,
               messageId,
               channelId: input.channelId,
@@ -233,6 +267,16 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
               assigneeUserId: input.recipientUserId,
               addressedRole: input.roleAddressed,
             });
+            if (askTriage && afterHours) {
+              if (!created) throw new Error("after-hours triage needs the response request id");
+              await afterHours.requestInTx(tx, {
+                orgId: actor.orgId,
+                messageId,
+                requestId: created.requestId,
+                patientId,
+                at: clock(),
+              });
+            }
           }
         },
       });

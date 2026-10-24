@@ -13,11 +13,15 @@ import { createMentionActorNameResolver } from "../mention-non-member-service-db
 import { cacheFlagRead } from "../presence/binding";
 import { getEscalationRouter } from "../seams";
 import { type OnCallCoverageService, createOnCallCoverageService } from "./oncall-coverage-service";
+import type { AfterHoursBinding } from "../afterhours-triage/binding";
+import type { AfterHoursLinesService } from "../afterhours-triage/afterhours-lines";
 import type { RoleSendPorts } from "./role-send-service";
 
 export interface OnCallDirectoryInput {
   readonly db: DbClient;
   readonly flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+  /** ADR-0082: the after-hours triage binding (flag off or absent = the role send is exactly ADR-0081). */
+  readonly afterHours?: Pick<AfterHoursBinding, "enabled" | "lines"> | undefined;
 }
 
 export function buildOnCallDirectoryDeps(input: OnCallDirectoryInput): {
@@ -25,6 +29,8 @@ export function buildOnCallDirectoryDeps(input: OnCallDirectoryInput): {
   readonly patientExists: (organizationId: string, patientId: string) => Promise<boolean>;
   /** ADR-0081: the ports of the role-based send; the route layer adds the urgent service. */
   readonly roleSend: RoleSendPorts;
+  /** ADR-0082 S4/S5: the thread-line read (omitted => the uniform 404). */
+  readonly afterHoursLines?: AfterHoursLinesService;
 } {
   const flag = (key: string) =>
     cacheFlagRead(async (organizationId) =>
@@ -53,6 +59,8 @@ export function buildOnCallDirectoryDeps(input: OnCallDirectoryInput): {
         return facts?.kind === "care_team" ? derivePatient(facts.kind, facts.subjectId) : null;
       },
       findReplay: createDbRoleReplayLookup(input.db),
+      ...(input.afterHours ? { afterHours: { enabled: input.afterHours.enabled } } : {}),
     },
+    ...(input.afterHours ? { afterHoursLines: input.afterHours.lines } : {}),
   };
 }

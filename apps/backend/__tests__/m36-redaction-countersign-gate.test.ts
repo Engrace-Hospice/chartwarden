@@ -33,7 +33,8 @@ const service = (enabled: boolean, approvers: number) =>
     activeHolds: async () => [],
     singleOfficerFallback: {
       enabled: async () => enabled,
-      eligibleApprovers: async () => approvers,
+      eligibleApprovers: async () =>
+        new Set(Array.from({ length: approvers }, (_, i) => `officer-${i}`)),
     },
   });
 

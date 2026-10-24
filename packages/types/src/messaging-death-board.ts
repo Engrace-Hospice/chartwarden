@@ -16,12 +16,16 @@ export const DEATH_BOARD_EVENT_TYPES = [
 ] as const;
 export type DeathBoardEventType = (typeof DEATH_BOARD_EVENT_TYPES)[number];
 
-/** Why an owner changed: a person did it, a supervisor did, the offboarding sweep did, or the board was just created. */
+/**
+ * Why an owner changed or an item was flagged: a person did it, a supervisor did, the offboarding sweep did, the board was just created,
+ * or (migration 1202) the stall sweep found the owner no longer eligible outside offboarding.
+ */
 export const DEATH_BOARD_REASON_CODES = [
   "creation",
   "manual",
   "supervisor",
   "offboarding",
+  "owner_ineligible",
 ] as const;
 export type DeathBoardReasonCode = (typeof DEATH_BOARD_REASON_CODES)[number];
 

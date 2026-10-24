@@ -3,7 +3,7 @@
 // The fixed notice is shown ONCE per thread and wired to every button with aria-describedby. Results are announced in a
 // persistent polite live region and focus moves to the card's status line after a saved action. Rendering, focusing or
 // scrolling to the card sends nothing.
-import type { AckRequestDto } from "@chartwarden/types";
+import type { AckRequestDto, AfterHoursTriageLineDto } from "@chartwarden/types";
 import { Button, Glyph } from "@chartwarden/ui";
 import {
   type JSX,
@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AfterHoursTriageLine, useAfterHoursLines } from "./afterhours-triage-line";
 import { AckReassignDialog } from "./ack-reassign-dialog";
 import { REASSIGN_LABEL, reassignName } from "./ack-reassign-wording";
 import {
@@ -69,6 +70,8 @@ interface CardProps {
   readonly onAct: (requestId: string, action: AckAction) => void;
   /** ADR-0078 (G-6): opens the reassign dialog, which the provider keeps above the list so a reload cannot lose it. Absent = no control. */
   readonly onReassign?: (requestId: string) => void;
+  /** ADR-0082: the fixed-text after-hours triage line of this request's message, when it asked M19 for a triage call. */
+  readonly triageLine?: AfterHoursTriageLineDto | undefined;
 }
 
 export function AckRequestCard({
@@ -82,6 +85,7 @@ export function AckRequestCard({
   onFocused,
   onAct,
   onReassign,
+  triageLine,
 }: CardProps): JSX.Element {
   const statusId = useId();
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -131,6 +135,7 @@ export function AckRequestCard({
         <span>{ACK_STATUS_TEXT[request.status]}</span>
       </p>
       {roleText ? <p className="wx-ack-detail">{roleText}</p> : null}
+      {triageLine ? <AfterHoursTriageLine line={triageLine} /> : null}
       {waiting ? (
         <p className="wx-ack-detail">
           {(request.status === "escalated" ? escalatedWaitingFor : waitingFor)(
@@ -204,6 +209,7 @@ interface Slot {
   readonly clearFocus: (requestId: string) => void;
   readonly act: (requestId: string, action: AckAction) => Promise<void>;
   readonly openReassign: (requestId: string) => void;
+  readonly triageLines: ReadonlyMap<string, AfterHoursTriageLineDto>;
 }
 const SlotContext = createContext<Slot | null>(null);
 
@@ -235,6 +241,7 @@ export function AckRequestsProvider({
   children: ReactNode;
 }): JSX.Element {
   const state = useAckRequests(channelId, enabled, refreshKey);
+  const triageLines = useAfterHoursLines(channelId, enabled, state.requests);
   const noticeId = useId();
   const [landedId, setLandedId] = useState<string | null>(null);
   const landingId = landOnMessageId
@@ -288,8 +295,9 @@ export function AckRequestsProvider({
       clearFocus,
       act: state.act,
       openReassign: setReassignFor,
+      triageLines,
     }),
-    [state.requests, state.busyId, focusRequestId, clearFocus, state.act, noticeId],
+    [state.requests, state.busyId, focusRequestId, clearFocus, state.act, noticeId, triageLines],
   );
   const hasActions = state.requests.some(
     (r) => r.viewer_actions.can_acknowledge || r.viewer_actions.can_resolve,
@@ -367,6 +375,7 @@ export function AckForMessage({
       onFocused={slot.clearFocus}
       onAct={(id, action) => void slot.act(id, action)}
       onReassign={slot.openReassign}
+      triageLine={slot.triageLines.get(messageId)}
     />
   );
 }

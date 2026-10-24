@@ -128,7 +128,7 @@ export const deathBoardItemEvents = pgTable(
     ),
     reasonShape: check(
       "death_board_item_event_reason_shape",
-      sql`${t.reasonCode} IS NULL OR ${t.reasonCode} IN ('creation', 'manual', 'supervisor', 'offboarding')`,
+      sql`${t.reasonCode} IS NULL OR ${t.reasonCode} IN ('creation', 'manual', 'supervisor', 'offboarding', 'owner_ineligible')`,
     ),
   }),
 );

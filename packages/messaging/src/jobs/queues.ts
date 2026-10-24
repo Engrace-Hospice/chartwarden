@@ -54,6 +54,7 @@ export const MESSAGING_QUEUES = {
   breakGlassReviewSweep: "messaging.break_glass_review_sweep",
   exportBuild: "messaging.export_build",
   exportExpirySweep: "messaging.export_expiry_sweep",
+  deathBoardStallSweep: "messaging.death_board_stall_sweep",
 } as const;
 
 /** A queue name from the catalog. */
@@ -235,6 +236,19 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "alert correlationId = break-glass:<reviewId>:overdue; the (organization, correlation_id) alert dedupe absorbs a repeat emit",
   },
+  // WP 6.9 (ADR-0098 D13): an hourly sweep that flags needs_owner on an open death-board item whose owner lost eligibility outside the offboarding
+  // sweep and tells the supervisors (fixed text). Alert correlationId = item + version, so a repeat alerts once; the flag is a guarded, locked
+  // transition that skips an item already flagged. Bounded per org per tick. Concurrency 1. Flag-independent: a board that exists must not stall.
+  "messaging.death_board_stall_sweep": {
+    name: "messaging.death_board_stall_sweep",
+    priority: 5,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.death_board_stall_sweep.dlq",
+    idempotency:
+      "alert correlationId = hash(item id, version); the item is locked FOR UPDATE and re-checked (open, unflagged, same owner) before the flag",
+  },
   // WP 5.7 (ADR-0089): builds ONE approved export into its encrypted artefact. Enqueued by the `m36.export.approved` consumer with the job id as
   // the BullMQ job id; the build claims the row approved -> building (a guarded forward-only transition), so a duplicate or retried job is a
   // no-op. Concurrency 1: a build pages up to 50 000 messages. Runs for flag-off tenants too (approval already happened).
@@ -331,4 +345,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   breakGlassReviewSweep: "20 * * * *",
   /** export_expiry_sweep: hourly at :40 (deletes the artefact of each export past its 24 h link and marks it expired). */
   exportExpirySweep: "40 * * * *",
+  /** death_board_stall_sweep: hourly at :50 (flags the open items whose owner is no longer eligible and tells the supervisors). */
+  deathBoardStallSweep: "50 * * * *",
 } as const;

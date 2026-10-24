@@ -632,7 +632,150 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
     });
   });
 
-  // ── 5: IDOR ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  // ── 4b: the partner PAGE's contract (ADR-0096 D19 to D23). The page (apps/web partner-page.tsx) re-reads the whole conversation by following the cursor,
+  // shows ONE neutral state for every refusal, and sends no cookie. These prove the server side of each of those promises against a real catalog.
+  describe("partner page contract (D19 to D23)", () => {
+    it("following the cursor from the start returns every allowed message in order, even when a WITHHELD message sits on the page boundary", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "location", randomUUID(), [author]);
+      const made = await mk(channel);
+      const base = Date.now() + 1_000;
+      const expected: string[] = [];
+      for (let i = 1; i <= 60; i += 1) {
+        // The 50th row is the last of page one: it is withheld (digits), so page one returns 49 and the cursor must still advance past it.
+        const text =
+          i === 50 ? `${MARKER} ssn 123-45-6789` : `${MARKER} row-${String(i).padStart(2, "x")}`;
+        if (i !== 50) expected.push(text);
+        await seedMessage(channel, text, { at: new Date(base + i * 5) });
+      }
+      const bearer = await activate(made);
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+      do {
+        const res = await read(
+          made,
+          bearer,
+          on,
+          cursor ? `?cursor=${encodeURIComponent(cursor)}` : "",
+        );
+        expect(res.statusCode, res.body).toBe(200);
+        seen.push(...bodies(res));
+        cursor = res.json().nextCursor;
+        pages += 1;
+      } while (cursor && pages < 5);
+      expect(pages).toBe(2);
+      expect(seen).toEqual(expected);
+      expect(seen.join("\n")).not.toContain("123-45-6789");
+    });
+
+    it("a staff session cannot stand in for the bearer, and a staff session next to a valid bearer changes nothing", async () => {
+      await clearShares();
+      const channel = await mkChannel(kit, "location", randomUUID(), [author]);
+      const made = await mk(channel);
+      await seedMessage(channel, `${MARKER} only-for-partner`);
+      const bearer = await activate(made);
+      // The staff identity (headerAuth) without a bearer: the uniform 404, exactly the unknown-share body.
+      const staffOnly = await on.inject({
+        method: "GET",
+        url: `${PARTNER}/shares/${made.id}/messages`,
+        headers: as(author, ORG_A),
+      });
+      const unknown = await partner(
+        on,
+        "GET",
+        `${PARTNER}/shares/${randomUUID()}/messages`,
+        bearer,
+      );
+      expect(staffOnly.statusCode).toBe(404);
+      expect(unknown.statusCode).toBe(404);
+      expect(shape(staffOnly.body)).toBe(shape(unknown.body));
+      // Both together: the answer is the partner's, never widened by the staff identity.
+      const both = await on.inject({
+        method: "GET",
+        url: `${PARTNER}/shares/${made.id}/messages`,
+        headers: { ...as(author, ORG_A), authorization: `Bearer ${bearer}` },
+      });
+      expect(both.statusCode, both.body).toBe(200);
+      expect(bodies(both)).toEqual([`${MARKER} only-for-partner`]);
+    });
+
+    it("revoked, expired by the database clock, never-existed and wrong-organisation shares are byte-identical on the state route the page polls", async () => {
+      await clearShares();
+      const live = await mk(await mkChannel(kit, "location", randomUUID(), [author]));
+      const bearer = await activate(live);
+      expect((await partner(on, "GET", `${PARTNER}/shares/${live.id}`, bearer)).statusCode).toBe(
+        200,
+      );
+      const revoked = await mk(await mkChannel(kit, "location", randomUUID(), [author]));
+      const revokedBearer = await activate(revoked);
+      stepUpFresh = true;
+      const mgr = await newManager();
+      await join(mgr, revoked.channel);
+      expect((await staff(on, "DELETE", `${API}/${revoked.id}`, mgr)).statusCode).toBe(200);
+      const expired = await mk(await mkChannel(kit, "location", randomUUID(), [author]));
+      const expiredBearer = await activate(expired);
+      await withShareGuardOff(() =>
+        kit.admin.query(
+          "UPDATE message_external_share SET shared_from = now() - interval '2 days', expires_at = now() - interval '1 second', created_at = now() - interval '2 days' WHERE id = $1",
+          [expired.id],
+        ),
+      );
+      const answers = await Promise.all([
+        partner(on, "GET", `${PARTNER}/shares/${revoked.id}`, revokedBearer),
+        partner(on, "GET", `${PARTNER}/shares/${expired.id}`, expiredBearer),
+        partner(on, "GET", `${PARTNER}/shares/${randomUUID()}`, bearer),
+        partner(on, "GET", `${PARTNER}/shares/${live.id}`, `${ORG_B}.${"z".repeat(43)}`),
+        partner(on, "GET", `${PARTNER}/shares/${live.id}`),
+      ]);
+      for (const a of answers) {
+        expect(a.statusCode).toBe(404);
+        expect(shape(a.body)).toBe(shape(answers[0]!.body));
+      }
+      // The page's re-read (messages) is the same neutral answer, so a revoke seen mid-read ends in the one state.
+      expect((await read(revoked, revokedBearer)).statusCode).toBe(404);
+    });
+
+    it("every partner response is uncached, nosniff and sends no referrer, including the refusals the page maps to its neutral state", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "location", randomUUID(), [author]));
+      const bearer = await activate(made);
+      const responses = [
+        await read(made, bearer),
+        await partner(on, "GET", `${PARTNER}/shares/${made.id}`, bearer),
+        await partner(on, "GET", `${PARTNER}/shares/${randomUUID()}`, bearer),
+        await redeem(made, on, ORG_A, "x".repeat(43)),
+        // An unmatched path under the prefix (a router 404) and a case / duplicate-slash variant are uncacheable too.
+        await partner(on, "GET", `${PARTNER}/no-such-route`),
+        await partner(on, "GET", `/API/v1/messaging/PARTNER/shares/${made.id}`, bearer),
+      ];
+      for (const res of responses) {
+        expect(res.headers["cache-control"], res.body).toContain("no-store");
+        expect(res.headers["referrer-policy"]).toBe("no-referrer");
+        expect(res.headers["x-content-type-options"]).toBe("nosniff");
+      }
+    });
+
+    it("the wrong-code answer is distinguishable from the neutral 404 only to a holder of a live bearer, and says nothing about attempts left", async () => {
+      await clearShares();
+      const made = await mk(await mkChannel(kit, "location", randomUUID(), [author]));
+      const r = await redeem(made);
+      const bearer = r.json().sessionToken as string;
+      const wrong = await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, bearer, {
+        code: made.code === "00000000" ? "11111111" : "00000000",
+      });
+      expect(wrong.statusCode).toBe(422);
+      expect(wrong.json().error.code).toBe("EXTERNAL_SHARE_CODE_INVALID");
+      expect(wrong.body).not.toMatch(/attempt|remaining|left|\b[0-5]\b tries/i);
+      // Without the bearer the same call is the uniform 404, never the 422.
+      const anon = await partner(on, "POST", `${PARTNER}/shares/${made.id}/verify`, undefined, {
+        code: "00000000",
+      });
+      expect(anon.statusCode).toBe(404);
+    });
+  });
+
+  // ── 5: IDOR────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   describe("IDOR", () => {
     it("another share's id, a random id and a malformed id are the same 404 (never a 403)", async () => {
       await clearShares();

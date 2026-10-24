@@ -1375,6 +1375,42 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    it("deactivating the last active admin → 409 LAST_ADMIN, like the suspend and revoke routes; nothing touched", async () => {
+      const { app, users, sessions, auditSink } = makeServer({
+        seed: [membership({ membershipId: "only_adm", userId: "admin_1", isAdmin: true })],
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/users/admin_1/deactivate",
+        headers: ADMIN,
+        payload: { reason: "offboarding the only admin" },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("LAST_ADMIN");
+      expect(users.isDeactivated("admin_1")).toBe(false);
+      expect(sessions.revokedUsers()).not.toContain("admin_1");
+      expect(auditSink.rows.some((r) => r.eventType === "m2.user.deactivated")).toBe(false);
+      await app.close();
+    });
+
+    it("deactivating an admin while another active admin remains is allowed", async () => {
+      const { app, users } = makeServer({
+        seed: [
+          membership({ membershipId: "adm_1", userId: "admin_1", isAdmin: true }),
+          membership({ membershipId: "adm_2", userId: "admin_2", isAdmin: true }),
+        ],
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/users/admin_2/deactivate",
+        headers: ADMIN,
+        payload: { reason: "offboarding the second admin" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(users.isDeactivated("admin_2")).toBe(true);
+      await app.close();
+    });
+
     it("deactivating a user disables creds everywhere, revokes the membership, reaps all sessions", async () => {
       const { app, users, sessions, auditSink, memberships } = makeServer({ seed: seed() });
       const res = await app.inject({

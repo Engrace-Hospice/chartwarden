@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 195 statically-routable `web` screen(s) — 20/195 E2E-reached, 185/195 axe-reached.
+**Coverage:** 196 statically-routable `web` screen(s) — 20/196 E2E-reached, 185/196 axe-reached.
 
 ## Zero E2E coverage
 
@@ -122,6 +122,7 @@
 | `orders.verbal-expiring` | 11-orders | `/orders/verbal-expiring` | orders.read |
 | `ai.opt-in` | 32-ai-platform | `/organization/ai/opt-in` | ai.tenant_opt_in |
 | `ai.routing` | 32-ai-platform | `/organization/ai/routing` | ai.tenant_opt_in |
+| `messaging.partner-share` | 36-messaging | `/partner/share` | (none) |
 | `cap.platform_constants` | 26-cap | `/platform/cap/constants` | cap.platform_constant.read |
 | `prescribing.sign-inbox` | 12-dosespot | `/prescribing/sign-inbox` | prescribing.read |
 | `prescribing.verbal-orders` | 12-dosespot | `/prescribing/verbal-orders` | prescribing.read |
@@ -197,6 +198,7 @@
 | `identity.passkey-enrolment` | 02-identity | `/login/passkey` | (none) |
 | `messaging.devices` | 36-messaging | `/messaging/devices` | (none) |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
+| `messaging.partner-share` | 36-messaging | `/partner/share` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
 
 ## Not measured here (by design)

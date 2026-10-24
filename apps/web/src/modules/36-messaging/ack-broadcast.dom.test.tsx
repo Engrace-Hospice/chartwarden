@@ -11,7 +11,15 @@ import { AckBroadcast } from "./ack-broadcast";
 import { BROADCAST_OFF_TITLE, MINE_EMPTY_TITLE } from "./ack-broadcast-wording";
 
 const counts = { audience: 5, acknowledged: 2, pending: 2, opened: 1, notOpened: 1, ineligible: 1, outsideAudience: 1 };
-const summary: AckBroadcastSummary = { messageId: "m1", channelId: "c1", createdAt: "2026-10-23T10:00:00.000Z", counts };
+const summary: AckBroadcastSummary = {
+  messageId: "m1",
+  channelId: "c1",
+  createdAt: "2026-10-23T10:00:00.000Z",
+  counts,
+  deadlineAt: null,
+  withdrawnAt: null,
+  pastDeadline: false,
+};
 const detail = (over: Partial<AckBroadcastDetail> = {}): AckBroadcastDetail => ({
   ...summary,
   filter: "pending",
@@ -223,6 +231,101 @@ describe("AckBroadcast", () => {
     await screen.findByText("Alice Opened");
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("row")).toHaveLength(3);
+    const result = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
+    expect(result.violations).toEqual([]);
+  });
+});
+
+const WITHDRAW = "/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw";
+const WITHDRAWN_AT = "2026-10-23T13:00:00.000Z";
+
+describe("AckBroadcast: deadline and withdrawal (ADR-0097 D13-D14)", () => {
+  it("shows the deadline to the recipient while waiting, and marks past-deadline and withdrawn broadcasts on the author's list", async () => {
+    const past: AckBroadcastSummary = { ...summary, deadlineAt: "2026-10-23T09:00:00.000Z", pastDeadline: true };
+    const gone: AckBroadcastSummary = { ...summary, messageId: "m2", withdrawnAt: WITHDRAWN_AT, deadlineAt: "2026-10-23T09:00:00.000Z" };
+    mount({
+      [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: null, deadlineAt: "2026-10-30T09:00:00.000Z" }] } }),
+      [LIST]: () => ({ data: { broadcasts: [past, gone] } }),
+      [DETAIL]: () => ({ data: detail() }),
+    });
+    expect((await screen.findAllByText(/^Deadline /, { selector: "p" })).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Past deadline").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Withdrawn").length).toBeGreaterThan(0);
+  });
+
+  it("a withdrawn broadcast is read-only: marker and note, no Withdraw button", async () => {
+    const gone: AckBroadcastSummary = { ...summary, withdrawnAt: WITHDRAWN_AT };
+    mount({
+      [MINE]: () => ({ data: { items: [] } }),
+      [LIST]: () => ({ data: { broadcasts: [gone] } }),
+      [DETAIL]: () => ({ data: detail({ withdrawnAt: WITHDRAWN_AT }) }),
+    });
+    expect(await screen.findByText(/acknowledgments already given are kept/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Withdraw requirement" })).toBeNull();
+  });
+
+  it("withdraw asks first, cancelling writes nothing, confirming posts once (a double click too) and moves focus to the status line", async () => {
+    let withdrawn = false;
+    let release!: (r: Reply) => void;
+    const held = new Promise<Reply>((r) => {
+      release = r;
+    });
+    const { POST } = mount(
+      {
+        [MINE]: () => ({ data: { items: [] } }),
+        [LIST]: () => ({ data: { broadcasts: [withdrawn ? { ...summary, withdrawnAt: WITHDRAWN_AT } : summary] } }),
+        [DETAIL]: () => ({ data: detail() }),
+      },
+      () => held as unknown as Reply,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw requirement" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Withdraw this requirement?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep asking" }));
+    expect(POST).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw requirement" }));
+    const confirm = within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Withdraw" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(POST).toHaveBeenCalledWith(WITHDRAW, { params: { path: { messageId: "m1" } } });
+    // aria-disabled, not disabled: focus must stay inside the dialog while the request runs.
+    expect(confirm.getAttribute("aria-disabled")).toBe("true");
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    withdrawn = true;
+    release({ data: { ...summary, withdrawnAt: WITHDRAWN_AT, already: false } });
+    const status = await screen.findByText("Requirement withdrawn. People are no longer asked.");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Withdraw requirement" })).toBeNull();
+    expect(screen.getAllByText("Withdrawn").length).toBeGreaterThan(0);
+  });
+
+  it("a failed withdrawal says nothing changed, keeps the dialog open and the button available", async () => {
+    mount(
+      {
+        [MINE]: () => ({ data: { items: [] } }),
+        [LIST]: () => ({ data: { broadcasts: [summary] } }),
+        [DETAIL]: () => ({ data: detail() }),
+      },
+      () => ({ error: {}, response: { status: 500 } }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw requirement" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Withdraw" }));
+    expect(await screen.findByText(/could not be withdrawn\. Nothing changed/)).toBeTruthy();
+    const dialog = screen.getByRole("alertdialog");
+    expect((within(dialog).getByRole("button", { name: "Withdraw" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("the open confirmation has no axe violations", async () => {
+    const { container } = mount({
+      [MINE]: () => ({ data: { items: [] } }),
+      [LIST]: () => ({ data: { broadcasts: [{ ...summary, deadlineAt: "2026-10-30T09:00:00.000Z" }] } }),
+      [DETAIL]: () => ({ data: detail() }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw requirement" }));
+    await screen.findByRole("alertdialog");
     const result = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
     expect(result.violations).toEqual([]);
   });

@@ -335,3 +335,197 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     expect(JSON.stringify(rows)).not.toMatch(/weather|Office closed|@x\.test/);
   });
 });
+
+// ---- Wave 4 follow-ups: deadline (ADR-0097 D13) and withdrawal (D12), migration 1202 ----
+describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () => {
+  let kit: LiveKit;
+  let app: FastifyInstance;
+  const flags: Record<string, boolean> = { [FLAG]: true };
+  let author: string;
+  let other: string;
+  let alice: string;
+  let bob: string;
+  let channel: string;
+
+  const url = (id: string, tail: string) => `/api/v1/messaging/announcements/${id}/${tail}`;
+  const call = (method: "GET" | "POST", path: string, user: string | null, payload?: unknown) =>
+    app.inject({
+      method,
+      url: path,
+      headers: user ? as(user, ORG_A) : {},
+      ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}),
+    });
+  const announcement = async (by: string): Promise<string> =>
+    (await kit.service.sendMessage(ORG_A, { channelId: channel, authorUserId: by, body: "Policy change" })).messageId;
+  const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+  const listed = async (id: string) =>
+    (await call("GET", "/api/v1/messaging/ack-broadcasts", author)).json().broadcasts.find((b: { messageId: string }) => b.messageId === id);
+  const asUser = async (user: string, sqlText: string) => {
+    await kit.appConn.query("BEGIN");
+    try {
+      await kit.appConn.query(`SELECT set_config('app.org_id', $1, true), set_config('app.user_id', $2, true)`, [ORG_A, user]);
+      return await kit.appConn.query(sqlText);
+    } finally {
+      await kit.appConn.query("ROLLBACK");
+    }
+  };
+
+  beforeAll(async () => {
+    kit = await bootLiveKit(DB_URL as string, ORG_A, ORG_B, "wp68w");
+    author = await kit.seedUser("author", ORG_A, ANNOUNCE_KEYS);
+    other = await kit.seedUser("other", ORG_A, ANNOUNCE_KEYS);
+    alice = await kit.seedUser("alice", ORG_A, READ_KEYS);
+    bob = await kit.seedUser("bob", ORG_A, READ_KEYS);
+    channel = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO channel (organization_id, channel_kind, title, retention_class)
+         VALUES ($1,'announcement','Announcements','operational') RETURNING id`,
+        [ORG_A],
+      )
+    )[0]!.id;
+    app = buildServer({
+      db: kit.handle.db,
+      authenticate: headerAuth,
+      security: { rateLimitEnabled: false },
+      idempotencyStore: createDbIdempotencyStore(kit.handle.db),
+    });
+    const { tasks, handoffs } = kit.build(true);
+    registerMessagingRoutes(app, {
+      service: kit.service,
+      announcements: createDbAnnouncementService(kit.handle.db),
+      tasks,
+      handoffs,
+      ackBroadcast: { service: createAckBroadcastService({ db: kit.handle.db, flags: { forOrg: async () => flags } }) },
+    });
+    await app.ready();
+  }, 240_000);
+
+  afterAll(async () => {
+    await app?.close();
+    await kit?.close();
+  });
+
+  it("a deadline set at creation is shown to the author and the recipients; a bad one is a typed 422 and writes nothing", async () => {
+    const id = await announcement(author);
+    for (const deadlineAt of ["soon", inHours(-1), inHours(24 * 91)]) {
+      const bad = await call("POST", url(id, "ack-broadcast"), author, { deadlineAt });
+      expect(bad.statusCode).toBe(422);
+      expect(bad.json().error.code).toBe("ACK_BROADCAST_DEADLINE_INVALID");
+    }
+    expect((await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(24), extra: 1 })).statusCode).toBe(422);
+    expect(await kit.count(`SELECT count(*)::int AS n FROM message_ack_broadcast WHERE message_id=$1`, [id])).toBe(0);
+    const deadlineAt = inHours(24);
+    const ok = await call("POST", url(id, "ack-broadcast"), author, { deadlineAt });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json()).toMatchObject({ withdrawnAt: null, pastDeadline: false });
+    expect(new Date(ok.json().deadlineAt).getTime()).toBe(new Date(deadlineAt).getTime());
+    const mine = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", alice)).json().items;
+    expect(mine.find((i: { messageId: string }) => i.messageId === id).deadlineAt).toBe(ok.json().deadlineAt);
+    // A repeat never edits the broadcast: the deadline stands.
+    const again = await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(48) });
+    expect(again.json()).toMatchObject({ created: false, deadlineAt: ok.json().deadlineAt });
+  });
+
+  it("past the deadline is a marker on the author's list only; late acknowledgments are still taken and clear it", async () => {
+    const id = await announcement(author);
+    expect((await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(1) })).statusCode).toBe(201);
+    await kit.admin.query(`ALTER TABLE message_ack_broadcast DISABLE TRIGGER trg_message_ack_broadcast_guard`);
+    try {
+      await kit.admin.query(`UPDATE message_ack_broadcast SET deadline_at = created_at + interval '1 millisecond' WHERE message_id=$1`, [id]);
+    } finally {
+      await kit.admin.query(`ALTER TABLE message_ack_broadcast ENABLE TRIGGER trg_message_ack_broadcast_guard`);
+    }
+    expect((await listed(id)).pastDeadline).toBe(true);
+    for (const u of [alice, bob, other]) expect((await call("POST", url(id, "ack"), u)).statusCode).toBe(200);
+    expect((await listed(id)).pastDeadline).toBe(false);
+  });
+
+  it("withdraw: only the creator; flag-first; idempotent on the database clock; recorded acknowledgments are kept", async () => {
+    const id = await announcement(author);
+    expect((await call("POST", url(id, "ack-broadcast"), author)).statusCode).toBe(201);
+    expect((await call("POST", url(id, "ack"), alice)).statusCode).toBe(200);
+    const withdrawUrl = url(id, "ack-broadcast/withdraw");
+    expect((await call("POST", withdrawUrl, null)).statusCode).toBe(401);
+    expect((await call("POST", withdrawUrl, alice)).statusCode).toBe(403);
+    const stranger = await call("POST", withdrawUrl, other);
+    const unknown = await call("POST", url(randomUUID(), "ack-broadcast/withdraw"), other);
+    expect([stranger.statusCode, unknown.statusCode]).toEqual([404, 404]);
+    flags[FLAG] = false;
+    try {
+      expect((await call("POST", url("not-a-uuid", "ack-broadcast/withdraw"), author)).statusCode).toBe(404);
+    } finally {
+      flags[FLAG] = true;
+    }
+    expect((await listed(id)).withdrawnAt).toBeNull();
+
+    const first = await call("POST", withdrawUrl, author, { userId: other });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({ already: false, pastDeadline: false });
+    expect(first.json().withdrawnAt).toEqual(expect.any(String));
+    const stamp = await kit.one<{ ok: boolean }>(
+      `SELECT (withdrawn_at BETWEEN now() - interval '1 minute' AND now()) AS ok FROM message_ack_broadcast WHERE message_id=$1`,
+      [id],
+    );
+    expect(stamp[0]?.ok).toBe(true);
+    const second = await call("POST", withdrawUrl, author);
+    expect(second.json()).toMatchObject({ already: true, withdrawnAt: first.json().withdrawnAt });
+    // A retry by someone who already acknowledged is still an idempotent success after the withdrawal.
+    const retry = await call("POST", url(id, "ack"), alice);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toMatchObject({ already: true, acknowledgedAt: expect.any(String) });
+
+    for (const u of [alice, bob]) {
+      const items = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", u)).json().items;
+      expect(items.map((i: { messageId: string }) => i.messageId)).not.toContain(id);
+    }
+    expect((await call("POST", url(id, "ack"), bob)).statusCode).toBe(404);
+    const row = await listed(id);
+    expect(row.withdrawnAt).toBe(first.json().withdrawnAt);
+    expect(row.counts).toMatchObject({ acknowledged: 1 });
+    const detail = (await call("GET", url(id, "ack-broadcast"), author)).json();
+    expect(detail.withdrawnAt).toBe(first.json().withdrawnAt);
+    expect(detail.counts.acknowledged).toBe(1);
+    const revive = await call("POST", url(id, "ack-broadcast"), author);
+    expect(revive.json()).toMatchObject({ created: false, withdrawnAt: first.json().withdrawnAt });
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM message_ack_broadcast_recipient r JOIN message_ack_broadcast b ON b.id=r.broadcast_id WHERE b.message_id=$1`,
+        [id],
+      ),
+    ).toBe(3);
+  });
+
+  it("the database itself refuses: a non-creator or repeated withdrawal, an edited broadcast, a past deadline, a born-withdrawn insert, an ack after withdrawal", async () => {
+    const id = await announcement(author);
+    expect((await call("POST", url(id, "ack-broadcast"), author)).statusCode).toBe(201);
+    const bc = `message_id = '${id}'`;
+    await expect(asUser(other, `UPDATE message_ack_broadcast SET withdrawn_at = now() WHERE ${bc}`)).rejects.toThrow(/withdraw_actor/);
+    await expect(asUser(author, `UPDATE message_ack_broadcast SET deadline_at = now() + interval '1 day' WHERE ${bc}`)).rejects.toThrow(/permission denied/);
+    await expect(asUser(author, `UPDATE message_ack_broadcast SET withdrawn_at = NULL WHERE ${bc}`)).rejects.toThrow(/withdraw_once/);
+    await expect(asUser(author, `DELETE FROM message_ack_broadcast WHERE ${bc}`)).rejects.toThrow(/permission denied/);
+    const fresh = await announcement(author);
+    await expect(
+      asUser(author, `INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by, deadline_at) VALUES ('${ORG_A}','${fresh}','${channel}','${author}', now() - interval '1 hour')`),
+    ).rejects.toThrow(/deadline/);
+    await expect(
+      asUser(author, `INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by, withdrawn_at) VALUES ('${ORG_A}','${fresh}','${channel}','${author}', now())`),
+    ).rejects.toThrow(/born_open/);
+    expect((await call("POST", url(id, "ack-broadcast/withdraw"), author)).statusCode).toBe(200);
+    await expect(
+      asUser(
+        alice,
+        `UPDATE message_ack_broadcast_recipient SET acknowledged_at = now()
+          WHERE user_id = '${alice}' AND broadcast_id = (SELECT id FROM message_ack_broadcast WHERE ${bc})`,
+      ),
+    ).rejects.toThrow(/recipient_withdrawn/);
+    await expect(asUser(author, `UPDATE message_ack_broadcast SET withdrawn_at = now() WHERE ${bc}`)).rejects.toThrow(/withdraw_once/);
+  });
+
+  it("the audit trail of a withdrawal carries ids and instants only", async () => {
+    const rows = await kit.one<{ after: unknown }>(
+      `SELECT after FROM audit_event WHERE resource_kind = 'message_ack_broadcast' AND event_type = 'message_ack_broadcast.update'`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(JSON.stringify(rows)).not.toMatch(/Policy change|@x\.test/);
+  });
+});

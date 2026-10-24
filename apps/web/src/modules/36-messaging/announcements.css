@@ -130,3 +130,10 @@
     min-height: 2.75rem;
   }
 }
+
+/* WP 6.8 deadline field (ADR-0097 D13): a 44px target, like the buttons around it. */
+.wx-announcement-require input[type="datetime-local"] {
+  min-height: 44px;
+  padding: 0 0.75rem;
+  font: inherit;
+}

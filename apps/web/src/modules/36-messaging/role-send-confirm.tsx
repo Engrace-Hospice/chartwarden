@@ -8,9 +8,10 @@ import type {
   RoleSendPersonDto,
   RoleSendResolutionDto,
 } from "@chartwarden/types";
-import { Button } from "@chartwarden/ui";
+import { Button, Glyph } from "@chartwarden/ui";
 import type { JSX, RefObject } from "react";
 import {
+  AFTERHOURS_INDICATOR_TEXT,
   CONFIRM_LEGEND,
   LOADING_TEXT,
   LOOKUP_FAILED_TEXT,
@@ -141,6 +142,11 @@ export function RoleSendConfirm({
             ))}
           </fieldset>
           {hidden > 0 ? <p className="wx-urgent-hint">{NAMES_UNAVAILABLE_TEXT}</p> : null}
+          {resolution.afterhours_triage ? (
+            <p className="wx-urgent-notice" data-afterhours-indicator>
+              <Glyph name="phone" size={14} /> <span>{AFTERHOURS_INDICATOR_TEXT}</span>
+            </p>
+          ) : null}
           <p className="wx-urgent-notice" aria-live="polite">
             {chosen ? confirmLine(role, chosen.name, chosen.rank) : ""}
           </p>

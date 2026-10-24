@@ -9,7 +9,7 @@ import {
   type AckBroadcastState,
   type AckBroadcastSummary,
 } from "@chartwarden/types";
-import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
+import { Button, EmptyState, LoadingSpinner, Modal, PageHeader, StatusPill } from "@chartwarden/ui";
 import { type JSX, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -35,9 +35,20 @@ import {
   MINE_HEADING,
   OPEN_LABEL,
   OUTSIDE_NOTE,
+  PAST_DEADLINE_MARK,
   STATE_LABELS,
   SUPERVISE_EMPTY,
   SUPERVISE_HEADING,
+  WITHDRAWN_MARK,
+  WITHDRAWN_NOTE,
+  WITHDRAWN_NOTICE,
+  WITHDRAW_CANCEL,
+  WITHDRAW_CONFIRM,
+  WITHDRAW_FAILED,
+  WITHDRAW_LABEL,
+  WITHDRAW_TEXT,
+  WITHDRAW_TITLE,
+  deadlineLabel,
   progressLabel,
   sentLabel,
 } from "./ack-broadcast-wording";
@@ -84,6 +95,7 @@ function MineRow({
       <div className="wx-bc-main">
         <p className="wx-bc-title">{sentLabel(item.createdAt)}</p>
         {item.acknowledgedAt ? <p className="wx-bc-sub">Acknowledged {when(item.acknowledgedAt)}</p> : null}
+        {item.deadlineAt && !item.acknowledgedAt ? <p className="wx-bc-sub">{deadlineLabel(item.deadlineAt)}</p> : null}
         <span id={describedBy} className="sr-only">
           {sentLabel(item.createdAt)}, {position} of {total}
         </span>
@@ -182,14 +194,114 @@ function PersonRow({ person }: { readonly person: AckBroadcastPerson }): JSX.Ele
   );
 }
 
-function DetailPanel({ broadcast }: { readonly broadcast: AckBroadcastSummary }): JSX.Element {
+const BUSY_STYLE = { opacity: 0.72, cursor: "not-allowed" } as const;
+
+function WithdrawDialog({
+  busy,
+  failed,
+  onCancel,
+  onConfirm,
+}: {
+  readonly busy: boolean;
+  readonly failed: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): JSX.Element {
+  // A confirmation holds nothing typed, so a scrim click may cancel it; while the request runs nothing can close it.
+  return (
+    <Modal open role="alertdialog" ariaLabel={WITHDRAW_TITLE} onClose={busy ? undefined : onCancel} width="30rem">
+      <div className="wx-bc-dialog">
+        <h2>{WITHDRAW_TITLE}</h2>
+        <p>{WITHDRAW_TEXT}</p>
+        {failed ? (
+          <p role="alert" className="wx-bc-dialog-problem">
+            {WITHDRAW_FAILED}
+          </p>
+        ) : null}
+        <div className="wx-bc-dialog-actions">
+          {/* aria-disabled, not disabled: a disabled button would drop focus out of the dialog while the request runs. */}
+          <Button type="button" tone="secondary" size="lg" aria-disabled={busy || undefined} style={busy ? BUSY_STYLE : undefined} onClick={busy ? undefined : onCancel}>
+            {WITHDRAW_CANCEL}
+          </Button>
+          <Button type="button" size="lg" aria-disabled={busy || undefined} aria-busy={busy || undefined} style={busy ? BUSY_STYLE : undefined} onClick={busy ? undefined : onConfirm}>
+            {WITHDRAW_CONFIRM}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+interface WithdrawControls {
+  readonly withdraw: (messageId: string) => Promise<boolean>;
+  readonly state: "idle" | "busy" | "failed";
+  readonly clearError: () => void;
+}
+
+function BroadcastMarks({ b }: { readonly b: AckBroadcastSummary }): JSX.Element | null {
+  if (!b.withdrawnAt && !b.pastDeadline && !b.deadlineAt) return null;
+  return (
+    <span className="wx-bc-marks">
+      {b.withdrawnAt ? <StatusPill tone="neutral" label={WITHDRAWN_MARK} /> : null}
+      {b.pastDeadline ? <StatusPill tone="warning" label={PAST_DEADLINE_MARK} /> : null}
+      {b.deadlineAt && !b.withdrawnAt && !b.pastDeadline ? <span className="wx-bc-sub">{deadlineLabel(b.deadlineAt)}</span> : null}
+    </span>
+  );
+}
+
+function DetailPanel({
+  broadcast,
+  controls,
+}: {
+  readonly broadcast: AckBroadcastSummary;
+  readonly controls: WithdrawControls;
+}): JSX.Element {
   const [filter, setFilter] = useState<AckBroadcastFilter>("pending");
+  const [confirming, setConfirming] = useState(false);
   const { view, more, moreState, reload } = useBroadcastDetail(broadcast.messageId, filter);
   const headingId = useId();
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const c = broadcast.counts;
   return (
     <section className="wx-bc-detail" aria-labelledby={headingId}>
       <h3 id={headingId} className="wx-bc-heading">{sentLabel(broadcast.createdAt)}</h3>
+      <BroadcastMarks b={broadcast} />
+      {broadcast.deadlineAt && (broadcast.withdrawnAt || broadcast.pastDeadline) ? (
+        <p className="wx-bc-sub">{deadlineLabel(broadcast.deadlineAt)}</p>
+      ) : null}
+      {broadcast.withdrawnAt ? (
+        <p className="wx-bc-sub">{WITHDRAWN_NOTE}</p>
+      ) : (
+        <div className="wx-bc-withdraw">
+          <Button type="button" tone="secondary" size="lg" onClick={() => {
+            controls.clearError();
+            setConfirming(true);
+          }}>
+            {WITHDRAW_LABEL}
+          </Button>
+        </div>
+      )}
+      {confirming && !broadcast.withdrawnAt ? (
+        <WithdrawDialog
+          busy={controls.state === "busy"}
+          failed={controls.state === "failed"}
+          onCancel={() => {
+            controls.clearError();
+            setConfirming(false);
+          }}
+          onConfirm={() => {
+            void controls.withdraw(broadcast.messageId).then((ok) => {
+              if (ok && mounted.current) setConfirming(false);
+            });
+          }}
+        />
+      ) : null}
       <p className="wx-bc-sub" aria-live="polite">
         {progressLabel(c.acknowledged, c.audience)}. {c.pending} still to acknowledge ({c.notOpened} not opened).
         {c.ineligible > 0 ? ` ${c.ineligible} no longer active.` : ""}
@@ -239,7 +351,15 @@ function DetailPanel({ broadcast }: { readonly broadcast: AckBroadcastSummary })
   );
 }
 
-function OverseeSection({ view, retry }: { readonly view: OverseeView; readonly retry: () => void }): JSX.Element | null {
+function OverseeSection({
+  view,
+  retry,
+  controls,
+}: {
+  readonly view: OverseeView;
+  readonly retry: () => void;
+  readonly controls: WithdrawControls;
+}): JSX.Element | null {
   const [selected, setSelected] = useState<string | null>(null);
   const headingId = useId();
   if (view.status === "hidden") return null;
@@ -266,11 +386,12 @@ function OverseeSection({ view, retry }: { readonly view: OverseeView; readonly 
                 >
                   <span>{sentLabel(b.createdAt)}</span>
                   <span className="wx-bc-sub">{progressLabel(b.counts.acknowledged, b.counts.audience)}</span>
+                  <BroadcastMarks b={b} />
                 </button>
               </li>
             ))}
           </ul>
-          <DetailPanel key={chosen.messageId} broadcast={chosen} />
+          <DetailPanel key={chosen.messageId} broadcast={chosen} controls={controls} />
         </div>
       )}
     </section>
@@ -278,18 +399,29 @@ function OverseeSection({ view, retry }: { readonly view: OverseeView; readonly 
 }
 
 export function AckBroadcast(): JSX.Element {
-  const { mine, oversee, ackError, refreshFailed, busy, acknowledge, reload } = useAckBroadcast();
+  const { mine, oversee, ackError, refreshFailed, busy, acknowledge, reload, withdraw, withdrawState, clearWithdrawError } =
+    useAckBroadcast();
   const headingBase = useId();
   const statusRef = useRef<HTMLParagraphElement>(null);
-  const [acked, setAcked] = useState(0);
-  // After Acknowledge the row leaves the waiting list and takes focus with it: move focus to the status line, which says what happened.
+  const [notice, setNotice] = useState({ n: 0, text: "" });
+  // After Acknowledge (or a withdrawal) the control that had focus leaves the page: move focus to the status line, which says what happened.
   useEffect(() => {
-    if (acked > 0) statusRef.current?.focus();
-  }, [acked]);
+    if (notice.n > 0) statusRef.current?.focus();
+  }, [notice.n]);
+  const say = (text: string): void => setNotice((prev) => ({ n: prev.n + 1, text }));
   const onAck = (id: string): void => {
     void acknowledge(id).then((record) => {
-      if (record) setAcked((n) => n + 1);
+      if (record) say(ACKNOWLEDGED_ANNOUNCEMENT);
     });
+  };
+  const controls: WithdrawControls = {
+    withdraw: async (id) => {
+      const ok = await withdraw(id);
+      if (ok) say(WITHDRAWN_NOTICE);
+      return ok;
+    },
+    state: withdrawState,
+    clearError: clearWithdrawError,
   };
   return (
     <>
@@ -297,12 +429,12 @@ export function AckBroadcast(): JSX.Element {
         {mine.status === "off" ? null : <p className="wx-bc-sub">{BROADCAST_NOTICE}</p>}
       </PageHeader>
       <div className="wx-bc">
-        <p key={acked} ref={statusRef} role="status" tabIndex={-1} className="wx-bc-status">
-          {acked > 0 ? ACKNOWLEDGED_ANNOUNCEMENT : null}
+        <p key={notice.n} ref={statusRef} role="status" tabIndex={-1} className="wx-bc-status">
+          {notice.text}
         </p>
         {refreshFailed ? <Problem text={ACK_REFRESH_FAILED} retry={() => void reload()} /> : null}
         <MineSection headingBase={headingBase} view={mine} busy={busy} ackError={ackError} onAck={onAck} retry={() => void reload()} />
-        {mine.status === "off" ? null : <OverseeSection view={oversee} retry={() => void reload()} />}
+        {mine.status === "off" ? null : <OverseeSection view={oversee} retry={() => void reload()} controls={controls} />}
       </div>
     </>
   );

@@ -112,7 +112,7 @@ export interface RetentionGovernanceDeps {
   /** By-id staff names (M2's directory reader, bound at the composition root). Absent => `placed_by_name` is null and the screen shows the id. */
   readonly staffNames?: StaffNamePort;
   /**
-   * The single-officer redaction fallback (ADR-0055 D9, PROVISIONAL): the tenant flag and the count of people who can approve a redaction
+   * The single-officer redaction fallback (ADR-0055 D9, PROVISIONAL): the tenant flag and the set of people who can approve a redaction
    * (M3's reader), bound at the composition root. Absent => the fallback does not exist.
    */
   readonly redactionFallback?: {
@@ -121,7 +121,7 @@ export interface RetentionGovernanceDeps {
       tx: DbClient,
       organizationId: string,
       permissionKey: string,
-    ) => Promise<number>;
+    ) => Promise<ReadonlySet<string>>;
   };
   /** The destruction executor's mode for a tenant (flag + deployment switch). Absent => "off". */
   readonly destructionMode?: (organizationId: string) => Promise<RetentionDestructionMode>;
