@@ -45,6 +45,8 @@ export function PlaybookPanel({
   const client = useApiClient();
   const session = useSession();
   const canAuthor = session?.permissions?.includes("playbook.author") ?? false;
+  // Ticking is a write-level key: without it the status is shown as text, never as a control that will be refused.
+  const canMark = session?.permissions?.includes("playbook.step.mark") ?? false;
   const [view, setView] = useState<DenialPlaybook | null>(null);
   const [hidden, setHidden] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -155,23 +157,32 @@ export function PlaybookPanel({
             {pb.steps.map((s) => (
               <li key={s.key}>
                 {s.text}{" "}
-                <select
-                  aria-label={`Status of step: ${s.text}`}
-                  value={s.status}
-                  disabled={busyKey !== null}
-                  onChange={(e) =>
-                    void tick(s.key, pb.versionId, e.target.value as PlaybookStepStatus)
-                  }
-                >
-                  {STEP_STATUSES.map((st) => (
-                    <option key={st} value={st}>
-                      {PLAYBOOK_STEP_STATUS_LABEL[st]}
-                    </option>
-                  ))}
-                </select>
+                {canMark ? (
+                  <select
+                    aria-label={`Status of step: ${s.text}`}
+                    value={s.status}
+                    disabled={busyKey !== null}
+                    onChange={(e) =>
+                      void tick(s.key, pb.versionId, e.target.value as PlaybookStepStatus)
+                    }
+                  >
+                    {STEP_STATUSES.map((st) => (
+                      <option key={st} value={st}>
+                        {PLAYBOOK_STEP_STATUS_LABEL[st]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>{`(${PLAYBOOK_STEP_STATUS_LABEL[s.status] ?? s.status})`}</span>
+                )}
               </li>
             ))}
           </ol>
+          {canMark ? null : (
+            <Hint>
+              You do not have permission to mark steps; their status is shown for reference.
+            </Hint>
+          )}
           <Hint>
             Ticks are for your team's tracking only. They do not change this denial or block any
             action.

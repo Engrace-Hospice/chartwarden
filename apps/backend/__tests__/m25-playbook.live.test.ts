@@ -467,9 +467,14 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
 
     it("refuses a source document the organization cannot see, and accepts one it can", async () => {
       const known = randomUUID();
+      const superseded = randomUUID();
       const documents = () => ({
         documentMetadata: async (args: { documentId: string }) =>
-          args.documentId === known ? { title: "t" } : null,
+          args.documentId === known
+            ? { title: "t", status: "active" }
+            : args.documentId === superseded
+              ? { title: "t", status: "superseded" }
+              : null,
       });
       const guarded = buildDrizzlePlaybookService(fx.handle.db, { documents: documents as never });
       const bad = await fx.refused(
@@ -481,6 +486,15 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         } as never),
       );
       expect(bad).toMatchObject({ code: "PLAYBOOK_SOURCE_DOCUMENT_NOT_FOUND", statusCode: 422 });
+      const old = await fx.refused(
+        guarded.createPlaybook(A(), {
+          codeKind: "carc",
+          code: "105",
+          title: "CARC 105",
+          ...content({ sourceDocumentId: superseded }),
+        } as never),
+      );
+      expect(old).toMatchObject({ code: "PLAYBOOK_SOURCE_DOCUMENT_NOT_FOUND", statusCode: 422 });
       const ok = await guarded.createPlaybook(A(), {
         codeKind: "carc",
         code: "105",
@@ -714,6 +728,34 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
       ).rows[0].n;
       expect(n).toBe(0);
       await tick(A(), denial, "first", "done"); // the version now in force is accepted
+    });
+
+    it("a tick racing a publish either lands or is a clean 409, never a server error", async () => {
+      const p = await published({ codeKind: "carc", code: "303" });
+      let current = (await svc().getDenialPlaybook(A(), await denialWith({ carc: "303" }))).playbook
+        ?.versionId as string;
+      for (let round = 0; round < 4; round++) {
+        const denial = await denialWith({ carc: "303" });
+        const next = await svc().createDraftVersion(
+          A(),
+          p.id,
+          content({ summary: `race ${round}` }),
+        );
+        const outcomes = await Promise.all(
+          [
+            fx.refused(svc().setStepStatus(A(), denial, "first", current, "done")),
+            svc().publishVersion(A2(), next.id, next.rowVersion),
+          ].map((x) =>
+            Promise.resolve(x).catch((e) => ({ statusCode: e.statusCode, code: e.code })),
+          ),
+        );
+        const tickResult = outcomes[0] as { statusCode?: number; code?: string } | null;
+        expect(
+          tickResult === null ||
+            (tickResult.statusCode === 409 && tickResult.code === "PLAYBOOK_VERSION_CHANGED"),
+        ).toBe(true);
+        current = (await svc().getDenialPlaybook(A(), denial)).playbook?.versionId as string;
+      }
     });
 
     it("refuses an unknown step, a denial with no playbook, and a tick on a version that is not published", async () => {

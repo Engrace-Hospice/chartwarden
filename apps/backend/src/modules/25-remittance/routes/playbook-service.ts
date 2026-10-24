@@ -236,10 +236,12 @@ export function buildDrizzlePlaybookService(
       documentId: id as never,
       organizationId: actor.organizationId as never,
     });
-    if (!found) {
+    // Found, and still the record: active or on legal hold (not superseded or destroyed), as for appeal enclosures.
+    const status = (found as { status?: string } | null)?.status;
+    if (!found || (status !== "active" && status !== "legal_hold")) {
       throw new ChartWardenError(
         "PLAYBOOK_SOURCE_DOCUMENT_NOT_FOUND",
-        "the source document was not found in your organization",
+        "the source document was not found in your organization or is no longer active",
         422,
       );
     }
@@ -623,6 +625,21 @@ export function buildDrizzlePlaybookService(
         }
         if (!view.playbook.steps.some((s) => s.key === stepKey)) {
           throw new NotFoundError("playbook step");
+        }
+        // Hold the version row while the tick is written: a publish that would retire it waits for this transaction, and a
+        // version already retired by then is the same 409 as a stale screen (never a trigger error).
+        const held = await tx
+          .select({ status: PV.status })
+          .from(PV)
+          .where(eq(PV.id, versionId))
+          .limit(1)
+          .for("share");
+        if (held[0]?.status !== "published") {
+          throw new ChartWardenError(
+            "PLAYBOOK_VERSION_CHANGED",
+            "the playbook for this denial changed; reload to see the version now in force",
+            409,
+          );
         }
         // The ONLY write: one advisory tick row. Nothing reads it.
         await tx

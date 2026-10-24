@@ -2,7 +2,8 @@
 // library and the per-denial panel. Reads gate on `playbook.read`, writing a playbook or a draft on `playbook.author`,
 // publishing or retiring a version on `playbook.publish` (a person other than the author). The two per-denial routes also
 // require `denial.read` and its claim-assignment ABAC, so a playbook never opens a denial the actor cannot see. A step
-// tick needs only `denial.read` + `playbook.read` and is advisory: no guard reads it. Edits to a version are If-Match
+// tick needs `playbook.step.mark` (a write-level key, so a read-only role cannot tick) plus `denial.read` and is advisory:
+// no guard reads it.
 // (409 when stale); every mutation requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived
 // (actor.ts). Nothing here states a CMS or MAC rule: all text is the organization's own.
 import { NotFoundError } from "@chartwarden/types";

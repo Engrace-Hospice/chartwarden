@@ -230,6 +230,14 @@ describe("M25 denial playbook panel", () => {
     expect(screen.getByText(/do not change this denial or block any action/i)).toBeTruthy();
   });
 
+  it("shows step status as text with the reason, not a control, to someone who cannot mark steps", async () => {
+    denialViews = { default: withPlaybook("done") };
+    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read"]);
+    expect(await screen.findByText("(Done)")).toBeTruthy();
+    expect(screen.queryByLabelText("Status of step: Pull the certification")).toBeNull();
+    expect(screen.getByText(/You do not have permission to mark steps/)).toBeTruthy();
+  });
+
   it("ticks a step with one PUT bound to the version on screen", async () => {
     const user = userEvent.setup();
     denialViews = { default: withPlaybook() };
@@ -249,7 +257,7 @@ describe("M25 denial playbook panel", () => {
   it("on a 409 (the version changed) shows the message and reloads to what is now in force", async () => {
     const user = userEvent.setup();
     denialViews = { default: withPlaybook("open", VER, 2) };
-    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read"]);
+    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read", "playbook.step.mark"]);
     const select = await screen.findByLabelText("Status of step: Pull the certification");
     denialViews = { default: withPlaybook("open", VER_2, 3) };
     writeFailure = {
@@ -265,7 +273,7 @@ describe("M25 denial playbook panel", () => {
   it("shows the server's refusal when a tick fails, and keeps the steps", async () => {
     const user = userEvent.setup();
     denialViews = { default: withPlaybook() };
-    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read"]);
+    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read", "playbook.step.mark"]);
     const select = await screen.findByLabelText("Status of step: Call the MAC");
     writeFailure = { status: 404, code: "NOT_FOUND", message: "playbook step not found" };
     await user.selectOptions(select, "not_applicable");
@@ -277,7 +285,7 @@ describe("M25 denial playbook panel", () => {
     const user = userEvent.setup();
     denialViews = { default: withPlaybook() };
     denialFailAfter = 1;
-    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read"]);
+    mount(<PlaybookPanel denialId={DENIAL} />, ["playbook.read", "playbook.step.mark"]);
     await user.selectOptions(await screen.findByLabelText("Status of step: Call the MAC"), "done");
     expect(await screen.findByText("temporarily unavailable")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
