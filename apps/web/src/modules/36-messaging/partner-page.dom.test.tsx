@@ -267,18 +267,49 @@ describe("PartnerPage", () => {
     expect(calls.filter((c) => c.url.includes("/messages"))).toHaveLength(0);
   });
 
-  it("a redeem answer that arrives after the page unmounted does nothing", async () => {
+  it("a verify answer that arrives after the page unmounted starts no read and holds no bearer", async () => {
     const user = userEvent.setup();
     const view = mount();
-    const release = holdFetch("/redeem");
     await user.click(await screen.findByRole("button", { name: "Open the conversation" }));
+    await user.type(await screen.findByLabelText("Verification code"), "12345678");
+    const release = holdFetch("/verify");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
     view.unmount();
-    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await act(async () => {
       release();
     });
-    expect(errors).not.toHaveBeenCalled();
-    errors.mockRestore();
+    // Without the sessionGen guard the late answer would store the rotated bearer and read the conversation with it.
+    expect(calls.filter((c) => c.url.includes("/messages"))).toHaveLength(0);
+  });
+
+  it("clears the bearer on unmount: a stale Refresh handler cannot read with it", async () => {
+    const user = userEvent.setup();
+    const view = mount();
+    await openAndVerify(user);
+    const button = screen.getByRole("button", { name: "Refresh" });
+    const props = Object.entries(button).find(([k]) => k.startsWith("__reactProps"))![1] as {
+      onClick: () => void;
+    };
+    view.unmount();
+    const before = calls.length;
+    await act(async () => {
+      props.onClick();
+    });
+    expect(calls).toHaveLength(before);
+  });
+
+  it("returns focus to the code input, not the heading, after a failed code check", async () => {
+    handler = (url) =>
+      url.endsWith("/verify")
+        ? { status: 422, body: { error: { code: "EXTERNAL_SHARE_CODE_INVALID" } } }
+        : happy(url);
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole("button", { name: "Open the conversation" }));
+    await user.type(await screen.findByLabelText("Verification code"), "00000000");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("alert");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox")));
   });
 
   it("moves focus to the conversation heading when reading begins", async () => {
@@ -334,6 +365,75 @@ describe("PartnerPage", () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(calls.length).toBe(after);
+  });
+
+  /** After the first read, each /messages call is answered by `plan[n]`: a held gate or an immediate body. */
+  function planReads(plan: Array<{ hold?: Promise<void>; body: unknown }>) {
+    let n = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({ url, init });
+        if (url.includes("/messages")) {
+          const step = plan[n++];
+          if (step) {
+            if (step.hold) await step.hold;
+            return json(200, step.body);
+          }
+        }
+        const r = happy(url);
+        return json(r.status, r.body);
+      }),
+    );
+  }
+  const only = (body: string) => ({
+    messages: [{ messageId: body, authorName: "Dana Reyes", body, createdAt: "2026-10-23T10:05:00.000Z", edited: false }],
+    nextCursor: null,
+  });
+
+  it("a slow older refresh cannot overwrite a newer answer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    // read 1 (after verify): immediate; read 2 (manual click): held, stale; read 3 (poll): immediate, fresh.
+    planReads([{ body: MESSAGES }, { hold: gate, body: only("STALE") }, { body: only("FRESH") }]);
+    mount();
+    await openAndVerify(user);
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await act(async () => {
+      vi.advanceTimersByTime(16_000);
+    });
+    await screen.findByText("FRESH");
+    await act(async () => {
+      release();
+    });
+    expect(screen.getByText("FRESH")).toBeTruthy();
+    expect(screen.queryByText("STALE")).toBeNull();
+  });
+
+  it("a background poll does not toggle the Refresh button busy; a manual refresh does", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const never = new Promise<void>(() => undefined);
+    planReads([{ body: MESSAGES }, { hold: gate, body: MESSAGES }, { hold: never, body: MESSAGES }]);
+    mount();
+    await openAndVerify(user);
+    await act(async () => {
+      vi.advanceTimersByTime(16_000); // poll: read 2 is now in flight
+    });
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy(); // still idle, not "Refreshing"
+    await act(async () => {
+      release();
+    });
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(screen.getByRole("button", { name: "Refreshing" })).toBeTruthy();
   });
 
   it("announces the conversation as a polite log, labels the code, and has no axe violations", async () => {
