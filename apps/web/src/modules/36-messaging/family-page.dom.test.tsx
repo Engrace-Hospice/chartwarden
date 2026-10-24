@@ -335,12 +335,13 @@ describe("FamilyPage - bereavement mode", () => {
 });
 
 describe("FamilyPage - the one neutral state", () => {
-  const NEUTRAL = "This link is no longer active. Please call the agency.";
+  const NEUTRAL = "This link is no longer active. Please call the agency number you were given.";
 
-  it("shows it, with the number from the link, for a missing or malformed link and calls nothing", async () => {
+  it("shows it for a missing or malformed link, never shows a number a forged link carries, and calls nothing", async () => {
     mount("#t=nope&o=nope&n=555-0100");
     await screen.findByText(NEUTRAL);
-    expect(screen.getByRole("link", { name: PHONE })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: PHONE })).toBeNull();
+    expect(document.body.textContent).not.toContain("555-0100");
     expect(screen.getByText(FAMILY_NOT_EMERGENCY_TEXT)).toBeTruthy();
     expect(calls).toHaveLength(0);
   });
@@ -359,7 +360,7 @@ describe("FamilyPage - the one neutral state", () => {
     handler = (url, init) => (url.endsWith(suffix) ? { status: 404 } : happy(url, init));
     mount();
     await screen.findByText(NEUTRAL);
-    expect(screen.getByRole("link", { name: PHONE })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: PHONE })).toBeNull();
     expect(screen.queryByLabelText("8-digit code")).toBeNull();
   });
 
@@ -430,7 +431,9 @@ describe("FamilyPage - the not-an-emergency notice", () => {
     expect(screen.getByText(FAMILY_NOT_EMERGENCY_TEXT)).toBeTruthy();
     cleanup();
     mount("#bad");
-    await screen.findByText("This link is no longer active. Please call the agency.");
+    await screen.findByText(
+      "This link is no longer active. Please call the agency number you were given.",
+    );
     expect(screen.getByText(FAMILY_NOT_EMERGENCY_TEXT)).toBeTruthy();
   });
 
@@ -441,7 +444,7 @@ describe("FamilyPage - the not-an-emergency notice", () => {
     );
     mount();
     expect(screen.getByText(FAMILY_NOT_EMERGENCY_TEXT)).toBeTruthy();
-    expect(screen.getByRole("link", { name: PHONE })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: PHONE })).toBeNull();
   });
 });
 

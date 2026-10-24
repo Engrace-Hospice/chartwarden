@@ -350,7 +350,7 @@ describe("invite", () => {
     const fragment = new URLSearchParams(link.split("#")[1]);
     expect(fragment.get("t")).toBe("T".repeat(43));
     expect(fragment.get("o")).toBe(ORG);
-    expect(fragment.get("n")).toBe("555-0100");
+    expect(fragment.has("n")).toBe(false);
     expect(within(secrets).getByText(/Say the code to the contact by phone/)).toBeTruthy();
     expect(within(secrets).getByRole("button", { name: "Copy link" })).toBeTruthy();
     expect(within(secrets).getByRole("button", { name: "Copy code" })).toBeTruthy();

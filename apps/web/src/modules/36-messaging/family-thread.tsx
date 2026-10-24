@@ -112,7 +112,7 @@ function Composer({
             rows={4}
             maxLength={REPLY_MAX_CHARS}
             value={draft}
-            disabled={busy}
+            readOnly={busy}
             aria-describedby="family-reply-persistent"
             onChange={(e) => setDraft(e.target.value)}
           />

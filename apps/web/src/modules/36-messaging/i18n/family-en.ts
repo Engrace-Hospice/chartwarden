@@ -25,7 +25,8 @@ export const FAMILY_EN = {
     "We could not reach the service. Please check your connection and try again.",
   "family.contact.retry": "Try again",
   "family.dead.heading": "Secure message",
-  "family.dead.text": "This link is no longer active. Please call the agency.",
+  "family.dead.text":
+    "This link is no longer active. Please call the agency number you were given.",
   "family.dead.call": "Call the agency: {phone}",
   "family.code.heading": "Enter your code",
   "family.code.help":

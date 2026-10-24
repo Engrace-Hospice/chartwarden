@@ -58,7 +58,6 @@ function usePageHygiene(): void {
 export function FamilyPage(): JSX.Element {
   usePageHygiene();
   const [phase, setPhase] = useState<Phase>("opening");
-  const [fragmentPhone, setFragmentPhone] = useState<string | null>(null);
   const [state, setState] = useState<FamilyContactStateDto | null>(null);
   const [code, setCode] = useState("");
   const [codeNotice, setCodeNotice] = useState<string | null>(null);
@@ -143,7 +142,12 @@ export function FamilyPage(): JSX.Element {
     if (redeemed.kind !== "ok") return setPhase("retry"); // the token was not spent by a failure we could not read; the link may be tried again
     invitation.current = null; // the single-use token is spent: it cannot be offered again
     bearer.current = redeemed.data.sessionToken;
-    const read = await readFamilyState(redeemed.data.sessionToken);
+    // The link is spent, so a blip on the first state read must not strand the family: try it a few times before the neutral state.
+    let read = await readFamilyState(redeemed.data.sessionToken);
+    for (let attempt = 0; attempt < 2 && read.kind === "failed"; attempt += 1) {
+      if (gen.current !== mine) return;
+      read = await readFamilyState(redeemed.data.sessionToken);
+    }
     if (gen.current !== mine) return;
     if (read.kind !== "ok") return die();
     setState(read.data);
@@ -156,7 +160,6 @@ export function FamilyPage(): JSX.Element {
     fragmentTaken.current = true;
     const parsed = parseFamilyFragment(window.location.hash);
     window.history.replaceState(null, "", window.location.pathname);
-    setFragmentPhone(parsed.phone);
     if (!parsed.invitation) {
       setPhase("dead");
       return;
@@ -238,7 +241,7 @@ export function FamilyPage(): JSX.Element {
     headingRef.current?.focus();
   }, [phase]);
 
-  const agencyPhone = state?.agencyPhone ?? fragmentPhone;
+  const agencyPhone = state?.agencyPhone ?? null;
   const bereaved = state?.mode === "bereavement";
 
   if (phase === "dead") {
@@ -246,7 +249,7 @@ export function FamilyPage(): JSX.Element {
       <FamilyContactFrame
         heading={ft("family.dead.heading")}
         headingRef={headingRef}
-        agencyPhone={fragmentPhone}
+        agencyPhone={null}
       >
         <InlineAlert tone="error">{ft("family.dead.text")}</InlineAlert>
       </FamilyContactFrame>
@@ -299,10 +302,10 @@ export function FamilyPage(): JSX.Element {
             label={ft("family.code.label")}
             inputMode="numeric"
             autoComplete="one-time-code"
-            maxLength={8}
+            maxLength={16}
             error={codeNotice}
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\s/g, ""))}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
             style={{ minHeight: "2.75rem" }}
           />
           <Button type="submit" size="lg" style={tapStyle} loading={phase === "verifying"}>

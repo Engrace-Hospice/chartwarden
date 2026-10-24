@@ -59,7 +59,6 @@ export function FamilySecrets({
     window.location.origin,
     made.organizationId,
     made.inviteToken,
-    made.agencyPhone,
   );
   return (
     <Modal open ariaLabel={ft("family.secrets.title")} dismissOnScrim={false} width="40rem">

@@ -90,7 +90,7 @@ function Composer({
         id="family-message"
         rows={5}
         value={draft}
-        disabled={sending}
+        readOnly={sending}
         aria-invalid={over || problem !== null || undefined}
         aria-describedby="family-counter family-send-status"
         onChange={(e) => {
