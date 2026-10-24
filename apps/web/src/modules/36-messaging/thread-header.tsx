@@ -20,6 +20,8 @@ export interface ThreadHeaderProps {
   onToggleContext: () => void;
   /** WP 2.9: open the member list of a department channel (passed only to someone who may manage members). */
   onShowMembers?: () => void;
+  /** WP 6.5 (ADR-0095): present only when the tenant flag and the caller's permission allow AI; absent => no button at all. */
+  ai?: { open: boolean; onToggle: () => void };
   /** Receives focus when the user opens this conversation from the inbox on a narrow screen. */
   headingRef?: RefObject<HTMLHeadingElement>;
 }
@@ -33,6 +35,7 @@ export function ThreadHeader({
   onBack,
   onToggleContext,
   onShowMembers,
+  ai,
   headingRef,
 }: ThreadHeaderProps): JSX.Element {
   return (
@@ -61,6 +64,17 @@ export function ThreadHeader({
       ) : null}
       {/* WP 4.10: pauses non-urgent push / text / email notices for this conversation; shows nothing when the feature is off. */}
       <SnoozeControl channelId={channel.channelId} />
+      {ai ? (
+        <button
+          type="button"
+          className="wx-messaging-context-toggle"
+          aria-expanded={ai.open}
+          onClick={ai.onToggle}
+        >
+          <Glyph name="sparkle" size={16} />
+          <span className="wx-messaging-context-label">AI summary</span>
+        </button>
+      ) : null}
       {onShowMembers ? (
         <button type="button" className="wx-messaging-context-toggle" onClick={onShowMembers}>
           <Glyph name="users" size={16} />

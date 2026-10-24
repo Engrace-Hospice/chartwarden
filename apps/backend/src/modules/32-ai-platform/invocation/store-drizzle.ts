@@ -38,6 +38,7 @@ import { type M32EventEmitter, capabilityIdentity } from "../events";
 import type { AiInvocationCapabilityStore } from "./service";
 import type {
   AiBackendRegistryStore,
+  AiHitlOutcomeGuard,
   AiInvocationInsert,
   AiInvocationLedgerStore,
   AiRoutingOverrideStore,
@@ -425,6 +426,7 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
       invocationId,
       invokedAt,
       outcome: AiInvocationHitlOutcome,
+      guard?: AiHitlOutcomeGuard,
     ) {
       await withOrgContext(db, ctx(organizationId), async (tx) => {
         const updated = await tx
@@ -437,6 +439,14 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
               // The partition key is part of the composite PK and is NOT derivable from the id; without
               // it this UPDATE scans every monthly partition.
               eq(schema.aiInvocation.invokedAt, new Date(invokedAt)),
+              ...(guard
+                ? [
+                    eq(schema.aiInvocation.actorMembershipId, guard.actorMembershipId),
+                    inArray(schema.aiInvocation.capabilityKey, [...guard.capabilityKeys]),
+                    sql`${schema.aiInvocation.consumerContextRef}->>'entityId' = ${guard.consumerEntityId}`,
+                    inArray(schema.aiInvocation.hitlOutcome, ["pending", "accepted"]),
+                  ]
+                : []),
             ),
           )
           .returning({

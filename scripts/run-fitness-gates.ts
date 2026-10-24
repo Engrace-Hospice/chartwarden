@@ -49,6 +49,7 @@ export const GATES = [
   "arch:migration-numbering",
   "arch:gaps",
   "arch:ai-governance",
+  "arch:ai-messaging-readonly",
   "arch:architecture-docs",
   "arch:module-docs",
   "arch:adr-docs",

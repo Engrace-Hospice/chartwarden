@@ -201,3 +201,22 @@ capabilities:
     enabled_by_default: false
     capability_key: adr_documentation_readiness
     doc: docs/ai/capabilities/adr-documentation-readiness.md
+
+  # ADR-0095 (Proposed -> built flag-off). risk_class high: a wrong summary can hide an urgent message (hazard H-08). Pending clinical-lead and compliance sign-off.
+  - id: messaging-summarize
+    name: Messaging thread summary
+    module: 36
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: messaging_summarize
+    doc: docs/ai/capabilities/messaging-summarize.md
+
+  - id: messaging-draft-reply
+    name: Messaging draft reply
+    module: 36
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: messaging_draft_reply
+    doc: docs/ai/capabilities/messaging-draft-reply.md

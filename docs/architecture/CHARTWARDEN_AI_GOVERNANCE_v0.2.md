@@ -248,6 +248,8 @@ Each AI capability is registered, classified, and tracked. Maintained in `docs/a
 | **Denial outcome / appeal probability prediction** | 25 Remittance & Denials | Medium (financial decision support) | Module 32 §2.4 |
 | **Level of care prediction** | 32 (care plan + IDG surfaces) | High (clinical decision support) | Module 32 §2.4 |
 | **ADR documentation readiness** — advisory gap review of an ADR response packet | 25 Remittance & Denials | Medium (compliance decision support; High-class controls; classification pending AI Safety Owner) | Module 32 §2.4 |
+| **Messaging thread summary** — cited, uncertainty-labelled summary of a conversation the caller can read | 36 Secure Messaging | High (a wrong summary can hide an urgent message; proposed by ADR-0095, hazard H-08, pending clinical-lead and compliance sign-off) | Module 32 §2.4 |
+| **Messaging draft reply** — draft text returned to the composer only; a human edits and sends | 36 Secure Messaging | High (same input and same failure mode as the summary; proposed by ADR-0095, pending sign-off) | Module 32 §2.4 |
 
 The six rows before ADR documentation readiness were added from Module 32's §2.4 Phase-1 inventory, which had registered them with no
 catalog entry. Every risk class above is inherited from a stated source except **ADR documentation readiness** (a recommended default, Medium with High-class controls, awaiting the AI Safety Owner's decision D2; not inherited) and **level of care

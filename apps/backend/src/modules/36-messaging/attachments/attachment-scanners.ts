@@ -35,6 +35,12 @@ function matchesDeclaredType(bytes: Uint8Array, mimeType: string): boolean {
       );
     case "text/plain":
       return !bytes.includes(0x00);
+    case "audio/webm":
+      // WP 6.3: the EBML header every WebM (Opus) file opens with.
+      return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+    case "audio/mp4":
+      // WP 6.3: an ISO base media file opens with a box whose type, at offset 4, is `ftyp`.
+      return startsWith(bytes.subarray(4), [0x66, 0x74, 0x79, 0x70]);
     default:
       // docx is a zip container
       return startsWith(bytes, [0x50, 0x4b, 0x03, 0x04]);

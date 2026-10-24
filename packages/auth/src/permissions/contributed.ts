@@ -467,6 +467,15 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 6.5 (ADR-0095, PROPOSED): ask for an AI summary or reply draft of a conversation the caller can read. Needs the tenant flag
+  //     messaging.ai.enabled AND current membership of the channel (re-checked at call time); the model sees only a minimised, pseudonymised
+  //     copy of what the caller can read. Migration 1220 grants it to administrator and org_admin only; the clinical lead names who else. ---
+  "messaging.ai.use": {
+    resource: "message_ai",
+    action: "use",
+    category: "clinical",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---

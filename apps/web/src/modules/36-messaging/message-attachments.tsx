@@ -1,4 +1,5 @@
-import { Glyph, useApiClient } from "@chartwarden/ui";
+import { VOICE_NOTES_FLAG_KEY, isVoiceNoteMimeType } from "@chartwarden/types";
+import { Glyph, useApiClient, useFeatureFlag } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -8,6 +9,7 @@ import {
   withRequestDeadline,
 } from "./attachment-utils";
 import type { MessageAttachment } from "./messaging-types";
+import "./voice-note.css";
 
 type OpenState = "idle" | "opening" | "unavailable" | "popup-blocked";
 
@@ -107,17 +109,115 @@ function AttachmentRow({ attachment }: { attachment: MessageAttachment }): JSX.E
   );
 }
 
+function useVoiceNotesFlag(): boolean {
+  try {
+    return useFeatureFlag(VOICE_NOTES_FLAG_KEY);
+  } catch {
+    return false; // no provider mounted: fail closed
+  }
+}
+
+type VoiceNoteState = "idle" | "loading" | "unavailable" | "expired";
+
+const VOICE_NOTE_STATE_TEXT: Readonly<Record<VoiceNoteState, string>> = {
+  idle: "",
+  loading: "Loading…",
+  unavailable: "Voice note unavailable",
+  expired: "The link timed out. Press Play to load it again.",
+};
+
+/**
+ * WP 6.3 (ADR-0094): a voice note plays in the browser's native audio control. The signed URL (120 s) is fetched only when the user
+ * presses Play, through the same per-open authorization as any attachment, and is dropped if the player errors (e.g. it expired).
+ */
+function VoiceNoteRow({ attachment }: { attachment: MessageAttachment }): JSX.Element {
+  const client = useApiClient();
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<VoiceNoteState>("idle");
+  const loadingRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  async function load(): Promise<void> {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setState("loading");
+    let next: string | null = null;
+    try {
+      const { data } = await client.GET("/api/v1/messaging/attachments/{id}/access", {
+        params: { path: { id: attachment.attachmentId } },
+        signal: withRequestDeadline().signal,
+      });
+      next = data?.url && isSafeAccessUrl(data.url) ? data.url : null;
+    } catch {
+      next = null;
+    } finally {
+      loadingRef.current = false;
+    }
+    if (!mountedRef.current) return;
+    setUrl(next);
+    setState(next ? "idle" : "unavailable");
+  }
+
+  const available = attachment.availability === "available";
+  return (
+    <li className="wx-message-attachment wx-voice-note">
+      <Glyph name="mic" size={18} />
+      <span className="wx-attachment-name">Voice note</span>
+      <span className="wx-attachment-size">{formatBytes(attachment.byteSize)}</span>
+      {!available ? <output className="wx-attachment-state">Scanning…</output> : null}
+      {available && url ? (
+        // biome-ignore lint/a11y/useMediaCaption: the sender's typed message is the text alternative (required with a voice note)
+        <audio
+          controls
+          autoPlay
+          src={url}
+          aria-label="Voice note"
+          onError={() => {
+            setUrl(null);
+            setState("expired");
+          }}
+        />
+      ) : null}
+      {available && !url ? (
+        <button
+          type="button"
+          className="wx-attachment-open"
+          aria-disabled={state === "loading"}
+          aria-label="Play voice note"
+          onClick={() => void load()}
+        >
+          Play
+        </button>
+      ) : null}
+      {available ? (
+        <output className="wx-attachment-unavailable">{VOICE_NOTE_STATE_TEXT[state]}</output>
+      ) : null}
+    </li>
+  );
+}
+
 export function MessageAttachments({
   attachments,
 }: {
   attachments: readonly MessageAttachment[] | undefined;
 }): JSX.Element | null {
+  const voiceNotesOn = useVoiceNotesFlag();
   if (!attachments || attachments.length === 0) return null;
   return (
     <ul className="wx-message-attachments" aria-label="Attachments">
-      {attachments.map((attachment) => (
-        <AttachmentRow key={attachment.attachmentId} attachment={attachment} />
-      ))}
+      {attachments.map((attachment) =>
+        voiceNotesOn && isVoiceNoteMimeType(attachment.mimeType) ? (
+          <VoiceNoteRow key={attachment.attachmentId} attachment={attachment} />
+        ) : (
+          <AttachmentRow key={attachment.attachmentId} attachment={attachment} />
+        ),
+      )}
     </ul>
   );
 }

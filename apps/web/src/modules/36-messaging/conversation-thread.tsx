@@ -2,11 +2,14 @@ import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
+import { AiSummaryPanel } from "./ai-summary-panel";
+import { useAiAssist, useAiEnabled } from "./use-ai-assist";
 import { sendBlockedReason } from "./attachment-utils";
 import { catchUpIfNeeded } from "./catch-up";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
 import { deferUntilLoaded } from "./defer-until-loaded";
+import { ExternalShareBanner } from "./external-share-banner";
 import { ThreadComposer } from "./message-composer";
 import { MessageSearch } from "./message-search";
 import { MessageTimeline } from "./message-timeline";
@@ -33,7 +36,6 @@ import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
-import { ExternalShareBanner } from "./external-share-banner";
 import { ThreadNotices } from "./thread-notices";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
@@ -253,6 +255,16 @@ function ConversationThreadView({
     textareaRef.current?.focus();
     if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
   }, []);
+  // WP 6.5 (ADR-0095): AI summary. Absent unless the tenant flag and permission allow it; the only way its text reaches the composer is the user's click.
+  const aiEnabled = useAiEnabled();
+  const ai = useAiAssist(channel.channelId, draft);
+  const [aiCopiedText, setAiCopiedText] = useState<string | null>(null);
+  const copyAiToDraft = (text: string): void => {
+    ai.copyToDraft(text);
+    setAiCopiedText(text);
+    setDraft((current) => (current.trim() ? `${current}\n${text}` : text));
+    focusComposer();
+  };
   useBindOutboxThread(outbox, channel.channelId, mergeSent);
   const needsResponse = useNeedsResponse(channel.channelId, channel.kind);
   const { send, sending, sendError, sbarIssues, clearSendError, resetSender } = useMessageSender({
@@ -617,7 +629,7 @@ function ConversationThreadView({
     void markReadBoundary(messages ?? []);
   }
 
-  const sendHint = sendBlockedReason(uploads.chips);
+  const sendHint = sendBlockedReason(uploads.chips, draft);
   // Only scanning files on the latest page count: a loadLatest cannot update a row loaded through "Load older".
   const scanningKey = (messages ?? [])
     .filter((message) => latestPageIdsRef.current.has(message.messageId))
@@ -649,6 +661,7 @@ function ConversationThreadView({
         onBack={onBack}
         onToggleContext={() => setContextOpen((open) => !open)}
         onShowMembers={tools.onShowMembers}
+        ai={aiEnabled ? { open: ai.open, onToggle: ai.toggle } : undefined}
         headingRef={headingRef}
       />
       {tools.dialogs}
@@ -715,6 +728,22 @@ function ConversationThreadView({
             onClose={() => setContextOpen(false)}
             idgChannelId={channel.kind === "care_team" ? channel.channelId : undefined}
             onOpenThread={panel.openThread}
+          />
+        ) : null}
+        {aiEnabled && ai.open ? (
+          <AiSummaryPanel
+            view={ai.view}
+            loadedMessageIds={new Set((messages ?? []).map((m) => m.messageId))}
+            canDraft={!channel.archivedAt}
+            copiedText={aiCopiedText}
+            onClose={ai.close}
+            onCancel={ai.cancel}
+            onRegenerate={ai.regenerate}
+            onNotUseful={ai.notUseful}
+            onDraftReply={ai.draftReply}
+            onBackToSummary={ai.backToSummary}
+            onJump={jump.jumpToMessage}
+            onCopyToDraft={copyAiToDraft}
           />
         ) : null}
         {panel.rootId ? (

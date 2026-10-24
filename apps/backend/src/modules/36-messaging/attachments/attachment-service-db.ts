@@ -27,6 +27,7 @@ import {
   DegradedError,
   NotFoundError,
   RateLimitedError,
+  isVoiceNoteMimeType,
 } from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
@@ -176,6 +177,11 @@ export interface AttachmentServiceDeps {
   readonly outbox?: HintOutboxPort | undefined;
   /** The channel_visibility rule: a CURRENT member with Part 2 / care-team gating (the route service's own). */
   readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /**
+   * WP 6.3 (ADR-0094): the tenant flag `messaging.voice_notes`. Absent => off; a throw reads as off (fail closed). Read only when
+   * the requested type is a voice-note type, so every other upload costs no extra read.
+   */
+  readonly voiceNotesEnabled?: (orgId: string) => Promise<boolean>;
   /** Try one scan right after `complete` (default true). The sweep worker is the retry path either way. */
   readonly scanOnComplete?: boolean;
   readonly now?: () => Date;
@@ -765,12 +771,20 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
 
   return {
     async authorize(orgId, input) {
-      const valid = validateAuthorizeInput({
-        fileName: input.fileName,
-        contentType: input.contentType,
-        byteSize: input.byteSize,
-        sha256Hex: input.sha256Hex,
-      });
+      const voiceNotesEnabled = isVoiceNoteMimeType(input.contentType)
+        ? await Promise.resolve()
+            .then(() => deps.voiceNotesEnabled?.(orgId))
+            .catch(() => false)
+        : false;
+      const valid = validateAuthorizeInput(
+        {
+          fileName: input.fileName,
+          contentType: input.contentType,
+          byteSize: input.byteSize,
+          sha256Hex: input.sha256Hex,
+        },
+        { voiceNotesEnabled: voiceNotesEnabled === true },
+      );
       // "can send in this channel" is the channel_visibility rule; a stranger gets the random-id answer.
       if (!(await deps.canViewChannel(orgId, input.userId, input.channelId))) {
         throw new NotFoundError("channel", input.channelId);
@@ -981,6 +995,19 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             "the upload window has expired; start a new upload",
             410,
           );
+        }
+        // WP 6.3: the voice-notes kill switch also stops an upload that was authorized while the flag was on.
+        if (isVoiceNoteMimeType(row.mimeType)) {
+          const stillOn = await Promise.resolve()
+            .then(() => deps.voiceNotesEnabled?.(orgId))
+            .catch(() => false);
+          if (stillOn !== true) {
+            throw new ChartWardenError(
+              "UNSUPPORTED_MEDIA_TYPE",
+              "attachment content type is not allowed",
+              415,
+            );
+          }
         }
         const objectKey = row.objectKey;
         const found = objectKey
@@ -1340,7 +1367,10 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     if (!objectKey) return "none";
     try {
       return await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
-        if (row.messageId && (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))) {
+        if (
+          row.messageId &&
+          (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))
+        ) {
           return "held" as const;
         }
         await runWithDeadline(

@@ -330,6 +330,12 @@ export interface AiConsumerContextRef {
   readonly entityId: string;
   readonly encounterId?: string;
   readonly extractionJobId?: string;
+  /** M36 WP 6.5 (ADR-0095): the messages a call covered, so the ledger row proves it. Ids and a count only; never text. */
+  readonly messageRange?: {
+    readonly firstMessageId: string;
+    readonly lastMessageId: string;
+    readonly count: number;
+  };
 }
 
 // ── §2.2 lifecycle — the consumer-facing posture each state implies ──────────────────────────────────
