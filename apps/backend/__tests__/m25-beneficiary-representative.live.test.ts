@@ -672,10 +672,24 @@ describe.skipIf(!DB_URL)(
           ),
         );
       expect(await sqlActivate(fx.memberA)).toMatch(/M25_REP_VERIFIER/);
-      expect(await sqlActivate(randomUUID())).toMatch(/not a member of this organization/);
+      expect(await sqlActivate(randomUUID())).toMatch(/not an active member of this organization/);
       const bare = await rep().createDraft(A(), fx.claim1, draftBody(fv) as never);
       expect(await sqlActivate(memberR, bare.id)).toMatch(/M25_REP_NO_DOCUMENT/);
       expect((await apptRow(created.id)).state).toBe("draft");
+      // the same PERSON under another membership row is not a second person (compare users, not membership ids)
+      const oldSeat = (
+        await fx.admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'revoked') RETURNING id`,
+          [userR, ORG],
+        )
+      ).rows[0].id as string;
+      const bySamePerson = await readyDraft(R());
+      await fx.admin.query("UPDATE representative_appointment SET recorded_by_membership_id=$2 WHERE id=$1", [bySamePerson, oldSeat]);
+      expect(await sqlActivate(memberR, bySamePerson)).toMatch(/different person \(user\)/);
+      const revokedVerifier = (
+        await fx.admin.query(`SELECT id FROM membership WHERE id=$1`, [oldSeat])
+      ).rows[0].id as string;
+      expect(await sqlActivate(revokedVerifier)).toMatch(/not an active member/);
       // a second person activates
       const ok = await rep().activate(R(), created.id, v);
       expect(ok.version).toBe(v + 1);

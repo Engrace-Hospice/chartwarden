@@ -336,8 +336,14 @@ BEGIN
     IF NEW.verified_by_membership_id IS NULL OR NEW.verified_by_membership_id = OLD.recorded_by_membership_id THEN
       RAISE EXCEPTION 'M25_REP_VERIFIER: an appointment is activated by a person other than the one who recorded it';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id) THEN
-      RAISE EXCEPTION 'M25_REP_VERIFIER: the verifier is not a member of this organization';
+    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id AND m.status = 'active') THEN
+      RAISE EXCEPTION 'M25_REP_VERIFIER: the verifier is not an active member of this organization';
+    END IF;
+    -- Compare PEOPLE, not membership rows: one user with two membership rows (e.g. a revoked and a re-issued one) is one person.
+    IF EXISTS (
+      SELECT 1 FROM membership v JOIN membership r ON r.id = OLD.recorded_by_membership_id
+       WHERE v.id = NEW.verified_by_membership_id AND v.user_id = r.user_id) THEN
+      RAISE EXCEPTION 'M25_REP_VERIFIER: an appointment is activated by a different person (user) than the one who recorded it';
     END IF;
     IF NEW.document_id IS NULL OR NEW.document_version_id IS NULL THEN
       RAISE EXCEPTION 'M25_REP_NO_DOCUMENT: attach the signed appointment document before activating';
