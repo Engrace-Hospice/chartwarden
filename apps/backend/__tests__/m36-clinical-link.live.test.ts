@@ -41,7 +41,7 @@ import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-s
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-link/clinical-link-store-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
-import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
+import { CHANNEL_VISIBILITY_PREDICATE, CHANNEL_VISIBILITY_READ_PREDICATE } from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -266,6 +266,11 @@ describe.skipIf(!DB_URL)("M36 WP 3.2 clinical links - LIVE Postgres", () => {
       const channelId = typeof target.id === "string" ? target.id : null;
       if (!channelId || !ctx.organizationId || !ctx.userId) return false;
       return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+    });
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registry.register("caseload_or_scope", async (_ctx, target) => target.patientId === PATIENT);
     registry.register("idg_meeting_scope", async (_ctx, target) => target.id === MEETING);

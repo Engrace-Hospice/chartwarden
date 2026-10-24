@@ -61,6 +61,7 @@ export {
   type MessagingRouteDeps,
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
   registerMessagingAbacPredicates,
   registerMessagingRoutes,
 } from "./routes/messaging-routes";

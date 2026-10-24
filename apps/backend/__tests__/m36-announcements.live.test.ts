@@ -35,6 +35,7 @@ import { createDbAnnouncementService } from "../src/modules/36-messaging/announc
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
 } from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import {
@@ -219,6 +220,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.9 announcements & departments — LIVE Postgr
       const channelId = typeof target.id === "string" ? target.id : null;
       if (!channelId || !ctx.organizationId || !ctx.userId) return false;
       return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+    });
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
     registerAbacRegistry(registry);
