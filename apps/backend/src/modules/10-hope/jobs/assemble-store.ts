@@ -14,8 +14,9 @@
 // whose sole adapter is `createUnboundIqiesAdapter` — a deny-stub, because iQIES has no submission API (CMS
 // HOPE FAQs Q30); submission is the manual package upload. That is a genuine
 // declared absence, and `./cron-workers.ts` states it. Stage 1 is different: it needs nothing outside
-// M10, and it runs NIGHTLY — F-072 registered `assemble-hope-submission` as a repeatable 02:00 cron.
-// Which is why the F-086 defect below mattered: it is not a button someone might press twice.
+// M10. F-072 once ran it as a nightly 02:00 cron; that schedule was removed because it locked assessments
+// into header-less `queued` batches the manual package route could never pick up (`./cron-workers.ts`,
+// RECOVERY NOTE). The runner stays exported for a future live transport.
 //
 // TENANCY. Every query carries an explicit `organization_id` predicate on top of the caller's
 // `withOrgContext` RLS envelope — the org-rollup store's HARD RULE 1, reused here.

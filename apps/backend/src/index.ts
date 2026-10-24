@@ -9157,10 +9157,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.log.info({ queues: m16Workers.length }, "M16 §4.9 bereavement crons constructed");
 
     // ── M10 §4.8 HOPE crons (TASK-040D — the M25 worker-runner shape) ────────────────────────────────────
-    // `hope-window-watchdog` + `sfv-watchdog`, plus (F-058 / F-072) the three §4.10 submission stages on
-    // the shared `hope.submission` queue: `assemble-hope-submission`, `iqies-submit-worker` and
-    // `iqies-reconcile-worker`. `alerts`/`scheduling`/`validation`/`retention` are still out of scope —
-    // see jobs/cron-workers.ts's own header.
+    // `hope-window-watchdog` + `sfv-watchdog` + `hope-retention-scan`. The three §4.10 submission stages
+    // (`assemble-hope-submission`, `iqies-submit-worker`, `iqies-reconcile-worker`) are NOT scheduled or
+    // given a Worker — the manual package route is the transport; see jobs/cron-workers.ts's header.
     //
     // The iQIES adapter is bound to `createUnboundIqiesAdapter` because there is no live transport to
     // bind: iQIES has no submission API (CMS HOPE FAQs Q30) — submission is the manual package upload
