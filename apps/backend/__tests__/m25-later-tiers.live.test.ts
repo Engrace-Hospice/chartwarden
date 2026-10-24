@@ -36,6 +36,7 @@ import {
   createDrizzleDocumentReaderStore,
 } from "../src/modules/22-documents/index";
 import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
+import { registerM24PublishedSeams } from "../src/modules/24-billing-medicaid/wiring";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { runAppealDeadlineCron } from "../src/modules/25-remittance/jobs/cron-workers";
 import { buildSeamAppealSourcePorts } from "../src/modules/25-remittance/routes/appeal-packet-sources";
@@ -154,6 +155,8 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
   beforeAll(async () => {
     fx = await setupM7Fixture(DB_URL as string, "m25-lt");
     registerM23PublishedSeams(fx.handle.db);
+    // The case view falls back to M24 when M23 misses a claim; boot registers it, so the suite does too.
+    registerM24PublishedSeams(fx.handle.db);
     registerSeam(
       "DocumentReader",
       createDocumentReader(createDrizzleDocumentReaderStore(fx.handle.db)),

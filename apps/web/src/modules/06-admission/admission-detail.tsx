@@ -81,6 +81,7 @@ import {
 } from "./admission-status";
 import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
 import { DischargeOrderSection } from "./discharge-order-ui";
+import { NomncPanel } from "./nomnc-panel";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
@@ -1609,6 +1610,8 @@ export function AdmissionDetail({
         {flashNotice ? <InlineAlert tone="success">{flashNotice}</InlineAlert> : null}
         <MissingDischargeDetailsAlert admissionId={admission.id} admissionState={admission.state} />
         <TransferNoticeStatus admissionId={admission.id} />
+        {/* Milestone 10a — NOMNC delivery + QIO expedited review record-keeping (typed facts, typed deadlines). */}
+        <NomncPanel admissionId={admission.id} />
         <section style={summaryCardStyle}>
           <div style={summaryHeaderStyle}>
             <div>

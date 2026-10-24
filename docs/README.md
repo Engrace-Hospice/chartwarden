@@ -47,7 +47,7 @@ wins until the spec is re-locked.
 | [`runbooks/m36-restore-drill.md`](./runbooks/m36-restore-drill.md) | Operator runbook: the M36 restore drill (`bun run m36:restore-drill`) — what production actually backs up, the restore procedure, the consistency checks, demo-scale RPO/RTO and the detection proof. |
 | [`runbooks/messaging-escalation-fallback.md`](./runbooks/messaging-escalation-fallback.md) | Operator runbook: M36 escalation fallback (WP 4.11) - when to invoke, the detection signals that exist, a telephone-tree template, the supervisor procedure, the supervisor reassign path (acknowledge-by-phone rejected by decision), stand-down, post-incident review, and the quarterly tabletop and live drill with an evidence record template. |
 | [`APP_OVERVIEW.md`](./APP_OVERVIEW.md) | Guided map of what the codebase is and how it fits together — for an engineer joining the project. |
-| [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the 40 modules — state machines, validation, calculations, cross-module flows. |
+| [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the implemented modules — state machines, validation, calculations, cross-module flows. |
 | [`PLATFORM_TOOLS_MANUAL.md`](./PLATFORM_TOOLS_MANUAL.md) | Private-cloud platform operating manual — Talos, Kubernetes, Cilium, Envoy Gateway, CloudNativePG, Garage, Valkey, OpenBao, Argo CD, Kyverno and the rest: role, deployment baseline, day-2 operations, HIPAA notes and failure modes per tool. Hosting phases: Hostinger test → OVHcloud production → Hostinger playground (ADR-0050). |
 | [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) | Phase 0 scaffold plan — the manifest→tree generation model (ADR-0027). |
 | [`TENANT_SUBDOMAINS_PLAN.md`](./TENANT_SUBDOMAINS_PLAN.md) | Implementation plan for per-tenant subdomains on `chartwarden.com` — phases, tests, risks (ADR-0049, ADR-0087). |
@@ -75,7 +75,7 @@ These **win over module and screen specs** in any conflict. All in [`architectur
 
 ## Module specifications
 
-All 40 module specs live in [`modules/`](./modules/) — see the full versioned table in
+All 41 module specs live in [`modules/`](./modules/) — see the full versioned table in
 **[`modules/README.md`](./modules/README.md)**. The Module 29 forward-engineering sub-tasks
 (T-29.01–T-29.13) are in [`modules/module-29-tasks/`](./modules/module-29-tasks/).
 
@@ -204,7 +204,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | [`history/`](./history/README.md) | Audit findings (F-0xx), #248 outbox-binding rounds, and per-gate incident history, split by topic (moved out of `CLAUDE.md`). |
 | [`adr/`](./adr/) | Decision records — see [`adr/README.md`](./adr/README.md). |
 | [`../audit/`](../audit/) | Generated audit & fitness-enforcement reports (outside `docs/`) — the source for counts (routes, tables, ADRs, modules); read them instead of trusting a number in prose. |
-| [`audits/`](./audits/) | Gap-analysis reports and the audit prompt (`GAP_ANALYSIS_*.md`), plus live-browser and production-readiness audit folders. |
+| [`audits/`](./audits/) | Gap-analysis reports and the audit prompt (`GAP_ANALYSIS_*.md`), plus live-browser and production-readiness audit folders, and [`audits/billing-e2e/`](./audits/billing-e2e/) (billing scenario-to-test matrix, plan, issue drafts). |
 | [`cartography/`](./cartography/) | Workflow cartographies (admission/intake, patient care, encounters/visits, HOPE) used as audit inputs. |
 | [`research/`](./research/) | Regulatory research notes (e.g. `FY2027_HOSPICE_COP_RESEARCH.md`). |
 | [`reviews/`](./reviews/) | Review prompt templates (architecture compliance, exceedance, red-team, lock-grade, production readiness). |

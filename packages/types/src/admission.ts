@@ -152,7 +152,10 @@ export type M6TableName =
   | "discharge_event"
   | "notice_of_rights_acknowledgment"
   | "compliance_window"
-  | "election_addendum";
+  | "election_addendum"
+  | "nomnc_notice"
+  | "expedited_review"
+  | "expedited_deadline";
 
 /** Per-table audit denylist (§2.2). The trigger records that a write happened but never mirrors the
  * listed high-sensitivity columns into the audit row. Empty array = no free-text PHI on that table. */
@@ -192,6 +195,16 @@ export const M6_AUDIT_DENYLIST: {
     "refusal_reason",
     "signature_not_required_note",
   ],
+  // Milestone 10a — the representative's name and every free-text note (migration 1230 triggers).
+  nomnc_notice: [
+    "representative_name",
+    "delivery_note",
+    "acknowledgement_note",
+    "withdrawn_reason",
+    "source_note",
+  ],
+  expedited_review: ["qio_name", "qio_reference", "records_sent_note", "decision_note"],
+  expedited_deadline: ["label", "source_note"],
 } as const;
 
 /** The typed payload shape carried on the three external-signal compliance windows (§2.2 note / D15).
@@ -271,6 +284,12 @@ export const M6_EVENT_NAMES = [
   "m6.election_addendum.acknowledged",
   "m6.election_addendum.not_required",
   "m6.election_addendum.overdue",
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines).
+  "m6.nomnc.recorded",
+  "m6.expedited_review.opened",
+  "m6.expedited_review.decided",
+  "m6.expedited_deadline.approaching",
+  "m6.expedited_deadline.overdue",
   "m6.bereavement.eligible",
   "m6.applier.refused",
 ] as const;

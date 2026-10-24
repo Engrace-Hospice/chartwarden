@@ -74,5 +74,19 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
 export function atOrgLocalTime(date: IsoDate, timeOfDay: string, timeZone: string): IsoInstant {
   const [hh, mm] = timeOfDay.split(":");
   const wallUTC = Date.parse(`${date}T${pad(Number(hh))}:${pad(Number(mm))}:00.000Z`);
-  return new Date(wallUTC - tzOffsetMs(wallUTC, timeZone)).toISOString();
+  // Offsets on either side of a transition can map the same wall clock to two instants,
+  // or to none. Refuse both cases instead of silently placing a visit at the wrong hour.
+  const offsets = new Set(
+    [-36, -24, -12, 0, 12, 24, 36].map((hours) =>
+      tzOffsetMs(wallUTC + hours * 3_600_000, timeZone),
+    ),
+  );
+  const matches = [...offsets]
+    .map((offset) => wallUTC - offset)
+    .filter((instant) => instant + tzOffsetMs(instant, timeZone) === wallUTC);
+  if (matches.length !== 1)
+    throw new RangeError(
+      `Local time ${date} ${timeOfDay} is ${matches.length ? "ambiguous" : "nonexistent"} in ${timeZone}`,
+    );
+  return new Date(matches[0]!).toISOString();
 }

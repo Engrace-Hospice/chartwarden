@@ -11,6 +11,9 @@ export const DISCHARGE_WORKLIST_BUCKETS = [
   "needs_details",
   "awaiting_cosign",
   "recently_discharged",
+  // Milestone 10a — open BFCC-QIO expedited reviews, and active NOMNC records with no appeal-request deadline typed.
+  "qio_review_open",
+  "nomnc_no_deadline",
 ] as const;
 
 /** The "recently discharged" look-back (days since the discharge was recorded). */
@@ -27,7 +30,9 @@ export const DischargeWorklistQuerySchema = Type.Object({
         'the place of death or the receiving care setting the final claim needs. "awaiting_cosign": for-cause ' +
         "discharges waiting for the medical director's cosign (requires discharge.cosign_for_cause). " +
         '"recently_discharged": live discharges, revocations and transfers-out of the last 90 days (never deaths) ' +
-        "whose patient has no later admission — the readmission candidates.",
+        "whose patient has no later admission — the readmission candidates. " +
+        '"qio_review_open": admissions with an open QIO expedited review, soonest typed deadline first (requires nomnc.read). ' +
+        '"nomnc_no_deadline": active NOMNC records with no appeal-request deadline typed yet (requires nomnc.read).',
     },
   ),
   cursor: Type.Optional(Type.String({ maxLength: 64 })),
@@ -55,6 +60,22 @@ export const DischargeWorklistItemSchema = Type.Object({
       format: "date",
       description: "The discharge / transfer effective date (needs_details, awaiting_cosign).",
     }),
+  ),
+  nextDeadlineAt: Type.Optional(
+    Nullable(
+      Type.String({
+        format: "date-time",
+        description: "qio_review_open only: the soonest unsatisfied typed deadline; null = none typed.",
+      }),
+    ),
+  ),
+  noticeDeliveredAt: Type.Optional(
+    Nullable(
+      Type.String({
+        format: "date-time",
+        description: "nomnc_no_deadline only: when the notice was delivered, as typed.",
+      }),
+    ),
   ),
   patient: Type.Optional(
     Type.Union(

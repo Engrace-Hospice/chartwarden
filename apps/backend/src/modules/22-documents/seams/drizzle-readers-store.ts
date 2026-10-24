@@ -21,6 +21,7 @@ import { DegradedError } from "@chartwarden/types";
 import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
+import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
 import type { ObjectStorePort } from "./store";
 
 const DOC = schema.documents;
@@ -371,6 +372,31 @@ export function createDrizzlePortalAccessLog(db: DbClient): PortalAccessLogPort 
           purpose: "patient_access",
           correlationId: entry.correlationId,
           accessedAt: new Date(entry.accessedAt),
+        });
+      });
+    },
+  };
+}
+
+/**
+ * The Drizzle staff-mint ledger: one `document_access_log` row per signed URL a staff member mints, under
+ * the request's tenant context (same wall and grants as {@link createDrizzlePortalAccessLog}). Ids only;
+ * `recipient_class` carries `<kind>:<mdmEntityId>` for an external hand-off.
+ */
+export function createDrizzleStaffMintAccessLog(db: DbClient): StaffMintAccessLogPort {
+  return {
+    async append(entry) {
+      await withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        await tx.insert(schema.documentAccessLog).values({
+          organizationId: entry.organizationId,
+          documentId: entry.documentId,
+          documentVersionId: entry.documentVersionId,
+          accessorMembershipId: entry.accessorMembershipId,
+          patientId: entry.patientId,
+          accessKind: entry.accessKind,
+          purpose: entry.purpose,
+          recipientClass: entry.recipientClass,
+          correlationId: entry.correlationId,
         });
       });
     },
