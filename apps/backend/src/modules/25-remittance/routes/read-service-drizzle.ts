@@ -414,7 +414,7 @@ export function buildDrizzleM25ReadService(
   }
   function toDenialItem(r: typeof DC.$inferSelect, adviceKind: string | null): DenialWorklistItem {
     return {
-      payerKind: denialPayerKind({ adviceKind, source: r.source }),
+      payerKind: denialPayerKind({ adviceKind }),
       id: r.id,
       providerEntityId: r.providerEntityId,
       claimId: r.claimId,

@@ -7,8 +7,6 @@ export type DenialPayerKind = "medicare" | "medicaid" | "commercial" | "unknown"
 export interface DenialPayerInput {
   /** `remittance_advice.payer_kind` of the denial's linked line; null/undefined when no advice is linked. */
   readonly adviceKind: string | null | undefined;
-  /** `denial_case.source`; carried for the caller's clarity, never used to guess a payer. */
-  readonly source?: string;
 }
 
 const KNOWN: ReadonlySet<string> = new Set(["medicare", "medicaid", "commercial"]);

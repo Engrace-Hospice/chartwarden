@@ -25,6 +25,7 @@ import { buildServer } from "../src/bootstrap/index";
 import { registerM24PublishedSeams } from "../src/modules/24-billing-medicaid/wiring";
 import { buildDrizzleCaseViewService } from "../src/modules/25-remittance/routes/case-view-service";
 import { registerCaseViewRoutes } from "../src/modules/25-remittance/routes/case-view.routes";
+import { buildDrizzleQicService } from "../src/modules/25-remittance/routes/qic-service";
 import { buildDrizzleM25ReadService } from "../src/modules/25-remittance/routes/read-service-drizzle";
 import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
 import { type M7Fixture, ORG, ORG_B, daysAgo, setupM7Fixture } from "./_m25-m7-fixture";
@@ -210,6 +211,53 @@ describe.skipIf(!DB_URL)("M25 payer guard + Medicaid case view (11a-1) - LIVE Po
       const res = await write().createAppeal(A(), unknown, { noticeDate: daysAgo(10) });
       expect(res.id).toBeTruthy();
       expect(await appealCount(unknown)).toBe(1);
+    });
+
+    it("a denial with no remittance line whose claim is an M24 Medicaid claim is refused; an M23 claim is not", async () => {
+      const medicaidClaim = await mkMedicaidClaim(ORG, fx.pe1);
+      const viaClaim = await mkDenial(null, medicaidClaim);
+      const refused = await fx.refused(
+        write().createAppeal(A(), viaClaim, { noticeDate: daysAgo(10) }),
+      );
+      expect(refused?.code).toBe("PAYER_IS_MEDICAID");
+      expect(await appealCount(viaClaim)).toBe(0);
+      const medicareClaim = await mkDenial(null, fx.claim1);
+      const ok = await write().createAppeal(A(), medicareClaim, { noticeDate: daysAgo(10) });
+      expect(ok.id).toBeTruthy();
+    });
+
+    it("entity scope is enforced before the payer check: out-of-scope reads as 404, never a payer-revealing 422", async () => {
+      const denial = await mkDenial("medicaid", fx.claim1);
+      const scoped = fx.actor(ORG, [fx.pe2]);
+      const r = await fx.refused(write().createAppeal(scoped, denial, {}));
+      expect(r?.statusCode).toBe(404);
+      expect(r?.code).not.toBe("PAYER_IS_MEDICAID");
+    });
+
+    it("a legacy Medicaid reconsideration cannot be escalated to a Medicare ALJ case", async () => {
+      const denial = await mkDenial("medicaid", fx.claim1);
+      const recon = (
+        await fx.admin.query(
+          `INSERT INTO appeal_case (organization_id, provider_entity_id, denial_case_id, claim_id, tier, state,
+             tier_deadline_at, notice_dated_on, escalation_requested_at, escalation_channel, escalation_confirmation_ref, qic_received_on)
+           VALUES ($1,$2,$3,$4,'reconsideration','under_review','2099-01-01T00:00:00Z',$5, now() - interval '2 days','qic_portal','REF-1',$5)
+           RETURNING id, version`,
+          [ORG, fx.pe1, denial, fx.claim1, daysAgo(200)],
+        )
+      ).rows[0];
+      const r = await fx.refused(
+        buildDrizzleQicService(fx.handle.db).confirmEscalation(
+          A(),
+          recon.id,
+          { forwardedOn: daysAgo(1) },
+          recon.version,
+        ),
+      );
+      expect(r?.code).toBe("PAYER_IS_MEDICAID");
+      expect(await appealCount(denial)).toBe(1); // no ALJ case
+      const st = (await fx.admin.query("SELECT state FROM appeal_case WHERE id=$1", [recon.id]))
+        .rows[0].state;
+      expect(st).toBe("under_review"); // the confirmation rolled back
     });
 
     it("another tenant cannot reach a Medicaid or Medicare denial, and nothing is written", async () => {

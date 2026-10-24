@@ -396,6 +396,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/billing-medicaid-inject.test.ts",
+        "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-payer-guard.live.test.ts"
       ],
       "directRoutesReferenced": 39
