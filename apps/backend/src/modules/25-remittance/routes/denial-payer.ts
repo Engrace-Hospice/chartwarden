@@ -3,16 +3,16 @@
 // escalation). The payer is recorded on the remittance advice; a denial with no linked line (277CA / EVV) falls back to its
 // claim: a claim that M23 does not know but M24 does is a Medicaid claim. A seam failure on that fallback is logged and
 // leaves the payer unknown (today's behaviour), never a refusal.
+import { repositories } from "@chartwarden/billing";
 import { schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import { repositories } from "@chartwarden/billing";
 import { type DenialPayerKind, denialPayerKind, resolvePayerKind } from "../domain";
 import { medicaidClaimContext, medicaidClaimIdSet } from "./medicaid-claim-facts";
+import { m23ClaimFactsPort } from "./remittance-ports";
 
 /** Most claim ids one batch looks up: a worklist page (the list limit is at most this). */
 const PAYER_BATCH_CAP = 200;
-import { m23ClaimFactsPort } from "./remittance-ports";
 
 export interface DenialPayerDeps {
   /** Does M23 know this claim id? (default: the M23 claim repository on the caller's tx) */
@@ -35,7 +35,7 @@ export async function resolveDenialPayer(
   const RA = schema.remittanceAdvice;
   const RL = schema.remittanceLine;
   const DC = schema.denialCase;
-  // biome-ignore lint/suspicious/noExplicitAny: the drizzle tx handle is passed through opaque
+  // the drizzle tx handle is passed through opaque
   const rows = await (tx as any)
     .select({ adviceKind: RA.payerKind, claimId: DC.claimId })
     .from(DC)

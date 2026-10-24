@@ -110,16 +110,19 @@ describe("medicaidClaimIdSet", () => {
 
 describe("the read model computes payer one way only", () => {
   it("read-service-drizzle uses resolvePayerKinds and never decides a payer itself", () => {
-    const src = readFileSync(join(__dirname, "../read-service-drizzle.ts"), "utf8");
-    expect(src).toContain("resolvePayerKinds");
+    const raw = readFileSync(join(__dirname, "../read-service-drizzle.ts"), "utf8");
+    // code only: a comment may mention these names, an import or call site may not
+    const src = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(src).toMatch(/\bresolvePayerKinds\s*\(/);
     for (const forbidden of [
       "denialPayerKind",
-      "resolvePayerKind(",
+      "resolvePayerKind",
       "claimContext",
       "medicaidClaimIds",
+      "medicaidClaimIdSet",
       "m23ClaimFactsPort",
     ]) {
-      expect(src, forbidden).not.toContain(forbidden);
+      expect(src, forbidden).not.toMatch(new RegExp(`\\b${forbidden}\\b`));
     }
   });
 });
