@@ -35,6 +35,7 @@ import {
   getRenderedDocumentProvider,
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
+import { CTI } from "./_m22-form-fixtures";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -113,6 +114,7 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
     const aggregateId = "88888888-8888-8888-8888-888888888801";
 
     const { documentId } = await getDocumentRenderer().render({ orgId: ORG }, "cti", {
+      ...CTI, // a schema-valid CtiRenderPayload; the render boundary validates it
       aggregateId,
       patientId,
       title: "Certification of Terminal Illness — v1",
@@ -133,7 +135,8 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
     const metadata = await runWithRequestContext({ organizationId: ORG, userId: actorUserId }, () =>
       getDocumentReader().documentMetadata({ documentId, organizationId: ORG }),
     );
-    expect(metadata?.title).toBe("Certification of Terminal Illness — v1");
+    // A compiled form's stored title is the constant default (it can never carry a patient name), not the caller's title.
+    expect(metadata?.title).toBe("Certification of Terminal Illness");
     expect(metadata?.aggregateType).toBe("cti");
     expect(metadata?.retentionClass).toBe("compliance");
     expect(metadata?.patientId).toBe(patientId);
@@ -164,11 +167,13 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
     const aggregateId = "88888888-8888-8888-8888-888888888802";
 
     const first = await getDocumentRenderer().render({ orgId: ORG }, "cti", {
+      ...CTI, // a schema-valid CtiRenderPayload; the render boundary validates it
       aggregateId,
       patientId,
       title: "CTI v1",
     });
     const second = await getDocumentRenderer().render({ orgId: ORG }, "cti", {
+      ...CTI, // a schema-valid CtiRenderPayload; the render boundary validates it
       aggregateId,
       patientId,
       title: "CTI v2 (corrected)",
@@ -186,7 +191,7 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
       "SELECT title, active_version_id FROM document WHERE id = $1",
       [first.documentId],
     );
-    expect(docRows[0].title).toBe("CTI v2 (corrected)");
+    expect(docRows[0].title).toBe("Certification of Terminal Illness"); // compiled-form titles are constant
 
     const backRef = await runWithRequestContext({ organizationId: ORG, userId: actorUserId }, () =>
       getRenderedDocumentProvider().getRenderedDocumentForAggregate({
@@ -202,6 +207,7 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
   it("refuses to append a version to a legal-hold document", async () => {
     const aggregateId = "88888888-8888-8888-8888-888888888803";
     const { documentId } = await getDocumentRenderer().render({ orgId: ORG }, "cti", {
+      ...CTI, // a schema-valid CtiRenderPayload; the render boundary validates it
       aggregateId,
       patientId,
       title: "CTI under hold",
@@ -212,6 +218,7 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
 
     await expect(
       getDocumentRenderer().render({ orgId: ORG }, "cti", {
+        ...CTI, // a schema-valid CtiRenderPayload; the render boundary validates it
         aggregateId,
         patientId,
         title: "should be refused",
