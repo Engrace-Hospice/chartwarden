@@ -1,5 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
-import type { PortalTriageSummary } from "@chartwarden/types";
 // apps/backend/src/modules/19-oncall/routes/m19-typebox.ts — M19-T07 (§4.2) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 On-Call Triage routes. Named
@@ -32,6 +30,8 @@ import type { PortalTriageSummary } from "@chartwarden/types";
 // assert it could assert its absence.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@chartwarden/types";
+import type { PortalTriageSummary } from "@chartwarden/types";
 import type { CursorPage } from "./concurrency";
 import type {
   CurrentOnCallView,

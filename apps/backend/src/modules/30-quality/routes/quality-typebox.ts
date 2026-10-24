@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/30-quality/routes/quality-typebox.ts — M30 (§4.2) request schemas.
 //
 // TypeBox path-param / query / body schemas for the 47 §4.1 routes (quality measures, CAHPS, QAPI, SRA,
@@ -18,6 +17,7 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

@@ -7,11 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { CAHPS_ADAPTER_FACTORIES } from "@chartwarden/cahps-vendors";
 import type { DbClient } from "@chartwarden/db";
-import {
-  type CahpsExportJob,
-  cahpsExportProcessor,
-  runCahpsMonthlySample,
-} from "@chartwarden/quality";
+import { type CahpsExportJob, cahpsExportProcessor, runCahpsMonthlySample } from "@chartwarden/quality";
 import { describe, expect, it, vi } from "vitest";
 import { createCahpsPhiCipher, keyVersionInt } from "../src/modules/30-quality/cahps/phi-cipher";
 import {

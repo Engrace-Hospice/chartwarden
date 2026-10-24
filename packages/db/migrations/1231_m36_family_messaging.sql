@@ -69,7 +69,7 @@ CREATE TABLE "message_family_contact" (
   CONSTRAINT "message_family_contact_blocked_pair" CHECK (("blocked_at" IS NULL) = ("blocked_by" IS NULL)),
   CONSTRAINT "message_family_contact_channel_fk"
     FOREIGN KEY ("organization_id", "channel_id")
-    REFERENCES "channel"("organization_id", "id") ON DELETE RESTRICT
+    REFERENCES "channel"("organization_id", "id") ON DELETE SET NULL ("channel_id")
 );--> statement-breakpoint
 CREATE INDEX "message_family_contact_patient_idx" ON "message_family_contact" ("organization_id", "patient_id");--> statement-breakpoint
 CREATE INDEX "message_family_contact_created_by_idx" ON "message_family_contact" ("created_by");--> statement-breakpoint

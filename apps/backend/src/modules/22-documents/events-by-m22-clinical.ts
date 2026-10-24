@@ -1,8 +1,3 @@
-import {
-  M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
-  M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
-  type ModuleEventContribution,
-} from "@chartwarden/types";
 // apps/backend/src/modules/22-documents/events-by-m22-clinical.ts — the F-238 half of M22's outbox catalog:
 // the DocLens medication-history (→ M12) and allergy (→ M5) commit requests. Spread into
 // `M22_OUTBOX_EVENTS` (events-by-m22.ts), so the boot catalog and `arch:outbox-bindings` see them there.
@@ -15,6 +10,11 @@ import {
 // that applies it. The shape is still D5's: `targetModule` + `targetAggregateId`, server-side attested
 // values, a `m{N}.{aggregate}.draft_created_from_extraction` reply, provenance stamped by M22.
 import { Type } from "@sinclair/typebox";
+import {
+  M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
+  M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
+  type ModuleEventContribution,
+} from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const Iso = Type.String({ minLength: 1 });

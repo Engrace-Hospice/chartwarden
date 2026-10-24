@@ -46,7 +46,7 @@ import {
   requirePermission,
   requireStepUp,
 } from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { IdentifierCipherUnboundError } from "../identifiers/identifier-cipher";

@@ -1,3 +1,4 @@
+import { type Static, Type } from "@sinclair/typebox";
 // apps/backend/src/modules/22-documents/extraction/extraction-routes.ts — M22-T08 the DocLens
 // extraction-trigger routes, gated behind `documents.doclens` (OFF → 503 EXTRACTION_DISABLED).
 //
@@ -16,7 +17,6 @@
 // injected (in-memory/fake in tests; the deny-stub-backed service in prod).
 import { requirePermission } from "@chartwarden/auth";
 import { DegradedError, UnauthorizedError } from "@chartwarden/types";
-import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import { type DocumentFeatureFlagReader, isDocLensEnabled } from "./feature-flag";

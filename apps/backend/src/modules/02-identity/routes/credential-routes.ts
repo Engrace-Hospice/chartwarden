@@ -1,4 +1,3 @@
-import type { AuditExecutor } from "@chartwarden/audit";
 import {
   isAllowedUsername,
   normalizeUsername,
@@ -6,9 +5,13 @@ import {
   requirePermission,
   requireStepUp,
 } from "@chartwarden/auth";
-import { ChartWardenError, ValidationError } from "@chartwarden/types";
+import type { AuditExecutor } from "@chartwarden/audit";
+import { ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { CredentialLifecycleStore, UserProvisioningService } from "../credential-lifecycle";
+import type {
+  CredentialLifecycleStore,
+  UserProvisioningService,
+} from "../credential-lifecycle";
 import { generateTemporaryPassword } from "../credential-lifecycle";
 import type { ActorResolver } from "../identity-ports";
 import { assertOrgMatch, auditContextFor, resolveActor } from "./admin-route-kit";
@@ -82,8 +85,7 @@ function passwordChoice(body: Record<string, unknown>): { value: string; generat
 function webHeaders(request: FastifyRequest): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(request.headers)) {
-    if (value !== undefined)
-      headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
+    if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
   }
   return headers;
 }
@@ -112,8 +114,7 @@ export function registerCredentialRoutes(app: FastifyInstance, deps: CredentialR
           {
             field: "username",
             code: "INVALID",
-            message:
-              "username must be 3-32 non-reserved letters, digits, underscores, periods or hyphens",
+            message: "username must be 3-32 non-reserved letters, digits, underscores, periods or hyphens",
           },
         ]);
       const temporary = passwordChoice(body);

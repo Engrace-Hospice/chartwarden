@@ -2,7 +2,7 @@
 // one `portal_notification_preference` row per (account, channel), a channel with no row reading as its default.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const PREF = schema.portalNotificationPreferences;

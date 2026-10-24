@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox.ts — M34 (§4.2).
 //
 // TypeBox request/response schemas for the platform-ops tenant-lifecycle route surface (§4.1 platform-ops
@@ -13,6 +12,7 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@chartwarden/types";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   FeatureFlagView as ServiceFeatureFlagView,

@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/11-orders/events-by-m11.ts — Module 11's outbox-event contributions
 // (M11-T07, spec §4.4). The full `m11.order.*` taxonomy keyed on M11's own tables, under the `m11.`
 // namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for
@@ -15,6 +14,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // by M11 — the producer side ships, the consumer attaches when that module lands. That is the spec's
 // deny-stub posture: M11 never calls those modules' routes; it only emits the typed outbox event.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

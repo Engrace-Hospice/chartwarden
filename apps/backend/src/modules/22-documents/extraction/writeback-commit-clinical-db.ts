@@ -14,7 +14,6 @@
 // Both replies are stamped back onto the provenance rows by `extraction-clinical-backref-consumer.ts`.
 import { type DbClient, schema } from "@chartwarden/db";
 import {
-  ChartWardenError,
   DegradedError,
   type DocLensBatchSudStatus,
   type DocLensClinicalLine,
@@ -22,6 +21,7 @@ import {
   type ExtractionMedicationHistoryRequestedPayload,
   M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
   M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
+  ChartWardenError,
 } from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { ExtractionWritebackDeps } from "./writeback-commit-db";

@@ -10,9 +10,9 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
-  ChartWardenError,
   ConflictError,
   NotFoundError,
+  ChartWardenError,
   type WristbandIssueReason,
   type WristbandVoidReason,
   parseWristbandPayload,

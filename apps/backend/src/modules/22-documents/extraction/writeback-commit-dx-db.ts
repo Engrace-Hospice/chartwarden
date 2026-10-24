@@ -18,10 +18,10 @@
 // keeps each consumer's contract exact; the payload still carries `targetModule` as D5 asks.
 import { type DbClient, schema } from "@chartwarden/db";
 import {
-  ChartWardenError,
   DegradedError,
   type ExtractionDiagnosisCommitRequestedPayload,
   M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
+  ChartWardenError,
 } from "@chartwarden/types";
 import { and, eq, inArray, isNull, like, ne, or } from "drizzle-orm";
 import type { ExtractionOutboxPort, ExtractionWritebackDeps } from "./writeback-commit-db";

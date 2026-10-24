@@ -1,5 +1,3 @@
-import { requireRole, requireSession } from "@chartwarden/auth";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/bootstrap/routes/system.ts — M1 system-status + feature-flag routes
 // (spec §4.1–4.2, §6; M1-T10).
 //
@@ -11,6 +9,8 @@ import { ValidationError } from "@chartwarden/types";
 // directly; the boot default is an in-memory reader (the slice has no DB wired yet), which
 // production swaps for the org-scoped, withOrgContext-wrapped DB reader.
 import { Type } from "@sinclair/typebox";
+import { requireRole, requireSession } from "@chartwarden/auth";
+import { ValidationError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 export type SystemStatusLevel = "operational" | "degraded" | "outage";

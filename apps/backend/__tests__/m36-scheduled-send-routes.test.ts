@@ -16,7 +16,7 @@ import {
   type ScheduledSendService,
   createInMemoryMessagingService,
 } from "@chartwarden/messaging";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

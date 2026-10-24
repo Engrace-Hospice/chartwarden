@@ -1,10 +1,10 @@
-import { MAX_APPEAL_ENCLOSURES, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/m25-typebox.ts — M25 (§4.2) request-body TypeBox schemas.
 // The route plugins validate POST/PATCH bodies against these; the §2.5 If-Match version + the
 // Idempotency-Key are headers (handled in concurrency.ts), not body fields. Free-text reason/narrative
 // fields carry the §4.1 min-length floors (audit-denylisted at the DB layer — never in the audit value).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { MAX_APPEAL_ENCLOSURES, ValidationError } from "@chartwarden/types";
 
 /** Validate + coerce a request body against a TypeBox schema; throw 400 VALIDATION_FAILED on mismatch. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

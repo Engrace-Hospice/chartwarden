@@ -87,15 +87,9 @@ describe("funeral link delivery", () => {
     const delivery = createLinkDelivery({
       transport: { send: async (m) => void sent.push(m) },
       baseUrl: "https://portal.test/",
-      baseUrlFor: async (orgId) =>
-        orgId === ORG ? "https://acme.chartwarden.com/portal" : undefined,
+      baseUrlFor: async (orgId) => (orgId === ORG ? "https://acme.chartwarden.com/portal" : undefined),
     });
-    const input = {
-      kind: "funeral_home",
-      email: "d@home.test",
-      token: "t",
-      expiresAt: new Date(),
-    } as const;
+    const input = { kind: "funeral_home", email: "d@home.test", token: "t", expiresAt: new Date() } as const;
     await delivery.deliver({ ...input, organizationId: ORG });
     await delivery.deliver({ ...input, organizationId: "other-org" });
     expect(sent[0]?.text).toContain("https://acme.chartwarden.com/portal/funeral/redeem#token=t");

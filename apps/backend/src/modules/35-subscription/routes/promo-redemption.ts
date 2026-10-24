@@ -14,7 +14,7 @@
 // increment so the duplicate-application unique index (`promo_code_application_sub_active_uq`) fails the
 // transaction before the count is touched; the throw rolls the whole transaction back regardless.
 import { type DbClient, schema } from "@chartwarden/db";
-import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { eq, sql } from "drizzle-orm";
 
 const PROMO = schema.promoCode;

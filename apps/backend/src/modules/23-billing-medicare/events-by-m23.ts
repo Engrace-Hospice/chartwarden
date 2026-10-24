@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/events-by-m23.ts — Module 23's outbox-event contributions
 // (spec §4.10 Outbox Event Catalog). The full `m23.*` taxonomy keyed on M23's own resources, under the
 // `m23.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file
@@ -23,6 +22,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // this count was taken. Severity (§4.10 col 2) and alert routing
 // (§4.9) are NOT part of the OutboxEventEntry shape — they live in `@chartwarden/billing`'s alerts.ts.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

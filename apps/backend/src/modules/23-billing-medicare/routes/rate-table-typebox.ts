@@ -1,9 +1,9 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox.ts — M23 hospice rate-table request/response
 // TypeBox shapes (F-210). Named `*-typebox` (not `*schema*`) for the same table-ownership-heuristic reason as
 // `billing-typebox.ts`. All money is WHOLE INTEGER CENTS, PRE-wage-index (the wage index is applied at assembly).
 // Org / actor / membership binding is server-side — no body field carries an org id or the entering membership.
 import { type Static, Type } from "@sinclair/typebox";
+import { ValidationError } from "@chartwarden/types";
 import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });

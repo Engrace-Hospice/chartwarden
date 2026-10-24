@@ -39,9 +39,7 @@ describe("channel kind discriminator (§2.3)", () => {
       (k) => CHANNEL_KIND_DESCRIPTORS[k].membershipSource === "auto",
     );
     expect(auto.sort()).toEqual(
-      (
-        ["care_team", "discipline", "location", "on_call", "bereavement", "family"] as ChannelKind[]
-      ).sort(),
+      (["care_team", "discipline", "location", "on_call", "bereavement", "family"] as ChannelKind[]).sort(),
     );
     for (const k of auto) expect(CHANNEL_KIND_DESCRIPTORS[k].subject).not.toBeNull();
   });

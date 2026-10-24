@@ -388,14 +388,11 @@ describe("M34-saas-tenant-platform-inject — provisioning slug (POST /api/v1/pl
     return res;
   };
 
-  it.each(["api", "xn--sunrise", "ab", "Sunrise", "-sunrise", "sun_rise"])(
-    "refuses slug %s with 422 INVALID_TENANT_SLUG",
-    async (slug) => {
-      const res = await post(slug);
-      expect(res.statusCode).toBe(422);
-      expect(res.json().error.code).toBe("INVALID_TENANT_SLUG");
-    },
-  );
+  it.each(["api", "xn--sunrise", "ab", "Sunrise", "-sunrise", "sun_rise"])("refuses slug %s with 422 INVALID_TENANT_SLUG", async (slug) => {
+    const res = await post(slug);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_TENANT_SLUG");
+  });
 
   it("accepts a valid slug", async () => {
     expect((await post("sunrise")).statusCode).toBe(202);

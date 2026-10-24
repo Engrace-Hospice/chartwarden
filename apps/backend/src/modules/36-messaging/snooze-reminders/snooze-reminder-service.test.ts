@@ -2,11 +2,11 @@
 // request opened AFTER the snooze), the hard bounds hold at their exact edges, the owner and the tenant are never crossed, an expired
 // snooze reads as ended, a repeat is idempotent, and a feature that is off is one uniform 404.
 import {
-  ChartWardenError,
   NotFoundError,
   REMINDER_MAX_PENDING,
   SNOOZE_MAX_MINUTES,
   SNOOZE_MIN_MINUTES,
+  ChartWardenError,
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type Actor, createSnoozeReminderService } from "./snooze-reminder-service";

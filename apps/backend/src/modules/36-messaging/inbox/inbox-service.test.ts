@@ -137,12 +137,7 @@ describe("smart inbox service", () => {
       }),
     });
     const out = await svc.list(actor, { limit: 50 });
-    expect(out.items.map((i) => i.key)).toEqual([
-      "ack:dead",
-      "ack:later",
-      "ack:late",
-      "ack:waiting",
-    ]);
+    expect(out.items.map((i) => i.key)).toEqual(["ack:dead", "ack:later", "ack:late", "ack:waiting"]);
     expect(out.items[0]?.reasons[0]?.code).toBe("ack_failed_unreachable");
     expect(out.items[1]?.reasons[0]?.code).toBe("ack_overdue");
     expect(out.items[3]?.reasons[0]?.code).toBe("ack_waiting");
@@ -167,7 +162,9 @@ describe("smart inbox service", () => {
   it("keeps a restricted request in the queue with no ids", async () => {
     const svc = build({
       urgentAcks: async () => ({
-        items: [ack("r1", { restricted: true, id: null, channel_id: null, message_id: null })],
+        items: [
+          ack("r1", { restricted: true, id: null, channel_id: null, message_id: null }),
+        ],
         complete: true,
       }),
     });
@@ -188,9 +185,7 @@ describe("smart inbox service", () => {
 
   it("ignores a handoff the caller cannot accept", async () => {
     const svc = build({
-      handoffs: async () => [
-        { ...handoff("x", 30), allowed_actions: ["cancel"] } as unknown as HandoffDto,
-      ],
+      handoffs: async () => [{ ...handoff("x", 30), allowed_actions: ["cancel"] } as unknown as HandoffDto],
     });
     expect((await svc.list(actor, { limit: 50 })).items).toEqual([]);
   });

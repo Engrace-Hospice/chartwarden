@@ -177,11 +177,7 @@ export function sanitizeFileName(raw: string): string {
 /** Validate an authorize request at the trust boundary; returns the normalised copy. */
 export function validateAuthorizeInput(input: AuthorizeInput): AuthorizeInput {
   if (!ATTACHMENT_MIME_ALLOWLIST.has(input.contentType)) {
-    throw new ChartWardenError(
-      "UNSUPPORTED_MEDIA_TYPE",
-      "attachment content type is not allowed",
-      415,
-    );
+    throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "attachment content type is not allowed", 415);
   }
   if (
     !Number.isSafeInteger(input.byteSize) ||

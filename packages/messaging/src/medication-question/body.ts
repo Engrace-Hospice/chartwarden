@@ -1,10 +1,10 @@
 // M36 WP 3.10 - the body of a medication question, built by the server from the caller's text (ADR-0067 D2). The text
 // is carried VERBATIM in one text node and never inspected: no parsing, no extraction of a drug, dose or order.
 import {
-  ChartWardenError,
   MEDICATION_QUESTION_TEXT_MAX,
   type RichBody,
   type RichInline,
+  ChartWardenError,
 } from "@chartwarden/types";
 
 const invalid = (message: string): ChartWardenError =>

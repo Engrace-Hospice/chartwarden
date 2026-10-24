@@ -9,7 +9,7 @@
 // the overdue signal is a nightly alert (jobs/qic-overdue.ts).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
   DEFAULT_DEADLINE_ZONE,
@@ -182,11 +182,7 @@ function checkedDay(day: string, what: string, now: Date): string {
   try {
     ms = parseNoticeDay(day);
   } catch {
-    throw new ChartWardenError(
-      "INVALID_DATE",
-      `${what} is not a real calendar date (YYYY-MM-DD)`,
-      422,
-    );
+    throw new ChartWardenError("INVALID_DATE", `${what} is not a real calendar date (YYYY-MM-DD)`, 422);
   }
   if (ms > now.getTime() + MS_PER_DAY) {
     throw new ChartWardenError("DATE_IN_FUTURE", `${what} cannot be in the future`, 422);

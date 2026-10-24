@@ -111,13 +111,7 @@ const lastMonday = (y: number, month: number): number => {
 
 /** US federal holidays as OBSERVED (Saturday -> Friday, Sunday -> Monday) for calendar year `y`, UTC midnights. */
 function observedFederalHolidays(y: number): number[] {
-  const fixed = [
-    [0, 1],
-    [5, 19],
-    [6, 4],
-    [10, 11],
-    [11, 25],
-  ].map(([m, d]) => {
+  const fixed = [[0, 1], [5, 19], [6, 4], [10, 11], [11, 25]].map(([m, d]) => {
     const ms = Date.UTC(y, m!, d!);
     const dow = new Date(ms).getUTCDay();
     return dow === 6 ? ms - MS_PER_DAY : dow === 0 ? ms + MS_PER_DAY : ms;
@@ -151,14 +145,7 @@ export function previousBusinessDay(dayMs: number): number {
 function zoneOffsetMs(ts: number, zone: string): number {
   const parts = formatterFor(zone).formatToParts(new Date(ts));
   const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
-  const wallAsUtc = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    get("hour"),
-    get("minute"),
-    get("second"),
-  );
+  const wallAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
   return wallAsUtc - Math.floor(ts / 1000) * 1000;
 }
 

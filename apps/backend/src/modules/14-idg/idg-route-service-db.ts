@@ -61,7 +61,7 @@ import {
 } from "@chartwarden/idg";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@chartwarden/types";
-import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   and,
   asc,

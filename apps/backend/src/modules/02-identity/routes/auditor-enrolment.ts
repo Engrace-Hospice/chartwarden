@@ -1,5 +1,3 @@
-import { requireAbac } from "@chartwarden/auth";
-import { RateLimitedError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/02-identity/routes/auditor-enrolment.ts - `/api/v1/auditors/enrolment/*` (M2 §7.7).
 //
 // The five routes an ENROLMENT-stage auditor session may call (the authenticate hook allowlists exactly these;
@@ -18,6 +16,8 @@ import { RateLimitedError, UnauthorizedError, ValidationError } from "@chartward
 // (auditor-second-factor-store.ts). Nothing here is cacheable: recovery codes ride one response only.
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { requireAbac } from "@chartwarden/auth";
+import { RateLimitedError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { registerM2AbacPredicates } from "../abac-predicates";
 import {

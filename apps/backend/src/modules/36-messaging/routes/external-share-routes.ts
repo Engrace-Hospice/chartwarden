@@ -97,6 +97,8 @@ export function registerExternalShareRoutes(
     {
       preHandler: [MANAGE, FLAG_ON, MANAGE_STEP_UP],
       schema: { response: { 201: CreatedExternalShareResponseSchema } },
+      // The 201 holds the invitation token AND the code: the shared idempotency capture would store and replay both together (ADR-0099 review).
+      config: { noIdempotencyCapture: true },
     },
     async (request, reply) => {
       const body = parse(CreateExternalShareBodySchema, request.body);

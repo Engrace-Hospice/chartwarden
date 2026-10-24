@@ -1,3 +1,4 @@
+import { Type } from "@sinclair/typebox";
 // apps/backend/src/modules/23-billing-medicare/routes/claims.routes.ts — M23 (§4.1 routes #1–#13, claims
 // core). The claim lifecycle surface: server-authoritative assembly, the validation re-run trigger, the
 // READY→SUBMITTED submit (+M2 step-up), the TOB-817 replace / TOB-818 void builders, the cursor-paginated
@@ -34,7 +35,6 @@ import {
   ManualValidateRequest,
 } from "@chartwarden/billing";
 import { ChartWardenError } from "@chartwarden/types";
-import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
 import type { ClaimAssemblyService } from "../services/claim-assembly";

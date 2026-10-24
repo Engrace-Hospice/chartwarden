@@ -17,7 +17,7 @@
 //     the single home for each rule.
 //   - org/actor/owner binding is ALWAYS the server-assembled {@link M33WriteActor} (context, never body).
 import type { DbClient } from "@chartwarden/db";
-import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
 import {

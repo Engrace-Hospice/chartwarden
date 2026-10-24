@@ -1,5 +1,3 @@
-import { VOID_REASON_MIN_LENGTH } from "@chartwarden/emar";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/13-emar/routes/emar-typebox.ts — M13-T08 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
@@ -12,6 +10,8 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { VOID_REASON_MIN_LENGTH } from "@chartwarden/emar";
+import { ValidationError } from "@chartwarden/types";
 import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
   AdministrationView as ServiceAdministrationView,

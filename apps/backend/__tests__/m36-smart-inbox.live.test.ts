@@ -60,13 +60,8 @@ describe.skipIf(!DB_URL)("M36 WP 6.1 smart work inbox - LIVE Postgres", () => {
   const body = (res: { body: string }) => JSON.parse(res.body) as SmartInboxResponse;
 
   const send = async (channel: string, author = sender) =>
-    (
-      await kit.service.sendMessage(ORG_A, {
-        channelId: channel,
-        authorUserId: author,
-        body: SECRET,
-      })
-    ).messageId;
+    (await kit.service.sendMessage(ORG_A, { channelId: channel, authorUserId: author, body: SECRET }))
+      .messageId;
 
   const ackFor = async (name: string, assignee: string, minutes: number, patient = PATIENT_1) => {
     const messageId = await send(channelMine);
@@ -111,12 +106,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.1 smart work inbox - LIVE Postgres", () => {
     await send(channelQuiet);
 
     const taskMessage = await send(channelMine);
-    const task = await kit
-      .build(true)
-      .tasks.service.convert(
-        { orgId: ORG_A, userId: sender },
-        { channelId: channelMine, messageId: taskMessage, assigneeUserId: me },
-      );
+    const task = await kit.build(true).tasks.service.convert(
+      { orgId: ORG_A, userId: sender },
+      { channelId: channelMine, messageId: taskMessage, assigneeUserId: me },
+    );
     ids.task = task.task.id;
 
     app = buildServer({
@@ -169,20 +162,8 @@ describe.skipIf(!DB_URL)("M36 WP 6.1 smart work inbox - LIVE Postgres", () => {
       expect(out.items.map((i) => i.band)).toEqual(
         [...out.items.map((i) => i.band)].sort(
           (a, b) =>
-            [
-              "urgent_ack",
-              "handoff_awaiting",
-              "task_assigned",
-              "mention",
-              "care_team_unread",
-            ].indexOf(a) -
-            [
-              "urgent_ack",
-              "handoff_awaiting",
-              "task_assigned",
-              "mention",
-              "care_team_unread",
-            ].indexOf(b),
+            ["urgent_ack", "handoff_awaiting", "task_assigned", "mention", "care_team_unread"].indexOf(a) -
+            ["urgent_ack", "handoff_awaiting", "task_assigned", "mention", "care_team_unread"].indexOf(b),
         ),
       );
       expect(out.items.every((i) => i.reasons.length > 0)).toBe(true);

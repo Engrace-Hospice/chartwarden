@@ -1,10 +1,10 @@
+import { Value } from "@sinclair/typebox/value";
 // GAP-025 (M06): `m6.election.period_ended` must actually be published.
 //   1. the shared completion helper emits the spec payload exactly once per period (status-guarded UPDATE),
 //   2. the hourly auto-end cron completes periods past their end date under the org's local date, with the
 //      `next_period` cause, and publishes one event each.
 // No database: a recording fake tx stands in for Drizzle (the live proof is the real-publisher live suite).
 import type { DbClient } from "@chartwarden/db";
-import { Value } from "@sinclair/typebox/value";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   completeActiveElectionPeriod,

@@ -11,10 +11,10 @@
 // static test in `m36-clinical-link-no-write.test.ts` scans this directory to keep it that way.
 import {
   CLINICAL_LINK_KINDS,
-  ChartWardenError,
   type ClinicalLinkKind,
   type ClinicalLinkSummary,
   type RichBody,
+  ChartWardenError,
   richBodyClinicalLinks,
 } from "@chartwarden/types";
 
@@ -127,11 +127,9 @@ export function assertLinksMatchBody(
   links: readonly ValidatedClinicalLink[] | undefined,
 ): readonly ValidatedClinicalLink[] {
   const given = links ?? [];
-  const expected = new Set(
-    (richBody ? richBodyClinicalLinks(richBody) : []).map((n) =>
-      keyOf({ kind: n.kind, sourceId: n.entityId }),
-    ),
-  );
+  const expected = new Set((richBody ? richBodyClinicalLinks(richBody) : []).map((n) =>
+    keyOf({ kind: n.kind, sourceId: n.entityId }),
+  ));
   if (given.length !== expected.size || given.some((link) => !expected.has(keyOf(link)))) {
     throw linkNotAvailable();
   }

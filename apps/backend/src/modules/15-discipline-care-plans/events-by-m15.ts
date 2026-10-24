@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/15-discipline-care-plans/events-by-m15.ts — Module 15's outbox-event
 // contributions (spec §2.4). The `m15.*` taxonomy under the `m15.` namespace (M01 D8 / M03 D9 / M04 D9).
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m15')
@@ -17,6 +16,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // D12: M22 owns the render, M15 emits the typed payload), so it is declared `Type.Unknown()` and travels
 // only to the modules named in `declaredConsumers`.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const Iso = Type.String({ minLength: 1 });

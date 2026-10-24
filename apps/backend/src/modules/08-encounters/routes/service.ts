@@ -19,23 +19,14 @@ import {
   requiredVitalsFor,
   resolveTemplate,
 } from "@chartwarden/hearthnote";
-import {
-  VOCAB_VERSION,
-  activeNarrativeVocabRelease,
-  entriesFor,
-} from "@chartwarden/narrative-vocab";
+import { VOCAB_VERSION, activeNarrativeVocabRelease, entriesFor } from "@chartwarden/narrative-vocab";
 import type {
   EncounterDiscipline,
   EncounterStatus,
   EncounterType,
   LocalDate,
 } from "@chartwarden/types";
-import {
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-  UnauthorizedError,
-} from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import {
   type F2fAttestationWrite,
   type MileageInput,

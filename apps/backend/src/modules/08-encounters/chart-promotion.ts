@@ -6,8 +6,8 @@
 import {
   type CHART_PROMOTION_REJECT_REASONS,
   type ChartPromotionReview,
-  ChartWardenError,
   ConflictError,
+  ChartWardenError,
 } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 

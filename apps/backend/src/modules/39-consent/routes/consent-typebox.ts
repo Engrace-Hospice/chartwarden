@@ -1,3 +1,10 @@
+// apps/backend/src/modules/39-consent/routes/consent-typebox.ts — M39-T07 TypeBox route schemas
+// (M39 spec §4.2). Named `consent-typebox` (not `*schema*`) so the table-ownership import heuristic
+// never mistakes a TypeBox-schema import for a Drizzle one. Validation runs through TypeBox `Value`
+// so a bad request fails with M1's VALIDATION_FAILED envelope and query scalars coerce first.
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { FormatRegistry } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { CONSENT_TYPE_KEYS } from "@chartwarden/consent";
 import type {
   CascadeRetryView,
@@ -15,13 +22,6 @@ import type {
   ReRenderReceiptView,
 } from "@chartwarden/consent";
 import { ValidationError } from "@chartwarden/types";
-// apps/backend/src/modules/39-consent/routes/consent-typebox.ts — M39-T07 TypeBox route schemas
-// (M39 spec §4.2). Named `consent-typebox` (not `*schema*`) so the table-ownership import heuristic
-// never mistakes a TypeBox-schema import for a Drizzle one. Validation runs through TypeBox `Value`
-// so a bad request fails with M1's VALIDATION_FAILED envelope and query scalars coerce first.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

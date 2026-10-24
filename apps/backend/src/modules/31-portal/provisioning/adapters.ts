@@ -74,10 +74,7 @@ export function createPortalInvitationDelivery(input: {
 }): PortalInvitationDeliveryPort {
   return {
     async deliver({ organizationId, email, displayName, token, expiresAt }) {
-      const base = ((await input.baseUrlFor?.(organizationId)) ?? input.baseUrl)?.replace(
-        /\/$/,
-        "",
-      );
+      const base = ((await input.baseUrlFor?.(organizationId)) ?? input.baseUrl)?.replace(/\/$/, "");
       if (!base) return { inviteUrl: null };
       const inviteUrl = `${base}/accept-invitation?token=${encodeURIComponent(token)}`;
       if (!input.transport) return { inviteUrl };

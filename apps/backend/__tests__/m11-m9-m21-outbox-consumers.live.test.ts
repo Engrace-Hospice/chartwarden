@@ -171,10 +171,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      for (const pattern of [
-        "wardenx:m11:orders:suggestion:*",
-        "chartwarden:m11:orders:suggestion:*",
-      ]) {
+      for (const pattern of ["wardenx:m11:orders:suggestion:*", "chartwarden:m11:orders:suggestion:*"]) {
         await redis.keys(pattern).then((keys) => (keys.length ? redis.del(...keys) : undefined));
       }
 
@@ -250,9 +247,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         const assessmentId = "aaaaaaaa-1000-4000-8000-0000000000f2";
         const legacyKey = `wardenx:m11:orders:suggestion:${patientId}`;
         const newKey = `chartwarden:m11:orders:suggestion:${patientId}`;
-        const legacySeed = JSON.stringify([
-          { triggeringId: assessmentId, suggestedKind: "comfort_kit" },
-        ]);
+        const legacySeed = JSON.stringify([{ triggeringId: assessmentId, suggestedKind: "comfort_kit" }]);
         await redis.set(legacyKey, legacySeed, "EX", 1_000);
 
         await suggestionConsumer.handle({

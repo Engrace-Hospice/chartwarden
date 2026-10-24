@@ -1,4 +1,3 @@
-import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@chartwarden/reporting";
 // apps/backend/src/modules/33-reporting/routes/write-typebox.ts — M33 (§4.2 MUTATING surface).
 //
 // TypeBox request / path / query schemas for the M33 MUTATING surface (routes #8–#31): report
@@ -16,6 +15,7 @@ import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@cha
 // body never carries an organization_id or an owner membership id.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
+import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@chartwarden/reporting";
 
 // Defence-in-depth format registration (idempotent) — `./reporting-typebox` registers these on load
 // too, but a route file may import this module first.

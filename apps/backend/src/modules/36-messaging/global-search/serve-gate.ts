@@ -12,7 +12,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import type { SearchKeyProvider } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import type { PlatformSearchFlag, PlatformSearchFlagState } from "./platform-flag";

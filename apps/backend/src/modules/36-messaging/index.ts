@@ -177,10 +177,6 @@ import {
   createDrizzleShareStaffStore as _createDrizzleShareStaffStore,
 } from "./external-share/external-share-store";
 import {
-  type FamilyBindingInput as _FamilyBindingInput,
-  buildFamilyServices as _buildFamilyServices,
-} from "./family/family-binding";
-import {
   type GlobalSearchMountOptions,
   mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
 } from "./global-search/mount";
@@ -225,6 +221,7 @@ import {
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
+import { type FamilyBindingInput as _FamilyBindingInput, buildFamilyServices as _buildFamilyServices } from "./family/family-binding";
 import { registerFamilyRoutes as _registerFamilyRoutes } from "./routes/family-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
@@ -304,9 +301,7 @@ export function mountMessagingRoutes(
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     };
     /** ADR-0082: the optional budget of the after-hours thread-line read. */
-    afterHoursTriageRateLimit?:
-      | ((request: FastifyRequest, reply: FastifyReply) => Promise<void>)
-      | undefined;
+    afterHoursTriageRateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
@@ -430,9 +425,7 @@ export function mountMessagingRoutes(
       service: _createAckBroadcastService({ db, flags: opts.ackBroadcast?.flags }),
       ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
-    ...(opts.afterHoursTriageRateLimit
-      ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit }
-      : {}),
+    ...(opts.afterHoursTriageRateLimit ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit } : {}),
     deliveryTarget: {
       service: _createDeliveryTargetService({
         read: _createDbDeliveryTargetReader(db),

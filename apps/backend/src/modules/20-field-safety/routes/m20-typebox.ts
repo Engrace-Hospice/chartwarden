@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/20-field-safety/routes/m20-typebox.ts — M20-T06 (§4.2) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 Field Safety routes. Named
@@ -33,6 +32,7 @@ import { ValidationError } from "@chartwarden/types";
 // body that could assert it would file with a state agency on the clinician's own say-so.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

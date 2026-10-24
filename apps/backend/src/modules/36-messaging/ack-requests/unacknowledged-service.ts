@@ -8,11 +8,7 @@
 // assignee's, OPEN for compliance review) and `request_ref`, the request's own id as the handle the supervisor reassign acts on (it opens
 // nothing: every route that reads a request, thread or patient still answers 404 to a viewer who cannot see the channel). A visibility check that throws withholds the ids (fail closed); it does not drop the item. No message text is ever read.
 import type { AckQueueItemDto, AckQueueResponse, AckQueueStatus } from "@chartwarden/types";
-import {
-  ACK_QUEUE_LIMIT_DEFAULT,
-  ACK_QUEUE_LIMIT_MAX,
-  toAckAddressedRole,
-} from "@chartwarden/types";
+import { ACK_QUEUE_LIMIT_DEFAULT, ACK_QUEUE_LIMIT_MAX, toAckAddressedRole } from "@chartwarden/types";
 import type { QueueRow, UnacknowledgedReader } from "./unacknowledged-reader-db";
 
 export interface UnacknowledgedActor {

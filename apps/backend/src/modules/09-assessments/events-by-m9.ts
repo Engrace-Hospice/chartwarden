@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/09-assessments/events-by-m9.ts — Module 9's outbox-event contributions
 // (M9-T06, spec §2.4 / §4.8). The full `m9.*` taxonomy keyed on M9's own tables, under the `m9.`
 // namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for
@@ -17,6 +16,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // (`m9.assessment.recorded`, `m9.assessment.significant_change`) which M36/Socket.IO also pushes to the
 // patient room for the live chart refresh / alert banner (§4.4 table).
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** A scale-type token (mirrors `scale_type`, §3.2) — kept as a constrained string so the catalog stays
  * decoupled from the per-scale discriminated union (§4.3 lives in @chartwarden/assessments). */

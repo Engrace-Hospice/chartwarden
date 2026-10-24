@@ -791,9 +791,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
       const first = await on.service.flagStalledForOrg(ORG_A);
       expect(first.flagged).toBeGreaterThanOrEqual(ITEM_COUNT);
       const rows = await itemRows(boardId);
-      expect(
-        rows.every((i) => i.needs_owner && i.owner_user_id === rn && i.status === "open"),
-      ).toBe(true);
+      expect(rows.every((i) => i.needs_owner && i.owner_user_id === rn && i.status === "open")).toBe(true);
       expect((await eventsOf(items[0]?.id as string)).at(-1)).toMatchObject({
         event_type: "needs_owner",
         actor_kind: "system",
@@ -811,18 +809,14 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
       const alertsMid = await needsOwnerCount();
       const again = await on.service.flagStalledForOrg(ORG_A);
       expect(again.flagged).toBe(0);
-      expect(await kit.count("SELECT count(*)::int AS n FROM death_board_item_event")).toBe(
-        eventsBefore,
-      );
+      expect(await kit.count("SELECT count(*)::int AS n FROM death_board_item_event")).toBe(eventsBefore);
       expect(await needsOwnerCount()).toBe(alertsMid);
 
       // The existing guard semantics hold: the Part 2-refused owner reaches nothing (the uniform 404, so cannot complete); a supervisor
       // admitted for the patient hands the item to an admitted person and the flag clears.
       const itemId = items[0]?.id as string;
       expect((await call(rn, "POST", `${ITEMS}/${itemId}/complete`)).statusCode).toBe(404);
-      const handed = await call(supervisor, "POST", `${ITEMS}/${itemId}/reassign`, {
-        to_user_id: nurse2,
-      });
+      const handed = await call(supervisor, "POST", `${ITEMS}/${itemId}/reassign`, { to_user_id: nurse2 });
       expect((handed.json().item as ItemJson).needs_owner).toBe(false);
       await on.service.flagStalledForOrg(ORG_A);
       expect((await itemRows(boardId)).find((r) => r.id === itemId)?.owner_user_id).toBe(nurse2);
@@ -838,10 +832,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
       await on.service.flagStalledForOrg(ORG_A);
       const rows = await itemRows(boardId);
       expect(rows.filter((r) => r.needs_owner)).toHaveLength(ITEM_COUNT - 1);
-      expect(rows.find((r) => r.id === items[0]?.id)).toMatchObject({
-        status: "done",
-        needs_owner: false,
-      });
+      expect(rows.find((r) => r.id === items[0]?.id)).toMatchObject({ status: "done", needs_owner: false });
       expect(rows.every((r) => r.owner_user_id === lone)).toBe(true);
     });
 
@@ -862,9 +853,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
       try {
         const capped = await on.service.flagStalledForOrg(ORG_A, { maxFlags: 2 });
         expect(capped.flagged).toBe(2);
-        expect((await itemRows(boardId)).filter((i) => i.needs_owner).length).toBeLessThanOrEqual(
-          2,
-        );
+        expect((await itemRows(boardId)).filter((i) => i.needs_owner).length).toBeLessThanOrEqual(2);
         await on.service.flagStalledForOrg(ORG_A);
         expect((await itemRows(boardId)).every((i) => i.needs_owner)).toBe(true);
       } finally {

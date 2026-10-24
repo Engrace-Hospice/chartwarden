@@ -1,9 +1,3 @@
-import {
-  HospiceCoverageFieldsSchema,
-  HospiceCoverageSchema,
-  SetHospiceCoverageBodySchema,
-  ValidationError,
-} from "@chartwarden/types";
 // apps/backend/src/modules/21-supplies/routes/m21-typebox.ts — M21 (§4.2) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 Supplies routes. They are the runtime
@@ -31,6 +25,12 @@ import {
 // spec contradicts its own §3.1 column types — the columns win.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  HospiceCoverageFieldsSchema,
+  HospiceCoverageSchema,
+  SetHospiceCoverageBodySchema,
+  ValidationError,
+} from "@chartwarden/types";
 import type {
   ComfortKitReturnDetail as ServiceComfortKitReturnDetail,
   ComfortKitReturnListItem as ServiceComfortKitReturnListItem,

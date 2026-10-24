@@ -1,7 +1,7 @@
-import { SCHEDULE_BLOCK_REASONS } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox.ts — WP 2.6 request/response schemas (kept apart
 // from scheduled-send-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
+import { SCHEDULE_BLOCK_REASONS } from "@chartwarden/messaging";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

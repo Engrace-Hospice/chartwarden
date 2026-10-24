@@ -1,4 +1,3 @@
-import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 // apps/backend/src/modules/13-emar/events-by-m13.ts — Module 13's outbox-event contributions
 // (M13-T08, spec §4.4). The full `m13.*` taxonomy keyed on M13's own tables, under the `m13.` namespace
 // (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for naming
@@ -15,6 +14,7 @@ import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 // the typed outbox event (§1.1: "Outbox publication is the only cross-module communication M13 performs").
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

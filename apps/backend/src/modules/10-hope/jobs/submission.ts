@@ -20,11 +20,7 @@
 // §4.8.1 — it never blocks `recordHopeTimepoint` (§5.6 / §7.10). The adapter call + SHA-256 + MinIO put
 // are the only IO; they live in the boot-bound driver. Everything in this file is pure decision logic.
 import type { HopeEnvelopeItem, HopeSubmissionEnvelope } from "@chartwarden/iqies-client";
-import type {
-  HopeRfaKind,
-  HopeSubmissionItemStatus,
-  HopeSubmissionStatus,
-} from "@chartwarden/types";
+import type { HopeRfaKind, HopeSubmissionItemStatus, HopeSubmissionStatus } from "@chartwarden/types";
 
 // ── shared event shape (mirrors the §2.4 catalog the runner publishes) ───────────────────────────────
 

@@ -2,7 +2,7 @@
 // core and the in-memory twin so both refuse the same things. Structural only: who is QUALIFIED to receive is decided by the
 // service's eligibility ports before the write, never by reading message text. Never echoes message content, and the
 // recipient refusal names no reason (one answer for "not a member", "is the author" and "not qualified").
-import { ChartWardenError, type RichBody, type UrgentErrorCode } from "@chartwarden/types";
+import { type RichBody, type UrgentErrorCode, ChartWardenError } from "@chartwarden/types";
 import { isSbarBody } from "../sbar/sbar-write";
 
 const refuse = (code: UrgentErrorCode, message: string): ChartWardenError =>

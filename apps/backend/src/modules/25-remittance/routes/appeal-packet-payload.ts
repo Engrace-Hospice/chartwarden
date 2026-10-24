@@ -7,8 +7,8 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   type AppealPacketRenderPayload,
   type AppealReconsiderationBlock,
-  ChartWardenError,
   NotFoundError,
+  ChartWardenError,
   buildAppealPacketRenderPayload,
 } from "@chartwarden/types";
 import { eq } from "drizzle-orm";

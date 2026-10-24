@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 // apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts — the Drizzle-backed WX-PR-012
 // implementation of {@link M25IngestService} (see ./service.ts for the full design rationale).
 import { type DbClient, schema } from "@chartwarden/db";
@@ -8,6 +7,7 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
+import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
@@ -16,9 +16,9 @@ import type {
   ClaimMatchCandidateProvider,
   ClaimMatchCandidateProviderByPayer,
   M25IngestActor,
+  RawAdviceStore,
   M25IngestService,
   PostAdviceResult,
-  RawAdviceStore,
   ReceiveAdviceInput,
   ReceiveAdviceResult,
   TerminologyLookupPort,

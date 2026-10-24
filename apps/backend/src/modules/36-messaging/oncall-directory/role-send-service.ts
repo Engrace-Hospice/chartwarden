@@ -16,7 +16,6 @@
 //   - a router failure propagates (a 5xx), it is never turned into a gap or a person.
 // Logs carry the organisation, the sender, the role and a status word only (no patient id, no name, no message text).
 import {
-  ChartWardenError,
   type EscalationRouter,
   NotFoundError,
   type OnCallDirectoryRole,
@@ -24,6 +23,7 @@ import {
   ROLE_SEND_TELEPHONE_PROCEDURE,
   type RoleSendResolutionDto,
   type RoleSendResponse,
+  ChartWardenError,
 } from "@chartwarden/types";
 import type { UrgentActorRef, UrgentService, ValidateLinks } from "../urgent/urgent-service";
 import { rankedIds, unavailableStatus, validShiftEnd } from "./oncall-coverage-service";

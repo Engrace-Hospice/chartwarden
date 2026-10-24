@@ -1,13 +1,3 @@
-import { CODE_SYSTEM_IDS } from "@chartwarden/terminology";
-import type {
-  CodeSystemId,
-  DeprecationMappingResponse as ServiceDeprecationMapping,
-  ExpansionMember as ServiceExpansionMember,
-  MembershipResult as ServiceMembershipResult,
-  ResolvedConcept as ServiceResolvedConcept,
-  ValidateResult as ServiceValidateResult,
-} from "@chartwarden/terminology";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/38-terminology/routes/terminology-typebox.ts — M38-T06 complete
 // TypeBox route schemas for the terminology API surface (M38 spec §4.1–4.2). Named
 // `terminology-typebox` (not `*schema*`) so the table-ownership import heuristic never mistakes
@@ -22,6 +12,16 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { CODE_SYSTEM_IDS } from "@chartwarden/terminology";
+import type {
+  CodeSystemId,
+  DeprecationMappingResponse as ServiceDeprecationMapping,
+  ExpansionMember as ServiceExpansionMember,
+  MembershipResult as ServiceMembershipResult,
+  ResolvedConcept as ServiceResolvedConcept,
+  ValidateResult as ServiceValidateResult,
+} from "@chartwarden/terminology";
+import { ValidationError } from "@chartwarden/types";
 import type {
   LicenseAttestationEntry as StoreAttestationEntry,
   TerminologyLoadHistoryEntry as StoreLoadHistoryEntry,

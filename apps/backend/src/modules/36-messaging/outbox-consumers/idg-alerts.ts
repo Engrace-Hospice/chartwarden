@@ -1,5 +1,3 @@
-import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
-import type { AlertPayloadEntry } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/outbox-consumers/idg-alerts.ts — M36's consumers of M14's remaining typed
 // alerts (M14 §4.10, catalog in 14-idg/alerts-by-m14.ts). Sibling of `idg-carry-forward-compliance.ts` (the precedent:
 // same design, same guarantees) — five alert families that share one shape, so one file with a table:
@@ -39,6 +37,8 @@ import type { AlertPayloadEntry } from "@chartwarden/types";
 // RELAY, NOT A REQUEST: `handle` runs in the outbox relay and opens no tenant reads itself — `alerts.emit` and each
 // lookup wrap their own `withOrgContext` with the event's org id.
 import { Value } from "@sinclair/typebox/value";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
+import type { AlertPayloadEntry } from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

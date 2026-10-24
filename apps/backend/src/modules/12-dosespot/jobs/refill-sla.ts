@@ -9,11 +9,7 @@
 // tick emit exactly one event and a re-run emits nothing. A request that jumped straight past 72 h gets the
 // critical event only. The upstream rows come from the webhook `refill_request` handler.
 import { schema } from "@chartwarden/db";
-import {
-  classifyRefillSlaStage,
-  computeHoursPending,
-  planRefillSlaAlert,
-} from "@chartwarden/dosespot";
+import { classifyRefillSlaStage, computeHoursPending, planRefillSlaAlert } from "@chartwarden/dosespot";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 

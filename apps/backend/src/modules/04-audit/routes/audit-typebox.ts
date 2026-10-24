@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/04-audit/routes/audit-typebox.ts — M4-T06 complete TypeBox route
 // schemas for the audit query surface (M4 spec §4.3). Named `audit-typebox` (not `*schema*`) so
 // the table-ownership import heuristic never mistakes a TypeBox-schema import for a Drizzle one.
@@ -11,6 +10,7 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@chartwarden/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;

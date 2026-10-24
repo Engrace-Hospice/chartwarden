@@ -1,14 +1,3 @@
-import { requirePermission } from "@chartwarden/auth";
-import { type DbClient, schema } from "@chartwarden/db";
-import { ringsAreValid } from "@chartwarden/shared/geo";
-import { withOrgContext } from "@chartwarden/tenancy";
-import {
-  type EmergencyServiceJurisdictionReader,
-  NotFoundError,
-  type PsapResolution,
-  type SafetyPolygonRings,
-  ValidationError,
-} from "@chartwarden/types";
 // apps/backend/src/modules/40-mdm/psap-jurisdictions.ts - M40 `emergency_service_jurisdiction` catalog (GAP-032).
 //
 // The TENANT-CURATED PSAP catalog M20's SOS terminus resolves against. No national dataset ships and none is
@@ -22,6 +11,17 @@ import {
 // 404, never a silent success). A PSAP number is a PUBLIC administrative line; it is surfaced to a human in the
 // authenticated UI and is never dialled by the platform, and never travels in an outbox or audit payload.
 import { Type } from "@sinclair/typebox";
+import { requirePermission } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { ringsAreValid } from "@chartwarden/shared/geo";
+import { withOrgContext } from "@chartwarden/tenancy";
+import {
+  type EmergencyServiceJurisdictionReader,
+  NotFoundError,
+  type PsapResolution,
+  type SafetyPolygonRings,
+  ValidationError,
+} from "@chartwarden/types";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, parseOrThrow } from "./grief-resources";

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/02-identity/routes/route-helpers.ts — the small request helpers the M2 identity route
 // files share (extracted from identity-routes.ts so `link-routes.ts` can use them without an import cycle).
 import type { AuditContext } from "@chartwarden/audit";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import type { Actor, IdentityRouteDeps, LinkError } from "../identity-ports";
 

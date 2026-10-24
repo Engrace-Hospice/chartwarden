@@ -215,11 +215,7 @@ export function createUserProvisioningService(deps: {
         auditContext: input.auditContext,
       });
       if (!(await deps.lifecycle.validateLocations(input.organizationId, input.defaultLocationIds)))
-        throw new ChartWardenError(
-          "INVALID_LOCATION",
-          "one or more locations are unavailable",
-          422,
-        );
+        throw new ChartWardenError("INVALID_LOCATION", "one or more locations are unavailable", 422);
       const organizationName = await deps.lifecycle.organizationName(input.organizationId);
       if (!organizationName) throw new ChartWardenError("NOT_FOUND", "organization not found", 404);
 
@@ -235,11 +231,7 @@ export function createUserProvisioningService(deps: {
         const policy = asPasswordPolicyError(error);
         if (policy) throw policy;
         // Deliberately does not reveal whether a username or email belongs to another tenant.
-        throw new ChartWardenError(
-          "IDENTITY_CONFLICT",
-          "the requested identity is unavailable",
-          409,
-        );
+        throw new ChartWardenError("IDENTITY_CONFLICT", "the requested identity is unavailable", 409);
       }
 
       let membershipId: string | null = null;
@@ -297,8 +289,7 @@ export function createUserProvisioningService(deps: {
         input.targetUserId,
         input.organizationId,
       );
-      if (eligibility === "not_member")
-        throw new ChartWardenError("NOT_FOUND", "user not found", 404);
+      if (eligibility === "not_member") throw new ChartWardenError("NOT_FOUND", "user not found", 404);
       if (eligibility === "shared_identity")
         throw new ChartWardenError(
           "SHARED_IDENTITY_RESET_RESTRICTED",

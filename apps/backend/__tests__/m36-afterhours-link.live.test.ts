@@ -61,12 +61,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 S1 after-hours triage link - LIVE Postgre
     ).rows[0].id as string;
     return { messageId, requestId };
   };
-  const insertLink = (
-    q: Query,
-    org: string,
-    m: { messageId: string; requestId: string },
-    ev = randomUUID(),
-  ) =>
+  const insertLink = (q: Query, org: string, m: { messageId: string; requestId: string }, ev = randomUUID()) =>
     q(
       `INSERT INTO message_afterhours_triage_link (organization_id, message_id, request_id, source_outbox_event_id)
        VALUES ($1,$2,$3,$4) RETURNING id`,
@@ -130,10 +125,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 S1 after-hours triage link - LIVE Postgre
     await asApp(ORG_A, async (q) => {
       await insertLink(q, ORG_A, m);
       const upd = (set: string, params: unknown[] = []) =>
-        q(
-          `UPDATE message_afterhours_triage_link SET ${set} WHERE message_id = '${m.messageId}'`,
-          params,
-        );
+        q(`UPDATE message_afterhours_triage_link SET ${set} WHERE message_id = '${m.messageId}'`, params);
       // A call id without an outcome, or with no_coverage, breaks the CHECK; an outcome 'opened' needs the call id.
       for (const set of [
         `triage_call_id = '${call}'`,
@@ -154,12 +146,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 S1 after-hours triage link - LIVE Postgre
       await q("SAVEPOINT s");
       expect((await sqlError(upd(`outcome = 'coalesced'`)))?.code).toBe("23514");
       await q("ROLLBACK TO s");
-      const row = (
-        await q(
-          "SELECT outcome, triage_call_id FROM message_afterhours_triage_link WHERE message_id = $1",
-          [m.messageId],
-        )
-      ).rows[0];
+      const row = (await q("SELECT outcome, triage_call_id FROM message_afterhours_triage_link WHERE message_id = $1", [m.messageId])).rows[0];
       expect(row).toEqual({ outcome: "opened", triage_call_id: call });
     });
   });
@@ -172,25 +159,11 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 S1 after-hours triage link - LIVE Postgre
     );
     const where = `WHERE message_id = '${m.messageId}'`;
     expect(
-      (
-        await sqlError(
-          kit.admin.query(
-            `UPDATE message_afterhours_triage_link SET source_outbox_event_id = '${randomUUID()}' ${where}`,
-          ),
-        )
-      )?.message,
+      (await sqlError(kit.admin.query(`UPDATE message_afterhours_triage_link SET source_outbox_event_id = '${randomUUID()}' ${where}`)))?.message,
     ).toMatch(/message_afterhours_triage_link_immutable/);
-    await kit.admin.query(
-      `UPDATE message_afterhours_triage_link SET outcome = 'no_coverage' ${where}`,
-    );
+    await kit.admin.query(`UPDATE message_afterhours_triage_link SET outcome = 'no_coverage' ${where}`);
     expect(
-      (
-        await sqlError(
-          kit.admin.query(
-            `UPDATE message_afterhours_triage_link SET outcome = 'no_coverage' ${where}`,
-          ),
-        )
-      )?.message,
+      (await sqlError(kit.admin.query(`UPDATE message_afterhours_triage_link SET outcome = 'no_coverage' ${where}`)))?.message,
     ).toMatch(/message_afterhours_triage_link_final/);
   });
 
@@ -224,27 +197,10 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 S1 after-hours triage link - LIVE Postgre
       });
     };
     await expect(run(true)).rejects.toThrow("rollback");
-    expect(
-      await kit.count("SELECT count(*)::int AS n FROM outbox_event WHERE id = $1", [eventId]),
-    ).toBe(0);
-    expect(
-      await kit.count(
-        "SELECT count(*)::int AS n FROM message_afterhours_triage_link WHERE message_id = $1",
-        [m.messageId],
-      ),
-    ).toBe(0);
+    expect(await kit.count("SELECT count(*)::int AS n FROM outbox_event WHERE id = $1", [eventId])).toBe(0);
+    expect(await kit.count("SELECT count(*)::int AS n FROM message_afterhours_triage_link WHERE message_id = $1", [m.messageId])).toBe(0);
     await run(false);
-    expect(
-      await kit.count(
-        "SELECT count(*)::int AS n FROM outbox_event WHERE id = $1 AND event_type='m36.afterhours_triage.requested'",
-        [eventId],
-      ),
-    ).toBe(1);
-    expect(
-      await kit.count(
-        "SELECT count(*)::int AS n FROM message_afterhours_triage_link WHERE source_outbox_event_id = $1",
-        [eventId],
-      ),
-    ).toBe(1);
+    expect(await kit.count("SELECT count(*)::int AS n FROM outbox_event WHERE id = $1 AND event_type='m36.afterhours_triage.requested'", [eventId])).toBe(1);
+    expect(await kit.count("SELECT count(*)::int AS n FROM message_afterhours_triage_link WHERE source_outbox_event_id = $1", [eventId])).toBe(1);
   });
 });

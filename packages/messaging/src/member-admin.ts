@@ -4,7 +4,7 @@
 // channels" (`location_membership`). The permission alone is NOT enough: a holder could otherwise add
 // themselves to any care_team channel, and because channel visibility is a membership check that is a
 // PHI read grant. This pure rule is shared by the route predicate and both service implementations.
-import { ChartWardenError, ForbiddenError } from "@chartwarden/types";
+import { ForbiddenError, ChartWardenError } from "@chartwarden/types";
 import type { ChannelKind } from "./interfaces/kinds";
 
 /** Who is administering members. Internal/system callers pass the explicit `system` marker — it is

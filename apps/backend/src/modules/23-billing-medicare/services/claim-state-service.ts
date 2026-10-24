@@ -30,7 +30,7 @@ import {
   repositories,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 
 // ── shared DB / actor / port primitives (re-used by the whole M23 service slice) ──────────────────────
 

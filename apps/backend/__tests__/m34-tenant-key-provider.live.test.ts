@@ -184,9 +184,7 @@ describe.skipIf(!DB_URL)("#105 — M34 tenant key provider, LIVE Postgres", () =
     // The platform credential (`DATABASE_PLATFORM_URL`). `chartwarden_admin` holds 0052's tenant_key_ring
     // grants, so it stands in for `chartwarden_platform_login` here (the GAP-097/098 precedent).
     await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'f045_platform'");
-    platformHandle = createDbClient({
-      connectionString: urlAs("chartwarden_admin", "f045_platform"),
-    });
+    platformHandle = createDbClient({ connectionString: urlAs("chartwarden_admin", "f045_platform") });
   }, 240_000);
 
   afterAll(async () => {

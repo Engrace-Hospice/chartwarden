@@ -81,12 +81,8 @@ describe("registerBullMQQueueMetrics", () => {
     registerBullMQQueueMetrics(registry, queues);
 
     const text = await registry.metrics();
-    expect(text).toContain(
-      'chartwarden_bullmq_queue_jobs{queue="care-plan.gates",state="waiting"} 3',
-    );
-    expect(text).toContain(
-      'chartwarden_bullmq_queue_jobs{queue="care-plan.gates",state="active"} 1',
-    );
+    expect(text).toContain('chartwarden_bullmq_queue_jobs{queue="care-plan.gates",state="waiting"} 3');
+    expect(text).toContain('chartwarden_bullmq_queue_jobs{queue="care-plan.gates",state="active"} 1');
     expect(text).toContain(
       'chartwarden_bullmq_queue_jobs{queue="assessment.license",state="failed"} 2',
     );
@@ -178,9 +174,7 @@ describe("registerOutboxMetrics", () => {
       },
       10,
     );
-    expect(await registry.metrics()).toContain(
-      'chartwarden_outbox_events_total{status="delivered"} 5',
-    );
+    expect(await registry.metrics()).toContain('chartwarden_outbox_events_total{status="delivered"} 5');
   });
 
   it("reports pendingDepth via the injected thunk, 0 when omitted (no dispatcher running)", async () => {

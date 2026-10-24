@@ -48,9 +48,7 @@ export function operationOutcome(
         ...(chartwardenCode
           ? {
               details: {
-                coding: [
-                  { system: "https://chartwarden.com/fhir/error-code", code: chartwardenCode },
-                ],
+                coding: [{ system: "https://chartwarden.com/fhir/error-code", code: chartwardenCode }],
               },
             }
           : {}),

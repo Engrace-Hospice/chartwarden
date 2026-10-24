@@ -1,5 +1,3 @@
-import { NotFoundError, UnauthorizedError, ValidationError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 // apps/backend/src/modules/36-messaging/routes/afterhours-triage-routes.ts - ADR-0082 slices S4/S5 (PROPOSED, flag `messaging.afterhours_triage`):
 //
 //   GET /api/v1/messaging/channels/:id/afterhours-triage?message_ids=<uuid,uuid,...>
@@ -11,8 +9,10 @@ import {
   AFTERHOURS_LINES_MAX_MESSAGES,
   type AfterHoursLinesService,
 } from "../afterhours-triage/afterhours-lines";
-import { ChannelParamsSchema, parse } from "./messaging-typebox";
+import { NotFoundError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AfterHoursLinesQuerySchema, AfterHoursLinesResponseSchema } from "./role-send-typebox";
+import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -71,11 +71,7 @@ export function registerAfterHoursTriageRoutes(
       if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
       const { id } = parse(ChannelParamsSchema, request.params);
       const q = parse(AfterHoursLinesQuerySchema, request.query);
-      const out = await deps.service.forChannel(
-        ctx.organizationId,
-        id,
-        parseMessageIds(q.message_ids),
-      );
+      const out = await deps.service.forChannel(ctx.organizationId, id, parseMessageIds(q.message_ids));
       return reply.header("Cache-Control", "no-store").send(out);
     },
   );

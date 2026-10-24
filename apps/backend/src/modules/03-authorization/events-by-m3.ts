@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/03-authorization/events-by-m3.ts — M3's transactional-outbox event catalog
 // contribution (GAP-010; M3 spec §4.5 / M03-F04).
 //
@@ -20,6 +19,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // audit row (which has the field denylist) and deliberately NOT here — an outbox row has no such
 // protection. `targetPatientId` is a reference, not a patient record.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

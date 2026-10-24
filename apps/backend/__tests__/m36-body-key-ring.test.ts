@@ -146,9 +146,7 @@ describe("message body cipher over the ring", () => {
     // biome-ignore lint/performance/noDelete: an env var must be unset, not the string "undefined".
     delete process.env.MESSAGING_ENCRYPTION_KEY;
     try {
-      await expect(noKek.open(ORG_A, legacyRow)).rejects.toThrow(
-        /Message encryption is unavailable/,
-      );
+      await expect(noKek.open(ORG_A, legacyRow)).rejects.toThrow(/Message encryption is unavailable/);
     } finally {
       if (saved !== undefined) process.env.MESSAGING_ENCRYPTION_KEY = saved;
     }

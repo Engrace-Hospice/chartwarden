@@ -25,11 +25,7 @@
 // org id it does not also pin into the session variable. `ai_evaluation_run` is platform-shared: reads
 // on the tenant handle (`ai_evaluation_run_read` is `USING (true)`), writes under the audited bypass.
 import { type DbClient, schema } from "@chartwarden/db";
-import {
-  type PlatformBypassAuditor,
-  withOrgContext,
-  withPlatformContext,
-} from "@chartwarden/tenancy";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
 import type {
   AiEvaluationRunDecision,
   AiEvaluationRunStage,

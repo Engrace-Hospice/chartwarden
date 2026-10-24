@@ -12,24 +12,16 @@ import {
 describe("classifyRecipient", () => {
   const at = new Date("2026-10-23T10:00:00Z");
   it("acknowledged wins over everything else", () => {
-    expect(classifyRecipient({ acknowledgedAt: at, eligible: false, openedAt: null })).toBe(
-      "acknowledged",
-    );
+    expect(classifyRecipient({ acknowledgedAt: at, eligible: false, openedAt: null })).toBe("acknowledged");
   });
   it("a recipient who is no longer active is ineligible, not a silent non-reader", () => {
-    expect(classifyRecipient({ acknowledgedAt: null, eligible: false, openedAt: at })).toBe(
-      "ineligible",
-    );
+    expect(classifyRecipient({ acknowledgedAt: null, eligible: false, openedAt: at })).toBe("ineligible");
   });
   it("opening alone leaves the person pending as 'opened'", () => {
-    expect(classifyRecipient({ acknowledgedAt: null, eligible: true, openedAt: at })).toBe(
-      "opened",
-    );
+    expect(classifyRecipient({ acknowledgedAt: null, eligible: true, openedAt: at })).toBe("opened");
   });
   it("never opened is 'not_opened'", () => {
-    expect(classifyRecipient({ acknowledgedAt: null, eligible: true, openedAt: null })).toBe(
-      "not_opened",
-    );
+    expect(classifyRecipient({ acknowledgedAt: null, eligible: true, openedAt: null })).toBe("not_opened");
   });
 });
 
@@ -38,9 +30,7 @@ describe("createAckBroadcastService.enabled", () => {
   it("is off without a flag reader and when the key is absent or false", async () => {
     expect(await createAckBroadcastService({ db }).enabled("o")).toBe(false);
     for (const flags of [{} as Record<string, boolean>, { [ACK_BROADCAST_FLAG_KEY]: false }]) {
-      expect(
-        await createAckBroadcastService({ db, flags: { forOrg: async () => flags } }).enabled("o"),
-      ).toBe(false);
+      expect(await createAckBroadcastService({ db, flags: { forOrg: async () => flags } }).enabled("o")).toBe(false);
     }
   });
   it("is on only for an explicit true, and is read on every call", async () => {
@@ -72,19 +62,11 @@ describe("ack broadcast routes: flag before parse", () => {
       (req as unknown as { context: unknown }).context = { organizationId: "o", userId: "u" };
     });
     app.setErrorHandler((err, _req, reply) => {
-      void reply
-        .code((err as { statusCode?: number }).statusCode ?? 500)
-        .send({ code: (err as { code?: string }).code });
+      void reply.code((err as { statusCode?: number }).statusCode ?? 500).send({ code: (err as { code?: string }).code });
     });
     registerAckBroadcastRoutes(app, { service });
-    const bad = await app.inject({
-      method: "GET",
-      url: "/api/v1/messaging/announcements/zzz/ack-broadcast?limit=-1",
-    });
-    const ack = await app.inject({
-      method: "POST",
-      url: "/api/v1/messaging/announcements/zzz/ack",
-    });
+    const bad = await app.inject({ method: "GET", url: "/api/v1/messaging/announcements/zzz/ack-broadcast?limit=-1" });
+    const ack = await app.inject({ method: "POST", url: "/api/v1/messaging/announcements/zzz/ack" });
     expect([bad.statusCode, ack.statusCode]).toEqual([404, 404]);
     expect(service.detail).not.toHaveBeenCalled();
     expect(service.acknowledge).not.toHaveBeenCalled();
@@ -115,9 +97,7 @@ describe("ack broadcast routes: unreadable flag fails closed", () => {
       (req as unknown as { context: unknown }).context = { organizationId: "o", userId: "u" };
     });
     app.setErrorHandler((err, _req, reply) => {
-      void reply
-        .code((err as { statusCode?: number }).statusCode ?? 500)
-        .send({ code: (err as { code?: string }).code });
+      void reply.code((err as { statusCode?: number }).statusCode ?? 500).send({ code: (err as { code?: string }).code });
     });
     registerAckBroadcastRoutes(app, { service });
     const res = await app.inject({ method: "GET", url: "/api/v1/messaging/ack-broadcasts" });
@@ -142,17 +122,10 @@ describe("parseDeadline (ADR-0097 D13)", () => {
     expect(parseDeadline(undefined, now)).toBeNull();
   });
   it("accepts an instant between the minimum lead and the maximum horizon", () => {
-    expect(parseDeadline("2026-10-24T10:00:00Z", now)?.toISOString()).toBe(
-      "2026-10-24T10:00:00.000Z",
-    );
+    expect(parseDeadline("2026-10-24T10:00:00Z", now)?.toISOString()).toBe("2026-10-24T10:00:00.000Z");
   });
   it("refuses unparseable, past, too-soon and too-far deadlines with a typed 422", () => {
-    for (const raw of [
-      "tomorrow",
-      "2026-10-23T09:00:00Z",
-      "2026-10-23T10:01:00Z",
-      "2027-06-01T10:00:00Z",
-    ]) {
+    for (const raw of ["tomorrow", "2026-10-23T09:00:00Z", "2026-10-23T10:01:00Z", "2027-06-01T10:00:00Z"]) {
       expect(code(() => parseDeadline(raw, now))).toBe("422:ACK_BROADCAST_DEADLINE_INVALID");
     }
   });
@@ -195,15 +168,10 @@ describe("ack broadcast routes: withdraw is flag-first and creator-keyed", () =>
       (req as unknown as { context: unknown }).context = { organizationId: "o", userId: "u" };
     });
     app.setErrorHandler((err, _req, reply) => {
-      void reply
-        .code((err as { statusCode?: number }).statusCode ?? 500)
-        .send({ code: (err as { code?: string }).code });
+      void reply.code((err as { statusCode?: number }).statusCode ?? 500).send({ code: (err as { code?: string }).code });
     });
     registerAckBroadcastRoutes(app, { service });
-    const off = await app.inject({
-      method: "POST",
-      url: "/api/v1/messaging/announcements/zzz/ack-broadcast/withdraw",
-    });
+    const off = await app.inject({ method: "POST", url: "/api/v1/messaging/announcements/zzz/ack-broadcast/withdraw" });
     expect(off.statusCode).toBe(404);
     expect(withdraw).not.toHaveBeenCalled();
     on = true;

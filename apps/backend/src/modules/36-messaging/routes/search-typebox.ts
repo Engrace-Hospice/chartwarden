@@ -1,10 +1,10 @@
+// apps/backend/src/modules/36-messaging/routes/search-typebox.ts - WP 2.7a in-conversation search schemas.
+import { Type } from "@sinclair/typebox";
 import {
   SEARCH_MAX_PAGE_SIZE,
   SEARCH_MAX_QUERY_LENGTH,
   SEARCH_MAX_SCAN_PER_REQUEST,
 } from "@chartwarden/messaging";
-// apps/backend/src/modules/36-messaging/routes/search-typebox.ts - WP 2.7a in-conversation search schemas.
-import { Type } from "@sinclair/typebox";
 import { ResolvedMessageSchema } from "./messaging-typebox";
 
 /** Lengths only here; the word count and minimum are the service's rule (one 422 code for every bad query). */

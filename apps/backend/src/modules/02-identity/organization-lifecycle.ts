@@ -21,7 +21,7 @@
 import type { AuditContext } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { auditOrganizationTransition } from "./audit/identity-audit";
 
@@ -108,67 +108,63 @@ export function createDrizzleOrganizationLifecycleWriter(
 ): OrganizationLifecycleWriter {
   return {
     async transition(organizationId, event, ctx) {
-      const result = await withOrgContext(
-        db,
-        { organizationId, userId: ctx.actorUserId },
-        async (tx) => {
-          const [row] = await tx
-            .select({ status: schema.organizations.status })
-            .from(schema.organizations)
-            .where(eq(schema.organizations.id, organizationId))
-            .limit(1);
-          if (!row) throw new NotFoundError("organization");
-          const from = row.status as OrganizationLifecycleStatus;
-          const to = nextOrganizationStatus(from, event);
+      const result = await withOrgContext(db, { organizationId, userId: ctx.actorUserId }, async (tx) => {
+        const [row] = await tx
+          .select({ status: schema.organizations.status })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, organizationId))
+          .limit(1);
+        if (!row) throw new NotFoundError("organization");
+        const from = row.status as OrganizationLifecycleStatus;
+        const to = nextOrganizationStatus(from, event);
 
-          await tx
-            .update(schema.organizations)
-            .set({ status: to, updatedAt: new Date() })
-            .where(eq(schema.organizations.id, organizationId));
+        await tx
+          .update(schema.organizations)
+          .set({ status: to, updatedAt: new Date() })
+          .where(eq(schema.organizations.id, organizationId));
 
-          // Sessions ALREADY bound to this org, revoked immediately (§11 D19) — `select-organization`
-          // (identity-routes.ts) is the OTHER half, refusing a fresh bind to a non-active org.
-          let sessionsRevoked = 0;
-          if (event === "suspend" || event === "close") {
-            const deleted = await tx
-              .delete(schema.sessions)
-              .where(eq(schema.sessions.activeOrganizationId, organizationId))
-              .returning({ id: schema.sessions.id });
-            sessionsRevoked = deleted.length;
-          }
+        // Sessions ALREADY bound to this org, revoked immediately (§11 D19) — `select-organization`
+        // (identity-routes.ts) is the OTHER half, refusing a fresh bind to a non-active org.
+        let sessionsRevoked = 0;
+        if (event === "suspend" || event === "close") {
+          const deleted = await tx
+            .delete(schema.sessions)
+            .where(eq(schema.sessions.activeOrganizationId, organizationId))
+            .returning({ id: schema.sessions.id });
+          sessionsRevoked = deleted.length;
+        }
 
-          const occurredAt = new Date().toISOString();
-          const auditCtx: AuditContext = {
+        const occurredAt = new Date().toISOString();
+        const auditCtx: AuditContext = {
+          organizationId,
+          userId: ctx.actorUserId,
+          actorKind: "user",
+          correlationId: `m2-org-lifecycle-${organizationId}-${occurredAt}`,
+        };
+        await auditOrganizationTransition(tx, auditCtx, {
+          eventType: AUDIT_EVENT_FOR[event],
+          organizationId,
+          fromStatus: from,
+          toStatus: to,
+          reason: ctx.reason,
+          sessionsRevoked,
+        });
+
+        await outbox?.publish(tx, {
+          eventName: OUTBOX_EVENT_FOR[event],
+          payload: {
             organizationId,
-            userId: ctx.actorUserId,
-            actorKind: "user",
-            correlationId: `m2-org-lifecycle-${organizationId}-${occurredAt}`,
-          };
-          await auditOrganizationTransition(tx, auditCtx, {
-            eventType: AUDIT_EVENT_FOR[event],
-            organizationId,
-            fromStatus: from,
-            toStatus: to,
             reason: ctx.reason,
-            sessionsRevoked,
-          });
+            actorMembershipId: ctx.actorMembershipId,
+            occurredAt,
+          },
+          organizationId,
+          aggregateKind: "organization",
+          aggregateId: organizationId,
+        });
 
-          await outbox?.publish(tx, {
-            eventName: OUTBOX_EVENT_FOR[event],
-            payload: {
-              organizationId,
-              reason: ctx.reason,
-              actorMembershipId: ctx.actorMembershipId,
-              occurredAt,
-            },
-            organizationId,
-            aggregateKind: "organization",
-            aggregateId: organizationId,
-          });
-
-          return { status: to, sessionsRevoked };
-        },
-      );
+        return { status: to, sessionsRevoked };
+      });
       onTransitioned?.(organizationId);
       return result;
     },

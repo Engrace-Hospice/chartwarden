@@ -1,5 +1,3 @@
-import type { DbClient } from "@chartwarden/db";
-import type { OrmRequestedPayload } from "@chartwarden/types";
 // apps/backend/src/modules/11-orders/orm-request/orm-requested.ts — the PRODUCER side of
 // `m11.order.hl7_orm_requested` (F-181, #248).
 //
@@ -45,6 +43,8 @@ import type { OrmRequestedPayload } from "@chartwarden/types";
 // cannot be collected without them). It deliberately does NOT carry `clinicalJustification` or `notes`: both
 // are free text, routinely holding diagnoses, and neither is needed to run the test.
 import { Value } from "@sinclair/typebox/value";
+import type { DbClient } from "@chartwarden/db";
+import type { OrmRequestedPayload } from "@chartwarden/types";
 import { ormRequestedPayloadSchema } from "../events-by-m11";
 import type { OrmOutboundEvidence } from "./orm-resend";
 

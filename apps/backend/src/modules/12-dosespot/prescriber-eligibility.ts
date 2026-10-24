@@ -2,7 +2,7 @@
 // eligibility matrix, in its own leaf module so BOTH the §4.7 ABAC predicate resolver (abac-predicates.ts)
 // and the route service (routes/service.ts) can import it without a circular dependency (the service injects
 // its `DoseSpotAbacResolver` type into abac-predicates, so the eligibility primitive must live below both).
-import { ChartWardenError, type MedClass } from "@chartwarden/types";
+import { type MedClass, ChartWardenError } from "@chartwarden/types";
 
 /** The disciplines eligible to author a non-controlled medication order (RN drafting-on-behalf included). */
 export const PRESCRIBE_DISCIPLINES: ReadonlySet<string> = new Set([

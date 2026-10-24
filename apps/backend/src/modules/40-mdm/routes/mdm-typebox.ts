@@ -1,12 +1,3 @@
-import { MDM_ENTITY_KINDS } from "@chartwarden/mdm";
-import type {
-  BaaRegisterEntry as ServiceBaaRegisterEntry,
-  MdmEntityKind as ServiceMdmEntityKind,
-  MdmResolved as ServiceMdmResolved,
-  MergeRequestRow as ServiceMergeRequestRow,
-  NppesSyncRun as ServiceNppesSyncRun,
-} from "@chartwarden/mdm";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/40-mdm/routes/mdm-typebox.ts — M40-T07 TypeBox route schemas for the
 // MDM API surface (M40 spec §4.1–4.2). Named `mdm-typebox` (not `*schema*`) so the table-ownership
 // import heuristic never mistakes a TypeBox-schema import for a Drizzle one.
@@ -18,6 +9,15 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { MDM_ENTITY_KINDS } from "@chartwarden/mdm";
+import type {
+  BaaRegisterEntry as ServiceBaaRegisterEntry,
+  MdmEntityKind as ServiceMdmEntityKind,
+  MdmResolved as ServiceMdmResolved,
+  MergeRequestRow as ServiceMergeRequestRow,
+  NppesSyncRun as ServiceNppesSyncRun,
+} from "@chartwarden/mdm";
+import { ValidationError } from "@chartwarden/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

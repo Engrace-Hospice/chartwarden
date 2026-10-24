@@ -1,4 +1,4 @@
-import { ChartWardenError, DegradedError } from "@chartwarden/types";
+import { DegradedError, ChartWardenError } from "@chartwarden/types";
 import { DrizzleQueryError } from "drizzle-orm/errors";
 // TASK-065 (API-009) — the M1 Fastify error handler. Proves the ONE-envelope contract holds across
 // three error shapes: a thrown ChartWardenError, a Fastify framework error (malformed JSON — previously

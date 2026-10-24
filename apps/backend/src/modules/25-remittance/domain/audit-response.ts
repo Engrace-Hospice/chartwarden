@@ -98,8 +98,7 @@ export function checkAuditSignOff(input: {
 }): AuditSignOffRefusal | null {
   if (input.alreadySignedOff) return "ALREADY_SIGNED_OFF";
   if (input.reviewerMembershipId === input.assemblerMembershipId) return "REVIEWER_IS_ASSEMBLER";
-  if (input.preparerMembershipIds.includes(input.reviewerMembershipId))
-    return "REVIEWER_IS_PREPARER";
+  if (input.preparerMembershipIds.includes(input.reviewerMembershipId)) return "REVIEWER_IS_PREPARER";
   const ready = checkReadyForReview(input);
   if (ready) return ready;
   // Deadlines and the attestation freeze at sign-off, so a sign-off without either could never be filed.

@@ -29,7 +29,6 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
-  ChartWardenError,
   type IsoInstant,
   NotFoundError,
   SAFETY_SOS_OPEN_STATES,
@@ -51,6 +50,7 @@ import {
   type SafetySosLifecycleState,
   type SafetySosOutcome,
   type SafetySubscriptionScopeKind,
+  ChartWardenError,
 } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { ACTIVE_SOS_RESPONDER_STATES, decideSafetySupervisorOrAbove } from "../abac-predicates";

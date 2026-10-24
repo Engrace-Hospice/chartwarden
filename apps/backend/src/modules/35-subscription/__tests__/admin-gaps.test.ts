@@ -1,3 +1,4 @@
+import { Value } from "@sinclair/typebox/value";
 /**
  * M35A-T03 — §5.2 backend gap-closure.
  *
@@ -14,7 +15,6 @@ import {
   M35_CONTRIBUTED_PERMISSIONS,
   rolesForPermission,
 } from "@chartwarden/auth";
-import { Value } from "@sinclair/typebox/value";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { organizationReaderDenyStub } from "../../../bootstrap/seams/providers";

@@ -98,7 +98,7 @@ export const messageFamilyContacts = pgTable(
       name: "message_family_contact_channel_fk",
       columns: [t.organizationId, t.channelId],
       foreignColumns: [channels.organizationId, channels.id],
-    }).onDelete("restrict"),
+    }).onDelete("set null"),
     patientIdx: index("message_family_contact_patient_idx").on(t.organizationId, t.patientId),
     createdByIdx: index("message_family_contact_created_by_idx").on(t.createdBy),
     closedByIdx: index("message_family_contact_closed_by_idx")

@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/40-mdm/events-by-m40.ts — Module 40's outbox-event contributions
 // (M40 §7.11, added by GAP-099).
 //
@@ -20,6 +19,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // forever, while declaring none means the row IS the durable record and dispatches immediately. M23 adds
 // itself here in the same diff that binds the handler.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 export const M40_OUTBOX_EVENTS: ModuleEventContribution = [
   {

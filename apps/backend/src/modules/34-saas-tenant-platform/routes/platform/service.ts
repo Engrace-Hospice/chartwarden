@@ -12,7 +12,7 @@
 //     the live BullMQ worker construction + the real lifecycle-transition wiring is Phase 2D (the TODO at
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
-import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
+import { NotFoundError, type OrgId, ChartWardenError } from "@chartwarden/types";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
@@ -912,11 +912,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       const grant = grants.get(args.supportConsentGrantId);
       // §7.4 step 3 — the grant must exist + be active.
       if (!grant)
-        throw new ChartWardenError(
-          "SUPPORT_GRANT_NOT_FOUND",
-          "support_consent_grant not found",
-          404,
-        );
+        throw new ChartWardenError("SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found", 404);
       if (grant.expiresAt <= now()) {
         throw new ChartWardenError(
           "SUPPORT_GRANT_INACTIVE",

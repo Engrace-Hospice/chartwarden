@@ -231,9 +231,7 @@ export async function effectivelyVisibleChannels<T extends EffectiveChannelAcces
   ];
   const automaticPatientIds = new Set(
     candidates.flatMap((candidate) =>
-      isPatientSubjectKind(candidate.kind) &&
-      candidate.memberSource === "auto" &&
-      candidate.subjectId
+      isPatientSubjectKind(candidate.kind) && candidate.memberSource === "auto" && candidate.subjectId
         ? [candidate.subjectId]
         : [],
     ),

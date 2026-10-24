@@ -20,9 +20,7 @@ describe("live-suite canonical role list", () => {
       const roleRenames = f.startsWith("1139_")
         ? (/FOREACH pair SLICE 1 IN ARRAY ARRAY\[([^;]*?)\]\s*LOOP/.exec(sql)?.[1] ?? "")
         : "";
-      for (const m of roleRenames.matchAll(
-        /'(wardenx_[a-z0-9_]+)',\s*'(chartwarden_[a-z0-9_]+)'/g,
-      )) {
+      for (const m of roleRenames.matchAll(/'(wardenx_[a-z0-9_]+)',\s*'(chartwarden_[a-z0-9_]+)'/g)) {
         created.add(m[1] as string);
         created.add(m[2] as string);
       }

@@ -23,18 +23,12 @@ import { escalationRouterDenyStub } from "../src/bootstrap/seams/providers";
 import { guardEscalationRouter } from "../src/modules/36-messaging/ack-escalation/escalation-router-guard";
 import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
-import { createAfterHoursLinesService } from "../src/modules/36-messaging/afterhours-triage/afterhours-lines";
 import { buildAfterHoursTriageBinding } from "../src/modules/36-messaging/afterhours-triage/binding";
+import { createAfterHoursLinesService } from "../src/modules/36-messaging/afterhours-triage/afterhours-lines";
 import { createRoleSendService } from "../src/modules/36-messaging/oncall-directory/role-send-service";
 import { buildM36AfterHoursOutcomeConsumer } from "../src/modules/36-messaging/outbox-consumers/afterhours-outcome";
 import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
-import {
-  type LiveKit,
-  STAFF_KEYS,
-  bootLiveKit,
-  catalogOutbox,
-  mkChannel,
-} from "./_m36-handoff-live-kit";
+import { type LiveKit, STAFF_KEYS, bootLiveKit, catalogOutbox, mkChannel } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a820001";
@@ -103,9 +97,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       flags: { forOrg: async () => flags },
       outbox: catalogOutbox() as never,
       permissionsFor: async (_o: string, u: string) => new Set(keysOf.get(u) ?? []),
-      part2Gate: {
-        allowedUserIds: async ({ userIds }: { userIds: readonly string[] }) => new Set(userIds),
-      },
+      part2Gate: { allowedUserIds: async ({ userIds }: { userIds: readonly string[] }) => new Set(userIds) },
       careTeamMembers: async () => [sender, rn],
     };
     const ack = buildAckDeps({ ...shared, messaging: kit.service });
@@ -188,10 +180,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
     keysOf.set(sender, SEND_KEYS);
     keysOf.set(rn, RECEIVE_KEYS);
     channel = await mkChannel(kit, "care_team", PATIENT, [sender, rn]);
-    otherChannel = await mkChannel(kit, "care_team", "aaaaaaaa-aaaa-4aaa-8aaa-0000000a82a2", [
-      sender,
-      rn,
-    ]);
+    otherChannel = await mkChannel(kit, "care_team", "aaaaaaaa-aaaa-4aaa-8aaa-0000000a82a2", [sender, rn]);
     router = covered();
   }, 120_000);
   afterAll(async () => {
@@ -224,25 +213,16 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
     const link = await linkOf(res.message_id);
     expect(link).toMatchObject({ outcome: null, triage_call_id: null });
     const event = (
-      await kit.one<{
-        id: string;
-        organization_id: string;
-        payload: Record<string, unknown>;
-        aggregate_id: string;
-      }>("SELECT id, organization_id, payload, aggregate_id FROM outbox_event WHERE id=$1", [
-        link.source_outbox_event_id,
-      ])
+      await kit.one<{ id: string; organization_id: string; payload: Record<string, unknown>; aggregate_id: string }>(
+        "SELECT id, organization_id, payload, aggregate_id FROM outbox_event WHERE id=$1",
+        [link.source_outbox_event_id],
+      )
     )[0];
     expect(event).toBeDefined();
     expect(event.organization_id).toBe(ORG_A);
     expect(event.aggregate_id).toBe(res.message_id);
     // Ids and one instant, nothing else: no text, no name, no organization in the payload.
-    expect(Object.keys(event.payload).sort()).toEqual([
-      "messageId",
-      "occurredAt",
-      "patientId",
-      "requestId",
-    ]);
+    expect(Object.keys(event.payload).sort()).toEqual(["messageId", "occurredAt", "patientId", "requestId"]);
     expect(event.payload).toMatchObject({
       messageId: res.message_id,
       requestId: link.request_id,
@@ -307,10 +287,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
         throw new Error("store down");
       },
     };
-    await expect(send()).rejects.toMatchObject({
-      statusCode: 503,
-      code: "ROLE_SEND_LOOKUP_FAILED",
-    });
+    await expect(send()).rejects.toMatchObject({ statusCode: 503, code: "ROLE_SEND_LOOKUP_FAILED" });
     const resolution = await wire().roleSend.resolve(
       { orgId: ORG_A, userId: sender },
       { channelId: channel, patientId: PATIENT, role: "rn" },
@@ -344,44 +321,26 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       ]);
 
       const call = randomUUID();
-      const answer = {
-        sourceOutboxEventId: link.source_outbox_event_id,
-        triageCallId: call,
-        outcome: "opened",
-      };
+      const answer = { sourceOutboxEventId: link.source_outbox_event_id, triageCallId: call, outcome: "opened" };
       await consumer().handle(outcomeEvent(answer));
-      expect(await linkOf(res.message_id)).toMatchObject({
-        outcome: "opened",
-        triage_call_id: call,
-      });
-      expect((await lines(ORG_A, channel, [res.message_id])).lines[0]).toMatchObject({
-        state: "opened",
-      });
+      expect(await linkOf(res.message_id)).toMatchObject({ outcome: "opened", triage_call_id: call });
+      expect((await lines(ORG_A, channel, [res.message_id])).lines[0]).toMatchObject({ state: "opened" });
 
       // Redelivery converges; a DIFFERENT second answer throws and changes nothing.
       await consumer().handle(outcomeEvent(answer));
       await expect(
         consumer().handle(outcomeEvent({ ...answer, triageCallId: null, outcome: "no_coverage" })),
       ).rejects.toThrow(/conflict/);
-      expect(await linkOf(res.message_id)).toMatchObject({
-        outcome: "opened",
-        triage_call_id: call,
-      });
+      expect(await linkOf(res.message_id)).toMatchObject({ outcome: "opened", triage_call_id: call });
     });
 
     it("an unknown source id and a malformed payload throw (dead-letter), and write nothing", async () => {
       await expect(
         consumer().handle(
-          outcomeEvent({
-            sourceOutboxEventId: randomUUID(),
-            triageCallId: randomUUID(),
-            outcome: "opened",
-          }),
+          outcomeEvent({ sourceOutboxEventId: randomUUID(), triageCallId: randomUUID(), outcome: "opened" }),
         ),
       ).rejects.toThrow(/unknown/);
-      await expect(consumer().handle(outcomeEvent({ outcome: "opened" }))).rejects.toThrow(
-        /malformed/,
-      );
+      await expect(consumer().handle(outcomeEvent({ outcome: "opened" }))).rejects.toThrow(/malformed/);
     });
 
     it("another tenant's envelope cannot fill this tenant's link", async () => {
@@ -390,11 +349,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       await expect(
         consumer().handle(
           outcomeEvent(
-            {
-              sourceOutboxEventId: link.source_outbox_event_id,
-              triageCallId: randomUUID(),
-              outcome: "opened",
-            },
+            { sourceOutboxEventId: link.source_outbox_event_id, triageCallId: randomUUID(), outcome: "opened" },
             ORG_B,
           ),
         ),
@@ -406,11 +361,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       const res = await send();
       const link = await linkOf(res.message_id);
       await consumer().handle(
-        outcomeEvent({
-          sourceOutboxEventId: link.source_outbox_event_id,
-          triageCallId: null,
-          outcome: "no_coverage",
-        }),
+        outcomeEvent({ sourceOutboxEventId: link.source_outbox_event_id, triageCallId: null, outcome: "no_coverage" }),
       );
       const unanswered = await send();
       restricted = true;
@@ -420,27 +371,22 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       expect(withheld).toMatchObject({ state: "withheld" });
       expect(withheld?.text).not.toMatch(/coverage|opened/i);
       // An unanswered request reads the same in a restricted channel: a member cannot tell that a triage request exists.
-      expect(both.find((l) => l.message_id === unanswered.message_id)).toMatchObject({
-        state: "withheld",
-      });
+      expect(both.find((l) => l.message_id === unanswered.message_id)).toMatchObject({ state: "withheld" });
 
       // A soft-deleted message carries no line.
       await kit.one(
         "UPDATE message_acknowledgment_request SET status='cancelled', cancelled_at=now(), version=version+1 WHERE message_id=$1 RETURNING id",
         [unanswered.message_id],
       );
-      await kit.one(
-        "UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1 RETURNING id",
-        [unanswered.message_id],
-      );
+      await kit.one("UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1 RETURNING id", [
+        unanswered.message_id,
+      ]);
       expect((await lines(ORG_A, channel, [unanswered.message_id])).lines).toEqual([]);
 
       expect((await lines(ORG_A, otherChannel, [res.message_id])).lines).toEqual([]);
       expect((await lines(ORG_B, channel, [res.message_id])).lines).toEqual([]);
       flags = { ...FLAGS_ON, "messaging.afterhours_triage": false };
-      await expect(lines(ORG_A, channel, [res.message_id])).rejects.toMatchObject({
-        statusCode: 404,
-      });
+      await expect(lines(ORG_A, channel, [res.message_id])).rejects.toMatchObject({ statusCode: 404 });
       flags = { ...FLAGS_ON };
     });
   });

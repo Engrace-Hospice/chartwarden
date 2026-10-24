@@ -1,9 +1,9 @@
-import { M7_EVENT_NAMES } from "@chartwarden/types";
 // apps/backend/__tests__/care-plan-outbox-jobs.test.ts — M7-T07 (§2.4 outbox contract + §7.1/§7.2 gate
 // scans + §4.6 job catalog). Locks the full `m7.*` event catalog (naming/ownership/consumers, the same
 // invariants arch:gaps enforces) against M7_EVENT_NAMES, the org-tz due-date clock (gate-clock), and the
 // two pure gate scans for emission + idempotency.
 import { Value } from "@sinclair/typebox/value";
+import { M7_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type CarePlanGateSnapshot,

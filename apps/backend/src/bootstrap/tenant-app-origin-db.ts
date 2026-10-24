@@ -4,8 +4,8 @@
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
-import { type TenantAppOrigin, createTenantAppOrigin } from "./tenant-app-origin";
 import { parseTenantBaseDomain } from "./tenant-host";
+import { type TenantAppOrigin, createTenantAppOrigin } from "./tenant-app-origin";
 
 type EnvLike = Record<string, string | undefined>;
 
@@ -25,9 +25,7 @@ export function createDbTenantAppOrigin(db: DbClient, env: EnvLike = process.env
     portalOverride: env.PORTAL_APP_URL,
     async slugForOrg(organizationId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const result = await tx.execute(
-          sql`SELECT slug FROM organization WHERE id = ${organizationId}::uuid`,
-        );
+        const result = await tx.execute(sql`SELECT slug FROM organization WHERE id = ${organizationId}::uuid`);
         const row = (result as unknown as { rows?: { slug: string }[] }).rows?.[0];
         return row?.slug ?? null;
       });

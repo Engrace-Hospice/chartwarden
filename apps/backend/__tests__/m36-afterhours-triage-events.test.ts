@@ -28,13 +28,10 @@ describe("m36.afterhours_triage.requested catalog entry", () => {
     }
   });
 
-  it.each(["messageId", "requestId", "patientId", "occurredAt"])(
-    "rejects a payload missing %s",
-    (key) => {
-      const { [key]: _omitted, ...rest } = valid as Record<string, string>;
-      expect(check(rest)).toBe(false);
-    },
-  );
+  it.each(["messageId", "requestId", "patientId", "occurredAt"])("rejects a payload missing %s", (key) => {
+    const { [key]: _omitted, ...rest } = valid as Record<string, string>;
+    expect(check(rest)).toBe(false);
+  });
 
   it("rejects non-uuid ids", () => {
     expect(check({ ...valid, patientId: "not-a-uuid" })).toBe(false);

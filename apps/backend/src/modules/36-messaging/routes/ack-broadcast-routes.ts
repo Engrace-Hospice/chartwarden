@@ -44,10 +44,7 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 const ANNOUNCE = requirePermission("messaging.announce") as PreHandler;
 const READ = requirePermission("messaging.read") as PreHandler;
 
-export function registerAckBroadcastRoutes(
-  app: FastifyInstance,
-  deps: AckBroadcastRouteDeps,
-): void {
+export function registerAckBroadcastRoutes(app: FastifyInstance, deps: AckBroadcastRouteDeps): void {
   const { service } = deps;
   /** Flag off (or unreadable) => the uniform 404, before anything is parsed. */
   const flagOn: PreHandler = async (request) => {
@@ -141,9 +138,7 @@ export function registerAckBroadcastRoutes(
     {
       preHandler: guards(READ),
       schema: { response: { 200: AckBroadcastMineSchema } },
-      config: {
-        auditRead: { none: "the caller's own acknowledgment list: ids and instants only" },
-      },
+      config: { auditRead: { none: "the caller's own acknowledgment list: ids and instants only" } },
     },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);

@@ -1,3 +1,7 @@
+// apps/backend/src/modules/36-messaging/routes/promotion-typebox.ts - WP 3.7 chart-promotion schemas (request + OpenAPI response).
+// The target pair is a closed enum (ADR-0063 D2): there is no order, medication or prescribing literal anywhere in it.
+// The DTO carries no message text and no body hash: a promotion is a pointer plus attribution.
+import { type TSchema, Type } from "@sinclair/typebox";
 import {
   CHART_PROMOTION_ACTIONS,
   CHART_PROMOTION_REASON_CODES,
@@ -5,10 +9,6 @@ import {
   CHART_PROMOTION_TARGET_KINDS,
   CHART_PROMOTION_TARGET_MODULES,
 } from "@chartwarden/types";
-// apps/backend/src/modules/36-messaging/routes/promotion-typebox.ts - WP 3.7 chart-promotion schemas (request + OpenAPI response).
-// The target pair is a closed enum (ADR-0063 D2): there is no order, medication or prescribing literal anywhere in it.
-// The DTO carries no message text and no body hash: a promotion is a pointer plus attribution.
-import { type TSchema, Type } from "@sinclair/typebox";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

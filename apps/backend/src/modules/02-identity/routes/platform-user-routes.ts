@@ -27,7 +27,7 @@
 // them; the revoked ids ride on the audit row instead.
 import type { AuditContext } from "@chartwarden/audit";
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditUserDeactivated } from "../audit/identity-audit";
 import type { IdentityRouteDeps } from "../identity-ports";

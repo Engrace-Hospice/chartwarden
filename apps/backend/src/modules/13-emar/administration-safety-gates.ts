@@ -15,9 +15,9 @@ import {
   assertFiveRights,
 } from "@chartwarden/emar";
 import {
-  ChartWardenError,
   type ErrorDetailType,
   type PatientWristbandVerifier,
+  ChartWardenError,
   type WristbandVerdict,
   type WristbandVerdictStatus,
 } from "@chartwarden/types";

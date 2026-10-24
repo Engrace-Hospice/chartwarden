@@ -20,11 +20,7 @@ export const AckBroadcastParamsSchema = Type.Object({
 export const AckBroadcastDetailQuerySchema = Type.Object({
   filter: Type.Optional(literals(ACK_BROADCAST_FILTERS)),
   limit: Type.Optional(
-    Type.Integer({
-      minimum: 1,
-      maximum: ACK_BROADCAST_PAGE_MAX,
-      default: ACK_BROADCAST_PAGE_DEFAULT,
-    }),
+    Type.Integer({ minimum: 1, maximum: ACK_BROADCAST_PAGE_MAX, default: ACK_BROADCAST_PAGE_DEFAULT }),
   ),
   offset: Type.Optional(Type.Integer({ minimum: 0, maximum: 100_000 })),
 });
@@ -64,9 +60,7 @@ export const AckBroadcastWithdrawnSchema = Type.Object({
   ...SummaryProps,
   already: Type.Boolean(),
 });
-export const AckBroadcastListSchema = Type.Object({
-  broadcasts: Type.Array(AckBroadcastSummarySchema),
-});
+export const AckBroadcastListSchema = Type.Object({ broadcasts: Type.Array(AckBroadcastSummarySchema) });
 export const AckBroadcastDetailSchema = Type.Object({
   ...SummaryProps,
   filter: literals(ACK_BROADCAST_FILTERS),

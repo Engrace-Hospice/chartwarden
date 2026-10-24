@@ -11,7 +11,7 @@
 // `receipt_amendments`. No outbox events (nothing consumes them); the write-audit trigger and the rows are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   type AmendmentRefusal,

@@ -23,7 +23,6 @@
 // only; it never moves a boundary. Pure read: no write, no outbox.
 import { isKnownTimeZone, parseStrictInstant } from "@chartwarden/messaging";
 import {
-  ChartWardenError,
   ESCALATION_MAX_TIER,
   type EscalationRank,
   type EscalationRouteAnswer,
@@ -36,6 +35,7 @@ import {
   type OncallShiftDiscipline,
   type OrgId,
   type ProviderEntityId,
+  ChartWardenError,
 } from "@chartwarden/types";
 import {
   type OncallSeamOrgResolver,

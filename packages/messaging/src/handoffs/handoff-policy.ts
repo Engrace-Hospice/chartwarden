@@ -2,10 +2,10 @@
 // ceiling, a tenant may only SHORTEN it. `effectiveHandoffMinutes` re-applies the bounds on EVERY read, so a stored value
 // written under an older ceiling, or edited in the database, can never loosen the current one. PROVISIONAL numbers.
 import {
-  ChartWardenError,
   HANDOFF_EXPIRY_MIN_MINUTES,
   HANDOFF_EXPIRY_PLATFORM_MINUTES,
   type HandoffPolicyView,
+  ChartWardenError,
 } from "@chartwarden/types";
 
 /** The minutes in force: the platform ceiling, tightened by the stored row (when there is one). */

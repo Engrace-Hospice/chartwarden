@@ -53,11 +53,11 @@ function m34DsarDeriveTenantBucket(organizationId: string): string {
   return `tenant-${organizationId}`;
 }
 
-import type { InvitationDeliveryPort } from "./invitation-token";
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
-import { type ProvisionJobPort, createProvisionJobPort } from "./jobs/provision-job-port";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
 import type { TenantPlatformRouteService } from "./routes/platform/service";
+import type { InvitationDeliveryPort } from "./invitation-token";
+import { type ProvisionJobPort, createProvisionJobPort } from "./jobs/provision-job-port";
 import type { EnqueuePort as PlatformEnqueuePort } from "./routes/platform/service";
 import {
   type DrizzleTenantPlatformDeps,

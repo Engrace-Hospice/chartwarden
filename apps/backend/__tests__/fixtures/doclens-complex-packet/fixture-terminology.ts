@@ -2,11 +2,7 @@
 // the loaded M38 tables) covering every code an OCR reading in this packet can resolve to.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type {
-  CodingTerminology,
-  IcdCodeFacts,
-  IcdDeprecation,
-} from "@chartwarden/intake-extraction";
+import type { CodingTerminology, IcdCodeFacts, IcdDeprecation } from "@chartwarden/intake-extraction";
 
 interface Row extends IcdCodeFacts {
   readonly version: string;

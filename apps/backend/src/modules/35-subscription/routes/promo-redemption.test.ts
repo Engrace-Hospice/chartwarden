@@ -1,7 +1,7 @@
 // M35 (GAP-099) — promo redemption: window + cap enforced, count incremented in the same tx, 23505 -> 409.
 // The tx is a recording fake of the drizzle chain: it proves ORDER (lock first, insert, then increment)
 // and which statements run; the live proof of the row lock itself belongs to the central DB pass.
-import { type ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, NotFoundError, type ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { assertPromoRedeemable, redeemPromoInTx } from "./promo-redemption";
 

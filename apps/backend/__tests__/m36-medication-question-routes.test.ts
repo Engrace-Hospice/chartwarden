@@ -18,10 +18,10 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import {
-  ChartWardenError,
   type MedicationQuestionOptions,
   type MedicationQuestionResponse,
   NotFoundError,
+  ChartWardenError,
 } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

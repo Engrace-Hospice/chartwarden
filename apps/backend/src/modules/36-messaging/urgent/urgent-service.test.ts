@@ -410,10 +410,7 @@ describe("the after-hours request hook (ADR-0082)", () => {
 
   it("does nothing while its flag is off, and the send still goes", async () => {
     const calls: unknown[][] = [];
-    const { service, sends } = setup({
-      tracker: tracked,
-      afterHours: port(async () => false, calls),
-    });
+    const { service, sends } = setup({ tracker: tracked, afterHours: port(async () => false, calls) });
     const res = await service.send(
       actor,
       input({ roleAddressed: "rn", requestTriageCall: true }),
@@ -439,17 +436,9 @@ describe("the after-hours request hook (ADR-0082)", () => {
     const calls: unknown[][] = [];
     const { service, sends } = setup({
       tracker: tracked,
-      afterHours: port(
-        async () => true,
-        calls,
-        async () => true,
-      ),
+      afterHours: port(async () => true, calls, async () => true),
     });
-    const res = await service.send(
-      actor,
-      input({ roleAddressed: "rn", requestTriageCall: true }),
-      noLinks,
-    );
+    const res = await service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks);
     expect(res.created).toBe(true);
     expect(sends).toHaveLength(1);
     expect(calls).toEqual([]);
@@ -459,11 +448,7 @@ describe("the after-hours request hook (ADR-0082)", () => {
     const calls: unknown[][] = [];
     const { service, sends } = setup({
       tracker: tracked,
-      afterHours: port(
-        async () => true,
-        calls,
-        () => Promise.reject(new Error("seam down")),
-      ),
+      afterHours: port(async () => true, calls, () => Promise.reject(new Error("seam down"))),
     });
     await service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks);
     expect(sends).toHaveLength(1);

@@ -10,8 +10,8 @@
 // tests can exercise both the entitled and the redacted paths.
 import type {
   CarePlanCodeUsageRecord,
-  CarePlanId,
   ClinicalLinkSummary,
+  CarePlanId,
   IsoInstant,
   PatientId,
   RelevantGoal,

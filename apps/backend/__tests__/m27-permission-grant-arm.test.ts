@@ -20,11 +20,7 @@
 // *check* a permission rather than gate on it") and states an assembled `AbacContext` is a valid
 // argument. Nothing needed stamping on the request: the resolver is TTL-cached per (org, user) and
 // the route's own `requirePermission` preHandler has already resolved the same set.
-import {
-  type AbacContext,
-  resetRbacEngine,
-  setEffectivePermissionResolver,
-} from "@chartwarden/auth";
+import { type AbacContext, resetRbacEngine, setEffectivePermissionResolver } from "@chartwarden/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type ReadingM27AbacResolver,

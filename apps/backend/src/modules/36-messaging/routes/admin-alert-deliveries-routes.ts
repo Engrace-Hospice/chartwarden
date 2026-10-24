@@ -1,3 +1,4 @@
+import { type Static, Type } from "@sinclair/typebox";
 // apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes.ts — M36 spec §4.1
 // `GET /api/v1/admin/messaging/alert-deliveries` (`messaging.admin.read`, platform-ops: "failures and audit drill"),
 // GAP-165.
@@ -15,7 +16,6 @@
 import { type AbacContext, registerPredicateIdempotent, requireAbac } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import { UnauthorizedError, ValidationError } from "@chartwarden/types";
-import { type Static, Type } from "@sinclair/typebox";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "./messaging-typebox";

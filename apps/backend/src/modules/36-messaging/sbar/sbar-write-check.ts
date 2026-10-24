@@ -3,7 +3,7 @@
 // A body without an sbar block is untouched (no policy read). The rules themselves are the pure `assertSbarWrite`
 // (@chartwarden/messaging), shared with the in-memory twin; the flag check is the route's (it needs no database).
 import { assertSbarWrite, effectiveSbarPolicy, isSbarBody } from "@chartwarden/messaging";
-import { ChartWardenError, type RichBody } from "@chartwarden/types";
+import { type RichBody, ChartWardenError } from "@chartwarden/types";
 import type { Tx } from "../messaging-write-core";
 import { readSbarPolicyInTx } from "./sbar-policy-store-db";
 

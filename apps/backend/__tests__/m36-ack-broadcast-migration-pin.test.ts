@@ -10,9 +10,7 @@ const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const sql = flat(read("packages/db/migrations/1200_m36_ack_broadcast.sql"));
-const sql1202 = flat(
-  read("packages/db/migrations/1202_m36_ack_broadcast_withdraw_deadline_death_board_stall.sql"),
-);
+const sql1202 = flat(read("packages/db/migrations/1202_m36_ack_broadcast_withdraw_deadline_death_board_stall.sql"));
 const schema = flat(read("packages/db/src/schema/messaging/message-ack-broadcast.ts"));
 const TABLES = ["message_ack_broadcast", "message_ack_broadcast_recipient"] as const;
 
@@ -20,12 +18,8 @@ describe("migration 1200 acknowledge-required broadcast", () => {
   it("both tables are FORCEd, org-isolated, three-column, in the manifest (.ts and .cjs) and the Drizzle schema", () => {
     for (const t of TABLES) {
       expect(sql).toContain(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`);
-      expect(sql).toContain(
-        `CREATE POLICY "${t}_org_isolation" ON "${t}" FOR ALL TO chartwarden_app`,
-      );
-      expect(sql).toContain(
-        `CREATE TABLE "${t}" ( "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "organization_id" uuid NOT NULL`,
-      );
+      expect(sql).toContain(`CREATE POLICY "${t}_org_isolation" ON "${t}" FOR ALL TO chartwarden_app`);
+      expect(sql).toContain(`CREATE TABLE "${t}" ( "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "organization_id" uuid NOT NULL`);
       expect(schema).toContain(`"${t}"`);
       expect(sql).toContain(`trg_audit_${t}`);
       for (const f of ["architecture/module-manifest.ts", "architecture/module-manifest.cjs"]) {
@@ -37,9 +31,7 @@ describe("migration 1200 acknowledge-required broadcast", () => {
   it("the app role never deletes, never updates a broadcast, and updates only the acknowledgment instant", () => {
     expect(sql).not.toMatch(/GRANT [^;]*DELETE/);
     expect(sql).toContain(`GRANT SELECT, INSERT ON "message_ack_broadcast" TO chartwarden_app`);
-    expect(sql).toContain(
-      `GRANT UPDATE ("acknowledged_at") ON "message_ack_broadcast_recipient" TO chartwarden_app`,
-    );
+    expect(sql).toContain(`GRANT UPDATE ("acknowledged_at") ON "message_ack_broadcast_recipient" TO chartwarden_app`);
     expect(sql).not.toMatch(/GRANT UPDATE[^;]*ON "message_ack_broadcast" /);
   });
 
@@ -53,21 +45,15 @@ describe("migration 1200 acknowledge-required broadcast", () => {
   });
 
   it("migration 1202: the only new broadcast UPDATE is the withdrawal instant, guarded one-way, creator-only, database clock", () => {
-    expect(sql1202).toContain(
-      `GRANT UPDATE ("withdrawn_at") ON "message_ack_broadcast" TO chartwarden_app`,
-    );
+    expect(sql1202).toContain(`GRANT UPDATE ("withdrawn_at") ON "message_ack_broadcast" TO chartwarden_app`);
     expect(sql1202).not.toMatch(/GRANT [^;]*DELETE/);
-    expect(sql1202).not.toMatch(
-      /GRANT UPDATE \((?!"withdrawn_at"\))[^)]*\) ON "message_ack_broadcast" /,
-    );
+    expect(sql1202).not.toMatch(/GRANT UPDATE \((?!"withdrawn_at"\))[^)]*\) ON "message_ack_broadcast" /);
     expect(sql1202).toContain("NEW.withdrawn_at := now()");
     expect(sql1202).toContain("message_ack_broadcast_withdraw_once");
     expect(sql1202).toContain("message_ack_broadcast_withdraw_actor");
     expect(sql1202).toContain("message_ack_broadcast_born_open");
     expect(sql1202).toContain("message_ack_broadcast_recipient_withdrawn");
-    expect(sql1202).toContain(
-      "(to_jsonb(NEW) - 'withdrawn_at') IS DISTINCT FROM (to_jsonb(OLD) - 'withdrawn_at')",
-    );
+    expect(sql1202).toContain("(to_jsonb(NEW) - 'withdrawn_at') IS DISTINCT FROM (to_jsonb(OLD) - 'withdrawn_at')");
     expect(sql1202).not.toMatch(/DISABLE ROW LEVEL SECURITY|NO FORCE/);
     expect(sql1202).not.toMatch(/"(name|body|title|email)"/);
     expect(schema).toContain(`"withdrawn_at"`);

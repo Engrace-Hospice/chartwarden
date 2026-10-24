@@ -14,11 +14,7 @@
 // `clinical_context_snapshot` ever crosses (store.ts header rule).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
-import type {
-  HopeJ2051Event,
-  HopeSubmissionStatusView,
-  HopeTimepointStatus,
-} from "@chartwarden/types";
+import type { HopeJ2051Event, HopeSubmissionStatusView, HopeTimepointStatus } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { HopeSeamStore } from "./store";
 

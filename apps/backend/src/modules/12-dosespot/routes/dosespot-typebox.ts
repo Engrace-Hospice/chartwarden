@@ -1,8 +1,3 @@
-import {
-  HospiceCoverageFieldsSchema,
-  SetHospiceCoverageBodySchema,
-  ValidationError,
-} from "@chartwarden/types";
 // apps/backend/src/modules/12-dosespot/routes/dosespot-typebox.ts — M12-T08 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
@@ -12,6 +7,11 @@ import {
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  HospiceCoverageFieldsSchema,
+  SetHospiceCoverageBodySchema,
+  ValidationError,
+} from "@chartwarden/types";
 import type {
   MedicationHistoryRecordView,
   RxBenefitLookupView,

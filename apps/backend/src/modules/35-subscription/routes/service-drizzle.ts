@@ -24,10 +24,10 @@ import {
 } from "@chartwarden/subscription-billing";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
-  ChartWardenError,
   ConflictError,
   NotFoundError,
   type OrganizationReader,
+  ChartWardenError,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
@@ -193,11 +193,7 @@ function meterView(mIn: MeterRow | undefined): MeterAdminView {
 /** GAP-061 — map a failed {@link checkRefundRequest} onto the typed error the route replies with. */
 function refundRejection(verdict: Extract<RefundRequestCheck, { ok: false }>): ChartWardenError {
   if (verdict.reason === "invoice_not_paid") {
-    return new ChartWardenError(
-      "REFUND_INVOICE_NOT_PAID",
-      "only a paid invoice can be refunded",
-      422,
-    );
+    return new ChartWardenError("REFUND_INVOICE_NOT_PAID", "only a paid invoice can be refunded", 422);
   }
   if (verdict.reason === "amount_invalid") {
     return new ChartWardenError(

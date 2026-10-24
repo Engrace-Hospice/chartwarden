@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/events-by-m16.ts — Module 16's outbox-event contributions
 // (spec §4.4). The `m16.*` taxonomy under the `m16.` namespace (M01 D8 / M03 D9 / M04 D9).
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m16')
@@ -19,6 +18,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // of death IS identifying, which is why the event's `declaredConsumers` is a closed list and the payload
 // carries no name, address or contact channel.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdN = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

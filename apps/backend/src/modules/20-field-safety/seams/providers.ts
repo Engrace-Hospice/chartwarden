@@ -89,7 +89,7 @@ import type {
   SafetySupervisorRecipientDto,
   SafetyVisitCheckInStatusDto,
 } from "@chartwarden/types";
-import { ChartWardenError, SAFETY_POLICY_FLOOR } from "@chartwarden/types";
+import { SAFETY_POLICY_FLOOR, ChartWardenError } from "@chartwarden/types";
 import type { SafetyClinicianSignalCache } from "../consumers/m18-gps-spoof";
 import {
   lastKnownLocationFrom,

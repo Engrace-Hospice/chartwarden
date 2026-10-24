@@ -73,9 +73,7 @@ describe("objectBearingMessagesCountable (scan counts objects only when the exec
     );
     expect(objectBearingMessagesCountable(all)).toBe(true);
     expect(objectBearingMessagesCountable({ ...all, destructionEnabled: false })).toBe(false);
-    expect(objectBearingMessagesCountable({ ...all, attachmentDestructionEnabled: false })).toBe(
-      false,
-    );
+    expect(objectBearingMessagesCountable({ ...all, attachmentDestructionEnabled: false })).toBe(false);
     expect(objectBearingMessagesCountable({ ...all, executorWired: false })).toBe(false);
   });
 });

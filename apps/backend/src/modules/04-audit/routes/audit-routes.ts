@@ -14,7 +14,7 @@
 // typed query port from @chartwarden/audit (the only sanctioned reader).
 import type { AuditContext, AuditExecutor, AuditQuery } from "@chartwarden/audit";
 import { requirePermission } from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditElevatedAccess, isElevatedAuditRead } from "../audit/audit-meta";
 import {

@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/29-external-interfaces/events-by-m29.ts — M29's transactional-outbox
 // event contribution (task-11 follow-up closing the TASK-006 gap: the accept/reject decision cores
 // have produced these event envelopes since M29-T04, but nothing registered them in the boot
@@ -6,6 +5,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // Waves C/D, had nothing to consume). Folded into `buildBootOutboxCatalog` at the composition root;
 // the Drizzle store publishes each within the deciding mutation's own tx.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** Shared core — every proposal-decision event names the proposal + org (decision.ts payloads). */
 const coreProposal = {

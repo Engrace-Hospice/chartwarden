@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/32-ai-platform/routes/m32-typebox.ts — M32-T07 (§4.1) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 AI Platform routes. Named
@@ -28,6 +27,7 @@ import { ValidationError } from "@chartwarden/types";
 //      verifying that assertion against the bytes is the only thing that makes the pin mean anything.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

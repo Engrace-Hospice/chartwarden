@@ -11,11 +11,7 @@
 // Accruals are already written in the invocation's own transaction (`ai_token_ledger`), so there is nothing to
 // re-aggregate - the rollup reads and alerts; an org with no configured budget raises nothing (a missing budget is
 // not a breach; the pipeline already refuses those calls as `budget_unconfigured`).
-import {
-  type AiTokenBudget,
-  aiTokenCapStateFor,
-  aiTokenCapWindowFor,
-} from "@chartwarden/ai-platform";
+import { type AiTokenBudget, aiTokenCapStateFor, aiTokenCapWindowFor } from "@chartwarden/ai-platform";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";

@@ -169,14 +169,11 @@ describe.skipIf(!DB_URL)(
 
       // A SERVER_ONLY endpoint remains absent from the mounted Better Auth router.
       const hidden = await auth.handler(
-        new Request(
-          "http://localhost:3000/api/auth/_chartwarden-internal/replace-identity-password",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ userId: provisioned.userId, password: replacementPassword }),
-          },
-        ),
+        new Request("http://localhost:3000/api/auth/_chartwarden-internal/replace-identity-password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: provisioned.userId, password: replacementPassword }),
+        }),
       );
       expect(hidden.status).toBe(404);
     });

@@ -1,3 +1,11 @@
+// apps/backend/__tests__/cop27-hospice-coverage.test.ts — COP27 workstream B (42 CFR 418.24(c)): the hospice
+// coverage determination on M12 medication orders and M21 dme/supply requests.
+//
+// Non-live: the shared validation rule (reason required when not covered), M21's kind rule, the two seam
+// snapshot projections, the catalog payload schemas, and M12's route through the full M1 middleware chain over
+// the in-memory backend (RBAC on `prescribing.coverage_determine`, caseload scope, 422, event emission, no-op
+// re-save, carry-forward on correction). The DB paths + RLS are proven by `cop27-hospice-coverage.live.test.ts`.
+import { Value } from "@sinclair/typebox/value";
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -13,14 +21,6 @@ import {
   isNotCovered,
   validateCoverageDetermination,
 } from "@chartwarden/types";
-// apps/backend/__tests__/cop27-hospice-coverage.test.ts — COP27 workstream B (42 CFR 418.24(c)): the hospice
-// coverage determination on M12 medication orders and M21 dme/supply requests.
-//
-// Non-live: the shared validation rule (reason required when not covered), M21's kind rule, the two seam
-// snapshot projections, the catalog payload schemas, and M12's route through the full M1 middleware chain over
-// the in-memory backend (RBAC on `prescribing.coverage_determine`, caseload scope, 422, event emission, no-op
-// re-save, carry-forward on correction). The DB paths + RLS are proven by `cop27-hospice-coverage.live.test.ts`.
-import { Value } from "@sinclair/typebox/value";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -986,11 +986,7 @@ const CAREGIVER_NO_PATIENT_SELECTED = {
   "x-test-session-class": "caregiver_portal",
   "x-test-portal-account": ACCOUNT,
 };
-const STAFF = {
-  "x-test-user": "staff_user",
-  "x-test-org": ORG,
-  "x-test-roles": "registered_nurse",
-};
+const STAFF = { "x-test-user": "staff_user", "x-test-org": ORG, "x-test-roles": "registered_nurse" };
 const STAFF_ORG_WIDE = { ...STAFF, "x-test-roles": "medical_director" };
 const ENGAGEMENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const AUDITOR = {
@@ -2454,12 +2450,8 @@ describe("M31 telehealth — staff join/leave/record/end authorization (caseload
       const { app, backend } = makeServer({ staffCaseload: {} });
       seedOtherPatientVisit(backend);
       const headers = { ...STAFF, "x-test-roles": role };
-      expect((await post(app, "join", OTHER_VISIT, `k-admin-j-${role}`, headers)).statusCode).toBe(
-        404,
-      );
-      expect((await post(app, "end", OTHER_VISIT, `k-admin-e-${role}`, headers)).statusCode).toBe(
-        404,
-      );
+      expect((await post(app, "join", OTHER_VISIT, `k-admin-j-${role}`, headers)).statusCode).toBe(404);
+      expect((await post(app, "end", OTHER_VISIT, `k-admin-e-${role}`, headers)).statusCode).toBe(404);
       await app.close();
     },
   );

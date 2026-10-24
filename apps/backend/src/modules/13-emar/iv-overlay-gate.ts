@@ -20,10 +20,7 @@
 // FAIL CLOSED: if the seam is unregistered/throws, the error propagates and the administration is NOT written —
 // an IV infusion is the last place to treat "could not check" as "checked".
 import { AdministrationStateError, type IvSegment } from "@chartwarden/emar";
-import type {
-  IpuIvPreAdministrationInput,
-  IpuIvPreAdministrationVerdict,
-} from "@chartwarden/types";
+import type { IpuIvPreAdministrationInput, IpuIvPreAdministrationVerdict } from "@chartwarden/types";
 
 export type EmarIvOverlayPort = {
   evaluatePreAdministration(

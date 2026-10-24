@@ -21,11 +21,11 @@ import {
 import { IDG_ATTENDANCE_DISCIPLINES, attendableDisciplinesForRoleKeys } from "@chartwarden/idg";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@chartwarden/types";
 import {
-  ChartWardenError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
+  ChartWardenError,
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";

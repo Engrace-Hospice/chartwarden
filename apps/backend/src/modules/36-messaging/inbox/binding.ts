@@ -7,11 +7,7 @@ import type { UnacknowledgedService } from "../ack-requests/unacknowledged-servi
 import { cacheFlagRead } from "../presence/binding";
 import type { HandoffRouteDeps } from "../routes/handoff-routes";
 import type { TaskRouteDeps } from "../routes/task-routes";
-import {
-  type InboxChannel,
-  type SmartInboxService,
-  createSmartInboxService,
-} from "./inbox-service";
+import { type InboxChannel, type SmartInboxService, createSmartInboxService } from "./inbox-service";
 
 /** Rows asked of the task and handoff lists: their own maximum page (100); the inbox ranks, it does not page them. */
 const SOURCE_LIMIT = 100;

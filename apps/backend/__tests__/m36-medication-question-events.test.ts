@@ -1,7 +1,7 @@
-import { MEDICATION_QUESTION_UNROUTED_REASONS } from "@chartwarden/types";
 // WP 3.10 - the one medication-question outbox event: catalogued, outbox-only, PHI-free, and the payload the publisher helper
 // builds validates against the catalog schema (so the real catalog-validating publisher accepts it).
 import { Value } from "@sinclair/typebox/value";
+import { MEDICATION_QUESTION_UNROUTED_REASONS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import {

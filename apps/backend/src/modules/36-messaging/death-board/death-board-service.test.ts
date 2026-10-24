@@ -2,11 +2,7 @@ import type { DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { DEATH_BOARD_TEMPLATE } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
-import {
-  type DeathBoardActor,
-  STALL_SCAN_MAX,
-  createDeathBoardService,
-} from "./death-board-service";
+import { type DeathBoardActor, STALL_SCAN_MAX, createDeathBoardService } from "./death-board-service";
 import { createMemoryDeathBoardStore } from "./death-board-store-memory";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -387,9 +383,7 @@ describe("stalled owners (flagStalledForOrg)", () => {
           .slice(0, limit)
           .map((id) => ({ id, patientId: id, ownerUserId: RN }) as never);
       await t.service.flagStalledForOrg(ORG);
-      expect(warn.mock.calls.filter((c) => /truncated/.test(c[0]))).toHaveLength(
-        expectWarn ? 1 : 0,
-      );
+      expect(warn.mock.calls.filter((c) => /truncated/.test(c[0]))).toHaveLength(expectWarn ? 1 : 0);
     }
   });
 
@@ -407,9 +401,7 @@ describe("stalled owners (flagStalledForOrg)", () => {
     t.emit.mockClear();
     const out = await t.service.flagStalledForOrg(ORG);
     expect(out).toEqual({ examined: 6, flagged: 6 });
-    expect([...t.store.items.values()].every((i) => i.needsOwner && i.ownerUserId === RN)).toBe(
-      true,
-    );
+    expect([...t.store.items.values()].every((i) => i.needsOwner && i.ownerUserId === RN)).toBe(true);
     const ev = t.store.events.filter((e) => e.reasonCode === "owner_ineligible");
     expect(ev).toHaveLength(6);
     expect(ev.every((e) => e.eventType === "needs_owner" && e.actorKind === "system")).toBe(true);
@@ -443,7 +435,7 @@ describe("stalled owners (flagStalledForOrg)", () => {
   });
 
   it("ignores completed items and items already flagged by offboarding", async () => {
-    const o: Opts = { team: [RN], former: [] };
+    const o: Opts = { team: [RN] , former: []};
     const t = await boardWith(o);
     await t.service.complete(actor(RN), t.itemId);
     o.inactive = [RN];

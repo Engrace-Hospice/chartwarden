@@ -1,5 +1,5 @@
-import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { Value } from "@sinclair/typebox/value";
+import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 // GAP-010 — M3 break-glass durable Compliance notification: catalog + M36 consumer (unit).
 import { describe, expect, it, vi } from "vitest";
 import { M3_OUTBOX_EVENTS } from "../src/modules/03-authorization/events-by-m3";

@@ -188,7 +188,7 @@ describe("the tick: fair shares and independent phase budgets", () => {
   });
 
   it("an org that finishes early hands its unused time to the orgs after it (work-conserving)", async () => {
-    const clock = 5_000_000;
+    let clock = 5_000_000;
     const slices: number[] = [];
     await attachmentScanTick({
       activeOrgs: orgs(3),

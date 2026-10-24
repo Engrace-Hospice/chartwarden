@@ -22,17 +22,14 @@ const DEFAULT_MISS_TTL_MS = 5_000;
 const DEFAULT_MAX_ENTRIES = 1_000;
 const REDIRECT_PERMANENT_KEEP_METHOD = 308;
 /** A registrable domain: two or more RFC 1123 labels, lower-case. No scheme, port, path, wildcard or leading dot. */
-const BASE_DOMAIN_PATTERN =
-  /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const BASE_DOMAIN_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** The configured base domain, or null (single-host mode). Throws on a malformed value: it is an operator error. */
 export function parseTenantBaseDomain(env: EnvLike = process.env): string | null {
   const raw = env[TENANT_BASE_DOMAIN_ENV]?.trim().toLowerCase();
   if (!raw) return null;
   if (!BASE_DOMAIN_PATTERN.test(raw)) {
-    throw new Error(
-      `${TENANT_BASE_DOMAIN_ENV} must be a bare domain such as chartwarden.com (got "${raw}")`,
-    );
+    throw new Error(`${TENANT_BASE_DOMAIN_ENV} must be a bare domain such as chartwarden.com (got "${raw}")`);
   }
   return raw;
 }
@@ -129,10 +126,7 @@ export interface TenantHostGuardDeps {
   readonly resolver: TenantHostResolver;
 }
 
-export type TenantHostGuard = (
-  request: FastifyRequest,
-  reply: FastifyReply,
-) => Promise<FastifyReply | undefined>;
+export type TenantHostGuard = (request: FastifyRequest, reply: FastifyReply) => Promise<FastifyReply | undefined>;
 
 /**
  * The `onRequest` guard, registered AFTER authenticate. `request.hostname` is the socket `Host` unless the TCP
@@ -159,11 +153,7 @@ export function createTenantHostGuard(deps: TenantHostGuardDeps): TenantHostGuar
       return reply.redirect(target, REDIRECT_PERMANENT_KEEP_METHOD);
     }
     if (resolved.status === "closed") {
-      throw new ChartWardenError(
-        "TENANT_CLOSED",
-        "this organization is no longer on ChartWarden",
-        410,
-      );
+      throw new ChartWardenError("TENANT_CLOSED", "this organization is no longer on ChartWarden", 410);
     }
     if (resolved.status === "suspended") {
       throw new ChartWardenError("TENANT_SUSPENDED", "this organization is suspended", 403);
@@ -184,9 +174,5 @@ export function createTenantHostGuard(deps: TenantHostGuardDeps): TenantHostGuar
 }
 
 function tenantHostUnknown(): ChartWardenError {
-  return new ChartWardenError(
-    "TENANT_HOST_UNKNOWN",
-    "no organization is served at this address",
-    404,
-  );
+  return new ChartWardenError("TENANT_HOST_UNKNOWN", "no organization is served at this address", 404);
 }

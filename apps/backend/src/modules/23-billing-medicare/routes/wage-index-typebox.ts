@@ -1,8 +1,8 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/routes/wage-index-typebox.ts — M23 tenant-entered wage-index request/response
 // TypeBox shapes (F-211). Named `*-typebox` (not `*schema*`) for the same table-ownership-heuristic reason as
 // `billing-typebox.ts`. The factor is a decimal STRING (never a float). Org / actor / membership binding is server-side.
 import { type Static, Type } from "@sinclair/typebox";
+import { ValidationError } from "@chartwarden/types";
 import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });

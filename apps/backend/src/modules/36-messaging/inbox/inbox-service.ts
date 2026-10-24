@@ -82,10 +82,7 @@ function ackCandidate(a: AckQueueItemDto): Candidate {
   const deadline = epoch(a.deadline_at);
   const unreachable = a.status === "failed_unreachable";
   const why = unreachable
-    ? reason(
-        "ack_failed_unreachable",
-        "No route reached anyone for this request; it needs a person now.",
-      )
+    ? reason("ack_failed_unreachable", "No route reached anyone for this request; it needs a person now.")
     : a.overdue
       ? reason("ack_overdue", `Past its deadline by ${minutes(a.overdue_seconds * 1000)}.`)
       : reason("ack_waiting", "Waiting for you to acknowledge before its deadline.");
@@ -93,9 +90,7 @@ function ackCandidate(a: AckQueueItemDto): Candidate {
     item: {
       key,
       band: "urgent_ack",
-      title: a.restricted
-        ? "Acknowledgment request (restricted conversation)"
-        : "Acknowledgment request",
+      title: a.restricted ? "Acknowledgment request (restricted conversation)" : "Acknowledgment request",
       reasons: [why],
       since: a.requested_at,
       due_at: a.deadline_at,
@@ -246,9 +241,7 @@ export function createSmartInboxService(ports: InboxPorts): SmartInboxService {
 
       const candidates: Candidate[] = [
         ...acks.items.map(ackCandidate),
-        ...handoffs
-          .filter((h) => h.allowed_actions.includes("accept"))
-          .map((h) => handoffCandidate(h, now)),
+        ...handoffs.filter((h) => h.allowed_actions.includes("accept")).map((h) => handoffCandidate(h, now)),
         ...tasks.map(taskCandidate),
         ...channels.flatMap((c) => {
           const cand = channelCandidate(c);
@@ -256,7 +249,9 @@ export function createSmartInboxService(ports: InboxPorts): SmartInboxService {
         }),
       ].sort(compare);
 
-      const ranked = candidates.map((c, i): SmartInboxItemDto => ({ ...c.item, rank: i + 1 }));
+      const ranked = candidates.map(
+        (c, i): SmartInboxItemDto => ({ ...c.item, rank: i + 1 }),
+      );
       const counts = emptyCounts();
       for (const r of ranked) counts[r.band] += 1;
 

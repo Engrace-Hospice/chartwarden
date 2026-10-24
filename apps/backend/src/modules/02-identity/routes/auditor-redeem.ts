@@ -1,4 +1,3 @@
-import { RateLimitedError, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/02-identity/routes/auditor-redeem.ts — `POST /api/v1/auditors/redeem`.
 //
 // The public, unauthenticated half of the auditor flow (M2 §2.2.4 / §7.7): the emailed single-use link is
@@ -16,6 +15,7 @@ import { RateLimitedError, ValidationError } from "@chartwarden/types";
 // idempotency control (an Idempotency-Key cache would have to replay a `Set-Cookie`, which it must not).
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { RateLimitedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { type AuditorRedemptionDeps, redeemAuditorLink } from "../auditor-redemption";
 

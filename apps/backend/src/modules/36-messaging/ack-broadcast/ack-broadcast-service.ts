@@ -302,10 +302,7 @@ const EMPTY_COUNTS: AckBroadcastCounts = {
   outsideAudience: 0,
 };
 
-const toSummary = (
-  b: BroadcastRow,
-  counts: AckBroadcastCounts | undefined,
-): AckBroadcastSummary => ({
+const toSummary = (b: BroadcastRow, counts: AckBroadcastCounts | undefined): AckBroadcastSummary => ({
   messageId: b.messageId,
   channelId: b.channelId,
   createdAt: b.createdAt.toISOString(),
@@ -391,10 +388,7 @@ export function createAckBroadcastService(deps: {
 
     async withdraw(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
-        const b = await broadcastOf(tx, orgId, input.messageId, {
-          createdBy: input.userId,
-          live: true,
-        });
+        const b = await broadcastOf(tx, orgId, input.messageId, { createdBy: input.userId, live: true });
         if (!b) throw notFound();
         if (b.withdrawnAt) return { ...(await summaryOf(tx, orgId, b)), already: true };
         const moved = (await tx
@@ -403,10 +397,7 @@ export function createAckBroadcastService(deps: {
           .where(and(eq(BC.id, b.id), isNull(BC.withdrawnAt)))
           .returning({ id: BC.id })) as Array<{ id: string }>;
         // Re-read either way: a concurrent withdrawal that won the race leaves the original instant, and this answer says `already`.
-        const after = await broadcastOf(tx, orgId, input.messageId, {
-          createdBy: input.userId,
-          live: true,
-        });
+        const after = await broadcastOf(tx, orgId, input.messageId, { createdBy: input.userId, live: true });
         if (!after) throw notFound();
         return { ...(await summaryOf(tx, orgId, after)), already: moved.length === 0 };
       });
@@ -415,10 +406,7 @@ export function createAckBroadcastService(deps: {
     async detail(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         // Only the broadcast's creator reads who has not acknowledged; anyone else gets the same 404 as an unknown id (ADR-0097 D5).
-        const b = await broadcastOf(tx, orgId, input.messageId, {
-          createdBy: input.userId,
-          live: true,
-        });
+        const b = await broadcastOf(tx, orgId, input.messageId, { createdBy: input.userId, live: true });
         if (!b) throw notFound();
         const summary = await summaryOf(tx, orgId, b);
         const res = await tx.execute<PersonRow>(sql`
@@ -454,13 +442,7 @@ export function createAckBroadcastService(deps: {
           .select(BROADCAST_COLUMNS)
           .from(BC)
           .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
-          .where(
-            and(
-              eq(BC.organizationId, orgId),
-              eq(BC.createdBy, input.userId),
-              isNull(MSG.deletedAt),
-            ),
-          )
+          .where(and(eq(BC.organizationId, orgId), eq(BC.createdBy, input.userId), isNull(MSG.deletedAt)))
           .orderBy(desc(BC.createdAt), desc(BC.id))
           .limit(ACK_BROADCAST_LIST_MAX)) as BroadcastRow[];
         const counts = await countsFor(tx, orgId, rows);
@@ -538,9 +520,7 @@ export function createAckBroadcastService(deps: {
           .update(RC)
           .set({ acknowledgedAt: sql`now()` })
           .where(and(eq(RC.id, mine[0].id), isNull(RC.acknowledgedAt)))
-          .returning({ acknowledgedAt: RC.acknowledgedAt })) as Array<{
-          acknowledgedAt: Date | null;
-        }>;
+          .returning({ acknowledgedAt: RC.acknowledgedAt })) as Array<{ acknowledgedAt: Date | null }>;
         const at = updated[0]?.acknowledgedAt;
         if (at) return { messageId: b.messageId, acknowledgedAt: at.toISOString(), already: false };
         // A concurrent acknowledgment won the race: the original instant stands.

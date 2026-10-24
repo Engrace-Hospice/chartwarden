@@ -13,7 +13,7 @@
 // OFF BY A TENANT FLAG (`messaging.presence_enabled`, default off): a member of the channel gets a typed 403
 // PRESENCE_DISABLED and nothing is written or read. A store outage never fails the caller: heartbeat answers 204 without
 // writing, the read answers empty lists, both log a warning (ids only).
-import { ChartWardenError, DegradedError, UnauthorizedError } from "@chartwarden/types";
+import { DegradedError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type PresenceKind,

@@ -8,10 +8,10 @@
 //    the on-call roster (M19's) never block completion.
 //  * An unknown or foreign user is the same NotFoundError; a user who has not left is a 409 (this is not a way to look at active staff).
 import {
-  ChartWardenError,
   NotFoundError,
   type OffboardingDto,
   type OffboardingItemDto,
+  ChartWardenError,
 } from "@chartwarden/types";
 import type {
   Inspection,

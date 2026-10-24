@@ -25,11 +25,7 @@
 // record); M3's caseload ABAC predicate (deny-stubbed here) governs which patient an actor
 // may scope a link to.
 import type { DbClient } from "@chartwarden/db";
-import {
-  requireRequestContext,
-  withOrgContext,
-  withOrgContextFromRequest,
-} from "@chartwarden/tenancy";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type { FastifyRequest } from "fastify";
 
 /**
@@ -110,9 +106,7 @@ export function createOrgScopedIdentityOutbox(
  * assumes. (The OTHER thing that migration named, the PHI read-audit path, was fixed correctly —
  * `bootstrap/plugins/read-audit.ts` already wraps in `withOrgContext`.)
  */
-export function createOrgScopedAuditExecutor(
-  db: DbClient,
-): import("@chartwarden/audit").AuditExecutor {
+export function createOrgScopedAuditExecutor(db: DbClient): import("@chartwarden/audit").AuditExecutor {
   return {
     insert(table) {
       return {

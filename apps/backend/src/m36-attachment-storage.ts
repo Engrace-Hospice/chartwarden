@@ -69,10 +69,7 @@ export function createM22BackedAttachmentStorage(stores: {
         `attachment storage: tenant bucket ${deriveTenantBucket(organizationId as never)} is missing and could not be created: check MINIO_* credentials allow CreateBucket on tenant-* buckets, or run \`bun run scripts/backfill-tenant-buckets.ts\``,
         error,
       );
-      throw new DegradedError(
-        "attachment-storage",
-        "attachment storage is temporarily unavailable",
-      );
+      throw new DegradedError("attachment-storage", "attachment storage is temporarily unavailable");
     }
     ensured.add(organizationId);
   };

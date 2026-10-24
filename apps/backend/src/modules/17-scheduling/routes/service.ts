@@ -24,7 +24,7 @@ import type {
   VisitSetting,
   VisitStatus,
 } from "@chartwarden/types";
-import { ChartWardenError, ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 import type { CreateOnCallRotationInput, OnCallRotationView } from "../seams/oncall-rotation-store";

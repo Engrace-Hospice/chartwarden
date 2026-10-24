@@ -16,12 +16,7 @@
 // do not apply here; the org-scoped audit + the context guard are the controls.
 import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
 import { requireSession, resolvePasskeyRpId } from "@chartwarden/auth";
-import {
-  ChartWardenError,
-  STEP_UP_POLICY,
-  UnauthorizedError,
-  ValidationError,
-} from "@chartwarden/types";
+import { STEP_UP_POLICY, UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditStepUpCompleted,
@@ -231,11 +226,7 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
 
     const challenge = await deps.challenges.get(body.challengeId);
     if (!challenge)
-      throw new ChartWardenError(
-        "CHALLENGE_EXPIRED_OR_INVALID",
-        "challenge expired or invalid",
-        400,
-      );
+      throw new ChartWardenError("CHALLENGE_EXPIRED_OR_INVALID", "challenge expired or invalid", 400);
     if (challenge.sessionId !== session.sessionId) {
       throw new ChartWardenError("CHALLENGE_SESSION_MISMATCH", "challenge session mismatch", 400);
     }
@@ -261,9 +252,7 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
       assertion: body.assertion,
       totpCode: typeof body.totpCode === "string" ? body.totpCode : undefined,
       // The host is trusted only after the tenant-host guard stamped it, so this is never a raw header read.
-      requestOrigin: request.context.attributes?.tenantHostOrgId
-        ? `https://${request.hostname}`
-        : undefined,
+      requestOrigin: request.context.attributes?.tenantHostOrgId ? `https://${request.hostname}` : undefined,
     });
     const auditCtx = auditContextFor(request, session);
 

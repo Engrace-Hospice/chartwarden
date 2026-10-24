@@ -18,7 +18,7 @@
 //     acknowledge it with a written reason (spec §6 "Allergy banner"); unreadable data is never overridable.
 import { isSudTreatmentDrug } from "@chartwarden/dosespot";
 import { type AllergyMatch, matchDrugToAllergy } from "@chartwarden/dosespot";
-import { ChartWardenError, type PatientAllergyReader } from "@chartwarden/types";
+import { type PatientAllergyReader, ChartWardenError } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The M12-side structural projection of M39's `ConsentEvaluator.evaluateForInternalAccess`. */

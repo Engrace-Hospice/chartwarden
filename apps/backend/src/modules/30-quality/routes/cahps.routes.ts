@@ -14,7 +14,7 @@
 // R-16 — carry `Idempotency-Key`; the GET reads are exempt. Org/actor binding is ALWAYS server-side
 // (request.context, never the body). Mirrors the M33 routes/exports.routes.ts shape.
 import { requirePermission } from "@chartwarden/auth";
-import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import { NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type M30ReadActor, type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

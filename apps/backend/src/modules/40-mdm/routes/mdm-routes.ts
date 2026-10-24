@@ -20,13 +20,8 @@ import { requireStepUp } from "@chartwarden/auth";
 // `mdm.repoint_*` jobs (T08) run in the background but do NOT gate correctness — service-layer
 // resolves of the duplicate id keep returning the survivor via the redirect throughout (the T04
 // engine over the post-merge store).
-import type {
-  MdmEntityKind,
-  MdmEntityProvider,
-  MdmResolved,
-  MdmRouteService,
-} from "@chartwarden/mdm";
-import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
+import type { MdmEntityKind, MdmEntityProvider, MdmResolved, MdmRouteService } from "@chartwarden/mdm";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   BaaBodySchema,
@@ -159,11 +154,7 @@ export function registerMdmRoutes(app: FastifyInstance, deps: MdmRouteDeps): voi
       if (kind !== "physician") {
         // Only the physician kind ships a Phase-1 overlay table (manifest §3.4); others have nowhere
         // to write an overlay yet — a clear 422 rather than a silent no-op.
-        throw new ChartWardenError(
-          "NOT_SUPPORTED",
-          `${kind} has no tenant overlay in Phase 1`,
-          422,
-        );
+        throw new ChartWardenError("NOT_SUPPORTED", `${kind} has no tenant overlay in Phase 1`, 422);
       }
       const b = parse(OverlayBodySchema, request.body);
       const { applied } = await service.upsertPhysicianOverlay(

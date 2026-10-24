@@ -7,11 +7,7 @@
 //   - `alerts`  — the §4.9 dispatch: emit through the M36 AlertEmitter (structural type — M30's manifest does
 //                 not depend on M36's internals), severity taken from the M30_ALERTS def for the payload type.
 import type { DbClient } from "@chartwarden/db";
-import type {
-  OpenSraCycle,
-  OpenSraCycleReadPort,
-  SraReminderAlertPort,
-} from "@chartwarden/quality";
+import type { OpenSraCycle, OpenSraCycleReadPort, SraReminderAlertPort } from "@chartwarden/quality";
 import { M30_ALERTS } from "@chartwarden/quality";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";

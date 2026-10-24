@@ -10,12 +10,12 @@
 // that has not seen the latest revision is a 409 DRAFT_CONFLICT; the client then reads the server draft and offers the
 // user a merge prompt, and re-saves with the server's revision as its base.
 import {
-  ChartWardenError,
   SBAR_MAX_SECTION_CHARS,
   SBAR_SECTION_KEYS,
   SBAR_URGENCY_HINTS,
   type SbarSections,
   ValidationError,
+  ChartWardenError,
 } from "@chartwarden/types";
 import type { MessageReferenceInput } from "../interfaces/provider";
 

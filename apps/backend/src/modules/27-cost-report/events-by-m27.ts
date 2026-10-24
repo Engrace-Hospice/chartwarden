@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/27-cost-report/events-by-m27.ts — Module 27's outbox-event contributions
 // (spec §4.10 Outbox Event Catalog). The full `m27.*` taxonomy keyed on M27's own resources, under the
 // `m27.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file
@@ -11,6 +10,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // cross-module fan-outs target M22 (ECR/PI artifact render+store), M28 (FHIR DocumentReference), M30
 // (HQRP financial context), M33 (dashboards/worklists), M34 (tenant compliance gate), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

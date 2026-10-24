@@ -13,7 +13,7 @@ import { repositories, resolveWageIndex, validateWageIndexEntry } from "@chartwa
 import type { ResolvedWageIndex } from "@chartwarden/billing";
 import type * as schema from "@chartwarden/db/schema";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateWageIndexBody,

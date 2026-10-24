@@ -62,11 +62,7 @@ export function requireIdempotencyKey(): PreHandler {
 export function ifMatchVersionOf(request: FastifyRequest): number {
   const v = (request as WithIfMatch).ifMatchVersion;
   if (typeof v !== "number") {
-    throw new ChartWardenError(
-      "PRECONDITION_REQUIRED",
-      "If-Match was not parsed for this route",
-      428,
-    );
+    throw new ChartWardenError("PRECONDITION_REQUIRED", "If-Match was not parsed for this route", 428);
   }
   return v;
 }

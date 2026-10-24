@@ -21,10 +21,10 @@ import {
   type AppealClaimCopy,
   type AppealEnclosureRefusal,
   type AppealRemitCopy,
-  ChartWardenError,
   type DocumentDigest,
   type DocumentReader,
   MAX_APPEAL_ENCLOSURES,
+  ChartWardenError,
   appealEnclosureRefusal,
 } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -67,11 +67,7 @@ export function buildSeamAppealSourcePorts(): AppealSourcePorts {
 /** No port bound: a packet whose sources cannot be read is refused, never filed half-empty. */
 export const UNBOUND_APPEAL_SOURCES: AppealSourcePorts = {
   documents: () => {
-    throw new ChartWardenError(
-      "SEAM_UNBOUND",
-      "the appeal packet document source is not bound",
-      503,
-    );
+    throw new ChartWardenError("SEAM_UNBOUND", "the appeal packet document source is not bound", 503);
   },
   claims: () => {
     throw new ChartWardenError("SEAM_UNBOUND", "the appeal packet claim source is not bound", 503);
@@ -162,8 +158,7 @@ export async function describeEnclosures(
 export function numericToCents(value: string | number): number {
   const s = String(value).trim();
   const m = /^(-?)(\d+)(?:\.(\d{1,2}))?\d*$/.exec(s);
-  if (!m)
-    throw new ChartWardenError("INVALID_AMOUNT", "a money amount is not a decimal number", 500);
+  if (!m) throw new ChartWardenError("INVALID_AMOUNT", "a money amount is not a decimal number", 500);
   const cents = Number(m[2]) * 100 + Number((m[3] ?? "").padEnd(2, "0"));
   return m[1] === "-" ? -cents : cents;
 }

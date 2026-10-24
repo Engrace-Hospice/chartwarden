@@ -11,11 +11,7 @@
 //     collapsing into the contract's "no obligation" null;
 //   • a zero denominator answers `null`, never a fabricated 0% (rates) / never a 0% CoP breach (the ratio).
 import { BLOCKING_VOLUNTEER_GATE_KINDS } from "@chartwarden/discipline-plans";
-import type {
-  DisciplinePlanDigest,
-  DisciplinePlanIdgDigest,
-  MswRiskFactor,
-} from "@chartwarden/types";
+import type { DisciplinePlanDigest, DisciplinePlanIdgDigest, MswRiskFactor } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, validateSeams } from "../src/bootstrap/index";
 import {

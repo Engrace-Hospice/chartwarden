@@ -17,7 +17,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { ChartWardenError, ForbiddenError, NotFoundError, type TaskDto } from "@chartwarden/types";
+import { ForbiddenError, NotFoundError, type TaskDto, ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -27,7 +27,7 @@ import {
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import { NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { LegalHoldCriteria } from "./audit-typebox";

@@ -51,6 +51,7 @@
 //     valid UUID to reach the route's real behavior (the field is validated-then-discarded); it is not
 //     fabricating a pass — the request genuinely satisfies today's contract. It just should not have to.
 import { randomUUID } from "node:crypto";
+import { FormatRegistry } from "@sinclair/typebox";
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -61,7 +62,6 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import { NotFoundError } from "@chartwarden/types";
-import { FormatRegistry } from "@sinclair/typebox";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

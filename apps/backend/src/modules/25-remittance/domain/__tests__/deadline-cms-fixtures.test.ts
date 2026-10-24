@@ -25,46 +25,16 @@ interface Fixture {
 
 const FIXTURES: readonly Fixture[] = [
   // redetermination: 120 days from receipt = notice + 5 + 120 = notice + 125 (42 CFR 405.942)
-  {
-    name: "redetermination mid-year",
-    tier: "redetermination",
-    noticeDay: "2026-01-01",
-    lastFilingDay: "2026-05-06",
-  },
-  {
-    name: "redetermination crossing year end",
-    tier: "redetermination",
-    noticeDay: "2025-09-01",
-    lastFilingDay: "2026-01-02",
-  },
-  {
-    name: "redetermination crossing leap day",
-    tier: "redetermination",
-    noticeDay: "2024-01-01",
-    lastFilingDay: "2024-05-03",
-  },
+  { name: "redetermination mid-year", tier: "redetermination", noticeDay: "2026-01-01", lastFilingDay: "2026-05-06" },
+  { name: "redetermination crossing year end", tier: "redetermination", noticeDay: "2025-09-01", lastFilingDay: "2026-01-02" },
+  { name: "redetermination crossing leap day", tier: "redetermination", noticeDay: "2024-01-01", lastFilingDay: "2024-05-03" },
   // reconsideration (QIC): 180 days from receipt = notice + 185 (42 CFR 405.962)
-  {
-    name: "reconsideration mid-year",
-    tier: "reconsideration",
-    noticeDay: "2026-01-01",
-    lastFilingDay: "2026-07-02",
-  },
-  {
-    name: "reconsideration crossing year end",
-    tier: "reconsideration",
-    noticeDay: "2026-08-01",
-    lastFilingDay: "2027-02-02",
-  },
+  { name: "reconsideration mid-year", tier: "reconsideration", noticeDay: "2026-01-01", lastFilingDay: "2026-07-02" },
+  { name: "reconsideration crossing year end", tier: "reconsideration", noticeDay: "2026-08-01", lastFilingDay: "2027-02-02" },
   // alj / council / federal court: 60 days from receipt = notice + 65 (405.1002, 405.1102, 405.1136)
   { name: "alj", tier: "alj", noticeDay: "2026-01-01", lastFilingDay: "2026-03-06" },
   { name: "council", tier: "council", noticeDay: "2026-01-01", lastFilingDay: "2026-03-06" },
-  {
-    name: "federal court crossing month end",
-    tier: "federal_court",
-    noticeDay: "2026-01-20",
-    lastFilingDay: "2026-03-26",
-  },
+  { name: "federal court crossing month end", tier: "federal_court", noticeDay: "2026-01-20", lastFilingDay: "2026-03-26" },
 ];
 
 describe("CMS appeal deadlines — last filing day", () => {
@@ -81,9 +51,7 @@ describe("CMS appeal deadlines — last filing day", () => {
 
   it("presumes receipt 5 calendar days after the notice date", () => {
     expect(RECEIPT_PRESUMPTION_DAYS).toBe(5);
-    expect(deriveTierDeadline("redetermination", "2026-01-01").presumedReceiptOn).toBe(
-      "2026-01-06",
-    );
+    expect(deriveTierDeadline("redetermination", "2026-01-01").presumedReceiptOn).toBe("2026-01-06");
   });
 
   it("reports the window used for each tier", () => {

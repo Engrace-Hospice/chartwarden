@@ -9,11 +9,7 @@
 // HTTP server — crash isolation is the goal (a route crash never drops a listener; a listener crash never
 // drops Fastify). This file is process-agnostic: it manipulates ports, never `process` or the network
 // directly, so the same orchestration is driven by the real entrypoint OR a test harness.
-import type {
-  ExternalFeedKind,
-  ExternalFeedProtocol,
-  ExternalFeedStatus,
-} from "@chartwarden/types";
+import type { ExternalFeedKind, ExternalFeedProtocol, ExternalFeedStatus } from "@chartwarden/types";
 import {
   type BaaGateRefuseReason,
   type ExternalInterfaceBaaGate,

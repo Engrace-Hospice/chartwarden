@@ -1,6 +1,6 @@
-import type { OrgId, PatientId, ProviderEntityId, TriageCallId } from "@chartwarden/types";
 // ADR-0082 decision 4 / slice S2 — the pure decider behind M19's `m36.afterhours_triage.requested` consumer.
 import { Value } from "@sinclair/typebox/value";
+import type { OrgId, PatientId, ProviderEntityId, TriageCallId } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import type { CoveringShiftCandidate } from "../src/modules/19-oncall/consumers/inbound-trigger";
 import {

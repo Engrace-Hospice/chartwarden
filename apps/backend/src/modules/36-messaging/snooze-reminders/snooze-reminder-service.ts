@@ -12,7 +12,6 @@
 // flag off is the same 404. Everything the caller asks about is their OWN row (RLS pins the owner again).
 import {
   SNOOZE_REMINDER_ERROR_CODES as CODES,
-  ChartWardenError,
   NotFoundError,
   REMINDER_MAX_HORIZON_DAYS,
   REMINDER_MAX_PENDING,
@@ -22,6 +21,7 @@ import {
   SNOOZE_MAX_MINUTES,
   SNOOZE_MIN_MINUTES,
   type SnoozeDto,
+  ChartWardenError,
 } from "@chartwarden/types";
 
 export interface Actor {

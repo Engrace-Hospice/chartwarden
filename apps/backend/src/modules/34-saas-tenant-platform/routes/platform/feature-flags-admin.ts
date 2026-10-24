@@ -12,12 +12,7 @@
 // (global flag → platform-ops only; per-tenant flag → org_admin) + passkey-recent-5min step-up (§6 / D10).
 // The M36 `feature_flag.platform_emergency_changed` alert (plus the outbox row and the critical audit) on
 // kill-switch is the M1 seam's emission, in-tx with the write. Mirrors the sibling tenants.ts plugin shape.
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {

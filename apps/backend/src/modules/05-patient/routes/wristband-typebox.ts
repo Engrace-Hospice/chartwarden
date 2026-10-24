@@ -1,7 +1,7 @@
-import { WRISTBAND_ISSUE_REASONS, WRISTBAND_OPERATOR_VOID_REASONS } from "@chartwarden/types";
 // apps/backend/src/modules/05-patient/routes/wristband-typebox.ts -- the TypeBox contract of the M5 patient
 // wristband routes (GAP-020). Issuing returns the RAW printable payload exactly once; nothing else ever does.
 import { Type } from "@sinclair/typebox";
+import { WRISTBAND_ISSUE_REASONS, WRISTBAND_OPERATOR_VOID_REASONS } from "@chartwarden/types";
 
 /** A string-literal union typed as `T` (TypeBox cannot infer a union from a runtime array). */
 const literals = <T extends string>(values: readonly T[]) =>

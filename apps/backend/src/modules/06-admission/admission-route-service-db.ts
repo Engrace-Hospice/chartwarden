@@ -16,12 +16,12 @@ import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
-  ChartWardenError,
   ConflictError,
   type PatientAdmissionClearance,
   type PatientAdmissionClearanceReader,
   type PatientIntakeResolver,
   ValidationError,
+  ChartWardenError,
   isValidMedicaidNumber,
   isValidMedicareNumber,
   normalizeMedicaidNumber,
@@ -2138,11 +2138,7 @@ export function createDbAdmissionRouteService(
           .limit(limit + 1)
           .offset(offset);
         const pageRows = rows.slice(0, limit);
-        const patients = await patientAdmissionIdentitiesInTx(
-          tx,
-          organizationId,
-          pageRows.map((row) => row.patientId),
-        );
+        const patients = await patientAdmissionIdentitiesInTx(tx, organizationId, pageRows.map((row) => row.patientId));
         const items = pageRows.map((r) => ({
           ...toSummary(r),
           patient: patients.get(r.patientId) ?? null,
@@ -3224,164 +3220,156 @@ export function createDbAdmissionRouteService(
       opts,
     ): Promise<MutationResult & { admissionId: string }> {
       const grant: { patientId?: string } = {};
-      const result = await withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (cur.status === "converted") {
-            const [existing] = await tx
-              .select({ id: ADM.id, version: ADM.version })
-              .from(ADM)
-              .where(and(eq(ADM.organizationId, organizationId), eq(ADM.referralId, id)))
-              .limit(1);
-            if (existing)
-              return {
-                id,
-                state: "converted",
-                version: cur.version,
-                admissionId: existing.id,
-              };
-            throw new ReferralAlreadyConvertedError(id);
-          }
-          if (cur.status !== "qualified") throw new ReferralNotTriagedError(id);
-          if (!cur.patientId || !["matched", "created"].includes(cur.patientResolutionStatus)) {
-            throw new ReferralNotReadyError(qualificationBlockers(cur));
-          }
-          const patientId = cur.patientId;
-          const confirmed = await patientResolver().confirmPatient({
-            organizationId,
-            patientId,
-          });
-          if (!confirmed)
-            throw new ChartWardenError(
-              "PATIENT_NOT_FOUND",
-              "resolved M5 patient no longer exists",
-              409,
-            );
-          // §2.3.1 no double-election: block if the patient already has an open admission.
-          const [open] = await tx
-            .select({ id: ADM.id })
+      const result = await withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted") {
+          const [existing] = await tx
+            .select({ id: ADM.id, version: ADM.version })
             .from(ADM)
-            .where(
-              and(
-                eq(ADM.patientId, patientId),
-                ne(ADM.status, "discharged"),
-                ne(ADM.status, "bereavement"),
-                ne(ADM.status, "closed"),
-              ),
-            )
+            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.referralId, id)))
             .limit(1);
-          // Validate the createAdmission event FIRST (it throws PATIENT_ALREADY_ELECTED on a double open),
-          // then insert the admission directly at the transition's target state — never a half-open row.
-          const t = transitionAdmission("referred", {
-            type: "createAdmission",
-            referralAccepted: true,
-            hasOtherOpenAdmission: !!open,
-          } satisfies AdmissionEvent);
-          // Readmission workflow — the first benefit period (staff-entered or history-suggested), validated first.
-          const first = await resolveFirstBenefitPeriod(tx as DbClient, {
-            organizationId,
-            patientId,
-            input,
-            actorUserId,
-            now: now(),
-          });
-          const adm = firstOrThrow(
-            await tx
-              .insert(ADM)
-              .values({
-                organizationId,
-                patientId,
-                referralId: id,
-                status: t.to,
-                ...(first.admissionAt ? { admissionAt: first.admissionAt } : {}),
-              })
-              .returning({ id: ADM.id, version: ADM.version }),
-            "admission insert returned no row",
-          );
-          await runEffects(
-            tx,
-            {
+          if (existing)
+            return {
+              id,
+              state: "converted",
+              version: cur.version,
+              admissionId: existing.id,
+            };
+          throw new ReferralAlreadyConvertedError(id);
+        }
+        if (cur.status !== "qualified") throw new ReferralNotTriagedError(id);
+        if (!cur.patientId || !["matched", "created"].includes(cur.patientResolutionStatus)) {
+          throw new ReferralNotReadyError(qualificationBlockers(cur));
+        }
+        const patientId = cur.patientId;
+        const confirmed = await patientResolver().confirmPatient({
+          organizationId,
+          patientId,
+        });
+        if (!confirmed)
+          throw new ChartWardenError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
+        // §2.3.1 no double-election: block if the patient already has an open admission.
+        const [open] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.patientId, patientId),
+              ne(ADM.status, "discharged"),
+              ne(ADM.status, "bereavement"),
+              ne(ADM.status, "closed"),
+            ),
+          )
+          .limit(1);
+        // Validate the createAdmission event FIRST (it throws PATIENT_ALREADY_ELECTED on a double open),
+        // then insert the admission directly at the transition's target state — never a half-open row.
+        const t = transitionAdmission("referred", {
+          type: "createAdmission",
+          referralAccepted: true,
+          hasOtherOpenAdmission: !!open,
+        } satisfies AdmissionEvent);
+        // Readmission workflow — the first benefit period (staff-entered or history-suggested), validated first.
+        const first = await resolveFirstBenefitPeriod(tx as DbClient, {
+          organizationId,
+          patientId,
+          input,
+          actorUserId,
+          now: now(),
+        });
+        const adm = firstOrThrow(
+          await tx
+            .insert(ADM)
+            .values({
               organizationId,
-              aggregateKind: "admission",
-              aggregateId: adm.id,
-              admissionId: adm.id,
-            },
-            t.effects,
-            { "m6.admission.draft_created": { patientId, referralId: id } },
-          );
-          // Seed the first benefit period (the §7.1 cascade — not a state-machine effect). It is period 1 only for a
-          // patient with no earlier election; a re-election continues the count (42 CFR 418.21 / 418.24).
-          await tx.insert(EP).values({
+              patientId,
+              referralId: id,
+              status: t.to,
+              ...(first.admissionAt ? { admissionAt: first.admissionAt } : {}),
+            })
+            .returning({ id: ADM.id, version: ADM.version }),
+          "admission insert returned no row",
+        );
+        await runEffects(
+          tx,
+          {
             organizationId,
+            aggregateKind: "admission",
+            aggregateId: adm.id,
             admissionId: adm.id,
-            ...first.periodValues,
-          });
-          // Advance the referral to converted.
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "converted",
-                icd10TerminalPrimary: input.primaryDiagnosisIcd10,
-                convertedAt: now(),
-                convertedAdmissionId: adm.id,
-                decidedAt: now(),
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "converted",
-            cur.status,
-            r.status,
-            {
-              admissionId: adm.id,
-            },
-          );
+          },
+          t.effects,
+          { "m6.admission.draft_created": { patientId, referralId: id } },
+        );
+        // Seed the first benefit period (the §7.1 cascade — not a state-machine effect). It is period 1 only for a
+        // patient with no earlier election; a re-election continues the count (42 CFR 418.21 / 418.24).
+        await tx.insert(EP).values({
+          organizationId,
+          admissionId: adm.id,
+          ...first.periodValues,
+        });
+        // Advance the referral to converted.
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "converted",
+              icd10TerminalPrimary: input.primaryDiagnosisIcd10,
+              convertedAt: now(),
+              convertedAdmissionId: adm.id,
+              decidedAt: now(),
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "converted",
+          cur.status,
+          r.status,
+          {
+            admissionId: adm.id,
+          },
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.converted",
+          payload: { referralId: id, patientId, admissionId: adm.id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
+        // GAP-177 — route 6 (accept) is the same transition seen from the intake desk; it is catalogued
+        // as its own event (record-only, M36 seam) and had no emit site.
+        if (opts?.emitAccepted) {
           await outbox.publish(tx, {
-            eventName: "m6.referral.converted",
+            eventName: "m6.referral.accepted",
             payload: { referralId: id, patientId, admissionId: adm.id },
             organizationId,
             aggregateKind: "referral",
             aggregateId: id,
           });
-          // GAP-177 — route 6 (accept) is the same transition seen from the intake desk; it is catalogued
-          // as its own event (record-only, M36 seam) and had no emit site.
-          if (opts?.emitAccepted) {
-            await outbox.publish(tx, {
-              eventName: "m6.referral.accepted",
-              payload: { referralId: id, patientId, admissionId: adm.id },
-              organizationId,
-              aggregateKind: "referral",
-              aggregateId: id,
-            });
-          }
-          // Only a patient this referral itself created ("created") may open to the clinician converting it. A patient
-          // bound with confirm-patient ("matched") is an existing chart the actor was never scoped to, so conversion
-          // must not become a way to read it.
-          if (cur.patientResolutionStatus === "created") grant.patientId = patientId;
-          return {
-            id: r.id,
-            state: r.status,
-            version: Number(r.version),
-            admissionId: adm.id,
-          };
-        },
-      );
+        }
+        // Only a patient this referral itself created ("created") may open to the clinician converting it. A patient
+        // bound with confirm-patient ("matched") is an existing chart the actor was never scoped to, so conversion
+        // must not become a way to read it.
+        if (cur.patientResolutionStatus === "created") grant.patientId = patientId;
+        return {
+          id: r.id,
+          state: r.status,
+          version: Number(r.version),
+          admissionId: adm.id,
+        };
+      });
       // After the conversion has committed, so a refused or rolled-back conversion never leaves a grant behind.
       if (grant.patientId)
         await patientResolver().grantAdmittingAccess({
@@ -4014,10 +4002,7 @@ export function createDbAdmissionRouteService(
             (keepCurrentLocation && current.locationId
               ? current.locationId
               : finalProviderEntityId
-                ? await foundationSites.defaultLocationIdForProviderEntity(
-                    tx,
-                    finalProviderEntityId,
-                  )
+                ? await foundationSites.defaultLocationIdForProviderEntity(tx, finalProviderEntityId)
                 : null);
         } else if (input.locationId !== undefined) {
           updates.locationId = input.locationId;
@@ -4719,8 +4704,7 @@ export function createDbAdmissionRouteService(
     async createElectionPeriod(organizationId, admissionId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const ep = await openNextElectionPeriodInTx(tx, { organizationId, admissionId });
-        if (!ep)
-          throw new ChartWardenError("NOT_FOUND", "election period insert returned no row", 404);
+        if (!ep) throw new ChartWardenError("NOT_FOUND", "election period insert returned no row", 404);
         return { id: ep.id, state: ep.status, version: ep.version };
       });
     },

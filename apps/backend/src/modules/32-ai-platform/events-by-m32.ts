@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/32-ai-platform/events-by-m32.ts — Module 32's outbox-event contributions
 // (§4.11). The `m32.*` taxonomy under the `m32.` namespace (M01 D8 / M03 D9 / M04 D9).
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership
@@ -43,6 +42,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 //      `orgId: null` instead of omitting it, because "this stopped every tenant" and "we did not record
 //      which tenant" must not be the same value.
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdOrNull = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

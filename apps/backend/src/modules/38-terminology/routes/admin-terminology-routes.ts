@@ -30,7 +30,7 @@ import {
   isLoadableSystem,
   validateAttestationInput,
 } from "@chartwarden/terminology-loader";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { terminologyRefusalOf } from "../db-errors";
 import type { PlatformUploadSigner, TerminologyJobProducer } from "../jobs-ports";
@@ -296,11 +296,7 @@ export function registerAdminTerminologyRoutes(
     async (request) => {
       const { system } = parse(AdminSystemParamsSchema, request.params);
       if (!isLoadableSystem(system)) {
-        throw new ChartWardenError(
-          "SYSTEM_NOT_LOADABLE",
-          `${system} has no concepts to embed`,
-          422,
-        );
+        throw new ChartWardenError("SYSTEM_NOT_LOADABLE", `${system} has no concepts to embed`, 422);
       }
       if (!deps.embeddingsAvailable || !deps.jobs) {
         throw unavailable(

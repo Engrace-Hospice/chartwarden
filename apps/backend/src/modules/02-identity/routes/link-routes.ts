@@ -24,7 +24,7 @@ import {
   requirePermission,
   requireSession,
 } from "@chartwarden/auth";
-import { ChartWardenError, ValidationError } from "@chartwarden/types";
+import { ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditCollaboratorInvited, auditCollaboratorSessionStarted } from "../audit/identity-audit";
 import { auditFuneralInvited } from "../audit/org-admin-audit";

@@ -10,7 +10,7 @@
 // email / username / login fields. Not a PHI read (staff directory, no patient id), so no read-audit
 // config; the bound org is asserted before any query.
 import { resolveActorPermissions } from "@chartwarden/auth";
-import { ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
+import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { CareTeamStaffPort } from "../care-team-staff";
 import {

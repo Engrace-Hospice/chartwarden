@@ -1180,46 +1180,43 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
   });
 
   // Bound is not computing: the SAME Worker the composition root registers must pick a job off a real queue and send.
-  describe.skipIf(!REDIS_IS_LOCAL)(
-    "on real BullMQ (CHARTWARDEN_TEST_REDIS_URL, local only)",
-    () => {
-      const url = new URL(REDIS_URL ?? "redis://localhost:6379");
-      const connection = { host: url.hostname, port: Number(url.port || 6379) };
-      const wipeQueue = async () => {
-        const q = new Queue(MESSAGING_QUEUES.scheduledSend, { connection });
-        await q.obliterate({ force: true }).catch(() => undefined);
-        await q.close();
-      };
-      beforeAll(wipeQueue);
-      afterAll(wipeQueue);
+  describe.skipIf(!REDIS_IS_LOCAL)("on real BullMQ (CHARTWARDEN_TEST_REDIS_URL, local only)", () => {
+    const url = new URL(REDIS_URL ?? "redis://localhost:6379");
+    const connection = { host: url.hostname, port: Number(url.port || 6379) };
+    const wipeQueue = async () => {
+      const q = new Queue(MESSAGING_QUEUES.scheduledSend, { connection });
+      await q.obliterate({ force: true }).catch(() => undefined);
+      await q.close();
+    };
+    beforeAll(wipeQueue);
+    afterAll(wipeQueue);
 
-      it("registers one per-minute repeatable and the worker sends a due message when a tick runs", async () => {
-        await wipe();
-        const created = await schedule(alice);
-        await makeDue(created.id);
-        const before = (await messagesIn(dm)).length;
-        const queues = await scheduleM36ScheduledSendJobs(connection);
-        const repeatables = await queues[0]!.getRepeatableJobs();
-        expect(repeatables).toHaveLength(1);
-        expect(repeatables[0]?.pattern).toBe(MESSAGING_JOB_SCHEDULES.scheduledSend);
-        const workers = registerM36ScheduledSendWorker({
-          connection,
-          dispatcher,
-          activeOrgs: { listActiveOrgs: async () => [{ organizationId: orgA }] },
-        });
-        try {
-          await queues[0]!.add("run-now", {});
-          const deadline = Date.now() + 15_000;
-          while ((await rows()).length > 0 && Date.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, 200));
-          }
-          expect(await rows()).toHaveLength(0);
-          expect((await messagesIn(dm)).length).toBe(before + 1);
-        } finally {
-          await Promise.all(workers.map((w) => w.close()));
-          await Promise.all(queues.map((q) => q.close()));
-        }
+    it("registers one per-minute repeatable and the worker sends a due message when a tick runs", async () => {
+      await wipe();
+      const created = await schedule(alice);
+      await makeDue(created.id);
+      const before = (await messagesIn(dm)).length;
+      const queues = await scheduleM36ScheduledSendJobs(connection);
+      const repeatables = await queues[0]!.getRepeatableJobs();
+      expect(repeatables).toHaveLength(1);
+      expect(repeatables[0]?.pattern).toBe(MESSAGING_JOB_SCHEDULES.scheduledSend);
+      const workers = registerM36ScheduledSendWorker({
+        connection,
+        dispatcher,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: orgA }] },
       });
-    },
-  );
+      try {
+        await queues[0]!.add("run-now", {});
+        const deadline = Date.now() + 15_000;
+        while ((await rows()).length > 0 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        expect(await rows()).toHaveLength(0);
+        expect((await messagesIn(dm)).length).toBe(before + 1);
+      } finally {
+        await Promise.all(workers.map((w) => w.close()));
+        await Promise.all(queues.map((q) => q.close()));
+      }
+    });
+  });
 });

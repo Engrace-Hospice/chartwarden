@@ -16,12 +16,7 @@
 // `withPlatformContext` → typed response, and `auditRead()` records every PHI-adjacent surveyor read
 // (HIPAA §164.312(b) + the F09 bypass-audit guarantee). The start/elevate/close COMMANDS are synchronous
 // service calls that publish their own §4.9 `m34.support_session.*` outbox in-tx (no worker enqueue).
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {

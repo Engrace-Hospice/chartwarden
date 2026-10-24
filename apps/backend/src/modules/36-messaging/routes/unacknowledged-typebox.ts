@@ -1,3 +1,7 @@
+// apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts - WP 4.9 (ADR-0076) schemas for the supervisor's
+// unacknowledged queue. The query accepts ONLY the narrowing filters (status, overdue) and the paging keys: an unknown key is a 400,
+// never a silently ignored filter. The response is ids, enums, counts and instants; no message text, no patient name.
+import { type TSchema, Type } from "@sinclair/typebox";
 import {
   ACK_ADDRESSED_ROLES,
   ACK_CLASSES,
@@ -5,10 +9,6 @@ import {
   ACK_QUEUE_LIMIT_MAX,
   ACK_QUEUE_STATUSES,
 } from "@chartwarden/types";
-// apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts - WP 4.9 (ADR-0076) schemas for the supervisor's
-// unacknowledged queue. The query accepts ONLY the narrowing filters (status, overdue) and the paging keys: an unknown key is a 400,
-// never a silently ignored filter. The response is ids, enums, counts and instants; no message text, no patient name.
-import { type TSchema, Type } from "@sinclair/typebox";
 
 const UuidOut = Type.String({ format: "uuid" });
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);

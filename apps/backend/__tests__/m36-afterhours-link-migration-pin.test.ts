@@ -3,6 +3,7 @@
 // suite proves the same rules against a real database as wardenx_app.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { schema } from "@chartwarden/db";
 import {
   ACK_REQUESTS_FLAG_KEY,
@@ -12,7 +13,6 @@ import {
   ROLE_SEND_FLAG_KEY,
   URGENT_CLINICAL_FLAG_KEY,
 } from "@chartwarden/types";
-import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");
@@ -65,12 +65,8 @@ describe("migration 1132 message_afterhours_triage_link", () => {
   it("enables AND forces RLS on the app.org_id GUC, for wardenx_app, with a WITH CHECK", () => {
     expect(flat).toContain(`ALTER TABLE ${T} ENABLE ROW LEVEL SECURITY`);
     expect(flat).toContain(`ALTER TABLE ${T} FORCE ROW LEVEL SECURITY`);
-    expect(flat).toContain(
-      "USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)",
-    );
-    expect(flat).toContain(
-      "WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)",
-    );
+    expect(flat).toContain("USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)");
+    expect(flat).toContain("WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)");
     expect(flat).toContain(`GRANT SELECT, INSERT ON ${T} TO wardenx_app`);
     expect(flat).toContain(`GRANT UPDATE ("triage_call_id", "outcome") ON ${T} TO wardenx_app`);
   });
@@ -94,12 +90,7 @@ describe("after-hours triage flag constants", () => {
   it("names the flag and chains the four required flags", () => {
     expect(AFTERHOURS_TRIAGE_FLAG_KEY).toBe("messaging.afterhours_triage");
     expect([...AFTERHOURS_TRIAGE_REQUIRED_FLAG_KEYS].sort()).toEqual(
-      [
-        ROLE_SEND_FLAG_KEY,
-        ACK_REQUESTS_FLAG_KEY,
-        URGENT_CLINICAL_FLAG_KEY,
-        "messaging.sbar",
-      ].sort(),
+      [ROLE_SEND_FLAG_KEY, ACK_REQUESTS_FLAG_KEY, URGENT_CLINICAL_FLAG_KEY, "messaging.sbar"].sort(),
     );
   });
 });

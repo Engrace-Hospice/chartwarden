@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
-import { ChartWardenError, DegradedError, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import { DegradedError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
@@ -408,11 +408,7 @@ export function createVerifiedUploadService(deps: {
         if (!row) throw new NotFoundError("document upload");
         if (row.createdByMembershipId !== membershipId) throw new ForbiddenError();
         if (row.status === "completed") {
-          throw new ChartWardenError(
-            "UPLOAD_NOT_ABORTABLE",
-            "completed upload cannot be aborted",
-            409,
-          );
+          throw new ChartWardenError("UPLOAD_NOT_ABORTABLE", "completed upload cannot be aborted", 409);
         }
         await tx.update(U).set({ status: "aborted", updatedAt: now() }).where(eq(U.id, uploadId));
         return row;

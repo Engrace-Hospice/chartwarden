@@ -1,3 +1,4 @@
+import { Type } from "@sinclair/typebox";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/ops-routes.ts - M34 GAP-164 (§4.1).
 //
 // Three platform-ops routes, all gated by the §4.5 permission key AND the `tenant_lifecycle_platform_ops`
@@ -6,7 +7,6 @@
 // Every read is `auditRead`-declared (the cross-tenant platform-bypass anchor, F09).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
-import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { SkipOnboardingTaskRequest } from "../typebox";
 import type { PlatformOpsService } from "./ops-service";

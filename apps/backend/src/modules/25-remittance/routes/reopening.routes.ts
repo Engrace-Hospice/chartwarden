@@ -1,10 +1,10 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/reopening.routes.ts — M25 milestone 3 routes: the MAC reopening
 // of a denial and the routing rules that decide a denial is reopened rather than appealed. Reads gate on
 // `reopening.read`, case writes on `reopening.manage`, the filing on `reopening.submit` + step-up, and the
 // organization's routing rules on `denial_route.manage`. Every change is If-Match (409 when stale) and every
 // mutation requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
 import { Type } from "@sinclair/typebox";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { REOPENING_FILING_CHANNELS, REOPENING_OUTCOMES } from "../domain";
 import { actorOf, writeActorOf } from "./actor";

@@ -1,5 +1,3 @@
-import { TileReadQuery, TileReadResponse } from "@chartwarden/reporting";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/33-reporting/routes/reporting-typebox.ts — M33 (§4.2).
 //
 // TypeBox request/response schemas for the M33 READ surface (dashboards / tiles / report-base &
@@ -16,6 +14,8 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { TileReadQuery, TileReadResponse } from "@chartwarden/reporting";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

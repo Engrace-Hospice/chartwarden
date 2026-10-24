@@ -1,7 +1,3 @@
-import {
-  M7_PROBLEM_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
-  type ModuleEventContribution,
-} from "@chartwarden/types";
 // apps/backend/src/modules/07-care-plan/events-by-m7.ts — Module 7's outbox-event contributions
 // (M7-T07, spec §2.4). The full `m7.*` taxonomy keyed on M7's own tables, under the `m7.` namespace
 // (M01 D8 / M03 D9). check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`),
@@ -11,6 +7,10 @@ import {
 // outbox-only EXCEPT `m7.care_plan.review_overdue`, which §4.4 ALSO pushes over Socket.IO to the org/PE
 // room for the live overdue banner (isOutboxOnly=false).
 import { Type } from "@sinclair/typebox";
+import {
+  M7_PROBLEM_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
+  type ModuleEventContribution,
+} from "@chartwarden/types";
 
 /** A per-version lifecycle kind (mirrors `care_plan_version_kind`; §3.2). */
 const versionKind = Type.Union([

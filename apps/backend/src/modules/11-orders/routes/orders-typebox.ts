@@ -1,6 +1,3 @@
-import { ORDER_KINDS } from "@chartwarden/types";
-import type { OrderKind } from "@chartwarden/types";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/11-orders/routes/orders-typebox.ts — M11-T06 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
 // import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED envelope.
@@ -13,6 +10,9 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { ORDER_KINDS } from "@chartwarden/types";
+import type { OrderKind } from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,

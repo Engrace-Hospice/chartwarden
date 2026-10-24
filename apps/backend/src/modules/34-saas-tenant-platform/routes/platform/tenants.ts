@@ -117,11 +117,7 @@ export function registerTenantPlatformRoutes(
       // ADR-0049 D3: the host label follows the rules the database enforces, refused here with an actionable reason.
       const checked = body.slug === undefined ? null : validateTenantSlug(body.slug);
       if (checked && !checked.ok) {
-        throw new ChartWardenError(
-          "INVALID_TENANT_SLUG",
-          `slug is not a valid tenant host label (${checked.reason})`,
-          422,
-        );
+        throw new ChartWardenError("INVALID_TENANT_SLUG", `slug is not a valid tenant host label (${checked.reason})`, 422);
       }
       const res = await service.provisionTenant(membershipId, {
         signupIntentId: body.signupIntentId ?? null,

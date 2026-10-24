@@ -7,10 +7,7 @@
 // (adjustments with CARC/group, remarks with RARC), and the enclosures NAMED (title, date, kind) - the supporting
 // documents themselves are delivered separately by the biller (merging document bytes is a separate, PHI-bearing
 // step). An 837I has no wet signature, so the claim enclosure is the as-submitted electronic claim.
-import {
-  type AppealPacketRenderPayload,
-  assertAppealPacketRenderPayload,
-} from "@chartwarden/types";
+import { type AppealPacketRenderPayload, assertAppealPacketRenderPayload } from "@chartwarden/types";
 import { type Block, type DocModel, latestInstant } from "./doc-model";
 import { fmtDate, fmtInstant, humanize, shortId } from "./shared";
 

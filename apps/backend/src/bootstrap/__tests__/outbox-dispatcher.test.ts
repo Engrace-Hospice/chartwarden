@@ -1,8 +1,8 @@
-import type { OutboxEventEntry } from "@chartwarden/types";
 // TASK-006 — pure decision surface of the outbox dispatcher. The relay's DB behavior (claim /
 // finalize / DLQ / purge under RLS) is exercised by the live-cluster suite (TASK-007 adds the CI
 // row); what is unit-testable without a database is the backoff math the retry clock runs on.
 import { Type } from "@sinclair/typebox";
+import type { OutboxEventEntry } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type OutboxConsumerBinding,

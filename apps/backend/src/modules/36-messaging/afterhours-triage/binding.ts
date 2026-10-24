@@ -7,9 +7,9 @@ import { getSeam } from "../../../bootstrap/index";
 import { createDbChannelFactsLookup } from "../medication-questions/deps";
 import type { HintOutboxPort } from "../message-hint-events";
 import { SUD_PRIVACY_FLAG } from "../part2-channel-gate";
+import { type AfterHoursLinkStore, createDbAfterHoursLinkStore } from "./afterhours-link-store";
 import { type AfterHoursFlagReader, buildAfterHoursEnabled } from "./afterhours-flag";
 import { type AfterHoursLinesService, createAfterHoursLinesService } from "./afterhours-lines";
-import { type AfterHoursLinkStore, createDbAfterHoursLinkStore } from "./afterhours-link-store";
 import { createAfterHoursRequestWriter } from "./afterhours-request";
 
 export interface AfterHoursBindingInput {

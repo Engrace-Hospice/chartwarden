@@ -1458,9 +1458,7 @@ export interface AdmissionSeedRecord {
 export interface AdmissionBackendSeed {
   readonly records?: readonly AdmissionSeedRecord[];
   /** Patient identities supplied by the M5 test double; absent identities resolve to null. */
-  readonly patientIdentities?: Readonly<
-    Record<string, NonNullable<AdmissionSummary["patient"]> & { readonly organizationId: string }>
-  >;
+  readonly patientIdentities?: Readonly<Record<string, NonNullable<AdmissionSummary["patient"]> & { readonly organizationId: string }>>;
   readonly now?: () => Date;
   /** Org timezone (M2 `organization.timezone`; D8) — drives the D4 deadline + F2F window math. */
   readonly orgTimeZone?: string;
@@ -1531,12 +1529,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
   const patientIdentity = (organizationId: string, patientId: string | null | undefined) => {
     const identity = patientId ? seed.patientIdentities?.[patientId] : undefined;
     return identity && identity.id === patientId && identity.organizationId === organizationId
-      ? {
-          id: identity.id,
-          firstName: identity.firstName,
-          lastName: identity.lastName,
-          mrn: identity.mrn,
-        }
+      ? { id: identity.id, firstName: identity.firstName, lastName: identity.lastName, mrn: identity.mrn }
       : null;
   };
   const byId = new Map<string, Rec>();
@@ -2205,13 +2198,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // never persist a timestamp (a lightweight state-transition double, not the D1 record); the real
       // values are proven against the Drizzle implementation's own live suite.
       return page(
-        rows.map((r) => ({
-          ...summary(r),
-          patient: patientIdentity(organizationId, r.patientId),
-          holdReason: null,
-          holdAt: null,
-          releasedAt: null,
-        })),
+        rows.map((r) => ({ ...summary(r), patient: patientIdentity(organizationId, r.patientId), holdReason: null, holdAt: null, releasedAt: null })),
         query,
       );
     },

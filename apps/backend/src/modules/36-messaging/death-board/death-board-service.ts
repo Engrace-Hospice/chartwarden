@@ -566,20 +566,10 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
   async function flagStalledOne(orgId: string, seen: DeathBoardItemRow): Promise<boolean> {
     // Alert FIRST (deduped on item + version): a failed alert leaves the item unflagged so the next tick retries; a flag without its alert
     // can never happen. The cost is a rare early alert when the item moved in between (ADR-0098 D13).
-    await emitNeedsOwnerAlert(deps.alerts, orgId, [
-      "item",
-      seen.id,
-      "stalled",
-      String(seen.version),
-    ]);
+    await emitNeedsOwnerAlert(deps.alerts, orgId, ["item", seen.id, "stalled", String(seen.version)]);
     return asSystem(orgId, async (tx) => {
       const item = await store.getItemForUpdate(tx, orgId, seen.id);
-      if (
-        !item ||
-        item.status !== "open" ||
-        item.needsOwner ||
-        item.ownerUserId !== seen.ownerUserId
-      ) {
+      if (!item || item.status !== "open" || item.needsOwner || item.ownerUserId !== seen.ownerUserId) {
         return false;
       }
       if (!(await store.flagNeedsOwner(tx, { orgId, itemId: item.id }))) return false;
@@ -616,15 +606,11 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
     }
     if (more) {
       // The cap was hit on a full page: warn only when at least one more row exists beyond what was scanned.
-      const rest: DeathBoardItemRow[] = await asSystem(orgId, (tx) =>
-        store.openUnflaggedItems(tx, orgId, after, 1),
-      );
-      if (rest.length > 0)
-        deps.warn?.("death board: stall sweep scan truncated", { org_id: orgId });
+      const rest: DeathBoardItemRow[] = await asSystem(orgId, (tx) => store.openUnflaggedItems(tx, orgId, after, 1));
+      if (rest.length > 0) deps.warn?.("death board: stall sweep scan truncated", { org_id: orgId });
     }
     const byPatient = new Map<string, DeathBoardItemRow[]>();
-    for (const item of scanned)
-      byPatient.set(item.patientId, [...(byPatient.get(item.patientId) ?? []), item]);
+    for (const item of scanned) byPatient.set(item.patientId, [...(byPatient.get(item.patientId) ?? []), item]);
     let flagged = 0;
     let failed = 0;
     for (const [patientId, items] of byPatient) {

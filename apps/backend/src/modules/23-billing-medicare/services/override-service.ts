@@ -26,7 +26,7 @@ import {
   repositories,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingTx,

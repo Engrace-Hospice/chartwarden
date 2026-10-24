@@ -19,13 +19,8 @@
 // refusal never confirms the chart exists). The review-queue / amendment routes are `abac: "none"` in the
 // §4.3 table and the catalog: they act on a REVIEW or AMENDMENT id, which `caseload_or_scope` cannot
 // resolve to a patient (same reasoning as the accept/deny routes in `patient-routes.ts`).
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { InvalidDeceasedDateError } from "../deceased";
 import { InvalidDeceasedTransitionError } from "../deceased-db";

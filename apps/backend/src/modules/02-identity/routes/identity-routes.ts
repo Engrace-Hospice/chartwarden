@@ -35,20 +35,20 @@ import {
   requireSession,
   resolveActorPermissions,
 } from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import { CredentialThrottleError } from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type SessionUnlockOutcome,
   auditInvitationRescinded,
   auditMembershipAccepted,
   auditMembershipRevoked,
+  auditSessionUnlock,
+  unlockAuditEvent,
   auditMembershipStatusChanged,
   auditRolesAttachedOnAccept,
-  auditSessionUnlock,
   auditUserDeactivated,
   auditUserInvited,
-  unlockAuditEvent,
 } from "../audit/identity-audit";
 import {
   type Actor,
@@ -83,11 +83,7 @@ const organizationNotActive = () =>
     403,
   );
 const pendingInviteExists = () =>
-  new ChartWardenError(
-    "PENDING_INVITE_EXISTS",
-    "a pending invite already exists for this email",
-    409,
-  );
+  new ChartWardenError("PENDING_INVITE_EXISTS", "a pending invite already exists for this email", 409);
 const invitationEmailMismatch = () =>
   new ChartWardenError(
     "INVITATION_EMAIL_MISMATCH",
@@ -134,11 +130,7 @@ async function assertLocationsInOrg(
     );
   }
   if (!(await deps.validateLocations(orgId, ids))) {
-    throw new ChartWardenError(
-      "INVALID_LOCATION",
-      `${field}: one or more locations are unavailable`,
-      422,
-    );
+    throw new ChartWardenError("INVALID_LOCATION", `${field}: one or more locations are unavailable`, 422);
   }
 }
 
@@ -242,11 +234,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     await resolveActor(deps, request); // real Better Auth session required; pre-org is allowed
     const token = request.__csrfCookieToken;
     if (typeof token !== "string") {
-      throw new ChartWardenError(
-        "CSRF_BOOTSTRAP_UNAVAILABLE",
-        "CSRF protection is unavailable",
-        503,
-      );
+      throw new ChartWardenError("CSRF_BOOTSTRAP_UNAVAILABLE", "CSRF protection is unavailable", 503);
     }
     reply.header("Cache-Control", "no-store, max-age=0");
     reply.header("Pragma", "no-cache");
@@ -380,10 +368,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     };
 
     // An SSO-only / link-session account has no password to check: say so, and spend none of the budget on it.
-    if (
-      deps.passwordVerifier.hasPassword &&
-      !(await deps.passwordVerifier.hasPassword(actor.userId))
-    ) {
+    if (deps.passwordVerifier.hasPassword && !(await deps.passwordVerifier.hasPassword(actor.userId))) {
       throw new ChartWardenError(
         "UNLOCK_NO_PASSWORD",
         "this account has no password; sign out and sign in again",
@@ -395,10 +380,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       try {
         await deps.sessions.revokeSession(actor.sessionId);
       } catch (err) {
-        request.log.error(
-          { err, sessionId: actor.sessionId },
-          "unlock lockout revoke retry failed",
-        );
+        request.log.error({ err, sessionId: actor.sessionId }, "unlock lockout revoke retry failed");
       }
       throw new ChartWardenError(
         "UNLOCK_LOCKED_OUT",
@@ -443,10 +425,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         // Refund the shared budget only once the session is known locked (marker) or dead (revoke). If both failed it
         // is alive and unmarked, so the spent counter is all that still stands between it and a fresh budget.
         if (markerError) {
-          request.log.error(
-            { err: markerError, sessionId: actor.sessionId },
-            "unlock lock marker write failed",
-          );
+          request.log.error({ err: markerError, sessionId: actor.sessionId }, "unlock lock marker write failed");
         }
         if (!markerError || !revokeError) {
           try {
@@ -461,10 +440,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
           await record("failed");
           await record("locked_out");
         } catch (err) {
-          request.log.error(
-            { err, sessionId: actor.sessionId },
-            "unlock lockout audit write failed",
-          );
+          request.log.error({ err, sessionId: actor.sessionId }, "unlock lockout audit write failed");
         }
         throw new ChartWardenError(
           "UNLOCK_LOCKED_OUT",
@@ -483,19 +459,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     if (actor.organizationId) {
       await publishM2(deps, {
         eventName: "m2.session.unlocked",
-        payload: {
-          sessionId: actor.sessionId,
-          userId: actor.userId,
-          organizationId: actor.organizationId,
-        },
+        payload: { sessionId: actor.sessionId, userId: actor.userId, organizationId: actor.organizationId },
         organizationId: actor.organizationId,
         aggregateKind: "session",
         aggregateId: actor.sessionId,
       });
     }
-    return reply
-      .code(200)
-      .send({ sessionId: actor.sessionId, activeOrganizationId: actor.organizationId });
+    return reply.code(200).send({ sessionId: actor.sessionId, activeOrganizationId: actor.organizationId });
   });
 
   // --- §7.1 Invite & onboard a clinician -------------------------------------------------
@@ -509,12 +479,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const proposedRoleKeys = readStringArray(request.body, "proposedRoleKeys");
     const proposedDefaultLocationIds = readStringArray(request.body, "proposedDefaultLocationIds");
     const providerId = (request.body as Record<string, unknown>).proposedDefaultProviderEntityId;
-    await assertLocationsInOrg(
-      deps,
-      orgId,
-      "proposedDefaultLocationIds",
-      proposedDefaultLocationIds,
-    );
+    await assertLocationsInOrg(deps, orgId, "proposedDefaultLocationIds", proposedDefaultLocationIds);
 
     if (await deps.invitations.pendingExists(orgId, email)) throw pendingInviteExists();
 

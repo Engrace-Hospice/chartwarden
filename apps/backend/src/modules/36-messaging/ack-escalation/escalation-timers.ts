@@ -2,11 +2,7 @@
 // the escalation at a request's deadline. The payload is ids and one instant (no text, no name, no patient); the job id is
 // deterministic per (request, tier, window deadline), so adding the same timer twice is a no-op in BullMQ itself. The job is only a
 // wake-up: it carries the window it was armed for and `processDue` re-reads the request, so a job for an old window does nothing.
-import {
-  MESSAGING_QUEUES,
-  MESSAGING_QUEUE_PARAMETERS,
-  escalationJobId,
-} from "@chartwarden/messaging";
+import { MESSAGING_QUEUES, MESSAGING_QUEUE_PARAMETERS, escalationJobId } from "@chartwarden/messaging";
 import type { Queue } from "bullmq";
 
 export interface EscalationTimerJobData {

@@ -1,16 +1,11 @@
+import { Type } from "@sinclair/typebox";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/account-flags-routes.ts - M34 GAP-164 (§4.1).
 //
 // GET /tenant/account (tenant.read_own), GET /tenant/feature-flags (feature_flag.read_own) and
 // POST /tenant/feature-flags/:flagKey (feature_flag.write_tenant + `feature_flag_write_authority` + step-up).
 // The write's ABAC target is built SERVER-SIDE from the verified session org: `organizationId` is the actor's
 // own org, never a body field, so an org_admin can only reach a flag row scoped to its own tenant.
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
-import { Type } from "@sinclair/typebox";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { TenantFlagWriteRequest } from "../typebox";
 import type { TenantAccountFlagsService } from "./account-flags-service";

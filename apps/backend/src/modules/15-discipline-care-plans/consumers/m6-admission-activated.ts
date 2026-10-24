@@ -42,10 +42,7 @@
 // which is visible; silently creating nothing would be a CoP clock that never starts and a queue nobody
 // is watching — the exact failure this file exists to end.
 import { type DbClient, schema } from "@chartwarden/db";
-import {
-  BOOTSTRAP_ON_ADMISSION_ACTIVATED,
-  requiredSignersFor,
-} from "@chartwarden/discipline-plans";
+import { BOOTSTRAP_ON_ADMISSION_ACTIVATED, requiredSignersFor } from "@chartwarden/discipline-plans";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DisciplinePlanKind } from "@chartwarden/types";
 import { bootstrapDisciplinePlan } from "../lifecycle/index";

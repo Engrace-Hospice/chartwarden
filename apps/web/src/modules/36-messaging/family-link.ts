@@ -1,4 +1,4 @@
-// M36 WP 6.7 (ADR-0099 D3) - the family contact's link. The organisation id, the one-time token and the agency's 24-hour number ride the URL FRAGMENT
+// M36 WP 6.7 (ADR-0099 D3) - the family contact's link. The organisation id and the one-time token ride the URL FRAGMENT
 // (`/family/open#t=<token>&o=<org>`): a fragment is never sent to a server, so none of them reaches an access log, a proxy or a Referer header.
 // The page scrubs it from the address bar on load. The link carries NO phone number: anything in a URL is forgeable, and a number shown on this page
 // under the agency's name would be a phishing prompt ("call this number"). The only numbers the page shows come from the server, for a valid bearer.

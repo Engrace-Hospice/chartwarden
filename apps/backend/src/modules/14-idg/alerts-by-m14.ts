@@ -1,4 +1,3 @@
-import type { ModuleAlertContribution } from "@chartwarden/types";
 // apps/backend/src/modules/14-idg/alerts-by-m14.ts — Module 14's M36 alert-payload contribution
 // (M14-T06, spec §4.10). The six typed alert payloads M14 OWNS under the `m14.` prefix, registered onto
 // M36's Foundation alert-payload registry at M14 boot (NO import edge into M36 — M36 is foundation-tier and
@@ -10,6 +9,7 @@ import type { ModuleAlertContribution } from "@chartwarden/types";
 // `m14.review_clock.escalated` carry their own in-payload escalation that the D11 override tightens against.
 // check-fitness-gaps.ts enforces the same `mN.<resource>.<verb>` ownership the outbox catalog uses.
 import { Type } from "@sinclair/typebox";
+import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const orgId = Type.String({ minLength: 1 });
 const id = Type.String({ minLength: 1 });

@@ -1,4 +1,3 @@
-import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/events-by-m25.ts — Module 25's outbox-event contributions
 // (spec §2.4 / §4.5). The `m25.*` taxonomy under the `m25.` namespace (M01 D8 / M03 D9 / M04 D9).
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m25'),
@@ -12,6 +11,7 @@ import type { ModuleEventContribution } from "@chartwarden/types";
 // fan-outs target M22 (PDF render handshake), M23 (claim state machine), M26 (cap accrual/reversal), M30
 // (HQRP denial-rate), M33 (dashboards), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@chartwarden/types";
 import { READINESS_DISPOSITIONS, READINESS_UNAVAILABLE_REASONS } from "./domain/readiness";
 
 const id = Type.String({ minLength: 1 });
