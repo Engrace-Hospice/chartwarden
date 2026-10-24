@@ -33,6 +33,7 @@ import {
 } from "./action-ui";
 import { CaseViewPanel } from "./case-view-panel";
 import { DenialRoutePanel } from "./denial-route-panel";
+import { PayerAppealPanel } from "./payer-appeal-panel";
 import {
   type AppealTier,
   type DenialAction,
@@ -120,6 +121,8 @@ export function DenialDetailPanel({
   const client = useApiClient();
   const session = useSession();
   const myMembershipId = session?.membershipId;
+  const hasPermission = (key: string): boolean => session?.permissions?.includes(key) ?? false;
+  const canReadPayerAppeals = hasPermission("payer_appeal.read");
   const navigate = useNavigate();
   const location = useLocation();
   const [denial, setDenial] = useState<DenialDetail | null>(null);
@@ -291,6 +294,22 @@ export function DenialDetailPanel({
               key={denial.claimId}
               claimId={denial.claimId}
               refreshKey={refreshToken}
+            />
+          ) : hasPermission("appeal.read") ? (
+            // A commercial denial has no claim: its timeline is keyed on the denial (the route needs appeal.read).
+            <CaseViewPanel key={denialId} denialId={denialId} refreshKey={refreshToken} />
+          ) : null}
+          {canReadPayerAppeals ? (
+            <PayerAppealPanel
+              key={`payer-${denialId}`}
+              denialId={denialId}
+              canManage={hasPermission("payer_appeal.manage")}
+              canManagePaths={hasPermission("payer_appeal_path.manage")}
+              refreshKey={refreshToken}
+              onChanged={() => {
+                setRefreshToken((n) => n + 1);
+                onChanged();
+              }}
             />
           ) : null}
           <DenialRoutePanel

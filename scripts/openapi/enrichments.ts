@@ -603,6 +603,25 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/audit-response.routes";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
+  DenialCaseViewSchema as M25DenialCaseViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import {
+  PayerAppealPathListQuerySchema as M25PayerAppealPathListQuerySchema,
+  PayerAppealPathPageSchema as M25PayerAppealPathPageSchema,
+  PayerAppealPathRequestSchema as M25PayerAppealPathRequestSchema,
+  PayerAppealPathViewSchema as M25PayerAppealPathViewSchema,
+  PayerAppealVersionedResultSchema as M25PayerAppealPathVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes";
+import {
+  PayerAppealCaseViewSchema as M25PayerAppealCaseViewSchema,
+  PayerAppealDenialViewSchema as M25PayerAppealDenialViewSchema,
+  PayerAppealMoveRequestSchema as M25PayerAppealMoveRequestSchema,
+  PayerAppealNoticeRequestSchema as M25PayerAppealNoticeRequestSchema,
+  PayerAppealOpenRequestSchema as M25PayerAppealOpenRequestSchema,
+  PayerAppealOpenedSchema as M25PayerAppealOpenedSchema,
+  PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -8659,6 +8678,83 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
     response: M25CaseViewSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/case-view": {
+    summary:
+      "The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline",
+    response: M25DenialCaseViewSchema,
+  },
+  // ── payer-appeal-path.routes.ts / payer-appeal.routes.ts (hospice ADR/TPE/QIC PRD, milestone 12a-1) ──
+  "GET /api/v1/payer-appeal-paths": {
+    summary: "The organization's payer appeal paths (written by a person; none are seeded)",
+    query: M25PayerAppealPathListQuerySchema,
+    response: M25PayerAppealPathPageSchema,
+  },
+  "GET /api/v1/payer-appeal-paths/:id": {
+    summary: "One payer appeal path with its levels, source notes and verification",
+    response: M25PayerAppealPathViewSchema,
+  },
+  "POST /api/v1/payer-appeal-paths": {
+    summary:
+      "Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it",
+    body: M25PayerAppealPathRequestSchema,
+    response: M25PayerAppealPathVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/verify": {
+    summary:
+      "Verify a draft path as a person other than its author; it becomes active and frozen (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/retire": {
+    summary: "Retire a draft or active path; cases opened under it keep their snapshot (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened",
+    response: M25PayerAppealDenialViewSchema,
+  },
+  "POST /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date",
+    body: M25PayerAppealOpenRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+    status: 201,
+  },
+  "GET /api/v1/payer-appeals/:id": {
+    summary: "One payer appeal level with its deadline derivation, recorded deadlines and decision",
+    response: M25PayerAppealCaseViewSchema,
+  },
+  "PUT /api/v1/payer-appeals/:id/notice": {
+    summary: "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
+    body: M25PayerAppealNoticeRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/state": {
+    summary: "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
+    body: M25PayerAppealMoveRequestSchema,
+    response: M25PayerAppealVersionedSchema,
+  },
+  "GET /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this payer appeal level, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Record a due date typed from a payer notice (the source note is required)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
   },
   // ── audit-response.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-2) ─────────────────────────────
   "PUT /api/v1/audit-requests/:id/response-items": {

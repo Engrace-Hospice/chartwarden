@@ -141,6 +141,13 @@ export function previousBusinessDay(dayMs: number): number {
   return ms;
 }
 
+/** The next business day on or after `dayMs` (milestone 12a-1: a payer path may state a forward roll). */
+export function nextBusinessDay(dayMs: number): number {
+  let ms = dayMs;
+  while (!isBusinessDay(ms)) ms += MS_PER_DAY;
+  return ms;
+}
+
 /** Milliseconds `zone` is ahead of UTC at the instant `ts` (negative west of UTC). */
 function zoneOffsetMs(ts: number, zone: string): number {
   const parts = formatterFor(zone).formatToParts(new Date(ts));
