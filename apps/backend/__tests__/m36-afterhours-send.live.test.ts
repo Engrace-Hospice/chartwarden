@@ -72,6 +72,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
   let router: EscalationRouter;
   let failLink = false;
   let restricted = false;
+  let restrictionLookupFails = false;
   const keysOf = new Map<string, readonly string[]>();
 
   const covered = (): EscalationRouter => ({
@@ -105,14 +106,22 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       flags: shared.flags,
       outbox: shared.outbox,
     });
+    // The binding's own check reads the M5 privacy-flag seam, which this suite does not boot: the restriction is the test's variable.
+    const basePort = {
+      ...afterHours.urgentPort,
+      isRestricted: async () => {
+        if (restrictionLookupFails) throw new Error("privacy flags unreadable");
+        return restricted;
+      },
+    };
     const port = failLink
       ? {
-          ...afterHours.urgentPort,
+          ...basePort,
           requestInTx: async () => {
             throw new Error("link insert failed");
           },
         }
-      : afterHours.urgentPort;
+      : basePort;
     const urgent = buildUrgentDeps({
       ...shared,
       messaging: kit.service,
@@ -220,6 +229,23 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       patientId: PATIENT,
     });
     expect(JSON.stringify(event.payload)).not.toMatch(/pain|Rita/i);
+  });
+
+  it("a restricted (Part 2) channel, or a restriction lookup that fails, still sends but requests no triage: no event, no link", async () => {
+    for (const mode of ["restricted", "lookup_fails"] as const) {
+      restricted = mode === "restricted";
+      restrictionLookupFails = mode === "lookup_fails";
+      const before = await counts();
+      const res = await send();
+      restricted = false;
+      restrictionLookupFails = false;
+      expect(res.created).toBe(true);
+      const after = await counts();
+      expect(after.links).toBe(before.links);
+      expect(after.events).toBe(before.events);
+      expect(after.messages).toBe(before.messages + 1);
+      expect(after.requests).toBe(before.requests + 1);
+    }
   });
 
   it("a replay writes no second event and no second link", async () => {
@@ -337,11 +363,25 @@ describe.skipIf(!DB_URL)("M36 ADR-0082 after-hours triage send path - LIVE Postg
       await consumer().handle(
         outcomeEvent({ sourceOutboxEventId: link.source_outbox_event_id, triageCallId: null, outcome: "no_coverage" }),
       );
+      const unanswered = await send();
       restricted = true;
-      const withheld = (await lines(ORG_A, channel, [res.message_id])).lines[0];
+      const both = (await lines(ORG_A, channel, [res.message_id, unanswered.message_id])).lines;
       restricted = false;
+      const withheld = both.find((l) => l.message_id === res.message_id);
       expect(withheld).toMatchObject({ state: "withheld" });
       expect(withheld?.text).not.toMatch(/coverage|opened/i);
+      // An unanswered request reads the same in a restricted channel: a member cannot tell that a triage request exists.
+      expect(both.find((l) => l.message_id === unanswered.message_id)).toMatchObject({ state: "withheld" });
+
+      // A soft-deleted message carries no line.
+      await kit.one(
+        "UPDATE message_acknowledgment_request SET status='cancelled', cancelled_at=now(), version=version+1 WHERE message_id=$1 RETURNING id",
+        [unanswered.message_id],
+      );
+      await kit.one("UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1 RETURNING id", [
+        unanswered.message_id,
+      ]);
+      expect((await lines(ORG_A, channel, [unanswered.message_id])).lines).toEqual([]);
 
       expect((await lines(ORG_A, otherChannel, [res.message_id])).lines).toEqual([]);
       expect((await lines(ORG_B, channel, [res.message_id])).lines).toEqual([]);

@@ -4,7 +4,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { AfterHoursTriageOutcome } from "@chartwarden/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 const LINK = schema.messageAfterhoursTriageLinks;
 const MSG = schema.messages;
@@ -85,6 +85,7 @@ export function createDbAfterHoursLinkStore(db: DbClient): AfterHoursLinkStore {
             and(
               eq(LINK.organizationId, orgId),
               eq(MSG.channelId, channelId),
+              isNull(MSG.deletedAt),
               inArray(LINK.messageId, [...messageIds]),
             ),
           );

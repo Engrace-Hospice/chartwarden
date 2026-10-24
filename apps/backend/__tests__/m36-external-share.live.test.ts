@@ -745,6 +745,9 @@ describe.skipIf(!DB_URL)("M36 ADR-0096 external partner share - LIVE Postgres", 
         await partner(on, "GET", `${PARTNER}/shares/${made.id}`, bearer),
         await partner(on, "GET", `${PARTNER}/shares/${randomUUID()}`, bearer),
         await redeem(made, on, ORG_A, "x".repeat(43)),
+        // An unmatched path under the prefix (a router 404) and a case / duplicate-slash variant are uncacheable too.
+        await partner(on, "GET", `${PARTNER}/no-such-route`),
+        await partner(on, "GET", `/API/v1/messaging/PARTNER/shares/${made.id}`, bearer),
       ];
       for (const res of responses) {
         expect(res.headers["cache-control"], res.body).toContain("no-store");

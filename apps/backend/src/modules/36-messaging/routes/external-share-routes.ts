@@ -76,6 +76,9 @@ const SHARE_ID_OK: PreHandler = async (request) => {
   }
 };
 
+const PARTNER_PREFIX = "/api/v1/messaging/partner/";
+const PARTNER_PATH_FALLBACK = /^\/+api\/+v1\/+messaging\/+partner(\/|$)/i;
+
 export function registerExternalShareRoutes(
   app: FastifyInstance,
   deps: ExternalShareRouteDeps,
@@ -146,8 +149,12 @@ export function registerExternalShareRoutes(
   // ADR-0096 D23: EVERY partner response is uncacheable, refusals included. The handlers set no-store on success, but a thrown 404/422/429 is built by
   // the error handler, and a 404 is heuristically cacheable by a browser or a shared proxy. The path test keeps the hook off every other route.
   app.addHook("onSend", async (request, reply, payload) => {
-    if (request.url.startsWith("/api/v1/messaging/partner/"))
-      reply.header("Cache-Control", "no-store");
+    // Keyed off the MATCHED route; an unmatched request (a 404 the router built) falls back to a tolerant path test (extra slashes, any case).
+    const routeUrl = request.routeOptions?.url;
+    const partner = routeUrl
+      ? routeUrl.startsWith(PARTNER_PREFIX)
+      : PARTNER_PATH_FALLBACK.test(request.url.split("?")[0] ?? "");
+    if (partner) reply.header("Cache-Control", "no-store");
     return payload;
   });
 

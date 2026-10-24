@@ -108,6 +108,8 @@ export interface UrgentServiceDeps {
    */
   readonly afterHoursTriage?: {
     readonly enabled: (orgId: string) => Promise<boolean>;
+    /** True when the channel's patient is restricted (Part 2). A throw is read as restricted: no triage request is made (ADR-0082 open compliance question). */
+    readonly isRestricted: (orgId: string, channelId: string) => Promise<boolean>;
     readonly requestInTx: (
       tx: unknown,
       facts: {
@@ -224,8 +226,15 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
       // A replay of a send that already committed answers with the original even if tracking was turned off since (the core replays).
       if (input.roleAddressed && !track && !isReplay) throw roleSendUntracked();
       const afterHours = deps.afterHoursTriage;
+      // Fail closed: the request event names the patient, so it is never emitted for a restricted (Part 2) channel or when that cannot be told.
+      // The message itself still goes; the triage call is simply not requested (the same as the flag being off).
       const askTriage =
-        !!input.requestTriageCall && track && !isReplay && !!afterHours && (await afterHours.enabled(actor.orgId));
+        !!input.requestTriageCall &&
+        track &&
+        !isReplay &&
+        !!afterHours &&
+        (await afterHours.enabled(actor.orgId)) &&
+        !(await afterHours.isRestricted(actor.orgId, input.channelId).catch(() => true));
       const outcome = { hookRan: false };
       const sent = await deps.messaging.sendMessage(actor.orgId, {
         channelId: input.channelId,

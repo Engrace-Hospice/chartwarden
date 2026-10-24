@@ -303,6 +303,7 @@ import {
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
+  AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
@@ -5330,6 +5331,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
             idgDiscussions: buildIdgDiscussionDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // ADR-0082 - the after-hours thread-line read's own budget.
+            afterHoursTriageRateLimit: createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
+              keyPrefix: "m36-afterhours-triage",
+            }),
             // WP 4.12 - on-call directory (read-only); off unless the tenant flag `messaging.oncall_directory` is on.
             oncall: buildOnCallDirectoryDeps({
               db: dbHandle.db,

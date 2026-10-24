@@ -109,7 +109,7 @@ describe("the thread line (S4)", () => {
         isRestrictedChannel,
       });
       const { lines } = await service.forChannel(ORG, CH, ["m1", "m2"]);
-      expect(lines.map((l) => l.state)).toEqual(["withheld", "not_confirmed"]);
+      expect(lines.map((l) => l.state)).toEqual(["withheld", "withheld"]);
       expect(JSON.stringify(lines)).not.toMatch(/opened|coverage/i);
     }
   });
@@ -130,8 +130,9 @@ describe("the thread line (S4)", () => {
     expect(read).toBe(false);
   });
 
-  it("lineStateOf: a null outcome is never withheld", () => {
-    expect(lineStateOf(null, true)).toBe("not_confirmed");
+  it("lineStateOf: a restricted channel withholds every row, an unanswered one included", () => {
+    expect(lineStateOf(null, true)).toBe("withheld");
+    expect(lineStateOf(null, false)).toBe("not_confirmed");
   });
 });
 

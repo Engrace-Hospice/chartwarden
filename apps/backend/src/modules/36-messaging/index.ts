@@ -292,6 +292,8 @@ export function mountMessagingRoutes(
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     };
+    /** ADR-0082: the optional budget of the after-hours thread-line read. */
+    afterHoursTriageRateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
@@ -407,6 +409,7 @@ export function mountMessagingRoutes(
       service: _createAckBroadcastService({ db, flags: opts.ackBroadcast?.flags }),
       ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
+    ...(opts.afterHoursTriageRateLimit ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit } : {}),
     deliveryTarget: {
       service: _createDeliveryTargetService({
         read: _createDbDeliveryTargetReader(db),

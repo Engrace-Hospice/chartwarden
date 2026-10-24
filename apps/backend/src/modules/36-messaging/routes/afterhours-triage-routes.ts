@@ -32,6 +32,8 @@ export function parseMessageIds(raw: string): readonly string[] {
 
 export interface AfterHoursTriageRouteDeps {
   readonly service: AfterHoursLinesService;
+  /** Per-user / per-org budget (an availability control); absent = unlimited (tests). */
+  readonly rateLimit?: PreHandler | undefined;
 }
 
 /** Used when the boot supplies none: the uniform 404. */
@@ -51,7 +53,12 @@ export function registerAfterHoursTriageRoutes(
   app.get(
     "/api/v1/messaging/channels/:id/afterhours-triage",
     {
-      preHandler: [requireUuidParams("id"), guards.read, guards.viewChannel],
+      preHandler: [
+        requireUuidParams("id"),
+        guards.read,
+        guards.viewChannel,
+        ...(deps.rateLimit ? [deps.rateLimit] : []),
+      ],
       schema: { response: { 200: AfterHoursLinesResponseSchema } },
       config: {
         auditRead: {

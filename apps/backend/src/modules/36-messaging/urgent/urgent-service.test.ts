@@ -375,8 +375,13 @@ describe("the after-hours request hook (ADR-0082)", () => {
     enabled: async () => true,
     createInTx: async () => ({ requestId: REQ_ID }),
   };
-  const port = (enabled: () => Promise<boolean>, calls: unknown[][] = []) => ({
+  const port = (
+    enabled: () => Promise<boolean>,
+    calls: unknown[][] = [],
+    isRestricted: () => Promise<boolean> = async () => false,
+  ) => ({
     enabled,
+    isRestricted,
     requestInTx: async (...args: unknown[]) => void calls.push(args),
   });
 
@@ -427,6 +432,29 @@ describe("the after-hours request hook (ADR-0082)", () => {
     expect(sends).toHaveLength(0);
   });
 
+  it("requests nothing for a restricted (Part 2) channel, and the send still goes", async () => {
+    const calls: unknown[][] = [];
+    const { service, sends } = setup({
+      tracker: tracked,
+      afterHours: port(async () => true, calls, async () => true),
+    });
+    const res = await service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks);
+    expect(res.created).toBe(true);
+    expect(sends).toHaveLength(1);
+    expect(calls).toEqual([]);
+  });
+
+  it("requests nothing when the restriction lookup throws (fail closed)", async () => {
+    const calls: unknown[][] = [];
+    const { service, sends } = setup({
+      tracker: tracked,
+      afterHours: port(async () => true, calls, () => Promise.reject(new Error("seam down"))),
+    });
+    await service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks);
+    expect(sends).toHaveLength(1);
+    expect(calls).toEqual([]);
+  });
+
   it("a replay writes no second request", async () => {
     const calls: unknown[][] = [];
     const { service } = setup({ tracker: tracked, afterHours: port(async () => true, calls) });
@@ -442,6 +470,7 @@ describe("the after-hours request hook (ADR-0082)", () => {
       tracker: tracked,
       afterHours: {
         enabled: async () => true,
+        isRestricted: async () => false,
         requestInTx: async () => {
           throw new Error("link insert failed");
         },

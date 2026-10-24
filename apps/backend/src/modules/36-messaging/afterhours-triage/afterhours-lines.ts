@@ -35,8 +35,9 @@ export function lineStateOf(
   outcome: AfterHoursTriageOutcome | null,
   restricted: boolean,
 ): AfterHoursTriageLineState {
-  if (outcome === null) return "not_confirmed";
-  return restricted ? "withheld" : outcome;
+  // Restricted: every link row reads the same, an unanswered request included, so a member cannot learn that a triage request exists.
+  if (restricted) return "withheld";
+  return outcome ?? "not_confirmed";
 }
 
 export function createAfterHoursLinesService(deps: AfterHoursLinesDeps): AfterHoursLinesService {
@@ -44,9 +45,11 @@ export function createAfterHoursLinesService(deps: AfterHoursLinesDeps): AfterHo
     async forChannel(orgId, channelId, messageIds) {
       if (!(await deps.isEnabled(orgId))) throw new NotFoundError("channel");
       const ids = [...new Set(messageIds)].slice(0, AFTERHOURS_LINES_MAX_MESSAGES);
-      const rows = await deps.store.findForChannel(orgId, channelId, ids);
-      if (rows.length === 0) return { lines: [] };
-      const restricted = await deps.isRestrictedChannel(orgId, channelId).catch(() => true);
+      // Evaluated before the rows are read, whatever they hold, so the two paths cost and shape the same.
+      const [restricted, rows] = await Promise.all([
+        deps.isRestrictedChannel(orgId, channelId).catch(() => true),
+        deps.store.findForChannel(orgId, channelId, ids),
+      ]);
       const lines: AfterHoursTriageLineDto[] = rows.map((r) => {
         const state = lineStateOf(r.outcome, restricted);
         return { message_id: r.messageId, state, text: AFTERHOURS_TRIAGE_LINE_TEXT[state] };

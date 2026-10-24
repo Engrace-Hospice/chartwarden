@@ -486,8 +486,7 @@ export function createAckBroadcastService(deps: {
     async acknowledge(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const b = await broadcastOf(tx, orgId, input.messageId, { live: true });
-        // A withdrawn broadcast no longer asks anyone (the guard trigger refuses the write too): the same answer as an unknown one.
-        if (!b || b.withdrawnAt) throw notFound();
+        if (!b) throw notFound();
         const mine = (await tx
           .select({ id: RC.id, acknowledgedAt: RC.acknowledgedAt })
           .from(RC)
@@ -508,6 +507,9 @@ export function createAckBroadcastService(deps: {
             already: true,
           };
         }
+        // A withdrawn broadcast no longer asks anyone (the guard trigger refuses the write too): a NEW acknowledgment gets the same
+        // answer as an unknown one. A retry by someone who already acknowledged (above) still reads back the recorded instant.
+        if (b.withdrawnAt) throw notFound();
         const active = await tx.execute<{ ok: boolean }>(sql`
           SELECT (u.status = 'active' AND EXISTS (
                     SELECT 1 FROM ${MEMBERSHIP} m

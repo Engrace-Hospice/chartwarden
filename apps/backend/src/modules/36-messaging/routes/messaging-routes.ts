@@ -189,6 +189,8 @@ export interface MessagingRouteDeps {
   inbox?: InboxRouteDeps;
   /** WP 6.8 (ADR-0097): acknowledge-required broadcast (tenant flag `messaging.ack_broadcast`). Omitted => the routes are not registered (404). */
   ackBroadcast?: AckBroadcastRouteDeps;
+  /** ADR-0082: the budget of the after-hours thread-line read. */
+  afterHoursTriageRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
   oncall?: OnCallRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
@@ -565,7 +567,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- ADR-0082 (PROPOSED): the fixed-text after-hours triage line of a message; flag-gated inside the service ---
   registerAfterHoursTriageRoutes(
     app,
-    deps.oncall?.afterHoursLines ? { service: deps.oncall.afterHoursLines } : DISABLED_AFTERHOURS_TRIAGE,
+    deps.oncall?.afterHoursLines
+      ? { service: deps.oncall.afterHoursLines, rateLimit: deps.afterHoursTriageRateLimit }
+      : DISABLED_AFTERHOURS_TRIAGE,
     { read: READ, viewChannel: VIEW_CHANNEL },
   );
 

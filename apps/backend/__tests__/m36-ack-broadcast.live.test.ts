@@ -469,6 +469,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
     expect(stamp[0]?.ok).toBe(true);
     const second = await call("POST", withdrawUrl, author);
     expect(second.json()).toMatchObject({ already: true, withdrawnAt: first.json().withdrawnAt });
+    // A retry by someone who already acknowledged is still an idempotent success after the withdrawal.
+    const retry = await call("POST", url(id, "ack"), alice);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toMatchObject({ already: true, acknowledgedAt: expect.any(String) });
 
     for (const u of [alice, bob]) {
       const items = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", u)).json().items;

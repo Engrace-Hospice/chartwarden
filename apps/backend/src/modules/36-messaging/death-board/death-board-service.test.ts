@@ -2,7 +2,7 @@ import type { DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { DEATH_BOARD_TEMPLATE } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
-import { type DeathBoardActor, createDeathBoardService } from "./death-board-service";
+import { type DeathBoardActor, STALL_SCAN_MAX, createDeathBoardService } from "./death-board-service";
 import { createMemoryDeathBoardStore } from "./death-board-store-memory";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -26,6 +26,7 @@ interface Opts {
   part2Denied?: string[];
   part2Throws?: boolean;
   teamThrows?: boolean;
+  warn?: (msg: string, ctx?: Record<string, unknown>) => void;
 }
 
 function build(o: Opts = {}) {
@@ -56,6 +57,7 @@ function build(o: Opts = {}) {
     formerTeam: async () => o.former ?? [FORMER],
     alerts,
     now: () => NOW,
+    ...(o.warn ? { warn: o.warn } : {}),
   });
   return { service, store, emit, calls };
 }
@@ -366,6 +368,24 @@ describe("offboarding", () => {
 describe("stalled owners (flagStalledForOrg)", () => {
   const needsOwnerAlerts = (t: { emit: ReturnType<typeof vi.fn> }) =>
     t.emit.mock.calls.filter((c) => c[1].eventType === "m36.death_board.needs_owner");
+
+  it("warns about a truncated scan only when more rows exist than were scanned", async () => {
+    for (const [total, expectWarn] of [
+      [STALL_SCAN_MAX, false],
+      [STALL_SCAN_MAX + 1, true],
+    ] as const) {
+      const warn = vi.fn();
+      const t = build({ warn });
+      const ids = Array.from({ length: total }, (_, i) => String(i).padStart(8, "0"));
+      t.store.openUnflaggedItems = async (_tx, _org, afterId, limit) =>
+        ids
+          .filter((id) => afterId === null || id > afterId)
+          .slice(0, limit)
+          .map((id) => ({ id, patientId: id, ownerUserId: RN }) as never);
+      await t.service.flagStalledForOrg(ORG);
+      expect(warn.mock.calls.filter((c) => /truncated/.test(c[0]))).toHaveLength(expectWarn ? 1 : 0);
+    }
+  });
 
   it("does nothing while every owner is still active and admitted", async () => {
     const t = await boardWith();

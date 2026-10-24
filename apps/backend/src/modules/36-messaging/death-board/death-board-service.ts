@@ -604,7 +604,11 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
       if (!more) break;
       after = page[page.length - 1]?.id ?? null;
     }
-    if (more) deps.warn?.("death board: stall sweep scan truncated", { org_id: orgId });
+    if (more) {
+      // The cap was hit on a full page: warn only when at least one more row exists beyond what was scanned.
+      const rest: DeathBoardItemRow[] = await asSystem(orgId, (tx) => store.openUnflaggedItems(tx, orgId, after, 1));
+      if (rest.length > 0) deps.warn?.("death board: stall sweep scan truncated", { org_id: orgId });
+    }
     const byPatient = new Map<string, DeathBoardItemRow[]>();
     for (const item of scanned) byPatient.set(item.patientId, [...(byPatient.get(item.patientId) ?? []), item]);
     let flagged = 0;

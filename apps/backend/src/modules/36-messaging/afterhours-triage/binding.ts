@@ -24,6 +24,7 @@ export interface AfterHoursBinding {
   /** The urgent service's transaction-hook port (`UrgentServiceDeps.afterHoursTriage`). */
   readonly urgentPort: {
     readonly enabled: (orgId: string) => Promise<boolean>;
+    readonly isRestricted: (orgId: string, channelId: string) => Promise<boolean>;
     readonly requestInTx: ReturnType<typeof createAfterHoursRequestWriter>;
   };
   readonly lines: AfterHoursLinesService;
@@ -54,17 +55,19 @@ function createRestrictedChannelCheck(db: DbClient) {
 export function buildAfterHoursTriageBinding(input: AfterHoursBindingInput): AfterHoursBinding {
   const enabled = buildAfterHoursEnabled(input.flags);
   const store = createDbAfterHoursLinkStore(input.db);
+  const isRestricted = createRestrictedChannelCheck(input.db);
   return {
     enabled,
     store,
     urgentPort: {
       enabled,
+      isRestricted,
       requestInTx: createAfterHoursRequestWriter({ outbox: input.outbox, store }),
     },
     lines: createAfterHoursLinesService({
       isEnabled: enabled,
       store,
-      isRestrictedChannel: createRestrictedChannelCheck(input.db),
+      isRestrictedChannel: isRestricted,
     }),
   };
 }
