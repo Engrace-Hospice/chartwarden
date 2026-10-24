@@ -74,8 +74,6 @@ export const AuditMoveRequestSchema = Type.Object({
     Type.Literal("closed"),
     Type.Literal("withdrawn"),
   ]),
-  /** When the response was actually sent (ISO date-time); defaults to now. Only for 'responded'. */
-  respondedAt: Type.Optional(Type.String({ format: "date-time" })),
 });
 
 export const AuditListQuerySchema = Type.Object({
@@ -93,6 +91,7 @@ const AuditSummarySchema = Type.Object({
   claimCount: Type.Integer(),
   dueState: Type.Union([
     Type.Literal("no_deadline_recorded"),
+    Type.Literal("none_stated"),
     Type.Literal("open"),
     Type.Literal("past"),
     Type.Literal("not_applicable"),
@@ -127,6 +126,40 @@ export const AuditDetailSchema = Type.Composite([
     events: Type.Array(
       Type.Object({ id: Type.String(), eventKind: Type.String(), occurredAt: Type.String() }),
     ),
+    /** Milestone 7a-2: the response packet. */
+    response: Type.Object({
+      items: Type.Array(
+        Type.Object({
+          label: Type.String(),
+          state: Type.Union([
+            Type.Literal("pending"),
+            Type.Literal("ready"),
+            Type.Literal("not_applicable"),
+          ]),
+        }),
+      ),
+      documents: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          claimId: Type.String(),
+          documentId: Type.String(),
+          attachedAt: Type.String(),
+        }),
+      ),
+      sentToReviewByMembershipId: NULLABLE_STRING,
+      reviewedByMembershipId: NULLABLE_STRING,
+      reviewedAt: NULLABLE_STRING,
+      deadlineNoneStatedAt: NULLABLE_STRING,
+      filing: Type.Union([
+        Type.Object({
+          channel: Type.String(),
+          confirmationRef: Type.String(),
+          filedAt: Type.String(),
+          filedLate: Type.Boolean(),
+        }),
+        Type.Null(),
+      ]),
+    }),
   }),
 ]);
 export const AuditVersionedResultSchema = Type.Object({
@@ -243,7 +276,6 @@ export function registerAuditRequestRoutes(
           writeActorOf(request),
           auditId(request),
           body.to,
-          { ...(body.respondedAt ? { respondedAt: body.respondedAt } : {}) },
           ifMatchVersion(request),
         ),
       );

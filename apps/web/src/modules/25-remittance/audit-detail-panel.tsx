@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the AUDIT REQUEST work rail (milestone 7a-1): the request, its linked claims
 // (added through the shared claim lookup), its recorded deadlines (each typed from a notice, with a source note), and
 // the state moves. The authority kind is a label only. A request with no recorded deadline says so loudly; the app
@@ -25,6 +25,7 @@ import {
   moveAuditRequest,
   unlinkAuditClaim,
 } from "./audit-api";
+import { AuditResponsePanel } from "./audit-response-panel";
 import { CaseViewPanel } from "./case-view-panel";
 import { RecordedDeadlines } from "./recorded-deadlines";
 import { AUDIT_DUE_TONE, AUDIT_STATE_TONE, formatDay, humanize, toneOf } from "./remittance-status";
@@ -33,7 +34,8 @@ import { AUDIT_DUE_TONE, AUDIT_STATE_TONE, formatDay, humanize, toneOf } from ".
 const MOVES: Record<string, readonly AuditRequestState[]> = {
   received: ["in_assembly", "withdrawn"],
   in_assembly: ["in_review", "withdrawn"],
-  in_review: ["responded", "withdrawn"],
+  // A response is recorded by filing the signed-off packet (Response packet below), never by a bare move.
+  in_review: ["withdrawn"],
   responded: ["closed", "withdrawn"],
 };
 const TERMINAL = new Set(["closed", "withdrawn"]);
@@ -89,8 +91,9 @@ export function AuditDetailPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [move, setMove] = useState<AuditRequestState | null>(null);
-  const [respondedAt, setRespondedAt] = useState("");
   const [busy, setBusy] = useState(false);
+  // A packet command is in flight: a state move waits, as both use the request's one If-Match version.
+  const [packetBusy, setPacketBusy] = useState(false);
   const [pickerKey, setPickerKey] = useState(0);
   // Claim link/unlink in flight (one at a time): disables the picker and the Unlink buttons.
   const [claimBusy, setClaimBusy] = useState(false);
@@ -106,13 +109,14 @@ export function AuditDetailPanel({
   }, []);
 
   // A failed reload keeps the last good request on screen; the error shows inline (Retry only when nothing loaded yet).
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
     const res = await loadAuditRequest(client, auditId);
-    if (!mounted.current) return;
+    if (!mounted.current) return false;
     if (res.ok) {
       setAudit(res.value);
       setLoadError(null);
     } else setLoadError(res.message);
+    return res.ok;
   }, [client, auditId]);
 
   // A remounted claim picker (and a collapsed move form) drops focus to <body>: hand it to the section heading.
@@ -141,9 +145,11 @@ export function AuditDetailPanel({
     void load();
   }, [load]);
 
-  async function refresh(): Promise<void> {
-    await load();
+  /** Reload the request and tell the worklist; true when the reload succeeded (the packet panel disables on false). */
+  async function refresh(): Promise<boolean> {
+    const ok = await load();
     onChanged();
+    return ok;
   }
 
   async function addClaim(claimId: string): Promise<void> {
@@ -182,9 +188,7 @@ export function AuditDetailPanel({
     if (!audit || !move) return;
     setBusy(true);
     setError(null);
-    const at =
-      move === "responded" && respondedAt ? new Date(respondedAt).toISOString() : undefined;
-    const res = await moveAuditRequest(client, auditId, audit.version, move, at);
+    const res = await moveAuditRequest(client, auditId, audit.version, move);
     if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) {
@@ -195,7 +199,6 @@ export function AuditDetailPanel({
     }
     setNotice(`Moved to ${humanize(move)}.`);
     setMove(null);
-    setRespondedAt("");
     await refresh();
   }
 
@@ -251,7 +254,12 @@ export function AuditDetailPanel({
           <RecordedDeadlines
             subject={{ kind: "audit", id: auditId }}
             deadlines={audit.deadlines}
-            allowNoticeDocument={false}
+            allowNoticeDocument
+            noticeClaims={audit.claims.map((c) => ({
+              value: c.claimId,
+              label: c.claimControlNumber ?? c.claimId.slice(0, 8),
+            }))}
+            noneStatedAt={audit.response.deadlineNoneStatedAt}
             editable={!terminal}
             onChanged={() => void refresh()}
           />
@@ -288,6 +296,12 @@ export function AuditDetailPanel({
               />
             )}
           </section>
+          <AuditResponsePanel
+            audit={audit}
+            onChanged={refresh}
+            onBusyChange={setPacketBusy}
+            locked={busy}
+          />
           {firstClaim ? (
             <CaseViewPanel key={firstClaim} claimId={firstClaim} refreshKey={caseViewKey} />
           ) : null}
@@ -311,21 +325,19 @@ export function AuditDetailPanel({
           {terminal ? null : move === null ? (
             <ButtonRow>
               {(MOVES[audit.state] ?? []).map((to) => (
-                <Button key={to} tone="secondary" size="sm" onClick={() => setMove(to)}>
+                <Button
+                  key={to}
+                  tone="secondary"
+                  size="sm"
+                  disabled={packetBusy}
+                  onClick={() => setMove(to)}
+                >
                   {`Move to ${humanize(to)}`}
                 </Button>
               ))}
             </ButtonRow>
           ) : (
             <>
-              {move === "responded" ? (
-                <TextField
-                  label="Responded at (optional)"
-                  type="datetime-local"
-                  value={respondedAt}
-                  onChange={(e) => setRespondedAt(e.target.value)}
-                />
-              ) : null}
               <FormButtons
                 submitLabel={`Move to ${humanize(move)}`}
                 busy={busy}

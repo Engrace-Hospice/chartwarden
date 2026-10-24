@@ -669,6 +669,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m20.safety.incident_report_requested",
       "m25.appeal_packet.render_requested",
       "m25.adr_packet.render_requested",
+      "m25.audit_response_packet.render_requested",
       "m27.artifact.render_requested",
       "m37.body_release.document_requested",
       // F-100 — M6's six CoP compliance documents. No `m6.document_requested`: the M22 spec routes the

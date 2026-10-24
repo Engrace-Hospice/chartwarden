@@ -1,12 +1,13 @@
 // @chartwarden/db — M25 milestone 6a (migration 1124): the submission attempt. One row per filing made (or prepared) for an
 // ADR response, an appeal / QIC request, a reopening request or a QIC escalation request. Statuses, purposes, channels
 // and adapters are text + CHECK (closed sets mirrored in domain/submission.ts), so there is no new pgEnum. Exactly
-// one of the three subject FKs is set (CHECK); retained proof (confirmation, receipt time, receipt document) is
+// one of the four subject FKs (audit_request_id: milestone 7a-2, migration 1175) is set (CHECK); retained proof (confirmation, receipt time, receipt document) is
 // frozen once acknowledged and corrected only by appending to receipt_amendments. Free text is audit-scrubbed.
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { adrCase } from "./adr";
 import { appealCase } from "./appeal";
+import { auditRequest } from "./audit-request";
 import { reopeningCase } from "./reopening";
 
 export const submissionAttempt = pgTable(
@@ -20,6 +21,9 @@ export const submissionAttempt = pgTable(
     adrCaseId: uuid("adr_case_id").references(() => adrCase.id, { onDelete: "restrict" }),
     appealCaseId: uuid("appeal_case_id").references(() => appealCase.id, { onDelete: "restrict" }),
     reopeningCaseId: uuid("reopening_case_id").references(() => reopeningCase.id, {
+      onDelete: "restrict",
+    }),
+    auditRequestId: uuid("audit_request_id").references(() => auditRequest.id, {
       onDelete: "restrict",
     }),
     purpose: text("purpose").notNull(),

@@ -33,7 +33,7 @@ describe("submission vocabulary", () => {
       expect(SUBMISSION_CHANNELS).toContain(c);
     }
     expect(SUBMISSION_ADAPTERS).toEqual(["manual", "esmd", "fax"]);
-    expect(SUBMISSION_PURPOSES).toHaveLength(4);
+    expect(SUBMISSION_PURPOSES).toHaveLength(5);
     expect(SUBMISSION_STATUSES).toHaveLength(8);
   });
 

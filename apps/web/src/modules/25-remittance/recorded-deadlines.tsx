@@ -1,4 +1,4 @@
-import { Button, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
+import { Button, SelectField, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — recorded deadlines (milestone 7a-1), shared by the later-tier panel and the
 // audit detail. A recorded deadline is a date the user typed from a notice, with the source note that says which
 // notice. The app computes nothing and applies no default: no deadline recorded reads as exactly that, loudly.
@@ -26,8 +26,12 @@ export function NoDueDateAlert(): JSX.Element {
 export interface RecordedDeadlinesProps {
   readonly subject: DeadlineSubject;
   readonly deadlines: readonly RecordedDeadlineView[];
-  /** Only appeals accept a notice document id (an audit request refuses one). */
+  /** Whether the form offers a notice document id (an appeal's claim or the request's claims validate it). */
   readonly allowNoticeDocument: boolean;
+  /** An audit request covering several claims: the claims one can name as owning the notice document's patient. */
+  readonly noticeClaims?: readonly { readonly value: string; readonly label: string }[];
+  /** An audit request whose letter states no due date, attested by a person: the missing-date alert is replaced. */
+  readonly noneStatedAt?: string | null;
   /** False for a terminal case: the list stays readable but nothing can be added or changed. */
   readonly editable: boolean;
   readonly onChanged: () => void;
@@ -66,7 +70,13 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
     <section aria-label="Recorded deadlines">
       <h3 className="wx-action-title">Recorded deadlines</h3>
       <Hint>{NOT_COMPUTED}</Hint>
-      {props.deadlines.length === 0 ? <NoDueDateAlert /> : null}
+      {props.deadlines.length === 0 && !props.noneStatedAt ? <NoDueDateAlert /> : null}
+      {props.deadlines.length === 0 && props.noneStatedAt ? (
+        <Hint>
+          The request letter states no due date (attested {new Date(props.noneStatedAt).toLocaleString()}
+          ).
+        </Hint>
+      ) : null}
       {props.deadlines.length > 0 ? (
         <table className="wx-table">
           <thead>
@@ -176,6 +186,8 @@ function DeadlineModal(
   const [dueOn, setDueOn] = useState(deadline?.dueOn ?? "");
   const [sourceNote, setSourceNote] = useState(deadline?.sourceNote ?? "");
   const [noticeDocumentId, setNoticeDocumentId] = useState(deadline?.noticeDocumentId ?? "");
+  const noticeClaims = props.noticeClaims ?? [];
+  const [noticeClaimId, setNoticeClaimId] = useState(noticeClaims[0]?.value ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -197,18 +209,22 @@ function DeadlineModal(
     setError(null);
     const notice =
       props.allowNoticeDocument && noticeDocumentId.trim() ? noticeDocumentId.trim() : null;
+    // Several claims: the server needs the one whose patient owns the notice document.
+    const claimField = notice && noticeClaims.length > 1 ? { noticeClaimId } : {};
     const res = deadline
       ? await editRecordedDeadline(client, props.subject, deadline, {
           label: label.trim(),
           dueOn,
           sourceNote: sourceNote.trim(),
           ...(props.allowNoticeDocument ? { noticeDocumentId: notice } : {}),
+          ...claimField,
         })
       : await addRecordedDeadline(client, props.subject, {
           label: label.trim(),
           dueOn,
           sourceNote: sourceNote.trim(),
           ...(notice ? { noticeDocumentId: notice } : {}),
+          ...claimField,
         });
     if (!mounted.current) return;
     setBusy(false);
@@ -251,6 +267,14 @@ function DeadlineModal(
           value={noticeDocumentId}
           onChange={(e) => setNoticeDocumentId(e.target.value)}
           error={noticeBad ? "Enter a document UUID." : undefined}
+        />
+      ) : null}
+      {props.allowNoticeDocument && noticeClaims.length > 1 && noticeDocumentId.trim() ? (
+        <SelectField
+          label="Claim whose patient owns the notice document"
+          value={noticeClaimId}
+          onChange={(e) => setNoticeClaimId(e.target.value)}
+          options={noticeClaims.map((c) => ({ value: c.value, label: c.label }))}
         />
       ) : null}
       <PhiNotice />

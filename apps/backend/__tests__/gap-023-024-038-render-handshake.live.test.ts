@@ -24,7 +24,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
-import { buildAdrPacketRenderPayload, buildAppealPacketRenderPayload } from "@chartwarden/types";
+import {
+  buildAdrPacketRenderPayload,
+  buildAppealPacketRenderPayload,
+  buildAuditResponsePacketRenderPayload,
+} from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -96,7 +100,12 @@ import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -124,6 +133,7 @@ const RENDERED_TYPES = [
   "safety_incident_report",
   "appeal_packet",
   "adr_response_packet",
+  "audit_response_packet",
   "cost_report_ecr",
   "body_release_authorization",
 ]
@@ -1044,6 +1054,44 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
         }),
       }),
       aggregateType: "adr_response_packet",
+      retentionClass: "compliance",
+      patientId: null,
+    },
+    {
+      label: "M25 audit response packet",
+      eventType: "m25.audit_response_packet.render_requested",
+      aggregateKind: "audit_request",
+      payload: (id: string) => ({
+        auditRequestId: id,
+        // Milestone 7a-2 - M22 validates the typed packet before drawing the cover sheet and index.
+        payload: buildAuditResponsePacketRenderPayload({
+          auditRequestId: id,
+          authorityKind: "other",
+          authorityName: "Example auditor",
+          requestReference: null,
+          requestDatedOn: null,
+          receivedOn: "2026-01-28",
+          filedAt: "2026-03-10T15:00:00.000Z",
+          filedLate: false,
+          filingChannel: "fax",
+          filingConfirmationRef: "FAX-1",
+          reviewedAt: "2026-03-09T15:00:00.000Z",
+          noDeadlineStatedAttested: true,
+          deadlines: [],
+          checklist: [{ label: "Plan of care", state: "ready" }],
+          claims: [{ claimId: id, claimControlNumber: null }],
+          enclosures: [
+            {
+              documentId: id,
+              claimId: id,
+              title: "Plan of care",
+              documentDate: "2026-02-20T09:00:00.000Z",
+              documentKind: "plan_of_care",
+            },
+          ],
+        }),
+      }),
+      aggregateType: "audit_response_packet",
       retentionClass: "compliance",
       patientId: null,
     },

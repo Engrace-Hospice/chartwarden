@@ -729,6 +729,8 @@ jobs:
           # Milestone 7a-1 - later tiers (ALJ / Council / federal court record-keeping, recorded deadlines, the case view) and audit request intake.
           - { name: "M25 later tiers", scripts: "test:m25:later-tiers:live" }
           - { name: "M25 audit requests", scripts: "test:m25:audit-request:live" }
+          # Milestone 7a-2 - the audit response packet: typed checklist, sign-off by a second person, the none-stated attestation, filing proof (audit_response attempt) and the retained render request.
+          - { name: "M25 audit response", scripts: "test:m25:audit-response:live" }
           # Milestone 8a-1 - advisory ADR documentation readiness (deterministic gaps + a deny-stubbed assistant; no model is called).
           - { name: "M25 ADR readiness", scripts: "test:m25:adr-readiness:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +

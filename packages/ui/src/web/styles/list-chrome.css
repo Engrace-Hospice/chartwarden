@@ -603,3 +603,10 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* A native checkbox with its label on one line (the audit response late-filing acknowledgement). */
+.wx-action-check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}

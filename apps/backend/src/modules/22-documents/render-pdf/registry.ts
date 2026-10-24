@@ -4,6 +4,7 @@
 // JSON-behind-a-%PDF-header stand-in (GAP-033). Adding a bespoke layout is one row here and nothing else changes.
 import { buildAdrResponseDoc } from "./adr-response-doc";
 import { buildAppealPacketDoc } from "./appeal-packet-doc";
+import { buildAuditResponseDoc } from "./audit-response-doc";
 import type { DocModel } from "./doc-model";
 import { buildElectionAddendumDoc } from "./election-addendum-doc";
 import { buildElectionStatementDoc } from "./election-statement-doc";
@@ -39,6 +40,8 @@ export const DEFAULT_PDF_RENDERERS: PdfRendererRegistry = {
   appeal_packet: buildAppealPacketDoc,
   // Milestone 2b - M25's typed AdrPacketRenderPayload: the cover sheet and enclosure index of a filed ADR response.
   adr_response_packet: buildAdrResponseDoc,
+  // Milestone 7a-2 - M25's typed AuditResponsePacketRenderPayload: cover sheet and enclosure index of a filed audit response.
+  audit_response_packet: buildAuditResponseDoc,
 };
 
 /**

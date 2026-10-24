@@ -11,6 +11,7 @@ export const SUBMISSION_PURPOSES = [
   "appeal_request",
   "reopening_request",
   "qic_escalation_request",
+  "audit_response",
 ] as const;
 export type SubmissionPurpose = (typeof SUBMISSION_PURPOSES)[number];
 
@@ -41,7 +42,11 @@ export const SUBMISSION_STATUSES = [
 ] as const;
 export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
 
-export type SubmissionSubjectTable = "adr_case" | "appeal_case" | "reopening_case";
+export type SubmissionSubjectTable =
+  | "adr_case"
+  | "appeal_case"
+  | "reopening_case"
+  | "audit_request";
 
 export const RECEIPT_SOURCES = ["entered", "adapter_ack"] as const;
 export type ReceiptSource = (typeof RECEIPT_SOURCES)[number];
@@ -49,6 +54,7 @@ export type ReceiptSource = (typeof RECEIPT_SOURCES)[number];
 export function purposeSubject(purpose: SubmissionPurpose): SubmissionSubjectTable {
   if (purpose === "adr_response") return "adr_case";
   if (purpose === "reopening_request") return "reopening_case";
+  if (purpose === "audit_response") return "audit_request";
   return "appeal_case";
 }
 

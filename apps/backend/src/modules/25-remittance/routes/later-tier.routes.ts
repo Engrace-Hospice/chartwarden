@@ -46,6 +46,8 @@ export const RecordedDeadlineRequestSchema = Type.Object({
   /** Where the date came from (the notice, page, paragraph). Required. */
   sourceNote: Type.String({ minLength: 1, maxLength: 500 }),
   noticeDocumentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  /** An audit request covering several claims: the claim whose patient owns the notice document. */
+  noticeClaimId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 export const RecordedDeadlinePatchSchema = Type.Object({
@@ -53,6 +55,8 @@ export const RecordedDeadlinePatchSchema = Type.Object({
   dueOn: Type.Optional(DAY),
   sourceNote: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
   noticeDocumentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  /** An audit request covering several claims: the claim whose patient owns the notice document. */
+  noticeClaimId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 export const RecordedDeadlineSatisfyRequestSchema = Type.Object({

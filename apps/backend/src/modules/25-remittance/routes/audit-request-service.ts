@@ -22,6 +22,13 @@ import {
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import type { AppealSourcePorts } from "./appeal-packet-sources";
+import {
+  type AuditResponseOps,
+  type AuditResponseView,
+  assertReadyForReview,
+  buildAuditResponseOps,
+  loadAuditResponseView,
+} from "./audit-response-service";
 import { patientOfClaim } from "./claim-patient";
 import { VersionConflictError } from "./concurrency";
 import { isUniqueViolation } from "./denial-route-service";
@@ -32,6 +39,7 @@ import {
 } from "./recorded-deadline-view";
 import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
+import type { WriteOutboxPort } from "./write-service";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -96,9 +104,11 @@ export interface AuditDetail extends AuditSummary {
   readonly claims: AuditClaimView[];
   readonly deadlines: RecordedDeadlineView[];
   readonly events: { id: string; eventKind: string; occurredAt: string }[];
+  /** Milestone 7a-2: the response packet (typed checklist, documents, sign-off, attestation, filing). */
+  readonly response: AuditResponseView;
 }
 
-export interface AuditRequestService {
+export interface AuditRequestService extends AuditResponseOps {
   createAuditRequest(
     actor: M25WriteActor,
     input: AuditCreateInput,
@@ -132,7 +142,6 @@ export interface AuditRequestService {
     actor: M25WriteActor,
     id: string,
     to: AuditMoveTarget,
-    input: { respondedAt?: string },
     ifMatch: number,
   ): Promise<{ id: string; version: number }>;
 }
@@ -141,6 +150,8 @@ export interface AuditRequestPorts {
   readonly claims?: ClaimFactsPort;
   /** M23 claim copy seam: names the single patient of a one-claim request for the read audit. */
   readonly sources?: AppealSourcePorts;
+  /** Milestone 7a-2: the render request is emitted on the filing transaction (no outbox bound -> a filing is refused). */
+  readonly outbox?: WriteOutboxPort;
   /** True when the provider entity exists for the org (used only when a request names no claim). */
   readonly providerEntityExists?: (
     tx: DbClient,
@@ -197,6 +208,20 @@ export function buildDrizzleAuditRequestService(
   function assertOpen(cur: typeof AR.$inferSelect): void {
     if (isAuditTerminal(cur.state as AuditState)) {
       throw new ChartWardenError("AUDIT_FROZEN", `the audit request is ${cur.state}`, 409);
+    }
+  }
+
+  /** The claim set freezes at sign-off (a sign-off covers exactly the claims it saw) and once responded. */
+  function assertClaimsEditable(cur: typeof AR.$inferSelect): void {
+    assertOpen(cur);
+    if (cur.state === "responded" || cur.reviewedAt !== null) {
+      throw new ChartWardenError(
+        "AUDIT_CLAIMS_FROZEN",
+        cur.state === "responded"
+          ? "the response is filed, so the claims can no longer change"
+          : "the packet is signed off, so the claims can no longer change",
+        409,
+      );
     }
   }
 
@@ -289,7 +314,12 @@ export function buildDrizzleAuditRequestService(
         receivedOn: r.receivedOn,
         state: r.state,
         claimCount: counts.find((c) => c.id === r.id)?.n ?? 0,
-        dueState: auditDueState({ state: r.state as AuditState, nextDueAt: nextDue, now }),
+        dueState: auditDueState({
+          state: r.state as AuditState,
+          nextDueAt: nextDue,
+          now,
+          noneStatedAttested: r.deadlineNoneStatedAt !== null,
+        }),
         nextDueAt: nextDue ? nextDue.toISOString() : null,
         version: r.version,
         createdAt: r.createdAt.toISOString(),
@@ -298,6 +328,11 @@ export function buildDrizzleAuditRequestService(
   }
 
   return {
+    ...buildAuditResponseOps(db, {
+      claims,
+      ...(ports.sources ? { sources: ports.sources } : {}),
+      ...(ports.outbox ? { outbox: ports.outbox } : {}),
+    }),
     async createAuditRequest(actor, input) {
       const today = noticeDayOf(new Date());
       const refusal = checkAuditCreate({
@@ -450,6 +485,7 @@ export function buildDrizzleAuditRequestService(
             eventKind: e.eventKind,
             occurredAt: e.occurredAt.toISOString(),
           })),
+          response: await loadAuditResponseView(tx, row),
         };
       });
     },
@@ -498,7 +534,7 @@ export function buildDrizzleAuditRequestService(
     async addClaim(actor, id, input, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
-        assertOpen(cur);
+        assertClaimsEditable(cur);
         const claim = await visibleClaim(tx, actor, input.claimId);
         if (claim.providerEntityId !== cur.providerEntityId) {
           throw unprocessable(
@@ -532,7 +568,25 @@ export function buildDrizzleAuditRequestService(
     async removeClaim(actor, id, claimId, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
-        assertOpen(cur);
+        assertClaimsEditable(cur);
+        const attached = await tx
+          .select({ id: schema.auditRequestDocument.id })
+          .from(schema.auditRequestDocument)
+          .where(
+            and(
+              eq(schema.auditRequestDocument.auditRequestId, id),
+              eq(schema.auditRequestDocument.claimId, claimId),
+              isNull(schema.auditRequestDocument.removedAt),
+            ),
+          )
+          .limit(1);
+        if (attached[0]) {
+          throw new ChartWardenError(
+            "AUDIT_CLAIM_HAS_DOCUMENTS",
+            "detach the documents attached to this claim before removing it from the request",
+            409,
+          );
+        }
         const removed = await tx
           .update(ARC)
           .set({ removedAt: new Date(), removedByMembershipId: actor.membershipId })
@@ -544,7 +598,7 @@ export function buildDrizzleAuditRequestService(
       });
     },
 
-    async moveAuditRequest(actor, id, to, input, ifMatch) {
+    async moveAuditRequest(actor, id, to, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
         if (!canTransitionAudit(cur.state as AuditState, to)) {
@@ -555,15 +609,17 @@ export function buildDrizzleAuditRequestService(
           );
         }
         const now = new Date();
-        let respondedAt: Date | undefined;
+        // Milestone 7a-2: the same packet rules as sign-off (minus the reviewer checks) gate the move to review, so a
+        // request never enters a state sign-off cannot leave. There is no way back to assembly.
+        if (to === "in_review") await assertReadyForReview(tx, cur);
+        // Milestone 7a-2: a response is recorded by filing a signed-off packet with its proof, never by a bare move
+        // (the database guard refuses it too).
         if (to === "responded") {
-          respondedAt = input.respondedAt ? new Date(input.respondedAt) : now;
-          if (Number.isNaN(respondedAt.getTime()) || respondedAt.getTime() > now.getTime()) {
-            throw unprocessable(
-              "AUDIT_RESPONDED_IN_FUTURE",
-              "the response time cannot be in the future",
-            );
-          }
+          throw new ChartWardenError(
+            "AUDIT_RESPONSE_REQUIRES_FILING",
+            "record the response by filing the signed-off packet with its confirmation",
+            409,
+          );
         }
         const updated = await tx
           .update(AR)
@@ -571,7 +627,7 @@ export function buildDrizzleAuditRequestService(
             state: to,
             version: sql`${AR.version} + 1`,
             updatedAt: now,
-            ...(respondedAt ? { respondedAt } : {}),
+            ...(to === "in_review" ? { sentToReviewByMembershipId: actor.membershipId } : {}),
             ...(to === "closed" || to === "withdrawn" ? { closedAt: now } : {}),
           })
           .where(and(eq(AR.id, id), eq(AR.version, ifMatch), eq(AR.state, cur.state)))

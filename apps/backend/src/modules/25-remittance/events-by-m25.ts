@@ -344,6 +344,18 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m25.audit_response_packet.render_requested",
+    moduleOwner: "m25",
+    description:
+      "A typed audit-response render payload was emitted at filing for M22 to render the cover sheet and enclosure index PDF.",
+    payloadSchema: Type.Object({
+      auditRequestId: id,
+      payload: Type.Record(Type.String(), Type.Unknown()),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m25.denial_resolution_letter.render_requested",
     moduleOwner: "m25",
     description:

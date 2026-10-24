@@ -5822,6 +5822,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // from a notice, never a computed CMS date), and the one claim-keyed case view. Nothing is sent.
             auditRequestService: buildDrizzleAuditRequestService(dbHandle.db, {
               sources: buildSeamAppealSourcePorts(),
+              // Milestone 7a-2: a filed audit response emits its render request on the filing transaction (no
+              // outbox bound -> the filing is refused, never half-recorded).
+              outbox: m25OutboxPublisher,
               providerEntityExists: async (tx, organizationId, providerEntityId) =>
                 (await buildFoundationSiteReader().providerEntityIdentifiers(
                   tx as never,

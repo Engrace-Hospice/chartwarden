@@ -27,6 +27,11 @@ export type AuditRequestInput = ReqBody<operations["postApiV1Auditrequests"]>;
 export type AuditRequestPatch = ReqBody<operations["patchApiV1AuditrequestsById"]>;
 export type AuditRequestState = ReqBody<operations["postApiV1AuditrequestsByIdState"]>["to"];
 export type Versioned = Ok<operations["postApiV1AuditrequestsByIdState"]>;
+export type AuditResponseView = AuditRequestDetail["response"];
+export type AuditResponseItem = ReqBody<
+  operations["putApiV1AuditrequestsByIdResponseitems"]
+>["items"][number];
+export type AuditFilingInput = ReqBody<operations["postApiV1AuditrequestsByIdSubmit"]>;
 
 export const AUDIT_AUTHORITY_KINDS = ["rac", "upic", "smrc", "other"] as const;
 export const LATER_TIERS = ["alj", "council", "federal_court"] as const;
@@ -96,8 +101,7 @@ export async function addRecordedDeadline(
           })
         : await client.POST("/api/v1/audit-requests/{id}/recorded-deadlines", {
             params: { path: { id: subject.id } },
-            // An audit request takes no notice document (the server refuses it with a 422).
-            body: { label: body.label, dueOn: body.dueOn, sourceNote: body.sourceNote },
+            body,
           });
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
@@ -122,11 +126,7 @@ export async function editRecordedDeadline(
         : await client.PATCH("/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}", {
             params,
             headers,
-            body: {
-              ...(body.label === undefined ? {} : { label: body.label }),
-              ...(body.dueOn === undefined ? {} : { dueOn: body.dueOn }),
-              ...(body.sourceNote === undefined ? {} : { sourceNote: body.sourceNote }),
-            },
+            body,
           });
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
@@ -242,13 +242,106 @@ export async function moveAuditRequest(
   id: string,
   version: number,
   to: AuditRequestState,
-  respondedAt?: string,
 ): Promise<WriteResult<Versioned>> {
   return guarded(async () => {
     const { data, error, response } = await client.POST("/api/v1/audit-requests/{id}/state", {
       params: { path: { id } },
       headers: ifMatch(version),
-      body: { to, ...(respondedAt ? { respondedAt } : {}) },
+      body: { to },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+// ── milestone 7a-2: the audit response packet ───────────────────────────────────────────────────────────────
+
+/** The checklist is typed by the user from the request letter; the whole list is replaced. */
+export async function saveAuditResponseItems(
+  client: ApiClient,
+  id: string,
+  version: number,
+  items: readonly AuditResponseItem[],
+): Promise<WriteResult<Versioned>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.PUT(
+      "/api/v1/audit-requests/{id}/response-items",
+      { params: { path: { id } }, headers: ifMatch(version), body: { items: [...items] } },
+    );
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function attachAuditDocument(
+  client: ApiClient,
+  id: string,
+  version: number,
+  body: { claimId: string; documentId: string },
+): Promise<WriteResult<Versioned>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/audit-requests/{id}/documents", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body,
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function detachAuditDocument(
+  client: ApiClient,
+  id: string,
+  version: number,
+  documentId: string,
+): Promise<WriteResult<Versioned>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.DELETE(
+      "/api/v1/audit-requests/{id}/documents/{documentId}",
+      { params: { path: { id, documentId } }, headers: ifMatch(version) },
+    );
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+/** "The request letter states no due date": a person's explicit attestation, never inferred. */
+export async function attestNoDeadlineStated(
+  client: ApiClient,
+  id: string,
+  version: number,
+): Promise<WriteResult<Versioned>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST(
+      "/api/v1/audit-requests/{id}/deadline-none-stated",
+      { params: { path: { id } }, headers: ifMatch(version) },
+    );
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function signOffAudit(
+  client: ApiClient,
+  id: string,
+  version: number,
+): Promise<WriteResult<Versioned>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/audit-requests/{id}/sign-off", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function submitAuditResponse(
+  client: ApiClient,
+  id: string,
+  version: number,
+  body: AuditFilingInput,
+): Promise<WriteResult<Versioned>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/audit-requests/{id}/submit", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body,
     });
     return error || !data ? failure(response?.status, error) : ok(data);
   });

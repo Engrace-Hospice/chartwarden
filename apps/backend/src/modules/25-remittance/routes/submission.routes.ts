@@ -233,8 +233,36 @@ export function registerReopeningSubmissionRoutes(
   );
 }
 
-/** Mount the three subjects' submission routes. */
+/** Milestone 7a-2: the audit response's attempt (born acknowledged at filing; only an amendment is recorded here). */
+export function registerAuditSubmissionRoutes(
+  app: FastifyInstance,
+  deps: SubmissionRouteDeps,
+): void {
+  const h = handlersFor(deps.submissionService, "audit", "audit request");
+  app.get(
+    "/api/v1/audit-requests/:id/submission",
+    {
+      preHandler: [P("audit_request.read")],
+      config: {
+        auditRead: {
+          resourceKind: "audit_request",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
+    h.get,
+  );
+  app.post(
+    "/api/v1/audit-requests/:id/submission-receipt",
+    { preHandler: [P("audit_request.submit"), STEP_UP("audit_request.submit"), IDEMPOTENT] },
+    (request, reply) => h.receipt(request, reply, request.body),
+  );
+}
+
+/** Mount the four subjects' submission routes. */
 export function registerSubmissionRoutes(app: FastifyInstance, deps: SubmissionRouteDeps): void {
+  registerAuditSubmissionRoutes(app, deps);
   registerAdrSubmissionRoutes(app, deps);
   registerAppealSubmissionRoutes(app, deps);
   registerReopeningSubmissionRoutes(app, deps);
