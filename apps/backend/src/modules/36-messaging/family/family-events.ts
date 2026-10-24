@@ -26,7 +26,12 @@ export type FamilyEventFacts =
       readonly reason: "staff" | "blocked";
       readonly at: Date;
     }
-  | { readonly kind: "bereavement_mode"; readonly orgId: string; readonly contactId: string; readonly at: Date };
+  | {
+      readonly kind: "bereavement_mode";
+      readonly orgId: string;
+      readonly contactId: string;
+      readonly at: Date;
+    };
 
 export function familyEventPayload(facts: FamilyEventFacts): Record<string, unknown> {
   const base = {

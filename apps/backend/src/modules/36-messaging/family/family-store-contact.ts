@@ -12,11 +12,7 @@ import {
   type FamilySessionStage,
 } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import {
-  contactLanguage,
-  eligibilityMode,
-  eligibilityReason,
-} from "./family-eligibility-sql";
+import { contactPersonJoin } from "./family-eligibility-sql";
 import { rowsOf } from "./family-store-staff";
 import type {
   FamilyContactRawMessage,
@@ -77,18 +73,15 @@ export function createDrizzleFamilyContactStore(db: DbClient): FamilyContactStor
             const res = await tx.execute(sql`
               WITH live AS (
                 SELECT x.id AS session_id, i.id AS invitation_id, c.id AS contact_id, c.patient_id AS patient_id, x.stage AS stage,
-                       x.expires_at AS session_expires_at, ${eligibilityMode} AS mode, c.mode AS stored_mode,
-                       (c.closed_at IS NOT NULL) AS closed, c.channel_id AS channel_id, ${contactLanguage} AS language,
-                       c.staff_seen_through AS staff_seen_through, ${eligibilityReason} AS reason
+                       x.expires_at AS session_expires_at, fp.mode AS mode, c.mode AS stored_mode,
+                       (c.closed_at IS NOT NULL) AS closed, c.channel_id AS channel_id, fp.language AS language,
+                       c.staff_seen_through AS staff_seen_through, fp.reason AS reason
                   FROM message_family_session x
                   JOIN message_family_invitation i ON i.organization_id = x.organization_id AND i.id = x.invitation_id
                   JOIN message_family_contact c ON c.organization_id = i.organization_id AND c.id = i.contact_id
-                  JOIN patient_caregiver pc ON pc.organization_id = c.organization_id AND pc.id = c.patient_caregiver_id AND pc.patient_id = c.patient_id
-                  JOIN patient pt ON pt.organization_id = pc.organization_id AND pt.id = pc.patient_id
-                  JOIN caregiver cg ON cg.organization_id = pc.organization_id AND cg.id = pc.caregiver_id
-                  LEFT JOIN patient_communication_preference pref ON pref.organization_id = pc.organization_id AND pref.patient_id = pc.patient_id
+                  ${contactPersonJoin}
                  WHERE x.organization_id = ${organizationId} AND x.token_hash = ${tokenHash}
-                   AND x.expires_at > now()
+                   AND fp.patient_id = c.patient_id AND x.expires_at > now()
                    AND x.last_seen_at > now() - make_interval(mins => ${FAMILY_SESSION_IDLE_MINUTES})
                    AND i.revoked_at IS NULL AND i.expires_at > now())
               UPDATE message_family_session x SET last_seen_at = now()

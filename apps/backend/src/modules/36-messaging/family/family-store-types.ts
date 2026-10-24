@@ -92,8 +92,15 @@ export interface FamilyStaffTx {
   ensureContact(userId: string, caregiver: FamilyCaregiverRow): Promise<string>;
   counts(creatorUserId: string): Promise<{ readonly orgDay: number; readonly creatorDay: number }>;
   /** Revokes the live invitation of a contact, if any. Returns whether one was revoked. */
-  revokeLive(contactId: string, userId: string, reason: "staff" | "superseded" | "blocked"): Promise<boolean>;
-  insertInvitation(userId: string, input: NewFamilyInvitation): Promise<{ readonly expiresAt: Date }>;
+  revokeLive(
+    contactId: string,
+    userId: string,
+    reason: "staff" | "superseded" | "blocked",
+  ): Promise<boolean>;
+  insertInvitation(
+    userId: string,
+    input: NewFamilyInvitation,
+  ): Promise<{ readonly expiresAt: Date }>;
   getContact(contactId: string): Promise<FamilyContactRow | null>;
   listContacts(): Promise<FamilyContactRow[]>;
   setClosed(contactId: string, userId: string, closed: boolean): Promise<boolean>;
@@ -147,7 +154,9 @@ export interface FamilySendBudget {
 export interface FamilyContactTx {
   readonly raw: unknown;
   /** Single use: redeems the link by hash if it is unredeemed, unrevoked and unexpired NOW. */
-  redeemInvite(tokenHash: string): Promise<{ readonly invitationId: string; readonly expiresAt: Date } | null>;
+  redeemInvite(
+    tokenHash: string,
+  ): Promise<{ readonly invitationId: string; readonly expiresAt: Date } | null>;
   insertSession(invitationId: string, tokenHash: string): Promise<{ readonly sessionId: string }>;
   /** ONE statement: liveness of session + invitation + the whole eligibility; a hit touches last_seen_at. */
   resolveSession(tokenHash: string): Promise<FamilyLiveSession | null>;

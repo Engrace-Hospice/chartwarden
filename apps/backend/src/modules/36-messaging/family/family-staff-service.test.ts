@@ -66,7 +66,11 @@ function fakeTx(over: Partial<FamilyStaffTx> = {}) {
   const tx: FamilyStaffTx = {
     raw: {},
     lockTenant: async () => undefined,
-    getSettings: async () => ({ agencyName: "Agency", agencyPhone: "555-0100", bereavementPhone: null }),
+    getSettings: async () => ({
+      agencyName: "Agency",
+      agencyPhone: "555-0100",
+      bereavementPhone: null,
+    }),
     putSettings: async (_u, s) => s,
     caregivers: async () => [caregiver()],
     caregiver: async () => caregiver(),
@@ -112,19 +116,33 @@ function build(
     store,
     outbox: { publish } as never,
     flags: { forOrg: async () => ({ [FAMILY_MESSAGING_FLAG_KEY]: opts.flag ?? true }) },
-    cipher: { open: async () => "", seal: async () => ({ cipher: Buffer.alloc(0), sha256: "" }) } as never,
+    cipher: {
+      open: async () => "",
+      seal: async () => ({ cipher: Buffer.alloc(0), sha256: "" }),
+    } as never,
     canAccessPatient: async (_o, _u, patientId) => (opts.onTeam ? opts.onTeam(patientId) : true),
-    insertMessage: (opts.insertMessage ?? vi.fn(async () => ({ messageId: randomUUID(), createdAt: new Date().toISOString(), replayed: false }))) as never,
+    insertMessage: (opts.insertMessage ??
+      vi.fn(async () => ({
+        messageId: randomUUID(),
+        createdAt: new Date().toISOString(),
+        replayed: false,
+      }))) as never,
   });
   return { service, publish, ...f };
 }
 
-const request = { patientId: PATIENT, patientCaregiverId: CAREGIVER, codeByVoiceConfirmed: true as const };
+const request = {
+  patientId: PATIENT,
+  patientCaregiverId: CAREGIVER,
+  codeByVoiceConfirmed: true as const,
+};
 
 describe("createInvitation", () => {
   it("is the neutral 404 while the flag is off", async () => {
     const { service } = build({}, { flag: false });
-    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it("answers 503 when the deployment cannot key budgets on a real client address", async () => {
@@ -137,7 +155,9 @@ describe("createInvitation", () => {
 
   it("is the 404 of an unknown patient for a permission holder who is not on the care team", async () => {
     const { service, inserted } = build({}, { onTeam: () => false });
-    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({
+      statusCode: 404,
+    });
     expect(inserted).toHaveLength(0);
   });
 
@@ -146,7 +166,9 @@ describe("createInvitation", () => {
     await expect(
       service.createInvitation(actor, { ...request, codeByVoiceConfirmed: false as never }),
     ).rejects.toMatchObject({ statusCode: 422 });
-    await expect(service.createInvitation(actor, { ...request, expiresInDays: 31 })).rejects.toMatchObject({
+    await expect(
+      service.createInvitation(actor, { ...request, expiresInDays: 31 }),
+    ).rejects.toMatchObject({
       statusCode: 422,
     });
   });
@@ -160,29 +182,38 @@ describe("createInvitation", () => {
     });
   });
 
-  it.each(["no_consent", "part2_restricted", "involvement_ended", "blocked", "patient_status"] as const)(
-    "no consent, no link: %s is a reason code and nothing is written",
-    async (reason) => {
-      const { service, inserted } = build({ caregiver: async () => caregiver({ reason }) });
-      await expect(service.createInvitation(actor, request)).rejects.toMatchObject({
-        code: FAMILY_NOT_ELIGIBLE_CODE,
-        statusCode: 409,
-        details: [{ code: reason }],
-      });
-      expect(inserted).toHaveLength(0);
-    },
-  );
+  it.each([
+    "no_consent",
+    "part2_restricted",
+    "involvement_ended",
+    "blocked",
+    "patient_status",
+  ] as const)("no consent, no link: %s is a reason code and nothing is written", async (reason) => {
+    const { service, inserted } = build({ caregiver: async () => caregiver({ reason }) });
+    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({
+      code: FAMILY_NOT_ELIGIBLE_CODE,
+      statusCode: 409,
+      details: [{ code: reason }],
+    });
+    expect(inserted).toHaveLength(0);
+  });
 
   it("refuses a caregiver of another patient with the 404 of an unknown one", async () => {
     const { service } = build({ caregiver: async () => caregiver({ patientId: randomUUID() }) });
-    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it("refuses over the daily caps with 429", async () => {
     const { service } = build({ counts: async () => ({ orgDay: 25, creatorDay: 0 }) });
-    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({ statusCode: 429 });
+    await expect(service.createInvitation(actor, request)).rejects.toMatchObject({
+      statusCode: 429,
+    });
     const second = build({ counts: async () => ({ orgDay: 0, creatorDay: 10 }) });
-    await expect(second.service.createInvitation(actor, request)).rejects.toMatchObject({ statusCode: 429 });
+    await expect(second.service.createInvitation(actor, request)).rejects.toMatchObject({
+      statusCode: 429,
+    });
   });
 
   it("returns the link token and the code once, stores only hashes (the code under the pepper) and supersedes the older link", async () => {
@@ -211,7 +242,12 @@ describe("list and thread", () => {
   it("shows only the contacts of patients the actor's care-team predicate admits", async () => {
     const other = randomUUID();
     const { service } = build(
-      { listContacts: async () => [contact(), contact({ contactId: randomUUID(), patientId: other })] },
+      {
+        listContacts: async () => [
+          contact(),
+          contact({ contactId: randomUUID(), patientId: other }),
+        ],
+      },
       { onTeam: (p) => p === PATIENT },
     );
     const rows = await service.list(actor);
@@ -280,17 +316,28 @@ describe("reply", () => {
     await expect(closed.service.reply(actor, CONTACT, "hello")).rejects.toMatchObject({
       code: "FAMILY_THREAD_CLOSED",
     });
-    const empty = build({ getContact: async () => contact({ channelId: null }) }, { insertMessage });
-    await expect(empty.service.reply(actor, CONTACT, "hello")).rejects.toMatchObject({ statusCode: 409 });
+    const empty = build(
+      { getContact: async () => contact({ channelId: null }) },
+      { insertMessage },
+    );
+    await expect(empty.service.reply(actor, CONTACT, "hello")).rejects.toMatchObject({
+      statusCode: 409,
+    });
     const live = build({}, { insertMessage });
     for (const bad of ["", "   ", "x".repeat(2001), "a\u0000b", 5]) {
-      await expect(live.service.reply(actor, CONTACT, bad)).rejects.toMatchObject({ statusCode: 422 });
+      await expect(live.service.reply(actor, CONTACT, bad)).rejects.toMatchObject({
+        statusCode: 422,
+      });
     }
     expect(insertMessage).not.toHaveBeenCalled();
   });
 
   it("writes through the family door as the staff author and records the reply instant", async () => {
-    const insertMessage = vi.fn(async () => ({ messageId: randomUUID(), createdAt: new Date().toISOString(), replayed: false }));
+    const insertMessage = vi.fn(async () => ({
+      messageId: randomUUID(),
+      createdAt: new Date().toISOString(),
+      replayed: false,
+    }));
     const { service, calls } = build({}, { insertMessage });
     const sent = await service.reply(actor, CONTACT, "  We are here.  ");
     expect(sent.body).toBe("We are here.");
@@ -315,16 +362,28 @@ describe("revoke, close and block", () => {
   it("a manager outside the patient's care team can revoke, but the answer carries no name and no patient id", async () => {
     const { service } = build({}, { onTeam: () => false });
     const out = await service.revoke(actor, CONTACT);
-    expect(out).toMatchObject({ contactId: CONTACT, patientName: "", displayName: "", relationship: "", channelId: null });
+    expect(out).toMatchObject({
+      contactId: CONTACT,
+      patientName: "",
+      displayName: "",
+      relationship: "",
+      channelId: null,
+    });
     expect(out.patientId).toBe(CONTACT);
     expect(JSON.stringify(out)).not.toContain(PATIENT);
-    const blocked = await build({}, { onTeam: () => false }).service.setBlocked(actor, CONTACT, true);
+    const blocked = await build({}, { onTeam: () => false }).service.setBlocked(
+      actor,
+      CONTACT,
+      true,
+    );
     expect(blocked.patientName).toBe("");
   });
 
   it("close and reopen are 409 when there is nothing to change", async () => {
     const { service } = build({ setClosed: async () => false });
-    await expect(service.setClosed(actor, CONTACT, true)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.setClosed(actor, CONTACT, true)).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 
   it("a block also revokes the link; lifting it by the same person is the second-person 409", async () => {
@@ -333,10 +392,14 @@ describe("revoke, close and block", () => {
     expect(calls).toContain("revokeLive:blocked");
     const refused = build({
       setBlocked: async () => {
-        throw new Error("check_violation: message_family_contact_unblock: a block is lifted by a second person");
+        throw new Error(
+          "check_violation: message_family_contact_unblock: a block is lifted by a second person",
+        );
       },
     });
-    await expect(refused.service.setBlocked(actor, CONTACT, false)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(refused.service.setBlocked(actor, CONTACT, false)).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 });
 
@@ -344,10 +407,22 @@ describe("settings", () => {
   it("trims, nulls empty text and bounds the length", async () => {
     const put = vi.fn(async (_u: string, s: unknown) => s as never);
     const { service } = build({ putSettings: put });
-    await service.putSettings(actor, { agencyName: "  Hospice  ", agencyPhone: "", bereavementPhone: null });
-    expect(put).toHaveBeenCalledWith(USER, { agencyName: "Hospice", agencyPhone: null, bereavementPhone: null });
+    await service.putSettings(actor, {
+      agencyName: "  Hospice  ",
+      agencyPhone: "",
+      bereavementPhone: null,
+    });
+    expect(put).toHaveBeenCalledWith(USER, {
+      agencyName: "Hospice",
+      agencyPhone: null,
+      bereavementPhone: null,
+    });
     await expect(
-      service.putSettings(actor, { agencyName: "x".repeat(121), agencyPhone: null, bereavementPhone: null }),
+      service.putSettings(actor, {
+        agencyName: "x".repeat(121),
+        agencyPhone: null,
+        bereavementPhone: null,
+      }),
     ).rejects.toMatchObject({ statusCode: 422 });
   });
 });

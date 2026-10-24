@@ -70,11 +70,23 @@ export interface FamilyContactService {
   redeem(
     rawInput: unknown,
     meta: FamilyRequestMeta,
-  ): Promise<{ readonly sessionToken: string; readonly stage: "enrolment"; readonly expiresAt: string }>;
+  ): Promise<{
+    readonly sessionToken: string;
+    readonly stage: "enrolment";
+    readonly expiresAt: string;
+  }>;
   state(bearer: string | null, meta: FamilyRequestMeta): Promise<FamilyContactStateDto>;
   /** `rawBody` is validated only AFTER the bearer resolves, so an unauthenticated caller never gets validation detail. */
-  verify(bearer: string | null, rawBody: unknown, meta: FamilyRequestMeta): Promise<FamilyContactVerifiedDto>;
-  messages(bearer: string | null, rawQuery: unknown, meta: FamilyRequestMeta): Promise<FamilyContactMessagesDto>;
+  verify(
+    bearer: string | null,
+    rawBody: unknown,
+    meta: FamilyRequestMeta,
+  ): Promise<FamilyContactVerifiedDto>;
+  messages(
+    bearer: string | null,
+    rawQuery: unknown,
+    meta: FamilyRequestMeta,
+  ): Promise<FamilyContactMessagesDto>;
   send(
     bearer: string | null,
     rawBody: unknown,
@@ -206,7 +218,8 @@ export function createFamilyContactService(deps: FamilyContactServiceDeps): Fami
       const outcome = await withLive(bearer, async (tx, live) => {
         // Past this point the caller holds a live bearer, so a validation message is no oracle.
         const code = codeOf(rawBody);
-        if (live.stage === "active") return { ok: true as const, rotated: null, state: await stateOf(tx, live, "active") };
+        if (live.stage === "active")
+          return { ok: true as const, rotated: null, state: await stateOf(tx, live, "active") };
         // The attempt is counted (and committed) BEFORE the code is compared, so a wrong code cannot be retried for free.
         const stored = await tx.takeCodeAttempt(live.invitationId);
         if (stored === null) throw familyNotFound(); // locked (5 attempts) or no longer live
@@ -246,9 +259,15 @@ export function createFamilyContactService(deps: FamilyContactServiceDeps): Fami
           try {
             plaintext = await cipher.open(live.organizationId, r.bodyCipher);
           } catch {
-            throw new DegradedError("messaging", "a message could not be read; nothing was returned");
+            throw new DegradedError(
+              "messaging",
+              "a message could not be read; nothing was returned",
+            );
           }
-          const decoded = decodeStoredBody(r.bodyKind as Parameters<typeof decodeStoredBody>[0], plaintext);
+          const decoded = decodeStoredBody(
+            r.bodyKind as Parameters<typeof decodeStoredBody>[0],
+            plaintext,
+          );
           if (decoded.unreadable) continue; // never show a guess
           const createdAt = new Date(r.createdAtText);
           const mine = r.authorKind === "family_contact";
@@ -258,7 +277,9 @@ export function createFamilyContactService(deps: FamilyContactServiceDeps): Fami
             body: decoded.body,
             createdAt: createdAt.toISOString(),
             receivedByCareTeam:
-              mine && live.staffSeenThrough !== null && createdAt.getTime() <= live.staffSeenThrough.getTime(),
+              mine &&
+              live.staffSeenThrough !== null &&
+              createdAt.getTime() <= live.staffSeenThrough.getTime(),
           });
         }
         // The trail row is written BEFORE any byte leaves; the database guard refuses it for a dead invitation or a blocked contact.
@@ -293,7 +314,9 @@ export function createFamilyContactService(deps: FamilyContactServiceDeps): Fami
         const channelId = await tx.ensureChannel(live);
         const budget = await tx.sendBudget({ ...live, channelId });
         if (budget.lastHour >= FAMILY_SEND_PER_HOUR || budget.lastDay >= FAMILY_SEND_PER_DAY) {
-          throw new RateLimitedError("you have sent several messages; please wait before sending another");
+          throw new RateLimitedError(
+            "you have sent several messages; please wait before sending another",
+          );
         }
         if (budget.sinceStaffReply >= FAMILY_THREAD_UNANSWERED_CAP) {
           throw new RateLimitedError(FAMILY_THREAD_CAP_MESSAGE);

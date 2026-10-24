@@ -25,9 +25,14 @@ export function familyAccessAvailability(env: {
   const proxy = partnerAccessAvailability(env);
   const pepper = env.MESSAGING_FAMILY_CODE_PEPPER?.trim() ?? "";
   const reasons: string[] = [];
-  if (!proxy.available) reasons.push("TRUSTED_PROXY_CIDRS is unset or invalid (per-address budgets need a real client address)");
+  if (!proxy.available)
+    reasons.push(
+      "TRUSTED_PROXY_CIDRS is unset or invalid (per-address budgets need a real client address)",
+    );
   if (pepper.length < FAMILY_CODE_PEPPER_MIN_LENGTH) {
-    reasons.push(`${FAMILY_CODE_PEPPER_ENV} is unset or shorter than ${FAMILY_CODE_PEPPER_MIN_LENGTH} characters`);
+    reasons.push(
+      `${FAMILY_CODE_PEPPER_ENV} is unset or shorter than ${FAMILY_CODE_PEPPER_MIN_LENGTH} characters`,
+    );
   }
   if (reasons.length > 0) {
     return {

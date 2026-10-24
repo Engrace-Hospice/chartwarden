@@ -3,17 +3,9 @@
 // and the contact's own requests judge the same facts. The services hold the rules (who may, how many); this file holds only reads and writes.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type {
-  FamilyEligibilityReason,
-  FamilyMode,
-  FamilySettingsDto,
-} from "@chartwarden/types";
+import type { FamilyEligibilityReason, FamilyMode, FamilySettingsDto } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import {
-  contactLanguage,
-  eligibilityJoins,
-  eligibilityReason,
-} from "./family-eligibility-sql";
+import { contactPersonJoin } from "./family-eligibility-sql";
 import type {
   FamilyCaregiverRow,
   FamilyContactRow,
@@ -89,16 +81,14 @@ function toContact(r: Raw): FamilyContactRow {
 }
 
 const CAREGIVER_SELECT = sql`
-  SELECT pc.id AS "patientCaregiverId", pc.patient_id AS "patientId",
-         btrim(cg.first_name || ' ' || cg.last_name) AS "caregiverName", pc.relationship::text AS "relationship",
-         pc.is_legal_representative AS "isLegalRepresentative", ${contactLanguage} AS "language",
-         ${eligibilityReason} AS "reason", pc.provider_entity_id AS "providerEntityId", pc.location_id AS "locationId"`;
+  SELECT fp.patient_caregiver_id AS "patientCaregiverId", fp.patient_id AS "patientId", fp.caregiver_name AS "caregiverName",
+         fp.relationship AS "relationship", fp.is_legal_representative AS "isLegalRepresentative", fp.language AS "language",
+         fp.reason AS "reason", fp.provider_entity_id AS "providerEntityId", fp.location_id AS "locationId"`;
 
 const CONTACT_SELECT = sql`
   SELECT c.id AS "contactId", c.patient_id AS "patientId", c.patient_caregiver_id AS "patientCaregiverId",
-         btrim(pt.legal_first_name || ' ' || pt.legal_last_name) AS "patientName",
-         btrim(cg.first_name || ' ' || cg.last_name) AS "caregiverName", pc.relationship::text AS "relationship",
-         ${eligibilityReason} AS "reason", c.mode AS "mode", ${contactLanguage} AS "language",
+         fp.patient_name AS "patientName", fp.caregiver_name AS "caregiverName", fp.relationship AS "relationship",
+         fp.reason AS "reason", c.mode AS "mode", fp.language AS "language",
          (c.closed_at IS NOT NULL) AS "closed", (c.blocked_at IS NOT NULL) AS "blocked", c.blocked_by AS "blockedBy",
          c.channel_id AS "channelId", c.last_contact_message_at AS "lastContactMessageAt",
          c.last_staff_reply_at AS "lastStaffReplyAt", c.staff_seen_through AS "staffSeenThrough",
@@ -115,7 +105,8 @@ const CONTACT_SELECT = sql`
          EXISTS (SELECT 1 FROM message_family_invitation r WHERE r.organization_id = c.organization_id AND r.contact_id = c.id
                   AND r.revoked_at IS NOT NULL) AS "hadRevokedInvitation",
          now() AS "dbNow"
-    FROM ${eligibilityJoins}
+    FROM message_family_contact c
+    ${contactPersonJoin}
     LEFT JOIN message_family_invitation i ON i.organization_id = c.organization_id AND i.contact_id = c.id AND i.revoked_at IS NULL`;
 
 export function createDrizzleFamilyStaffStore(db: DbClient): FamilyStaffStore {
@@ -128,7 +119,7 @@ export function createDrizzleFamilyStaffStore(db: DbClient): FamilyStaffStore {
           const orgId = actor.organizationId;
           const contactById = async (id: string): Promise<FamilyContactRow | null> => {
             const res = await tx.execute(
-              sql`${CONTACT_SELECT} WHERE c.id = ${id} AND pc.organization_id = ${orgId} LIMIT 1`,
+              sql`${CONTACT_SELECT} WHERE c.id = ${id} AND c.organization_id = ${orgId} LIMIT 1`,
             );
             const row = rowsOf(res)[0];
             return row ? toContact(row) : null;
@@ -169,16 +160,16 @@ export function createDrizzleFamilyStaffStore(db: DbClient): FamilyStaffStore {
             },
             async caregivers(patientId) {
               const res = await tx.execute(
-                sql`${CAREGIVER_SELECT} FROM ${eligibilityJoins}
-                    WHERE pc.organization_id = ${orgId} AND pc.patient_id = ${patientId}
-                    ORDER BY pc.is_primary DESC, pc.created_at ASC, pc.id ASC LIMIT 50`,
+                sql`${CAREGIVER_SELECT}
+                    FROM message_family_caregivers(${patientId}) ids
+                    CROSS JOIN LATERAL message_family_person(ids.patient_caregiver_id) fp
+                    ORDER BY ids.ord`,
               );
               return rowsOf(res).map(toCaregiver);
             },
             async caregiver(patientCaregiverId) {
               const res = await tx.execute(
-                sql`${CAREGIVER_SELECT} FROM ${eligibilityJoins}
-                    WHERE pc.organization_id = ${orgId} AND pc.id = ${patientCaregiverId} LIMIT 1`,
+                sql`${CAREGIVER_SELECT} FROM message_family_person(${patientCaregiverId}) fp LIMIT 1`,
               );
               const row = rowsOf(res)[0];
               return row ? toCaregiver(row) : null;
@@ -247,7 +238,7 @@ export function createDrizzleFamilyStaffStore(db: DbClient): FamilyStaffStore {
             getContact: contactById,
             async listContacts() {
               const res = await tx.execute(
-                sql`${CONTACT_SELECT} WHERE c.id IS NOT NULL AND pc.organization_id = ${orgId}
+                sql`${CONTACT_SELECT} WHERE c.organization_id = ${orgId}
                     ORDER BY c.last_contact_message_at DESC NULLS LAST, c.created_at DESC LIMIT ${FAMILY_LIST_LIMIT}`,
               );
               return rowsOf(res).map(toContact);

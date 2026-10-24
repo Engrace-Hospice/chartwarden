@@ -28,24 +28,24 @@ import {
   type FamilyStaffThreadDto,
   NotFoundError,
 } from "@chartwarden/types";
-import type { HintOutboxPort } from "../message-hint-events";
-import { type MessageBodyCipher, insertEncryptedMessage } from "../messaging-write-core";
-import { decodeStoredBody } from "../rich-body-codec";
-import { type FamilyFlagReader, UUID_RE, invalid, validateMessageText } from "./family-common";
-import { publishFamilyEvent } from "./family-events";
 import {
   hashPartnerToken,
   hashVerificationCode,
   newPartnerToken,
   newVerificationCode,
 } from "../external-share/external-share-secrets";
+import type { HintOutboxPort } from "../message-hint-events";
+import { type MessageBodyCipher, insertEncryptedMessage } from "../messaging-write-core";
+import type { Tx } from "../messaging-write-core";
+import { decodeStoredBody } from "../rich-body-codec";
+import { type FamilyFlagReader, UUID_RE, invalid, validateMessageText } from "./family-common";
+import { publishFamilyEvent } from "./family-events";
 import type {
   FamilyContactRow,
   FamilyStaffActor,
   FamilyStaffStore,
   FamilyStaffTx,
 } from "./family-store-types";
-import type { Tx } from "../messaging-write-core";
 
 /** Messages a staff member reads at once (the newest N, oldest first). */
 export const FAMILY_STAFF_THREAD_LIMIT = 200;
@@ -84,10 +84,22 @@ export interface FamilyStaffService {
   ): Promise<CreatedFamilyInvitationDto>;
   list(actor: FamilyStaffActor): Promise<FamilyContactSummaryDto[]>;
   thread(actor: FamilyStaffActor, contactId: string): Promise<FamilyStaffThreadDto>;
-  reply(actor: FamilyStaffActor, contactId: string, rawBody: unknown): Promise<FamilyStaffMessageDto>;
+  reply(
+    actor: FamilyStaffActor,
+    contactId: string,
+    rawBody: unknown,
+  ): Promise<FamilyStaffMessageDto>;
   revoke(actor: FamilyStaffActor, contactId: string): Promise<FamilyContactSummaryDto>;
-  setClosed(actor: FamilyStaffActor, contactId: string, closed: boolean): Promise<FamilyContactSummaryDto>;
-  setBlocked(actor: FamilyStaffActor, contactId: string, blocked: boolean): Promise<FamilyContactSummaryDto>;
+  setClosed(
+    actor: FamilyStaffActor,
+    contactId: string,
+    closed: boolean,
+  ): Promise<FamilyContactSummaryDto>;
+  setBlocked(
+    actor: FamilyStaffActor,
+    contactId: string,
+    blocked: boolean,
+  ): Promise<FamilyContactSummaryDto>;
 }
 
 const contactNotFound = (): NotFoundError => new NotFoundError("family contact");
@@ -137,7 +149,11 @@ function validateCreate(body: CreateFamilyInvitationRequest): {
   if (!UUID_RE.test(body.patientId ?? "")) invalid("patientId", "a patient id");
   if (!UUID_RE.test(body.patientCaregiverId ?? "")) invalid("patientCaregiverId", "a caregiver id");
   const expiresInDays = body.expiresInDays ?? FAMILY_INVITE_DEFAULT_DAYS;
-  if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > FAMILY_INVITE_MAX_DAYS) {
+  if (
+    !Number.isInteger(expiresInDays) ||
+    expiresInDays < 1 ||
+    expiresInDays > FAMILY_INVITE_MAX_DAYS
+  ) {
     invalid("expiresInDays", `a whole number of days from 1 to ${FAMILY_INVITE_MAX_DAYS}`);
   }
   return { patientId: body.patientId, patientCaregiverId: body.patientCaregiverId, expiresInDays };
@@ -148,7 +164,8 @@ function cleanSetting(raw: unknown, field: string): string | null {
   if (typeof raw !== "string") invalid(field, "text");
   const text = (raw as string).trim();
   if (text.length === 0) return null;
-  if (text.length > FAMILY_SETTING_TEXT_MAX) invalid(field, `at most ${FAMILY_SETTING_TEXT_MAX} characters`);
+  if (text.length > FAMILY_SETTING_TEXT_MAX)
+    invalid(field, `at most ${FAMILY_SETTING_TEXT_MAX} characters`);
   return text;
 }
 
@@ -156,7 +173,8 @@ function cleanSetting(raw: unknown, field: string): string | null {
 function isSecondPersonRefusal(error: unknown): boolean {
   let cursor: unknown = error;
   for (let depth = 0; depth < 4 && cursor; depth += 1) {
-    if (cursor instanceof Error && cursor.message.includes("message_family_contact_unblock")) return true;
+    if (cursor instanceof Error && cursor.message.includes("message_family_contact_unblock"))
+      return true;
     cursor = (cursor as { cause?: unknown }).cause;
   }
   return false;
@@ -167,7 +185,9 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
     deps.flags ? (await deps.flags.forOrg(orgId))[FAMILY_MESSAGING_FLAG_KEY] === true : false;
 
   const mayAct = async (actor: FamilyStaffActor, patientId: string): Promise<boolean> =>
-    deps.canAccessPatient ? deps.canAccessPatient(actor.organizationId, actor.userId, patientId) : false;
+    deps.canAccessPatient
+      ? deps.canAccessPatient(actor.organizationId, actor.userId, patientId)
+      : false;
 
   const requireOutbox = (what: string): HintOutboxPort => {
     if (!deps.outbox) throw new DegradedError("messaging", `the outbox is not configured; ${what}`);
@@ -226,7 +246,8 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
     },
 
     async caregivers(actor, patientId) {
-      if (!UUID_RE.test(patientId) || !(await mayAct(actor, patientId))) throw new NotFoundError("patient");
+      if (!UUID_RE.test(patientId) || !(await mayAct(actor, patientId)))
+        throw new NotFoundError("patient");
       const rows = await deps.store.run(actor, (tx) => tx.caregivers(patientId));
       return rows.map((r) => ({
         patientCaregiverId: r.patientCaregiverId,
@@ -267,7 +288,8 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
           );
         }
         const caregiver = await tx.caregiver(input.patientCaregiverId);
-        if (!caregiver || caregiver.patientId !== input.patientId) throw new NotFoundError("patient");
+        if (!caregiver || caregiver.patientId !== input.patientId)
+          throw new NotFoundError("patient");
         // D2: no consent, no link. A reason code, not a bypass.
         if (caregiver.reason !== "ok") {
           throw new ChartWardenError(
@@ -278,8 +300,15 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
           );
         }
         const counts = await tx.counts(actor.userId);
-        if (counts.orgDay >= FAMILY_INVITES_PER_ORG_DAY || counts.creatorDay >= FAMILY_INVITES_PER_CREATOR_DAY) {
-          throw new ChartWardenError(FAMILY_LIMIT_CODE, "too many family invitations today; wait or revoke one", 429);
+        if (
+          counts.orgDay >= FAMILY_INVITES_PER_ORG_DAY ||
+          counts.creatorDay >= FAMILY_INVITES_PER_CREATOR_DAY
+        ) {
+          throw new ChartWardenError(
+            FAMILY_LIMIT_CODE,
+            "too many family invitations today; wait or revoke one",
+            429,
+          );
         }
         const id = await tx.ensureContact(actor.userId, caregiver);
         // A reissue is a NEW invitation that supersedes the old one: its sessions die with it, and the counter starts again with the new row.
@@ -330,13 +359,18 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
       if (!cipher) throw new DegradedError("messaging", "message decryption is not configured");
       return deps.store.run(actor, async (tx) => {
         const row = await accessibleContact(actor, tx, contactId);
-        const rawMessages = row.channelId ? await tx.messages(row.channelId, FAMILY_STAFF_THREAD_LIMIT) : [];
+        const rawMessages = row.channelId
+          ? await tx.messages(row.channelId, FAMILY_STAFF_THREAD_LIMIT)
+          : [];
         const messages: FamilyStaffMessageDto[] = [];
         for (const m of rawMessages) {
           let body = "";
           if (!m.redacted) {
             const plaintext = await cipher.open(actor.organizationId, m.bodyCipher);
-            const decoded = decodeStoredBody(m.bodyKind as Parameters<typeof decodeStoredBody>[0], plaintext);
+            const decoded = decodeStoredBody(
+              m.bodyKind as Parameters<typeof decodeStoredBody>[0],
+              plaintext,
+            );
             if (decoded.unreadable) continue; // never show a guess
             body = decoded.body;
           }
@@ -364,14 +398,22 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
         // D10: a reply is refused unless the contact is covered RIGHT NOW (the restricted-patient check of a care-team reply, the same expression the
         // contact's own requests use). A Part 2 patient, a withdrawn consent or a block means nothing is posted.
         if (row.reason !== "ok") {
-          throw new ChartWardenError(FAMILY_NOT_ELIGIBLE_CODE, "this contact cannot be replied to right now", 409, [
-            { field: "contactId", code: row.reason, message: row.reason },
-          ]);
+          throw new ChartWardenError(
+            FAMILY_NOT_ELIGIBLE_CODE,
+            "this contact cannot be replied to right now",
+            409,
+            [{ field: "contactId", code: row.reason, message: row.reason }],
+          );
         }
         if (row.closed) {
-          throw new ChartWardenError(FAMILY_THREAD_CLOSED_CODE, "this conversation is closed; reopen it to reply", 409);
+          throw new ChartWardenError(
+            FAMILY_THREAD_CLOSED_CODE,
+            "this conversation is closed; reopen it to reply",
+            409,
+          );
         }
-        if (!row.channelId) throw new ConflictError("the contact has not written yet; there is nothing to reply to");
+        if (!row.channelId)
+          throw new ConflictError("the contact has not written yet; there is nothing to reply to");
         const write = deps.insertMessage ?? insertEncryptedMessage;
         const sent = await write(tx.raw as Tx, cipher as MessageBodyCipher, {
           orgId: actor.organizationId,
@@ -415,7 +457,9 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
       return deps.store.run(actor, async (tx) => {
         await accessibleContact(actor, tx, contactId);
         if (!(await tx.setClosed(contactId, actor.userId, closed))) {
-          throw new ConflictError(closed ? "this conversation is already closed" : "this conversation is not closed");
+          throw new ConflictError(
+            closed ? "this conversation is already closed" : "this conversation is not closed",
+          );
         }
         return summaryAfter(actor, tx, contactId);
       });
@@ -425,9 +469,12 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
       const outbox = requireOutbox("nothing was changed");
       try {
         return await deps.store.run(actor, async (tx) => {
-          if (!UUID_RE.test(contactId) || !(await tx.getContact(contactId))) throw contactNotFound();
+          if (!UUID_RE.test(contactId) || !(await tx.getContact(contactId)))
+            throw contactNotFound();
           if (!(await tx.setBlocked(contactId, actor.userId, blocked))) {
-            throw new ConflictError(blocked ? "this contact is already blocked" : "this contact is not blocked");
+            throw new ConflictError(
+              blocked ? "this contact is already blocked" : "this contact is not blocked",
+            );
           }
           if (blocked) {
             // D8: a block revokes the link on the same transaction; reissue needs the block lifted by a second person first.
