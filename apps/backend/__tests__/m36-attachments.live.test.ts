@@ -30,7 +30,7 @@ import type { IdempotencyStore } from "@chartwarden/shared";
 import { DegradedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
@@ -223,6 +223,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
   // "ages out after 24 h" assertion depend on the wall clock being before that date + 1 min.
   const clock = { now: Date.now() };
   const scanner = { down: false };
+  /** WP 6.3: the tenant flag `messaging.voice_notes` as the service sees it (off by default, like production). */
+  const voiceFlag = { on: false, throws: false };
   /** A failed scan is retried with exponential backoff: move the fake clock past the longest wait so the sweep is due. */
   const pastBackoff = () => {
     clock.now += SCAN_RETRY_MAX_MS + 1_000;
@@ -460,6 +462,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       scanner: flakyScanner,
       outbox: outbox as never,
       canViewChannel: routeService.canViewChannel,
+      voiceNotesEnabled: async () => {
+        if (voiceFlag.throws) throw new Error("flag store down");
+        return voiceFlag.on;
+      },
       now: () => new Date(clock.now),
       onScanError: (_ctx, error) => scanErrors.push(error),
       reaperDb: destroyer.db,
@@ -1176,6 +1182,129 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           [attachmentId],
         ),
       ).toBe(1);
+    });
+  });
+
+  // WP 6.3 (ADR-0094 decision 1): a voice note is an ordinary scanned attachment behind the per-tenant flag `messaging.voice_notes`.
+  describe("voice notes (WP 6.3)", () => {
+    const webm = (tag: string) =>
+      Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, ...new TextEncoder().encode(`opus ${tag}`)]);
+    const voice = { contentType: "audio/webm", fileName: "voice-note.webm" };
+    afterEach(() => {
+      voiceFlag.on = false;
+      voiceFlag.throws = false;
+    });
+
+    it("flag off (the default) or unreadable: authorize answers 415 and leaves no row", async () => {
+      const bytes = webm("off");
+      expect((await authorize(u1, dm, bytes, voice)).statusCode).toBe(415);
+      voiceFlag.on = true;
+      voiceFlag.throws = true;
+      expect((await authorize(u1, dm, bytes, voice)).statusCode).toBe(415);
+      expect(
+        await count(
+          `SELECT count(*)::int AS n FROM message_attachment WHERE mime_type='audio/webm'`,
+        ),
+      ).toBe(0);
+    });
+
+    it("flag on: a note over 8 MB is 422, another audio type is 415, a PDF keeps its 25 MB ceiling", async () => {
+      voiceFlag.on = true;
+      const bytes = webm("caps");
+      expect((await authorize(u1, dm, bytes, { ...voice, byteSize: 8_000_001 })).statusCode).toBe(
+        422,
+      );
+      expect(
+        (await authorize(u1, dm, bytes, { ...voice, contentType: "audio/wav" })).statusCode,
+      ).toBe(415);
+      expect((await authorize(u1, dm, bytes, { byteSize: 9_000_000 })).statusCode).toBe(201);
+    });
+
+    it("flag on: scanned, delivered only when clean, played through the one-open-one-event presigned GET", async () => {
+      voiceFlag.on = true;
+      const bytes = webm("clean");
+      const { attachmentId, done } = await uploaded(u1, dm, bytes, {
+        over: voice,
+        mime: "audio/webm",
+      });
+      expect(done?.json().scanState).toBe("clean");
+      const sent = await send(u1, dm, [attachmentId], ORG_A, "typed body for the note");
+      expect(sent.statusCode).toBe(201);
+      const messageId = sent.json().messageId as string;
+      expect(attachmentsOf(await list(u2, dm), messageId)).toEqual([
+        expect.objectContaining({
+          attachmentId,
+          availability: "available",
+          mimeType: "audio/webm",
+        }),
+      ]);
+      const open = await access(u2, attachmentId);
+      expect(open.statusCode).toBe(200);
+      expect((open.json() as { url: string }).url).toContain("https://objects.test/get/");
+      expect(storage.ttlsRequested.at(-1)).toBeLessThanOrEqual(120);
+      expect(
+        await count(
+          `SELECT count(*)::int AS n FROM attachment_access_event WHERE attachment_id=$1 AND action='open'`,
+          [attachmentId],
+        ),
+      ).toBe(1);
+    });
+
+    it("audio bytes that are not a webm are quarantined and never delivered", async () => {
+      voiceFlag.on = true;
+      const mp4Bytes = Uint8Array.from([
+        0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+      ]);
+      const { attachmentId, done } = await uploaded(u1, dm, mp4Bytes, {
+        over: voice,
+        mime: "audio/webm",
+      });
+      expect(done?.json().scanState).toBe("quarantined");
+      expect((await send(u1, dm, [attachmentId])).statusCode).toBe(422);
+    });
+
+    it("a note sent while the flag was on stays openable after the flag is turned off (the flag gates recording, not access)", async () => {
+      voiceFlag.on = true;
+      const { attachmentId } = await uploaded(u1, dm, webm("later"), {
+        over: voice,
+        mime: "audio/webm",
+      });
+      await send(u1, dm, [attachmentId], ORG_A, "typed body");
+      voiceFlag.on = false;
+      expect((await access(u2, attachmentId)).statusCode).toBe(200);
+    });
+
+    it("an approved redaction makes the note unplayable for everyone, and the attempt is logged as a denial", async () => {
+      voiceFlag.on = true;
+      const { attachmentId } = await uploaded(u1, dm, webm("redact"), {
+        over: voice,
+        mime: "audio/webm",
+      });
+      const sent = await send(u1, dm, [attachmentId], ORG_A, "typed body");
+      const messageId = sent.json().messageId as string;
+      expect((await access(u2, attachmentId)).statusCode).toBe(200);
+      await admin.query("BEGIN");
+      await admin.query("SELECT set_config('app.user_id', $1, true)", [u1]);
+      const redaction = (
+        await admin.query(
+          `INSERT INTO message_redaction (organization_id, message_id, requested_by, reason) VALUES ($1,$2,$3,'redaction needed here') RETURNING id`,
+          [ORG_A, messageId, u1],
+        )
+      ).rows[0].id as string;
+      await admin.query("SELECT set_config('app.user_id', $1, true)", [u2]);
+      await admin.query(
+        `UPDATE message_redaction SET approved_by=$1, approved_at=now() WHERE id=$2`,
+        [u2, redaction],
+      );
+      await admin.query("COMMIT");
+      expect((await access(u2, attachmentId)).statusCode).toBe(404);
+      expect((await access(u1, attachmentId)).statusCode).toBe(404);
+      expect(
+        await count(
+          `SELECT count(*)::int AS n FROM attachment_access_event WHERE attachment_id=$1 AND action='denied' AND reason='message_redacted'`,
+          [attachmentId],
+        ),
+      ).toBe(2);
     });
   });
 

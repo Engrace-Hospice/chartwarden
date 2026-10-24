@@ -27,6 +27,7 @@ import {
   DegradedError,
   NotFoundError,
   RateLimitedError,
+  isVoiceNoteMimeType,
 } from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
@@ -176,6 +177,11 @@ export interface AttachmentServiceDeps {
   readonly outbox?: HintOutboxPort | undefined;
   /** The channel_visibility rule: a CURRENT member with Part 2 / care-team gating (the route service's own). */
   readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /**
+   * WP 6.3 (ADR-0094): the tenant flag `messaging.voice_notes`. Absent => off; a throw reads as off (fail closed). Read only when
+   * the requested type is a voice-note type, so every other upload costs no extra read.
+   */
+  readonly voiceNotesEnabled?: (orgId: string) => Promise<boolean>;
   /** Try one scan right after `complete` (default true). The sweep worker is the retry path either way. */
   readonly scanOnComplete?: boolean;
   readonly now?: () => Date;
@@ -765,12 +771,20 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
 
   return {
     async authorize(orgId, input) {
-      const valid = validateAuthorizeInput({
-        fileName: input.fileName,
-        contentType: input.contentType,
-        byteSize: input.byteSize,
-        sha256Hex: input.sha256Hex,
-      });
+      const voiceNotesEnabled = isVoiceNoteMimeType(input.contentType)
+        ? await Promise.resolve()
+            .then(() => deps.voiceNotesEnabled?.(orgId))
+            .catch(() => false)
+        : false;
+      const valid = validateAuthorizeInput(
+        {
+          fileName: input.fileName,
+          contentType: input.contentType,
+          byteSize: input.byteSize,
+          sha256Hex: input.sha256Hex,
+        },
+        { voiceNotesEnabled: voiceNotesEnabled === true },
+      );
       // "can send in this channel" is the channel_visibility rule; a stranger gets the random-id answer.
       if (!(await deps.canViewChannel(orgId, input.userId, input.channelId))) {
         throw new NotFoundError("channel", input.channelId);

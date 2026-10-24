@@ -7,7 +7,7 @@ import {
 import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
-import { apiErrorCode, toSentAttachments } from "./attachment-utils";
+import { apiErrorCode, toSentAttachments, voiceNoteNeedsText } from "./attachment-utils";
 import { type ClinicalLinkRef, draftToRichBody } from "./draft-to-rich-body";
 import { type SendBody, buildSendBody, referenceInput } from "./message-send-body";
 import type { Message, MessageAttachment, MessageReferenceInput } from "./messaging-types";
@@ -135,6 +135,8 @@ export function useMessageSender({
     if (!submitted.trim() && uploads.sendableIds.length === 0 && !ready) return;
     if (sending || sendInFlightRef.current || archived) return;
     if (uploads.blocksSend && !ready) return;
+    // WP 6.3: a voice note needs a typed body (the composer says so).
+    if (!ready && voiceNoteNeedsText(uploads.chips, submitted)) return;
     // G2: checked with nobody chosen is refused here (Enter in the textarea reaches this too), never sent as a plain message.
     const ask = ready || !needsResponse?.checked ? null : needsResponse;
     if (ask && !ask.recipientId) {

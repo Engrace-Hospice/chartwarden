@@ -14388,7 +14388,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
+        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type (audio/webm and audio/mp4 voice notes are allowed only while the tenant flag messaging.voice_notes is on, and are capped at 8,000,000 bytes), 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
         post: operations["postApiV1MessagingAttachmentsUploads"];
         delete?: never;
         options?: never;
