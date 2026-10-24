@@ -88,6 +88,13 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // FY2027 — the 42 CFR 418.24(d) election addendum window missed (care team + compliance audiences).
       "m6.election_addendum.overdue",
       "m6.election_addendum.overdue_compliance",
+      // Milestone 10a — NOMNC / BFCC-QIO expedited review (care team + compliance/clinical/billing audiences).
+      "m6.expedited_review.opened",
+      "m6.expedited_review.opened_compliance",
+      "m6.expedited_deadline.approaching",
+      "m6.expedited_deadline.approaching_compliance",
+      "m6.expedited_deadline.overdue",
+      "m6.expedited_deadline.overdue_compliance",
       // GAP-026 — the generic (non-addendum) compliance window miss.
       "m6.compliance.window.overdue",
       "m6.compliance.window.overdue_compliance",
@@ -137,6 +144,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "submission.proof_missing",
       "deadline.recorded_approaching",
       "audit.no_deadline_recorded",
+      "payer_appeal.deadline_approaching",
+      "payer_appeal.no_deadline",
       "m26.cap.agency_watch_90",
       "m26.cap.agency_warn_95",
       "m26.cap.agency_breach_100",

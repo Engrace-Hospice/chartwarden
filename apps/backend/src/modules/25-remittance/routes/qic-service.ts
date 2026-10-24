@@ -36,6 +36,7 @@ import {
   QIC_ESCALATION_MESSAGES,
   QIC_EXTENSION_MESSAGES,
 } from "./qic-messages";
+import { assertNotMedicaidDenial } from "./denial-payer";
 import { providerEntityScopeCondition } from "./scope";
 import { recordFilingAttempt } from "./submission-service";
 
@@ -597,6 +598,8 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
         );
         // The ALJ case opens already filed (the QIC forwarded it). It has no filing deadline of its own: the NOT NULL
         // `tier_deadline_at` is the escalation request instant, which is in the past, so no deadline alert fires.
+        // A Medicaid denial has no Medicare ALJ tier: refuse (rolls back the escalation confirmation too).
+        await assertNotMedicaidDenial(tx, actor.organizationId, cur.denialCaseId);
         const alj = await tx
           .insert(AC)
           .values({

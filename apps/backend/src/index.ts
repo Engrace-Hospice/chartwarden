@@ -483,6 +483,7 @@ import {
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
+  createNomncService,
   electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
@@ -1124,6 +1125,8 @@ import {
   buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
   buildDrizzleLaterTierService,
+  buildDrizzlePayerAppealPathService,
+  buildDrizzlePayerAppealService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
@@ -3895,6 +3898,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
       })
     : null;
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines). Its
+  // routes mount in `mountAdmissionRoutes`; the 15-minute deadline scan runs in M6's `admission.window_alert` worker.
+  const m6Nomnc = dbHandle ? createNomncService({
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        // A linked document must be an ACTIVE M22 version of this org's patient + admission (else 404).
+        documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
+      }) : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
@@ -5004,6 +5015,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               closureFor: (organizationId, q) =>
                 priorElectionClosureForOrg(dbHandle.db, organizationId, q),
             },
+            // Milestone 10a — the NOMNC / expedited-review routes.
+            m6Nomnc ?? undefined,
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Each module's write lifecycle is live (no route
@@ -5946,6 +5959,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               sources: buildSeamAppealSourcePorts(),
             }),
             caseViewService: buildDrizzleCaseViewService(dbHandle.db),
+            // Milestone 12a-1: the organization's payer appeal paths (written by a person, verified by a second one;
+            // nothing is seeded) and payer appeal cases keyed on the denial. Payer names come through M40's seam.
+            payerAppealPathService: buildDrizzlePayerAppealPathService(dbHandle.db),
+            payerAppealService: buildDrizzlePayerAppealService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
             // Milestone 8a-1: advisory documentation readiness. The assistant port is the deny-stub (no model is
             // reachable); the deterministic gap view and the review record work with AI off.
             adrReadinessService: buildDrizzleAdrReadinessService(dbHandle.db, {

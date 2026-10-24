@@ -87,6 +87,10 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // approaching, and an open audit request that still has no recorded due date.
   rule("deadline.recorded_approaching", "warn", BILLING_MANAGERS),
   rule("audit.no_deadline_recorded", "warn", BILLING_MANAGERS),
+  // Milestone 12a-1: a payer (commercial / Medicare Advantage) appeal level whose path-computed filing deadline is
+  // approaching, and an open level with no due date of either kind (a typed deadline rides deadline.recorded_approaching).
+  rule("payer_appeal.deadline_approaching", "warn", BILLING_MANAGERS),
+  rule("payer_appeal.no_deadline", "warn", BILLING_MANAGERS),
   // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
   // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
   ...(["agency", "patient"] as const).flatMap((family) => [

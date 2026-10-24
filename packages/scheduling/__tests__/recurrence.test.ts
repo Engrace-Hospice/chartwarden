@@ -37,6 +37,29 @@ const baseInput = (
 });
 
 describe("§2.2.5 parseRrule subset", () => {
+  it("rejects nonexistent and ambiguous wall times at DST transitions", () => {
+    expect(() =>
+      materializeRecurrence(
+        baseInput("FREQ=WEEKLY;BYDAY=SU;COUNT=1", "2026-03-08"),
+        "2026-03-08",
+        1,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      materializeRecurrence(
+        { ...baseInput("FREQ=WEEKLY;BYDAY=SU;COUNT=1", "2026-03-08"), timeOfDayStart: "02:30" },
+        "2026-03-08",
+        1,
+      ),
+    ).toThrow(/nonexistent/);
+    expect(() =>
+      materializeRecurrence(
+        { ...baseInput("FREQ=WEEKLY;BYDAY=SU;COUNT=1", "2026-11-01"), timeOfDayStart: "01:30" },
+        "2026-11-01",
+        1,
+      ),
+    ).toThrow(/ambiguous/);
+  });
   it("parses a WEEKLY MO,WE,FR rule", () => {
     expect(parseRrule("FREQ=WEEKLY;BYDAY=MO,WE,FR")).toEqual({
       freq: "WEEKLY",

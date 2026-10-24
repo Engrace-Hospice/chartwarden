@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 198,
+  "totalStaticWebScreens": 197,
   "e2eReachedCount": 20,
   "axeReachedCount": 186,
   "zeroE2eCoverage": [
@@ -501,14 +501,6 @@
       "axeReached": true
     },
     {
-      "id": "messaging.family-contact",
-      "module": "36-messaging",
-      "path": "/family/open",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
-    },
-    {
       "id": "identity.forgot-password",
       "module": "02-identity",
       "path": "/forgot",
@@ -789,14 +781,6 @@
       "axeReached": true
     },
     {
-      "id": "messaging.family",
-      "module": "36-messaging",
-      "path": "/messaging/family",
-      "permission": "messaging.family.respond",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
       "id": "messaging.break-glass",
       "module": "36-messaging",
       "path": "/messaging/governance/break-glass",
@@ -1041,6 +1025,14 @@
       "module": "25-remittance",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.payer-appeal-paths",
+      "module": "25-remittance",
+      "path": "/remittance/payer-appeal-paths",
+      "permission": "payer_appeal_path.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1450,14 +1442,6 @@
       "id": "scheduling.calendar",
       "module": "17-scheduling",
       "path": "/calendar",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
-    },
-    {
-      "id": "messaging.family-contact",
-      "module": "36-messaging",
-      "path": "/family/open",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -2073,14 +2057,6 @@
       "axeReached": true
     },
     {
-      "id": "messaging.family-contact",
-      "module": "36-messaging",
-      "path": "/family/open",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
-    },
-    {
       "id": "identity.forgot-password",
       "module": "02-identity",
       "path": "/forgot",
@@ -2409,14 +2385,6 @@
       "axeReached": true
     },
     {
-      "id": "messaging.family",
-      "module": "36-messaging",
-      "path": "/messaging/family",
-      "permission": "messaging.family.respond",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
       "id": "messaging.break-glass",
       "module": "36-messaging",
       "path": "/messaging/governance/break-glass",
@@ -2693,6 +2661,14 @@
       "module": "25-remittance",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.payer-appeal-paths",
+      "module": "25-remittance",
+      "path": "/remittance/payer-appeal-paths",
+      "permission": "payer_appeal_path.read",
       "e2eReached": false,
       "axeReached": true
     },

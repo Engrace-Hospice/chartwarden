@@ -6,8 +6,8 @@
  * legal state here and there is NO cited-path-must-exist rule — proposals legitimately cite
  * planned paths. What this gate enforces is the integrity of the corpus *as a corpus*:
  *
- *   1. INDEX      — docs/modules/README.md lists exactly the 40 spec files on disk, one row per
- *                   module 01…40, each row's link resolving to the file it names.
+ *   1. INDEX      — docs/modules/README.md lists exactly the 41 spec files on disk, one row per
+ *                   module 01…41, each row's link resolving to the file it names.
  *   2. VERSION    — every spec declares a parseable version in its header (a `**Spec status:**` /
  *                   `**Spec version:**` / `**Version:**` field, or a `vX.Y` in the H1 title), and
  *                   the README's "Spec ver" column matches the HEADER version. Specs are re-locked
@@ -129,8 +129,8 @@ for (const [num, row] of rows) {
     fail("README.md", row.line, "INDEX", `row M${num} has no matching spec file on disk`);
   }
 }
-if (rows.size !== 40)
-  fail("README.md", 1, "INDEX", `index has ${rows.size} module rows; expected 40`);
+if (rows.size !== 41)
+  fail("README.md", 1, "INDEX", `index has ${rows.size} module rows; expected 41`);
 
 // ---- Rules 3–5: per-file scans (specs, the index, and module-29-tasks) ----------------------
 const allDocs: Array<{ rel: string; abs: string }> = [
@@ -198,7 +198,7 @@ for (const { rel, abs } of allDocs) {
 
 if (violations.length === 0) {
   console.log(
-    `OK module-docs: ${specFiles.length} specs · index parity 40/40 · ${adrsChecked} ADR citations (${adrsAuditEra} audit-era exempt) · ${linksChecked} relative links`,
+    `OK module-docs: ${specFiles.length} specs · index parity 41/41 · ${adrsChecked} ADR citations (${adrsAuditEra} audit-era exempt) · ${linksChecked} relative links`,
   );
   process.exit(0);
 }

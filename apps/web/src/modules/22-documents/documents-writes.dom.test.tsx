@@ -395,7 +395,7 @@ describe("#91 — opening a document is a §164.528 accounting event", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Open" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     const purpose = await waitFor(() => screen.getByLabelText(/Reason for access/i));
-    fireEvent.change(purpose, { target: { value: "disclosure" } });
+    fireEvent.change(purpose, { target: { value: "payment" } });
     fireEvent.click(screen.getAllByRole("button", { name: "Open" })[1] as HTMLElement);
     await waitFor(() =>
       expect(

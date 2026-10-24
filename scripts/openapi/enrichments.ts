@@ -12,26 +12,6 @@ import {
   ClaimVoidRequest,
   ManualValidateRequest,
 } from "@chartwarden/billing";
-/**
- * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
- * --------------------------------------------------------
- * Layers request/response schema detail onto the auto-discovered routes
- * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
- *
- * Routes are discovered automatically, so COVERAGE never depends on this file —
- * an unlisted route still appears in the contract (params auto-derived from the
- * path). This registry only ADDS the request body / typed response, reusing the
- * SAME exported TypeBox schemas the route handlers validate against, so the
- * contract cannot drift from the validator.
- *
- * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
- * path end-to-end). Wiring the remaining modules' bodies/responses is the
- * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
- */
-import {
-  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
-  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
-} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
@@ -231,6 +211,21 @@ import {
   ElectionAddendumUploadedSignatureSchema as M6ElectionAddendumUploadedSignatureSchema,
   ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
+import {
+  AddDeadlineSchema as M6NomncAddDeadlineSchema,
+  DeadlineViewSchema as M6NomncDeadlineViewSchema,
+  NoticeViewSchema as M6NomncNoticeViewSchema,
+  NomncOverviewQuerySchema as M6NomncOverviewQuerySchema,
+  NomncOverviewSchema as M6NomncOverviewSchema,
+  OpenReviewSchema as M6NomncOpenReviewSchema,
+  PatchDeadlineSchema as M6NomncPatchDeadlineSchema,
+  PatchNoticeSchema as M6NomncPatchNoticeSchema,
+  PatchReviewSchema as M6NomncPatchReviewSchema,
+  RecordNoticeSchema as M6NomncRecordNoticeSchema,
+  ReviewViewSchema as M6NomncReviewViewSchema,
+  WithdrawNoticeSchema as M6NomncWithdrawNoticeSchema,
+  WithdrawReviewSchema as M6NomncWithdrawReviewSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/nomnc-typebox";
 import {
   BenefitPeriodPlanQuerySchema,
   BenefitPeriodPlanSchema,
@@ -584,16 +579,6 @@ import {
   MacRulePageSchema as M25MacRulePageSchema,
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
-import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
-import {
-  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
-  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
-  EscalationRequestSchema as M25EscalationRequestSchema,
-  QicClockRequestSchema as M25QicClockRequestSchema,
-  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
-  QicVersionedResultSchema as M25QicVersionedResultSchema,
-  QicViewSchema as M25QicViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
   AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
   AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
@@ -618,6 +603,25 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/audit-response.routes";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
+  DenialCaseViewSchema as M25DenialCaseViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import {
+  PayerAppealPathListQuerySchema as M25PayerAppealPathListQuerySchema,
+  PayerAppealPathPageSchema as M25PayerAppealPathPageSchema,
+  PayerAppealPathRequestSchema as M25PayerAppealPathRequestSchema,
+  PayerAppealPathViewSchema as M25PayerAppealPathViewSchema,
+  PayerAppealVersionedResultSchema as M25PayerAppealPathVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes";
+import {
+  PayerAppealCaseViewSchema as M25PayerAppealCaseViewSchema,
+  PayerAppealDenialViewSchema as M25PayerAppealDenialViewSchema,
+  PayerAppealMoveRequestSchema as M25PayerAppealMoveRequestSchema,
+  PayerAppealNoticeRequestSchema as M25PayerAppealNoticeRequestSchema,
+  PayerAppealOpenRequestSchema as M25PayerAppealOpenRequestSchema,
+  PayerAppealOpenedSchema as M25PayerAppealOpenedSchema,
+  PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -626,6 +630,16 @@ import {
   RecordedDeadlineSatisfyRequestSchema as M25RecordedDeadlineSatisfyRequestSchema,
   TierDetailRequestSchema as M25TierDetailRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
+import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
+  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
+  EscalationRequestSchema as M25EscalationRequestSchema,
+  QicClockRequestSchema as M25QicClockRequestSchema,
+  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
+  QicVersionedResultSchema as M25QicVersionedResultSchema,
+  QicViewSchema as M25QicViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
@@ -806,6 +820,26 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+/**
+ * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
+ * --------------------------------------------------------
+ * Layers request/response schema detail onto the auto-discovered routes
+ * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
+ *
+ * Routes are discovered automatically, so COVERAGE never depends on this file —
+ * an unlisted route still appears in the contract (params auto-derived from the
+ * path). This registry only ADDS the request body / typed response, reusing the
+ * SAME exported TypeBox schemas the route handlers validate against, so the
+ * contract cannot drift from the validator.
+ *
+ * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
+ * path end-to-end). Wiring the remaining modules' bodies/responses is the
+ * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
+ */
+import {
+  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
+  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import {
   PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
   PresenceResponseSchema as M36PresenceResponseSchema,
@@ -1487,6 +1521,11 @@ import {
   IdgDiscussionListResponseSchema as M36IdgDiscussionListResponseSchema,
   IdgDiscussionQuerySchema as M36IdgDiscussionQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/idg-discussion-typebox";
+// M36 WP 6.1 smart work inbox.
+import {
+  InboxQuerySchema as M36InboxQuerySchema,
+  InboxResponseSchema as M36InboxResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 3.10 medication questions.
 import {
   AskMedicationQuestionBodySchema as M36AskMedicationQuestionBodySchema,
@@ -1645,11 +1684,6 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
-// M36 WP 6.1 smart work inbox.
-import {
-  InboxQuerySchema as M36InboxQuerySchema,
-  InboxResponseSchema as M36InboxResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 4.9 supervisor unacknowledged queue.
 import {
   UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
@@ -2131,6 +2165,7 @@ import {
   RevokeCredentialRequest as M17RevokeCredentialRequest,
   RouteEfficiencyQuerySchema as M17RouteEfficiencyQuerySchema,
   RouteEfficiencyResponseSchema as M17RouteEfficiencyResponseSchema,
+  SchedulingContextResponseSchema as M17SchedulingContextResponseSchema,
   SchedulingStaffResponseSchema as M17SchedulingStaffResponseSchema,
   StartVisitRequest as M17StartVisitRequest,
   TimeOffListQuerySchema as M17TimeOffListQuerySchema,
@@ -4431,6 +4466,63 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Sign the election statement",
     body: ElectionSignSchema,
   },
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines).
+  "GET /api/v1/admissions/:id/nomnc": {
+    summary:
+      "NOMNC delivery record, history, QIO review, typed deadlines and the prompts for what is missing",
+    query: M6NomncOverviewQuerySchema,
+    response: M6NomncOverviewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc": {
+    summary:
+      "Record a NOMNC delivery as typed (date AND time, source note); supersedes the active record when asked",
+    body: M6NomncRecordNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/nomnc/:noticeId": {
+    summary: "Record the acknowledgement, attach the copy, or amend the delivery note",
+    body: M6NomncPatchNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/withdraw": {
+    summary: "Withdraw an active NOMNC record (reason required)",
+    body: M6NomncWithdrawNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/expedited-review": {
+    summary: "Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted)",
+    body: M6NomncOpenReviewSchema,
+    response: M6NomncReviewViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/deadlines": {
+    summary: "Type a deadline from the notice (date AND time, mandatory source note)",
+    body: M6NomncAddDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/expedited-reviews/:reviewId": {
+    summary: "Record the DENC / records-sent facts or the QIO decision",
+    body: M6NomncPatchReviewSchema,
+    response: M6NomncReviewViewSchema,
+  },
+  "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw": {
+    summary: "Withdraw an open QIO review",
+    body: M6NomncWithdrawReviewSchema,
+    response: M6NomncReviewViewSchema,
+  },
+  "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/deadlines": {
+    summary: "Type a DENC / records / decision deadline from the QIO's call (date AND time, source note)",
+    body: M6NomncAddDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/expedited-deadlines/:deadlineId": {
+    summary: "Edit a typed deadline or mark it met",
+    body: M6NomncPatchDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+  },
   // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum.
   "GET /api/v1/admissions/:id/election-addendum": {
     summary: "Election statement addendum: current version, history and open 418.24(d) windows",
@@ -4656,7 +4748,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/discharges/worklist": {
     summary:
-      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause); milestone 10a adds the open QIO reviews and the NOMNC records with no appeal-request deadline typed (both need nomnc.read)",
     query: DischargeWorklistQuerySchema,
     response: DischargeWorklistResponseSchema,
   },
@@ -6092,6 +6184,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Minimal scheduling staff directory — membership id, display name, clinical discipline",
     response: M17SchedulingStaffResponseSchema,
+  },
+  "GET /api/v1/scheduling/context": {
+    summary: "Organization service timezone for authorized scheduling forms",
+    response: M17SchedulingContextResponseSchema,
   },
   "GET /api/v1/memberships/:membershipId/credentials": {
     summary: "GAP-093: a membership's clinical-license/certification roster",
@@ -8382,13 +8478,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/denials/:id/appeals": {
     summary:
-      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening",
+      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply)",
     body: M25AppealCreateRequestSchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/appeals/override": {
     summary:
-      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3)",
+      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID",
     body: M25AppealOverrideRequestSchema,
     response: M25VersionedResultSchema,
     status: 201,
@@ -8537,7 +8633,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "DELETE /api/v1/audit-requests/:id/claims/:claimId": {
-    summary: "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
+    summary:
+      "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
     response: M25AuditVersionedResultSchema,
   },
   "POST /api/v1/audit-requests/:id/state": {
@@ -8600,8 +8697,85 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/claims/:claimId/case-view": {
     summary:
-      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
     response: M25CaseViewSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/case-view": {
+    summary:
+      "The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline",
+    response: M25DenialCaseViewSchema,
+  },
+  // ── payer-appeal-path.routes.ts / payer-appeal.routes.ts (hospice ADR/TPE/QIC PRD, milestone 12a-1) ──
+  "GET /api/v1/payer-appeal-paths": {
+    summary: "The organization's payer appeal paths (written by a person; none are seeded)",
+    query: M25PayerAppealPathListQuerySchema,
+    response: M25PayerAppealPathPageSchema,
+  },
+  "GET /api/v1/payer-appeal-paths/:id": {
+    summary: "One payer appeal path with its levels, source notes and verification",
+    response: M25PayerAppealPathViewSchema,
+  },
+  "POST /api/v1/payer-appeal-paths": {
+    summary:
+      "Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it",
+    body: M25PayerAppealPathRequestSchema,
+    response: M25PayerAppealPathVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/verify": {
+    summary:
+      "Verify a draft path as a person other than its author; it becomes active and frozen (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/retire": {
+    summary: "Retire a draft or active path; cases opened under it keep their snapshot (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened",
+    response: M25PayerAppealDenialViewSchema,
+  },
+  "POST /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date",
+    body: M25PayerAppealOpenRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+    status: 201,
+  },
+  "GET /api/v1/payer-appeals/:id": {
+    summary: "One payer appeal level with its deadline derivation, recorded deadlines and decision",
+    response: M25PayerAppealCaseViewSchema,
+  },
+  "PUT /api/v1/payer-appeals/:id/notice": {
+    summary: "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
+    body: M25PayerAppealNoticeRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/state": {
+    summary: "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
+    body: M25PayerAppealMoveRequestSchema,
+    response: M25PayerAppealVersionedSchema,
+  },
+  "GET /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this payer appeal level, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Record a due date typed from a payer notice (the source note is required)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
   },
   // ── audit-response.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-2) ─────────────────────────────
   "PUT /api/v1/audit-requests/:id/response-items": {

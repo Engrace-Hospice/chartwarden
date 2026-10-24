@@ -1036,6 +1036,15 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "admission.scope",
   },
+  // --- Milestone 10a: NOMNC delivery + BFCC-QIO expedited review record-keeping (mig 1230 grants `nomnc.read` to the
+  //     roles holding admission.read and `nomnc.record` to those holding discharge.no_longer_terminal / for_cause) ---
+  "nomnc.read": { resource: "nomnc", action: "read", category: "clinical", abac: "admission.scope" },
+  "nomnc.record": {
+    resource: "nomnc",
+    action: "record",
+    category: "clinical",
+    abac: "admission.scope",
+  },
   // --- CTI (routes 22–27) ---
   "cti.draft": { resource: "cti", action: "draft", category: "clinical", abac: "admission.scope" },
   "cti.read": { resource: "cti", action: "read", category: "clinical", abac: "admission.scope" },
@@ -3683,6 +3692,39 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     action: "tier_record",
     category: "billing",
     abac: "provider_entity_scope",
+  },
+  // --- payer (commercial / Medicare Advantage) appeals (milestone 12a-1; migration 1206, granted by 1209) ---
+  // `payer_appeal.*` works a case at one level of a payer's own path; `payer_appeal_path.*` is the organization's own
+  // path data (nothing is seeded). `.verify` is the second person who checks a draft path against the contract.
+  "payer_appeal.read": {
+    resource: "payer_appeal_case",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "payer_appeal.manage": {
+    resource: "payer_appeal_case",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "payer_appeal_path.read": {
+    resource: "payer_appeal_path",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "payer_appeal_path.manage": {
+    resource: "payer_appeal_path",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
+  "payer_appeal_path.verify": {
+    resource: "payer_appeal_path",
+    action: "verify",
+    category: "billing",
+    abac: "none",
   },
   // --- taxonomy surface ---
   "taxonomy.read": {

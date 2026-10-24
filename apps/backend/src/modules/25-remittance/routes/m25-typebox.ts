@@ -222,6 +222,18 @@ const pageOf = <T extends TSchema>(item: T) =>
 
 /** `read-service.ts` → `DenialWorklistItem`. */
 export const DenialWorklistItemSchema = Type.Object({
+  payerKind: Type.Union(
+    [
+      Type.Literal("medicare"),
+      Type.Literal("medicaid"),
+      Type.Literal("commercial"),
+      Type.Literal("unknown"),
+    ],
+    {
+      description:
+        "Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced)",
+    },
+  ),
   id: Type.String({ format: "uuid" }),
   providerEntityId: Type.String({ format: "uuid" }),
   claimId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),

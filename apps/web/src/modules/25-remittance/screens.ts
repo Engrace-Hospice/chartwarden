@@ -19,6 +19,9 @@ const DenialWorklist = lazy(() =>
 const RemittanceWorklist = lazy(() =>
   import("./remittance-worklist").then((m) => ({ default: m.RemittanceWorklist })),
 );
+const PayerAppealPaths = lazy(() =>
+  import("./payer-appeal-paths").then((m) => ({ default: m.PayerAppealPaths })),
+);
 const TpeTracker = lazy(() => import("./tpe-tracker").then((m) => ({ default: m.TpeTracker })));
 const TaxonomyOverlay = lazy(() =>
   import("./taxonomy-overlay").then((m) => ({ default: m.TaxonomyOverlay })),
@@ -75,6 +78,14 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "tpe.read",
       screen: TpeTracker,
+    },
+    {
+      id: "remittance.payer-appeal-paths",
+      path: "/remittance/payer-appeal-paths",
+      title: "Payer Appeal Paths",
+      navGroup: "Billing",
+      requiredPermission: "payer_appeal_path.read",
+      screen: PayerAppealPaths,
     },
     {
       id: "remittance.taxonomy",
