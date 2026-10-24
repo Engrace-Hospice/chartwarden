@@ -24,11 +24,11 @@ import { createPatientReader } from "../src/modules/05-patient/seams/patient-rea
 import { createEscalationRouter } from "../src/modules/19-oncall/seams/escalation-router";
 import { buildDrizzleEscalationRouterReads } from "../src/modules/19-oncall/seams/escalation-router-binding";
 import { buildDrizzleOncallSeamStore } from "../src/modules/19-oncall/seams/store-drizzle";
-import { LIVE_APP_ROLE_PASSWORD, appRoleConnectionString } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-4111-8111-1111e5ca1a19";
 const ORG_B = "22222222-2222-4222-8222-2222e5ca1b19";
 const NY = "America/New_York";

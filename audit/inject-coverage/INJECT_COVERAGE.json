@@ -538,6 +538,7 @@
         "apps/backend/__tests__/m36-ack-routes.test.ts",
         "apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
+        "apps/backend/__tests__/m36-afterhours-triage-routes.test.ts",
         "apps/backend/__tests__/m36-announcements.live.test.ts",
         "apps/backend/__tests__/m36-announcements.test.ts",
         "apps/backend/__tests__/m36-attachments.live.test.ts",

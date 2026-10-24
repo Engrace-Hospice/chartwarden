@@ -29,11 +29,11 @@ import {
   type MessagePollService,
   createDbPollService,
 } from "../src/modules/36-messaging/polls/poll-service-db";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const KEK = randomBytes(32);
 const QUESTION = "Which Friday lunch do we order?";
 

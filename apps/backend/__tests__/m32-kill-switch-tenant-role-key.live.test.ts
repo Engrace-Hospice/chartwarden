@@ -25,11 +25,11 @@ import {
   createDrizzleAiKillSwitchStore,
   readAiKillSwitchVerdict,
 } from "../src/modules/32-ai-platform/safety";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ORG_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MEMBERSHIP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";

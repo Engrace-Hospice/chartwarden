@@ -54,7 +54,7 @@ import { createDbMessagingRouteService } from "../src/modules/36-messaging/index
 import { backfillBodiesForOrg } from "../src/modules/36-messaging/jobs/body-backfill";
 import { runHashVerifyForOrg } from "../src/modules/36-messaging/jobs/integrity-jobs";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 // these suites run hash_verify only; the retention scan is not exercised
 const NO_MESSAGE_HOLDS = {
@@ -64,15 +64,7 @@ const NO_MESSAGE_HOLDS = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-  "wp213_resealer",
-  "chartwarden_m36_reseal",
-];
+const ROLES = LIVE_DROP_ROLES;
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111111136a1";
 const ORG_B = "22222222-2222-4222-8222-2222222236b2";

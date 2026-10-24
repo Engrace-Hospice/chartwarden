@@ -23,15 +23,11 @@ import { createInMemoryObjectStore } from "../src/modules/22-documents/seams/sto
 import type { ObjectStorePort } from "../src/modules/22-documents/seams/store";
 import { renderQueuedFormFillsForOrg } from "../src/modules/22-documents/workers/form-render-worker";
 import { rotateIntakeRetentionForOrg } from "../src/modules/22-documents/workers/retention-rotation-worker";
+import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MEMBER = "33333333-3333-3333-3333-333333333333"; // document created_by etc. carry no FK — literal ok

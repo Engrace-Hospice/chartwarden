@@ -354,6 +354,7 @@
     "test:m2:screen-unlock:live": "vitest run apps/backend/__tests__/m2-screen-unlock.live.test.ts",
     "test:m4:audit-integrity:live": "vitest run apps/backend/__tests__/m4-audit-integrity-sample.live.test.ts",
     "test:m2:step-up-override:live": "vitest run apps/backend/__tests__/ac-03-step-up-tighten-only.live.test.ts",
+    "test:m2:wave5-hardening:live": "vitest run apps/backend/__tests__/m2-wave5-hardening.live.test.ts",
     "test:m2:pre-org-picker:live": "vitest run apps/backend/__tests__/f-001-pre-org-membership-picker.live.test.ts",
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",
     "test:rls:live:m8": "vitest run packages/db/migrations/__tests__/m8-rls-isolation.live.test.ts",

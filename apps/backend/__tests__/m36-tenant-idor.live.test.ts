@@ -111,7 +111,7 @@ import { createDbSnoozeReminderStore } from "../src/modules/36-messaging/snooze-
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
@@ -119,13 +119,7 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROUTES_DIR = join(__dirname, "../src/modules/36-messaging/routes");
 // chartwarden_destruction is cluster-global and created by 0157/1139: a second applyMigrations in the same cluster (the realtime
 // block below) fails at 1142 unless it is dropped between runs, like the other live suites do.
-const ROLES = [
-  "chartwarden_destruction",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const KEK = randomBytes(32);
 const ORIGIN = "https://app.chartwarden.test";
 const SECRET_BODY = "WP17-SECRET-BODY-must-never-appear-in-an-error";

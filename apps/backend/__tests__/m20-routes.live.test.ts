@@ -50,17 +50,11 @@ import { mountM20Routes } from "../src/modules/20-field-safety/routes/mount";
 import { createSafetyCiphers } from "../src/modules/20-field-safety/safety-crypto";
 import { registerFieldSafetySeams } from "../src/modules/20-field-safety/seams/index";
 import { buildDrizzleSafetySeamStore } from "../src/modules/20-field-safety/seams/store-drizzle";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "report_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "a2000000-0000-4000-8000-0000000000a1";
 const ORG_B = "b2000000-0000-4000-8000-0000000000b1";
 

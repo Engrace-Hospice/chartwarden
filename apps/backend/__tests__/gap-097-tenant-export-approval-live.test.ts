@@ -32,17 +32,11 @@ import {
   buildDrizzleTenantService,
   wireM34Tenancy,
 } from "../src/modules/34-saas-tenant-platform/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = `${__dirname}/../../../packages/db/migrations`;
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "77777777-7777-7777-7777-777777777777";
 const REQUESTING_MEMBERSHIP = "88888888-8888-8888-8888-888888888888";
 const APPROVER_MEMBERSHIP = "99999999-9999-9999-9999-999999999999";

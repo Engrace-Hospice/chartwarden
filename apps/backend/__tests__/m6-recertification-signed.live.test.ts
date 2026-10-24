@@ -29,7 +29,7 @@ import {
   applyRecertificationSigned,
   buildM6RecertificationSignedConsumer,
 } from "../src/modules/06-admission/outbox-consumers/m11-recertification-signed";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 
@@ -45,7 +45,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-11111111223a";
 const ORG_B = "22222222-2222-2222-2222-22222222223b";
 const USER = "33333333-3333-3333-3333-33333333223a";

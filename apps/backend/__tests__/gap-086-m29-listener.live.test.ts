@@ -28,12 +28,12 @@ import {
   startListenerProcess,
 } from "../src/modules/29-external-interfaces/index";
 import type { ParseWorkerDeps } from "../src/modules/29-external-interfaces/index";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { ackCode, createTlsFixtures, freePort, hasOpenssl, sendMllp } from "./_m29-tls-fixtures";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG = "11111111-1111-1111-1111-111111111086";
 const OTHER_ORG = "11111111-1111-1111-1111-111111111087";

@@ -10,17 +10,12 @@ import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 export const ORG = "11111111-1111-1111-1111-111111111111";
 export const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 
 export const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 /**

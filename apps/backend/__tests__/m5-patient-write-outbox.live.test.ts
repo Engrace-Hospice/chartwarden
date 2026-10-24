@@ -19,17 +19,11 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 import { decidePatientSyncTrigger } from "../src/modules/12-dosespot/consumers/sync-triggers";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "report_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";
 const ORG_B = "bbbbbbbb-0000-4000-8000-0000000000b1";
 const STAFF = "d0000000-0000-4000-8000-000000000001";

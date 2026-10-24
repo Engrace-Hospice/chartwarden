@@ -41,12 +41,12 @@ import { SupplyStateError } from "../src/modules/21-supplies/lifecycle/index";
 import type { M21WriteActor } from "../src/modules/21-supplies/routes/actor";
 import type { WriteOutboxPort } from "../src/modules/21-supplies/routes/write-service";
 import { listNonCoveredDmeSuppliesForAdmission } from "../src/modules/21-supplies/seams/non-covered-dme-supplies";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-1111111111c7";
 const ORG_B = "22222222-2222-2222-2222-2222222222c7";
 const PHYSICIAN_MDM = "66666666-6666-6666-6666-6666666666c7";

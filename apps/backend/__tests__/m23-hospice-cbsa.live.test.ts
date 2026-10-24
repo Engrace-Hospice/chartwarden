@@ -26,11 +26,11 @@ import {
 } from "../src/modules/23-billing-medicare/services/claim-cbsa";
 import { inpatientFacilityIdsForPeriodsForOrg } from "../src/modules/37-ipu/seams/inpatient-facilities-for-periods-for-org";
 import { facilityPostalCodesForIds } from "../src/modules/40-mdm/facility-kind-reader";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-1111-1111-111111111111";
 const FY2027_END = "2027-03-31"; // fiscal_year_starting 2026
 const FY2026_END = "2026-03-31"; // fiscal_year_starting 2025

@@ -22,17 +22,11 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDbInvitationStore } from "../src/modules/02-identity/identity-stores-db";
 import { createDbProposedRoleAttacher } from "../src/modules/03-authorization/proposed-role-attacher";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "report_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "aaaaaaaa-1111-4000-8000-00000000000a";
 const ORG_B = "bbbbbbbb-1111-4000-8000-00000000000b";
 const USER = "cccccccc-1111-4000-8000-00000000000c";

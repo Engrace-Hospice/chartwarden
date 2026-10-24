@@ -10,11 +10,11 @@ import { M11_OUTBOX_EVENTS, buildM11IdgDecisionConsumer } from "../src/modules/1
 import { M12_OUTBOX_EVENTS, buildM12IdgDecisionConsumer } from "../src/modules/12-dosespot/index";
 import { buildM16IdgDecisionConsumer } from "../src/modules/16-bereavement/index";
 import { buildM18VisitPublishedConsumer } from "../src/modules/18-evv/index";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "33333333-3333-3333-3333-333333333333";

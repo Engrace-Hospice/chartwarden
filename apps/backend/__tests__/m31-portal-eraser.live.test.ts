@@ -20,11 +20,11 @@ import type { PatientId } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzlePortalEraseStore, erasePortalRecord } from "../src/modules/31-portal/eraser";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER_1 = "22222222-2222-2222-2222-222222222221";
 const USER_2 = "22222222-2222-2222-2222-222222222222";

@@ -20,21 +20,11 @@ import { createDrizzleFeatureFlagAdmin } from "../src/bootstrap/feature-flag-sto
 import { m34PlatformBypassAuditor } from "../src/index";
 import { createDrizzlePlatformOpsService } from "../src/modules/34-saas-tenant-platform/routes/platform/ops-service";
 import { createDrizzleTenantAccountFlagsService } from "../src/modules/34-saas-tenant-platform/routes/tenant/account-flags-service";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_destruction_login",
-  "chartwarden_destruction",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const JOB_ID = "m34-ops-live-test";
 const PLATFORM_PASSWORD = "platform-live-password-1234";
 

@@ -17,10 +17,11 @@ import { type DbClient, createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildM23PatientDaysProvider } from "../src/modules/23-billing-medicare/cost-report-seams";
+import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-1111-1111-111111111111";
 const FY_START = "2025-10-01";
 const FY_END = "2026-09-30";

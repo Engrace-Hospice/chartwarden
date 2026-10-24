@@ -6,19 +6,11 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { createHopeSpecRegistry } from "../src/modules/10-hope/hope-spec-registry";
+import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-// chartwarden_destruction must go too: migration 1142 drops the wardenx_destruction alias, so if the destruction role
-// survives a previous replay in this cluster, 1139 grants it membership of a FRESH alias that this replay's policies
-// name, and 1142 then fails on those policies. Dropping it makes every replay start from a pre-1139 cluster.
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "chartwarden_destruction",
-];
+const ROLES = LIVE_DROP_ROLES;
 
 /**
  * A fresh schema, like the sibling spec suites. The database is shared and vitest does not order files:

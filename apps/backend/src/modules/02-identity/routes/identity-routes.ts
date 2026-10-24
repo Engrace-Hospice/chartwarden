@@ -98,8 +98,41 @@ const lastAdminLockout = () =>
   );
 
 const MAX_UNLOCK_PASSWORD_LENGTH = 256;
+const MAX_EMAIL_LENGTH = 320;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+/** A well-formed invite address, normalized (trim + lowercase) at the boundary so storage and lookups agree. */
+function readInviteEmail(body: unknown): string {
+  const raw = readString(body, "email");
+  const email = normalizeEmail(raw);
+  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
+    throw new ValidationError("invalid email", [
+      { field: "email", code: "INVALID", message: "email must be a valid address" },
+    ]);
+  }
+  return email;
+}
+
+/** 422 unless every id is a location of `orgId` (M1's site read); fail closed when no reader is bound. */
+async function assertLocationsInOrg(
+  deps: IdentityRouteDeps,
+  orgId: string,
+  field: string,
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  if (!deps.validateLocations) {
+    throw unavailable(
+      "LOCATION_VALIDATION_UNAVAILABLE",
+      "this deployment cannot verify locations; omit location ids",
+    );
+  }
+  if (!(await deps.validateLocations(orgId, ids))) {
+    throw new ChartWardenError("INVALID_LOCATION", `${field}: one or more locations are unavailable`, 422);
+  }
+}
 
 /**
  * The org's display name, for the invitation the invitee actually reads (TASK-030).
@@ -442,10 +475,11 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     assertOrgMatch(request, orgId);
     const actor = await resolveActor(deps, request);
 
-    const email = readString(request.body, "email");
+    const email = readInviteEmail(request.body);
     const proposedRoleKeys = readStringArray(request.body, "proposedRoleKeys");
     const proposedDefaultLocationIds = readStringArray(request.body, "proposedDefaultLocationIds");
     const providerId = (request.body as Record<string, unknown>).proposedDefaultProviderEntityId;
+    await assertLocationsInOrg(deps, orgId, "proposedDefaultLocationIds", proposedDefaultLocationIds);
 
     if (await deps.invitations.pendingExists(orgId, email)) throw pendingInviteExists();
 
@@ -693,7 +727,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     assertOrgMatch(request, orgId);
     const actor = await resolveActor(deps, request);
 
-    const removed = await deps.invitations.rescind(invId);
+    const removed = await deps.invitations.rescind(invId, orgId);
     if (!removed) throw new ChartWardenError("NOT_FOUND", "invitation not found", 404);
 
     await auditInvitationRescinded(
@@ -770,12 +804,16 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         );
       }
       // Last-admin lockout guard: suspending the last active admin is refused (§6).
-      if (nextStatus === "suspended" && membership.isAdmin) {
-        const admins = await deps.memberships.activeAdminCount(orgId);
-        if (admins <= 1) throw lastAdminLockout();
-      }
       const from = membership.status;
-      updated = await deps.memberships.setStatus(mId, nextStatus);
+      updated = await deps.memberships.withAdminLock(orgId, async () => {
+        // Re-read under the lock: `membership` was loaded before it, and a concurrent change could have moved isAdmin.
+        const fresh = (await deps.memberships.get(mId)) ?? membership;
+        if (nextStatus === "suspended" && fresh.isAdmin) {
+          const admins = await deps.memberships.activeAdminCount(orgId);
+          if (admins <= 1) throw lastAdminLockout();
+        }
+        return deps.memberships.setStatus(mId, nextStatus);
+      });
       await auditMembershipStatusChanged(
         deps.audit,
         auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
@@ -806,6 +844,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     if (body.defaultLocationIds !== undefined) {
       const scope = readStringArray(body, "defaultLocationIds");
+      await assertLocationsInOrg(deps, orgId, "defaultLocationIds", scope);
       updated = await deps.memberships.setDefaultScope(mId, scope);
     }
 
@@ -822,12 +861,14 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     if (!membership || membership.organizationId !== orgId) {
       throw new ChartWardenError("NOT_FOUND", "membership not found", 404);
     }
-    if (membership.isAdmin) {
-      const admins = await deps.memberships.activeAdminCount(orgId);
-      if (admins <= 1) throw lastAdminLockout(); // last-admin lockout guard (§6)
-    }
-
-    await deps.memberships.setStatus(mId, "revoked");
+    await deps.memberships.withAdminLock(orgId, async () => {
+      const fresh = (await deps.memberships.get(mId)) ?? membership;
+      if (fresh.isAdmin) {
+        const admins = await deps.memberships.activeAdminCount(orgId);
+        if (admins <= 1) throw lastAdminLockout(); // last-admin lockout guard (§6)
+      }
+      await deps.memberships.setStatus(mId, "revoked");
+    });
     // Revoking a membership terminates that user's sessions in this org within seconds (§7.5).
     await deps.sessions.revokeForMembership(mId);
     await auditMembershipRevoked(
@@ -966,11 +1007,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const orgId = request.context.organizationId;
     if (!orgId) throw new ChartWardenError("NOT_FOUND", "user not found", 404);
     // Same last-admin guard as the suspend and revoke routes (§6): offboarding the only active admin would lock the org out.
-    const target = await deps.memberships.findActive(userId, orgId);
-    if (target?.isAdmin && (await deps.memberships.activeAdminCount(orgId)) <= 1) {
-      throw lastAdminLockout();
-    }
-    const outcome = await deps.users.deactivateFromOrg({ userId, organizationId: orgId, reason });
+    const outcome = await deps.memberships.withAdminLock(orgId, async () => {
+      const target = await deps.memberships.findActive(userId, orgId);
+      if (target?.isAdmin && (await deps.memberships.activeAdminCount(orgId)) <= 1) {
+        throw lastAdminLockout();
+      }
+      return deps.users.deactivateFromOrg({ userId, organizationId: orgId, reason });
+    });
     if (outcome === "not_member") throw new ChartWardenError("NOT_FOUND", "user not found", 404);
     if (outcome === "member_elsewhere") {
       throw new ChartWardenError(

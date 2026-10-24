@@ -26,16 +26,16 @@ import {
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import {
+  LIVE_APP_ROLE_PASSWORD,
+  LIVE_DROP_ROLES,
+  appRoleUrl,
+  dropLiveRoles,
+  resetPublicSchema,
+} from "./_live-app-role";
 
 export const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-export const ROLES = [
-  "chartwarden_destruction",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+export const ROLES = LIVE_DROP_ROLES;
 export const HANDOFF_FLAG = "messaging.handoffs";
 export const STAFF_KEYS = ["messaging.read", "messaging.send", "patient.read"];
 export const ADMIN_KEYS = [...STAFF_KEYS, "messaging.template.manage"];
@@ -110,14 +110,8 @@ export async function bootLiveKit(
 ): Promise<LiveKit> {
   const admin = new Client({ connectionString: dbUrl });
   await admin.connect();
-  await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
-  await admin.query("CREATE SCHEMA public");
-  for (const r of ROLES) {
-    await admin.query(
-      `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-        `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-    );
-  }
+  await resetPublicSchema(admin);
+  await dropLiveRoles(admin);
   await applyMigrations(admin);
   await admin.query(
     `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'${tag}-a','A','A'),($2,'${tag}-b','B','B')`,

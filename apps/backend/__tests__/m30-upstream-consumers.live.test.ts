@@ -26,20 +26,11 @@ import {
 } from "../src/modules/30-quality/index";
 import { selectActiveMemberRoleKeys } from "../src/modules/30-quality/member-roles";
 import { restraintAdmissionSitingForOrg } from "../src/modules/37-ipu/seams/restraint-admission-siting-for-org";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-// chartwarden_destruction must go too: migration 1142 drops the wardenx_destruction alias, so if the destruction role
-// survives a previous replay in this cluster, 1139 grants it membership of a FRESH alias that this replay's policies
-// name, and 1142 then fails on those policies. Dropping it makes every replay start from a pre-1139 cluster.
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "chartwarden_destruction",
-];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";

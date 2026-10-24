@@ -27,7 +27,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { runElectionPeriodAutoEndCron } from "../src/modules/06-admission/jobs/cron-workers";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
@@ -44,7 +44,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-11111111062a";
 const USER = "33333333-3333-3333-3333-33333333062a";
 const MD = "55555555-5555-5555-5555-55555555062a";

@@ -25,7 +25,7 @@ import { createDbAdmissionRouteService } from "../src/modules/06-admission/admis
 import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/seams/drizzle-store";
 import { signedEncounterNoteForOrg } from "../src/modules/08-encounters/seams/drizzle-store";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 const F2F_ATTESTATION_NARRATIVE =
@@ -43,7 +43,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111112027";
 const ORG_B = "22222222-2222-2222-2222-222222222027";
 const USER = "33333333-3333-3333-3333-333333332027";

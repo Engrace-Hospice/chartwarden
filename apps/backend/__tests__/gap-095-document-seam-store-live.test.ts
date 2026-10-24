@@ -35,17 +35,12 @@ import {
   getRenderedDocumentProvider,
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 import { CTI } from "./_m22-form-fixtures";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "77777777-7777-7777-7777-777777777777";
 
 describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgres", () => {

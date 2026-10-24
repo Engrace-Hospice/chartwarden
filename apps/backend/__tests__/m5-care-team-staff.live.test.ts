@@ -26,17 +26,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { createDbCareTeamStaffPort } from "../src/modules/05-patient/care-team-staff-db";
 import { registerCareTeamStaffRoutes } from "../src/modules/05-patient/routes/care-team-staff-routes";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const DB_ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "report_writer",
-];
+const DB_ROLES = LIVE_DROP_ROLES;
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";
 const ORG_B = "bbbbbbbb-0000-4000-8000-0000000000b1";
 const U = (n: number) => `d0000000-0000-4000-8000-00000000000${n}`;

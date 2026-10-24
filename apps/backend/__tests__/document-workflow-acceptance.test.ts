@@ -604,6 +604,38 @@ describe("M22-T11 §4.12 — external-disclosure presign gates on the M40 BAA st
     expect(out.accessKind).toBe("disclosure_export");
   });
 
+  it("fail-CLOSES (403) a disclosure/survey_export mint whose recipient is unresolved, without consulting M40", async () => {
+    let consulted = 0;
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => {
+        consulted += 1;
+        return { isActive: true, status: "executed" };
+      },
+    } as never);
+    const noRecipient = createSignedUrlService({
+      storage: {
+        async presignDownload() {
+          return { url: "https://minio.example/x", expiresAt: "2026-06-24T00:05:00.000Z" };
+        },
+      },
+      resolver: {
+        async loadObject() {
+          return { objectKey: "k", externalRecipient: null, patientId: PAT, isSudClass: false };
+        },
+      },
+    });
+    for (const purpose of ["disclosure", "survey_export"] as const) {
+      await expect(noRecipient.mint({ ...mintArgs, purpose })).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    }
+    // An internal purpose is unaffected.
+    await expect(noRecipient.mint({ ...mintArgs, purpose: "treatment" })).resolves.toMatchObject({
+      accessKind: "signed_url_issued",
+    });
+    expect(consulted).toBe(0);
+  });
+
   it("fail-CLOSES (403) when the M40 seam throws / is a deny-stub", async () => {
     registerSeam("BaaStatusProvider", {
       baaStatusByMdmEntity: async () => {

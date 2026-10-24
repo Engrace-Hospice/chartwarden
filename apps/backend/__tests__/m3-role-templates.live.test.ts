@@ -40,19 +40,11 @@ import {
   materializeRoleTemplatesForOrg,
   materializeRoleTemplatesInTx,
 } from "../src/modules/03-authorization/role-template-materializer";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "44444444-4444-4444-8444-444444441001";
 const ORG_B = "55555555-5555-4555-8555-555555551002";
 const ORG_C = "66666666-6666-4666-8666-666666661003";

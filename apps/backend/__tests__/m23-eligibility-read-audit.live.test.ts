@@ -24,12 +24,12 @@ import { buildServer } from "../src/bootstrap/index";
 import { registerEligibilityRoutes } from "../src/modules/23-billing-medicare/routes/eligibility.routes";
 import type { M23ReadRouteService } from "../src/modules/23-billing-medicare/routes/read-service";
 import type { M23WriteRouteService } from "../src/modules/23-billing-medicare/routes/write-service";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { installPermissiveConsentAbac } from "./consent-abac-harness";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";

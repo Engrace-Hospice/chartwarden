@@ -11,7 +11,7 @@
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest, withUserContext } from "@chartwarden/tenancy";
-import type { AdminMembershipReader } from "@chartwarden/types";
+import { ChartWardenError, type AdminMembershipReader } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type {
   AccountStatus,
@@ -85,6 +85,30 @@ function toRecord(row: MembershipDbRow, adminIds: ReadonlySet<string>): Membersh
 }
 
 /** Build the live MembershipRepository; `admin` (M3-owned) supplies the `org_admin` membership set. */
+const ADMIN_LOCK_MAX_CONCURRENT = 3;
+
+/** Per-org in-process queue tails for `withAdminLock`. */
+const adminLockOrgTails = new Map<string, Promise<void>>();
+
+/** Counting semaphore: callers beyond the cap queue (FIFO) instead of each holding a pool connection. */
+const adminLockSlots = (() => {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return {
+    async run<T>(fn: () => Promise<T>): Promise<T> {
+      if (active >= ADMIN_LOCK_MAX_CONCURRENT) await new Promise<void>((r) => waiting.push(r));
+      else active++;
+      try {
+        return await fn();
+      } finally {
+        const next = waiting.shift();
+        if (next) next();
+        else active--;
+      }
+    },
+  };
+})();
+
 export function createDbMembershipRepository(
   db: DbClient,
   admin: AdminMembershipReader,
@@ -259,6 +283,51 @@ export function createDbMembershipRepository(
           defaultLocationIds: input.defaultLocationIds,
         };
       }),
+
+    // One advisory lock per org, held for the duration of `fn` (count + write). `fn` uses its own
+    // connections and commits before the lock releases, so the next waiter counts committed state.
+    // ponytail: holds one pool connection while `fn` needs another. At most ADMIN_LOCK_MAX_CONCURRENT run per
+    // process (well under the pool size) so holders can always get their second connection, one org holds at most
+    // one slot, and the bounded lock_timeout frees a cross-process waiter's connection (55P03 -> retryable 503).
+    // Upgrade path: run `fn` on `tx`.
+    withAdminLock: (organizationId, fn) => {
+      // Same-org callers queue in-process first, so one org holds at most one of the global slots and cannot
+      // starve other orgs' admin changes; only distinct orgs compete for ADMIN_LOCK_MAX_CONCURRENT.
+      const previous = adminLockOrgTails.get(organizationId) ?? Promise.resolve();
+      const run = previous.then(() =>
+        adminLockSlots.run(async () => {
+          try {
+            return await db.transaction(async (tx) => {
+              await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+              await tx.execute(
+                sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m2:last-admin:${organizationId}`}, 0))`,
+              );
+              return fn();
+            });
+          } catch (err) {
+            // drizzle wraps the driver error: the SQLSTATE sits on `err` or on `err.cause`.
+            const e = err as { code?: string; cause?: { code?: string } } | null;
+            if (e?.code === "55P03" || e?.cause?.code === "55P03") {
+              throw new ChartWardenError(
+                "ADMIN_CHANGE_BUSY",
+                "another change to this organization's administrators is in progress; retry shortly",
+                503,
+              );
+            }
+            throw err;
+          }
+        }),
+      );
+      const tail = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      adminLockOrgTails.set(organizationId, tail);
+      void tail.then(() => {
+        if (adminLockOrgTails.get(organizationId) === tail) adminLockOrgTails.delete(organizationId);
+      });
+      return run;
+    },
 
     activeAdminCount: async (organizationId) => {
       const rows = await selectByOrg(organizationId);
