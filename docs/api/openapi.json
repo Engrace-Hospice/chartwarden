@@ -40092,6 +40092,10 @@
                               {
                                 "const": "payer_appeal",
                                 "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
+                                "type": "string"
                               }
                             ]
                           },
@@ -40761,6 +40765,10 @@
                               },
                               {
                                 "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
                                 "type": "string"
                               }
                             ]
@@ -42523,6 +42531,10 @@
                               {
                                 "const": "payer_appeal",
                                 "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
+                                "type": "string"
                               }
                             ]
                           },
@@ -43293,6 +43305,10 @@
                               },
                               {
                                 "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
                                 "type": "string"
                               }
                             ]
@@ -47007,6 +47023,1163 @@
                         }
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}": {
+      "get": {
+        "operationId": "getApiV1BeneficiaryappealsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "One beneficiary appeal with its representative status, documents and recorded deadlines",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "claimId",
+                    "patientId",
+                    "denialCaseId",
+                    "filerKind",
+                    "representativeAppointmentId",
+                    "appointment",
+                    "representativeStatus",
+                    "tierLabel",
+                    "filedOn",
+                    "externalReference",
+                    "sourceNote",
+                    "state",
+                    "outcomeLabel",
+                    "outcomeNote",
+                    "closedAt",
+                    "version",
+                    "documents",
+                    "deadlines"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "denialCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "filerKind": {
+                      "type": "string"
+                    },
+                    "representativeAppointmentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appointment": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "state",
+                            "status",
+                            "validThroughOn",
+                            "representativeKind"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "validThroughOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "representativeKind": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeStatus": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tierLabel": {
+                      "type": "string"
+                    },
+                    "filedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "outcomeLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outcomeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "documentId",
+                          "documentVersionId",
+                          "attachedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "documentId": {
+                            "type": "string"
+                          },
+                          "documentVersionId": {
+                            "type": "string"
+                          },
+                          "attachedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "deadlines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1BeneficiaryappealsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Correct a beneficiary appeal record until it is closed or withdrawn (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filerKind": {
+                    "anyOf": [
+                      {
+                        "const": "beneficiary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "representative",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "tierLabel": {
+                    "anyOf": [
+                      {
+                        "const": "redetermination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reconsideration",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alj",
+                        "type": "string"
+                      },
+                      {
+                        "const": "council",
+                        "type": "string"
+                      },
+                      {
+                        "const": "federal_court",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "filedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "externalReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "denialCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeAppointmentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}/documents": {
+      "post": {
+        "operationId": "postApiV1BeneficiaryappealsByIdDocuments",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Attach a document, validated against the claim's patient and admission and M22's active version (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId",
+                  "documentVersionId"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}/documents/{documentId}/remove": {
+      "post": {
+        "operationId": "postApiV1BeneficiaryappealsByIdDocumentsByDocumentIdRemove",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Detach a document from a beneficiary appeal (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}/recorded-deadlines": {
+      "get": {
+        "operationId": "getApiV1BeneficiaryappealsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Deadlines typed from a notice for this beneficiary appeal, each with its source note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "items"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BeneficiaryappealsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a due date typed from a notice (the source note is required; none is computed)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "dueOn",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeClaimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}/recorded-deadlines/{deadlineId}": {
+      "patch": {
+        "operationId": "patchApiV1BeneficiaryappealsByIdRecordeddeadlinesByDeadlineId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Correct a recorded deadline until it is satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeClaimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+      "post": {
+        "operationId": "postApiV1BeneficiaryappealsByIdRecordeddeadlinesByDeadlineIdSatisfy",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Mark a recorded deadline satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "satisfiedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/beneficiary-appeals/{id}/state": {
+      "post": {
+        "operationId": "postApiV1BeneficiaryappealsByIdState",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record that the hospice is supporting the appeal, that it was decided, closed or withdrawn (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "move"
+                ],
+                "properties": {
+                  "move": {
+                    "anyOf": [
+                      {
+                        "const": "support",
+                        "type": "string"
+                      },
+                      {
+                        "const": "decide",
+                        "type": "string"
+                      },
+                      {
+                        "const": "close",
+                        "type": "string"
+                      },
+                      {
+                        "const": "withdraw",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "outcomeLabel": {
+                    "anyOf": [
+                      {
+                        "const": "favorable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unfavorable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dismissed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "outcomeNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -85250,6 +86423,515 @@
         }
       }
     },
+    "/api/v1/claims/{claimId}/beneficiary-appeals": {
+      "get": {
+        "operationId": "getApiV1ClaimsByClaimIdBeneficiaryappeals",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Appeals the beneficiary or their representative filed on this claim, as recorded by the hospice",
+        "parameters": [
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "patientId",
+                    "items"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "claimId",
+                          "patientId",
+                          "denialCaseId",
+                          "filerKind",
+                          "representativeAppointmentId",
+                          "appointment",
+                          "representativeStatus",
+                          "tierLabel",
+                          "filedOn",
+                          "externalReference",
+                          "sourceNote",
+                          "state",
+                          "outcomeLabel",
+                          "outcomeNote",
+                          "closedAt",
+                          "version",
+                          "documents",
+                          "deadlines"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "denialCaseId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "filerKind": {
+                            "type": "string"
+                          },
+                          "representativeAppointmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "appointment": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "state",
+                                  "status",
+                                  "validThroughOn",
+                                  "representativeKind"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "validThroughOn": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "representativeKind": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "representativeStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "tierLabel": {
+                            "type": "string"
+                          },
+                          "filedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalReference": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "outcomeLabel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "outcomeNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "documents": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "documentId",
+                                "documentVersionId",
+                                "attachedAt"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "documentVersionId": {
+                                  "type": "string"
+                                },
+                                "attachedAt": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "deadlines": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "subjectKind",
+                                "subjectId",
+                                "label",
+                                "dueOn",
+                                "zone",
+                                "dueAt",
+                                "sourceNote",
+                                "noticeDocumentId",
+                                "satisfiedOn",
+                                "status",
+                                "version"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "subjectKind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "appeal",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "audit_request",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "payer_appeal",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "beneficiary_appeal",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "subjectId": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "dueOn": {
+                                  "type": "string"
+                                },
+                                "zone": {
+                                  "type": "string"
+                                },
+                                "dueAt": {
+                                  "type": "string"
+                                },
+                                "sourceNote": {
+                                  "type": "string"
+                                },
+                                "noticeDocumentId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "satisfiedOn": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "open",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "due_soon",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "past",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "satisfied",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1ClaimsByClaimIdBeneficiaryappeals",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a beneficiary-filed appeal (ChartWarden records it; it computes no deadline and files nothing)",
+        "parameters": [
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "filerKind",
+                  "tierLabel",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "filerKind": {
+                    "anyOf": [
+                      {
+                        "const": "beneficiary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "representative",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "tierLabel": {
+                    "anyOf": [
+                      {
+                        "const": "redetermination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reconsideration",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alj",
+                        "type": "string"
+                      },
+                      {
+                        "const": "council",
+                        "type": "string"
+                      },
+                      {
+                        "const": "federal_court",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "filedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "externalReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "denialCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeAppointmentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/claims/{claimId}/case-view": {
       "get": {
         "operationId": "getApiV1ClaimsByClaimIdCaseview",
@@ -85347,6 +87029,10 @@
                                 {
                                   "const": "payer_appeal",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "beneficiary_appeal",
+                                  "type": "string"
                                 }
                               ]
                             },
@@ -85406,6 +87092,24 @@
                             },
                             "windowConfirmed": {
                               "type": "boolean"
+                            },
+                            "flags": {
+                              "type": "object",
+                              "required": [
+                                "representativeStatus"
+                              ],
+                              "properties": {
+                                "representativeStatus": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
                             }
                           }
                         },
@@ -85461,6 +87165,10 @@
                               },
                               {
                                 "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
                                 "type": "string"
                               }
                             ]
@@ -85521,6 +87229,24 @@
                           },
                           "windowConfirmed": {
                             "type": "boolean"
+                          },
+                          "flags": {
+                            "type": "object",
+                            "required": [
+                              "representativeStatus"
+                            ],
+                            "properties": {
+                              "representativeStatus": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
@@ -85538,6 +87264,457 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/claims/{claimId}/representative-appointments": {
+      "get": {
+        "operationId": "getApiV1ClaimsByClaimIdRepresentativeappointments",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The appointments of representative recorded for the claim's patient, each with a status derived from typed dates only",
+        "parameters": [
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "patientId",
+                    "items"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "recordedFromClaimId",
+                          "instrumentKind",
+                          "formVersionId",
+                          "formLabel",
+                          "instrumentNote",
+                          "representativeName",
+                          "relationshipLabel",
+                          "representativeKind",
+                          "beneficiarySignedOn",
+                          "representativeSignedOn",
+                          "validThroughOn",
+                          "validitySourceNote",
+                          "elements",
+                          "documentId",
+                          "documentVersionId",
+                          "state",
+                          "status",
+                          "recordedByMembershipId",
+                          "verifiedByMembershipId",
+                          "verifiedAt",
+                          "revokedOn",
+                          "revocationNote",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "recordedFromClaimId": {
+                            "type": "string"
+                          },
+                          "instrumentKind": {
+                            "type": "string"
+                          },
+                          "formVersionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "formLabel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "instrumentNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "representativeName": {
+                            "type": "string"
+                          },
+                          "relationshipLabel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "representativeKind": {
+                            "type": "string"
+                          },
+                          "beneficiarySignedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "representativeSignedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "validThroughOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "validitySourceNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "elements": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "label",
+                                "state"
+                              ],
+                              "properties": {
+                                "label": {
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "documentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "documentVersionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "recordedByMembershipId": {
+                            "type": "string"
+                          },
+                          "verifiedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revokedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revocationNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1ClaimsByClaimIdRepresentativeappointments",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record an appointment of representative as a draft from a claim (patient and provider entity come from the claim); a second person activates it",
+        "parameters": [
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "instrumentKind",
+                  "representativeName",
+                  "representativeKind"
+                ],
+                "properties": {
+                  "instrumentKind": {
+                    "anyOf": [
+                      {
+                        "const": "org_form",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_written_instrument",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "formVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "instrumentNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "relationshipLabel": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeKind": {
+                    "anyOf": [
+                      {
+                        "const": "family_or_friend",
+                        "type": "string"
+                      },
+                      {
+                        "const": "legal_representative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "attorney",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "beneficiarySignedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeSignedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "validThroughOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "validitySourceNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -102040,6 +104217,10 @@
                                 {
                                   "const": "payer_appeal",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "beneficiary_appeal",
+                                  "type": "string"
                                 }
                               ]
                             },
@@ -102099,6 +104280,24 @@
                             },
                             "windowConfirmed": {
                               "type": "boolean"
+                            },
+                            "flags": {
+                              "type": "object",
+                              "required": [
+                                "representativeStatus"
+                              ],
+                              "properties": {
+                                "representativeStatus": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
                             }
                           }
                         },
@@ -102154,6 +104353,10 @@
                               },
                               {
                                 "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
                                 "type": "string"
                               }
                             ]
@@ -102214,6 +104417,24 @@
                           },
                           "windowConfirmed": {
                             "type": "boolean"
+                          },
+                          "flags": {
+                            "type": "object",
+                            "required": [
+                              "representativeStatus"
+                            ],
+                            "properties": {
+                              "representativeStatus": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
@@ -102796,6 +105017,10 @@
                                     },
                                     {
                                       "const": "payer_appeal",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "beneficiary_appeal",
                                       "type": "string"
                                     }
                                   ]
@@ -227896,6 +230121,10 @@
                               {
                                 "const": "payer_appeal",
                                 "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
+                                "type": "string"
                               }
                             ]
                           },
@@ -228135,6 +230364,10 @@
                               },
                               {
                                 "const": "payer_appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "beneficiary_appeal",
                                 "type": "string"
                               }
                             ]
@@ -262482,6 +264715,954 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/representative-appointments/{id}": {
+      "get": {
+        "operationId": "getApiV1RepresentativeappointmentsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "One appointment of representative with its element checklist, signed document and activation record",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "recordedFromClaimId",
+                    "instrumentKind",
+                    "formVersionId",
+                    "formLabel",
+                    "instrumentNote",
+                    "representativeName",
+                    "relationshipLabel",
+                    "representativeKind",
+                    "beneficiarySignedOn",
+                    "representativeSignedOn",
+                    "validThroughOn",
+                    "validitySourceNote",
+                    "elements",
+                    "documentId",
+                    "documentVersionId",
+                    "state",
+                    "status",
+                    "recordedByMembershipId",
+                    "verifiedByMembershipId",
+                    "verifiedAt",
+                    "revokedOn",
+                    "revocationNote",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "recordedFromClaimId": {
+                      "type": "string"
+                    },
+                    "instrumentKind": {
+                      "type": "string"
+                    },
+                    "formVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "formLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "instrumentNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeName": {
+                      "type": "string"
+                    },
+                    "relationshipLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeKind": {
+                      "type": "string"
+                    },
+                    "beneficiarySignedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "representativeSignedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "validThroughOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "validitySourceNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "elements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "label",
+                          "state"
+                        ],
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "recordedByMembershipId": {
+                      "type": "string"
+                    },
+                    "verifiedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revocationNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1RepresentativeappointmentsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Edit a draft appointment (If-Match); an active appointment can only be revoked",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "instrumentNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "relationshipLabel": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeKind": {
+                    "anyOf": [
+                      {
+                        "const": "family_or_friend",
+                        "type": "string"
+                      },
+                      {
+                        "const": "legal_representative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "attorney",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "beneficiarySignedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "representativeSignedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "validThroughOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "validitySourceNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representative-appointments/{id}/activate": {
+      "post": {
+        "operationId": "postApiV1RepresentativeappointmentsByIdActivate",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Activate a draft as a person other than the one who recorded it, with a fresh step-up; needs the signed document and every element confirmed (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/representative-appointments/{id}/document": {
+      "put": {
+        "operationId": "putApiV1RepresentativeappointmentsByIdDocument",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Attach the signed appointment document: validated against the patient and M22's active version, and the validated version id is stored (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId",
+                  "documentVersionId"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representative-appointments/{id}/elements": {
+      "put": {
+        "operationId": "putApiV1RepresentativeappointmentsByIdElements",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Confirm which of the form version's required elements are present on the signed document (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirmedLabels"
+                ],
+                "properties": {
+                  "confirmedLabels": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representative-appointments/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1RepresentativeappointmentsByIdRevoke",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a revocation (typed date and note); needs a step-up but never a second person (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "revokedOn",
+                  "note"
+                ],
+                "properties": {
+                  "revokedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "note": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representative-form-versions": {
+      "get": {
+        "operationId": "getApiV1Representativeformversions",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The organization's own appointment form versions (typed by a person with a source note; none are seeded)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "label",
+                          "formIdentifier",
+                          "editionText",
+                          "sourceNote",
+                          "verifiedOn",
+                          "verifiedByMembershipId",
+                          "requiredElements",
+                          "retiredAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "formIdentifier": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "editionText": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "verifiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requiredElements": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "retiredAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Representativeformversions",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Enter an appointment form version exactly as compliance supplies it (source note required; frozen once written)",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "sourceNote",
+                  "requiredElements"
+                ],
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "formIdentifier": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "editionText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "verifiedOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requiredElements": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/representative-form-versions/{id}/retire": {
+      "post": {
+        "operationId": "postApiV1RepresentativeformversionsByIdRetire",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Retire a form version so new drafts cannot use it; existing appointments keep their checklist (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

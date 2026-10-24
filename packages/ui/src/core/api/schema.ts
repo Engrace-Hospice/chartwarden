@@ -4407,6 +4407,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/beneficiary-appeals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One beneficiary appeal with its representative status, documents and recorded deadlines */
+        get: operations["getApiV1BeneficiaryappealsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a beneficiary appeal record until it is closed or withdrawn (If-Match) */
+        patch: operations["patchApiV1BeneficiaryappealsById"];
+        trace?: never;
+    };
+    "/api/v1/beneficiary-appeals/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a document, validated against the claim's patient and admission and M22's active version (If-Match) */
+        post: operations["postApiV1BeneficiaryappealsByIdDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/beneficiary-appeals/{id}/documents/{documentId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Detach a document from a beneficiary appeal (If-Match) */
+        post: operations["postApiV1BeneficiaryappealsByIdDocumentsByDocumentIdRemove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/beneficiary-appeals/{id}/recorded-deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deadlines typed from a notice for this beneficiary appeal, each with its source note */
+        get: operations["getApiV1BeneficiaryappealsByIdRecordeddeadlines"];
+        put?: never;
+        /** Record a due date typed from a notice (the source note is required; none is computed) */
+        post: operations["postApiV1BeneficiaryappealsByIdRecordeddeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/beneficiary-appeals/{id}/recorded-deadlines/{deadlineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a recorded deadline until it is satisfied (If-Match) */
+        patch: operations["patchApiV1BeneficiaryappealsByIdRecordeddeadlinesByDeadlineId"];
+        trace?: never;
+    };
+    "/api/v1/beneficiary-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a recorded deadline satisfied (If-Match) */
+        post: operations["postApiV1BeneficiaryappealsByIdRecordeddeadlinesByDeadlineIdSatisfy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/beneficiary-appeals/{id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that the hospice is supporting the appeal, that it was decided, closed or withdrawn (If-Match) */
+        post: operations["postApiV1BeneficiaryappealsByIdState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/contacts/{contactId}": {
         parameters: {
             query?: never;
@@ -6868,6 +6989,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/claims/{claimId}/beneficiary-appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Appeals the beneficiary or their representative filed on this claim, as recorded by the hospice */
+        get: operations["getApiV1ClaimsByClaimIdBeneficiaryappeals"];
+        put?: never;
+        /** Record a beneficiary-filed appeal (ChartWarden records it; it computes no deadline and files nothing) */
+        post: operations["postApiV1ClaimsByClaimIdBeneficiaryappeals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/claims/{claimId}/case-view": {
         parameters: {
             query?: never;
@@ -6879,6 +7018,24 @@ export interface paths {
         get: operations["getApiV1ClaimsByClaimIdCaseview"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/claims/{claimId}/representative-appointments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The appointments of representative recorded for the claim's patient, each with a status derived from typed dates only */
+        get: operations["getApiV1ClaimsByClaimIdRepresentativeappointments"];
+        put?: never;
+        /** Record an appointment of representative as a draft from a claim (patient and provider entity come from the claim); a second person activates it */
+        post: operations["postApiV1ClaimsByClaimIdRepresentativeappointments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -22997,6 +23154,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/representative-appointments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One appointment of representative with its element checklist, signed document and activation record */
+        get: operations["getApiV1RepresentativeappointmentsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a draft appointment (If-Match); an active appointment can only be revoked */
+        patch: operations["patchApiV1RepresentativeappointmentsById"];
+        trace?: never;
+    };
+    "/api/v1/representative-appointments/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a draft as a person other than the one who recorded it, with a fresh step-up; needs the signed document and every element confirmed (If-Match) */
+        post: operations["postApiV1RepresentativeappointmentsByIdActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/representative-appointments/{id}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Attach the signed appointment document: validated against the patient and M22's active version, and the validated version id is stored (If-Match) */
+        put: operations["putApiV1RepresentativeappointmentsByIdDocument"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/representative-appointments/{id}/elements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Confirm which of the form version's required elements are present on the signed document (If-Match) */
+        put: operations["putApiV1RepresentativeappointmentsByIdElements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/representative-appointments/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a revocation (typed date and note); needs a step-up but never a second person (If-Match) */
+        post: operations["postApiV1RepresentativeappointmentsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/representative-form-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's own appointment form versions (typed by a person with a source note; none are seeded) */
+        get: operations["getApiV1Representativeformversions"];
+        put?: never;
+        /** Enter an appointment form version exactly as compliance supplies it (source note required; frozen once written) */
+        post: operations["postApiV1Representativeformversions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/representative-form-versions/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a form version so new drafts cannot use it; existing appointments keep their checklist (If-Match) */
+        post: operations["postApiV1RepresentativeformversionsByIdRetire"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -36622,7 +36900,7 @@ export interface operations {
                         } | null;
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -36799,7 +37077,7 @@ export interface operations {
                         patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -37374,7 +37652,7 @@ export interface operations {
                         }[];
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -37634,7 +37912,7 @@ export interface operations {
                         patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -38882,6 +39160,363 @@ export interface operations {
                             startTime: string;
                             endTime: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BeneficiaryappealsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        claimId: string;
+                        patientId: string;
+                        denialCaseId: string | null;
+                        filerKind: string;
+                        representativeAppointmentId: string | null;
+                        appointment: {
+                            id: string;
+                            state: string;
+                            status: string;
+                            validThroughOn: string | null;
+                            representativeKind: string;
+                        } | null;
+                        representativeStatus: string | null;
+                        tierLabel: string;
+                        filedOn: string | null;
+                        externalReference: string | null;
+                        sourceNote: string;
+                        state: string;
+                        outcomeLabel: string | null;
+                        outcomeNote: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        documents: {
+                            id: string;
+                            documentId: string;
+                            documentVersionId: string;
+                            attachedAt: string;
+                        }[];
+                        deadlines: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BeneficiaryappealsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    filerKind?: "beneficiary" | "representative";
+                    tierLabel?: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court" | "other";
+                    filedOn?: string | null;
+                    externalReference?: string | null;
+                    sourceNote?: string;
+                    denialCaseId?: string | null;
+                    representativeAppointmentId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BeneficiaryappealsByIdDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BeneficiaryappealsByIdDocumentsByDocumentIdRemove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BeneficiaryappealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string | null;
+                        items: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BeneficiaryappealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    dueOn: string;
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BeneficiaryappealsByIdRecordeddeadlinesByDeadlineId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label?: string;
+                    dueOn?: string;
+                    sourceNote?: string;
+                    noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BeneficiaryappealsByIdRecordeddeadlinesByDeadlineIdSatisfy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    satisfiedOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BeneficiaryappealsByIdState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    move: "support" | "decide" | "close" | "withdraw";
+                    outcomeLabel?: "favorable" | "partial" | "unfavorable" | "dismissed" | "other";
+                    outcomeNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };
@@ -46925,6 +47560,117 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1ClaimsByClaimIdBeneficiaryappeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        patientId: string;
+                        items: {
+                            id: string;
+                            claimId: string;
+                            patientId: string;
+                            denialCaseId: string | null;
+                            filerKind: string;
+                            representativeAppointmentId: string | null;
+                            appointment: {
+                                id: string;
+                                state: string;
+                                status: string;
+                                validThroughOn: string | null;
+                                representativeKind: string;
+                            } | null;
+                            representativeStatus: string | null;
+                            tierLabel: string;
+                            filedOn: string | null;
+                            externalReference: string | null;
+                            sourceNote: string;
+                            state: string;
+                            outcomeLabel: string | null;
+                            outcomeNote: string | null;
+                            closedAt: string | null;
+                            version: number;
+                            documents: {
+                                id: string;
+                                documentId: string;
+                                documentVersionId: string;
+                                attachedAt: string;
+                            }[];
+                            deadlines: {
+                                id: string;
+                                subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
+                                subjectId: string;
+                                label: string;
+                                dueOn: string;
+                                zone: string;
+                                dueAt: string;
+                                sourceNote: string;
+                                noticeDocumentId: string | null;
+                                satisfiedOn: string | null;
+                                status: "open" | "due_soon" | "past" | "satisfied";
+                                version: number;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ClaimsByClaimIdBeneficiaryappeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    filerKind: "beneficiary" | "representative";
+                    tierLabel: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court" | "other";
+                    filedOn?: string | null;
+                    externalReference?: string | null;
+                    sourceNote: string;
+                    denialCaseId?: string | null;
+                    representativeAppointmentId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1ClaimsByClaimIdCaseview: {
         parameters: {
             query?: never;
@@ -46948,7 +47694,7 @@ export interface operations {
                         generatedAt: string;
                         nextDeadline: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal" | "beneficiary_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -46957,10 +47703,13 @@ export interface operations {
                             deadlineAt: string | null;
                             deadlineSource: "computed" | "recorded" | null;
                             windowConfirmed: boolean;
+                            flags?: {
+                                representativeStatus: string | null;
+                            };
                         } | null;
                         items: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal" | "beneficiary_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -46969,8 +47718,110 @@ export interface operations {
                             deadlineAt: string | null;
                             deadlineSource: "computed" | "recorded" | null;
                             windowConfirmed: boolean;
+                            flags?: {
+                                representativeStatus: string | null;
+                            };
                         }[];
                         truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ClaimsByClaimIdRepresentativeappointments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        patientId: string;
+                        items: {
+                            id: string;
+                            patientId: string;
+                            recordedFromClaimId: string;
+                            instrumentKind: string;
+                            formVersionId: string | null;
+                            formLabel: string | null;
+                            instrumentNote: string | null;
+                            representativeName: string;
+                            relationshipLabel: string | null;
+                            representativeKind: string;
+                            beneficiarySignedOn: string | null;
+                            representativeSignedOn: string | null;
+                            validThroughOn: string | null;
+                            validitySourceNote: string | null;
+                            elements: {
+                                label: string;
+                                state: string;
+                            }[];
+                            documentId: string | null;
+                            documentVersionId: string | null;
+                            state: string;
+                            status: string;
+                            recordedByMembershipId: string;
+                            verifiedByMembershipId: string | null;
+                            verifiedAt: string | null;
+                            revokedOn: string | null;
+                            revocationNote: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ClaimsByClaimIdRepresentativeappointments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    instrumentKind: "org_form" | "other_written_instrument";
+                    formVersionId?: string | null;
+                    instrumentNote?: string | null;
+                    representativeName: string;
+                    relationshipLabel?: string | null;
+                    representativeKind: "family_or_friend" | "legal_representative" | "attorney" | "other";
+                    beneficiarySignedOn?: string | null;
+                    representativeSignedOn?: string | null;
+                    validThroughOn?: string | null;
+                    validitySourceNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };
@@ -50857,7 +51708,7 @@ export interface operations {
                         generatedAt: string;
                         nextDeadline: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal" | "beneficiary_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -50866,10 +51717,13 @@ export interface operations {
                             deadlineAt: string | null;
                             deadlineSource: "computed" | "recorded" | null;
                             windowConfirmed: boolean;
+                            flags?: {
+                                representativeStatus: string | null;
+                            };
                         } | null;
                         items: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal" | "beneficiary_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -50878,6 +51732,9 @@ export interface operations {
                             deadlineAt: string | null;
                             deadlineSource: "computed" | "recorded" | null;
                             windowConfirmed: boolean;
+                            flags?: {
+                                representativeStatus: string | null;
+                            };
                         }[];
                         truncated: boolean;
                     };
@@ -50971,7 +51828,7 @@ export interface operations {
                             version: number;
                             deadlines: {
                                 id: string;
-                                subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                                subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                                 subjectId: string;
                                 label: string;
                                 dueOn: string;
@@ -82632,7 +83489,7 @@ export interface operations {
                         version: number;
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -82707,7 +83564,7 @@ export interface operations {
                         patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -93392,6 +94249,327 @@ export interface operations {
                             createdAt: string;
                             revokedAt: string | null;
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RepresentativeappointmentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        recordedFromClaimId: string;
+                        instrumentKind: string;
+                        formVersionId: string | null;
+                        formLabel: string | null;
+                        instrumentNote: string | null;
+                        representativeName: string;
+                        relationshipLabel: string | null;
+                        representativeKind: string;
+                        beneficiarySignedOn: string | null;
+                        representativeSignedOn: string | null;
+                        validThroughOn: string | null;
+                        validitySourceNote: string | null;
+                        elements: {
+                            label: string;
+                            state: string;
+                        }[];
+                        documentId: string | null;
+                        documentVersionId: string | null;
+                        state: string;
+                        status: string;
+                        recordedByMembershipId: string;
+                        verifiedByMembershipId: string | null;
+                        verifiedAt: string | null;
+                        revokedOn: string | null;
+                        revocationNote: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1RepresentativeappointmentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    instrumentNote?: string | null;
+                    representativeName?: string;
+                    relationshipLabel?: string | null;
+                    representativeKind?: "family_or_friend" | "legal_representative" | "attorney" | "other";
+                    beneficiarySignedOn?: string | null;
+                    representativeSignedOn?: string | null;
+                    validThroughOn?: string | null;
+                    validitySourceNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RepresentativeappointmentsByIdActivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1RepresentativeappointmentsByIdDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1RepresentativeappointmentsByIdElements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    confirmedLabels: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RepresentativeappointmentsByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revokedOn: string;
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Representativeformversions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            label: string;
+                            formIdentifier: string | null;
+                            editionText: string | null;
+                            sourceNote: string;
+                            verifiedOn: string | null;
+                            verifiedByMembershipId: string | null;
+                            requiredElements: string[];
+                            retiredAt: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Representativeformversions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    formIdentifier?: string | null;
+                    editionText?: string | null;
+                    sourceNote: string;
+                    verifiedOn?: string | null;
+                    requiredElements: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RepresentativeformversionsByIdRetire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };
