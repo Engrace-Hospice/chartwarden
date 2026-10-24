@@ -35,6 +35,8 @@ export function useAckBroadcast() {
   const latest = useRef(0);
   const hasData = useRef(false);
   const ackInFlight = useRef(false);
+  const withdrawInFlight = useRef(false);
+  const [withdrawState, setWithdrawState] = useState<"idle" | "busy" | "failed">("idle");
 
   const load = useCallback(async () => {
     if (!client) {
@@ -138,7 +140,57 @@ export function useAckBroadcast() {
     [client, load],
   );
 
-  return { mine, oversee, ackError, refreshFailed, busy, acknowledge, reload: load };
+  /** The author stops asking (ADR-0097 D14). One at a time; true on success. The recorded fact is shown at once, the reload then confirms it. */
+  const withdraw = useCallback(
+    async (messageId: string): Promise<boolean> => {
+      if (!client || withdrawInFlight.current) return false;
+      withdrawInFlight.current = true;
+      setWithdrawState("busy");
+      try {
+        const res = await client.POST("/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw", {
+          params: { path: { messageId } },
+        });
+        if (!res.data) {
+          setWithdrawState("failed");
+          return false;
+        }
+        const { withdrawnAt } = res.data;
+        setWithdrawState("idle");
+        setOversee((prev) =>
+          prev.status === "ready"
+            ? {
+                status: "ready",
+                broadcasts: prev.broadcasts.map((b) =>
+                  b.messageId === messageId ? { ...b, withdrawnAt, pastDeadline: false } : b,
+                ),
+              }
+            : prev,
+        );
+        await load();
+        return true;
+      } catch {
+        setWithdrawState("failed");
+        return false;
+      } finally {
+        withdrawInFlight.current = false;
+      }
+    },
+    [client, load],
+  );
+  const clearWithdrawError = useCallback(() => setWithdrawState("idle"), []);
+
+  return {
+    mine,
+    oversee,
+    ackError,
+    refreshFailed,
+    busy,
+    acknowledge,
+    reload: load,
+    withdraw,
+    withdrawState,
+    clearWithdrawError,
+  };
 }
 
 export type DetailView =

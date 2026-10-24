@@ -10,6 +10,7 @@ const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const sql = flat(read("packages/db/migrations/1200_m36_ack_broadcast.sql"));
+const sql1202 = flat(read("packages/db/migrations/1202_m36_ack_broadcast_withdraw_deadline_death_board_stall.sql"));
 const schema = flat(read("packages/db/src/schema/messaging/message-ack-broadcast.ts"));
 const TABLES = ["message_ack_broadcast", "message_ack_broadcast_recipient"] as const;
 
@@ -41,6 +42,22 @@ describe("migration 1200 acknowledge-required broadcast", () => {
     expect(sql).toContain("m.author_user_id = v_actor");
     expect(sql).toContain("c.channel_kind = 'announcement'");
     expect(sql).toContain("b.created_by <> NEW.user_id");
+  });
+
+  it("migration 1202: the only new broadcast UPDATE is the withdrawal instant, guarded one-way, creator-only, database clock", () => {
+    expect(sql1202).toContain(`GRANT UPDATE ("withdrawn_at") ON "message_ack_broadcast" TO chartwarden_app`);
+    expect(sql1202).not.toMatch(/GRANT [^;]*DELETE/);
+    expect(sql1202).not.toMatch(/GRANT UPDATE \((?!"withdrawn_at"\))[^)]*\) ON "message_ack_broadcast" /);
+    expect(sql1202).toContain("NEW.withdrawn_at := now()");
+    expect(sql1202).toContain("message_ack_broadcast_withdraw_once");
+    expect(sql1202).toContain("message_ack_broadcast_withdraw_actor");
+    expect(sql1202).toContain("message_ack_broadcast_born_open");
+    expect(sql1202).toContain("message_ack_broadcast_recipient_withdrawn");
+    expect(sql1202).toContain("(to_jsonb(NEW) - 'withdrawn_at') IS DISTINCT FROM (to_jsonb(OLD) - 'withdrawn_at')");
+    expect(sql1202).not.toMatch(/DISABLE ROW LEVEL SECURITY|NO FORCE/);
+    expect(sql1202).not.toMatch(/"(name|body|title|email)"/);
+    expect(schema).toContain(`"withdrawn_at"`);
+    expect(schema).toContain(`"deadline_at"`);
   });
 
   it("the audit rows carry no names or text: there is no such column to leak", () => {

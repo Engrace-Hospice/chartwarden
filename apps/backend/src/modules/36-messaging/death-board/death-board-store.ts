@@ -8,7 +8,7 @@ import type {
   DeathBoardItemKey,
   DeathBoardReasonCode,
 } from "@chartwarden/types";
-import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 
 const B = schema.deathBoards;
@@ -72,6 +72,13 @@ export interface DeathBoardStore {
     exclude: readonly string[],
   ): Promise<string[]>;
   eventsForItems(tx: Tx, orgId: string, itemIds: readonly string[]): Promise<DeathBoardEventRow[]>;
+  /** Open, unflagged items of the organization, keyset-paged by id (the stall sweep, ADR-0098 D13). */
+  openUnflaggedItems(
+    tx: Tx,
+    orgId: string,
+    afterId: string | null,
+    limit: number,
+  ): Promise<DeathBoardItemRow[]>;
 }
 
 export function createDbDeathBoardStore(): DeathBoardStore {
@@ -272,6 +279,22 @@ export function createDbDeathBoardStore(): DeathBoardStore {
         .from(E)
         .where(and(eq(E.organizationId, orgId), inArray(E.itemId, [...itemIds])))
         .orderBy(asc(E.createdAt));
+    },
+
+    async openUnflaggedItems(tx, orgId, afterId, limit) {
+      return tx
+        .select()
+        .from(I)
+        .where(
+          and(
+            eq(I.organizationId, orgId),
+            eq(I.status, "open"),
+            eq(I.needsOwner, false),
+            afterId ? gt(I.id, afterId) : undefined,
+          ),
+        )
+        .orderBy(asc(I.id))
+        .limit(limit);
     },
   };
 }

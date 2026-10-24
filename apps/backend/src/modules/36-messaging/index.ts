@@ -581,6 +581,12 @@ export {
   M36_BREAKGLASS_ALERT_CONSUMER,
   buildM36BreakGlassAlertConsumer,
 } from "./outbox-consumers/breakglass-alert";
+// WP 6.9 (ADR-0098 D13): the hourly death-board stall sweep (an open item whose owner lost eligibility -> needs_owner + a supervisor alert).
+export {
+  deathBoardStallTick,
+  registerM36DeathBoardStallWorker,
+  scheduleM36DeathBoardStallJobs,
+} from "./death-board/death-board-stall-worker";
 // WP 5.8 (ADR-0087): the hourly overdue-review sweep (an open review three days after its grant ended -> one alert).
 export { createBreakGlassReviewSweep } from "./break-glass/break-glass-review-sweep";
 export {

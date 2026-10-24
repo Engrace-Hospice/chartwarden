@@ -28,6 +28,13 @@ export type AckBroadcastState = (typeof ACK_BROADCAST_STATES)[number];
 export const ACK_BROADCAST_FILTERS = ["pending", "acknowledged", "ineligible", "all"] as const;
 export type AckBroadcastFilter = (typeof ACK_BROADCAST_FILTERS)[number];
 
+/**
+ * A deadline is DISPLAY ONLY (ADR-0097 D13): the author may set one when requiring acknowledgment, between this many minutes and days ahead.
+ * Passing it marks the broadcast "past deadline" on the author's list and does nothing else: no reminder, no push, no SMS, no email, no escalation.
+ */
+export const ACK_BROADCAST_DEADLINE_MIN_MINUTES = 5;
+export const ACK_BROADCAST_DEADLINE_MAX_DAYS = 90;
+
 export interface AckBroadcastCounts {
   /** Everyone frozen into the audience at publish (the author is never in it). */
   readonly audience: number;
@@ -47,6 +54,12 @@ export interface AckBroadcastSummary {
   readonly channelId: string;
   readonly createdAt: string;
   readonly counts: AckBroadcastCounts;
+  /** The author's optional display-only deadline (ADR-0097 D13), or null. */
+  readonly deadlineAt: string | null;
+  /** When the author stopped asking (ADR-0097 D14), or null. A withdrawn broadcast is read-only; recorded acknowledgments are kept. */
+  readonly withdrawnAt: string | null;
+  /** The deadline passed, the broadcast was not withdrawn and somebody eligible still has not acknowledged. A marker, not an action. */
+  readonly pastDeadline: boolean;
 }
 
 export interface AckBroadcastPerson {
@@ -75,6 +88,13 @@ export interface AckBroadcastMine {
   readonly channelId: string;
   readonly createdAt: string;
   readonly acknowledgedAt: string | null;
+  /** The author's display-only deadline, or null. */
+  readonly deadlineAt: string | null;
+}
+
+/** The result of withdrawing: the summary after the move. `already` is true when it had been withdrawn before (the original instant stands). */
+export interface AckBroadcastWithdrawn extends AckBroadcastSummary {
+  readonly already: boolean;
 }
 
 export interface AckBroadcastAcknowledged {

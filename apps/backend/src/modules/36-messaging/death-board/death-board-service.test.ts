@@ -362,3 +362,95 @@ describe("offboarding", () => {
     expect(t.store.items.get(t.itemId)?.ownerUserId).toBe(RN);
   });
 });
+
+describe("stalled owners (flagStalledForOrg)", () => {
+  const needsOwnerAlerts = (t: { emit: ReturnType<typeof vi.fn> }) =>
+    t.emit.mock.calls.filter((c) => c[1].eventType === "m36.death_board.needs_owner");
+
+  it("does nothing while every owner is still active and admitted", async () => {
+    const t = await boardWith();
+    t.emit.mockClear();
+    expect(await t.service.flagStalledForOrg(ORG)).toEqual({ examined: 6, flagged: 0 });
+    expect(needsOwnerAlerts(t)).toHaveLength(0);
+  });
+
+  it("flags every open item of an owner who lost Part 2 admission, keeps the owner, and alerts supervisors with fixed text", async () => {
+    const o: Opts = {};
+    const t = await boardWith(o);
+    o.part2Denied = [RN];
+    t.emit.mockClear();
+    const out = await t.service.flagStalledForOrg(ORG);
+    expect(out).toEqual({ examined: 6, flagged: 6 });
+    expect([...t.store.items.values()].every((i) => i.needsOwner && i.ownerUserId === RN)).toBe(true);
+    const ev = t.store.events.filter((e) => e.reasonCode === "owner_ineligible");
+    expect(ev).toHaveLength(6);
+    expect(ev.every((e) => e.eventType === "needs_owner" && e.actorKind === "system")).toBe(true);
+    const alerts = needsOwnerAlerts(t);
+    expect(alerts).toHaveLength(6);
+    for (const c of alerts) {
+      expect(JSON.stringify(c[1])).not.toContain(P1);
+      expect(String(c[1].payload.message)).not.toMatch(/death|patient|pronounce/i);
+    }
+  });
+
+  it("flags an owner who became inactive, and is idempotent (no second flag, event or alert)", async () => {
+    const o: Opts = {};
+    const t = await boardWith(o);
+    o.inactive = [RN];
+    await t.service.flagStalledForOrg(ORG);
+    const events = t.store.events.length;
+    t.emit.mockClear();
+    expect(await t.service.flagStalledForOrg(ORG)).toEqual({ examined: 0, flagged: 0 });
+    expect(t.store.events.length).toBe(events);
+    expect(needsOwnerAlerts(t)).toHaveLength(0);
+  });
+
+  it("does NOT flag when the Part 2 gate or the active-user check cannot answer (an outage is not a verdict)", async () => {
+    const o: Opts = {};
+    const t = await boardWith(o);
+    o.part2Throws = true;
+    expect((await t.service.flagStalledForOrg(ORG)).flagged).toBe(0);
+    o.part2Throws = false;
+    expect([...t.store.items.values()].some((i) => i.needsOwner)).toBe(false);
+  });
+
+  it("ignores completed items and items already flagged by offboarding", async () => {
+    const o: Opts = { team: [RN] , former: []};
+    const t = await boardWith(o);
+    await t.service.complete(actor(RN), t.itemId);
+    o.inactive = [RN];
+    await t.service.reassignForLeaver(ORG, RN);
+    const before = t.store.events.length;
+    expect(await t.service.flagStalledForOrg(ORG)).toEqual({ examined: 0, flagged: 0 });
+    expect(t.store.events.length).toBe(before);
+  });
+
+  it("a flagged stalled item can be reassigned by a supervisor to an eligible person (the existing guard)", async () => {
+    const o: Opts = {};
+    const t = await boardWith(o);
+    o.part2Denied = [RN];
+    await t.service.flagStalledForOrg(ORG);
+    expect(await code(t.service.reassign(actor(SUP, true), t.itemId, NURSE2))).toBe("ok");
+    expect(t.store.items.get(t.itemId)).toMatchObject({ ownerUserId: NURSE2, needsOwner: false });
+  });
+
+  it("is bounded per tick: at most the flag cap is written, the rest is picked up by the next tick", async () => {
+    const o: Opts = {};
+    const t = await boardWith(o);
+    o.inactive = [RN];
+    const capped = await t.service.flagStalledForOrg(ORG, { maxFlags: 4 });
+    expect(capped.flagged).toBe(4);
+    const rest = await t.service.flagStalledForOrg(ORG, { maxFlags: 4 });
+    expect(rest.flagged).toBe(2);
+  });
+
+  it("fails the sweep (after attempting every item) when an alert cannot be sent, without logging the item or the patient", async () => {
+    const o: Opts = {};
+    const t = await boardWith(o);
+    o.inactive = [RN];
+    t.emit.mockRejectedValue(new Error("alert seam down"));
+    await expect(t.service.flagStalledForOrg(ORG)).rejects.toThrow(/stall sweep failed for 6/);
+    // The alert goes out BEFORE the flag, so a failed alert leaves the item unflagged and the next tick retries it.
+    expect([...t.store.items.values()].some((i) => i.needsOwner)).toBe(false);
+  });
+});

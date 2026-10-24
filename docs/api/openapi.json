@@ -165555,7 +165555,10 @@
                           "messageId",
                           "channelId",
                           "createdAt",
-                          "counts"
+                          "counts",
+                          "deadlineAt",
+                          "withdrawnAt",
+                          "pastDeadline"
                         ],
                         "properties": {
                           "messageId": {
@@ -165601,6 +165604,29 @@
                                 "type": "integer"
                               }
                             }
+                          },
+                          "deadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "withdrawnAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pastDeadline": {
+                            "type": "boolean"
                           }
                         }
                       }
@@ -165646,7 +165672,8 @@
                           "messageId",
                           "channelId",
                           "createdAt",
-                          "acknowledgedAt"
+                          "acknowledgedAt",
+                          "deadlineAt"
                         ],
                         "properties": {
                           "messageId": {
@@ -165659,6 +165686,16 @@
                             "type": "string"
                           },
                           "acknowledgedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineAt": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -166151,6 +166188,9 @@
                     "channelId",
                     "createdAt",
                     "counts",
+                    "deadlineAt",
+                    "withdrawnAt",
+                    "pastDeadline",
                     "filter",
                     "offset",
                     "hasMore",
@@ -166200,6 +166240,29 @@
                           "type": "integer"
                         }
                       }
+                    },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withdrawnAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pastDeadline": {
+                      "type": "boolean"
                     },
                     "filter": {
                       "anyOf": [
@@ -166306,7 +166369,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached",
+        "summary": "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. The body is optional in practice (an empty POST still works): `deadlineAt` (ISO, 5 minutes to 90 days ahead, else a typed 422 ACK_BROADCAST_DEADLINE_INVALID) is a DISPLAY-ONLY deadline fixed at creation: passing it marks the broadcast past deadline on the author's list and triggers no reminder, push, SMS, email or escalation. Never cached",
         "parameters": [
           {
             "name": "messageId",
@@ -166329,6 +166392,9 @@
                     "channelId",
                     "createdAt",
                     "counts",
+                    "deadlineAt",
+                    "withdrawnAt",
+                    "pastDeadline",
                     "created"
                   ],
                   "properties": {
@@ -166376,7 +166442,167 @@
                         }
                       }
                     },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withdrawnAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pastDeadline": {
+                      "type": "boolean"
+                    },
                     "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "deadlineAt": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw": {
+      "post": {
+        "operationId": "postApiV1MessagingAnnouncementsByMessageIdAckbroadcastWithdraw",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Withdraw the acknowledgment requirement (WP 6.8, ADR-0097 D14; messaging.announce; only the broadcast's CREATOR, anyone else and an unknown id are the uniform 404, as is a tenant with the flag off, before the request is parsed). One-way and idempotent on the database clock: a repeat is 200 `already:true` with the original instant. Recipients are no longer asked (the broadcast leaves their `mine` list and acknowledging it is a 404); acknowledgments already recorded are kept and stay visible to the author. No body, no user field. Never cached",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "channelId",
+                    "createdAt",
+                    "counts",
+                    "deadlineAt",
+                    "withdrawnAt",
+                    "pastDeadline",
+                    "already"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "required": [
+                        "audience",
+                        "acknowledged",
+                        "pending",
+                        "opened",
+                        "notOpened",
+                        "ineligible",
+                        "outsideAudience"
+                      ],
+                      "properties": {
+                        "audience": {
+                          "type": "integer"
+                        },
+                        "acknowledged": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        },
+                        "opened": {
+                          "type": "integer"
+                        },
+                        "notOpened": {
+                          "type": "integer"
+                        },
+                        "ineligible": {
+                          "type": "integer"
+                        },
+                        "outsideAudience": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withdrawnAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pastDeadline": {
+                      "type": "boolean"
+                    },
+                    "already": {
                       "type": "boolean"
                     }
                   }
@@ -177449,6 +177675,10 @@
                                   },
                                   {
                                     "const": "offboarding",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "owner_ineligible",
                                     "type": "string"
                                   }
                                 ]

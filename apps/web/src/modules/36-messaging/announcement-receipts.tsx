@@ -2,9 +2,12 @@
 // by a holder of messaging.announce; the server refuses everyone else (403), so a client that shows the button to the
 // wrong person still learns nothing.
 import { Button, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
+  DEADLINE_FIELD,
+  DEADLINE_HINT,
+  DEADLINE_INVALID,
   REQUIRE_DONE,
   REQUIRE_FAILED,
   REQUIRE_HINT,
@@ -116,7 +119,7 @@ export function AnnouncementReceiptsDialog({
   );
 }
 
-type RequireState = "idle" | "busy" | "done" | "off" | "failed";
+type RequireState = "idle" | "busy" | "done" | "off" | "failed" | "badDeadline";
 
 /**
  * WP 6.8 (ADR-0097): the author asks everyone to acknowledge this announcement. An explicit action with its audience said first; the
@@ -125,6 +128,9 @@ type RequireState = "idle" | "busy" | "done" | "off" | "failed";
 function RequireAcknowledgment({ messageId }: { messageId: string | null }): JSX.Element | null {
   const client = useApiClient();
   const [state, setState] = useState<RequireState>("idle");
+  // A local date-time ("YYYY-MM-DDTHH:mm") or empty. Display-only on the server (ADR-0097 D13): it triggers nothing.
+  const [deadline, setDeadline] = useState("");
+  const deadlineId = useId();
   const inFlight = useRef(false);
   // The parent keys this component by messageId, so a response for an earlier announcement lands on an unmounted instance and is dropped.
   const alive = useRef(true);
@@ -141,18 +147,46 @@ function RequireAcknowledgment({ messageId }: { messageId: string | null }): JSX
   };
   const run = (): void => {
     if (inFlight.current) return;
+    const at = deadline ? new Date(deadline) : null;
+    if (at && Number.isNaN(at.getTime())) {
+      setState("badDeadline");
+      return;
+    }
     inFlight.current = true;
     setState("busy");
     void client
       .POST("/api/v1/messaging/announcements/{messageId}/ack-broadcast", {
         params: { path: { messageId } },
+        body: at ? { deadlineAt: at.toISOString() } : {},
       })
-      .then(({ data, response }) => settle(data ? "done" : response?.status === 404 ? "off" : "failed"))
+      .then(({ data, response }) => {
+        if (data) return settle("done");
+        const code = response?.status;
+        settle(code === 404 ? "off" : code === 422 ? "badDeadline" : "failed");
+      })
       .catch(() => settle("failed"));
   };
   return (
     <section aria-label={REQUIRE_SECTION} className="wx-announcement-require">
       <p className="wx-announcement-empty">{REQUIRE_HINT}</p>
+      <label htmlFor={deadlineId} className="wx-announcement-empty">
+        {DEADLINE_FIELD}
+      </label>
+      <input
+        id={deadlineId}
+        type="datetime-local"
+        value={deadline}
+        disabled={state === "busy" || state === "done"}
+        aria-describedby={`${deadlineId}-hint`}
+        onChange={(e) => {
+          setDeadline(e.target.value);
+          if (state === "badDeadline") setState("idle");
+        }}
+      />
+      <p id={`${deadlineId}-hint`} className="wx-announcement-empty">
+        {DEADLINE_HINT}
+      </p>
+      {state === "badDeadline" ? <p role="alert">{DEADLINE_INVALID}</p> : null}
       {state === "done" ? <p role="status">{REQUIRE_DONE}</p> : null}
       {state === "off" ? <p role="alert">{REQUIRE_OFF}</p> : null}
       {state === "failed" ? <p role="alert">{REQUIRE_FAILED}</p> : null}

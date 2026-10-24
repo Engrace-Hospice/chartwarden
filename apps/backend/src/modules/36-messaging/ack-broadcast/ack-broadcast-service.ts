@@ -8,6 +8,8 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ACK_BROADCAST_DEADLINE_MAX_DAYS,
+  ACK_BROADCAST_DEADLINE_MIN_MINUTES,
   ACK_BROADCAST_FLAG_KEY,
   ACK_BROADCAST_LIST_MAX,
   ACK_BROADCAST_MAX_AUDIENCE,
@@ -20,6 +22,7 @@ import {
   type AckBroadcastPerson,
   type AckBroadcastState,
   type AckBroadcastSummary,
+  type AckBroadcastWithdrawn,
   ChartWardenError,
   NotFoundError,
 } from "@chartwarden/types";
@@ -45,7 +48,16 @@ export interface AckBroadcastFlagReader {
 export interface AckBroadcastService {
   /** The tenant flag, read on every call (a kill switch lands at once). Absent reader => off. */
   enabled(orgId: string): Promise<boolean>;
-  create(orgId: string, input: { userId: string; messageId: string }): Promise<AckBroadcastCreated>;
+  /** `deadlineAt` (ISO) is optional, display-only and fixed at creation; on a repeat create it is ignored (the broadcast is never edited). */
+  create(
+    orgId: string,
+    input: { userId: string; messageId: string; deadlineAt?: string | undefined },
+  ): Promise<AckBroadcastCreated>;
+  /** The CREATOR stops asking (one-way, idempotent). Recorded acknowledgments are kept; recipients are no longer asked. Anyone else: 404. */
+  withdraw(
+    orgId: string,
+    input: { userId: string; messageId: string },
+  ): Promise<AckBroadcastWithdrawn>;
   detail(
     orgId: string,
     input: {
@@ -62,6 +74,44 @@ export interface AckBroadcastService {
     orgId: string,
     input: { userId: string; messageId: string },
   ): Promise<AckBroadcastAcknowledged>;
+}
+
+const MINUTE_MS = 60_000;
+const DAY_MS = 24 * 60 * MINUTE_MS;
+
+/**
+ * The author's optional deadline: null when absent, else an instant at least ACK_BROADCAST_DEADLINE_MIN_MINUTES and at most
+ * ACK_BROADCAST_DEADLINE_MAX_DAYS ahead (a typed 422 otherwise). The database guard re-checks "in the future" on its own clock.
+ */
+export function parseDeadline(raw: string | undefined, now: Date): Date | null {
+  if (raw === undefined) return null;
+  const at = new Date(raw);
+  const lead = at.getTime() - now.getTime();
+  if (
+    Number.isNaN(at.getTime()) ||
+    lead < ACK_BROADCAST_DEADLINE_MIN_MINUTES * MINUTE_MS ||
+    lead > ACK_BROADCAST_DEADLINE_MAX_DAYS * DAY_MS
+  ) {
+    throw new ChartWardenError(
+      "ACK_BROADCAST_DEADLINE_INVALID",
+      `A deadline must be between ${ACK_BROADCAST_DEADLINE_MIN_MINUTES} minutes and ${ACK_BROADCAST_DEADLINE_MAX_DAYS} days from now.`,
+      422,
+    );
+  }
+  return at;
+}
+
+/** The "past deadline" marker (pure): passed, not withdrawn, and an eligible person has still not acknowledged. It triggers nothing. */
+export function isPastDeadline(
+  b: { deadlineAt: Date | null; withdrawnAt: Date | null; pending: number },
+  now: Date,
+): boolean {
+  return (
+    b.deadlineAt !== null &&
+    b.withdrawnAt === null &&
+    b.pending > 0 &&
+    b.deadlineAt.getTime() <= now.getTime()
+  );
 }
 
 /** Per-recipient state (pure; unit-tested). Acknowledged wins; then "no longer an active member"; then whether it was displayed. */
@@ -123,7 +173,22 @@ async function activeRecipientIds(tx: Tx, orgId: string, authorUserId: string): 
   return rows.map((r) => r.userId);
 }
 
-type BroadcastRow = { id: string; messageId: string; channelId: string; createdAt: Date };
+type BroadcastRow = {
+  id: string;
+  messageId: string;
+  channelId: string;
+  createdAt: Date;
+  deadlineAt: Date | null;
+  withdrawnAt: Date | null;
+};
+const BROADCAST_COLUMNS = {
+  id: BC.id,
+  messageId: BC.messageId,
+  channelId: BC.channelId,
+  createdAt: BC.createdAt,
+  deadlineAt: BC.deadlineAt,
+  withdrawnAt: BC.withdrawnAt,
+};
 
 /** `createdBy` limits to the caller's own broadcasts; `live` drops broadcasts whose announcement was soft-deleted. */
 async function broadcastOf(
@@ -133,7 +198,7 @@ async function broadcastOf(
   opts: { createdBy?: string; live?: boolean } = {},
 ): Promise<BroadcastRow | null> {
   const rows = (await tx
-    .select({ id: BC.id, messageId: BC.messageId, channelId: BC.channelId, createdAt: BC.createdAt })
+    .select(BROADCAST_COLUMNS)
     .from(BC)
     .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
     .where(
@@ -242,6 +307,9 @@ const toSummary = (b: BroadcastRow, counts: AckBroadcastCounts | undefined): Ack
   channelId: b.channelId,
   createdAt: b.createdAt.toISOString(),
   counts: counts ?? EMPTY_COUNTS,
+  deadlineAt: b.deadlineAt ? b.deadlineAt.toISOString() : null,
+  withdrawnAt: b.withdrawnAt ? b.withdrawnAt.toISOString() : null,
+  pastDeadline: isPastDeadline({ ...b, pending: (counts ?? EMPTY_COUNTS).pending }, new Date()),
 });
 
 const summaryOf = async (tx: Tx, orgId: string, b: BroadcastRow): Promise<AckBroadcastSummary> =>
@@ -278,6 +346,7 @@ export function createAckBroadcastService(deps: {
         if (!own[0]) throw notFound();
         const existing = await broadcastOf(tx, orgId, input.messageId);
         if (existing) return { ...(await summaryOf(tx, orgId, existing)), created: false };
+        const deadline = parseDeadline(input.deadlineAt, new Date());
 
         const audience = await activeRecipientIds(tx, orgId, input.userId);
         if (audience.length > ACK_BROADCAST_MAX_AUDIENCE) {
@@ -294,14 +363,10 @@ export function createAckBroadcastService(deps: {
             messageId: input.messageId,
             channelId: input.messageId, // replaced by the guard from the message itself
             createdBy: input.userId,
+            deadlineAt: deadline,
           })
           .onConflictDoNothing()
-          .returning({
-            id: BC.id,
-            messageId: BC.messageId,
-            channelId: BC.channelId,
-            createdAt: BC.createdAt,
-          })) as BroadcastRow[];
+          .returning(BROADCAST_COLUMNS)) as BroadcastRow[];
         const row = inserted[0];
         if (!row) {
           const raced = await broadcastOf(tx, orgId, input.messageId);
@@ -318,6 +383,23 @@ export function createAckBroadcastService(deps: {
           );
         }
         return { ...(await summaryOf(tx, orgId, row)), created: true };
+      });
+    },
+
+    async withdraw(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        const b = await broadcastOf(tx, orgId, input.messageId, { createdBy: input.userId, live: true });
+        if (!b) throw notFound();
+        if (b.withdrawnAt) return { ...(await summaryOf(tx, orgId, b)), already: true };
+        const moved = (await tx
+          .update(BC)
+          .set({ withdrawnAt: sql`now()` })
+          .where(and(eq(BC.id, b.id), isNull(BC.withdrawnAt)))
+          .returning({ id: BC.id })) as Array<{ id: string }>;
+        // Re-read either way: a concurrent withdrawal that won the race leaves the original instant, and this answer says `already`.
+        const after = await broadcastOf(tx, orgId, input.messageId, { createdBy: input.userId, live: true });
+        if (!after) throw notFound();
+        return { ...(await summaryOf(tx, orgId, after)), already: moved.length === 0 };
       });
     },
 
@@ -357,12 +439,7 @@ export function createAckBroadcastService(deps: {
     async list(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const rows = (await tx
-          .select({
-            id: BC.id,
-            messageId: BC.messageId,
-            channelId: BC.channelId,
-            createdAt: BC.createdAt,
-          })
+          .select(BROADCAST_COLUMNS)
           .from(BC)
           .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
           .where(and(eq(BC.organizationId, orgId), eq(BC.createdBy, input.userId), isNull(MSG.deletedAt)))
@@ -380,12 +457,20 @@ export function createAckBroadcastService(deps: {
             messageId: BC.messageId,
             channelId: BC.channelId,
             createdAt: BC.createdAt,
+            deadlineAt: BC.deadlineAt,
             acknowledgedAt: RC.acknowledgedAt,
           })
           .from(RC)
           .innerJoin(BC, and(eq(BC.organizationId, RC.organizationId), eq(BC.id, RC.broadcastId)))
           .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
-          .where(and(eq(RC.organizationId, orgId), eq(RC.userId, input.userId), isNull(MSG.deletedAt)))
+          .where(
+            and(
+              eq(RC.organizationId, orgId),
+              eq(RC.userId, input.userId),
+              isNull(MSG.deletedAt),
+              isNull(BC.withdrawnAt),
+            ),
+          )
           .orderBy(desc(BC.createdAt), desc(BC.id))
           .limit(ACK_BROADCAST_LIST_MAX);
         return rows.map((r) => ({
@@ -393,6 +478,7 @@ export function createAckBroadcastService(deps: {
           channelId: r.channelId,
           createdAt: r.createdAt.toISOString(),
           acknowledgedAt: r.acknowledgedAt ? r.acknowledgedAt.toISOString() : null,
+          deadlineAt: r.deadlineAt ? r.deadlineAt.toISOString() : null,
         }));
       });
     },
@@ -400,7 +486,8 @@ export function createAckBroadcastService(deps: {
     async acknowledge(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const b = await broadcastOf(tx, orgId, input.messageId, { live: true });
-        if (!b) throw notFound();
+        // A withdrawn broadcast no longer asks anyone (the guard trigger refuses the write too): the same answer as an unknown one.
+        if (!b || b.withdrawnAt) throw notFound();
         const mine = (await tx
           .select({ id: RC.id, acknowledgedAt: RC.acknowledgedAt })
           .from(RC)

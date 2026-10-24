@@ -1553,6 +1553,7 @@ import {
   registerM36AckEscalationWorkers,
   registerM36AttachmentScanWorker,
   registerM36BreakGlassReviewWorker,
+  registerM36DeathBoardStallWorker,
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
@@ -1563,6 +1564,7 @@ import {
   scheduleM36AckEscalationJobs,
   scheduleM36AttachmentScanJobs,
   scheduleM36BreakGlassReviewJobs,
+  scheduleM36DeathBoardStallJobs,
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
@@ -9531,6 +9533,44 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     } else {
       app.log.warn(
         "M36 break-glass review sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; overdue reviews raise no alert",
+      );
+    }
+
+    // ── M36 WP 6.9 (ADR-0098 D13, PROPOSED) — `messaging.death_board_stall_sweep` (hourly): an open death-board item whose owner lost Part 2
+    // admission or active status OUTSIDE the offboarding sweep is flagged needs_owner (owner untouched) and the supervisors get the fixed-text
+    // alert. Org-explicit (a tick is not a request). Active-org fan-out needs the platform pool. Flag-independent: a board that exists must not stall.
+    if (platformDbHandle && m36DeathBoard) {
+      const m36DeathBoardStallWorkers = registerM36DeathBoardStallWorker({
+        connection: queueConnection,
+        flagStalledForOrg: m36DeathBoard.service.flagStalledForOrg,
+        activeOrgs: buildActiveOrgEnumerator({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+          reason: "M36 WP 6.9 death_board_stall_sweep active-org fan-out",
+        }),
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 death board stall sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36DeathBoardStallWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36DeathBoardStallWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36DeathBoardStallQueues = await scheduleM36DeathBoardStallJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36DeathBoardStallQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 death board stall sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 death board stall sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; a stalled item is not flagged",
       );
     }
 
