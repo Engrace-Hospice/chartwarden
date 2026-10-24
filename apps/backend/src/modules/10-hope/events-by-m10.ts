@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/10-hope/events-by-m10.ts — Module 10's outbox-event contributions
 // (M10-T06, spec §2.4 / §4.8). The full `m10.hope.*` taxonomy keyed on M10's own tables, under the
 // `m10.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file
@@ -14,7 +15,6 @@
 // their subscriptions; M10 publishes them now. Per §2.4 idempotent dispatch keyed on
 // `hope_assessment_id` + `event_kind` (or `schedule_id` / `sfv_id` / `submission_id` per the §2.4 table).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const isoInstant = Type.String({ minLength: 1 });
 const rfaKind = Type.Union([

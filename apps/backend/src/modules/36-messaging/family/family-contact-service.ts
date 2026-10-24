@@ -165,6 +165,20 @@ export function createFamilyContactService(deps: FamilyContactServiceDeps): Fami
     stage: FamilyContactStateDto["stage"],
   ): Promise<FamilyContactStateDto> => {
     const settings = await tx.getSettings();
+    // Before the spoken code is proven a misdirected link holder learns only the stage and the numbers: not that the patient has died, not the
+    // agency's name (which can imply the diagnosis class), not the language.
+    if (stage !== "active") {
+      return {
+        stage,
+        mode: "standard",
+        agencyName: null,
+        agencyPhone: settings.agencyPhone,
+        bereavementPhone: null,
+        language: null,
+        closed: false,
+        expiresAt: live.sessionExpiresAt.toISOString(),
+      };
+    }
     return {
       stage,
       mode: live.mode,

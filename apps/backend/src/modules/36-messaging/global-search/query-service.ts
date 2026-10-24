@@ -433,7 +433,9 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       }
     }
     const patients = new Set(
-      rows.flatMap((row) => (row.kind === "care_team" && row.subjectId ? [row.subjectId] : [])),
+      rows.flatMap((row) =>
+        (row.kind === "care_team" || row.kind === "family") && row.subjectId ? [row.subjectId] : [],
+      ),
     );
     for (const patientId of patients) {
       await auditPhiRead(tx, input.audit, {
@@ -465,7 +467,11 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     const terms = parseQueryTerms(input.query);
     const cursor = input.cursor ? decodeSearchCursor(input.cursor) : null;
     if (input.cursor && !cursor) {
-      throw new ChartWardenError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
+      throw new ChartWardenError(
+        "INVALID_SEARCH_QUERY",
+        "the continuation cursor is not valid",
+        422,
+      );
     }
     return { terms, cursor, excluded };
   }

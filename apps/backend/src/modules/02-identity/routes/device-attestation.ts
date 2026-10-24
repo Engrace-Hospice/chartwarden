@@ -24,7 +24,7 @@
 // the 401 is sent.
 import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
 import { requirePermission, requireSession } from "@chartwarden/auth";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   auditDeviceAttestationFailed,
@@ -200,7 +200,11 @@ export function registerDeviceAttestationRoutes(
     // Single-use: `take` spends the challenge, so a captured assertion cannot be replayed.
     const challenge = await deps.challenges.take(challengeId);
     if (!challenge)
-      throw new ChartWardenError("CHALLENGE_EXPIRED_OR_INVALID", "challenge expired or invalid", 400);
+      throw new ChartWardenError(
+        "CHALLENGE_EXPIRED_OR_INVALID",
+        "challenge expired or invalid",
+        400,
+      );
     // The challenge belongs to THIS session. Without this a caller could mint a challenge on their own
     // session and spend it on another, which is the whole point of binding it at mint time.
     if (challenge.sessionId !== session.sessionId) {
@@ -323,7 +327,8 @@ export function registerDeviceAttestationRoutes(
         reason: reason.trim(),
       });
       // Absent, cross-tenant and already-revoked all answer 404: the caller learns nothing about which.
-      if (!record) throw new ChartWardenError("ATTESTATION_NOT_FOUND", "attestation not found", 404);
+      if (!record)
+        throw new ChartWardenError("ATTESTATION_NOT_FOUND", "attestation not found", 404);
       await auditDeviceAttestationRevoked(deps.audit, auditContextFor(request, session), {
         attestationId: record.id,
         membershipId: record.membershipId,

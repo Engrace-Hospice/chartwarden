@@ -114,7 +114,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
 
   app.put(
     "/api/v1/messaging/family/settings",
-    { preHandler: [MANAGE], schema: { response: { 200: FamilySettingsResponseSchema } } },
+    { preHandler: [MANAGE, STEP_UP], schema: { response: { 200: FamilySettingsResponseSchema } } },
     async (request, reply) => {
       const body = parse(FamilySettingsBodySchema, request.body);
       return noStore(reply).send(await staff.putSettings(staffOf(request), body));
@@ -148,6 +148,8 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
     {
       preHandler: [MANAGE, FLAG_ON, STEP_UP],
       schema: { response: { 201: CreatedFamilyInvitationResponseSchema } },
+      // The 201 holds the link token AND the code. The shared idempotency capture would copy both into one stored row (and replay them): never.
+      config: { noIdempotencyCapture: true },
     },
     async (request, reply) => {
       const body = parse(CreateFamilyInvitationBodySchema, request.body);

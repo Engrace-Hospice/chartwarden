@@ -23,9 +23,9 @@ import {
   type ChartPromotionStatus,
   type ChartPromotionTargetKind,
   type ChartPromotionTargetModule,
+  ChartWardenError,
   ForbiddenError,
   NotFoundError,
-  ChartWardenError,
   isChartPromotionTarget,
 } from "@chartwarden/types";
 import { gateAdmits } from "../handoffs/handoff-eligibility";
@@ -129,7 +129,11 @@ const notFound = (): NotFoundError => new NotFoundError("chart_promotion_request
 const targetInvalid = (): ChartWardenError =>
   new ChartWardenError("PROMOTION_TARGET_INVALID", "that chart target is not available", 422);
 const suggestedInvalid = (): ChartWardenError =>
-  new ChartWardenError("PROMOTION_SUGGESTED_REF_INVALID", "the suggested meeting is not valid", 422);
+  new ChartWardenError(
+    "PROMOTION_SUGGESTED_REF_INVALID",
+    "the suggested meeting is not valid",
+    422,
+  );
 const notPatientLinked = (): ChartWardenError =>
   new ChartWardenError(
     "PROMOTION_SOURCE_NOT_PATIENT_LINKED",

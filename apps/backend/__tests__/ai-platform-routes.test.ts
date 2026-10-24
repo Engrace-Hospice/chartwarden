@@ -234,7 +234,9 @@ describe("M32-T07 §4.7 — the six registered predicates", () => {
 
     it("reads the single-tenant flag from CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT, default off", () => {
       expect(isSingleTenantDeployment({})).toBe(false);
-      expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "false" })).toBe(false);
+      expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "false" })).toBe(
+        false,
+      );
       expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "1" })).toBe(false);
       expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "true" })).toBe(true);
     });

@@ -3,7 +3,7 @@
 // A scheduled message is a PRIVATE, sealed message-to-be (like a draft) that the dispatcher sends at `scheduledFor`
 // after re-checking, at dispatch, that the sender may still send it. This file holds the pure rules shared by the
 // route service and the dispatcher (so they cannot disagree) and the service interface the routes depend on.
-import { ValidationError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import { MAX_DRAFT_BODY_LENGTH } from "../drafts";
 
 /** A schedule must be at least this far ahead: the sweep runs every minute, so anything nearer is just "send". */

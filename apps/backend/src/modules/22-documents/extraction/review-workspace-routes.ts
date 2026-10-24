@@ -1,4 +1,3 @@
-import { type Static, Type } from "@sinclair/typebox";
 // apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts — the DocLens review screen's
 // routes (§5.1 INTAKE.ReviewSideBySide; F-237).
 //
@@ -15,6 +14,7 @@ import { type Static, Type } from "@sinclair/typebox";
 // carries an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
 import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
+import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor, requireIdempotencyKey } from "../routes/concurrency";
 import { parse } from "../routes/documents-typebox";

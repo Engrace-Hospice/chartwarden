@@ -1,3 +1,4 @@
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 // apps/backend/src/modules/14-idg/events-by-m14.ts — Module 14's outbox-event contributions
 // (M14-T06, spec §4.4). The full `m14.*` taxonomy keyed on M14's own tables, under the `m14.` namespace
 // (M01 D8 outbox_event_catalog / M03 D9 / M04 D9), plus the ONE cross-namespace canonical seam event
@@ -19,7 +20,6 @@
 // M28/M30/M33 read M14's published provider seams; listing those readers here would invent outbox work.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "./decision-payload-schema";
 
 const id = Type.String({ minLength: 1 });

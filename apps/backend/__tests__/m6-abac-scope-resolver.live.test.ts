@@ -16,11 +16,11 @@ import { ORG_WIDE_SCOPE_ROLES, hasOrgWideScope } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildAdmissionAbacPredicates } from "../src/modules/06-admission/abac-predicates";
 import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "../src/modules/06-admission/admission-route-service-db";
-import { buildAdmissionAbacPredicates } from "../src/modules/06-admission/abac-predicates";
 import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -210,7 +210,10 @@ describe.skipIf(!DB_URL)(
       const { admissionId, periodId } = await activeAdmission(randomUUID());
       const facts = await resolver.loadAdmission(ORG_A, admissionId);
       expect(facts?.providerEntityId).not.toBeNull(); // SITED — the shape #605 broke
-      const predicates = buildAdmissionAbacPredicates({ resolver, isInCaseload: async () => false });
+      const predicates = buildAdmissionAbacPredicates({
+        resolver,
+        isInCaseload: async () => false,
+      });
       const disagree: string[] = [];
       for (const role of ORG_WIDE_SCOPE_ROLES) {
         const ctx = {
@@ -222,7 +225,10 @@ describe.skipIf(!DB_URL)(
           attributes: {},
         };
         expect(hasOrgWideScope([role])).toBe(true); // the census lists it
-        const detail = await predicates["admission.scope"]!(ctx, { id: admissionId, access: "read" });
+        const detail = await predicates["admission.scope"]!(ctx, {
+          id: admissionId,
+          access: "read",
+        });
         const child = await predicates["admission.scope"]!(ctx, {
           id: periodId,
           resourceKind: "electionPeriod",
@@ -230,7 +236,10 @@ describe.skipIf(!DB_URL)(
         });
         if (!(detail && child)) disagree.push(role);
         // ...but oversight is not authority to write: only the roles with a real scope arm may mutate.
-        const write = await predicates["admission.scope"]!(ctx, { id: admissionId, access: "write" });
+        const write = await predicates["admission.scope"]!(ctx, {
+          id: admissionId,
+          access: "write",
+        });
         if (!WRITE_SCOPED_ROLES.has(role)) expect(write).toBe(false);
       }
       // The named exceptions are exactly the disagreements: a stale entry fails as loudly as a new gap.

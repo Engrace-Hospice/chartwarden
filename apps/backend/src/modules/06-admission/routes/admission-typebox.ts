@@ -1,3 +1,4 @@
+import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/06-admission/routes/admission-typebox.ts — M6-T06 TypeBox route schemas
 // (§4.2). Named `admission-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
@@ -6,7 +7,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@chartwarden/types";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
   AdmissionReadinessResult as ServiceAdmissionReadinessResult,

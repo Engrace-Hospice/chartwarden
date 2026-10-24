@@ -1,3 +1,6 @@
+import { composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
+import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 // apps/backend/src/modules/36-messaging/routes/oncall-routes.ts - WP 4.12 (ADR-0080).
 //
 //   GET /api/v1/messaging/oncall/coverage?role&patient_id   who is covering now for a role (read-only; messaging.read + messaging.oncall.read)
@@ -12,9 +15,6 @@
 // `messaging.oncall_directory` off is the uniform 404 (decided in the service, before any router call). Responses are never cached
 // (who is covering changes at a shift boundary).
 import type { AfterHoursLinesService } from "../afterhours-triage/afterhours-lines";
-import { composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
-import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { OnCallCoverageService } from "../oncall-directory/oncall-coverage-service";
 import type { RoleSendPorts } from "../oncall-directory/role-send-service";
 import { parse } from "./messaging-typebox";

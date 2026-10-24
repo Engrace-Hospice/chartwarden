@@ -1,6 +1,7 @@
 // M36 WP 6.7 (ADR-0099) - the composition-root binding of family messaging: the care-team predicate that decides which patients a staff member may act on, and
 // the two services over their Drizzle stores. The predicate is the SAME roster + Part 2 rule the care-team channel uses (`part2-channel-gate.ts`), asked
 // directly; there is no break-glass door into a family thread.
+import { randomBytes } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
@@ -97,7 +98,7 @@ export function buildFamilyServices(db: DbClient, input: FamilyBindingInput): Fa
     }),
     contact: createFamilyContactService({
       store: createDrizzleFamilyContactStore(db),
-      pepper: input.pepper ?? "",
+      pepper: input.pepper ?? randomBytes(32).toString("hex"), // contact routes are unmounted without a real pepper
       outbox: input.outbox,
       flags: input.flags,
       cipher,

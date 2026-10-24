@@ -20,8 +20,8 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { appealPacketViolations } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { registerSeam } from "../src/bootstrap/index";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
+import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   createDocumentReader,
@@ -628,7 +628,8 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
           outcome: "unfavorable",
           decidedAt: "2026-03-02T01:00:00Z",
           decisionNoticeDate: "2026-03-01",
-          reason: "The MAC upheld the denial; the medical record was found not to support prognosis.",
+          reason:
+            "The MAC upheld the denial; the medical record was found not to support prognosis.",
         },
         1,
       );
@@ -662,13 +663,19 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
           outcome: "unfavorable",
           decidedAt: "2026-03-01T00:00:00Z",
           decisionNoticeDate: "2026-03-01",
-          reason: "The MAC upheld the denial; the medical record was found not to support prognosis.",
+          reason:
+            "The MAC upheld the denial; the medical record was found not to support prognosis.",
         },
         1,
       );
       // The decision already spawned the reconsideration draft; a manual duplicate is refused.
       expect(
-        await refused(write().createAppeal(actor, denialId, { tier: "reconsideration", noticeDate: "2026-03-01" })),
+        await refused(
+          write().createAppeal(actor, denialId, {
+            tier: "reconsideration",
+            noticeDate: "2026-03-01",
+          }),
+        ),
       ).toMatchObject({ code: "APPEAL_TIER_EXISTS", statusCode: 409 });
       // With the draft withdrawn, a date after the decision letter still cannot restart the clock.
       await admin.query(
@@ -676,14 +683,21 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
         [denialId],
       );
       expect(
-        await refused(write().createAppeal(actor, denialId, { tier: "reconsideration", noticeDate: "2026-06-01" })),
+        await refused(
+          write().createAppeal(actor, denialId, {
+            tier: "reconsideration",
+            noticeDate: "2026-06-01",
+          }),
+        ),
       ).toMatchObject({ code: "NOTICE_DATE_AFTER_DECISION", statusCode: 422 });
     });
 
     it("an unappealable denial (no claim) is a 409 before any date is judged", async () => {
       const denialId = await seedDenial(false);
       await admin.query("UPDATE denial_case SET claim_id = NULL WHERE id = $1", [denialId]);
-      expect(await refused(write().createAppeal(actor, denialId, { noticeDate: "2026-02-30" }))).toMatchObject({
+      expect(
+        await refused(write().createAppeal(actor, denialId, { noticeDate: "2026-02-30" })),
+      ).toMatchObject({
         code: "INVALID_STATE",
         statusCode: 409,
       });
@@ -734,7 +748,8 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
         {
           outcome: "unfavorable",
           decidedAt: "2026-01-01T00:00:00Z",
-          reason: "The MAC upheld the denial; the medical record was found not to support prognosis.",
+          reason:
+            "The MAC upheld the denial; the medical record was found not to support prognosis.",
         },
         1,
       );

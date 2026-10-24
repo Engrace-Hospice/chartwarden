@@ -24,7 +24,11 @@
 // THE POST-VISIT OBLIGATION IS RE-ANCHORED HERE AND NOWHERE ELSE (see `./m17-visit-cadence`): publish
 // anchors it to the scheduled end so that a visit with no check-out ever still owes one — the fail-safe —
 // and this consumer moves it to the moment the clinician's device says she left.
-import type { IsoInstant, SafetyPolicyEffectiveDto, SafetyPolicyVersionId } from "@chartwarden/types";
+import type {
+  IsoInstant,
+  SafetyPolicyEffectiveDto,
+  SafetyPolicyVersionId,
+} from "@chartwarden/types";
 import { withAudit } from "../lifecycle/effects";
 import {
   type SafetyConsumerDecision,

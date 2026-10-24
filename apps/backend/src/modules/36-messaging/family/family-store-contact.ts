@@ -242,7 +242,9 @@ export function createDrizzleFamilyContactStore(db: DbClient): FamilyContactStor
           async touchContactMessage(contactId) {
             await tx
               .update(C)
-              .set({ lastContactMessageAt: sql`now()` })
+              .set({
+                lastContactMessageAt: sql`GREATEST(coalesce(${C.lastContactMessageAt}, '-infinity'::timestamptz), now())`,
+              })
               .where(and(eq(C.organizationId, organizationId), eq(C.id, contactId)));
           },
           async recordAccess(live, action, messageCount, messageId) {

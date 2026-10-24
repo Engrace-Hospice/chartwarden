@@ -41,10 +41,10 @@ import {
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   ForbiddenError,
   NotFoundError,
   type PatientCaregiverRosterReader,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type {
   BereavedContactRelationship,

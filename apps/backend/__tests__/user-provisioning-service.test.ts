@@ -1,13 +1,13 @@
 import type { NewAuditEvent } from "@chartwarden/audit";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type CredentialLifecycleStore,
+  createUserProvisioningService,
+} from "../src/modules/02-identity/credential-lifecycle";
+import {
   createInMemoryMembershipRepository,
   createInMemorySessionWriter,
 } from "../src/modules/02-identity/identity-ports";
-import {
-  createUserProvisioningService,
-  type CredentialLifecycleStore,
-} from "../src/modules/02-identity/credential-lifecycle";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
@@ -21,7 +21,11 @@ function fixture(overrides: Partial<CredentialLifecycleStore> = {}) {
   const lifecycle: CredentialLifecycleStore = {
     organizationName: vi.fn(async () => "Hospice"),
     validateLocations: vi.fn(async () => true),
-    state: vi.fn(async () => ({ state: "password_change_required" as const, reason: "admin_reset", version: 4 })),
+    state: vi.fn(async () => ({
+      state: "password_change_required" as const,
+      reason: "admin_reset",
+      version: 4,
+    })),
     requirePasswordChange: vi.fn(async () => 4),
     completePasswordChange: vi.fn(async () => true),
     tenantResetEligibility: vi.fn(async () => "eligible" as const),
@@ -53,7 +57,16 @@ function fixture(overrides: Partial<CredentialLifecycleStore> = {}) {
       }),
     },
   });
-  return { service, credentials, lifecycle, roleGuard, roleAttacher, memberships, sessions, auditRows };
+  return {
+    service,
+    credentials,
+    lifecycle,
+    roleGuard,
+    roleAttacher,
+    memberships,
+    sessions,
+    auditRows,
+  };
 }
 
 describe("direct user provisioning and credential lifecycle", () => {
@@ -70,7 +83,11 @@ describe("direct user provisioning and credential lifecycle", () => {
       defaultLocationIds: [],
       auditContext,
     });
-    expect(result).toMatchObject({ userId: USER, email: null, credentialState: "password_change_required" });
+    expect(result).toMatchObject({
+      userId: USER,
+      email: null,
+      credentialState: "password_change_required",
+    });
     expect(f.credentials.provision).toHaveBeenCalledWith(expect.objectContaining({ email: null }));
     expect(f.roleGuard.assertProposable).toHaveBeenCalledBefore(f.roleAttacher.attach);
     expect(f.memberships.all()).toHaveLength(1);

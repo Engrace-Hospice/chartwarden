@@ -1,7 +1,3 @@
-// apps/backend/src/modules/36-messaging/routes/task-typebox.ts - WP 3.4 communication-task schemas (request + OpenAPI response).
-// Ids are canonical uuids (a malformed id is a 422 and never reaches a uuid cast). The closing reason and the due instant
-// are transport-checked only here; the code set and the due window are the service's (typed 422s that name the field).
-import { type TSchema, Type } from "@sinclair/typebox";
 import {
   TASK_ACTIONS,
   TASK_ACTOR_KINDS,
@@ -10,6 +6,10 @@ import {
   TASK_SOURCE_KINDS,
   TASK_STATUSES,
 } from "@chartwarden/types";
+// apps/backend/src/modules/36-messaging/routes/task-typebox.ts - WP 3.4 communication-task schemas (request + OpenAPI response).
+// Ids are canonical uuids (a malformed id is a 422 and never reaches a uuid cast). The closing reason and the due instant
+// are transport-checked only here; the code set and the due window are the service's (typed 422s that name the field).
+import { type TSchema, Type } from "@sinclair/typebox";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

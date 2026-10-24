@@ -19,7 +19,7 @@ const C = schema.messageFamilyContacts;
 const I = schema.messageFamilyInvitations;
 
 /** Contacts shown in the lane at once. */
-export const FAMILY_LIST_LIMIT = 100;
+export const FAMILY_LIST_LIMIT = 500;
 
 type Raw = Record<string, unknown>;
 
@@ -305,16 +305,20 @@ export function createDrizzleFamilyStaffStore(db: DbClient): FamilyStaffStore {
                 }),
               );
             },
-            async markSeen(contactId) {
+            async markSeen(contactId, through) {
               await tx
                 .update(C)
-                .set({ staffSeenThrough: sql`now()` })
+                .set({
+                  staffSeenThrough: sql`GREATEST(coalesce(${C.staffSeenThrough}, '-infinity'::timestamptz), ${through.toISOString()}::timestamptz)`,
+                })
                 .where(and(eq(C.organizationId, orgId), eq(C.id, contactId)));
             },
             async markReplied(contactId) {
               await tx
                 .update(C)
-                .set({ lastStaffReplyAt: sql`now()` })
+                .set({
+                  lastStaffReplyAt: sql`GREATEST(coalesce(${C.lastStaffReplyAt}, '-infinity'::timestamptz), now())`,
+                })
                 .where(and(eq(C.organizationId, orgId), eq(C.id, contactId)));
             },
           };

@@ -21,8 +21,6 @@ import { buildLoggerOptions } from "./plugins/logger";
 import { applyReadAuditCoverage } from "./plugins/read-audit";
 import { applyRequestContext } from "./plugins/request-context";
 import { type SecurityOptions, applySecurityBaseline } from "./plugins/security";
-import type { TenantHostGuard } from "./tenant-host";
-import { tenantSessionClassGuard } from "./tenant-session-class";
 import { type ReadinessProbe, defaultReadinessProbe, registerHealthRoutes } from "./routes/health";
 import { registerOpsOutboxRoutes } from "./routes/ops-outbox";
 import {
@@ -34,6 +32,8 @@ import {
 } from "./routes/system";
 import { wireSeams } from "./seams/providers";
 import { validateSeams } from "./seams/registry";
+import type { TenantHostGuard } from "./tenant-host";
+import { tenantSessionClassGuard } from "./tenant-session-class";
 import { parseTrustedProxies } from "./trusted-proxies";
 
 /** Hook M2's auth plugin supplies to populate userId/organizationId/roles (spec §4.5). */

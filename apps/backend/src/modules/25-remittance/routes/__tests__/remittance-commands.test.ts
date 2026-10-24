@@ -1,9 +1,9 @@
+import { schema } from "@chartwarden/db";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 // GAP-073 — manual match + adjustment override commands, driven over a scripted fake transaction (no DB).
 // The fake serves each awaited chain from a per-table queue, so the assertions pin WHAT is written, not the
 // ORM call shape. Live RLS / partition behaviour is covered by the live suite.
 import { Value } from "@sinclair/typebox/value";
-import { schema } from "@chartwarden/db";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { M25_OUTBOX_EVENTS } from "../../events-by-m25";
 import type { M25WriteActor } from "../actor";

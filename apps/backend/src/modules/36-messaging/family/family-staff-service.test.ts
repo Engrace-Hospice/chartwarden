@@ -286,7 +286,21 @@ describe("list and thread", () => {
 
   it("marks the thread received by the care team when staff read it", async () => {
     const markSeen = vi.fn(async () => undefined);
-    const { service } = build({ markSeen });
+    const { service } = build({
+      markSeen,
+      messages: async () => [
+        {
+          id: randomUUID(),
+          authorKind: "family_contact",
+          authorName: null,
+          bodyCipher: Buffer.alloc(0),
+          bodyKind: "plain",
+          status: "sent",
+          createdAt: new Date(),
+          redacted: true,
+        },
+      ],
+    });
     await service.thread(actor, CONTACT);
     expect(markSeen).toHaveBeenCalledTimes(1);
   });

@@ -618,30 +618,30 @@ export function buildAuditResponseOps(
         let packet: ReturnType<typeof buildAuditResponsePacketRenderPayload>;
         try {
           packet = buildAuditResponsePacketRenderPayload({
-          auditRequestId: id,
-          authorityKind: cur.authorityKind,
-          authorityName: cur.authorityName,
-          requestReference: cur.requestReference,
-          requestDatedOn: cur.requestDatedOn,
-          receivedOn: cur.receivedOn,
-          filedAt: iso(filedAt),
-          filedLate,
-          filingChannel: input.channel,
-          filingConfirmationRef: input.confirmationRef.trim(),
-          reviewedAt: iso(cur.reviewedAt as Date),
-          noDeadlineStatedAttested: cur.deadlineNoneStatedAt !== null,
-          deadlines: deadlines.map((d) => ({
-            label: d.label,
-            dueOn: d.dueOn,
-            satisfiedOn: d.satisfiedOn,
-          })),
-          checklist: items.map((i) => ({
-            label: i.label,
-            state: i.state === "not_applicable" ? "not_applicable" : "ready",
-          })),
-          claims,
-          enclosures,
-        });
+            auditRequestId: id,
+            authorityKind: cur.authorityKind,
+            authorityName: cur.authorityName,
+            requestReference: cur.requestReference,
+            requestDatedOn: cur.requestDatedOn,
+            receivedOn: cur.receivedOn,
+            filedAt: iso(filedAt),
+            filedLate,
+            filingChannel: input.channel,
+            filingConfirmationRef: input.confirmationRef.trim(),
+            reviewedAt: iso(cur.reviewedAt as Date),
+            noDeadlineStatedAttested: cur.deadlineNoneStatedAt !== null,
+            deadlines: deadlines.map((d) => ({
+              label: d.label,
+              dueOn: d.dueOn,
+              satisfiedOn: d.satisfiedOn,
+            })),
+            checklist: items.map((i) => ({
+              label: i.label,
+              state: i.state === "not_applicable" ? "not_applicable" : "ready",
+            })),
+            claims,
+            enclosures,
+          });
         } catch (e) {
           throw new ChartWardenError(
             "AUDIT_PACKET_INVALID",

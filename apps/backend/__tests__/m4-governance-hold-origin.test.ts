@@ -71,10 +71,14 @@ describe("origin marker is provenance, not a selector", () => {
     const org = { resourceKinds: ["message"], ...MARK };
     expect(holdCoversDataClass(org, "message.operational", range)).toBe(true);
     expect(holdCoversDataClass(org, "audit_event.compliance", range)).toBe(false);
-    expect(holdCoversDataClass({ resourceKinds: ["message"] }, "message.operational", range)).toBe(true);
+    expect(holdCoversDataClass({ resourceKinds: ["message"] }, "message.operational", range)).toBe(
+      true,
+    );
   });
   it("legalHoldScopeOf: an org-wide governance hold is messagingHeld, never orgWide; a patient one scopes to the patient", () => {
-    expect(legalHoldScopeOf([{ channelIds: [CH], ...MARK }])).toEqual(legalHoldScopeOf([{ channelIds: [CH] }]));
+    expect(legalHoldScopeOf([{ channelIds: [CH], ...MARK }])).toEqual(
+      legalHoldScopeOf([{ channelIds: [CH] }]),
+    );
     expect(legalHoldScopeOf([{ patientIds: [ID], ...MARK }]).patientIds.has(ID)).toBe(true);
     const org = legalHoldScopeOf([{ resourceKinds: ["message"], ...MARK }]);
     expect(org.orgWide).toBe(false);
@@ -89,14 +93,23 @@ describe("origin marker is provenance, not a selector", () => {
   it("holdPredicate (SQL mirror) renders identically with and without the marker", () => {
     const render = (c: object) => JSON.stringify(holdPredicate(c as never).queryChunks);
     expect(render({ channelIds: [CH], ...MARK })).toBe(render({ channelIds: [CH] }));
-    expect(render({ resourceKinds: ["message"], ...MARK })).toBe(render({ resourceKinds: ["message"] }));
+    expect(render({ resourceKinds: ["message"], ...MARK })).toBe(
+      render({ resourceKinds: ["message"] }),
+    );
   });
 });
 
 describe("governance port only sees marked holds", () => {
   const row = (criteria: unknown) => ({
-    id: ID, organizationId: ORG, name: "n", criteria, status: "active", reason: "r",
-    appliedBy: null, appliedAt: new Date(), releasedAt: null,
+    id: ID,
+    organizationId: ORG,
+    name: "n",
+    criteria,
+    status: "active",
+    reason: "r",
+    appliedBy: null,
+    appliedAt: new Date(),
+    releasedAt: null,
   });
   const txReturning = (r: unknown[]) => {
     const chain: Record<string, unknown> = {};
@@ -111,7 +124,9 @@ describe("governance port only sees marked holds", () => {
     expect(isGovernanceHold(null)).toBe(false);
   });
   it("get returns a marked hold and null for an M4-placed one (same answer as unknown)", async () => {
-    expect((await getLegalHold(txReturning([row({ channelIds: [CH], ...MARK })]), ORG, ID))?.id).toBe(ID);
+    expect(
+      (await getLegalHold(txReturning([row({ channelIds: [CH], ...MARK })]), ORG, ID))?.id,
+    ).toBe(ID);
     expect(await getLegalHold(txReturning([row({ channelIds: [CH] })]), ORG, ID)).toBeNull();
     expect(await getLegalHold(txReturning([row({ patientIds: [ID] })]), ORG, ID)).toBeNull();
     expect(await getLegalHold(txReturning([]), ORG, ID)).toBeNull();
@@ -120,7 +135,10 @@ describe("governance port only sees marked holds", () => {
     const port = createMessagingGovernanceHoldPort({});
     await expect(
       port.release(txReturning([row({ patientIds: [ID] })]), {} as never, {
-        organizationId: ORG, holdId: ID, reason: "long enough reason", countRestored: async () => 0,
+        organizationId: ORG,
+        holdId: ID,
+        reason: "long enough reason",
+        countRestored: async () => 0,
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
   });

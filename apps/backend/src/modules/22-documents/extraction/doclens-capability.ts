@@ -14,7 +14,10 @@
 // and so the forward-binding to the real M32 seam is a single, documented edit. The §7 tests inject a fake
 // capability directly into the service (they do not go through this resolver), exactly as M22-T06's tests
 // inject a fake `ConsentEvaluator` rather than the registry deny-stub.
-import { type DocLensCapabilityPort, denyStubDocLensCapability } from "@chartwarden/intake-extraction";
+import {
+  type DocLensCapabilityPort,
+  denyStubDocLensCapability,
+} from "@chartwarden/intake-extraction";
 
 /** The seam key under which M32 will publish the DocLens classifier/extractor/vision capability (forward
  * reference; NOT yet a member of the typed M1 `SeamName` union — M32 owns that registration). */

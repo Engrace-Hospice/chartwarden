@@ -1,4 +1,3 @@
-import { Value } from "@sinclair/typebox/value";
 // apps/backend/__tests__/orm-recovery.test.ts — F-187 (#248): the ATTESTED recovery of a lab order that failed after
 // its HL7 message was built, and the resendability of an order the M29 worker refused to persist. The PURE decisions
 // (`classifyTransmissionRecovery`, `classifyOrmResend` over `dispatch_refused:*`), the request contract, and the HTTP
@@ -14,6 +13,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { Value } from "@sinclair/typebox/value";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

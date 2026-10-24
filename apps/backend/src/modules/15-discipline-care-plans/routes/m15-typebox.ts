@@ -1,3 +1,4 @@
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox.ts — M15 (§4.2) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 Discipline Care Plans routes. The
@@ -13,7 +14,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
 import type { CursorPage } from "./concurrency";
 import type { RedactedCategory } from "./disclosure";
 import type {

@@ -10,12 +10,12 @@
 // tests are reproducible.
 
 import {
+  ChartWardenError,
   ConflictError,
   ForbiddenError,
   MAX_PINS_PER_CHANNEL,
   NotFoundError,
   type RichBody,
-  ChartWardenError,
   isMessageReactionKey,
   sanitizeRichBody,
 } from "@chartwarden/types";
@@ -141,7 +141,11 @@ function sanitizedRichBody(raw: RichBody | undefined): RichBody | undefined {
   if (raw === undefined) return undefined;
   const checked = sanitizeRichBody(raw);
   if (!checked.ok) {
-    throw new ChartWardenError("INVALID_RICH_BODY", "the structured message body is not valid", 422);
+    throw new ChartWardenError(
+      "INVALID_RICH_BODY",
+      "the structured message body is not valid",
+      422,
+    );
   }
   return checked.value;
 }
@@ -466,7 +470,8 @@ export function createInMemoryMessagingService(
     if (!(await self.canViewChannel(orgId, input.userId, input.channelId))) {
       throw new NotFoundError("channel", input.channelId);
     }
-    if (channel.archivedAt) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    if (channel.archivedAt)
+      throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
   };
 
   /** WP 2.4: a LIVE message of THIS channel; anything else (unknown, other channel, deleted) is the same 404. */
@@ -1388,7 +1393,11 @@ function toPreferencesView(row: PreferencesRow): NotificationPreferencesView {
 function validateRoutingMap(map: RoutingMap): void {
   for (const [category, bySeverity] of Object.entries(map)) {
     if (!ALERT_CATEGORIES.includes(category as AlertCategory)) {
-      throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
+      throw new ChartWardenError(
+        "INVALID_ROUTING_MAP",
+        `unknown alert category '${category}'`,
+        422,
+      );
     }
     for (const [severity, channelsList] of Object.entries(bySeverity ?? {})) {
       if (!ALERT_SEVERITIES.includes(severity as AlertSeverity)) {

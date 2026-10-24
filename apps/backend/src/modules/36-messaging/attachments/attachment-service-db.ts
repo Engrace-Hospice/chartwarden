@@ -1340,7 +1340,10 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     if (!objectKey) return "none";
     try {
       return await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
-        if (row.messageId && (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))) {
+        if (
+          row.messageId &&
+          (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))
+        ) {
           return "held" as const;
         }
         await runWithDeadline(

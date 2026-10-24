@@ -2,7 +2,10 @@
 // `restriction` kind naming the workflow that can lift it; privacy flag details stay in M5.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { PatientAdmissionClearanceReader, PatientAdmissionRestriction } from "@chartwarden/types";
+import type {
+  PatientAdmissionClearanceReader,
+  PatientAdmissionRestriction,
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 /**

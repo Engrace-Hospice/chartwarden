@@ -109,7 +109,7 @@ function linkStateOf(row: FamilyContactRow): FamilyLinkState {
   if (!inv) return row.hadRevokedInvitation ? "revoked" : "none";
   if (inv.expiresAt.getTime() <= row.dbNow.getTime()) return "expired";
   if (inv.activeSession) return "active";
-  if (inv.codeAttempts >= 5 && !inv.activeSession) return "locked";
+  if (inv.codeAttempts >= 5) return "locked";
   if (inv.verifyingSession) return "verifying";
   return inv.redeemed ? "expired" : "not_opened";
 }
@@ -366,7 +366,15 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
         for (const m of rawMessages) {
           let body = "";
           if (!m.redacted) {
-            const plaintext = await cipher.open(actor.organizationId, m.bodyCipher);
+            let plaintext: string;
+            try {
+              plaintext = await cipher.open(actor.organizationId, m.bodyCipher);
+            } catch {
+              throw new DegradedError(
+                "messaging",
+                "a message could not be read; nothing was returned",
+              );
+            }
             const decoded = decodeStoredBody(
               m.bodyKind as Parameters<typeof decodeStoredBody>[0],
               plaintext,
@@ -383,7 +391,8 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
           });
         }
         // The thread is now in a worked queue: that, and only that, is what "received by the care team" means to the contact (D4).
-        if (row.channelId) await tx.markSeen(contactId);
+        const newest = rawMessages[rawMessages.length - 1];
+        if (row.channelId && newest) await tx.markSeen(contactId, newest.createdAt);
         return { contact: toSummary(row), messages };
       });
     },
@@ -469,8 +478,10 @@ export function createFamilyStaffService(deps: FamilyStaffServiceDeps): FamilySt
       const outbox = requireOutbox("nothing was changed");
       try {
         return await deps.store.run(actor, async (tx) => {
-          if (!UUID_RE.test(contactId) || !(await tx.getContact(contactId)))
-            throw contactNotFound();
+          const existing = UUID_RE.test(contactId) ? await tx.getContact(contactId) : null;
+          if (!existing) throw contactNotFound();
+          // Blocking only removes access; lifting a block re-opens a path to a person, so it needs the care-team predicate AND a second person.
+          if (!blocked && !(await mayAct(actor, existing.patientId))) throw contactNotFound();
           if (!(await tx.setBlocked(contactId, actor.userId, blocked))) {
             throw new ConflictError(
               blocked ? "this contact is already blocked" : "this contact is not blocked",

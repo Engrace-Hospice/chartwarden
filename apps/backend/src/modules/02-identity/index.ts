@@ -623,7 +623,10 @@ export function mountOrganizationLifecycleRoutes(
   onTransitioned?: (organizationId: string) => void,
 ): void {
   _registerM2AbacPredicates();
-  _registerOrganizationLifecycleRoutes(app, _organizationLifecycleWriter(db, outbox, onTransitioned));
+  _registerOrganizationLifecycleRoutes(
+    app,
+    _organizationLifecycleWriter(db, outbox, onTransitioned),
+  );
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
 // TASK-003/ARCH-007: `createDrizzleIdentityEraserStore` is the production store the composition

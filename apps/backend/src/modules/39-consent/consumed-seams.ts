@@ -18,7 +18,12 @@
 //     (the deny-stub stays the fail-closed default the registry applies if M22 is ever absent). No import
 //     of any @chartwarden/documents package here — the type is the leaf one, the impl is resolved at call
 //     time — so arch:boundaries stays edge-free (no 22→39).
-import type { DocumentRenderer, OrgScope, PatientIdentity, PatientReader } from "@chartwarden/types";
+import type {
+  DocumentRenderer,
+  OrgScope,
+  PatientIdentity,
+  PatientReader,
+} from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** Typed resolver for M5's real `PatientReader` (registered at boot; validateSeams guarantees it). */

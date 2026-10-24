@@ -107,7 +107,10 @@ export interface AckService {
   ): Promise<AckRequestResponse & { created: boolean }>;
   /** The urgent entry's hook: inside the message's own transaction. Never refuses on the flag (the caller checked it). */
   /** Returns the id of the request (ADR-0082: the after-hours link row and its event name it). */
-  createForUrgentSend(rawTx: unknown, facts: UrgentAckFacts): Promise<{ readonly requestId: string }>;
+  createForUrgentSend(
+    rawTx: unknown,
+    facts: UrgentAckFacts,
+  ): Promise<{ readonly requestId: string }>;
   get(actor: AckActorRef, requestId: string): Promise<AckRequestDetailResponse>;
   listForChannel(actor: AckActorRef, channelId: string): Promise<AckChannelListResponse>;
   acknowledge(actor: AckActorRef, requestId: string): Promise<AckRequestResponse>;

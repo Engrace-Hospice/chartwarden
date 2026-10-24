@@ -12,7 +12,8 @@ export type ChannelKind =
   | "on_call"
   | "dm"
   | "announcement"
-  | "bereavement";
+  | "bereavement"
+  | "family";
 
 export interface ChannelLastMessage {
   messageId: string;

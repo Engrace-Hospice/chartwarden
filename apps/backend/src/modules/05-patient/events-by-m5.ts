@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/05-patient/events-by-m5.ts — Module 5's outbox-event contributions
 // (M5-T10, spec §4.6). The 16 `m5.patient.*` events keyed on M5's own tables, under the `m5.`
 // namespace (M01 D8 / M03 D9). check-fitness-gaps.ts scans this file for naming (`mN.<resource>.
@@ -5,7 +6,6 @@
 // cross-module consumers (M16 bereavement, M22 DocLens/redaction, M23 final claim, M28 FHIR, M29
 // inbound-proposal expiry, M36 alert) subscribe when they land; the events are published now.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** Shared minimal payload core — every patient event carries the patient + org id. */
 const corePatient = {

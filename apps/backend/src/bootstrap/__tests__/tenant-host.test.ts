@@ -24,12 +24,18 @@ describe("parseTenantBaseDomain", () => {
   it("normalises case and surrounding space", () => {
     expect(parseTenantBaseDomain({ TENANT_BASE_DOMAIN: " ChartWarden.COM " })).toBe(BASE);
   });
-  it.each(["https://chartwarden.com", "chartwarden.com/", ".chartwarden.com", "*.chartwarden.com", "localhost", "a_b.com"])(
-    "rejects %s",
-    (value) => {
-      expect(() => parseTenantBaseDomain({ TENANT_BASE_DOMAIN: value })).toThrow(/TENANT_BASE_DOMAIN/);
-    },
-  );
+  it.each([
+    "https://chartwarden.com",
+    "chartwarden.com/",
+    ".chartwarden.com",
+    "*.chartwarden.com",
+    "localhost",
+    "a_b.com",
+  ])("rejects %s", (value) => {
+    expect(() => parseTenantBaseDomain({ TENANT_BASE_DOMAIN: value })).toThrow(
+      /TENANT_BASE_DOMAIN/,
+    );
+  });
 });
 
 describe("classifyTenantHost", () => {
@@ -65,7 +71,9 @@ const TABLE: Record<string, TenantHostResolution> = {
   gone: { organizationId: ORG_EAGLE, slug: "gone", status: "closed", viaAlias: false },
 };
 
-function buildApp(opts: { sessionOrg?: string; resolver?: TenantHostResolver; base?: string | null } = {}): FastifyInstance {
+function buildApp(
+  opts: { sessionOrg?: string; resolver?: TenantHostResolver; base?: string | null } = {},
+): FastifyInstance {
   const app = Fastify();
   applyErrorHandler(app);
   app.decorateRequest("context", null as never);
@@ -79,12 +87,15 @@ function buildApp(opts: { sessionOrg?: string; resolver?: TenantHostResolver; ba
   if (guard) app.addHook("onRequest", guard);
   app.get("/api/v1/ping", async (request) => ({
     ok: true,
-    hostOrg: (request as unknown as { context: { attributes: Record<string, unknown> } }).context.attributes.tenantHostOrgId ?? null,
+    hostOrg:
+      (request as unknown as { context: { attributes: Record<string, unknown> } }).context
+        .attributes.tenantHostOrgId ?? null,
   }));
   return app;
 }
 
-const get = (app: FastifyInstance, host: string, url = "/api/v1/ping") => app.inject({ method: "GET", url, headers: { host } });
+const get = (app: FastifyInstance, host: string, url = "/api/v1/ping") =>
+  app.inject({ method: "GET", url, headers: { host } });
 
 describe("createTenantHostGuard", () => {
   it("is absent in single-host mode (no base domain)", () => {
@@ -109,7 +120,11 @@ describe("createTenantHostGuard", () => {
   });
 
   it("answers 404 TENANT_HOST_UNKNOWN for an unprovisioned or malformed tenant host", async () => {
-    for (const host of ["nobody.chartwarden.com", "a.b.chartwarden.com", "xn--bcher-kva.chartwarden.com"]) {
+    for (const host of [
+      "nobody.chartwarden.com",
+      "a.b.chartwarden.com",
+      "xn--bcher-kva.chartwarden.com",
+    ]) {
       const res = await get(buildApp(), host);
       expect(res.statusCode).toBe(404);
       expect(res.json().error?.code ?? res.json().code).toBe("TENANT_HOST_UNKNOWN");
@@ -124,25 +139,37 @@ describe("createTenantHostGuard", () => {
 
   it("refuses a suspended org (403 TENANT_SUSPENDED) and a closed org (410 TENANT_CLOSED)", async () => {
     const paused = await get(buildApp(), "paused.chartwarden.com");
-    expect([paused.statusCode, paused.json().error?.code ?? paused.json().code]).toEqual([403, "TENANT_SUSPENDED"]);
+    expect([paused.statusCode, paused.json().error?.code ?? paused.json().code]).toEqual([
+      403,
+      "TENANT_SUSPENDED",
+    ]);
     const gone = await get(buildApp(), "gone.chartwarden.com");
-    expect([gone.statusCode, gone.json().error?.code ?? gone.json().code]).toEqual([410, "TENANT_CLOSED"]);
+    expect([gone.statusCode, gone.json().error?.code ?? gone.json().code]).toEqual([
+      410,
+      "TENANT_CLOSED",
+    ]);
   });
 
-  it.each(["chartwarden.com", "admin.chartwarden.com", "localhost:3000", "other.chartwarden.cloud"])(
-    "does nothing on %s (not a tenant host)",
-    async (host) => {
-      const res = await get(buildApp({ sessionOrg: ORG_SUNRISE }), host);
-      expect(res.statusCode).toBe(200);
-      expect(res.json().hostOrg).toBeNull();
-    },
-  );
+  it.each([
+    "chartwarden.com",
+    "admin.chartwarden.com",
+    "localhost:3000",
+    "other.chartwarden.cloud",
+  ])("does nothing on %s (not a tenant host)", async (host) => {
+    const res = await get(buildApp({ sessionOrg: ORG_SUNRISE }), host);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().hostOrg).toBeNull();
+  });
 
   it("ignores X-Forwarded-Host and tenant-identifying headers from an untrusted peer", async () => {
     const res = await buildApp({ sessionOrg: ORG_SUNRISE }).inject({
       method: "GET",
       url: "/api/v1/ping",
-      headers: { host: "sunrise.chartwarden.com", "x-forwarded-host": "eagle.chartwarden.com", "x-tenant-slug": "eagle" },
+      headers: {
+        host: "sunrise.chartwarden.com",
+        "x-forwarded-host": "eagle.chartwarden.com",
+        "x-tenant-slug": "eagle",
+      },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().hostOrg).toBe(ORG_SUNRISE);
@@ -166,7 +193,11 @@ describe("createCachingTenantHostResolver", () => {
   it("caches a miss briefly so random hosts cannot hammer the database", async () => {
     let t = 0;
     const inner = { resolve: vi.fn(async () => null) };
-    const cached = createCachingTenantHostResolver(inner, { ttlMs: 60_000, missTtlMs: 5_000, now: () => t });
+    const cached = createCachingTenantHostResolver(inner, {
+      ttlMs: 60_000,
+      missTtlMs: 5_000,
+      now: () => t,
+    });
     await cached.resolve("nobody");
     await cached.resolve("nobody");
     expect(inner.resolve).toHaveBeenCalledTimes(1);
@@ -186,14 +217,22 @@ describe("createCachingTenantHostResolver", () => {
 
   it("stays bounded", async () => {
     const inner = { resolve: vi.fn(async () => null) };
-    const cached = createCachingTenantHostResolver(inner, { ttlMs: 1, maxEntries: 3, now: () => 0 });
+    const cached = createCachingTenantHostResolver(inner, {
+      ttlMs: 1,
+      maxEntries: 3,
+      now: () => 0,
+    });
     for (const l of ["a1", "a2", "a3", "a4", "a5"]) await cached.resolve(l);
     expect(cached.size()).toBeLessThanOrEqual(3);
   });
 
   it("never lets a flood of unknown hosts evict a real tenant", async () => {
     const inner = { resolve: vi.fn(async (l: string) => (l === "sunrise" ? sunrise : null)) };
-    const cached = createCachingTenantHostResolver(inner, { ttlMs: 60_000, maxEntries: 3, now: () => 0 });
+    const cached = createCachingTenantHostResolver(inner, {
+      ttlMs: 60_000,
+      maxEntries: 3,
+      now: () => 0,
+    });
     await cached.resolve("sunrise");
     for (const l of ["x1", "x2", "x3", "x4", "x5", "x6"]) await cached.resolve(l);
     inner.resolve.mockClear();
@@ -203,7 +242,9 @@ describe("createCachingTenantHostResolver", () => {
 
   it("drops the answer of a lookup that was in flight when its organization was invalidated", async () => {
     let release!: (v: TenantHostResolution | null) => void;
-    const inner = { resolve: vi.fn(() => new Promise<TenantHostResolution | null>((r) => (release = r))) };
+    const inner = {
+      resolve: vi.fn(() => new Promise<TenantHostResolution | null>((r) => (release = r))),
+    };
     const cached = createCachingTenantHostResolver(inner, { ttlMs: 60_000, now: () => 0 });
     const pending = cached.resolve("sunrise");
     cached.invalidateOrganization(ORG_SUNRISE);

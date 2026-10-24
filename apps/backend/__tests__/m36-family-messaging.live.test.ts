@@ -172,6 +172,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0099 family messaging - LIVE Postgres", () => 
       sud?: boolean;
       lr?: boolean;
       language?: string | null;
+      snapshot?: "missing";
     } = {},
   ): Promise<Fixture> => {
     const org = over.org ?? ORG_A;
@@ -200,10 +201,10 @@ describe.skipIf(!DB_URL)("M36 ADR-0099 family messaging - LIVE Postgres", () => 
     if (over.consent !== false) {
       await grantConsent(org, patient, caregiver, over.consent === "survives_death");
     }
-    if (over.sud) {
+    if (over.snapshot !== "missing") {
       await q(
-        `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags) VALUES ($1,$2,ARRAY['sud'])`,
-        [patient, org],
+        `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags) VALUES ($1,$2,$3::text[])`,
+        [patient, org, over.sud ? ["sud"] : []],
       );
     }
     return { org, patient, caregiver, pc };
@@ -837,6 +838,51 @@ describe.skipIf(!DB_URL)("M36 ADR-0099 family messaging - LIVE Postgres", () => 
       expect((await send(bearer, "y".repeat(2000))).statusCode).toBe(201);
     });
 
+    it("the invite response (link token AND code) is never copied into the idempotency store, and replaying a key does not return it", async () => {
+      const fx = await mkFixture();
+      const mgr = await newManager();
+      roster.set(fx.patient, [mgr]);
+      stepUpFresh = true;
+      const key = randomUUID();
+      const res = await on.inject({
+        method: "POST",
+        url: `${STAFF}/invitations`,
+        headers: as(mgr, ORG_A, key),
+        payload: { patientId: fx.patient, patientCaregiverId: fx.pc, codeByVoiceConfirmed: true },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+      const { inviteToken, verificationCode } = res.json();
+      const stored = JSON.stringify(await q("SELECT * FROM idempotency_key"));
+      expect(stored).not.toContain(inviteToken);
+      expect(stored).not.toContain(verificationCode);
+    });
+
+    it("before the code is proven the state shows only the stage and the number: no mode, agency name or language", async () => {
+      const inv = await invite(await mkFixture());
+      const enrolment = (await redeem(inv)).json().sessionToken as string;
+      const state = (await contact(on, "GET", `${CONTACT}/state`, enrolment)).json();
+      expect(state).toMatchObject({
+        stage: "enrolment",
+        mode: "standard",
+        agencyName: null,
+        language: null,
+        closed: false,
+      });
+      expect(state.agencyPhone).toBe("555-0100");
+    });
+
+    it("settings (the numbers every contact is told to call) need a fresh step-up", async () => {
+      const mgr = await newManager();
+      stepUpFresh = false;
+      const res = await staff(on, "PUT", `${STAFF}/settings`, mgr, {
+        agencyName: "x",
+        agencyPhone: "666-0000",
+        bereavementPhone: null,
+      });
+      stepUpFresh = true;
+      expect(res.statusCode).toBe(403);
+    });
+
     it("a notification string is a constant with no argument", () => {
       expect(FAMILY_NOTIFICATION_TEXT).not.toMatch(/\$\{|%s|\{\{/);
       expect(FAMILY_NOTIFICATION_TEXT.length).toBeLessThan(100);
@@ -1057,14 +1103,14 @@ describe.skipIf(!DB_URL)("M36 ADR-0099 family messaging - LIVE Postgres", () => 
       const inv = await invite(await mkFixture());
       const bearer = await activate(inv);
       await q(
-        `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags) VALUES ($1,$2,ARRAY['sud'])`,
+        `UPDATE patient_privacy_flag_snapshot SET flags = ARRAY['sud'] WHERE patient_id = $1 AND organization_id = $2`,
         [inv.fixture.patient, ORG_A],
       );
       await gone(inv.fixture, bearer);
       const other = await invite(await mkFixture());
       const bearer2 = await activate(other);
       await q(
-        `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags, invalidated_at) VALUES ($1,$2,ARRAY[]::text[], now())`,
+        `UPDATE patient_privacy_flag_snapshot SET invalidated_at = now() WHERE patient_id = $1 AND organization_id = $2`,
         [other.fixture.patient, ORG_A],
       );
       await gone(other.fixture, bearer2);
@@ -1106,6 +1152,17 @@ describe.skipIf(!DB_URL)("M36 ADR-0099 family messaging - LIVE Postgres", () => 
         [lr.pc],
       );
       expect(await picker(lr)).toMatchObject({ eligible: false, reason: "no_consent" });
+    });
+
+    it("a patient with NO privacy-flag snapshot fails closed (Part 2 cannot be ruled out)", async () => {
+      const fx = await mkFixture({ snapshot: "missing" });
+      const mgr = await newManager();
+      roster.set(fx.patient, [mgr]);
+      const picker = await staff(on, "GET", `${STAFF}/patients/${fx.patient}/caregivers`, mgr);
+      expect(picker.json().caregivers[0]).toMatchObject({
+        eligible: false,
+        reason: "part2_restricted",
+      });
     });
 
     it("discharge (not a death) ends access; the patient record is untouched", async () => {

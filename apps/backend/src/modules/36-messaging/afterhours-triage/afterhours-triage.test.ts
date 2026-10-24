@@ -3,8 +3,8 @@ import { AFTERHOURS_TRIAGE_LINE_TEXT } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../../../bootstrap/outbox-dispatcher";
 import { buildM36AfterHoursOutcomeConsumer } from "../outbox-consumers/afterhours-outcome";
-import type { AfterHoursLinkStore, RecordOutcomeResult } from "./afterhours-link-store";
 import { createAfterHoursLinesService, lineStateOf } from "./afterhours-lines";
+import type { AfterHoursLinkStore, RecordOutcomeResult } from "./afterhours-link-store";
 import { afterHoursRequestedPayload, createAfterHoursRequestWriter } from "./afterhours-request";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -49,13 +49,21 @@ describe("the request writer (S3)", () => {
         eventId: EVT,
       },
     ]);
-    expect(links).toEqual([{ orgId: ORG, messageId: MSG, requestId: REQ, sourceOutboxEventId: EVT }]);
+    expect(links).toEqual([
+      { orgId: ORG, messageId: MSG, requestId: REQ, sourceOutboxEventId: EVT },
+    ]);
   });
 
   it("the payload is exactly the frozen id-only shape (no organization, no text)", () => {
     expect(
       Object.keys(
-        afterHoursRequestedPayload({ orgId: ORG, messageId: MSG, requestId: REQ, patientId: PAT, at: AT }),
+        afterHoursRequestedPayload({
+          orgId: ORG,
+          messageId: MSG,
+          requestId: REQ,
+          patientId: PAT,
+          at: AT,
+        }),
       ).sort(),
     ).toEqual(["messageId", "occurredAt", "patientId", "requestId"]);
   });
@@ -88,7 +96,12 @@ describe("the thread line (S4)", () => {
       isRestrictedChannel: async () => false,
     });
     const { lines } = await service.forChannel(ORG, CH, ["m1", "m2", "m3", "m4"]);
-    expect(lines.map((l) => l.state)).toEqual(["not_confirmed", "opened", "coalesced", "no_coverage"]);
+    expect(lines.map((l) => l.state)).toEqual([
+      "not_confirmed",
+      "opened",
+      "coalesced",
+      "no_coverage",
+    ]);
     for (const l of lines) expect(l.text).toBe(AFTERHOURS_TRIAGE_LINE_TEXT[l.state]);
     expect(AFTERHOURS_TRIAGE_LINE_TEXT.not_confirmed).toBe("Triage call not confirmed");
   });
@@ -161,14 +174,18 @@ describe("the outcome consumer (S3/S4)", () => {
 
   it("records the outcome from the ENVELOPE org and the payload ids", async () => {
     const { consumer, calls } = build();
-    await consumer.handle(event({ sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "opened" }));
+    await consumer.handle(
+      event({ sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "opened" }),
+    );
     expect(calls).toEqual([[ORG, EVT, "opened", CALL]]);
     expect(consumer.eventTypes).toEqual(["m19.afterhours_triage.outcome"]);
   });
 
   it("no_coverage carries no call id", async () => {
     const { consumer, calls } = build();
-    await consumer.handle(event({ sourceOutboxEventId: EVT, triageCallId: null, outcome: "no_coverage" }));
+    await consumer.handle(
+      event({ sourceOutboxEventId: EVT, triageCallId: null, outcome: "no_coverage" }),
+    );
     expect(calls).toEqual([[ORG, EVT, "no_coverage", null]]);
   });
 
@@ -184,7 +201,10 @@ describe("the outcome consumer (S3/S4)", () => {
     ["a non-uuid source id", { sourceOutboxEventId: "x", triageCallId: CALL, outcome: "opened" }],
     ["an unknown outcome", { sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "closed" }],
     ["opened with no call", { sourceOutboxEventId: EVT, triageCallId: null, outcome: "opened" }],
-    ["no_coverage with a call", { sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "no_coverage" }],
+    [
+      "no_coverage with a call",
+      { sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "no_coverage" },
+    ],
   ])("throws (so the outbox dead-letters it) on %s, and writes nothing", async (_n, payload) => {
     const { consumer, calls, warns } = build();
     await expect(consumer.handle(event(payload))).rejects.toThrow(/malformed/);
@@ -192,10 +212,13 @@ describe("the outcome consumer (S3/S4)", () => {
     expect(warns).toHaveLength(1);
   });
 
-  it.each(["unknown", "conflict"] as const)("throws on %s so it is never silently dropped", async (r) => {
-    const { consumer } = build(r);
-    await expect(
-      consumer.handle(event({ sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "opened" })),
-    ).rejects.toThrow(new RegExp(r));
-  });
+  it.each(["unknown", "conflict"] as const)(
+    "throws on %s so it is never silently dropped",
+    async (r) => {
+      const { consumer } = build(r);
+      await expect(
+        consumer.handle(event({ sourceOutboxEventId: EVT, triageCallId: CALL, outcome: "opened" })),
+      ).rejects.toThrow(new RegExp(r));
+    },
+  );
 });

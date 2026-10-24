@@ -11,7 +11,7 @@
 // injected `now()` so timestamps are deterministic in tests), org-scoped reads (a missing/cross-tenant id
 // is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on every list.
 import type { OrgId } from "@chartwarden/types";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (Phase 2D worker-trigger seam) ───────────────────────────────────────────────────

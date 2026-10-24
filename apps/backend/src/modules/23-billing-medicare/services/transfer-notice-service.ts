@@ -26,7 +26,7 @@ import {
   transferNoticeTob,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { TransferInFactsResolver } from "../outbox-consumers/m6-transfer-in-notice";
 import type { JobEnqueuePort } from "../routes/write-service";
 import {
@@ -498,7 +498,11 @@ export function buildTransferNoticeService(
       assertNotAiActor(actor);
       const jobs = ports.jobs;
       if (!jobs) {
-        throw new ChartWardenError("SEAM_UNBOUND", "transfer-notice submission is not available", 503);
+        throw new ChartWardenError(
+          "SEAM_UNBOUND",
+          "transfer-notice submission is not available",
+          503,
+        );
       }
       const facts = await freshFacts(actor.organizationId, transferNoticeId);
       return inOrg(actor, async (tx) => {

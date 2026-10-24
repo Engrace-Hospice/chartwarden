@@ -108,7 +108,7 @@ export interface FamilyStaffTx {
   /** Messages of the contact's channel, oldest first, at most `limit`, newest page last. */
   messages(channelId: string, limit: number): Promise<FamilyStaffMessageRow[]>;
   /** The staff has the thread in a worked queue: everything up to the database's now is "received". */
-  markSeen(contactId: string): Promise<void>;
+  markSeen(contactId: string, through: Date): Promise<void>;
   /** Records the staff reply instant (forward only). */
   markReplied(contactId: string): Promise<void>;
 }

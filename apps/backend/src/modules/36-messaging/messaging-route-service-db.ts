@@ -231,7 +231,9 @@ export async function effectivelyVisibleChannels<T extends EffectiveChannelAcces
   ];
   const automaticPatientIds = new Set(
     candidates.flatMap((candidate) =>
-      isPatientSubjectKind(candidate.kind) && candidate.memberSource === "auto" && candidate.subjectId
+      isPatientSubjectKind(candidate.kind) &&
+      candidate.memberSource === "auto" &&
+      candidate.subjectId
         ? [candidate.subjectId]
         : [],
     ),
@@ -1304,7 +1306,7 @@ export function createDbMessagingRouteService(
           kind: ch.kind as ChannelKind,
           title: ch.title,
           subjectId: ch.subjectId,
-          patientId: ch.kind === "care_team" ? ch.subjectId : null,
+          patientId: isPatientSubjectKind(ch.kind as ChannelKind) ? ch.subjectId : null,
           archivedAt: ch.isArchived ? (iso(ch.archivesAt) ?? iso(ch.updatedAt)) : null,
           unreadCount: Number(ur[0]?.count ?? 0),
           mentionCount: Number(mention[0]?.count ?? 0),
@@ -1398,7 +1400,7 @@ export function createDbMessagingRouteService(
         return {
           messages: page,
           nextCursor,
-          patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
+          patientId: isPatientSubjectKind(ch[0].kind as ChannelKind) ? ch[0].subjectId : null,
         };
       });
     },
@@ -1467,7 +1469,7 @@ export function createDbMessagingRouteService(
           root: root!,
           replies,
           nextCursor: hasMore && last ? encodeCursor(last.createdAtMicros, last.id) : undefined,
-          patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
+          patientId: isPatientSubjectKind(ch[0].kind as ChannelKind) ? ch[0].subjectId : null,
         };
       });
     },

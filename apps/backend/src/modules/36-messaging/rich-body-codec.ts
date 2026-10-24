@@ -6,8 +6,8 @@
 // wire `body` is the plain-text projection and `bodyDoc` is a freshly re-sanitised copy.
 import type { MessageBodyKind, MessageReferenceInput } from "@chartwarden/messaging";
 import {
-  type RichBody,
   ChartWardenError,
+  type RichBody,
   canonicalRichBodyJson,
   normalizeMentionLabel,
   parseStoredRichBody,

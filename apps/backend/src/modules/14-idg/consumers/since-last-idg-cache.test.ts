@@ -35,7 +35,9 @@ describe("since-last-idg cache (chartwarden key only)", () => {
 
   it("writes only the chartwarden key with the 30 d TTL and reads it back", async () => {
     const f = fake();
-    await appendSinceLastIdgEntry(f.redis, "p9", "orderChanges", "d1", { _digestId: "d1" } as never);
+    await appendSinceLastIdgEntry(f.redis, "p9", "orderChanges", "d1", {
+      _digestId: "d1",
+    } as never);
     expect([...f.strings.keys()]).toEqual([KEY]);
     expect(f.ttl.get(KEY)).toBe(SINCE_LAST_IDG_TTL_SEC);
     expect((await readSinceLastIdgEntry(f.redis, "p9")).orderChanges).toHaveLength(1);
@@ -49,6 +51,8 @@ describe("since-last-idg cache (chartwarden key only)", () => {
   it("returns the empty entry on a miss and reads only the chartwarden key when both exist", async () => {
     expect((await readSinceLastIdgEntry(fake().redis, "p9")).orderChanges).toEqual([]);
     const f = fake({ [KEY]: digest("new"), [LEGACY]: digest("old") });
-    expect((await readSinceLastIdgEntry(f.redis, "p9")).orderChanges).toEqual([{ _digestId: "new" }]);
+    expect((await readSinceLastIdgEntry(f.redis, "p9")).orderChanges).toEqual([
+      { _digestId: "new" },
+    ]);
   });
 });

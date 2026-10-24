@@ -14,7 +14,7 @@
 // contract, unchanged).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { DegradedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, DegradedError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
 
 /** The structural ProviderEntityPort M30's write service binds (tx is its org-context WriteTx = DbClient). */

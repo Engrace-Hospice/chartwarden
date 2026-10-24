@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/events-by-m34.ts — Module 34's outbox-event
 // contributions (spec §4.9 Outbox Event Catalog + §4.8 M36 Alert-Rule Contributions). The full
 // `m34.*` taxonomy keyed on M34's own tables, under the `m34.` namespace (M01 D8 outbox_event_catalog
@@ -23,7 +24,6 @@
 // consumer for every alert event below (the alert-rule engine fans out to the registered
 // `compliance_officer_for_tenant` / `platform_security_owner` resolvers per §4.8).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

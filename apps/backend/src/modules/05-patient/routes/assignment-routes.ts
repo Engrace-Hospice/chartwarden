@@ -11,7 +11,7 @@
 // deny so a refusal never confirms the chart exists. Org-wide oversight roles (DON etc.) pass it through
 // the predicate's org-wide arm, which is how the first clinician ever lands on a caseload.
 import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
-import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AssignmentAlreadyEndedError,

@@ -67,7 +67,7 @@ describe("migration 1232 eligibility functions", () => {
     for (const needle of [
       "pc.involvement_from > current_date",
       "pc.involvement_to < current_date",
-      "'sud' = ANY(f.flags) OR f.invalidated_at IS NOT NULL",
+      "f.invalidated_at IS NULL AND NOT ('sud' = ANY(f.flags))",
       "da.revoked_at IS NULL AND da.effective_from <= now()",
       "cr.revoked_at IS NULL",
       "cr.expires_at IS NULL OR cr.expires_at > now()",

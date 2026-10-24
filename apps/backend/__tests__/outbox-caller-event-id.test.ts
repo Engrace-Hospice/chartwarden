@@ -17,7 +17,9 @@ const input = {
 };
 const fakeTx = () => {
   const rows: Record<string, unknown>[] = [];
-  const tx = { insert: () => ({ values: async (v: Record<string, unknown>) => void rows.push(v) }) };
+  const tx = {
+    insert: () => ({ values: async (v: Record<string, unknown>) => void rows.push(v) }),
+  };
   return { tx: tx as never, rows };
 };
 

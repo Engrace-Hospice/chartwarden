@@ -1,4 +1,3 @@
-import { type Static, Type } from "@sinclair/typebox";
 // apps/backend/src/modules/22-documents/extraction/pending-address-routes.ts — F-238:
 //
 //   GET /api/v1/patients/:patientId/intake-pending-address
@@ -12,6 +11,7 @@ import { type Static, Type } from "@sinclair/typebox";
 // gets a plain 403 and the screen shows nothing.
 import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
+import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import type { PendingAddressService } from "./pending-address-db";

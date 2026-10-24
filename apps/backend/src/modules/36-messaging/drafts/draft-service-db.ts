@@ -18,7 +18,7 @@ import {
   sbarToStore,
 } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, type SbarSections, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, type SbarSections } from "@chartwarden/types";
 import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";
 

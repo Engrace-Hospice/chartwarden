@@ -4,7 +4,11 @@
 // The pure M19 on-call roster — no DB, no clock: every fact is injected. The one seam-touching helper
 // (`readOnCallRoster`) IS exercised against the M1 registry, because the degraded-vs-empty distinction it
 // preserves is the whole point of §2.7's class D-C and cannot be shown any other way.
-import type { OnCallRosterEntry, OncallShiftStatus, VisitAssignmentReader } from "@chartwarden/types";
+import type {
+  OnCallRosterEntry,
+  OncallShiftStatus,
+  VisitAssignmentReader,
+} from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { readOnCallRoster } from "../src/modules/19-oncall/consumers/trigger-context";

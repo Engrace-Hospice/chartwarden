@@ -1,3 +1,5 @@
+import { HospiceCoverageSchema } from "@chartwarden/types";
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 // apps/backend/src/modules/12-dosespot/events-by-m12.ts — Module 12's outbox-event contributions
 // (M12-T08, spec §4.4). The full `m12.*` taxonomy keyed on M12's own tables, under the `m12.` namespace
 // (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for naming
@@ -14,8 +16,6 @@
 // it only emits the typed outbox event.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import { HospiceCoverageSchema } from "@chartwarden/types";
-import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

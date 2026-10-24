@@ -4,7 +4,7 @@
 // channels" (`location_membership`). The permission alone is NOT enough: a holder could otherwise add
 // themselves to any care_team channel, and because channel visibility is a membership check that is a
 // PHI read grant. This pure rule is shared by the route predicate and both service implementations.
-import { ForbiddenError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError } from "@chartwarden/types";
 import type { ChannelKind } from "./interfaces/kinds";
 
 /** Who is administering members. Internal/system callers pass the explicit `system` marker — it is
@@ -37,6 +37,8 @@ export function mayManageChannelMembers(
   patientLocationIds?: readonly string[],
 ): boolean {
   if (actor.kind === "system") return true;
+  // ADR-0099: a family conversation has no member rows; its readers are the care-team predicate and nothing else.
+  if (channel.kind === "family") return false;
   if (actor.roles.includes(ORG_ADMIN_ROLE)) return true;
   if (!actor.roles.includes(CLINICAL_LEAD_ROLE)) return false;
   if (!channel.subjectId) return false;

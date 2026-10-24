@@ -40,7 +40,7 @@ export function messageHeldBy(rawCriteria: unknown, f: MessageHoldFacts): boolea
   const bySelector =
     !selected ||
     (has(patientIds) &&
-      ((f.channelKind === "care_team" &&
+      (((f.channelKind === "care_team" || f.channelKind === "family") &&
         f.channelSubjectId !== null &&
         patientIds.includes(f.channelSubjectId)) ||
         f.channelKind === "bereavement" ||

@@ -7,7 +7,7 @@
 // `withOrgContext` (RLS) and inside the actor's provider-entity scope.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   PLATFORM_ROUTE_RULES,

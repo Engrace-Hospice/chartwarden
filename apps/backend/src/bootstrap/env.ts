@@ -129,7 +129,11 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => Boolean(env.TENANT_BASE_DOMAIN?.trim()),
     rule: (value, env) => {
       const domain = value.trim().toLowerCase();
-      if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(domain)) {
+      if (
+        !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
+          domain,
+        )
+      ) {
         return "must be a bare domain such as chartwarden.com";
       }
       return env.PASSKEY_RP_ID?.trim().toLowerCase() === domain

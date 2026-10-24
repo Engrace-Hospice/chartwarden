@@ -1,3 +1,5 @@
+import { ValidationError } from "@chartwarden/types";
+import type { ExtractionReviewStatus } from "@chartwarden/types";
 // apps/backend/src/modules/22-documents/routes/documents-typebox.ts — M22-T09 TypeBox route schemas (§4.2).
 // Named `documents-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a
 // TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED
@@ -7,8 +9,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
-import type { ExtractionReviewStatus } from "@chartwarden/types";
 import type { CursorPage as ServiceCursorPage } from "./concurrency";
 import type {
   DocumentView as ServiceDocumentView,

@@ -63,13 +63,18 @@ export function createTenantOrgCreationProvider(
       if (existing[0]) {
         // A re-provision naming a different host label must not be silently ignored: the audit would name a slug the org never got.
         if (intent.slug !== undefined && intent.slug !== existing[0].slug) {
-          throw new ChartWardenError("TENANT_SLUG_UNAVAILABLE", "this organization already exists with a different slug", 409);
+          throw new ChartWardenError(
+            "TENANT_SLUG_UNAVAILABLE",
+            "this organization already exists with a different slug",
+            409,
+          );
         }
         return confirmed(existing[0].id);
       }
 
       // Phase-3 self-serve create path: mint the org spine with a deterministic, collision-free slug.
-      const slug = intent.slug ?? `${slugify(intent.legalBusinessName)}-${intent.organizationId.slice(0, 8)}`;
+      const slug =
+        intent.slug ?? `${slugify(intent.legalBusinessName)}-${intent.organizationId.slice(0, 8)}`;
       const inserted = await db
         .insert(schema.organizations)
         .values({

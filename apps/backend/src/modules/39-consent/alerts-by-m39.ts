@@ -1,3 +1,4 @@
+import type { ModuleAlertContribution } from "@chartwarden/types";
 // apps/backend/src/modules/39-consent/alerts-by-m39.ts — Module 39's M36 alert-payload contribution
 // (M39-T08, spec §4.10). The five typed alert payloads M39 OWNS under the `m39.` prefix, registered
 // onto M36's Foundation alert-payload registry at M39 boot (NO import edge into a later module — M36
@@ -7,7 +8,6 @@
 // expiry (M39-F09) — only the 1-day window is CRITICAL; the voice/SOS escalation is removed (INT-031
 // voice = field-safety SOS only).
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const consentRef = {
   organizationId: Type.String({ minLength: 1 }),

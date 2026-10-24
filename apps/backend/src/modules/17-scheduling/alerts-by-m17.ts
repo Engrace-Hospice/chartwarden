@@ -1,3 +1,4 @@
+import type { ModuleAlertContribution } from "@chartwarden/types";
 // apps/backend/src/modules/17-scheduling/alerts-by-m17.ts — Module 17's M36 alert-payload contribution
 // (M17-T08, spec §4.9). The typed alert payloads M17 OWNS under the `m17.` prefix, registered onto M36's
 // Foundation alert-payload registry at M17 boot (NO import edge into M36 — M36 is foundation-tier and never
@@ -8,7 +9,6 @@
 // may be TIGHTENED by a tenant, never loosened (D11). check-fitness-gaps.ts enforces the same
 // `mN.<resource>.<verb>` ownership the outbox catalog uses (here only the `m17.` prefix is required).
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const orgId = Type.String({ minLength: 1 });
 const id = Type.String({ minLength: 1 });

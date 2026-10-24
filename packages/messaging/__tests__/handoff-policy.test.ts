@@ -1,8 +1,8 @@
 // WP 3.5 - the tenant handoff policy: tighten-only over the 240-minute platform ceiling, re-applied on every read.
 import {
+  ChartWardenError,
   HANDOFF_EXPIRY_MIN_MINUTES,
   HANDOFF_EXPIRY_PLATFORM_MINUTES,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {

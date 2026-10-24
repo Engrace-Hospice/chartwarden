@@ -16,7 +16,12 @@
 // KNOWN LIMIT: `auditRead.fields` is static (the read-audit plugin takes one list per route), so the audit row names all
 // five tiles even when the caller was shown fewer, and a no-tile 200 is still audited against the param patient id.
 // That over-reports disclosure; it never under-reports.
-import { type GuardHandler, composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type GuardHandler,
+  composeGuards,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";

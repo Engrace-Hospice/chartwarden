@@ -1,9 +1,9 @@
+import { TEMPLATE_CATEGORIES } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/template-typebox.ts - M36 WP 2.8 route schemas for message templates and
 // saved replies. Named `*-typebox` (not `*schema*`) so the table-ownership import heuristic never mistakes it for Drizzle.
 // Coarse payload caps live here; the precise bounds, the PHI lint and the platform floor are the service's (field-level
 // 422s), so a refusal always names the field and never echoes the text.
 import { type Static, Type } from "@sinclair/typebox";
-import { TEMPLATE_CATEGORIES } from "@chartwarden/messaging";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 const CategorySchema = Type.Union(TEMPLATE_CATEGORIES.map((c) => Type.Literal(c)));

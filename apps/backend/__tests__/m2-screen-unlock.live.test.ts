@@ -25,6 +25,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { auditPlatformEvent } from "@chartwarden/audit";
 import {
   createCredentialThrottle,
   createDbActorEnrichmentReader,
@@ -41,14 +42,17 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { auditPlatformEvent } from "@chartwarden/audit";
 import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M2_OUTBOX_EVENTS, createUnlockGuard, mountIdentityRoutes } from "../src/modules/02-identity/index";
+import {
+  M2_OUTBOX_EVENTS,
+  createUnlockGuard,
+  mountIdentityRoutes,
+} from "../src/modules/02-identity/index";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -221,22 +225,27 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
     // The real publisher validates every payload against the M2 catalog, so an off-catalog or wrong-shape
     // `m2.session.unlocked` fails this suite instead of being swallowed by a no-op.
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-    mountIdentityRoutes(app, handle.db as never, createDbAdminMembershipReader(handle.db as never), {
-      outbox: { publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }) },
-      passwordVerifier: createPasswordVerifier(auth),
-      unlockGuard: createUnlockGuard(createInMemoryFailedLoginStore()),
-      // The production wiring (index.ts): an org-less session's unlock rides the SECURITY DEFINER platform writer.
-      platformUnlockAudit: (input) =>
-        auditPlatformEvent(handle.db as never, {
-          eventType: input.eventType,
-          resourceKind: "session",
-          resourceId: input.sessionId,
-          outcome: input.outcome,
-          correlationId: input.correlationId,
-          retentionClass: "compliance",
-          context: { userId: input.userId },
-        }),
-    });
+    mountIdentityRoutes(
+      app,
+      handle.db as never,
+      createDbAdminMembershipReader(handle.db as never),
+      {
+        outbox: { publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }) },
+        passwordVerifier: createPasswordVerifier(auth),
+        unlockGuard: createUnlockGuard(createInMemoryFailedLoginStore()),
+        // The production wiring (index.ts): an org-less session's unlock rides the SECURITY DEFINER platform writer.
+        platformUnlockAudit: (input) =>
+          auditPlatformEvent(handle.db as never, {
+            eventType: input.eventType,
+            resourceKind: "session",
+            resourceId: input.sessionId,
+            outcome: input.outcome,
+            correlationId: input.correlationId,
+            retentionClass: "compliance",
+            context: { userId: input.userId },
+          }),
+      },
+    );
     app.get(
       "/__probe/org",
       {
@@ -296,7 +305,8 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
     expect(await auditCount("m2.session.unlocked", u.userId)).toBe(0);
     expect((await probe(cookie)).statusCode).toBe(200);
     const trail = JSON.stringify(
-      (await admin.query("SELECT context FROM audit_event WHERE actor_user_id=$1", [u.userId])).rows,
+      (await admin.query("SELECT context FROM audit_event WHERE actor_user_id=$1", [u.userId]))
+        .rows,
     );
     expect(trail).not.toContain(u.password);
   });
@@ -351,7 +361,9 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
   it("an account with no password gets 409 UNLOCK_NO_PASSWORD and burns none of its budget (#602)", async () => {
     const u = await seedStaff("nopw");
     const cookie = await signInAndBind(u);
-    await admin.query(`DELETE FROM account WHERE user_id=$1 AND provider_id='credential'`, [u.userId]);
+    await admin.query(`DELETE FROM account WHERE user_id=$1 AND provider_id='credential'`, [
+      u.userId,
+    ]);
 
     for (let i = 0; i < 7; i += 1) {
       const res = await unlock(cookie, "wrong-wrong-wrong-1");

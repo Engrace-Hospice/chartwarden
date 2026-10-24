@@ -9,7 +9,7 @@
 // write-audit trigger and the adr_case_event history are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import {
   type AdrReviewType,

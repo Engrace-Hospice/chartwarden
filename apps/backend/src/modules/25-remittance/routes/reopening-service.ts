@@ -8,7 +8,7 @@
 // write-audit trigger and the reopening_case_event history are the trail. A filed reopening is frozen by trigger.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   type AdrState,
@@ -368,7 +368,11 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
     async setDue(actor, id, dueAt, ifMatch) {
       const due = dueAt === null ? null : new Date(dueAt);
       if (due !== null && Number.isNaN(due.getTime())) {
-        throw new ChartWardenError("INVALID_DUE_DATE", "the deadline is not a real date and time", 422);
+        throw new ChartWardenError(
+          "INVALID_DUE_DATE",
+          "the deadline is not a real date and time",
+          422,
+        );
       }
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);

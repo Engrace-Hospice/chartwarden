@@ -8,13 +8,13 @@ import { ONCALL_DIRECTORY_FLAG_KEY, ROLE_SEND_FLAG_KEY } from "@chartwarden/type
 import { getSeam } from "../../../bootstrap/index";
 import { guardEscalationRouter } from "../ack-escalation/escalation-router-guard";
 import { createDbRoleReplayLookup } from "../ack-requests/role-replay-lookup";
+import type { AfterHoursLinesService } from "../afterhours-triage/afterhours-lines";
+import type { AfterHoursBinding } from "../afterhours-triage/binding";
 import { createDbChannelFactsLookup } from "../medication-questions/deps";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { cacheFlagRead } from "../presence/binding";
 import { getEscalationRouter } from "../seams";
 import { type OnCallCoverageService, createOnCallCoverageService } from "./oncall-coverage-service";
-import type { AfterHoursBinding } from "../afterhours-triage/binding";
-import type { AfterHoursLinesService } from "../afterhours-triage/afterhours-lines";
 import type { RoleSendPorts } from "./role-send-service";
 
 export interface OnCallDirectoryInput {

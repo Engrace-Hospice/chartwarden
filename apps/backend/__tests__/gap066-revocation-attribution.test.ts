@@ -15,7 +15,9 @@ describe("deriveStaffRevocationAttribution", () => {
   });
 
   it("rejects a claimed patient_self_via_portal on the staff route", () => {
-    expect(() => deriveStaffRevocationAttribution("patient_self_via_portal")).toThrow(ChartWardenError);
+    expect(() => deriveStaffRevocationAttribution("patient_self_via_portal")).toThrow(
+      ChartWardenError,
+    );
   });
 
   it("rejects platform_admin_break_glass on the staff route", () => {

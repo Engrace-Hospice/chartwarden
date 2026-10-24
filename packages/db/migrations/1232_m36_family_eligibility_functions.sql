@@ -6,7 +6,7 @@
 --   message_family_person(pc)    one row: patient, caregiver, relationship, tenancy ids, the eligibility reason, the mode and the language
 --   message_family_caregivers(p) the caregiver ids of a patient, primary first (the invite picker)
 --   message_family_counsellor    is this user the assigned counsellor of the patient's open bereavement plan (D15: the staff side after a death)
--- The reason is the FIRST cause that applies: blocked, involvement (not started / ended), Part 2 (sud flag, or a snapshot being recomputed), then for a
+-- The reason is the FIRST cause that applies: blocked, involvement (not started / ended), Part 2 (sud flag, a snapshot being recomputed, or NO snapshot at all: fail closed), then for a
 -- living patient (active / on hold) an ACTIVE family_caregiver_access consent that names this caregiver with a messaging scope, or for a deceased patient
 -- membership of the OPEN bereavement plan inside its 13 month window plus a surviving consent. The legal-representative (DPOA) route is deliberately NOT
 -- honoured: nothing here proves the DPOA consent names THIS caregiver, so it fails closed.
@@ -22,10 +22,10 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public, pg_te
          (CASE
             WHEN c.blocked_at IS NOT NULL THEN 'blocked'
             WHEN pc.involvement_from > current_date OR (pc.involvement_to IS NOT NULL AND pc.involvement_to < current_date) THEN 'involvement_ended'
-            WHEN EXISTS (
+            WHEN NOT EXISTS (
               SELECT 1 FROM patient_privacy_flag_snapshot f
                WHERE f.organization_id = pc.organization_id AND f.patient_id = pc.patient_id
-                 AND ('sud' = ANY(f.flags) OR f.invalidated_at IS NOT NULL)) THEN 'part2_restricted'
+                 AND f.invalidated_at IS NULL AND NOT ('sud' = ANY(f.flags))) THEN 'part2_restricted'
             WHEN pt.status::text IN ('active', 'on_hold') THEN
               CASE WHEN EXISTS (
                 SELECT 1 FROM delegated_access da

@@ -13,7 +13,12 @@
 // A notice that is ALREADY `ack_accepted` (the electronic path got there first) is left untouched: the electronic
 // answer stays the notice's truth and the queue item just records its own outcome.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
-import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "@chartwarden/types";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
 export type DdeNoticeKind = "noe" | "notr";

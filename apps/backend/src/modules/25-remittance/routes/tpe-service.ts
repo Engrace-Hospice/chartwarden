@@ -8,7 +8,7 @@
 // alerts: the write-audit triggers are the trail, and ADR deadlines already alert through the ADR flow.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   TPE_MAX_ROUNDS,
@@ -589,7 +589,11 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       requireNotFuture(input.outcomeOn, "OUTCOME_DATE_IN_FUTURE", "the outcome date");
       const kinds = [...new Set(input.referralKinds ?? [])];
       if (kinds.some((k) => !(TPE_REFERRAL_KINDS as readonly string[]).includes(k))) {
-        throw new ChartWardenError("INVALID_REFERRAL_KIND", "a referral type is not recognised", 422);
+        throw new ChartWardenError(
+          "INVALID_REFERRAL_KIND",
+          "a referral type is not recognised",
+          422,
+        );
       }
       if (input.kind === "referred" && kinds.length === 0) {
         throw new ChartWardenError(
@@ -606,7 +610,11 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
         );
       }
       if (input.kind === "referred" && input.reliefUntil) {
-        throw new ChartWardenError("RELIEF_ON_REFERRAL", "a referral carries no relief end date", 422);
+        throw new ChartWardenError(
+          "RELIEF_ON_REFERRAL",
+          "a referral carries no relief end date",
+          422,
+        );
       }
       if (input.reliefUntil) {
         requireRealDay(input.reliefUntil, "INVALID_RELIEF_DATE", "the relief end date");
