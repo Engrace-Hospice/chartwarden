@@ -86,6 +86,9 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MEMBER = "44444444-4444-4444-4444-444444444444";
+/** GAP-011: one membership fills at most ONE slot per version, so the physician seat needs its own membership. */
+const PHYSICIAN_USER = "33333333-3333-3333-3333-333333333334";
+const PHYSICIAN_MEMBER = "44444444-4444-4444-4444-444444444445";
 
 describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgres", () => {
   let admin: Client;
@@ -150,6 +153,11 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
     await admin.query(
       "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
       [MEMBER, USER, ORG_A],
+    );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f161-md@x.test')`, [PHYSICIAN_USER]);
+    await admin.query(
+      "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
+      [PHYSICIAN_MEMBER, PHYSICIAN_USER, ORG_A],
     );
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
@@ -278,7 +286,7 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
       3,
       "hospice_physician",
       new Date().toISOString(),
-      { userId: USER, membershipId: MEMBER, roles: ["hospice_physician"] },
+      { userId: PHYSICIAN_USER, membershipId: PHYSICIAN_MEMBER, roles: ["hospice_physician"] },
     );
     return boot.initialVersionId;
   }
