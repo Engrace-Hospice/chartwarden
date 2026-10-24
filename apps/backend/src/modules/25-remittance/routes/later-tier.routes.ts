@@ -69,6 +69,7 @@ export const RecordedDeadlineViewSchema = Type.Object({
     Type.Literal("appeal"),
     Type.Literal("audit_request"),
     Type.Literal("payer_appeal"),
+    Type.Literal("beneficiary_appeal"),
   ]),
   subjectId: Type.String(),
   label: Type.String(),

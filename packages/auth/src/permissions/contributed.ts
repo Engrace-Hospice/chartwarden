@@ -3762,6 +3762,46 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "none",
   },
+  // --- beneficiary appeals and appointments of representative (milestone 13a; migration 1240, granted by 1242) ---
+  // Record-keeping only. `beneficiary_appeal.*` records an appeal the beneficiary or their representative filed;
+  // `representative.*` drafts an appointment record, and `.verify` is the SECOND person who activates or revokes it (step-up
+  // gated). `representative_form.configure` enters the organization's own appointment form versions (nothing is seeded).
+  "beneficiary_appeal.read": {
+    resource: "beneficiary_appeal",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "beneficiary_appeal.manage": {
+    resource: "beneficiary_appeal",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative.read": {
+    resource: "representative_appointment",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative.manage": {
+    resource: "representative_appointment",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative.verify": {
+    resource: "representative_appointment",
+    action: "verify",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative_form.configure": {
+    resource: "representative_form_version",
+    action: "configure",
+    category: "billing",
+    abac: "inOrg",
+  },
   // --- taxonomy surface ---
   "taxonomy.read": {
     resource: "denial_taxonomy",

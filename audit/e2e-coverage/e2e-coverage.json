@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 200,
+  "totalStaticWebScreens": 201,
   "e2eReachedCount": 20,
-  "axeReachedCount": 189,
+  "axeReachedCount": 190,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -1057,6 +1057,14 @@
       "module": "25-remittance",
       "path": "/remittance/report",
       "permission": "medical_review.report.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.representative-forms",
+      "module": "25-remittance",
+      "path": "/remittance/representative-forms",
+      "permission": "representative_form.configure",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2717,6 +2725,14 @@
       "module": "25-remittance",
       "path": "/remittance/report",
       "permission": "medical_review.report.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.representative-forms",
+      "module": "25-remittance",
+      "path": "/remittance/representative-forms",
+      "permission": "representative_form.configure",
       "e2eReached": false,
       "axeReached": true
     },

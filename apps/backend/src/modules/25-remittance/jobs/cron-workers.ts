@@ -294,7 +294,8 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
               sql`${RD.satisfiedOn} IS NULL
                 AND (${RD.appealCaseId} IS NULL OR EXISTS (SELECT 1 FROM appeal_case a WHERE a.id = ${RD.appealCaseId} AND a.state::text NOT IN ('closed','withdrawn')))
                 AND (${RD.auditRequestId} IS NULL OR EXISTS (SELECT 1 FROM audit_request r WHERE r.id = ${RD.auditRequestId} AND r.state NOT IN ('closed','withdrawn')))
-                AND (${RD.payerAppealCaseId} IS NULL OR EXISTS (SELECT 1 FROM payer_appeal_case p WHERE p.id = ${RD.payerAppealCaseId} AND p.state NOT IN ('closed','withdrawn')))`,
+                AND (${RD.payerAppealCaseId} IS NULL OR EXISTS (SELECT 1 FROM payer_appeal_case p WHERE p.id = ${RD.payerAppealCaseId} AND p.state NOT IN ('closed','withdrawn')))
+                AND (${RD.beneficiaryAppealId} IS NULL OR EXISTS (SELECT 1 FROM beneficiary_appeal b WHERE b.id = ${RD.beneficiaryAppealId} AND b.state NOT IN ('closed','withdrawn')))`,
             )
             .limit(100000);
           for (const r of rows) readBoundary.set(r.id, r.lastAlertedBoundary);
@@ -304,8 +305,13 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
               ? ("appeal" as const)
               : r.payerAppealCaseId
                 ? ("payer_appeal" as const)
-                : ("audit_request" as const),
-            subjectId: (r.appealCaseId ?? r.payerAppealCaseId ?? r.auditRequestId) as string,
+                : r.beneficiaryAppealId
+                  ? ("beneficiary_appeal" as const)
+                  : ("audit_request" as const),
+            subjectId: (r.appealCaseId ??
+              r.payerAppealCaseId ??
+              r.beneficiaryAppealId ??
+              r.auditRequestId) as string,
             dueOn: r.dueOn,
             zone: r.zone,
             satisfiedOn: r.satisfiedOn,

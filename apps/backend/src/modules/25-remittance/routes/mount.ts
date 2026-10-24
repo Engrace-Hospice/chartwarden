@@ -13,6 +13,7 @@ import { registerAdrRoutes } from "./adr.routes";
 import { registerAppealRoutes } from "./appeals.routes";
 import { registerAuditRequestRoutes } from "./audit-request.routes";
 import { registerAuditResponseRoutes } from "./audit-response.routes";
+import { registerBeneficiaryAppealRoutes } from "./beneficiary-appeal.routes";
 import { registerCaseViewRoutes } from "./case-view.routes";
 import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
@@ -25,6 +26,7 @@ import { registerPayerAppealRoutes } from "./payer-appeal.routes";
 import { registerQicRoutes } from "./qic.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerReopeningRoutes } from "./reopening.routes";
+import { registerRepresentativeRoutes } from "./representative.routes";
 import { registerSubmissionRoutes } from "./submission.routes";
 import { registerTaxonomyRoutes } from "./taxonomy.routes";
 import { registerTpeRoutes } from "./tpe.routes";
@@ -54,6 +56,14 @@ export {
   type PayerAppealPathRouteDeps,
 } from "./payer-appeal-path.routes";
 export { registerPayerAppealRoutes, type PayerAppealRouteDeps } from "./payer-appeal.routes";
+export {
+  registerRepresentativeRoutes,
+  type RepresentativeRouteDeps,
+} from "./representative.routes";
+export {
+  registerBeneficiaryAppealRoutes,
+  type BeneficiaryAppealRouteDeps,
+} from "./beneficiary-appeal.routes";
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
@@ -95,6 +105,16 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   if (services.payerAppealService) {
     registerPayerAppealRoutes(app, {
       payerAppealService: services.payerAppealService,
+      ...(services.laterTierService ? { laterTierService: services.laterTierService } : {}),
+    });
+  }
+  // Milestone 13a: the organization's appointment form versions and appointments of representative, and beneficiary-filed appeals.
+  if (services.representativeService) {
+    registerRepresentativeRoutes(app, { representativeService: services.representativeService });
+  }
+  if (services.beneficiaryAppealService) {
+    registerBeneficiaryAppealRoutes(app, {
+      beneficiaryAppealService: services.beneficiaryAppealService,
       ...(services.laterTierService ? { laterTierService: services.laterTierService } : {}),
     });
   }

@@ -1131,6 +1131,8 @@ import {
   buildDrizzleLaterTierService,
   buildDrizzlePayerAppealPathService,
   buildDrizzlePayerAppealService,
+  buildDrizzleRepresentativeService,
+  buildDrizzleBeneficiaryAppealService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
@@ -1147,6 +1149,7 @@ import {
   buildM25WorkerDeps,
   buildMedicalReviewReportService,
   buildSeamAppealSourcePorts,
+  buildSeamLinkedDocumentPort,
   createDrizzleRemittanceEraseStore,
   mountM25Routes,
   registerM25AbacPredicates,
@@ -6057,6 +6060,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               sources: buildSeamAppealSourcePorts(),
               providerZones: (tx, providerEntityId) =>
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
+            // Milestone 13a: the organization's appointment form versions and appointments of representative (the signed copy is
+            // validated through M22's active-version seam; a second person activates), and beneficiary-filed appeals keyed on the
+            // claim. Record-keeping only: nothing is computed, filed or seeded.
+            representativeService: buildDrizzleRepresentativeService(dbHandle.db, {
+              documents: buildSeamLinkedDocumentPort(),
+            }),
+            beneficiaryAppealService: buildDrizzleBeneficiaryAppealService(dbHandle.db, {
+              documents: buildSeamLinkedDocumentPort(),
             }),
             // Milestone 8a-1: advisory documentation readiness. The assistant port is the deny-stub (no model is
             // reachable); the deterministic gap view and the review record work with AI off.

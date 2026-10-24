@@ -28,6 +28,7 @@ const TimelineItemSchema = Type.Object({
     Type.Literal("audit_request"),
     Type.Literal("submission"),
     Type.Literal("payer_appeal"),
+    Type.Literal("beneficiary_appeal"),
   ]),
   at: Type.String(),
   label: Type.String(),
@@ -37,6 +38,8 @@ const TimelineItemSchema = Type.Object({
   deadlineAt: NULLABLE_STRING,
   deadlineSource: Type.Union([Type.Literal("computed"), Type.Literal("recorded"), Type.Null()]),
   windowConfirmed: Type.Boolean(),
+  /** A beneficiary appeal carries the representative-status badge (derived from typed dates; null = not applicable). */
+  flags: Type.Optional(Type.Object({ representativeStatus: NULLABLE_STRING })),
 });
 
 export const CaseViewSchema = Type.Object({
@@ -87,6 +90,7 @@ export function registerCaseViewRoutes(app: FastifyInstance, deps: CaseViewRoute
           includeReopening: granted.has("reopening.read"),
           includeAudits: granted.has("audit_request.read"),
           includePayerAppeals: granted.has("payer_appeal.read"),
+          includeBeneficiaryAppeals: granted.has("beneficiary_appeal.read"),
         }),
       );
     },
@@ -119,6 +123,7 @@ export function registerCaseViewRoutes(app: FastifyInstance, deps: CaseViewRoute
           includeReopening: granted.has("reopening.read"),
           includeAudits: granted.has("audit_request.read"),
           includePayerAppeals: granted.has("payer_appeal.read"),
+          includeBeneficiaryAppeals: granted.has("beneficiary_appeal.read"),
         }),
       );
     },
