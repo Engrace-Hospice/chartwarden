@@ -5,7 +5,7 @@ export const BREADCRUMB = "Messaging";
 export const INTRO =
   "Outside systems that send an alarm notice into ChartWarden. Each one appears as an alert in the inbox of the people your alert rules name.";
 export const NOT_A_NURSE_CALL =
-  "This is a notice only. It does not replace your nurse-call or monitoring system, nobody is paged by it, and a missed notice is not a missed alarm to act on. Keep using the system the alarm came from.";
+  "This is a notice only. It does not replace your nurse-call or monitoring system. Keep responding to alarms in the system they came from.";
 export const READ_ONLY =
   "This list is read only. Creating a source, replacing its secret and disabling it are done through the API and each needs a fresh sign-in check.";
 export const NO_SOURCES_TITLE = "No alarm sources";

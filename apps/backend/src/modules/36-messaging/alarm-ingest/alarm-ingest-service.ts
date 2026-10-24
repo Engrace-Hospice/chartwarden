@@ -89,7 +89,7 @@ export interface AlarmIngestService {
 
 /** The one refusal body of the inbound route. */
 const refused = (): UnauthorizedError => new UnauthorizedError("Alarm request refused");
-/** Compared against when the credential is unknown or disabled, so a missing source costs one HMAC like a present one. */
+/** Compared against when the credential is unknown or disabled, so a missing source costs the same HMAC (the envelope open is not mirrored). */
 const DUMMY_SECRET = "wxas_unknown_credential_equalises_timing";
 
 function invalid(field: string, message: string): ValidationError {
@@ -192,7 +192,15 @@ export function createAlarmIngestService(deps: AlarmIngestServiceDeps): AlarmIng
       !inAlarmReplayWindow(request.timestamp, now().getTime())
     )
       throw refused();
-    if (!(await isEnabled(key.organizationId))) throw refused();
+    // Ids only, and only once they have matched the uuid shape: nothing else sender-controlled reaches a log. The response stays uniform.
+    const refuse = (reason: string): never => {
+      warn("m36.alarm_ingest.refused", {
+        reason,
+        organizationId: key.organizationId,
+        sourceId: key.sourceId,
+      });
+      throw refused();
+    };
     const source = await deps.store.loadSource(key.organizationId, key.sourceId);
     const live = source?.enabled === true;
     // A key-unavailable failure is infrastructure (503), not a verdict on the caller: it propagates so a real sender retries.
@@ -208,7 +216,10 @@ export function createAlarmIngestService(deps: AlarmIngestServiceDeps): AlarmIng
       },
       request.signature,
     );
-    if (!live || !matches) throw refused();
+    if (!live) return refuse("unknown_or_disabled");
+    if (!matches) return refuse("bad_signature");
+    // The tenant flag is read only AFTER the signature is proven, so an unauthenticated caller cannot make a flag read for an org of its choosing.
+    if (!(await isEnabled(key.organizationId))) return refuse("flag_off");
     return { organizationId: key.organizationId, source, rawBody: request.rawBody };
   }
 

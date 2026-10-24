@@ -29,7 +29,11 @@ export function useAlarmSources(): {
   );
   const { view, reload, refreshFailed } = useRead(fetcher);
   const mapped = useMemo<LoadView<readonly AlarmSourceDto[]>>(
-    () => (view.status === "ready" ? { status: "ready", data: view.data.sources ?? [] } : view),
+    () => (view.status !== "ready"
+        ? view
+        : Array.isArray(view.data.sources)
+          ? { status: "ready", data: view.data.sources }
+          : { status: "error" }),
     [view],
   );
   return { view: mapped, reload, refreshFailed };

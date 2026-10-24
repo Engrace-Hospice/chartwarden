@@ -75,10 +75,10 @@ describe("alarm sources screen", () => {
     expect(screen.getByText(/Secret version 2/)).toBeTruthy();
   });
 
-  it("is read only: no button creates, rotates or disables, and no secret is shown", async () => {
+  it("is read only: only Refresh is offered (nothing creates, rotates or disables), and no secret is shown", async () => {
     const { POST } = mount();
     await screen.findByText("Ward 2 bed sensors");
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Refresh"]);
     expect(screen.getByText(/This list is read only/)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/wxas_/);
     expect(POST).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe("alarm sources screen", () => {
     expect(screen.getByText(/does not replace your nurse-call or monitoring system/)).toBeTruthy();
     const text = (document.body.textContent ?? "").toLowerCase();
     expect(text).not.toContain("emergency");
-    expect(text).not.toMatch(/\bpaged to\b|\bwill be paged\b/);
+    expect(text).not.toMatch(/\bpag(e|ed|es|ing)\b/);
   });
 
   it("makes a silent drop visible: alarms with nobody to alert, an unmapped code or still waiting raise a plain warning", async () => {
@@ -112,9 +112,28 @@ describe("alarm sources screen", () => {
     expect(await screen.findByText("No alarm sources")).toBeTruthy();
   });
 
-  it("says denied for a 403, offers Retry on an error, and keeps the list with an alert when a refresh fails", async () => {
+  it("keeps the list and raises an alert when a refresh fails, then clears it", async () => {
+    let calls = 0;
+    mount(() => {
+      calls += 1;
+      if (calls === 1) return ok({ sources: [source()] });
+      return calls === 2 ? fail(500) : ok({ sources: [source()] });
+    });
+    expect(await screen.findByText("Ward 2 bed sensors")).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Refresh" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("could not be refreshed");
+    expect(screen.getByText("Ward 2 bed sensors")).toBeTruthy();
+    await userEvent.setup().click(within(alert).getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("says denied for a 403 and sign-in for a 401, and offers Retry on an error", async () => {
     mount(() => fail(403));
     expect(await screen.findByText(/You do not have access to alarm sources/)).toBeTruthy();
+    cleanup();
+    mount(() => fail(401));
+    expect(await screen.findByText(/Sign in/i)).toBeTruthy();
     cleanup();
     let calls = 0;
     mount(() => (++calls === 1 ? fail(500) : ok({ sources: [source()] })));

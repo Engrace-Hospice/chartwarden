@@ -5210,6 +5210,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   limit,
                   windowMs: 60 * 1000,
                   keyPrefix,
+                  // Fail CLOSED: the pre-auth budget is the abuse control of an unauthenticated route; senders retry on 429.
+                  failClosed: true,
                   onStoreError: (err) => app.log.warn({ err }, "alarm ingest rate-limit store error"),
                 });
               return {

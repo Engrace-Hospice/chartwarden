@@ -552,7 +552,7 @@ the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on wh
 |---|---|
 | Route / app | `/messaging/alarm-sources`, `apps/web`, nav group Admin |
 | Permission / flag | `messaging.alarm_ingest.manage`; tenant flag `messaging.alarm_ingest` (the list never depends on it; creating and rotating do) |
-| Endpoint | `GET /api/v1/messaging/alarm-sources` (create, rotate-secret and disable are API calls with a fresh step-up; the screen has no button) |
+| Endpoint | `GET /api/v1/messaging/alarm-sources` (create, rotate-secret and disable are API calls with a fresh step-up; the screen has only Refresh) |
 | Shows | per source: name, Active or Disabled (a word), what each alarm code becomes and its ceiling (Information only, Up to warning), last delivered, secret version, and the last 24 hours as `N alerted, N with nobody to alert, N unmapped code, N waiting`; a plain warning when any of the last three is above zero |
 | Always says | a notice only; does not replace the nurse-call or monitoring system; nobody is paged by it. Never uses the word emergency |
 | States | loading, empty ("No alarm sources"), denied, error with Retry, refresh-failed alert that keeps the list. No secret is ever rendered |

@@ -20,7 +20,7 @@ function SourceRow({ source }: { readonly source: AlarmSourceDto }): JSX.Element
   const titleId = `wx-alarm-source-${source.id}`;
   const attention = source.last24h.noRecipients + source.last24h.unmapped + source.last24h.pending;
   return (
-    <li className="wx-export-row">
+    <li className="wx-export-row" aria-labelledby={titleId}>
       <div className="wx-export-main">
         <span className="wx-export-title" id={titleId}>
           {source.name}
@@ -31,7 +31,7 @@ function SourceRow({ source }: { readonly source: AlarmSourceDto }): JSX.Element
           {source.rotatedAt ? ` (replaced ${formatTime(source.rotatedAt)})` : ""}
           {source.disabledAt ? ` · Disabled ${formatTime(source.disabledAt)}` : ""}
         </span>
-        <ul className="wx-export-detail" aria-label={`Alarm codes of ${source.name}`}>
+        <ul className="wx-export-detail wx-export-codes" aria-label={`Alarm codes of ${source.name}`}>
           {source.mappings.map((m) => (
             <li key={m.alarmKind}>
               <code>{m.alarmKind}</code> becomes {W.kindWord(m.alertType)} ·{" "}
@@ -67,8 +67,13 @@ export function AlarmSources(): JSX.Element {
           <strong>{W.NOT_A_NURSE_CALL}</strong>
         </p>
       </PageHeader>
-      <div className="wx-export">
+      <section className="wx-export" aria-label="Alarm sources overview">
         <p className="wx-export-detail">{W.READ_ONLY}</p>
+        <div>
+          <Button type="button" tone="secondary" size="lg" onClick={reload}>
+            Refresh
+          </Button>
+        </div>
         {refreshFailed && view.status === "ready" ? (
           <div className="wx-export-error" role="alert">
             <p>{W.REFRESH_FAILED}</p>
@@ -82,7 +87,7 @@ export function AlarmSources(): JSX.Element {
             sources.length === 0 ? (
               <EmptyState title={W.NO_SOURCES_TITLE} description={W.NO_SOURCES_TEXT} />
             ) : (
-              <ul className="wx-export-rows" aria-label="Alarm sources">
+              <ul className="wx-export-rows" aria-label="Configured alarm sources">
                 {sources.map((s) => (
                   <SourceRow key={s.id} source={s} />
                 ))}
@@ -90,7 +95,7 @@ export function AlarmSources(): JSX.Element {
             )
           }
         </LoadGate>
-      </div>
+      </section>
     </>
   );
 }
