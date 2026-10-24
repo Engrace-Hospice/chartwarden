@@ -761,6 +761,7 @@ export function createDbSchedulingBackend(
         patientAddressId: input.patientAddressId,
         externalFacilityId: input.externalFacilityId,
         rescheduledIntoVisitId: null,
+        cancellationReasonCode: null,
       },
       timezone,
     );

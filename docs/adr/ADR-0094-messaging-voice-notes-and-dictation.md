@@ -1,6 +1,6 @@
 # ADR-0094 — Messaging voice notes and dictation: audio is a scanned attachment; dictation is off until a BAA-covered server-side path exists
 
-- **Status:** **Proposed** (2026-10-23). Nothing is built. No code, no migration, no flag exists for this work yet. The privacy officer and BAA decisions below are NOT recorded.
+- **Status:** **Proposed** (2026-10-23). Decision 1 (voice notes as scanned attachments) is built behind the new per-tenant flag `messaging.voice_notes`, default off; no migration, no table. Decision 2 (dictation) is NOT built: option A is rejected and guarded by a test, and option B has no M32 speech backend to build on. The privacy officer, clinical-lead, AI-safety and BAA decisions below are NOT recorded; they are required before any tenant turns the flag on.
 - **Date:** 2026-10-23
 - **Phase:** Messaging Hub Phase 6, WP 6.3.
 - **Related:** [ADR-0086](ADR-0086-messaging-retention-and-legal-hold.md) (retention, hold overlay, attachment-object destruction, redaction), [ADR-0093](ADR-0093-messaging-multilingual-ui-and-templates.md) (ADR style), [ADR-0074](ADR-0074-messaging-lock-screen-privacy.md) (no preview in push), `docs/messaging-hub/04-phases-4-to-6.md` row 6.3, `docs/messaging-hub/10-ui-spec-phases-4-to-6.md` section 6.3, `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md` section 9, `docs/modules/CHARTWARDEN_MODULE_32_AI_PLATFORM_SPEC_v0_2.md`.
@@ -66,12 +66,27 @@ Decision: C now, B as the only future path, A rejected outright.
 5. **Native app:** out of scope and waits. A native client has its own microphone permission, background recording and OS speech frameworks with their own vendor terms. A native decision must extend or supersede this ADR.
 6. Microphone permission is requested only when the user starts a recording. Any `Permissions-Policy` must allow `microphone=(self)` only; the current header configuration was not checked.
 
+## Implementation status (WP 6.3, built 2026-10-23)
+
+Decision 1 only. Built:
+
+- **Flag:** `messaging.voice_notes` (`VOICE_NOTES_FLAG_KEY`, `packages/types/src/messaging-voice-notes.ts`), read through the platform feature-flag reader (tenant row wins; absent = off; a read that throws = off), cached a few seconds per org. It gates (a) the server: `authorize` answers the same 415 as for any disallowed type for `audio/webm` and `audio/mp4` while it is off, and (b) the web: the recorder button and the inline player are offered only while it is on. It does not gate access to a note that already exists: with the flag off a stored note is an ordinary file row (the "Open in a new tab" path), still scan-gated, redaction-masked and held exactly as before.
+- **Server:** both audio types are on `ATTACHMENT_MIME_ALLOWLIST`; `validateAuthorizeInput` takes the flag and applies an 8,000,000 byte cap to them (422), leaving the 25,000,000 byte ceiling for everything else; `matchesDeclaredType` has explicit cases (EBML `1A 45 DF A3` for webm, `ftyp` at offset 4 for mp4), so audio never falls into the zip default. The built-in scanner is still only a signature check; which scanner production runs is still an open question (Operations, below). The duration cap is not enforced server-side (the server does not parse container duration).
+- **No new table, no migration, no new route.** Authorize, complete, scan, bind-on-send, the 120 s presigned GET with a re-authorization and an `attachment_access_event` on every open, the hold overlay, retention and redaction are the existing attachment code paths. Live tests prove, for audio: flag off or unreadable gives 415 and no row; over 8 MB gives 422 and other audio types 415; a clean note is delivered to the recipient and opens once with one access event; a webm-declared file with other bytes is quarantined and cannot be sent; a note stays openable after the flag is turned off; an approved redaction makes it unplayable for everyone (404, a `message_redacted` denial logged); a held note's audio object is not destroyed.
+- **Push:** unchanged. A voice note is an attachment-bearing message and takes the generic ADR-0074 push (no duration, no transcript, no "voice message from X").
+- **Web:** a microphone button in the composer opens a flat panel: Record, Pause/Resume, Stop, Listen (native `<audio controls>`), Discard, Attach. The microphone is requested only when Record is pressed. The timer is text ("Recording, 0:42 of 5:00", `role="timer"`, not announced each second; state changes are announced). The recorder stops itself at 5:00 and says so; a recording over 8 MB, an empty one, a denied or missing microphone, a recorder error, a microphone that ends mid-recording and a page that is hidden mid-recording all end in a text message and nothing kept. The file is `audio/webm` (Opus) or, where only that is supported, `audio/mp4`, named by time only, and goes through the normal upload chip. Playback: a "Play" button fetches the presigned URL on demand and hands it to a native `<audio controls>`; if the link expires the player is dropped and Play is offered again.
+- **Typed body required (5.1):** with a voice note attached, Send stays disabled and the composer says why until the message has typed text. This is enforced in the web composers and in the sender hook; the server does not enforce it (an API client can still send a note with no body). Moving it server-side, and the question of whether field nurses accept it, are open (Clinical lead, below).
+- **Dictation (decision 2) is not built.** There is no speech code, no `SpeechRecognition` or `webkitSpeechRecognition` reference, and no flag for it. A test (`apps/web/src/modules/36-messaging/no-browser-speech.test.ts`) fails if either name appears in `apps/web/src` or `apps/admin/src`, so option A cannot return silently. Decision 3 (transcripts as unsent drafts) therefore has nothing to apply to yet.
+
+Not verified: real-device behaviour on iOS Safari and Android Chrome (recording, backgrounding, `audio/mp4` playback), the `Permissions-Policy` header and the CSP `media-src` for presigned URLs in a deployed environment. The recorder and player are exercised only against a faked `MediaRecorder` in jsdom.
+
 ## Not done (follow-ups, in order)
 
-1. Human sign-off on the open questions below. Until then nothing builds that sends audio to a third party.
-2. Implementation WP for section 1 only: allowlist plus signature cases, per-type cap, recorder component, text-body-required rule, live tests (scan gate with audio, redacted note cannot be played, held note not destroyed), the `SpeechRecognition` check.
-3. Section 2B only after the privacy officer chooses a backend and the M32 capability, BAA and eval exist.
-4. Transcripts of already-sent notes for readers: would be server-side processing of stored audio; needs its own ADR and the same BAA.
+1. Human sign-off on the open questions below. No tenant should turn `messaging.voice_notes` on before the privacy officer's voiceprint/retention answer, the clinical lead's typed-body answer and the Operations scanner answer are recorded.
+2. Section 2B (server-side dictation) only after the privacy officer chooses a backend and the M32 capability, BAA and eval exist. Nothing for it is built.
+3. Server-side enforcement of the typed-body rule, if the clinical lead confirms it.
+4. A device test on iOS Safari and Android Chrome, and a check of `Permissions-Policy` (`microphone=(self)`) and CSP `media-src`.
+5. Transcripts of already-sent notes for readers: would be server-side processing of stored audio; needs its own ADR and the same BAA.
 
 ## Open questions requiring human sign-off
 

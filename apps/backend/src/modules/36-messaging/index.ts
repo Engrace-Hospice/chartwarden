@@ -264,7 +264,12 @@ export function mountMessagingRoutes(
     sendEndpointVerificationCode?: EndpointVerificationSender;
     outbox?: MessagingOutboxPort;
     /** WP 1.5: object storage + malware scanner. No scanner => attachments stay pending (nothing is delivered). */
-    attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
+    attachments?: {
+      storage: AttachmentStoragePort;
+      scanner?: ScanPort | undefined;
+      /** WP 6.3 (ADR-0094): the tenant flag `messaging.voice_notes`. Omitted => audio uploads are refused (415). */
+      voiceNotesEnabled?: ((orgId: string) => Promise<boolean>) | undefined;
+    };
     /** WP 2.7b: global search. Omitted => inert (throwing key provider, fail-closed limiter, flags OFF). */
     globalSearch?: GlobalSearchMountOptions;
     /** WP 2.7b C4: true only once the ADR-0058 P2 per-route rate limit covers the search routes. Default false => ON refused. */
@@ -453,6 +458,7 @@ export function mountMessagingRoutes(
         db,
         storage: opts.attachments.storage,
         scanner: opts.attachments.scanner,
+        voiceNotesEnabled: opts.attachments.voiceNotesEnabled,
         outbox: opts.outbox,
         canViewChannel: service.canViewChannel,
       }),
@@ -677,6 +683,7 @@ export {
   scheduleM36AttachmentScanJobs,
 } from "./attachments/attachment-scan-worker";
 export { registerAttachmentRoutes } from "./routes/attachment-routes";
+export { buildVoiceNotesEnabled } from "./attachments/voice-notes-flag";
 
 // WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @chartwarden/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";
