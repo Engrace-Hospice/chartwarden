@@ -394,13 +394,20 @@ describe.skipIf(!DB_URL)(
 
     // ── privileges: no DELETE anywhere (§3.7 shreds in place) ─────────────────────────────────────────
 
-    it("grants chartwarden_app DELETE on NOTHING in M28 — the eraser shreds in place", async () => {
+    // The single deliberate exception is the operational 90-day session sweeper (migration 0354, GAP-084):
+    // DELETE on `fhir_client_session` only — no PHI, RLS-scoped, audited. Every other M28 table stays
+    // DELETE-free; widening this list is a security decision, not a test fix.
+    const DELETE_GRANTED_BY_DESIGN = new Set(["fhir_client_session"]);
+
+    it("grants chartwarden_app DELETE on nothing in M28 except the 0354 session sweeper — the eraser shreds in place", async () => {
       for (const table of ALL_TABLES) {
         const { rows } = await db.query<{ has: boolean }>(
           "SELECT has_table_privilege('chartwarden_app', $1, 'DELETE') AS has",
           [table],
         );
-        expect(rows[0].has, `chartwarden_app may DELETE ${table}`).toBe(false);
+        expect(rows[0].has, `chartwarden_app DELETE on ${table}`).toBe(
+          DELETE_GRANTED_BY_DESIGN.has(table),
+        );
       }
     });
 
