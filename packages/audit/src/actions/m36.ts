@@ -229,4 +229,13 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m36.ai.summary_viewed", // WP 6.5 (ADR-0095) - a member asked for an AI summary or reply draft of a conversation
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A conversation member asked for an AI summary or a reply draft (resource = the channel; actor, kind summary|draft, the M32 invocation id, included and withheld counts). Ids and counts only: never a message, a name, a summary or a draft. The disclosure itself is the M32 ai_invocation row.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

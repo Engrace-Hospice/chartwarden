@@ -37,6 +37,7 @@ import type {
 import {
   ChartWardenError,
   ForbiddenError,
+  MESSAGING_AI_USE_PERMISSION,
   MESSAGING_RETENTION_MANAGE_PERMISSION,
   UnauthorizedError,
 } from "@chartwarden/types";
@@ -50,6 +51,7 @@ import {
 } from "./afterhours-triage-routes";
 import { resolveRichWrite } from "../rich-body-codec";
 import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
+import { type AiRouteDeps, DISABLED_AI, registerAiRoutes } from "./ai-routes";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
 import {
   type ClinicalLinkRouteDeps,
@@ -191,6 +193,8 @@ export interface MessagingRouteDeps {
   ackBroadcast?: AckBroadcastRouteDeps;
   /** ADR-0082: the budget of the after-hours thread-line read. */
   afterHoursTriageRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  /** WP 6.5 (ADR-0095): AI summaries and reply drafts (tenant flag `messaging.ai.enabled`). Omitted => the panel is absent and every call is the uniform 404. */
+  ai?: AiRouteDeps;
   /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
   oncall?: OnCallRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
@@ -303,6 +307,7 @@ const canSeeLegalHold = async (request: FastifyRequest): Promise<boolean> => {
   return (await resolveActorPermissions(ctx)).has(MESSAGING_RETENTION_MANAGE_PERMISSION);
 };
 const SEND = requirePermission("messaging.send") as PreHandler;
+const USE_AI = requirePermission(MESSAGING_AI_USE_PERMISSION) as PreHandler;
 const DM = requirePermission("messaging.dm") as PreHandler;
 const MANAGE_MEMBERS = requirePermission("messaging.manage_members") as PreHandler;
 // Break-glass is read-only: it must never open a member write (a PHI grant path).
@@ -572,6 +577,14 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       : DISABLED_AFTERHOURS_TRIAGE,
     { read: READ, viewChannel: VIEW_CHANNEL },
   );
+
+  // --- WP 6.5 (ADR-0095, PROPOSED): AI summaries and reply drafts. The MEMBERSHIP predicate, never the break-glass read variant. ---
+  registerAiRoutes(app, deps.ai ?? DISABLED_AI, {
+    read: READ,
+    viewChannel: VIEW_CHANNEL,
+    sendToChannel: SEND_TO_CHANNEL,
+    useAi: USE_AI,
+  });
 
   // --- WP 4.10: snooze (non-urgent only) and reminders; the caller's own rows, flag-gated ---
   registerSnoozeReminderRoutes(app, deps.snoozeReminders ?? DISABLED_SNOOZE_REMINDER, {

@@ -81,6 +81,7 @@ import {
 import type {
   AdmissionStatusReader,
   ChartPromotionSourceReader,
+  MessagingAiPort,
   OrgId,
   PatientAddressReader,
   PatientId,
@@ -304,6 +305,7 @@ import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-ra
 import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
+  AI_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
@@ -1376,6 +1378,7 @@ import {
   createDrizzleAiTenantConsentStore,
   createFilesystemAiPromptArtifactReader,
   createM32EventEmitter,
+  createMessagingAiPort,
   createOrganizationSettingsAiTokenBudgetResolver,
   createUnconfiguredAiTokenBudgetResolver,
   denyStubAiPlatformAbacResolver,
@@ -1526,6 +1529,8 @@ import {
   buildPresenceDeps,
   buildPromotionDeps,
   buildReviewDeps,
+  UNAVAILABLE_AI_PORT,
+  buildAiDeps,
   buildDeathBoardDeps,
   buildSbarDeps,
   buildSnoozeReminderBinding,
@@ -1770,6 +1775,8 @@ export function wireModuleSeams(
     onEscalationRouterBound?: (boundOrgCount: number) => void;
     /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
     promotionSource?: ChartPromotionSourceReader;
+    /** ADR-0095 - receives M32's MessagingAiPort once the governed pipeline is built (M36's AI binding resolves it lazily). Not called => "AI unavailable". */
+    onMessagingAiPort?: (port: MessagingAiPort) => void;
   } = {},
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
@@ -2544,25 +2551,29 @@ export function wireModuleSeams(
         ),
       })
     : undefined;
+  const m32LivePipeline =
+    deps.db && deps.platformDb && m32Backends.length > 0
+      ? buildLiveAiInvocationPipeline({
+          db: deps.db,
+          platformDb: deps.platformDb,
+          auditBypass: m34PlatformBypassAuditor,
+          keys: {
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          },
+          flags: createDrizzleFeatureFlagReader(deps.db),
+          backends: m32Backends,
+          events: wiredM32Events,
+        })
+      : undefined;
   registerAiPlatformSeams(
     deps.db
       ? {
           ...(m32PromptRegistry ? { promptRegistry: m32PromptRegistry } : {}),
-          ...(deps.platformDb && m32Backends.length > 0
+          ...(m32LivePipeline
             ? {
-                pipeline: buildLiveAiInvocationPipeline({
-                  db: deps.db,
-                  platformDb: deps.platformDb,
-                  auditBypass: m34PlatformBypassAuditor,
-                  keys: {
-                    dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-                    dekForOrgVersion: (orgId, version) =>
-                      getTenantKeyProvider().dekForOrgVersion(orgId, version),
-                  },
-                  flags: createDrizzleFeatureFlagReader(deps.db),
-                  backends: m32Backends,
-                  events: wiredM32Events,
-                }),
+                pipeline: m32LivePipeline,
                 actors: createDrizzleAiSeamActorResolver(deps.db),
                 projector: createDocLensOutputProjector(),
               }
@@ -2570,6 +2581,19 @@ export function wireModuleSeams(
         }
       : {},
   );
+  // ADR-0095 (M36 WP 6.5) - hand the governed pipeline to M36's messaging AI as a PORT (text in, text out, one recorded human decision). Bound only
+  // when a model backend is configured AND the prompt registry exists; every other gate (flag, lifecycle - the two messaging capabilities are PROPOSED
+  // and unseeded - opt-in, kill switch, BAA/ZDR routing) still runs inside the pipeline. M36 resolves it lazily (it mounts before this runs).
+  if (deps.db && m32LivePipeline && m32PromptRegistry && deps.onMessagingAiPort) {
+    deps.onMessagingAiPort(
+      createMessagingAiPort({
+        pipeline: m32LivePipeline,
+        prompts: m32PromptRegistry,
+        actors: createDrizzleAiSeamActorResolver(deps.db),
+        warn: (message, context) => console.warn(message, context),
+      }),
+    );
+  }
   // M32-T07 (§4.7) — the six named ABAC predicate resolvers. Registered here, beside the seam wiring,
   // because `ai_prohibited_zone_respected` resolves through the SAME `AIPromptRegistry` instance the
   // seam publishes: two registries would be two answers to D18's contraband question.
@@ -4470,6 +4494,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         warn: (message, context) => console.warn(message, context),
       })
     : undefined;
+  // WP 6.5 (ADR-0095, PROPOSED) - AI thread summaries and reply drafts. Off by default per tenant (`messaging.ai.enabled`) and answers "AI unavailable"
+  // until M32's governed pipeline is bound to the port below (a configured model backend, the prompt registry, and - inside the pipeline - ai.full, the
+  // capability lifecycle, tenant opt-in, kill switch and BAA/ZDR routing). The port is resolved lazily: wireModuleSeams runs after this mount.
+  const m36AiPortRef: { current?: MessagingAiPort } = {};
+  const m36AiPort: MessagingAiPort = {
+    summarize: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).summarize(request),
+    draftReply: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).draftReply(request),
+    recordOutcome: (input) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).recordOutcome(input),
+  };
+  const m36Ai = dbHandle
+    ? buildAiDeps({
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+        // Fail-closed quotas on a PHI disclosure; the in-memory store is per replica (weaker, still bounded).
+        rateLimitStore: rateLimitStore ?? createInMemoryRateLimitStore(),
+        port: m36AiPort,
+        warn: (message, context) => console.warn(message, context),
+      })
+    : undefined;
   // WP 3.10 - "ask a nurse about a medication". One binding for the routes; off unless the tenant flags
   // `messaging.medication_questions` AND `messaging.tasks` are on. Never an order path: it reads no order or prescribing
   // permission. The same messaging service instance sends the message, link and task in one transaction.
@@ -5278,6 +5322,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       store: rateLimitStore ?? createInMemoryRateLimitStore(),
                       limit: DEATH_BOARD_ROUTE_RATE_LIMIT,
                       keyPrefix: "m36-death-board",
+                    }),
+                  },
+                }
+              : {}),
+            // WP 6.5 (ADR-0095) - AI summaries and reply drafts; off unless the tenant flag `messaging.ai.enabled` is on, and unavailable until M32 is bound.
+            ...(m36Ai
+              ? {
+                  ai: {
+                    service: m36Ai.service,
+                    rateLimit: createRouteRateLimit({
+                      store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                      limit: AI_ROUTE_RATE_LIMIT,
+                      keyPrefix: "m36-ai",
                     }),
                   },
                 }
@@ -6497,6 +6554,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         caseloadShiftCacheRedis: m5CaseloadShiftCacheRedisClient,
         messageBodyCipher: m36MessageBodyCipher,
         ...(m36Promotions ? { promotionSource: m36Promotions.sourceReader } : {}),
+        onMessagingAiPort: (port) => {
+          m36AiPortRef.current = port;
+        },
       }),
     registerModuleErasers: () =>
       wireModuleErasers({

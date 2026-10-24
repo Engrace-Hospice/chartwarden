@@ -123,6 +123,18 @@ interface PrivacyFlagReaderShape {
   }): Promise<readonly { patientId: string; privacyFlags: readonly string[] }[]>;
 }
 
+/** The patient's ACTIVE M5 privacy flags through the seam registry. THROWS when unreadable (callers treat that as restricted). */
+export async function readSeamPatientPrivacyFlags(
+  organizationId: string,
+  patientId: string,
+): Promise<readonly string[]> {
+  const reader = getSeam("PatientPrivacyFlagReader") as unknown as PrivacyFlagReaderShape;
+  const facts = await reader.roomingFactsFor({ organizationId, patientIds: [patientId] });
+  const fact = facts.find((f) => f.patientId === patientId);
+  if (!fact) throw new Error(`privacy flags unreadable for patient ${patientId}`);
+  return fact.privacyFlags;
+}
+
 /** The production gate: M5 privacy flags + M39 evaluator via the seam registry, memberships from M2's table. */
 export function createSeamPart2ChannelGate(
   db: DbClient,
@@ -130,13 +142,7 @@ export function createSeamPart2ChannelGate(
 ): Part2ChannelGate {
   const M = schema.memberships;
   return createPart2ChannelGate({
-    async privacyFlags(organizationId, patientId) {
-      const reader = getSeam("PatientPrivacyFlagReader") as unknown as PrivacyFlagReaderShape;
-      const facts = await reader.roomingFactsFor({ organizationId, patientIds: [patientId] });
-      const fact = facts.find((f) => f.patientId === patientId);
-      if (!fact) throw new Error(`privacy flags unreadable for patient ${patientId}`);
-      return fact.privacyFlags;
-    },
+    privacyFlags: readSeamPatientPrivacyFlags,
     async membershipIds(organizationId, userIds) {
       const rows = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         (tx as unknown as DbClient)

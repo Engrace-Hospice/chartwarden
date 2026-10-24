@@ -89,6 +89,6 @@ Severity (S) 1–5, likelihood (L) 1–5 before controls. Review before Phase 4;
 | H-05 | PHI leaks via lock-screen/SMS/email | 4 | 3 | Sanitiser + template snapshots | Security |
 | H-06 | Departed/reassigned staff still receive PHI | 5 | 2 | Revocation events; socket drop; access review | Security |
 | H-07 | Handoff dropped (no acceptance) leaves patient unowned | 4 | 3 | Sender retains accountability; supervisor alert | Clinical ops |
-| H-08 | AI summary omits/changes clinical meaning | 4 | 3 | Source citations; uncertainty; human action only | Clinical lead |
+| H-08 | AI summary omits/changes clinical meaning | 4 | 3 | Source citations; uncertainty; human action only. Built flag off (ADR-0095): citations mapped server-side from the ids M36 sent, mandatory uncertainty line, "not verified" label, dose / order / diagnosis refusal, redacted / held / deleted / Part 2 content never sent, draft to the composer only, outcome recorded; the clinical lead still signs off before any tenant enables it | Clinical lead |
 | H-09 | Duplicate escalation/ack due to retries | 3 | 4 | Idempotency keys; dedup timers | Platform |
 | H-10 | Empty thread displayed when load failed | 3 | 4 | Distinct UI states (Phase 0.7) | UX |

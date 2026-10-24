@@ -14225,6 +14225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the AI summary panel is offered to the caller (WP 6.5, ADR-0095 PROPOSED; messaging.read): true only when the tenant flag `messaging.ai.enabled` is on AND the caller holds `messaging.ai.use`. A single boolean; any failure reads as false. It does not say whether a model is bound (a call may still answer AI unavailable). Never cached */
+        get: operations["getApiV1MessagingAiStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/analytics/response": {
         parameters: {
             query?: never;
@@ -14549,6 +14566,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/ai-outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record what the person did with an AI answer (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + channel_visibility): accepted, edited or rejected, on the M32 ai_invocation row. Only the actor's own call, about THIS channel, by a messaging capability, and only while the outcome is still open (pending, or accepted which may be refined to edited): anything else, including an unknown id, is the same 404. 204 */
+        post: operations["postApiV1MessagingChannelsByIdAioutcomes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/archive": {
         parameters: {
             query?: never;
@@ -14580,6 +14614,23 @@ export interface paths {
         post?: never;
         /** Discard the caller's draft (idempotent, 204) */
         delete: operations["deleteApiV1MessagingChannelsByIdDraft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/draft-replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Up to two AI draft replies for the COMPOSER (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + messaging.send + the channel_visibility membership predicate; not for an archived channel). Same input rules, gates, limits (20 per user per hour) and refusals as summaries. The draft is returned in the response only: it is never written to the message store or the drafts store and never queued or sent; a human edits it and sends through the normal send path. Plain text only; no attachments, mentions or orders. Never cached */
+        post: operations["postApiV1MessagingChannelsByIdDraftreplies"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -15013,6 +15064,23 @@ export interface paths {
         post?: never;
         /** End the caller's snooze of a conversation (idempotent; cleared=false when none was set) */
         delete: operations["deleteApiV1MessagingChannelsByIdSnooze"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** An AI summary of the part of this conversation the caller can read (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + the channel_visibility MEMBERSHIP predicate, never the break-glass read variant; membership and permission are checked again immediately before the model is called and once more before the answer is returned). Optional `thread_root_message_id` summarises one reply thread. The input is the caller's own thread read, bounded to the newest 50 messages of the last 14 days, with redacted, deleted, legally held, system and unreadable messages EXCLUDED (the model sees only the placeholder; `withheld_count` is a bare count), senders replaced by a role token and alias, the patient by [PATIENT], times relative, identifiers masked. Fewer than 3 includable messages, or a model that says so, is `status: insufficient_context` with no points (the model is not called for the former). Every point has `confidence` and `sources` mapped server-side from opaque refs to message ids of THIS conversation that were sent (an invented or withheld ref is dropped and the point demoted; a point with no valid source is discarded); text is plain (links, markup and images are stripped); an answer that states a dose, order or diagnosis is refused with 422 AI_OUTPUT_REFUSED. 404 AI_NOT_ENABLED while the tenant flag is off; 422 AI_NOT_AVAILABLE_FOR_CHANNEL for a Part 2 patient (generic; the model is never called); 429 over the limits (10 per user per hour, 3 per channel per 10 minutes; a quota store outage refuses); 503 AI_UNAVAILABLE for every other refusal (M32 gates, no BAA-covered backend, vendor error, invalid answer twice). Nothing is stored by M36; the only server copy is M32's encrypted ai_invocation row. Writes one m36.ai.summary_viewed audit row (ids and counts). Never cached; no Idempotency-Key */
+        post: operations["postApiV1MessagingChannelsByIdSummaries"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -67857,6 +67925,30 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAiStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingAnalyticsResponse: {
         parameters: {
             query?: {
@@ -68709,6 +68801,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingChannelsByIdAioutcomes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    invocation_id: string;
+                    invoked_at: string;
+                    outcome: "accepted" | "edited" | "rejected";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingChannelsByIdArchive: {
         parameters: {
             query?: never;
@@ -68872,6 +68994,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdDraftreplies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    thread_root_message_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        label: "AI draft - edit before sending";
+                        invocation_id: string;
+                        /** Format: date-time */
+                        invoked_at: string;
+                        drafts: {
+                            text: string;
+                        }[];
+                        included_count: number;
+                        withheld_count: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -70593,6 +70756,56 @@ export interface operations {
                 content: {
                     "application/json": {
                         cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdSummaries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    thread_root_message_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        label: "AI summary - draft - not verified";
+                        invocation_id: string | null;
+                        invoked_at: string | null;
+                        status: "ok" | "insufficient_context";
+                        points: {
+                            text: string;
+                            confidence: "high" | "medium" | "low";
+                            sources: {
+                                n: number;
+                                message_id: string;
+                                /** Format: date-time */
+                                sent_at: string;
+                            }[];
+                        }[];
+                        open_questions: string[];
+                        included_count: number;
+                        withheld_count: number;
+                        input_hash: string;
                     };
                 };
             };

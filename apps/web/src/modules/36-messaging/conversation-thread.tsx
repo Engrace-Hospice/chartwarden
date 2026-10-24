@@ -2,6 +2,8 @@ import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
+import { AiSummaryPanel } from "./ai-summary-panel";
+import { useAiAssist, useAiEnabled } from "./use-ai-assist";
 import { sendBlockedReason } from "./attachment-utils";
 import { catchUpIfNeeded } from "./catch-up";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
@@ -253,6 +255,16 @@ function ConversationThreadView({
     textareaRef.current?.focus();
     if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
   }, []);
+  // WP 6.5 (ADR-0095): AI summary. Absent unless the tenant flag and permission allow it; the only way its text reaches the composer is the user's click.
+  const aiEnabled = useAiEnabled();
+  const ai = useAiAssist(channel.channelId, draft);
+  const [aiCopiedText, setAiCopiedText] = useState<string | null>(null);
+  const copyAiToDraft = (text: string): void => {
+    ai.copyToDraft(text);
+    setAiCopiedText(text);
+    setDraft((current) => (current.trim() ? `${current}\n${text}` : text));
+    focusComposer();
+  };
   useBindOutboxThread(outbox, channel.channelId, mergeSent);
   const needsResponse = useNeedsResponse(channel.channelId, channel.kind);
   const { send, sending, sendError, sbarIssues, clearSendError, resetSender } = useMessageSender({
@@ -649,6 +661,7 @@ function ConversationThreadView({
         onBack={onBack}
         onToggleContext={() => setContextOpen((open) => !open)}
         onShowMembers={tools.onShowMembers}
+        ai={aiEnabled ? { open: ai.open, onToggle: ai.toggle } : undefined}
         headingRef={headingRef}
       />
       {tools.dialogs}
@@ -715,6 +728,22 @@ function ConversationThreadView({
             onClose={() => setContextOpen(false)}
             idgChannelId={channel.kind === "care_team" ? channel.channelId : undefined}
             onOpenThread={panel.openThread}
+          />
+        ) : null}
+        {aiEnabled && ai.open ? (
+          <AiSummaryPanel
+            view={ai.view}
+            loadedMessageIds={new Set((messages ?? []).map((m) => m.messageId))}
+            canDraft={!channel.archivedAt}
+            copiedText={aiCopiedText}
+            onClose={ai.close}
+            onCancel={ai.cancel}
+            onRegenerate={ai.regenerate}
+            onNotUseful={ai.notUseful}
+            onDraftReply={ai.draftReply}
+            onBackToSummary={ai.backToSummary}
+            onJump={jump.jumpToMessage}
+            onCopyToDraft={copyAiToDraft}
           />
         ) : null}
         {panel.rootId ? (

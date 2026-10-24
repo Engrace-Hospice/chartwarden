@@ -106,7 +106,7 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 | 6.2 | Response analytics | `/messaging/analytics` | web | `messaging.analytics.read` **new** | `analytics`+ | `GET /analytics/response` (via M33, built; ADR-0092) | built (flag `messaging.response_analytics`, default off) |
 | 6.3 | Voice notes and dictation | (composer) | web | `messaging.send` | `voice`+ | attachments routes; dictation per ADR | missing (no matching route, screen or web file found) |
 | 6.4 | Language and translation review | `/messaging/settings/language`; `…/templates` | web | self; `messaging.template.translate` **new** | `i18n`+ | `template-admin` built + translations **new** | missing (no matching route, screen or web file found) |
-| 6.5 | AI summary panel | (thread side panel) | web | `messaging.ai.use` **new** | `ai`+ | `POST /channels/:id/summaries` **new** (M32) | missing (no matching route, screen or web file found) |
+| 6.5 | AI summary panel | (thread side panel) | web | `messaging.ai.use` | `ai`+ | `POST /channels/:id/summaries`, `.../draft-replies`, `.../ai-outcomes`, `GET /ai/status` (M36, over M32) | built, flag `messaging.ai.enabled` off by default (ADR-0095, proposed): `ai-summary-panel.tsx`; the capabilities serve nothing until M32 stage 4 |
 | 6.6 | External partner share | `/messaging/partners`; partner view | web | `messaging.share.manage` **new** | `external_share`+ | `POST/GET/DELETE /external-shares` **new** | staff screen and routes built (ADR-0096, flag off by default); the partner view is NOT built |
 
 ## 4. Gaps in the built Phase 4.1 / 4.2 UI
@@ -518,6 +518,8 @@ content**. No machine translation of message bodies unless a tenant flag and a v
 attribute per segment, 3.1.2); missing-key fallback test. **Needs:** clinician reviewer sign-off.
 
 ### 6.5 AI summary panel (M32)
+
+> Built (ADR-0095, proposed; flag `messaging.ai.enabled` off by default): `ai-summary-panel.tsx`, `use-ai-assist.ts`, `ai-wording.ts`, `ai-summary.css`, `ai-summary.dom.test.tsx`; the button sits in the thread header and is absent unless the tenant flag and `messaging.ai.use` allow it. The call log is the M32 table `ai_invocation` (the text below says `ai_interaction`). The mock below is the original proposal; the panel also offers "Draft a reply" (up to two drafts, each with its own "Copy to draft"). Open: clinical-lead and compliance sign-off (hazard H-08), the wording in `ai-wording.ts`, and the M32 stage-4 promotion.
 
 ```
 ┌ AI summary · draft · not verified ──────────────────── [✕] ┐

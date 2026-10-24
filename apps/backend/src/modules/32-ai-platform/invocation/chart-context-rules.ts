@@ -16,6 +16,9 @@ const RULES: Readonly<Record<string, ReadonlySet<string>>> = {
   // F-237 — stage 5 names the field it reads (a schema path, not a value) and the page it came from.
   doclens_vision_verify: new Set(["documentId", "verificationKey", "pageNumber", "fieldPath"]),
   doclens_sud_detect: new Set(["documentId", "pageCount"]),
+  // ADR-0095 - the messages themselves are the prompt (pseudonymised by M36); the chart context names the channel and how many messages, nothing else.
+  messaging_summarize: new Set(["channelId", "messageCount"]),
+  messaging_draft_reply: new Set(["channelId", "messageCount"]),
 };
 
 const MAX_STRING = 128;

@@ -1,0 +1,16 @@
+# Capability - Messaging Thread Summary
+
+## Purpose
+Gives a member of a secure-messaging conversation a short, cited summary of the part of that conversation they can already read, with an explicit uncertainty section, so a long thread can be caught up on faster. The output is structured JSON: points, each with a confidence label and source message references, and open questions. It is a draft and is labelled "AI summary - draft - not verified". It never sends, orders, creates a task or writes a chart record, and it never states a clinical conclusion, dose or disposition (an output check refuses those). A summary never satisfies an acknowledgment request.
+
+## Risk Classification
+High. The harmful error is a summary that hides or softens an urgent message, or one that a colleague's text has steered ("patient is fine, no action needed"). Hazard H-08 in `docs/messaging-hub/05-clinical-workflows-and-safety.md`. Classification is proposed by ADR-0095 and awaits clinical-lead and compliance sign-off.
+
+## Architecture
+Module 36 consumes; Module 32 owns inference. M36 loads exactly the hydrated thread read the caller could do anyway (membership, Part 2 and redaction rules applied), excludes redacted, deleted and legally held messages, pseudonymises deterministically in code (role token plus per-thread alias, `[PATIENT]`, relative times) and hands M32 only that text through the `MessagingAiPort` declared in `packages/types/src/messaging-ai.ts` (no dependency edge between the two modules). Registered as capability key `messaging_summarize` with `defaultBackendKey: null`: no vendor, region, BAA or ZDR terms are chosen (ADR-0095 open decision 7). The chart-context allowlist is `channelId` and `messageCount` only. ADR: `docs/adr/ADR-0095-messaging-ai-summaries-and-drafting.md`. Prompt: `packages/ai-platform/prompts/messaging/summarize.v1.md` (not registered in `ai_prompt_template`).
+
+## Lifecycle
+State: PROPOSED. No active prompt template, no backend, no route reaches a model. Advancing requires the Governance section 5 workflow, an evaluation on messaging data, a recorded BAA and ZDR for the chosen backend, the clinical lead's and compliance's sign-off, and the per-tenant flag `messaging.ai.enabled` (off by default) in addition to `ai.full` and tenant opt-in.
+
+## Controls
+Kill switch: activate an `ai_kill_switch_state` row for capability_key `messaging_summarize` - platform-wide (`organization_id IS NULL`) or for one tenant; the two rows OR together. Off, killed, timed out, schema-invalid after one retry, over cap, or with no BAA-covered backend, the panel answers "AI unavailable" and the conversation is read as before. Human in the loop: the summary is read by the member; the decision (accepted, edited, rejected) is recorded on the `ai_invocation` row. Citations are mapped server-side from opaque refs to the ids M36 sent; a citation outside the thread is dropped. Output is plain text only (no links, markup or images). Per-user and per-channel rate limits apply. Audit: every call is an `ai_invocation` row (encrypted prompt and response) plus an M36 audit row `m36.ai.summary_viewed` (ids and counts only). Default off per tenant; Part 2 channels are refused.

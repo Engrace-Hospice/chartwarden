@@ -165722,6 +165722,42 @@
         }
       }
     },
+    "/api/v1/messaging/ai/status": {
+      "get": {
+        "operationId": "getApiV1MessagingAiStatus",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Whether the AI summary panel is offered to the caller (WP 6.5, ADR-0095 PROPOSED; messaging.read): true only when the tenant flag `messaging.ai.enabled` is on AND the caller holds `messaging.ai.use`. A single boolean; any failure reads as false. It does not say whether a model is bound (a call may still answer AI unavailable). Never cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/analytics/response": {
       "get": {
         "operationId": "getApiV1MessagingAnalyticsResponse",
@@ -168983,6 +169019,79 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/ai-outcomes": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdAioutcomes",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Record what the person did with an AI answer (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + channel_visibility): accepted, edited or rejected, on the M32 ai_invocation row. Only the actor's own call, about THIS channel, by a messaging capability, and only while the outcome is still open (pending, or accepted which may be refined to edited): anything else, including an unknown id, is the same 404. 204",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "invocation_id",
+                  "invoked_at",
+                  "outcome"
+                ],
+                "properties": {
+                  "invocation_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "invoked_at": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "accepted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "edited",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rejected",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/archive": {
       "post": {
         "operationId": "postApiV1MessagingChannelsByIdArchive",
@@ -169536,6 +169645,102 @@
                     "minimum": 0,
                     "maximum": 2000000000,
                     "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/draft-replies": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdDraftreplies",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Up to two AI draft replies for the COMPOSER (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + messaging.send + the channel_visibility membership predicate; not for an archived channel). Same input rules, gates, limits (20 per user per hour) and refusals as summaries. The draft is returned in the response only: it is never written to the message store or the drafts store and never queued or sent; a human edits it and sends through the normal send path. Plain text only; no attachments, mentions or orders. Never cached",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "invocation_id",
+                    "invoked_at",
+                    "drafts",
+                    "included_count",
+                    "withheld_count"
+                  ],
+                  "properties": {
+                    "label": {
+                      "const": "AI draft - edit before sending",
+                      "type": "string"
+                    },
+                    "invocation_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "invoked_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "drafts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "included_count": {
+                      "type": "integer"
+                    },
+                    "withheld_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "thread_root_message_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
                   }
                 }
               }
@@ -176270,6 +176475,182 @@
                     "minimum": 5,
                     "maximum": 1440,
                     "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/summaries": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdSummaries",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "An AI summary of the part of this conversation the caller can read (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + the channel_visibility MEMBERSHIP predicate, never the break-glass read variant; membership and permission are checked again immediately before the model is called and once more before the answer is returned). Optional `thread_root_message_id` summarises one reply thread. The input is the caller's own thread read, bounded to the newest 50 messages of the last 14 days, with redacted, deleted, legally held, system and unreadable messages EXCLUDED (the model sees only the placeholder; `withheld_count` is a bare count), senders replaced by a role token and alias, the patient by [PATIENT], times relative, identifiers masked. Fewer than 3 includable messages, or a model that says so, is `status: insufficient_context` with no points (the model is not called for the former). Every point has `confidence` and `sources` mapped server-side from opaque refs to message ids of THIS conversation that were sent (an invented or withheld ref is dropped and the point demoted; a point with no valid source is discarded); text is plain (links, markup and images are stripped); an answer that states a dose, order or diagnosis is refused with 422 AI_OUTPUT_REFUSED. 404 AI_NOT_ENABLED while the tenant flag is off; 422 AI_NOT_AVAILABLE_FOR_CHANNEL for a Part 2 patient (generic; the model is never called); 429 over the limits (10 per user per hour, 3 per channel per 10 minutes; a quota store outage refuses); 503 AI_UNAVAILABLE for every other refusal (M32 gates, no BAA-covered backend, vendor error, invalid answer twice). Nothing is stored by M36; the only server copy is M32's encrypted ai_invocation row. Writes one m36.ai.summary_viewed audit row (ids and counts). Never cached; no Idempotency-Key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "invocation_id",
+                    "invoked_at",
+                    "status",
+                    "points",
+                    "open_questions",
+                    "included_count",
+                    "withheld_count",
+                    "input_hash"
+                  ],
+                  "properties": {
+                    "label": {
+                      "const": "AI summary - draft - not verified",
+                      "type": "string"
+                    },
+                    "invocation_id": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoked_at": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "insufficient_context",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "confidence",
+                          "sources"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "anyOf": [
+                              {
+                                "const": "high",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medium",
+                                "type": "string"
+                              },
+                              {
+                                "const": "low",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sources": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "n",
+                                "message_id",
+                                "sent_at"
+                              ],
+                              "properties": {
+                                "n": {
+                                  "type": "integer"
+                                },
+                                "message_id": {
+                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "type": "string"
+                                },
+                                "sent_at": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "open_questions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "included_count": {
+                      "type": "integer"
+                    },
+                    "withheld_count": {
+                      "type": "integer"
+                    },
+                    "input_hash": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "thread_root_message_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
                   }
                 }
               }

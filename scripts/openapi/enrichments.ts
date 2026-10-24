@@ -1415,6 +1415,14 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
+// M36 WP 6.5 AI summaries and reply drafts (ADR-0095, PROPOSED).
+import {
+  AiDraftResponseSchema as M36AiDraftResponseSchema,
+  AiOutcomeBodySchema as M36AiOutcomeBodySchema,
+  AiRequestBodySchema as M36AiRequestBodySchema,
+  AiStatusResponseSchema as M36AiStatusResponseSchema,
+  AiSummaryResponseSchema as M36AiSummaryResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/ai-typebox";
 // M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
 import {
   DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
@@ -10644,6 +10652,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/export/:id/download": {
     summary:
       "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
+  },
+
+  // AI summaries and reply drafts (WP 6.5, ADR-0095 PROPOSED)
+  "GET /api/v1/messaging/ai/status": {
+    summary:
+      "Whether the AI summary panel is offered to the caller (WP 6.5, ADR-0095 PROPOSED; messaging.read): true only when the tenant flag `messaging.ai.enabled` is on AND the caller holds `messaging.ai.use`. A single boolean; any failure reads as false. It does not say whether a model is bound (a call may still answer AI unavailable). Never cached",
+    response: M36AiStatusResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/summaries": {
+    summary:
+      "An AI summary of the part of this conversation the caller can read (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + the channel_visibility MEMBERSHIP predicate, never the break-glass read variant; membership and permission are checked again immediately before the model is called and once more before the answer is returned). Optional `thread_root_message_id` summarises one reply thread. The input is the caller's own thread read, bounded to the newest 50 messages of the last 14 days, with redacted, deleted, legally held, system and unreadable messages EXCLUDED (the model sees only the placeholder; `withheld_count` is a bare count), senders replaced by a role token and alias, the patient by [PATIENT], times relative, identifiers masked. Fewer than 3 includable messages, or a model that says so, is `status: insufficient_context` with no points (the model is not called for the former). Every point has `confidence` and `sources` mapped server-side from opaque refs to message ids of THIS conversation that were sent (an invented or withheld ref is dropped and the point demoted; a point with no valid source is discarded); text is plain (links, markup and images are stripped); an answer that states a dose, order or diagnosis is refused with 422 AI_OUTPUT_REFUSED. 404 AI_NOT_ENABLED while the tenant flag is off; 422 AI_NOT_AVAILABLE_FOR_CHANNEL for a Part 2 patient (generic; the model is never called); 429 over the limits (10 per user per hour, 3 per channel per 10 minutes; a quota store outage refuses); 503 AI_UNAVAILABLE for every other refusal (M32 gates, no BAA-covered backend, vendor error, invalid answer twice). Nothing is stored by M36; the only server copy is M32's encrypted ai_invocation row. Writes one m36.ai.summary_viewed audit row (ids and counts). Never cached; no Idempotency-Key",
+    body: M36AiRequestBodySchema,
+    response: M36AiSummaryResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/draft-replies": {
+    summary:
+      "Up to two AI draft replies for the COMPOSER (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + messaging.send + the channel_visibility membership predicate; not for an archived channel). Same input rules, gates, limits (20 per user per hour) and refusals as summaries. The draft is returned in the response only: it is never written to the message store or the drafts store and never queued or sent; a human edits it and sends through the normal send path. Plain text only; no attachments, mentions or orders. Never cached",
+    body: M36AiRequestBodySchema,
+    response: M36AiDraftResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/ai-outcomes": {
+    summary:
+      "Record what the person did with an AI answer (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + channel_visibility): accepted, edited or rejected, on the M32 ai_invocation row. Only the actor's own call, about THIS channel, by a messaging capability, and only while the outcome is still open (pending, or accepted which may be refined to edited): anything else, including an unknown id, is the same 404. 204",
+    body: M36AiOutcomeBodySchema,
+    status: 204,
   },
 
   // death-event coordination board (WP 6.9, ADR-0098 PROPOSED)
