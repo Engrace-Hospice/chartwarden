@@ -134,6 +134,23 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
     await heldA;
   });
 
+  it("a waiter that cannot get the org lock within lock_timeout fails with a retryable 503", async () => {
+    let releaseA: () => void = () => undefined;
+    const holder = memberships.withAdminLock(
+      ORG_A,
+      () => new Promise<void>((resolve) => (releaseA = resolve)),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    await expect(memberships.withAdminLock(ORG_A, async () => "never")).rejects.toMatchObject({
+      code: "ADMIN_CHANGE_BUSY",
+      statusCode: 503,
+    });
+    releaseA();
+    await holder;
+    // The timed-out waiter freed its connection and the org is usable again.
+    await expect(memberships.withAdminLock(ORG_A, async () => "ok")).resolves.toBe("ok");
+  }, 20_000);
+
   it("withAdminLock releases on error so a failed section does not wedge the org", async () => {
     await expect(
       memberships.withAdminLock(ORG_A, async () => {

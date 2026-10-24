@@ -232,9 +232,9 @@ export interface MembershipRepository {
   /** Count of `active` memberships carrying `org_admin` (last-admin lockout guard). */
   activeAdminCount(organizationId: string): Promise<number> | number;
   /**
-   * Run `fn` while holding the org's admin-roster lock. Every route that can remove an active admin
-   * (suspend, revoke, deactivate) does its last-admin count AND its write inside this scope, so two
-   * concurrent removals serialize instead of both passing the count (check-then-act).
+   * Run `fn` while holding the org's admin-roster lock. The three M2 routes that can remove an active admin
+   * (suspend, revoke, deactivate) do its last-admin count AND its write inside this scope, so two
+   * concurrent removals serialize instead of both passing the count (check-then-act). Removing `org_admin` through the M3 role routes does not take this lock.
    */
   withAdminLock<T>(organizationId: string, fn: () => Promise<T>): Promise<T>;
 }

@@ -806,7 +806,9 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       // Last-admin lockout guard: suspending the last active admin is refused (§6).
       const from = membership.status;
       updated = await deps.memberships.withAdminLock(orgId, async () => {
-        if (nextStatus === "suspended" && membership.isAdmin) {
+        // Re-read under the lock: `membership` was loaded before it, and a concurrent change could have moved isAdmin.
+        const fresh = (await deps.memberships.get(mId)) ?? membership;
+        if (nextStatus === "suspended" && fresh.isAdmin) {
           const admins = await deps.memberships.activeAdminCount(orgId);
           if (admins <= 1) throw lastAdminLockout();
         }
@@ -860,7 +862,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       throw new ChartWardenError("NOT_FOUND", "membership not found", 404);
     }
     await deps.memberships.withAdminLock(orgId, async () => {
-      if (membership.isAdmin) {
+      const fresh = (await deps.memberships.get(mId)) ?? membership;
+      if (fresh.isAdmin) {
         const admins = await deps.memberships.activeAdminCount(orgId);
         if (admins <= 1) throw lastAdminLockout(); // last-admin lockout guard (§6)
       }
