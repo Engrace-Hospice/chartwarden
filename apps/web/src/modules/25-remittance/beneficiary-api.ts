@@ -23,9 +23,8 @@ export type AppointmentDraftInput = ReqBody<
   operations["postApiV1ClaimsByClaimIdRepresentativeappointments"]
 >;
 export type AppointmentPatchInput = ReqBody<operations["patchApiV1RepresentativeappointmentsById"]>;
-export type AppointmentVersioned = Ok<
-  operations["postApiV1RepresentativeappointmentsByIdActivate"]
->;
+export type AppointmentVersioned = Ok<operations["patchApiV1RepresentativeappointmentsById"]>;
+export type AppointmentActivated = Ok<operations["postApiV1RepresentativeappointmentsByIdActivate"]>;
 export type FormVersionsPage = Ok<operations["getApiV1Representativeformversions"]>;
 export type FormVersion = FormVersionsPage["items"][number];
 export type FormVersionInput = ReqBody<operations["postApiV1Representativeformversions"]>;
@@ -220,7 +219,7 @@ export async function confirmAppointmentElements(
 export async function activateAppointment(
   client: ApiClient,
   a: Pick<Appointment, "id" | "version">,
-): Promise<WriteResult<AppointmentVersioned>> {
+): Promise<WriteResult<AppointmentActivated>> {
   return guarded(async () => {
     const { data, error, response } = await client.POST(
       "/api/v1/representative-appointments/{id}/activate",

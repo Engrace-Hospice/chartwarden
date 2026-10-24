@@ -41,6 +41,7 @@ function blockedReason(f: {
     return "Describe the other written instrument.";
   }
   if (f.name.trim() === "") return "Enter the representative's name.";
+  if (f.kind === "") return "Choose the representative kind.";
   if (f.kind === "other" && f.relationship.trim() === "") {
     return "Describe the relationship when the kind is 'other'.";
   }
@@ -65,7 +66,7 @@ export function RepresentativeCreateModal(props: {
   const [instrument, setInstrument] = useState("");
   const [instrumentNote, setInstrumentNote] = useState("");
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<(typeof REPRESENTATIVE_KINDS)[number]>("family_or_friend");
+  const [kind, setKind] = useState("");
   const [relationship, setRelationship] = useState("");
   const [beneficiarySignedOn, setBeneficiarySignedOn] = useState("");
   const [representativeSignedOn, setRepresentativeSignedOn] = useState("");
@@ -92,6 +93,7 @@ export function RepresentativeCreateModal(props: {
   });
 
   async function submit(): Promise<void> {
+    if (reason !== null || busy) return;
     setBusy(true);
     setError(null);
     const body: AppointmentDraftInput = {
@@ -99,7 +101,7 @@ export function RepresentativeCreateModal(props: {
         ? { instrumentKind: "other_written_instrument", instrumentNote: instrumentNote.trim() }
         : { instrumentKind: "org_form", formVersionId: instrument }),
       representativeName: name.trim(),
-      representativeKind: kind,
+      representativeKind: kind as (typeof REPRESENTATIVE_KINDS)[number],
       ...(relationship.trim() ? { relationshipLabel: relationship.trim() } : {}),
       ...(beneficiarySignedOn ? { beneficiarySignedOn } : {}),
       ...(representativeSignedOn ? { representativeSignedOn } : {}),
@@ -115,92 +117,103 @@ export function RepresentativeCreateModal(props: {
 
   return (
     <ActionModal ariaLabel="Record an appointment of representative" onClose={props.onClose}>
-      {forms.data === null && forms.error ? (
-        <RetryAlert
-          message={`Form versions unavailable: ${forms.error}`}
-          onRetry={() => void forms.load()}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        {forms.data === null && forms.error ? (
+          <RetryAlert
+            message={`Form versions unavailable: ${forms.error}`}
+            onRetry={() => void forms.load()}
+          />
+        ) : null}
+        {forms.data !== null && current.length === 0 ? (
+          <WarningAlert>{NO_FORM_CONFIGURED}</WarningAlert>
+        ) : null}
+        <SelectField
+          label="Instrument"
+          value={instrument}
+          onChange={(e) => setInstrument(e.target.value)}
+          options={[
+            { value: "", label: "Choose..." },
+            ...current.map((f) => ({
+              value: f.id,
+              label: `${f.label}${f.formIdentifier ? ` (${f.formIdentifier}${f.editionText ? `, ${f.editionText}` : ""})` : ""}`,
+            })),
+            { value: OTHER, label: "Another written instrument" },
+          ]}
         />
-      ) : null}
-      {forms.data !== null && current.length === 0 ? (
-        <WarningAlert>{NO_FORM_CONFIGURED}</WarningAlert>
-      ) : null}
-      <SelectField
-        label="Instrument"
-        value={instrument}
-        onChange={(e) => setInstrument(e.target.value)}
-        options={[
-          { value: "", label: "Choose..." },
-          ...current.map((f) => ({
-            value: f.id,
-            label: `${f.label}${f.formIdentifier ? ` (${f.formIdentifier}${f.editionText ? `, ${f.editionText}` : ""})` : ""}`,
-          })),
-          { value: OTHER, label: "Another written instrument" },
-        ]}
-      />
-      {instrument === OTHER ? (
+        {instrument === OTHER ? (
+          <TextField
+            label="Describe the written instrument"
+            value={instrumentNote}
+            onChange={(e) => setInstrumentNote(e.target.value)}
+            maxLength={1000}
+          />
+        ) : null}
         <TextField
-          label="Describe the written instrument"
-          value={instrumentNote}
-          onChange={(e) => setInstrumentNote(e.target.value)}
+          label="Representative's name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={200}
+        />
+        <SelectField
+          label="Representative kind"
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          options={[
+            { value: "", label: "Choose..." },
+            ...REPRESENTATIVE_KINDS.map((k) => ({ value: k, label: humanize(k) })),
+          ]}
+        />
+        <TextField
+          label={kind === "other" ? "Relationship (required)" : "Relationship (optional)"}
+          value={relationship}
+          onChange={(e) => setRelationship(e.target.value)}
+          maxLength={200}
+        />
+        <TextField
+          label="Beneficiary signed on"
+          type="date"
+          value={beneficiarySignedOn}
+          onChange={(e) => setBeneficiarySignedOn(e.target.value)}
+        />
+        <TextField
+          label="Representative signed on"
+          type="date"
+          value={representativeSignedOn}
+          onChange={(e) => setRepresentativeSignedOn(e.target.value)}
+        />
+        <TextField
+          label="Validity end (only if the signed document states one)"
+          type="date"
+          value={validThroughOn}
+          onChange={(e) => setValidThroughOn(e.target.value)}
+        />
+        <TextField
+          label="Where the validity end is stated (source note)"
+          value={validitySource}
+          onChange={(e) => setValiditySource(e.target.value)}
           maxLength={1000}
         />
-      ) : null}
-      <TextField
-        label="Representative's name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        maxLength={200}
-      />
-      <SelectField
-        label="Representative kind"
-        value={kind}
-        onChange={(e) => setKind(e.target.value as (typeof REPRESENTATIVE_KINDS)[number])}
-        options={REPRESENTATIVE_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
-      />
-      <TextField
-        label={kind === "other" ? "Relationship (required)" : "Relationship (optional)"}
-        value={relationship}
-        onChange={(e) => setRelationship(e.target.value)}
-        maxLength={200}
-      />
-      <TextField
-        label="Beneficiary signed on"
-        type="date"
-        value={beneficiarySignedOn}
-        onChange={(e) => setBeneficiarySignedOn(e.target.value)}
-      />
-      <TextField
-        label="Representative signed on"
-        type="date"
-        value={representativeSignedOn}
-        onChange={(e) => setRepresentativeSignedOn(e.target.value)}
-      />
-      <TextField
-        label="Validity end (only if the signed document states one)"
-        type="date"
-        value={validThroughOn}
-        onChange={(e) => setValidThroughOn(e.target.value)}
-      />
-      <TextField
-        label="Where the validity end is stated (source note)"
-        value={validitySource}
-        onChange={(e) => setValiditySource(e.target.value)}
-        maxLength={1000}
-      />
-      {validThroughOn === "" ? (
-        <Hint>{VALIDITY_NOT_RECORDED}. No end date is ever computed.</Hint>
-      ) : null}
-      <PhiNotice />
-      <Hint>The Medicare number stays on the signed document; do not type it here.</Hint>
-      <ErrorAlert message={error} />
-      <FormButtons
-        submitLabel="Record draft"
-        busy={busy}
-        blocked={reason !== null}
-        blockedReason={reason ?? undefined}
-        onSubmit={() => void submit()}
-        onCancel={props.onClose}
-      />
+        {validThroughOn === "" ? (
+          <Hint>{VALIDITY_NOT_RECORDED}. No end date is ever computed.</Hint>
+        ) : null}
+        <PhiNotice />
+        <Hint>The Medicare number stays on the signed document; do not type it here.</Hint>
+        <ErrorAlert message={error} />
+        <FormButtons
+          submitLabel="Record draft"
+          busy={busy}
+          blocked={reason !== null}
+          blockedReason={reason ?? undefined}
+          asFormSubmit
+          onSubmit={() => void submit()}
+          onCancel={props.onClose}
+        />
+      </form>
     </ActionModal>
   );
 }

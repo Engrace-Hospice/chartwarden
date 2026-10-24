@@ -3,15 +3,24 @@ import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/u
 // a beneficiary appointed, backed by the signed M22 document, confirmed against YOUR organization's own form version, and
 // activated by a second person. It is a record only: it grants no portal access, consent or caregiver status. Nothing here
 // states a CMS form, period or rule; every date is typed and an absent one reads as absent. The latest read wins, a failed
-// reload keeps what was on screen with a Retry, and the drawer is keyed on the appointment it shows.
+// reload keeps what was on screen with a Retry, the drawer is keyed on the appointment it shows, and after a step-up round
+// trip the drawer of the appointment being activated or revoked reopens with what was typed.
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
-import { ActionRail, ButtonRow, ErrorAlert, Hint, RetryAlert, WarningAlert } from "./action-ui";
+import { discardStepUpDrafts, findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
+import { ActionRail, ButtonRow, Hint, RetryAlert, WarningAlert } from "./action-ui";
 import { type Appointment, loadAppointments } from "./beneficiary-api";
 import { APPOINTMENT_GRANTS_NOTHING, NO_APPOINTMENT, VALIDITY_PASSED } from "./beneficiary-copy";
 import { REPRESENTATIVE_STATUS_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 import { RepresentativeCreateModal } from "./representative-create-modal";
-import { AppointmentDetail } from "./representative-detail";
+import {
+  ACTIVATE_DRAFT_ACTION,
+  AppointmentDetail,
+  EDIT_DRAFT_ACTION,
+  REPRESENTATIVE_DRAFT_ACTIONS,
+  REVOKE_DRAFT_ACTION,
+} from "./representative-detail";
 import { useGuardedLoad } from "./use-guarded-load";
 import { useReloadOn } from "./use-reload-on";
 
@@ -21,21 +30,36 @@ export interface RepresentativePanelProps {
   readonly canManage: boolean;
   /** Holds representative.verify: may activate or revoke (the server also needs a fresh step-up). */
   readonly canVerify: boolean;
+  /** Bumped by the parent after any write: the list is read again (the one re-read path when a parent is present). */
   readonly refreshKey?: string | number;
   readonly onChanged?: () => void;
 }
 
 export function RepresentativePanel(props: RepresentativePanelProps): JSX.Element {
   const client = useApiClient();
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, REPRESENTATIVE_DRAFT_ACTIONS);
   const load = useCallback(() => loadAppointments(client, props.claimId), [client, props.claimId]);
   const { data, error, load: reload } = useGuardedLoad(load);
   useReloadOn(reload, props.refreshKey);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    returning
+      ? (findStepUpDraftResourceId(owner, REVOKE_DRAFT_ACTION) ??
+        findStepUpDraftResourceId(owner, ACTIVATE_DRAFT_ACTION) ??
+        findStepUpDraftResourceId(owner, EDIT_DRAFT_ACTION))
+      : null,
+  );
+  const [restore] = useState(returning);
   const [creating, setCreating] = useState(false);
 
+  // A parent that bumps `refreshKey` after onChanged drives the re-read; a standalone panel re-reads itself.
   const changed = (): void => {
-    void reload();
-    props.onChanged?.();
+    if (props.onChanged) props.onChanged();
+    else void reload();
+  };
+  const closeDrawer = (): void => {
+    for (const action of REPRESENTATIVE_DRAFT_ACTIONS) discardStepUpDrafts(owner, action);
+    setSelectedId(null);
   };
 
   if (data === null) {
@@ -55,14 +79,10 @@ export function RepresentativePanel(props: RepresentativePanelProps): JSX.Elemen
       <h3 className="wx-action-title">Appointment of representative</h3>
       <Hint>{APPOINTMENT_GRANTS_NOTHING}</Hint>
       {error ? (
-        <>
-          <ErrorAlert message={`Appointments could not be refreshed: ${error}`} />
-          <ButtonRow>
-            <Button size="sm" tone="secondary" onClick={() => void reload()}>
-              Retry
-            </Button>
-          </ButtonRow>
-        </>
+        <RetryAlert
+          message={`Appointments could not be refreshed: ${error}`}
+          onRetry={() => void reload()}
+        />
       ) : null}
       {data.items.length === 0 ? (
         <WarningAlert>{NO_APPOINTMENT}</WarningAlert>
@@ -115,12 +135,13 @@ export function RepresentativePanel(props: RepresentativePanelProps): JSX.Elemen
         />
       ) : null}
       {selected ? (
-        <ActionRail ariaLabel="Appointment of representative" onClose={() => setSelectedId(null)}>
+        <ActionRail ariaLabel="Appointment of representative" onClose={closeDrawer}>
           <AppointmentDetail
             key={`appointment-${selected.id}`}
             appointment={selected}
             canManage={props.canManage}
             canVerify={props.canVerify}
+            restore={restore}
             onChanged={changed}
           />
         </ActionRail>

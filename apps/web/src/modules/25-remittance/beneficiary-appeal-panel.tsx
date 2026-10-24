@@ -5,7 +5,7 @@ import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/u
 // Retry, and the drawer is keyed on the appeal it shows.
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
-import { ActionRail, ButtonRow, ErrorAlert, Hint, RetryAlert } from "./action-ui";
+import { ActionRail, ButtonRow, Hint, RetryAlert } from "./action-ui";
 import { loadBeneficiaryAppeals } from "./beneficiary-api";
 import { NO_BENEFICIARY_APPEALS, RECORDS_NOT_FILES } from "./beneficiary-copy";
 import { BeneficiaryDetail } from "./beneficiary-detail";
@@ -41,9 +41,10 @@ export function BeneficiaryAppealPanel(props: BeneficiaryAppealPanelProps): JSX.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // A parent that bumps `refreshKey` after onChanged drives the re-read; a standalone panel re-reads itself.
   const changed = (): void => {
-    void reload();
-    props.onChanged?.();
+    if (props.onChanged) props.onChanged();
+    else void reload();
   };
 
   if (data === null) {
@@ -64,14 +65,10 @@ export function BeneficiaryAppealPanel(props: BeneficiaryAppealPanelProps): JSX.
       <h3 className="wx-action-title">Beneficiary-filed appeals</h3>
       <Hint>{RECORDS_NOT_FILES}</Hint>
       {error ? (
-        <>
-          <ErrorAlert message={`Beneficiary appeals could not be refreshed: ${error}`} />
-          <ButtonRow>
-            <Button size="sm" tone="secondary" onClick={() => void reload()}>
-              Retry
-            </Button>
-          </ButtonRow>
-        </>
+        <RetryAlert
+          message={`Beneficiary appeals could not be refreshed: ${error}`}
+          onRetry={() => void reload()}
+        />
       ) : null}
       {data.items.length === 0 ? (
         <Hint>{NO_BENEFICIARY_APPEALS}</Hint>

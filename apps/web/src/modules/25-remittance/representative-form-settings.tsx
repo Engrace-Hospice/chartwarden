@@ -50,6 +50,7 @@ function AddModal(props: {
         : null;
 
   async function submit(): Promise<void> {
+    if (reason !== null || busy) return;
     setBusy(true);
     setError(null);
     const res = await createFormVersion(client, {
@@ -67,56 +68,64 @@ function AddModal(props: {
 
   return (
     <ActionModal ariaLabel="Add an appointment form version" onClose={props.onClose}>
-      <TextField
-        label="Name (your organization's label)"
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        maxLength={200}
-      />
-      <TextField
-        label="Form identifier (exactly as supplied)"
-        value={identifier}
-        onChange={(e) => setIdentifier(e.target.value)}
-        maxLength={200}
-      />
-      <TextField
-        label="Edition (exactly as supplied)"
-        value={edition}
-        onChange={(e) => setEdition(e.target.value)}
-        maxLength={200}
-      />
-      <TextField
-        label="Source note (who supplied it, and where)"
-        value={sourceNote}
-        onChange={(e) => setSourceNote(e.target.value)}
-        maxLength={1000}
-      />
-      <TextField
-        label="Verified on (optional)"
-        type="date"
-        value={verifiedOn}
-        onChange={(e) => setVerifiedOn(e.target.value)}
-      />
-      <TextAreaField
-        label="Required elements, one per line"
-        value={elements}
-        onChange={(e) => setElements(e.target.value)}
-        rows={6}
-      />
-      <Hint>
-        {list.length} element{list.length === 1 ? "" : "s"}. A person ticks each one on every
-        appointment.
-      </Hint>
-      <PhiNotice />
-      <ErrorAlert message={error} />
-      <FormButtons
-        submitLabel="Save form version"
-        busy={busy}
-        blocked={reason !== null}
-        blockedReason={reason ?? undefined}
-        onSubmit={() => void submit()}
-        onCancel={props.onClose}
-      />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <TextField
+          label="Name (your organization's label)"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          maxLength={200}
+        />
+        <TextField
+          label="Form identifier (exactly as supplied)"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          maxLength={200}
+        />
+        <TextField
+          label="Edition (exactly as supplied)"
+          value={edition}
+          onChange={(e) => setEdition(e.target.value)}
+          maxLength={200}
+        />
+        <TextField
+          label="Source note (who supplied it, and where)"
+          value={sourceNote}
+          onChange={(e) => setSourceNote(e.target.value)}
+          maxLength={1000}
+        />
+        <TextField
+          label="Verified on (optional)"
+          type="date"
+          value={verifiedOn}
+          onChange={(e) => setVerifiedOn(e.target.value)}
+        />
+        <TextAreaField
+          label="Required elements, one per line"
+          value={elements}
+          onChange={(e) => setElements(e.target.value)}
+          rows={6}
+        />
+        <Hint>
+          {list.length} element{list.length === 1 ? "" : "s"}. A person ticks each one on every
+          appointment.
+        </Hint>
+        <PhiNotice />
+        <ErrorAlert message={error} />
+        <FormButtons
+          submitLabel="Save form version"
+          busy={busy}
+          blocked={reason !== null}
+          blockedReason={reason ?? undefined}
+          asFormSubmit
+          onSubmit={() => void submit()}
+          onCancel={props.onClose}
+        />
+      </form>
     </ActionModal>
   );
 }
@@ -153,14 +162,10 @@ export function RepresentativeFormSettings(): JSX.Element {
         against any CMS form.
       </Hint>
       {error ? (
-        <>
-          <ErrorAlert message={`Form versions could not be refreshed: ${error}`} />
-          <ButtonRow>
-            <Button size="sm" tone="secondary" onClick={() => void reload()}>
-              Retry
-            </Button>
-          </ButtonRow>
-        </>
+        <RetryAlert
+          message={`Form versions could not be refreshed: ${error}`}
+          onRetry={() => void reload()}
+        />
       ) : null}
       {current.length === 0 ? <WarningAlert>{NO_FORM_CONFIGURED}</WarningAlert> : null}
       {data.items.length > 0 ? (

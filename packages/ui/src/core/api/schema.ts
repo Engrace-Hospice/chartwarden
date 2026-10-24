@@ -94370,6 +94370,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                        validityEndPassed: boolean;
                     };
                 };
             };

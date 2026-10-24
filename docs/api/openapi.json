@@ -265162,7 +265162,8 @@
                   "type": "object",
                   "required": [
                     "id",
-                    "version"
+                    "version",
+                    "validityEndPassed"
                   ],
                   "properties": {
                     "id": {
@@ -265170,6 +265171,9 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "validityEndPassed": {
+                      "type": "boolean"
                     }
                   }
                 }

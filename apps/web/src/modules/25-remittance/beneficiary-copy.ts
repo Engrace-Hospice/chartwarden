@@ -9,6 +9,9 @@ export const VALIDITY_PASSED = "Validity end passed (as recorded) - confirm with
 export const RECORDS_NOT_FILES = "ChartWarden records this appeal; it does not file it.";
 export const APPOINTMENT_GRANTS_NOTHING =
   "An appointment is a record only. It gives the representative no portal access, consent or caregiver status, and it never changes the hospice's own appeals.";
+/** Shown beside a 409: the record was reloaded under the person's hands, and their typed values were kept. */
+export const CHANGED_CUE =
+  "This record changed while you were working. It has been reloaded and what you typed is kept: review it and save again.";
 export const NO_DUE_DATE_ENTER = "No due date recorded - enter it from the notice";
 export const NO_BENEFICIARY_APPEALS =
   "No beneficiary-filed appeal has been recorded for this claim.";
