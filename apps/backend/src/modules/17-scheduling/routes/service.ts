@@ -24,7 +24,7 @@ import type {
   VisitSetting,
   VisitStatus,
 } from "@chartwarden/types";
-import { ConflictError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 import type { CreateOnCallRotationInput, OnCallRotationView } from "../seams/oncall-rotation-store";
@@ -61,6 +61,7 @@ export interface VisitView {
   readonly patientAddressId: string | null;
   readonly externalFacilityId: string | null;
   readonly rescheduledIntoVisitId: string | null;
+  readonly cancellationReasonCode: string | null;
 }
 
 /**
@@ -97,6 +98,11 @@ export interface ProposalView {
   readonly proposedVisitPurpose: VisitPurpose;
   readonly proposedForDate: string;
   readonly status: VisitProposalStatusView;
+  readonly source?: string;
+  readonly suggestedMembershipId?: string | null;
+  readonly proposedStartedAt?: string;
+  readonly proposedEndedAt?: string;
+  readonly publishedAsVisitId?: string | null;
 }
 type VisitProposalStatusView = "pending" | "published" | "dismissed" | "stale";
 
@@ -107,6 +113,14 @@ export interface RecurringView {
   readonly visitPurpose: VisitPurpose;
   readonly rrule: string;
   readonly status: "active" | "discontinued";
+  readonly admissionId?: string;
+  readonly visitSetting?: VisitSetting;
+  readonly patientAddressId?: string | null;
+  readonly timeOfDayStart?: string;
+  readonly timeOfDayEnd?: string;
+  readonly timeZone?: string;
+  readonly startDate?: string;
+  readonly count?: number | null;
 }
 
 export interface AvailabilityView {
@@ -233,6 +247,7 @@ interface VisitRecord {
   scheduledEndedAt: string;
   status: VisitStatus;
   rescheduledIntoVisitId: string | null;
+  cancellationReasonCode?: string | null;
   version: number;
 }
 
@@ -468,7 +483,13 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(record);
   }
 
-  cancelVisit(orgId: string, _userId: string, visitId: string, reason: string): VisitView {
+  cancelVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    reason: string,
+    reasonCode = "operational",
+  ): VisitView {
     const record = this.requireVisit(orgId, visitId);
     const transition = transitionVisit(record.status, {
       type: "cancel",
@@ -476,6 +497,7 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       cancelledByPresent: true,
     });
     record.status = transition.to;
+    record.cancellationReasonCode = reasonCode;
     record.version += 1;
     this.record(transition.effects, record.id);
     return toVisitView(record);
@@ -1061,6 +1083,7 @@ function toVisitView(record: VisitRecord): VisitView {
     patientAddressId: record.patientAddressId,
     externalFacilityId: record.externalFacilityId,
     rescheduledIntoVisitId: record.rescheduledIntoVisitId,
+    cancellationReasonCode: record.cancellationReasonCode ?? null,
   };
 }
 

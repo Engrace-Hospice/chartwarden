@@ -1,4 +1,12 @@
-import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Modal,
+  SelectField,
+  TextField,
+  stepUpPath,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the two small §4.1/§4.2 document ceremonies (#91).
 //
 // EDIT is `PATCH /api/v1/documents/:id` — title and portal visibility. The route returns the patched
@@ -14,8 +22,10 @@ import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwa
 // would render it inline (DOC.SignedUrlPreview) is a screen this slice does not build.
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { MdmEntityLookupField } from "../../shell/entity-lookups";
 import {
   type AccessPurpose,
+  type DisclosureRecipient,
   type DocumentView,
   mintContentUrl,
   patchDocument,
@@ -40,6 +50,14 @@ const PURPOSE_LABEL: Record<string, string> = {
   patient_access: "Patient access — §164.524 request",
   amendment_review: "Amendment review",
   survey_export: "Survey export",
+};
+
+/** Purposes that release the document to a partner outside the org, so the server needs the recipient (§4.12). */
+const EXTERNAL_PURPOSES: readonly AccessPurpose[] = ["disclosure", "survey_export"];
+
+const RECIPIENT_KIND_LABEL: Record<DisclosureRecipient["kind"], string> = {
+  facility: "Facility",
+  payer: "Payer",
 };
 
 export interface DocumentEditDialogProps {
@@ -153,14 +171,21 @@ export function DocumentPreviewDialog({
 }: DocumentPreviewDialogProps): JSX.Element | null {
   const client = useApiClient();
   const [purpose, setPurpose] = useState<AccessPurpose>("treatment");
+  const [recipientKind, setRecipientKind] = useState<DisclosureRecipient["kind"]>("facility");
+  const [recipientId, setRecipientId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsStepUp, setNeedsStepUp] = useState(false);
+  const external = EXTERNAL_PURPOSES.includes(purpose);
 
   useEffect(() => {
     if (!open) return;
     setPurpose("treatment");
+    setRecipientKind("facility");
+    setRecipientId("");
     setBusy(false);
     setError(null);
+    setNeedsStepUp(false);
   }, [open]);
 
   if (!open) return null;
@@ -168,10 +193,18 @@ export function DocumentPreviewDialog({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = await mintContentUrl(client, documentId, versionId, purpose);
+    setNeedsStepUp(false);
+    const res = await mintContentUrl(
+      client,
+      documentId,
+      versionId,
+      purpose,
+      external ? { kind: recipientKind, entityId: recipientId } : undefined,
+    );
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
+      setNeedsStepUp(res.stepUp === true);
       return;
     }
     // `noopener` because the target is object storage, not this origin.
@@ -193,9 +226,46 @@ export function DocumentPreviewDialog({
           label="Reason for access"
           value={purpose}
           disabled={busy}
-          onChange={(e) => setPurpose(e.target.value as AccessPurpose)}
+          onChange={(e) => {
+            const next = e.target.value as AccessPurpose;
+            setPurpose(next);
+            // A partner picked for one external reason must not survive a detour through an internal one:
+            // the remounted lookup would show a bare id for a recipient the user can no longer read.
+            if (!EXTERNAL_PURPOSES.includes(next)) setRecipientId("");
+          }}
           options={PURPOSES.map((p) => ({ value: p, label: PURPOSE_LABEL[p] ?? p }))}
         />
+        {external ? (
+          <>
+            <SelectField
+              label="Recipient type"
+              value={recipientKind}
+              disabled={busy}
+              onChange={(e) => {
+                setRecipientKind(e.target.value as DisclosureRecipient["kind"]);
+                setRecipientId("");
+              }}
+              options={Object.entries(RECIPIENT_KIND_LABEL).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+            />
+            <MdmEntityLookupField
+              key={recipientKind}
+              kind={recipientKind}
+              label="Recipient"
+              value={recipientId}
+              onChange={(id) => setRecipientId(id)}
+              disabled={busy}
+              required
+              appearance="modal"
+              hint="The partner receiving this document. A signed business associate agreement must be on file."
+            />
+          </>
+        ) : null}
+        {external && recipientId === "" ? (
+          <p style={meta}>Choose a recipient to continue.</p>
+        ) : null}
         <p style={meta}>
           Opening this document is recorded in the patient's disclosure accounting (§164.528)
           against the reason chosen here. The link is short-lived and opens in a new tab.
@@ -203,13 +273,19 @@ export function DocumentPreviewDialog({
         {error ? (
           <p role="alert" style={errorText}>
             {error}
+            {needsStepUp ? (
+              <>
+                {" "}
+                <a href={stepUpPath(`${location.pathname}${location.search}`)}>Verify now</a>
+              </>
+            ) : null}
           </p>
         ) : null}
         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy}>
+          <Button onClick={submit} disabled={busy || (external && recipientId === "")}>
             {busy ? "Opening…" : "Open"}
           </Button>
         </div>

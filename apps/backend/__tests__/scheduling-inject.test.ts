@@ -300,6 +300,26 @@ describe("M17-T07 — route 5: self-attest EVV start", () => {
   });
 });
 
+describe("Scheduling service context", () => {
+  it("returns the authorized organization timezone", async () => {
+    const { app } = makeServer();
+    const allowed = await app.inject({
+      method: "GET",
+      url: "/api/v1/scheduling/context",
+      headers: SCHED,
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toEqual({ timeZone: "UTC" });
+    const denied = await app.inject({
+      method: "GET",
+      url: "/api/v1/scheduling/context",
+      headers: { "x-test-user": "portal_1", "x-test-org": ORG },
+    });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
 describe("M17-T07 — route 6: cancel", () => {
   it("cancels a published visit (reason ≥ 20 chars) → 200", async () => {
     const { app } = makeServer();
@@ -324,6 +344,13 @@ describe("M17-T07 — route 6: cancel", () => {
     });
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json().status).toBe("cancelled");
+    expect(cancelled.json().cancellationReasonCode).toBe("clinical_status_change");
+    const confirmed = await app.inject({
+      method: "GET",
+      url: `/api/v1/visits/${id}`,
+      headers: SCHED,
+    });
+    expect(confirmed.json().cancellationReasonCode).toBe("clinical_status_change");
     await app.close();
   });
 });
