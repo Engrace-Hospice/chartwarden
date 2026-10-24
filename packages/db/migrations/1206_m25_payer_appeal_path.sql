@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS "payer_appeal_path" (
 CREATE UNIQUE INDEX IF NOT EXISTS "payer_appeal_path_scope_ci_unique" ON "payer_appeal_path"
   ("organization_id", "payer_id", "program", (lower(btrim(coalesce("contract_label", '')))), "effective_from")
   WHERE "status" <> 'retired';--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "ix_payer_appeal_path_supersedes" ON "payer_appeal_path" ("supersedes_path_id") WHERE "supersedes_path_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "payer_appeal_path_payer_ix" ON "payer_appeal_path" ("organization_id", "payer_id", "effective_from");--> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS "payer_appeal_path_level" (
