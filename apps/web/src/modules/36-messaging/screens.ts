@@ -43,6 +43,7 @@ const BreakGlassReview = lazy(() =>
   import("./break-glass-review").then((m) => ({ default: m.BreakGlassReview })),
 );
 const ExportMine = lazy(() => import("./export-mine").then((m) => ({ default: m.ExportMine })));
+const DeathBoard = lazy(() => import("./death-board").then((m) => ({ default: m.DeathBoard })));
 const ExternalPartners = lazy(() =>
   import("./partners").then((m) => ({ default: m.ExternalPartners })),
 );
@@ -171,6 +172,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.export.approve",
       screen: ExportApprovals,
+    },
+    {
+      // WP 6.9 (ADR-0098, proposed): the checklist for the work after a patient's death. Off per tenant (messaging.death_board); the list says so.
+      id: "messaging.death-board",
+      path: "/messaging/death-board",
+      title: "Death follow-up",
+      navGroup: "General",
+      requiredPermission: "messaging.read",
+      screen: DeathBoard,
     },
     {
       // WP 6.6 (ADR-0096, proposed): share one conversation read-only with a pharmacy / DME partner, and revoke a share now. Creating also needs the

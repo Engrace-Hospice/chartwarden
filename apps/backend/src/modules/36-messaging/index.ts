@@ -209,6 +209,10 @@ import {
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
+import {
+  type DeathBoardRouteDeps as _DeathBoardRouteDeps,
+  registerDeathBoardRoutes as _registerDeathBoardRoutes,
+} from "./routes/death-board-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
@@ -325,6 +329,8 @@ export function mountMessagingRoutes(
      * share and EVERY partner route are the uniform 404; listing and revoking never depend on it). The limiters are the composition root's budgets.
      * Omitted => not mounted.
      */
+    /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
+    deathBoard?: _DeathBoardRouteDeps;
     externalShare?: {
       flags?: _ExternalShareFlagReader | undefined;
       redeemIpLimiter?: _ExternalShareLimiter | undefined;
@@ -514,6 +520,8 @@ export function mountMessagingRoutes(
       partnerRoutes: opts.externalShare?.partnerAccessAvailable !== false,
     });
   }
+  // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board; every route is the uniform 404 while the tenant flag is off.
+  if (opts.deathBoard) _registerDeathBoardRoutes(app, opts.deathBoard);
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -527,6 +535,7 @@ export { buildSbarDeps } from "./sbar/binding";
 export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
+export { buildDeathBoardDeps } from "./death-board/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";

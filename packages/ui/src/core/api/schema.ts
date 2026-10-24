@@ -15034,6 +15034,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/death-board-items/{itemId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a checklist item complete (WP 6.9; the item's OWNER only: 403 DEATH_BOARD_NOT_OWNER for anyone else who can see it). Explicit, idempotent (the owner repeating it gets the same item), stamped by the database clock. A flagged item (no owner) is 409 DEATH_BOARD_ITEM_STATE_CONFLICT until a supervisor reassigns it. Coordination only: nothing is written to the chart */
+        post: operations["postApiV1MessagingDeathboarditemsByItemIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-board-items/{itemId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The owner and status history of one checklist item (WP 6.9): created, reassigned, needs_owner, completed, each with its actor (or the system) and instants. Same visibility and 404 as the board */
+        get: operations["getApiV1MessagingDeathboarditemsByItemIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-board-items/{itemId}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassign a checklist item (WP 6.9; the owner, or a messaging.review holder). The target must be an active user the Part 2 gate admits for the patient (422 DEATH_BOARD_OWNER_INVALID). Audited with the actor and reason, tells the new owner with fixed text, clears the no-owner flag. Repeating it is a no-op; a finished item is 409 */
+        post: operations["postApiV1MessagingDeathboarditemsByItemIdReassign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The death follow-up boards the caller may see (WP 6.9; messaging.read + patient.read; messaging.review marks a supervisor). One board per deceased patient, six fixed checklist items, each with ONE owner. Visible to a supervisor, anyone who owns or acted on an item, and the patient's live care team; a viewer the 42 CFR Part 2 gate refuses (or cannot evaluate) sees nothing. limit up to 50 (default 25) over the 100 most recent boards. 200 {enabled:false,boards:[]} while the tenant flag `messaging.death_board` is off, checked before the query is parsed. Read-audited against every patient it discloses */
+        get: operations["getApiV1MessagingDeathboards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards/{boardId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One death follow-up board (WP 6.9). A missing, foreign, not-your-patient, Part 2-refused and flag-off board is ONE 404. Items carry ids, a fixed label, the owner, a state and the actions the caller may take now. No free text. Read-audited against the patient */
+        get: operations["getApiV1MessagingDeathboardsByBoardId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/deliveries/{id}/target": {
         parameters: {
             query?: never;
@@ -70444,6 +70529,227 @@ export interface operations {
                     } | {
                         /** @constant */
                         state: "unavailable";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathboarditemsByItemIdComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            id: string;
+                            item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                            label: string;
+                            status: "open" | "done";
+                            owner_user_id: string;
+                            owner_display_name: string | null;
+                            needs_owner: boolean;
+                            /** Format: date-time */
+                            due_at: string;
+                            overdue: boolean;
+                            completed_at: string | null;
+                            completed_by_user_id: string | null;
+                            actions: ("complete" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboarditemsByItemIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: {
+                            id: string;
+                            event_type: "created" | "reassigned" | "completed" | "needs_owner";
+                            actor_kind: "user" | "system";
+                            actor_user_id: string | null;
+                            from_owner_user_id: string | null;
+                            to_owner_user_id: string | null;
+                            reason_code: ("creation" | "manual" | "supervisor" | "offboarding") | null;
+                            /** Format: date-time */
+                            created_at: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathboarditemsByItemIdReassign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to_user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            id: string;
+                            item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                            label: string;
+                            status: "open" | "done";
+                            owner_user_id: string;
+                            owner_display_name: string | null;
+                            needs_owner: boolean;
+                            /** Format: date-time */
+                            due_at: string;
+                            overdue: boolean;
+                            completed_at: string | null;
+                            completed_by_user_id: string | null;
+                            actions: ("complete" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboards: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        boards: {
+                            id: string;
+                            patient_id: string;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            open_count: number;
+                            items: {
+                                id: string;
+                                item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                                label: string;
+                                status: "open" | "done";
+                                owner_user_id: string;
+                                owner_display_name: string | null;
+                                needs_owner: boolean;
+                                /** Format: date-time */
+                                due_at: string;
+                                overdue: boolean;
+                                completed_at: string | null;
+                                completed_by_user_id: string | null;
+                                actions: ("complete" | "reassign")[];
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboardsByBoardId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                boardId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        board: {
+                            id: string;
+                            patient_id: string;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            open_count: number;
+                            items: {
+                                id: string;
+                                item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                                label: string;
+                                status: "open" | "done";
+                                owner_user_id: string;
+                                owner_display_name: string | null;
+                                needs_owner: boolean;
+                                /** Format: date-time */
+                                due_at: string;
+                                overdue: boolean;
+                                completed_at: string | null;
+                                completed_by_user_id: string | null;
+                                actions: ("complete" | "reassign")[];
+                            }[];
+                        };
                     };
                 };
             };

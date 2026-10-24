@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 193,
+  "totalStaticWebScreens": 194,
   "e2eReachedCount": 20,
-  "axeReachedCount": 183,
+  "axeReachedCount": 184,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -745,6 +745,14 @@
       "module": "36-messaging",
       "path": "/messaging/analytics",
       "permission": "messaging.analytics.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.death-board",
+      "module": "36-messaging",
+      "path": "/messaging/death-board",
+      "permission": "messaging.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2309,6 +2317,14 @@
       "module": "36-messaging",
       "path": "/messaging/analytics",
       "permission": "messaging.analytics.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.death-board",
+      "module": "36-messaging",
+      "path": "/messaging/death-board",
+      "permission": "messaging.read",
       "e2eReached": false,
       "axeReached": true
     },

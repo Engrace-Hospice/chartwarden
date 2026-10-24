@@ -1407,6 +1407,15 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
+// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
+import {
+  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
+  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
+  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
+  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
+  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
+  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
 import {
   CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
@@ -10587,6 +10596,35 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/export/:id/download": {
     summary:
       "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
+  },
+
+  // death-event coordination board (WP 6.9, ADR-0098 PROPOSED)
+  "GET /api/v1/messaging/death-boards": {
+    summary:
+      "The death follow-up boards the caller may see (WP 6.9; messaging.read + patient.read; messaging.review marks a supervisor). One board per deceased patient, six fixed checklist items, each with ONE owner. Visible to a supervisor, anyone who owns or acted on an item, and the patient's live care team; a viewer the 42 CFR Part 2 gate refuses (or cannot evaluate) sees nothing. limit up to 50 (default 25) over the 100 most recent boards. 200 {enabled:false,boards:[]} while the tenant flag `messaging.death_board` is off, checked before the query is parsed. Read-audited against every patient it discloses",
+    query: M36ListDeathBoardsQuerySchema,
+    response: M36DeathBoardListResponseSchema,
+  },
+  "GET /api/v1/messaging/death-boards/:boardId": {
+    summary:
+      "One death follow-up board (WP 6.9). A missing, foreign, not-your-patient, Part 2-refused and flag-off board is ONE 404. Items carry ids, a fixed label, the owner, a state and the actions the caller may take now. No free text. Read-audited against the patient",
+    response: M36DeathBoardResponseSchema,
+  },
+  "GET /api/v1/messaging/death-board-items/:itemId/history": {
+    summary:
+      "The owner and status history of one checklist item (WP 6.9): created, reassigned, needs_owner, completed, each with its actor (or the system) and instants. Same visibility and 404 as the board",
+    response: M36DeathBoardHistoryResponseSchema,
+  },
+  "POST /api/v1/messaging/death-board-items/:itemId/complete": {
+    summary:
+      "Mark a checklist item complete (WP 6.9; the item's OWNER only: 403 DEATH_BOARD_NOT_OWNER for anyone else who can see it). Explicit, idempotent (the owner repeating it gets the same item), stamped by the database clock. A flagged item (no owner) is 409 DEATH_BOARD_ITEM_STATE_CONFLICT until a supervisor reassigns it. Coordination only: nothing is written to the chart",
+    response: M36DeathBoardItemResponseSchema,
+  },
+  "POST /api/v1/messaging/death-board-items/:itemId/reassign": {
+    summary:
+      "Reassign a checklist item (WP 6.9; the owner, or a messaging.review holder). The target must be an active user the Part 2 gate admits for the patient (422 DEATH_BOARD_OWNER_INVALID). Audited with the actor and reason, tells the new owner with fixed text, clears the no-owner flag. Repeating it is a no-op; a finished item is 409",
+    body: M36ReassignDeathBoardItemBodySchema,
+    response: M36DeathBoardItemResponseSchema,
   },
 
   // external partner share (WP 6.6, ADR-0096 PROPOSED)
