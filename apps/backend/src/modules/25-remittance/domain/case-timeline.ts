@@ -9,6 +9,7 @@ export const TIMELINE_KINDS = [
   "recorded_deadline",
   "audit_request",
   "submission",
+  "payer_appeal",
 ] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 

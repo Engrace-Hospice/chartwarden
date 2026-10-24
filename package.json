@@ -285,6 +285,7 @@
     "test:m25:audit-request:live": "vitest run apps/backend/__tests__/m25-audit-request.live.test.ts",
     "test:m25:audit-response:live": "vitest run apps/backend/__tests__/m25-audit-response.live.test.ts",
     "test:m25:adr-readiness:live": "vitest run apps/backend/__tests__/m25-adr-readiness.live.test.ts",
+    "test:m25:payer-appeal:live": "vitest run apps/backend/__tests__/m25-payer-appeal.live.test.ts",
     "test:m6:loc-change-signed:live": "vitest run apps/backend/__tests__/m6-loc-change-signed.live.test.ts",
     "test:m6:adequacy-gate:live": "vitest run apps/backend/__tests__/m6-adequacy-gate.live.test.ts",
     "test:m6:recert-period-start:live": "vitest run apps/backend/__tests__/m6-recert-period-start.live.test.ts",

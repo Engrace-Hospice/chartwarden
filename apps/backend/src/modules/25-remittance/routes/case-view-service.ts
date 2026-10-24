@@ -24,6 +24,21 @@ export interface CaseViewOptions {
   readonly includeAdr: boolean;
   readonly includeReopening: boolean;
   readonly includeAudits: boolean;
+  /** Payer (commercial / Medicare Advantage) appeal levels, only when the actor holds `payer_appeal.read`. */
+  readonly includePayerAppeals?: boolean;
+}
+
+export interface DenialCaseView {
+  readonly denialCaseId: string;
+  /** The denial's claim, or null (a commercial denial has none). */
+  readonly claimId: string | null;
+  readonly patientId: string | null;
+  /** `claim` when the denial's claim names a patient; `unattributed` for a claim-less (commercial) denial. */
+  readonly patientAttribution: "claim" | "unattributed";
+  readonly generatedAt: string;
+  readonly nextDeadline: TimelineItem | null;
+  readonly items: TimelineItem[];
+  readonly truncated: boolean;
 }
 
 export interface CaseView {
@@ -38,10 +53,70 @@ export interface CaseView {
 
 export interface CaseViewService {
   getCaseView(actor: M25ReadActor, claimId: string, options: CaseViewOptions): Promise<CaseView>;
+  /** The same timeline keyed on the DENIAL: works for a denial with no claim (milestone 12a-1). */
+  getDenialCaseView(
+    actor: M25ReadActor,
+    denialCaseId: string,
+    options: CaseViewOptions,
+  ): Promise<DenialCaseView>;
 }
 
 const OPEN_ADR = ["received", "in_assembly", "in_review"];
 const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : String(d));
+
+type CaseViewTx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** Timeline items for payer appeal levels and their recorded deadlines. */
+async function payerAppealItems(
+  tx: CaseViewTx,
+  rows: (typeof schema.payerAppealCase.$inferSelect)[],
+  now: Date,
+): Promise<{ items: TimelineItem[]; truncated: boolean }> {
+  if (rows.length === 0) return { items: [], truncated: false };
+  const RD = schema.recordedDeadline;
+  const recorded = await tx
+    .select()
+    .from(RD)
+    .where(
+      inArray(
+        RD.payerAppealCaseId,
+        rows.map((r) => r.id),
+      ),
+    )
+    .orderBy(asc(RD.dueOn))
+    .limit(CASE_VIEW_ITEM_CAP + 1);
+  const cases: TimelineItem[] = rows.map((r) => {
+    const open = r.state === "draft" && r.deadlineAt !== null;
+    return {
+      id: r.id,
+      kind: "payer_appeal",
+      at: iso(r.createdAt),
+      label: `${r.levelLabel} (payer appeal)`,
+      state: r.state,
+      tier: null,
+      relatedId: r.priorLevelCaseId,
+      deadlineAt: open && r.deadlineAt ? iso(r.deadlineAt) : null,
+      deadlineSource: open ? "computed" : null,
+      windowConfirmed: r.windowVerified,
+    };
+  });
+  const deadlines: TimelineItem[] = recorded.slice(0, CASE_VIEW_ITEM_CAP).map((d) => {
+    const view = viewRecordedDeadline(d, now);
+    return {
+      id: d.id,
+      kind: "recorded_deadline",
+      at: iso(d.createdAt),
+      label: d.label,
+      state: view.status,
+      tier: null,
+      relatedId: d.payerAppealCaseId,
+      deadlineAt: d.satisfiedOn === null ? view.dueAt : null,
+      deadlineSource: d.satisfiedOn === null ? "recorded" : null,
+      windowConfirmed: true,
+    };
+  });
+  return { items: [...cases, ...deadlines], truncated: recorded.length > CASE_VIEW_ITEM_CAP };
+}
 
 export function buildDrizzleCaseViewService(
   db: DbClient,
@@ -267,6 +342,22 @@ export function buildDrizzleCaseViewService(
           }
         }
 
+        if (options.includePayerAppeals) {
+          const PC = schema.payerAppealCase;
+          const sc = scoped(PC.providerEntityId);
+          const payer = cap(
+            await tx
+              .select()
+              .from(PC)
+              .where(and(eq(PC.claimId, claimId), ...(sc ? [sc] : [])))
+              .orderBy(asc(PC.createdAt))
+              .limit(CASE_VIEW_ITEM_CAP + 1),
+          );
+          const built = await payerAppealItems(tx, payer, now);
+          items.push(...built.items);
+          if (built.truncated) truncated = true;
+        }
+
         return {
           claimId,
           patientId: claim.patientId,
@@ -276,6 +367,56 @@ export function buildDrizzleCaseViewService(
           truncated,
         };
       });
+    },
+
+    async getDenialCaseView(actor, denialCaseId, options) {
+      // The denial must resolve under RLS and inside the actor's provider scope, else it reads as absent (404).
+      const denial = await withOrgContext(db, actor, async (tx) => {
+        const DC = schema.denialCase;
+        const sc = providerEntityScopeCondition(DC.providerEntityId, actor.providerEntityScope);
+        const rows = await tx
+          .select({ id: DC.id, claimId: DC.claimId })
+          .from(DC)
+          .where(sc ? and(eq(DC.id, denialCaseId), sc) : eq(DC.id, denialCaseId))
+          .limit(1);
+        if (!rows[0]) throw new NotFoundError("denial case");
+        return rows[0];
+      });
+      // A denial with a claim carries the claim-keyed timeline (Medicare chain, ADR, audits); its payer levels are added below.
+      const fromClaim = denial.claimId
+        ? await this.getCaseView(actor, denial.claimId, { ...options, includePayerAppeals: false })
+        : null;
+      const payer = options.includePayerAppeals
+        ? await withOrgContext(db, actor, async (tx) => {
+            const PC = schema.payerAppealCase;
+            const sc = providerEntityScopeCondition(PC.providerEntityId, actor.providerEntityScope);
+            const rows = await tx
+              .select()
+              .from(PC)
+              .where(
+                sc ? and(eq(PC.denialCaseId, denialCaseId), sc) : eq(PC.denialCaseId, denialCaseId),
+              )
+              .orderBy(asc(PC.createdAt))
+              .limit(CASE_VIEW_ITEM_CAP + 1);
+            const built = await payerAppealItems(tx, rows.slice(0, CASE_VIEW_ITEM_CAP), new Date());
+            return {
+              items: built.items,
+              truncated: rows.length > CASE_VIEW_ITEM_CAP || built.truncated,
+            };
+          })
+        : { items: [] as TimelineItem[], truncated: false };
+      const now = new Date();
+      const items = sortTimeline([...(fromClaim?.items ?? []), ...payer.items]);
+      return {
+        denialCaseId,
+        claimId: denial.claimId,
+        patientId: fromClaim?.patientId ?? null,
+        patientAttribution: fromClaim?.patientId ? ("claim" as const) : ("unattributed" as const),
+        generatedAt: now.toISOString(),
+        nextDeadline: nextDeadline(items, now),
+        items,
+        truncated: (fromClaim?.truncated ?? false) || payer.truncated,
+      };
     },
   };
 }

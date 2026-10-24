@@ -1126,6 +1126,8 @@ import {
   buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
   buildDrizzleLaterTierService,
+  buildDrizzlePayerAppealPathService,
+  buildDrizzlePayerAppealService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
@@ -5993,6 +5995,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               sources: buildSeamAppealSourcePorts(),
             }),
             caseViewService: buildDrizzleCaseViewService(dbHandle.db),
+            // Milestone 12a-1: the organization's payer appeal paths (written by a person, verified by a second one;
+            // nothing is seeded) and payer appeal cases keyed on the denial. Payer names come through M40's seam.
+            payerAppealPathService: buildDrizzlePayerAppealPathService(dbHandle.db),
+            payerAppealService: buildDrizzlePayerAppealService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
             // Milestone 8a-1: advisory documentation readiness. The assistant port is the deny-stub (no model is
             // reachable); the deterministic gap view and the review record work with AI off.
             adrReadinessService: buildDrizzleAdrReadinessService(dbHandle.db, {

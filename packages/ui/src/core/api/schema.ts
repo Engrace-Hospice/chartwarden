@@ -8343,6 +8343,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/denials/{denialCaseId}/case-view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline */
+        get: operations["getApiV1DenialsByDenialCaseIdCaseview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{denialCaseId}/payer-appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened */
+        get: operations["getApiV1DenialsByDenialCaseIdPayerappeals"];
+        put?: never;
+        /** Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date */
+        post: operations["postApiV1DenialsByDenialCaseIdPayerappeals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/denials/{id}": {
         parameters: {
             query?: never;
@@ -18875,6 +18910,178 @@ export interface paths {
         get: operations["getApiV1PatientsMessagingsearch"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's payer appeal paths (written by a person; none are seeded) */
+        get: operations["getApiV1Payerappealpaths"];
+        put?: never;
+        /** Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it */
+        post: operations["postApiV1Payerappealpaths"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One payer appeal path with its levels, source notes and verification */
+        get: operations["getApiV1PayerappealpathsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a draft or active path; cases opened under it keep their snapshot (If-Match) */
+        post: operations["postApiV1PayerappealpathsByIdRetire"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a draft path as a person other than its author; it becomes active and frozen (If-Match) */
+        post: operations["postApiV1PayerappealpathsByIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One payer appeal level with its deadline derivation, recorded deadlines and decision */
+        get: operations["getApiV1PayerappealsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/notice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once */
+        put: operations["putApiV1PayerappealsByIdNotice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/recorded-deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deadlines typed from a notice for this payer appeal level, each with its source note */
+        get: operations["getApiV1PayerappealsByIdRecordeddeadlines"];
+        put?: never;
+        /** Record a due date typed from a payer notice (the source note is required) */
+        post: operations["postApiV1PayerappealsByIdRecordeddeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a recorded deadline until it is satisfied (If-Match) */
+        patch: operations["patchApiV1PayerappealsByIdRecordeddeadlinesByDeadlineId"];
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a recorded deadline satisfied (If-Match) */
+        post: operations["postApiV1PayerappealsByIdRecordeddeadlinesByDeadlineIdSatisfy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match) */
+        post: operations["postApiV1PayerappealsByIdState"];
         delete?: never;
         options?: never;
         head?: never;
@@ -37270,7 +37477,7 @@ export interface operations {
                         } | null;
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -37444,9 +37651,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -38021,7 +38229,7 @@ export interface operations {
                         }[];
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -38278,9 +38486,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -47594,7 +47803,7 @@ export interface operations {
                         generatedAt: string;
                         nextDeadline: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -47606,7 +47815,7 @@ export interface operations {
                         } | null;
                         items: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -51474,6 +51683,206 @@ export interface operations {
                             version: number;
                         }[];
                         nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DenialsByDenialCaseIdCaseview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                denialCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        denialCaseId: string;
+                        claimId: string | null;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        generatedAt: string;
+                        nextDeadline: {
+                            id: string;
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            at: string;
+                            label: string;
+                            state: string;
+                            tier: string | null;
+                            relatedId?: string | null;
+                            deadlineAt: string | null;
+                            deadlineSource: "computed" | "recorded" | null;
+                            windowConfirmed: boolean;
+                        } | null;
+                        items: {
+                            id: string;
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            at: string;
+                            label: string;
+                            state: string;
+                            tier: string | null;
+                            relatedId?: string | null;
+                            deadlineAt: string | null;
+                            deadlineSource: "computed" | "recorded" | null;
+                            windowConfirmed: boolean;
+                        }[];
+                        truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DenialsByDenialCaseIdPayerappeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                denialCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        denialCaseId: string;
+                        payerId: string | null;
+                        payerName: string | null;
+                        payerKind: string | null;
+                        adviceKind: string | null;
+                        refusal: "MEDICARE_PAYER" | "MEDICAID_PAYER" | "NO_PAYER_ADVICE" | null;
+                        maHint: boolean;
+                        payerUnresolved: boolean;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        path: {
+                            id: string;
+                            status: string;
+                            verified: boolean;
+                            revision: number;
+                            program: string;
+                            levels: {
+                                ordinal: number;
+                                levelKind: string;
+                                levelLabel: string;
+                                whoFiles: string;
+                                windowComplete: boolean;
+                            }[];
+                        } | null;
+                        pathPrompt: string | null;
+                        cases: {
+                            id: string;
+                            denialCaseId: string;
+                            claimId: string | null;
+                            payerId: string;
+                            program: string;
+                            pathId: string | null;
+                            pathRevision: number | null;
+                            levelOrdinal: number | null;
+                            levelKind: string;
+                            levelLabel: string;
+                            priorLevelCaseId: string | null;
+                            state: string;
+                            noticeDatedOn: string | null;
+                            deadlineAt: string | null;
+                            deadlineZone: string | null;
+                            deadlineSource: string;
+                            deadlineState: "computed" | "recorded" | "none";
+                            windowVerified: boolean;
+                            derivation: {
+                                presumedReceiptOn: string | null;
+                                calendarLastDay: string;
+                                lastFilingDay: string;
+                            } | null;
+                            prompt: string | null;
+                            pathAwaitingVerification: boolean;
+                            patientId: string | null;
+                            patientAttribution: "claim" | "unattributed";
+                            payerReference: string | null;
+                            externalReviewerName: string | null;
+                            decisionOutcome: string | null;
+                            dispositionKind: string | null;
+                            dispositionNote: string | null;
+                            needsManualReview: boolean;
+                            decisionOverdue: boolean;
+                            submittedAt: string | null;
+                            decidedAt: string | null;
+                            closedAt: string | null;
+                            version: number;
+                            deadlines: {
+                                id: string;
+                                subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                                subjectId: string;
+                                label: string;
+                                dueOn: string;
+                                zone: string;
+                                dueAt: string;
+                                sourceNote: string;
+                                noticeDocumentId: string | null;
+                                satisfiedOn: string | null;
+                                status: "open" | "due_soon" | "past" | "satisfied";
+                                version: number;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByDenialCaseIdPayerappeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                denialCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    program?: "commercial" | "medicare_advantage";
+                    contractLabel?: string | null;
+                    levelOrdinal?: number;
+                    levelLabel?: string;
+                    levelKind?: "internal" | "external_review" | "other";
+                    noticeDate?: string;
+                    /** Format: uuid */
+                    priorLevelCaseId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        deadlineSource: string;
                     };
                 };
             };
@@ -82947,6 +83356,528 @@ export interface operations {
                             displayName: string;
                             medicalRecordNumber: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Payerappealpaths: {
+        parameters: {
+            query?: {
+                payerId?: string;
+                status?: "draft" | "active" | "retired";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            payerId: string;
+                            payerName: string;
+                            program: string;
+                            contractLabel: string | null;
+                            status: string;
+                            effectiveFrom: string;
+                            sourceNote: string;
+                            sourceDocumentId: string | null;
+                            authoredByMembershipId: string;
+                            verifiedOn: string | null;
+                            verifiedByMembershipId: string | null;
+                            supersedesPathId: string | null;
+                            revision: number;
+                            version: number;
+                            levels: {
+                                id: string;
+                                ordinal: number;
+                                levelKind: string;
+                                levelLabel: string;
+                                whoFiles: string;
+                                filingWindowDays: number | null;
+                                anchorKind: string | null;
+                                receiptPresumptionDays: number | null;
+                                dayBasis: string | null;
+                                roll: string | null;
+                                decisionDays: number | null;
+                                formLabel: string | null;
+                                channelNote: string | null;
+                                sourceNote: string;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Payerappealpaths: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    payerId: string;
+                    program: "commercial" | "medicare_advantage";
+                    contractLabel?: string | null;
+                    effectiveFrom: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    supersedesPathId?: string | null;
+                    levels: {
+                        levelKind: "internal" | "external_review" | "other";
+                        levelLabel: string;
+                        whoFiles?: "provider" | "member" | "either" | "unknown";
+                        filingWindowDays?: number | null;
+                        anchorKind?: ("notice_date" | "notice_receipt" | "remittance_date" | "prior_decision_date" | "other_typed") | null;
+                        receiptPresumptionDays?: number | null;
+                        dayBasis?: ("calendar" | "business_us_federal") | null;
+                        roll?: ("none" | "back" | "forward") | null;
+                        decisionDays?: number | null;
+                        formLabel?: string | null;
+                        channelNote?: string | null;
+                        sourceNote: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PayerappealpathsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        payerName: string;
+                        program: string;
+                        contractLabel: string | null;
+                        status: string;
+                        effectiveFrom: string;
+                        sourceNote: string;
+                        sourceDocumentId: string | null;
+                        authoredByMembershipId: string;
+                        verifiedOn: string | null;
+                        verifiedByMembershipId: string | null;
+                        supersedesPathId: string | null;
+                        revision: number;
+                        version: number;
+                        levels: {
+                            id: string;
+                            ordinal: number;
+                            levelKind: string;
+                            levelLabel: string;
+                            whoFiles: string;
+                            filingWindowDays: number | null;
+                            anchorKind: string | null;
+                            receiptPresumptionDays: number | null;
+                            dayBasis: string | null;
+                            roll: string | null;
+                            decisionDays: number | null;
+                            formLabel: string | null;
+                            channelNote: string | null;
+                            sourceNote: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealpathsByIdRetire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealpathsByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PayerappealsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        denialCaseId: string;
+                        claimId: string | null;
+                        payerId: string;
+                        program: string;
+                        pathId: string | null;
+                        pathRevision: number | null;
+                        levelOrdinal: number | null;
+                        levelKind: string;
+                        levelLabel: string;
+                        priorLevelCaseId: string | null;
+                        state: string;
+                        noticeDatedOn: string | null;
+                        deadlineAt: string | null;
+                        deadlineZone: string | null;
+                        deadlineSource: string;
+                        deadlineState: "computed" | "recorded" | "none";
+                        windowVerified: boolean;
+                        derivation: {
+                            presumedReceiptOn: string | null;
+                            calendarLastDay: string;
+                            lastFilingDay: string;
+                        } | null;
+                        prompt: string | null;
+                        pathAwaitingVerification: boolean;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        payerReference: string | null;
+                        externalReviewerName: string | null;
+                        decisionOutcome: string | null;
+                        dispositionKind: string | null;
+                        dispositionNote: string | null;
+                        needsManualReview: boolean;
+                        decisionOverdue: boolean;
+                        submittedAt: string | null;
+                        decidedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        deadlines: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PayerappealsByIdNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    noticeDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        deadlineSource: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PayerappealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        items: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    dueOn: string;
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PayerappealsByIdRecordeddeadlinesByDeadlineId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label?: string;
+                    dueOn?: string;
+                    sourceNote?: string;
+                    noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealsByIdRecordeddeadlinesByDeadlineIdSatisfy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    satisfiedOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealsByIdState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    move: "submit" | "begin_review" | "decide" | "close" | "withdraw";
+                    payerReference?: string | null;
+                    externalReviewerName?: string | null;
+                    outcome?: "favorable" | "partial" | "unfavorable";
+                    dispositionKind?: "decision" | "remand" | "dismissal" | "other" | null;
+                    dispositionNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };
