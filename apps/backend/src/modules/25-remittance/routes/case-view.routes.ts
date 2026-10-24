@@ -27,6 +27,7 @@ const TimelineItemSchema = Type.Object({
     Type.Literal("recorded_deadline"),
     Type.Literal("audit_request"),
     Type.Literal("submission"),
+    Type.Literal("payer_appeal"),
   ]),
   at: Type.String(),
   label: Type.String(),
@@ -40,6 +41,16 @@ const TimelineItemSchema = Type.Object({
 
 export const CaseViewSchema = Type.Object({
   claimId: Type.String(),
+  patientId: NULLABLE_STRING,
+  generatedAt: Type.String(),
+  nextDeadline: Type.Union([TimelineItemSchema, Type.Null()]),
+  items: Type.Array(TimelineItemSchema),
+  truncated: Type.Boolean(),
+});
+
+export const DenialCaseViewSchema = Type.Object({
+  denialCaseId: Type.String(),
+  claimId: NULLABLE_STRING,
   patientId: NULLABLE_STRING,
   generatedAt: Type.String(),
   nextDeadline: Type.Union([TimelineItemSchema, Type.Null()]),
@@ -73,6 +84,39 @@ export function registerCaseViewRoutes(app: FastifyInstance, deps: CaseViewRoute
           includeAdr: granted.has("adr.read"),
           includeReopening: granted.has("reopening.read"),
           includeAudits: granted.has("audit_request.read"),
+          includePayerAppeals: granted.has("payer_appeal.read"),
+        }),
+      );
+    },
+  );
+
+  // Milestone 12a-1: the same view keyed on the DENIAL, so a commercial denial (no claim) has one too.
+  app.get(
+    "/api/v1/denials/:denialCaseId/case-view",
+    {
+      preHandler: [P("appeal.read")],
+      config: {
+        auditRead: {
+          resourceKind: "denial_case_view",
+          resourceIdParam: "denialCaseId",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
+    async (request, reply) => {
+      const denialCaseId = (request.params as { denialCaseId: string }).denialCaseId;
+      if (!UUID.test(denialCaseId)) throw new NotFoundError("denial case");
+      const ctx = request.context;
+      const granted = await resolveActorPermissions({
+        organizationId: ctx?.organizationId as string,
+        userId: ctx?.userId as string,
+      });
+      return reply.send(
+        await deps.caseViewService.getDenialCaseView(actorOf(request), denialCaseId, {
+          includeAdr: granted.has("adr.read"),
+          includeReopening: granted.has("reopening.read"),
+          includeAudits: granted.has("audit_request.read"),
+          includePayerAppeals: granted.has("payer_appeal.read"),
         }),
       );
     },

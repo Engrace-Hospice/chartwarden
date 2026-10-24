@@ -18,6 +18,7 @@ export const REMITTANCE_PROHIBITED_OUTPUT_ENTITY_PREFIXES: readonly string[] = [
   "submission_attempt",
   "remittance_",
   "recorded_deadline",
+  "payer_appeal",
 ];
 
 /** The subset of an M32 active-prompt summary the validator reports on. */

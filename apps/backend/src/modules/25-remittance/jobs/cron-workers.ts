@@ -18,6 +18,12 @@ import {
   runAppealDeadlineWatch,
   runDenialAging,
 } from "./m25-jobs";
+import {
+  type PayerAppealDeadlineStore,
+  type PayerAppealNoDeadlineStore,
+  runPayerAppealDeadlineWatch,
+  runPayerAppealNoDeadlineWatch,
+} from "./payer-appeal-watch";
 import { type QicOverdueStore, runQicOverdueWatch } from "./qic-overdue";
 import {
   type M25CronQueueName,
@@ -286,14 +292,19 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
             .where(
               sql`${RD.satisfiedOn} IS NULL
                 AND (${RD.appealCaseId} IS NULL OR EXISTS (SELECT 1 FROM appeal_case a WHERE a.id = ${RD.appealCaseId} AND a.state::text NOT IN ('closed','withdrawn')))
-                AND (${RD.auditRequestId} IS NULL OR EXISTS (SELECT 1 FROM audit_request r WHERE r.id = ${RD.auditRequestId} AND r.state NOT IN ('closed','withdrawn')))`,
+                AND (${RD.auditRequestId} IS NULL OR EXISTS (SELECT 1 FROM audit_request r WHERE r.id = ${RD.auditRequestId} AND r.state NOT IN ('closed','withdrawn')))
+                AND (${RD.payerAppealCaseId} IS NULL OR EXISTS (SELECT 1 FROM payer_appeal_case p WHERE p.id = ${RD.payerAppealCaseId} AND p.state NOT IN ('closed','withdrawn')))`,
             )
             .limit(100000);
           for (const r of rows) readBoundary.set(r.id, r.lastAlertedBoundary);
           return rows.map((r) => ({
             id: r.id,
-            subjectKind: r.appealCaseId ? ("appeal" as const) : ("audit_request" as const),
-            subjectId: (r.appealCaseId ?? r.auditRequestId) as string,
+            subjectKind: r.appealCaseId
+              ? ("appeal" as const)
+              : r.payerAppealCaseId
+                ? ("payer_appeal" as const)
+                : ("audit_request" as const),
+            subjectId: (r.appealCaseId ?? r.payerAppealCaseId ?? r.auditRequestId) as string,
             dueOn: r.dueOn,
             zone: r.zone,
             satisfiedOn: r.satisfiedOn,
@@ -357,6 +368,60 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
       }
       for (const id of noDeadline.alertedIds) {
         await tx.update(AR).set({ noDeadlineAlertedAt: now }).where(eq(AR.id, id));
+      }
+
+      // Milestone 12a-1: payer appeals. A draft level whose path-computed filing deadline approaches alerts at the shared
+      // boundaries (a typed deadline rides the recorded-deadline watch above); a draft with no due date of either kind
+      // alerts ONCE (an event row marks it, so the nightly tick never repeats it).
+      const PC = schema.payerAppealCase;
+      const PE = schema.payerAppealCaseEvent;
+      const payerDeadlineStore: PayerAppealDeadlineStore = {
+        async draftsWithComputedDeadline() {
+          const rows = await tx
+            .select({ id: PC.id, deadlineAt: PC.deadlineAt })
+            .from(PC)
+            .where(sql`${PC.state} = 'draft' AND ${PC.deadlineAt} IS NOT NULL`)
+            .limit(100000);
+          return rows.flatMap((r) => (r.deadlineAt ? [{ id: r.id, deadlineAt: r.deadlineAt.toISOString() }] : []));
+        },
+      };
+      const payerNoDeadlineStore: PayerAppealNoDeadlineStore = {
+        async openDrafts() {
+          const rows = await tx
+            .select({
+              id: PC.id,
+              state: PC.state,
+              createdAt: PC.createdAt,
+              computed: sql<boolean>`${PC.deadlineAt} IS NOT NULL`,
+              openRecorded: sql<number>`(SELECT count(*)::int FROM recorded_deadline d WHERE d.payer_appeal_case_id = ${PC.id} AND d.satisfied_on IS NULL)`,
+              alerted: sql<number>`(SELECT count(*)::int FROM payer_appeal_case_event e WHERE e.payer_appeal_case_id = ${PC.id} AND e.event_kind = 'no_deadline_alerted')`,
+            })
+            .from(PC)
+            .where(sql`${PC.state} = 'draft'`)
+            .limit(100000);
+          return rows.map((r) => ({
+            id: r.id,
+            state: r.state,
+            createdAt: r.createdAt.toISOString(),
+            hasDeadline: r.computed || r.openRecorded > 0,
+            alreadyAlerted: r.alerted > 0,
+          }));
+        },
+      };
+      const payerAlerts = [
+        ...(await runPayerAppealDeadlineWatch(payerDeadlineStore, now)).alerts,
+      ];
+      const payerNoDeadline = await runPayerAppealNoDeadlineWatch(payerNoDeadlineStore, now);
+      for (const a of [...payerAlerts, ...payerNoDeadline.alerts]) {
+        await alerts.dispatch({
+          alertCode: a.kind,
+          severity: "warn",
+          organizationId,
+          payload: a.detail,
+        });
+      }
+      for (const id of payerNoDeadline.alertedIds) {
+        await tx.insert(PE).values({ organizationId, payerAppealCaseId: id, eventKind: "no_deadline_alerted" });
       }
     });
   }

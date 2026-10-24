@@ -94,7 +94,7 @@ describe("checkPathInput", () => {
     ["DECISION_DAYS_OUT_OF_RANGE", header, [level({ decisionDays: 0 })]],
     ["TEXT_TOO_LONG", header, [level({ levelLabel: "x".repeat(501) })]],
   ] as const)("refuses %s", (code, h, levels) => {
-    expect(checkPathInput(h as PathHeaderInput, levels as PathLevelInput[])).toBe(code);
+    expect(checkPathInput(h as PathHeaderInput, levels as unknown as PathLevelInput[])).toBe(code);
   });
   it("accepts external_review as a label, with no extra fields demanded", () => {
     expect(
