@@ -26,6 +26,7 @@ import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
 import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
 import {
   DEFAULT_DEADLINE_ZONE,
@@ -249,6 +250,7 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     await fx?.close();
     resetAuthorizationContract();
     resetRbacEngine();
+    __resetSeamsForTest();
   });
 
   it("registers the five keys and grants them to existing roles by migration 1209 (idempotent)", async () => {
