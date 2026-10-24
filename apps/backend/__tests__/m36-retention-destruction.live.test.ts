@@ -526,12 +526,12 @@ describe.skipIf(!DB_URL)(
 
     // ---------------------------------------------------------------- 4b. ATTACHMENT OBJECTS (WP 5.6, flag messaging.retention_attachment_destruction)
 
-    const withObject = async (messageId: string, key: string) =>
+    const withObject = async (messageId: string, key: string, mimeType = "text/plain") =>
       (
         await kit.one<{ id: string }>(
           `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, scan_state, scanned_at, completed_at)
-         VALUES ($1,$2,$3,$4,'text/plain',10,'f.txt',$5,repeat('a',64),'clean', now(), now()) RETURNING id`,
-          [ORG_A, channel, messageId, author, key],
+         VALUES ($1,$2,$3,$4,$6,10,'f.txt',$5,repeat('a',64),'clean', now(), now()) RETURNING id`,
+          [ORG_A, channel, messageId, author, key, mimeType],
         )
       )[0].id;
     const objectStamped = async (attachmentId: string) =>
@@ -613,6 +613,19 @@ describe.skipIf(!DB_URL)(
       expect(second.destroyed).toBe(1);
       expect(destroyedKeys).toEqual(["k/held.txt"]);
       expect(await exists(msg)).toBe(false);
+    });
+
+    it("WP 6.3: a HELD voice note's audio object is skipped exactly like any other attachment (same row, same overlay)", async () => {
+      attachmentFlagOn = true;
+      const msg = await aged(ORG_A, channel, 8);
+      const att = await withObject(msg, "k/held-voice.webm", "audio/webm");
+      await certificate(ORG_A, "approved");
+      await hold({ channelIds: [channel] });
+      const result = await run();
+      expect(result.destroyed).toBe(0);
+      expect(destroyedKeys).toEqual([]);
+      expect(await objectStamped(att)).toBe(false);
+      expect(await exists(msg)).toBe(true);
     });
 
     it("the object step re-checks holds itself: asked directly to destroy a held message's object it skips it (the hold landed after the plan)", async () => {

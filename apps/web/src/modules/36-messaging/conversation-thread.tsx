@@ -9,6 +9,7 @@ import { catchUpIfNeeded } from "./catch-up";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
 import { deferUntilLoaded } from "./defer-until-loaded";
+import { ExternalShareBanner } from "./external-share-banner";
 import { ThreadComposer } from "./message-composer";
 import { MessageSearch } from "./message-search";
 import { MessageTimeline } from "./message-timeline";
@@ -35,7 +36,6 @@ import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
-import { ExternalShareBanner } from "./external-share-banner";
 import { ThreadNotices } from "./thread-notices";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
@@ -629,7 +629,7 @@ function ConversationThreadView({
     void markReadBoundary(messages ?? []);
   }
 
-  const sendHint = sendBlockedReason(uploads.chips);
+  const sendHint = sendBlockedReason(uploads.chips, draft);
   // Only scanning files on the latest page count: a loadLatest cannot update a row loaded through "Load older".
   const scanningKey = (messages ?? [])
     .filter((message) => latestPageIdsRef.current.has(message.messageId))

@@ -104,7 +104,7 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 | 5.10 | Recovery rehearsal report | `/admin/messaging/recovery` | admin | `audit.read` | — | `GET /admin/messaging/recovery-runs` **new** (reads `m36-restore-drill` output) | missing (no matching route, screen or web file found) |
 | 6.1 | Smart work inbox | `/messaging/work` | web | `messaging.read` | `work_inbox`+ | `GET /work-inbox` **new** (composes built sources) | missing (no matching route, screen or web file found) |
 | 6.2 | Response analytics | `/messaging/analytics` | web | `messaging.analytics.read` **new** | `analytics`+ | `GET /analytics/response` (via M33, built; ADR-0092) | built (flag `messaging.response_analytics`, default off) |
-| 6.3 | Voice notes and dictation | (composer) | web | `messaging.send` | `voice`+ | attachments routes; dictation per ADR | missing (no matching route, screen or web file found) |
+| 6.3 | Voice notes and dictation | (composer) | web | `messaging.send` | `voice`+ | attachments routes (no new route); dictation per ADR | voice notes built (flag `messaging.voice_notes`, default off); dictation NOT built (ADR-0094) |
 | 6.4 | Language and translation review | `/messaging/settings/language`; `…/templates` | web | self; `messaging.template.translate` **new** | `i18n`+ | `template-admin` built + translations **new** | missing (no matching route, screen or web file found) |
 | 6.5 | AI summary panel | (thread side panel) | web | `messaging.ai.use` | `ai`+ | `POST /channels/:id/summaries`, `.../draft-replies`, `.../ai-outcomes`, `GET /ai/status` (M36, over M32) | built, flag `messaging.ai.enabled` off by default (ADR-0095, proposed): `ai-summary-panel.tsx`; the capabilities serve nothing until M32 stage 4 |
 | 6.6 | External partner share | `/messaging/partners`; partner view | web | `messaging.share.manage` **new** | `external_share`+ | `POST/GET/DELETE /external-shares` **new** | staff screen and routes built (ADR-0096, flag off by default); the partner view is NOT built |
@@ -509,6 +509,8 @@ push). Dictation fills the composer as a **draft** the user must edit and send; 
 *recording* (visible timer, `role="timer"` not announced each second), *too long* (limit shown), *uploading/scanning*, *transcript pending* (optional).
 A11y: all controls keyboard operable; recording is also indicated in text. PHI: the "Dictation sends audio to the speech service" notice is shown
 once and per policy; audio never goes to a non-BAA service. **Needs:** ADR for the dictation PHI boundary (M32 or browser speech) and retention class.
+
+**As built (WP 6.3, ADR-0094 decision 1):** the Record / Pause / Stop / Listen / Discard / Attach panel behind a microphone button in the composer, shown only while the tenant flag `messaging.voice_notes` is on (default off) and the browser can record. The microphone is asked for only when Record is pressed; the timer is text and is not announced each second; the recorder stops itself at 5:00 and the panel says so; denied, interrupted, hidden-page, empty and over-8-MB recordings end in a text message and nothing is kept. The note uploads as an ordinary attachment chip (scan, retention, audit and generic push unchanged) and plays through a native audio control on Play. A message with a voice note needs a typed body (web composers only; the server does not enforce it). **Not built:** dictation (no speech code; browser speech recognition is rejected and guarded by a test) and the "transcript pending" state.
 
 ### 6.4 Language and template translation
 

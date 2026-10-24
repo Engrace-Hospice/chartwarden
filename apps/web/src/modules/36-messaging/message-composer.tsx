@@ -6,6 +6,7 @@ import { Button, Glyph } from "@chartwarden/ui";
 import { useEffect, useRef } from "react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips, CameraButton } from "./attachment-composer";
+import { voiceNoteNeedsText } from "./attachment-utils";
 import type { ClinicalLinkCandidateSource, DraftClinicalLink } from "./clinical-link-kinds";
 import {
   ClinicalLinkPicker,
@@ -39,6 +40,7 @@ import type { useMentionPicker } from "./use-mention-picker";
 import type { SbarCompose } from "./use-sbar-compose";
 import { useSbarFlag, useSbarPolicy } from "./use-sbar-policy";
 import type { ServerDraftSync } from "./use-server-draft";
+import { VoiceRecorderButton } from "./voice-recorder";
 
 type MentionPicker = ReturnType<typeof useMentionPicker>;
 
@@ -273,6 +275,7 @@ export function ThreadComposer({
         <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
         <div className="wx-composer-tools">
           <CameraButton uploads={uploads} disabled={sending} />
+          <VoiceRecorderButton uploads={uploads} disabled={sending} />
           <ClinicalLinkPicker
             picker={linkPicker}
             links={draftLinks}
@@ -367,6 +370,7 @@ export function ThreadComposer({
             sending ||
             (!draft.trim() && uploads.sendableIds.length === 0) ||
             uploads.blocksSend ||
+            voiceNoteNeedsText(uploads.chips, draft) ||
             needsRecipient(needsResponse)
           }
           loading={sending}

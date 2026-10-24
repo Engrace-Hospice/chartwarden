@@ -1539,6 +1539,7 @@ import {
   buildSnoozeReminderBinding,
   buildTaskDeps,
   buildUrgentDeps,
+  buildVoiceNotesEnabled,
   createAttachmentService,
   createBreakGlassReviewSweep,
   createBullmqTimerPort,
@@ -5281,7 +5282,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
-            attachments: m36AttachmentBinding,
+            // WP 6.3 (ADR-0094) - voice notes are attachments; audio is refused at authorize unless the tenant flag `messaging.voice_notes` is on.
+            attachments: {
+              ...m36AttachmentBinding,
+              voiceNotesEnabled: buildVoiceNotesEnabled(featureFlagReader),
+            },
             // WP 5.6 (ADR-0086) - retention overview and legal holds: M4's hold seam (apply/release in the caller's tx) and the audit reader.
             retentionGovernance: {
               holds: createMessagingGovernanceHoldPort({ outbox: m4OutboxPublisher }),
