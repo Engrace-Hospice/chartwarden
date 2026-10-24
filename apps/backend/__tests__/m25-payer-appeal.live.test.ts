@@ -61,7 +61,7 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
   const payerId = randomUUID();
   const payerId2 = randomUUID();
   const maPayerId = randomUUID();
-  const known = new Map([
+  const known = new Map<string, { id: string; name: string; kind: string }>([
     [payerId, { id: payerId, name: "Payer One", kind: "commercial" }],
     [payerId2, { id: payerId2, name: "Payer Two", kind: "commercial" }],
     [maPayerId, { id: maPayerId, name: "Plan MA", kind: "medicare_advantage" }],
