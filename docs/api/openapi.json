@@ -47672,6 +47672,7 @@
                   "type": "object",
                   "required": [
                     "patientId",
+                    "patientAttribution",
                     "items"
                   ],
                   "properties": {
@@ -47682,6 +47683,18 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
                         }
                       ]
                     },

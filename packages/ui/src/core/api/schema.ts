@@ -39357,6 +39357,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
                             subjectKind: "appeal" | "audit_request" | "payer_appeal" | "beneficiary_appeal";

@@ -1,12 +1,12 @@
 {
-  "documentedSpecs": 114,
+  "documentedSpecs": 115,
   "byCategory": {
     "admin": 16,
     "core": 11,
     "clinical": 39,
     "platform": 5,
     "portal": 11,
-    "revenue": 15,
+    "revenue": 16,
     "compliance": 11,
     "staffing": 3,
     "mobile": 1,
@@ -1938,6 +1938,14 @@
       "id": "remittance.payer-appeal-paths",
       "path": "/remittance/payer-appeal-paths",
       "permission": "payer_appeal_path.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.representative-forms",
+      "path": "/remittance/representative-forms",
+      "permission": "representative_form.configure"
     },
     {
       "app": "web",
