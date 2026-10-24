@@ -14,8 +14,10 @@ import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwa
 // would render it inline (DOC.SignedUrlPreview) is a screen this slice does not build.
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { MdmEntityLookupField } from "../../shell/entity-lookups";
 import {
   type AccessPurpose,
+  type DisclosureRecipient,
   type DocumentView,
   mintContentUrl,
   patchDocument,
@@ -40,6 +42,17 @@ const PURPOSE_LABEL: Record<string, string> = {
   patient_access: "Patient access — §164.524 request",
   amendment_review: "Amendment review",
   survey_export: "Survey export",
+};
+
+/** Purposes that release the document to a partner outside the org, so the server needs the recipient (§4.12). */
+const EXTERNAL_PURPOSES: readonly AccessPurpose[] = ["disclosure", "survey_export"];
+
+const RECIPIENT_KIND_LABEL: Record<DisclosureRecipient["kind"], string> = {
+  facility: "Facility",
+  payer: "Payer",
+  referral_source: "Referral source",
+  dme_vendor: "DME vendor",
+  funeral_home: "Funeral home",
 };
 
 export interface DocumentEditDialogProps {
@@ -153,12 +166,17 @@ export function DocumentPreviewDialog({
 }: DocumentPreviewDialogProps): JSX.Element | null {
   const client = useApiClient();
   const [purpose, setPurpose] = useState<AccessPurpose>("treatment");
+  const [recipientKind, setRecipientKind] = useState<DisclosureRecipient["kind"]>("facility");
+  const [recipientId, setRecipientId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const external = EXTERNAL_PURPOSES.includes(purpose);
 
   useEffect(() => {
     if (!open) return;
     setPurpose("treatment");
+    setRecipientKind("facility");
+    setRecipientId("");
     setBusy(false);
     setError(null);
   }, [open]);
@@ -168,7 +186,13 @@ export function DocumentPreviewDialog({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = await mintContentUrl(client, documentId, versionId, purpose);
+    const res = await mintContentUrl(
+      client,
+      documentId,
+      versionId,
+      purpose,
+      external ? { kind: recipientKind, entityId: recipientId } : undefined,
+    );
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
@@ -196,6 +220,33 @@ export function DocumentPreviewDialog({
           onChange={(e) => setPurpose(e.target.value as AccessPurpose)}
           options={PURPOSES.map((p) => ({ value: p, label: PURPOSE_LABEL[p] ?? p }))}
         />
+        {external ? (
+          <>
+            <SelectField
+              label="Recipient type"
+              value={recipientKind}
+              disabled={busy}
+              onChange={(e) => {
+                setRecipientKind(e.target.value as DisclosureRecipient["kind"]);
+                setRecipientId("");
+              }}
+              options={Object.entries(RECIPIENT_KIND_LABEL).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+            />
+            <MdmEntityLookupField
+              kind={recipientKind}
+              label="Recipient"
+              value={recipientId}
+              onChange={(id) => setRecipientId(id)}
+              disabled={busy}
+              required
+              appearance="modal"
+              hint="The partner receiving this document. A signed business associate agreement must be on file."
+            />
+          </>
+        ) : null}
         <p style={meta}>
           Opening this document is recorded in the patient's disclosure accounting (§164.528)
           against the reason chosen here. The link is short-lived and opens in a new tab.
@@ -209,7 +260,7 @@ export function DocumentPreviewDialog({
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy}>
+          <Button onClick={submit} disabled={busy || (external && recipientId === "")}>
             {busy ? "Opening…" : "Open"}
           </Button>
         </div>

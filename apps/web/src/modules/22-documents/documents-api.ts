@@ -258,6 +258,16 @@ export async function patchDocument(
   return { ok: true, value: data as DocumentView };
 }
 
+/** §4.12 — the out-of-network partner a `disclosure` / `survey_export` mint is for (an M40 entity). */
+export type DisclosureRecipient = {
+  readonly kind: NonNullable<
+    NonNullable<
+      operations["getApiV1DocumentsByIdVersionsByVersionIdContent"]["parameters"]["query"]
+    >["recipientKind"]
+  >;
+  readonly entityId: string;
+};
+
 /**
  * §4.2 — mint a short-lived signed URL for a version's content.
  *
@@ -270,10 +280,21 @@ export async function mintContentUrl(
   documentId: string,
   versionId: string,
   purpose: AccessPurpose,
+  recipient?: DisclosureRecipient,
 ): Promise<WriteResult<SignedUrlResult>> {
   const { data, error, response } = await client.GET(
     "/api/v1/documents/{id}/versions/{versionId}/content",
-    { params: { path: { id: documentId, versionId }, query: { purpose } } },
+    {
+      params: {
+        path: { id: documentId, versionId },
+        query: {
+          purpose,
+          ...(recipient
+            ? { recipientKind: recipient.kind, recipientEntityId: recipient.entityId }
+            : {}),
+        },
+      },
+    },
   );
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data as SignedUrlResult };

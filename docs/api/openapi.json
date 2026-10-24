@@ -111811,6 +111811,44 @@
             }
           },
           {
+            "name": "recipientKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "facility",
+                  "type": "string"
+                },
+                {
+                  "const": "payer",
+                  "type": "string"
+                },
+                {
+                  "const": "referral_source",
+                  "type": "string"
+                },
+                {
+                  "const": "dme_vendor",
+                  "type": "string"
+                },
+                {
+                  "const": "funeral_home",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "recipientEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "ttlSeconds",
             "in": "query",
             "required": false,

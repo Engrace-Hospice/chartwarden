@@ -503,6 +503,43 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     expect(res.json().url).toContain("X-Amz-Expires=300"); // floor clamps the requested 3600 → 300
   });
 
+  it("mints a disclosure URL only when the request names an active, BAA-covered recipient (403 missing, 422 bad kind)", async () => {
+    const ENTITY = "e0000000-0000-4000-8000-000000000001";
+    registerSeam("MdmEntityProvider", {
+      resolveFacility: async (_org: string, id: string) => ({ id, status: "active" }),
+    } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => ({ isActive: true, status: "executed" }),
+    } as never);
+    const { app } = makeServer();
+    const base = `/api/v1/documents/${DOC}/versions/${VERSION}/content?purpose=disclosure`;
+
+    const ok = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=facility&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().accessKind).toBe("disclosure_export");
+
+    const none = await app.inject({ method: "GET", url: base, headers: RN });
+    expect(none.statusCode).toBe(403);
+
+    const half = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=facility`,
+      headers: RN,
+    });
+    expect(half.statusCode).toBe(403);
+
+    const badKind = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=physician&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(badKind.statusCode).toBe(422);
+  });
+
   it("records the content download as a document_version read event keyed by the version id (matches the sibling version routes)", async () => {
     const captured: Array<{ eventType: string; resourceKind: string; resourceId?: string }> = [];
     const tx = {

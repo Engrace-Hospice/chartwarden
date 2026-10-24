@@ -646,6 +646,104 @@ describe("M22-T11 §4.12 — external-disclosure presign gates on the M40 BAA st
   });
 });
 
+describe("M22 §4.12 — the disclosure recipient is resolved from the request, then BAA-gated", () => {
+  const DOC = "c0000000-0000-4000-8000-0000000000aa";
+  const VERSION = "d0000000-0000-4000-8000-000000000001";
+  const ENTITY = "e0000000-0000-4000-8000-000000000001";
+  const SURVIVOR = "e0000000-0000-4000-8000-000000000002";
+
+  const svc = createSignedUrlService({
+    storage: {
+      async presignDownload() {
+        return { url: "https://minio.example/x", expiresAt: "2026-06-24T00:05:00.000Z" };
+      },
+    },
+    resolver: {
+      async loadObject() {
+        return { objectKey: "k", externalRecipient: null, patientId: PAT, isSudClass: false };
+      },
+    },
+  });
+  const args = (recipient?: { kind: "facility" | "dme_vendor"; entityId: string }) => ({
+    organizationId: ORG,
+    documentId: DOC,
+    versionId: VERSION,
+    purpose: "disclosure" as const,
+    ...(recipient ? { recipient } : {}),
+  });
+
+  function seams(entity: { id: string; status: string } | null, baaActive: boolean) {
+    const baaCalls: Array<{ kind: string; id: string }> = [];
+    const resolve = async () => entity;
+    registerSeam("MdmEntityProvider", {
+      resolveFacility: resolve,
+      resolvePayer: resolve,
+      resolveReferralSource: resolve,
+      resolveDmeVendor: resolve,
+      resolveFuneralHome: resolve,
+    } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async (i: { kind: string; id: string }) => {
+        baaCalls.push({ kind: i.kind, id: i.id });
+        return { isActive: baaActive, status: baaActive ? "executed" : "missing" };
+      },
+    } as never);
+    return baaCalls;
+  }
+
+  it("mints once the named recipient is an active entity with an active BAA, checking the survivor id", async () => {
+    const baaCalls = seams({ id: SURVIVOR, status: "active" }, true);
+    await expect(svc.mint(args({ kind: "facility", entityId: ENTITY }))).resolves.toMatchObject({
+      accessKind: "disclosure_export",
+    });
+    expect(baaCalls).toEqual([{ kind: "facility", id: SURVIVOR }]);
+  });
+
+  it("refuses (403) when no recipient is named", async () => {
+    const baaCalls = seams({ id: ENTITY, status: "active" }, true);
+    await expect(svc.mint(args())).rejects.toMatchObject({ statusCode: 403 });
+    expect(baaCalls).toEqual([]);
+  });
+
+  it("refuses (403) an unknown id, even for a kind that needs no BAA, without asking M40 for a BAA", async () => {
+    const baaCalls = seams(null, true);
+    await expect(
+      svc.mint(args({ kind: "dme_vendor", entityId: ENTITY })),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(baaCalls).toEqual([]);
+  });
+
+  it("refuses (403) a deactivated or provisional entity", async () => {
+    for (const status of ["deactivated", "provisional"]) {
+      seams({ id: ENTITY, status }, true);
+      await expect(svc.mint(args({ kind: "facility", entityId: ENTITY }))).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    }
+  });
+
+  it("refuses (403) an active entity whose BAA is not active", async () => {
+    seams({ id: ENTITY, status: "active" }, false);
+    await expect(svc.mint(args({ kind: "facility", entityId: ENTITY }))).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it("fail-closes (403) when the entity seam throws", async () => {
+    registerSeam("MdmEntityProvider", {
+      resolveFacility: async () => {
+        throw new Error("SEAM_NOT_IMPLEMENTED");
+      },
+    } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => ({ isActive: true, status: "executed" }),
+    } as never);
+    await expect(svc.mint(args({ kind: "facility", entityId: ENTITY }))).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+});
+
 // ── §2.4 — patient-merge redirect-on-fetch ──────────────────────────────────────────────────────────────
 
 describe("M22-T11 §2.4 — patient-merge redirect", () => {

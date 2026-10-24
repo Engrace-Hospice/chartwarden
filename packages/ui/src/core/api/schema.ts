@@ -53178,6 +53178,8 @@ export interface operations {
                 purpose: "treatment" | "payment" | "operations" | "disclosure" | "patient_access" | "amendment_review" | "survey_export";
                 recipientMembershipId?: string;
                 recipientClass?: string;
+                recipientKind?: "facility" | "payer" | "referral_source" | "dme_vendor" | "funeral_home";
+                recipientEntityId?: string;
                 ttlSeconds?: number;
             };
             header?: never;

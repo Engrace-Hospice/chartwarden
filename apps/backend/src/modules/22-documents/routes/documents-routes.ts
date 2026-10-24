@@ -527,6 +527,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
         documentId: id,
         versionId,
         purpose: q.purpose,
+        ...(q.recipientKind && q.recipientEntityId
+          ? { recipient: { kind: q.recipientKind, entityId: q.recipientEntityId } }
+          : {}),
         ttlSeconds: q.ttlSeconds,
       });
     },

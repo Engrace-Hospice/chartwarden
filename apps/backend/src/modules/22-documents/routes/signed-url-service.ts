@@ -29,6 +29,11 @@ import { planSignedUrl } from "../lifecycle/storage";
 import { resolveExternalBaaActive } from "../outbox-consumers/baa-gate";
 import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
+import {
+  type DisclosureRecipientResolver,
+  type NamedRecipient,
+  resolveDisclosureRecipient,
+} from "../outbox-consumers/recipient-resolver";
 
 /** The §4.3 `DocumentStorageProvider` arm the signed-URL service consumes (presign only). */
 export interface SignedUrlStoragePort {
@@ -82,6 +87,8 @@ export interface MintSignedUrlArgs {
   readonly documentId: string;
   readonly versionId: string;
   readonly purpose: DocumentAccessPurpose;
+  /** The out-of-network recipient a `disclosure` / `survey_export` presign is for (§4.12). */
+  readonly recipient?: NamedRecipient;
   readonly ttlSeconds?: number;
 }
 
@@ -95,6 +102,8 @@ export interface MintedSignedUrl {
 export interface SignedUrlServiceDeps {
   readonly storage: SignedUrlStoragePort;
   readonly resolver: SignedUrlObjectResolver;
+  /** Proves the named recipient is an active M40 entity of the org (default: the opaque M40 seam). */
+  readonly recipients?: DisclosureRecipientResolver;
 }
 
 /** The signed-URL service the §4.1 content route composes over (T03 plan + T04 presign port + §4.12 gate). */
@@ -109,7 +118,7 @@ export interface SignedUrlService {
  * blocked BAA or an absent SUD consent is 403.
  */
 export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlService {
-  const { storage, resolver } = deps;
+  const { storage, resolver, recipients = resolveDisclosureRecipient } = deps;
   return {
     async mint(args) {
       const facts = await resolver.loadObject({
@@ -142,17 +151,21 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
 
       // §4.12 — external disclosure presigns gate on M40's live BAA status (as-of NOW); fail closed.
       if (isExternalDisclosure(args.purpose)) {
-        // The recipient is not resolved anywhere on the read wire (`recipientClass` / `recipientMembershipId`
-        // on the request are accepted but never mapped to an M40 entity), so an unresolved recipient cannot be
-        // BAA-checked. Refuse rather than mint an ungated disclosure URL; wire a resolver to re-enable.
-        if (!facts.externalRecipient) {
+        // The recipient comes from the request (`recipientKind` + `recipientEntityId`) and must resolve to an
+        // active M40 entity of this org; an unresolved recipient cannot be BAA-checked, so it is refused.
+        const recipient =
+          facts.externalRecipient ??
+          (args.recipient
+            ? await recipients({ organizationId: args.organizationId, recipient: args.recipient })
+            : null);
+        if (!recipient) {
           throw new ForbiddenError(
-            "signed-url denied: the external recipient is not resolved, so its BAA cannot be verified",
+            "signed-url denied: the external recipient is missing or not an active partner, so its BAA cannot be verified",
           );
         }
         const active = await resolveExternalBaaActive({
           organizationId: args.organizationId,
-          recipient: facts.externalRecipient,
+          recipient,
         });
         if (!active) {
           throw new ForbiddenError("signed-url denied: no active BAA for the external recipient");
