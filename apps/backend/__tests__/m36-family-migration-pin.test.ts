@@ -21,8 +21,8 @@ import { describe, expect, it } from "vitest";
 const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const flat = (s: string) => s.replace(/\s+/g, " ");
-const enumSql = flat(read("packages/db/migrations/1230_m36_family_enum_values.sql"));
-const sql = flat(read("packages/db/migrations/1231_m36_family_messaging.sql"));
+const enumSql = flat(read("packages/db/migrations/1233_m36_family_enum_values.sql"));
+const sql = flat(read("packages/db/migrations/1234_m36_family_messaging.sql"));
 const schema = flat(read("packages/db/src/schema/messaging/message-family.ts"));
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 
@@ -57,7 +57,7 @@ describe("migration 1233 enum values", () => {
 });
 
 describe("migration 1235 eligibility functions", () => {
-  const fn = flat(read("packages/db/migrations/1232_m36_family_eligibility_functions.sql"));
+  const fn = flat(read("packages/db/migrations/1235_m36_family_eligibility_functions.sql"));
   it("are SECURITY INVOKER, STABLE, bound to app.org_id, and read consent, Part 2 and involvement on the database clock", () => {
     expect(fn.match(/LANGUAGE sql STABLE SECURITY INVOKER/g)?.length).toBe(3);
     expect(fn).not.toContain("SECURITY DEFINER");
