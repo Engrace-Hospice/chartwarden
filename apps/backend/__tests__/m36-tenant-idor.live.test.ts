@@ -433,6 +433,12 @@ const REGISTRAR_FILES = [
   "export-typebox.ts", // schemas only
   "break-glass-routes.ts", // WP 5.8 break-glass: open/end/review/complete are the random-id 404 across orgs - m36-break-glass.live "CROSS-TENANT"
   "break-glass-typebox.ts", // schemas only
+  "ack-broadcast-routes.ts", // WP 6.8 ack-required broadcast: org B gets 404 by id and an empty list, RLS hides the rows as chartwarden_app, a non-creator announcer gets the uniform 404 - m36-ack-broadcast.live "tenancy"
+  "ack-broadcast-typebox.ts", // schemas only
+  "death-board-routes.ts", // WP 6.9 death-event board (flag off): a foreign-tenant or non-viewer id is the missing-board 404, byte-identical body, FORCEd RLS hides the rows - m36-death-board.live "3. routes"
+  "death-board-typebox.ts", // schemas only
+  "external-share-routes.ts", // ADR-0096 external partner share (flag off): another org's staff lists/revokes nothing, a bearer or invitation under another org matches nothing, RLS on all three tables - m36-external-share.live "tenancy"
+  "external-share-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
