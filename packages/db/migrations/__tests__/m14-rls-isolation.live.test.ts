@@ -284,7 +284,7 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       readFileSync(join(MIGRATIONS_DIR, "0305_m14_idg_decision_application_ack.sql"), "utf8");
     // (0283 adds columns + a CHECK + a trigger-function replacement to the same table: no new policy.)
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-      (b) => b.includes("TO chartwarden_app") && COVERED.some((t) => b.includes(`"${t.table}"`)),
+      (b) => /TO (?:wardenx|chartwarden)_app/.test(b) && COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // All ten M14 tables carry a direct app.org_id policy — the partitioned idg_patient_packet's policy
     // lives on the parent (0043) and is inherited by every leaf, so it counts here too.

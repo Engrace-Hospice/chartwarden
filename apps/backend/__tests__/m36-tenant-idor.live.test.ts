@@ -60,7 +60,6 @@ import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-requests/open-request-lookup";
 import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
 import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
-import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
@@ -73,6 +72,7 @@ import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-s
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
+import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import {
   buildMedicationQuestionDeps,
   createDbChannelFactsLookup,
@@ -165,6 +165,7 @@ const ROUTES: Record<string, Verdict> = {
   // WP 2.12 presence/typing: the channel's guards run before anything else; ids only (asserted in m36-presence.live).
   "POST /api/v1/messaging/channels/:id/presence": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/presence": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/afterhours-triage": { kind: "idor" }, // ADR-0082 S4/S5: attacked in the channelRoutes loop below
   // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
   "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
@@ -433,6 +434,13 @@ const REGISTRAR_FILES = [
   "export-typebox.ts", // schemas only
   "break-glass-routes.ts", // WP 5.8 break-glass: open/end/review/complete are the random-id 404 across orgs - m36-break-glass.live "CROSS-TENANT"
   "break-glass-typebox.ts", // schemas only
+  "afterhours-triage-routes.ts", // ADR-0082 S4/S5 triage line: a foreign-tenant or non-member channel id gets the unknown-id answer from the guards - m36-tenant-idor "channel-id routes"
+  "ack-broadcast-routes.ts", // WP 6.8 ack-required broadcast: org B gets 404 by id and an empty list, RLS hides the rows as chartwarden_app, a non-creator announcer gets the uniform 404 - m36-ack-broadcast.live "tenancy"
+  "ack-broadcast-typebox.ts", // schemas only
+  "death-board-routes.ts", // WP 6.9 death-event board (flag off): a foreign-tenant or non-viewer id is the missing-board 404, byte-identical body, FORCEd RLS hides the rows - m36-death-board.live "3. routes"
+  "death-board-typebox.ts", // schemas only
+  "external-share-routes.ts", // ADR-0096 external partner share (flag off): another org's staff lists/revokes nothing, a bearer or invitation under another org matches nothing, RLS on all three tables - m36-external-share.live "tenancy"
+  "external-share-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
@@ -1226,6 +1234,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id/mention-candidates",
       "GET /api/v1/messaging/channels/:id/mention-non-members",
       "GET /api/v1/messaging/channels/:id/presence", // WP 2.12: the guard answers before the (off) tenant flag
+      "GET /api/v1/messaging/channels/:id/afterhours-triage", // ADR-0082: messaging.read + channel_visibility answer before the service/flag
     ];
     it("POST presence (WP 2.12): org B and an in-org non-member get a random id's answer and write nothing", async () => {
       const before = await fingerprint();

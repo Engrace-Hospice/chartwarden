@@ -18,7 +18,16 @@ import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+// chartwarden_destruction must go too: migration 1142 drops the wardenx_destruction alias, so if the destruction role
+// survives a previous replay in this cluster, 1139 grants it membership of a FRESH alias that this replay's policies
+// name, and 1142 then fails on those policies. Dropping it makes every replay start from a pre-1139 cluster.
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+  "chartwarden_destruction",
+];
 const ORG = "12121212-1212-1212-1212-121212121212";
 const USER = "23232323-2323-2323-2323-232323232323";
 const PATIENT = "34343434-3434-3434-3434-343434343434";

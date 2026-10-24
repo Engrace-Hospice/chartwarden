@@ -285,7 +285,7 @@ describe.skipIf(!DB_URL)(
           join(MIGRATIONS_DIR, "0307_m15_discipline_plan_idg_decision_application.sql"),
           "utf8",
         ).match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []
-      ).filter((b) => b.includes("TO chartwarden_app"));
+      ).filter((b) => /TO (?:wardenx|chartwarden)_app/.test(b));
       expect(applicationPolicy).toHaveLength(1);
       for (const block of [...policyBlocks, ...applicationPolicy]) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);

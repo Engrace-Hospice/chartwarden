@@ -40,6 +40,7 @@ import type { Part2ChannelGate } from "../src/modules/36-messaging/part2-channel
 import { createValkeyPresenceStore } from "../src/modules/36-messaging/presence/valkey-presence-store";
 import {
   CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
 import { PRESENCE_FLAG_KEY } from "../src/modules/36-messaging/routes/presence-routes";
@@ -48,7 +49,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = Buffer.alloc(32, 7);
 const TIMINGS = { presenceTtlMs: 2_500, typingTtlMs: 800, throttleMs: 200 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -240,6 +246,12 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         const id = typeof target.id === "string" ? target.id : null;
         return !!id && !!ctx.organizationId && !!ctx.userId
           ? service.canViewChannel(ctx.organizationId, ctx.userId, id)
+          : false;
+      });
+      registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+        const id = typeof target.id === "string" ? target.id : null;
+        return !!id && !!ctx.organizationId && !!ctx.userId
+          ? service.canReadChannel(ctx.organizationId, ctx.userId, id)
           : false;
       });
       registerAbacRegistry(registry);
