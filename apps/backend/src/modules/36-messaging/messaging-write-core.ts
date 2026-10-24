@@ -223,8 +223,26 @@ export async function insertEncryptedMessage(
     clientMessageId?: string | null;
     /** WP 4.1: set only by the urgent entry; stores `urgency = 'urgent'` with this recipient (fixed at send). */
     urgentRecipientUserId?: string | null;
+    /**
+     * ADR-0099 (WP 6.7): the ONLY way into a `family` conversation. `contact` = the consented family contact's own text (`author_kind =
+     * 'family_contact'`, no user); `staff` = a staff reply written through the family reply route. Every other writer is refused for that kind, and the
+     * flag is refused for any other kind, so the family conversation has exactly two doors and neither opens into a staff channel.
+     */
+    familyThread?: "contact" | "staff";
   },
 ): Promise<{ messageId: string; createdAt: string; replayed: boolean }> {
+  const [kindRow] = (await tx
+    .select({ kind: CH.channelKind })
+    .from(CH)
+    .where(and(eq(CH.organizationId, args.orgId), eq(CH.id, args.channelId)))
+    .limit(1)) as Array<{ kind: string }>;
+  if ((kindRow?.kind === "family") !== (args.familyThread !== undefined)) {
+    throw new ChartWardenError(
+      "FAMILY_THREAD_WRITE",
+      "a family conversation is written only through the family routes",
+      409,
+    );
+  }
   // Audit F5 / WP 1.7: a reply's parent and a quote's target must be in the same channel. A missing, cross-org or
   // other-channel id is one answer, so the check is not an existence oracle for messages in channels the sender cannot
   // see (and a quote is never stored as a dangling cross-tenant reference: the FK check ignores RLS).
@@ -258,7 +276,8 @@ export async function insertEncryptedMessage(
       channelId: args.channelId,
       organizationId: args.orgId,
       authorUserId: args.authorUserId,
-      authorKind: args.authorUserId ? "user" : "system",
+      authorKind:
+        args.familyThread === "contact" ? "family_contact" : args.authorUserId ? "user" : "system",
       bodyCipher,
       bodySha256: sha256,
       bodyKind: stored.bodyKind,

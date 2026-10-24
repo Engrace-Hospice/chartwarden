@@ -733,4 +733,49 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+
+  // WP 6.7 (ADR-0099, PROPOSED): family / caregiver messaging. PHI-free by construction: the thread-link id, the acting staff id and instants only;
+  // never a patient or caregiver id, a name, a token, a code or a message. Each is published in the same transaction as the write. Trail only.
+  {
+    eventName: "m36.family_contact.created",
+    moduleOwner: "m36",
+    description:
+      "A one-time link and code were issued to a consented family contact (WP 6.7, ADR-0099 D16), or reissued (the older invitation was superseded). The thread-link id, the staff creator and two instants. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, contactId: id, createdBy: id, expiresAt: isoInstant, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.family_contact.revoked",
+    moduleOwner: "m36",
+    description:
+      "A family contact's link was revoked, or the contact was blocked (WP 6.7, ADR-0099 D8/D16); the contact's very next request is refused. The thread-link id, the staff member, the closed reason and one instant. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        contactId: id,
+        revokedBy: id,
+        reason: Type.Union([Type.Literal("staff"), Type.Literal("blocked")]),
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.family_contact.bereavement_mode",
+    moduleOwner: "m36",
+    description:
+      "A family contact's access moved to bereavement mode because the patient died and the contact is in the open bereavement plan (WP 6.7, ADR-0099 D15). The thread-link id and one instant. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, contactId: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

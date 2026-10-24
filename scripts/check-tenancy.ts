@@ -88,11 +88,12 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
 // WP 5.7 (ADR-0089): the export DOWNLOAD trail guard is the same backstop: a row is recorded only by the job's requester (`app.user_id`)
 // against a ready, unexpired job. Same rule: that one function head, never a policy. The export JOB guard binds the requester (insert)
 // and the decider (approve/reject) to `app.user_id` the same way.
+// WP 6.7 (ADR-0099): the family setting / contact / invitation guards bind the acting staff member (create, close, block, revoke) to `app.user_id`.
 // WP 6.6 (ADR-0096): the external-share guards bind the creator (insert) and the revoker to `app.user_id`; the read-trail guard checks a live session/share.
 // WP 5.6 (ADR-0055 item 7): the message REDACTION guard binds the requester (insert) and the approver (approval) to `app.user_id`: two
 // people, enforced in the database. Same rule: that one function head, never a policy.
 const ACK_ACTOR_GUARD_HEAD =
-  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard|message_break_glass_read_guard|message_export_download_guard|message_export_job_guard|message_redaction_guard|message_external_share_guard|message_external_share_read_guard|message_ack_broadcast_guard|message_ack_broadcast_recipient_guard)\s*\(/i;
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard|message_break_glass_read_guard|message_export_download_guard|message_export_job_guard|message_redaction_guard|message_external_share_guard|message_external_share_read_guard|message_ack_broadcast_guard|message_ack_broadcast_recipient_guard|message_family_setting_guard|message_family_contact_guard|message_family_invitation_guard)\s*\(/i;
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);

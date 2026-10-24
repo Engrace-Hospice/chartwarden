@@ -1,7 +1,7 @@
 // M36 WP 6.6 (ADR-0096, PROPOSED) - the secrets of an external partner share: the one-time invite token, the partner's session token and the
 // 8-digit second-factor code. Only hashes are stored. Tokens are 256-bit random (sha256 is enough: no brute force is possible); the code is
 // low-entropy, so it is scrypt-hashed with a per-share salt AND its attempts are capped in the database (5, never reset).
-import { createHash, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import { EXTERNAL_PARTNER_NOTIFICATION_TEXT } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,20 +23,27 @@ export function newVerificationCode(): string {
   return String(randomInt(0, 100_000_000)).padStart(8, "0");
 }
 
+/**
+ * The scrypt input: the code itself, or (ADR-0099 D3) its HMAC under a per-deployment pepper kept OUTSIDE the database, so a stolen row alone cannot be
+ * brute-forced offline. No pepper = the original behaviour, unchanged.
+ */
+const keyed = (code: string, pepper: string | undefined): string =>
+  pepper ? createHmac("sha256", pepper).update(code, "utf8").digest("hex") : code;
+
 /** `salt:hash`, both hex. */
-export function hashVerificationCode(code: string): string {
+export function hashVerificationCode(code: string, pepper?: string): string {
   const salt = randomBytes(16);
-  return `${salt.toString("hex")}:${scryptSync(code, salt, SCRYPT_KEYLEN).toString("hex")}`;
+  return `${salt.toString("hex")}:${scryptSync(keyed(code, pepper), salt, SCRYPT_KEYLEN).toString("hex")}`;
 }
 
 /** Constant-time. A malformed code or stored value is simply "no match". */
-export function verifyVerificationCode(code: string, stored: string): boolean {
+export function verifyVerificationCode(code: string, stored: string, pepper?: string): boolean {
   if (!CODE_RE.test(code)) return false;
   const [saltHex, hashHex] = stored.split(":");
   if (!saltHex || !hashHex) return false;
   const expected = Buffer.from(hashHex, "hex");
   if (expected.length !== SCRYPT_KEYLEN) return false;
-  const actual = scryptSync(code, Buffer.from(saltHex, "hex"), SCRYPT_KEYLEN);
+  const actual = scryptSync(keyed(code, pepper), Buffer.from(saltHex, "hex"), SCRYPT_KEYLEN);
   return timingSafeEqual(actual, expected);
 }
 

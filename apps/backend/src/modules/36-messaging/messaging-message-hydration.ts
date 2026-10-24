@@ -26,7 +26,10 @@ export const MESSAGE_ROW_COLUMNS = {
   id: MSG.id,
   channelId: MSG.channelId,
   authorUserId: MSG.authorUserId,
-  authorDisplayName: USER.name,
+  // ADR-0099: a family contact has no user row; staff see the neutral label, never a name.
+  authorDisplayName: sql<
+    string | null
+  >`COALESCE(${USER.name}, CASE WHEN ${MSG.authorKind}::text = 'family_contact' THEN 'Family contact' END)`,
   bodyCipher: MSG.bodyCipher,
   bodyKind: MSG.bodyKind,
   status: MSG.status,

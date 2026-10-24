@@ -295,6 +295,7 @@ export const channelKind = pgEnum("channel_kind", [
   "dm", // 1:1, no subject; manual; care_related (clinician DMs discuss patients)
   "announcement", // tenant-wide admin broadcast; the one operational (1 yr) channel
   "bereavement", // subject = bereavement_plan_id (M16); care_related; 13-mo display window
+  "family", // subject = patient_id; one per consented contact (ADR-0099); NO channel_member rows, visibility = the care-team predicate; care_related
 ]);
 
 // `channel_retention_class` — the channel's retention clock (§2.3, M36-F02 / ADR-0004).
@@ -320,7 +321,7 @@ export const channelMemberRole = pgEnum("channel_member_role", [
 export const channelMemberSource = pgEnum("channel_member_source", ["auto", "manual"]);
 
 // `message_author_kind` — a message authored by a user vs the system (§3.4).
-export const messageAuthorKind = pgEnum("message_author_kind", ["user", "system"]);
+export const messageAuthorKind = pgEnum("message_author_kind", ["user", "system", "family_contact"]);
 
 // `message_body_kind` — body rendering hint (§3.4).
 export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown", "system", "rich"]);

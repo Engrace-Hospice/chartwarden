@@ -29,6 +29,7 @@ export type BreakGlassDenyReason =
   | "inactive_user"
   | "no_channel"
   | "announcement"
+  | "family"
   | "no_live_grant"
   | "excluded_category"
   | "part2_denied"
@@ -56,6 +57,8 @@ export function decideBreakGlassRead(f: BreakGlassReadFacts): BreakGlassReadDeci
   if (f.channelKind === null) return { allowed: false, reason: "no_channel" };
   // Announcements are org-wide readable already; a grant is meaningless there and must never be recorded as the reason.
   if (f.channelKind === "announcement") return { allowed: false, reason: "announcement" };
+  // ADR-0099 D6: a family conversation is readable by the care-team predicate and nothing else. No grant, however fresh, opens it.
+  if (f.channelKind === "family") return { allowed: false, reason: "family" };
   if (!f.liveGrant) return { allowed: false, reason: "no_live_grant" };
   if (f.excludedCategory) return { allowed: false, reason: "excluded_category" };
   if (f.part2 === "denied") return { allowed: false, reason: "part2_denied" };
