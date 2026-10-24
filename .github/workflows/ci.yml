@@ -731,6 +731,8 @@ jobs:
           - { name: "M25 submission attempts", scripts: "test:m25:submission:live" }
           # Milestone 7a-1 - later tiers (ALJ / Council / federal court record-keeping, recorded deadlines, the case view) and audit request intake.
           - { name: "M25 later tiers", scripts: "test:m25:later-tiers:live" }
+          # Milestone 11a-1 - the Medicaid payer guard (no Medicare tier on a Medicaid denial) and the Medicaid case view.
+          - { name: "M25 payer guard", scripts: "test:m25:payer-guard:live" }
           - { name: "M25 audit requests", scripts: "test:m25:audit-request:live" }
           # Milestone 7a-2 - the audit response packet: typed checklist, sign-off by a second person, the none-stated attestation, filing proof (audit_response attempt) and the retained render request.
           - { name: "M25 audit response", scripts: "test:m25:audit-response:live" }
@@ -972,6 +974,12 @@ jobs:
               name: "F-225 M22 portal access log",
               scripts: "test:f225:m22-portal-access-log:live",
             }
+          # M22 §164.528 — a STAFF signed-URL mint appends one ids-only `document_access_log` row (member, patient,
+          # purpose, recipient); an RLS-refused write throws so no URL is released; append-only for the app role.
+          - {
+              name: "M22 staff mint access log",
+              scripts: "test:m22:staff-mint-access-log:live",
+            }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
           # real dispatcher delivers to M5 (contact rows + reply) and back to M22 (provenance stamp +
@@ -1088,6 +1096,9 @@ jobs:
           # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
           - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           - { name: "M6 election addendum", scripts: "test:m6:election-addendum:live" }
+          # Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping: typed facts / deadlines, the
+          # 15-minute alert scan through the REAL publisher, RLS, frozen-once-decided guards, and route 39 unblocked.
+          - { name: "M6 NOMNC expedited review", scripts: "test:m6:nomnc-expedited:live" }
           # The NOR / election statement / signed-election / CTI uploaded-evidence routes, through the REAL M22
           # DocumentReader: happy path + another org's, patient's, admission's and a superseded version refused.
           - { name: "M6 uploaded evidence", scripts: "test:m6:uploaded-evidence:live" }

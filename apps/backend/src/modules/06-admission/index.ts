@@ -22,11 +22,13 @@ import {
 import { createDbDischargeDetailsService } from "./discharge-details-service-db";
 import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
 import type { ElectionAddendumService } from "./election-addendum/service";
+import type { NomncService } from "./nomnc/service";
 import { mapMalformedIdTo404 } from "./malformed-id-guard";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 import { registerElectionAddendumRoutes as _registerM6AddendumRoutes } from "./routes/election-addendum-routes";
+import { registerNomncRoutes as _registerM6NomncRoutes } from "./routes/nomnc-routes";
 import type { PriorElectionClosurePort } from "./routes/readmission-service";
 
 export * from "./state-machines";
@@ -50,6 +52,9 @@ export {
   decideCoverageAddendum,
 } from "./outbox-consumers/coverage-determination-addendum";
 export { registerElectionAddendumRoutes } from "./routes/election-addendum-routes";
+// Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines).
+export * from "./nomnc/index";
+export { registerNomncRoutes } from "./routes/nomnc-routes";
 
 /**
  * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver
@@ -71,6 +76,8 @@ export function mountAdmissionRoutes(
   electionAddendum?: ElectionAddendumService,
   /** The prior election's NOTR / final-claim status (an M23 fact) for the readmission plan; absent → `unknown`. */
   priorElectionClosure?: PriorElectionClosurePort,
+  /** Milestone 10a — the NOMNC / expedited-review service; its routes mount when bound. */
+  nomnc?: NomncService,
 ): void {
   // 42 CFR 418.25(a) / 418.26(b) — ONE physician-authority binding for the route-40 predicate and the service.
   const physicianAuthority = createDbPhysicianAuthority(db);
@@ -80,6 +87,7 @@ export function mountAdmissionRoutes(
   });
   if (electionAddendum)
     _registerM6AddendumRoutes(app, { service: mapMalformedIdTo404(electionAddendum) });
+  if (nomnc) _registerM6NomncRoutes(app, { service: mapMalformedIdTo404(nomnc) });
   _registerM6Routes(app, {
     service: mapMalformedIdTo404(
       createDbAdmissionRouteService(

@@ -34,6 +34,8 @@ export async function resolveExternalBaaActive(input: {
   organizationId: string;
   recipient: ExternalRecipientRef;
   asOf?: Date;
+  /** Require an executed, org-scoped BAA record; `n_a` ("no BAA required by policy") does not pass. */
+  requireExecuted?: boolean;
 }): Promise<boolean> {
   try {
     const provider = getSeam("BaaStatusProvider") as BaaStatusProviderPort;
@@ -43,7 +45,7 @@ export async function resolveExternalBaaActive(input: {
       id: input.recipient.mdmEntityId,
       asOf: input.asOf ?? new Date(), // §7.10 time-travel: gate as-of the transmit moment
     });
-    return res.isActive === true;
+    return res.isActive === true && (!input.requireExecuted || res.status === "executed");
   } catch {
     return false; // fail-closed — BAA gate unconfirmable ⇒ block the presign
   }

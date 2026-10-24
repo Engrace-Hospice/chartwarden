@@ -402,6 +402,29 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
+    id: 41,
+    name: "Billing — Commercial",
+    codePaths: [
+      "apps/backend/src/modules/41-billing-commercial",
+      "apps/web/src/modules/41-billing-commercial",
+    ],
+    dependsOn: [1, 23, 40],
+    ownedTables: [
+      "commercial_payer_plan",
+      "commercial_payer_enrollment",
+      "commercial_authorization",
+      "commercial_eligibility_check",
+      "commercial_claim",
+      "commercial_claim_line",
+      "commercial_claim_state_history",
+      "commercial_submission",
+      "commercial_acknowledgment",
+      "commercial_validation_run",
+      "commercial_validation_result",
+      "commercial_validation_override",
+    ],
+  },
+  {
     id: 5,
     name: "Patient & Demographics",
     codePaths: ["apps/backend/src/modules/05-patient", "apps/web/src/modules/05-patient"],
@@ -475,6 +498,9 @@ export const MODULES: ModuleDef[] = [
       "compliance_window",
       "admission_evidence",
       "election_addendum", // FY2027 — 42 CFR 418.24(c) election statement addendum (ADR-0015 D1 amendment)
+      "nomnc_notice", // 10a — NOMNC delivery record per admission (ADR-0015 D5 amendment; record-keeping only)
+      "expedited_review", // 10a — BFCC-QIO fast-track review facts (0..1 per notice)
+      "expedited_deadline", // 10a — deadlines typed from the notice / the QIO's call, to the minute
     ],
   },
   {

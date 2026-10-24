@@ -11,7 +11,7 @@ import {
 // server owns every decision (ADR-0030): the panel reads the case fresh (so the If-Match version is the one
 // the server holds NOW), offers only the edges the §2.4 denial state ladder has an arc for from the case's
 // own `state`, and shows every 403/404/409/422 refusal verbatim. The reason floors are the server's.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
@@ -68,6 +68,18 @@ const LABEL: Record<DenialAction["kind"], string> = {
   reopen: "Reopen",
   appeal: "Open appeal",
 };
+
+type PayerKind = "medicare" | "medicaid" | "commercial" | "unknown";
+
+const PAYER_LABEL: Record<PayerKind, string> = {
+  medicare: "Medicare",
+  medicaid: "Medicaid",
+  commercial: "Commercial",
+  unknown: "Payer not known",
+};
+
+const MEDICAID_APPEAL_REASON =
+  "Medicaid denials follow the state's path; the Medicaid appeal path is not available yet.";
 
 const REASON_FLOOR: Partial<Record<DenialAction["kind"], number>> = {
   escalate: MIN_REASON.escalate,
@@ -225,7 +237,18 @@ export function DenialDetailPanel({
     onClose();
   }
 
-  const available = denial ? (ACTIONS_BY_STATE[denial.state] ?? []) : [];
+  // An unrecognised payer kind is treated as unknown.
+  const rawPayer = denial?.payerKind as string | undefined;
+  const payerKind: PayerKind =
+    rawPayer !== undefined && Object.hasOwn(PAYER_LABEL, rawPayer)
+      ? (rawPayer as PayerKind)
+      : "unknown";
+  const stateActions = denial ? (ACTIONS_BY_STATE[denial.state] ?? []) : [];
+  const appealOffered = stateActions.includes("appeal");
+  // A Medicaid denial follows the state's path, not the CMS tiers, so the Medicare appeal action is not offered.
+  const medicaidAppealBlocked = payerKind === "medicaid" && appealOffered;
+  const available = stateActions.filter((kind) => !(payerKind === "medicaid" && kind === "appeal"));
+  const medicaidReasonId = useId();
 
   return (
     <ActionRail ariaLabel="Denial case" onClose={closePanel}>
@@ -243,6 +266,14 @@ export function DenialDetailPanel({
               ],
               ["Category", humanize(denial.category)],
               ["Source", humanize(denial.source)],
+              [
+                "Payer",
+                <StatusPill
+                  key="p"
+                  label={PAYER_LABEL[payerKind]}
+                  tone={payerKind === "unknown" ? "warning" : "neutral"}
+                />,
+              ],
               ["Aging", denial.agingBucketLabel],
               ["Value", money(denial.dollarValue)],
               [
@@ -306,7 +337,33 @@ export function DenialDetailPanel({
                   {kind === "appeal" && route === "reopening" ? "Appeal anyway" : LABEL[kind]}
                 </Button>
               ))}
-              {available.length === 0 ? <Hint>No action is available from this state.</Hint> : null}
+              {medicaidAppealBlocked ? (
+                <>
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    // aria-disabled (not disabled) keeps it focusable so the reason is announced.
+                    aria-disabled="true"
+                    aria-describedby={medicaidReasonId}
+                    style={{ opacity: 0.6, cursor: "not-allowed" }}
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    Open appeal
+                  </Button>
+                  <Hint>
+                    <span id={medicaidReasonId}>{MEDICAID_APPEAL_REASON}</span>
+                  </Hint>
+                </>
+              ) : null}
+              {payerKind === "unknown" && appealOffered ? (
+                <Hint>
+                  We could not tell which payer this denial is from. Check the payer before you open
+                  a Medicare appeal.
+                </Hint>
+              ) : null}
+              {available.length === 0 && !medicaidAppealBlocked ? (
+                <Hint>No action is available from this state.</Hint>
+              ) : null}
             </ButtonRow>
           ) : (
             <>
