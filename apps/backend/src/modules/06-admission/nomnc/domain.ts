@@ -201,13 +201,16 @@ export function planReviewDecision(state: ReviewState, event: ReviewEvent): Revi
 
 // ── derived status (never stored) ────────────────────────────────────────────────────────────────────────
 
-export type DeadlineStatus = "open" | "due_soon" | "past" | "satisfied";
+/** `closed`: the deadline's notice was superseded / withdrawn or its review decided / withdrawn: it no longer runs. */
+export type DeadlineStatus = "open" | "due_soon" | "past" | "satisfied" | "closed";
 
 export function deadlineStatus(
   row: { readonly dueAt: Date; readonly satisfiedAt: Date | null },
   now: Date,
+  live = true,
 ): DeadlineStatus {
   if (row.satisfiedAt) return "satisfied";
+  if (!live) return "closed";
   const hours = (row.dueAt.getTime() - now.getTime()) / 3_600_000;
   if (hours < 0) return "past";
   return hours <= DUE_SOON_DISPLAY_HOURS ? "due_soon" : "open";

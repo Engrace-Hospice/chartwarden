@@ -49,8 +49,14 @@ export async function loadAdmissionFacts(
   return adm ?? null;
 }
 
-export async function loadNotice(tx: DbClient, id: string): Promise<NoticeRow | null> {
-  const [row] = await tx.select().from(N).where(eq(N.id, id)).limit(1);
+/** `forUpdate` locks the row for the rest of the transaction (openReview / withdraw / supersede serialise on it). */
+export async function loadNotice(
+  tx: DbClient,
+  id: string,
+  opts: { readonly forUpdate?: boolean } = {},
+): Promise<NoticeRow | null> {
+  const q = tx.select().from(N).where(eq(N.id, id)).limit(1);
+  const [row] = await (opts.forUpdate ? q.for("update") : q);
   return row ?? null;
 }
 
@@ -67,12 +73,14 @@ export async function loadDeadline(tx: DbClient, id: string): Promise<DeadlineRo
 export async function loadActiveNotice(
   tx: DbClient,
   admissionId: string,
+  opts: { readonly forUpdate?: boolean } = {},
 ): Promise<NoticeRow | null> {
-  const [row] = await tx
+  const q = tx
     .select()
     .from(N)
     .where(and(eq(N.admissionId, admissionId), eq(N.status, "active")))
     .limit(1);
+  const [row] = await (opts.forUpdate ? q.for("update") : q);
   return row ?? null;
 }
 
@@ -218,7 +226,8 @@ export function reviewView(r: ReviewRow): ReviewView {
   };
 }
 
-export function deadlineView(r: DeadlineRow, now: Date): DeadlineView {
+/** `live` = the deadline's notice is active / its review open; a closed parent makes an unmet deadline `closed`. */
+export function deadlineView(r: DeadlineRow, now: Date, live: boolean): DeadlineView {
   return {
     id: r.id,
     subject: r.nomncNoticeId ? "notice" : "review",
@@ -231,7 +240,7 @@ export function deadlineView(r: DeadlineRow, now: Date): DeadlineView {
     sourceNote: r.sourceNote,
     noticeDocumentId: r.noticeDocumentId,
     satisfiedAt: iso(r.satisfiedAt),
-    status: deadlineStatus({ dueAt: r.dueAt, satisfiedAt: r.satisfiedAt }, now),
+    status: deadlineStatus({ dueAt: r.dueAt, satisfiedAt: r.satisfiedAt }, now, live),
     version: r.version,
   };
 }

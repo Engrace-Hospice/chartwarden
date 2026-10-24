@@ -47,6 +47,7 @@ export const nomncNotices = pgTable(
     acknowledgementKind: text("acknowledgement_kind"), // signed | refused | other
     acknowledgementNote: text("acknowledgement_note"),
     documentId: uuid("document_id"), // M22 logical FK
+    documentVersionId: uuid("document_version_id"), // the exact version the check validated
     sourceNote: text("source_note").notNull(),
     supersededById: uuid("superseded_by_id"), // self-reference, deferred FK in migration 1230
     withdrawnReason: text("withdrawn_reason"),
@@ -94,12 +95,14 @@ export const expeditedReviews = pgTable(
     requestedByKind: text("requested_by_kind").notNull(), // beneficiary | representative | unknown
     dencDeliveredAt: timestamp("denc_delivered_at", { withTimezone: true }),
     dencDocumentId: uuid("denc_document_id"),
+    dencDocumentVersionId: uuid("denc_document_version_id"),
     recordsSentAt: timestamp("records_sent_at", { withTimezone: true }),
     recordsSentNote: text("records_sent_note"),
     decisionOutcome: text("decision_outcome"), // discharge_upheld | discharge_reversed | other
     decisionReceivedAt: timestamp("decision_received_at", { withTimezone: true }),
     decisionNote: text("decision_note"),
     decisionDocumentId: uuid("decision_document_id"),
+    decisionDocumentVersionId: uuid("decision_document_version_id"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -142,6 +145,7 @@ export const expeditedDeadlines = pgTable(
     zone: text("zone").notNull(),
     sourceNote: text("source_note").notNull(),
     noticeDocumentId: uuid("notice_document_id"),
+    noticeDocumentVersionId: uuid("notice_document_version_id"),
     satisfiedAt: timestamp("satisfied_at", { withTimezone: true }),
     lastAlertedBoundaryHours: integer("last_alerted_boundary_hours"),
     overdueAlertedAt: timestamp("overdue_alerted_at", { withTimezone: true }),

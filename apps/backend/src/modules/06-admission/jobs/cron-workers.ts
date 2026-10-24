@@ -308,10 +308,21 @@ export async function runExpeditedDeadlineScanCron(deps: M6WorkerDeps): Promise<
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   let total = 0;
   for (const { organizationId } of orgs) {
-    // The NULL (system) audit actor: the scan UPDATEs an audited table (see the F-178b note above).
-    total += await withOrgContext(deps.db, systemOrgContext(organizationId), (tx) =>
-      scanExpeditedDeadlinesInTx(tx as unknown as DbClient, deps.outbox, organizationId, now),
-    );
+    // One org's failure must not stop the tick for the rest, nor the compliance escalation scan that follows.
+    try {
+      // The NULL (system) audit actor: the scan UPDATEs an audited table (see the F-178b note above).
+      total += await withOrgContext(deps.db, systemOrgContext(organizationId), (tx) =>
+        scanExpeditedDeadlinesInTx(tx as unknown as DbClient, deps.outbox, organizationId, now),
+      );
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "m6.expedited_deadline_scan_failed",
+          organizationId,
+          error: error instanceof Error ? error.name : "unknown",
+        }),
+      );
+    }
   }
   return total;
 }

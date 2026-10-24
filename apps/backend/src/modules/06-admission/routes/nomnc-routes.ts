@@ -74,7 +74,8 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
     {
       preHandler: [NOMNC_READ, scope("nomnc.read")],
       schema: { response: { 200: NomncOverviewSchema } },
-      config: { auditRead: { resourceKind: "nomnc_notice", resourceIdParam: "id" } },
+      // The path id is the ADMISSION id, so the read is accounted against the admission (not a notice).
+      config: { auditRead: { resourceKind: "admission", resourceIdParam: "id" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);

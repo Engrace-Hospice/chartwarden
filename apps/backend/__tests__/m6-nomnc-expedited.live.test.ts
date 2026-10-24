@@ -41,6 +41,7 @@ import {
   createDbAdmissionRouteService,
 } from "../src/modules/06-admission/admission-route-service-db";
 import { createDbDischargeWorklistService } from "../src/modules/06-admission/discharge-worklist-service-db";
+import { markAndPublish } from "../src/modules/06-admission/nomnc/scan";
 import { runExpeditedDeadlineScanCron } from "../src/modules/06-admission/jobs/cron-workers";
 import { type NomncService, createNomncService } from "../src/modules/06-admission/nomnc/index";
 import { registerNomncRoutes } from "../src/modules/06-admission/routes/nomnc-routes";
@@ -425,10 +426,15 @@ describe.skipIf(!DB_URL)(
       expect((await call("GET", `/api/v1/admissions/${admissionId}/nomnc`, as(reader))).statusCode).toBe(200);
       const { rows } = await admin.query(
         `SELECT resource_id::text AS id, event_type FROM audit_event
-          WHERE organization_id=$1 AND resource_kind='nomnc_notice' AND resource_id=$2`,
+          WHERE organization_id=$1 AND resource_kind='admission' AND resource_id=$2
+            AND (event_type ILIKE '%view%' OR event_type ILIKE '%read%')`,
         [ORG_A, admissionId],
       );
+      // accounted against the ADMISSION whose id the path carries, never as a notice
       expect(rows.length).toBeGreaterThanOrEqual(1);
+      expect(
+        (await admin.query(`SELECT 1 FROM audit_event WHERE organization_id=$1 AND resource_kind='nomnc_notice' AND resource_id=$2 AND event_type ILIKE '%view%'`, [ORG_A, admissionId])).rowCount,
+      ).toBe(0);
       // no user, no session: never reached
       expect((await call("GET", `/api/v1/admissions/${admissionId}/nomnc`, {})).statusCode).toBeGreaterThanOrEqual(401);
     });
@@ -744,6 +750,98 @@ describe.skipIf(!DB_URL)(
       // and the actor's scope still gates the admission itself: a user of another org cannot reach it at all
       const asB = { ...as(recorderB, ORG_B), "x-test-pe": providerA };
       expect((await call("PATCH", url, asB, { ifVersion: n.version + 1, documentId: own.documentId, documentVersionId: own.documentVersionId })).statusCode).toBe(404);
+    });
+
+
+    it("after a supersede the new notice shows NO review and one can be opened (decided and withdrawn priors); old records are frozen", async () => {
+      for (const prior of ["decided", "withdrawn"] as const) {
+        const { admissionId } = await activate();
+        const base = `/api/v1/admissions/${admissionId}`;
+        const n1 = (await call("POST", `${base}/nomnc`, as(recorder), noticeBody())).json() as { id: string };
+        const rv = (await call("POST", `${base}/nomnc/${n1.id}/expedited-review`, as(recorder), {
+          qioName: "Example BFCC-QIO",
+          qioNotified: { date: PAST_DATE, time: "14:20" },
+          requestedByKind: "unknown",
+        })).json() as { id: string; version: number };
+        const dl = (await call("POST", `${base}/expedited-reviews/${rv.id}/deadlines`, as(recorder), {
+          kind: "qio_decision",
+          due: { date: "2099-01-02", time: "09:00" },
+          sourceNote: "told by the QIO",
+        })).json() as { id: string };
+        if (prior === "decided") {
+          await call("PATCH", `${base}/expedited-reviews/${rv.id}`, as(recorder), {
+            ifVersion: rv.version,
+            decision: { outcome: "discharge_upheld", received: { date: PAST_DATE, time: "18:00" } },
+          });
+        } else {
+          await call("POST", `${base}/expedited-reviews/${rv.id}/withdraw`, as(recorder), { ifVersion: rv.version });
+        }
+        // the closed review's unmet deadline no longer reads as running or overdue
+        const mid = (await call("GET", `${base}/nomnc`, as(reader))).json() as { deadlines: { id: string; status: string }[] };
+        expect(mid.deadlines.find((d) => d.id === dl.id)?.status).toBe("closed");
+
+        const n2 = await call("POST", `${base}/nomnc`, as(recorder), noticeBody({ supersedesId: n1.id }));
+        expect(n2.statusCode).toBe(201);
+        const ov = (await call("GET", `${base}/nomnc`, as(reader))).json() as { review: unknown; activeNotice: { id: string }; deadlines: unknown[] };
+        expect(ov.activeNotice.id).toBe((n2.json() as { id: string }).id);
+        expect(ov.review).toBeNull();
+        expect(ov.deadlines).toEqual([]);
+        const again = await call("POST", `${base}/nomnc/${ov.activeNotice.id}/expedited-review`, as(recorder), {
+          qioName: "Example BFCC-QIO",
+          qioNotified: { date: PAST_DATE, time: "15:20" },
+          requestedByKind: "unknown",
+        });
+        expect(again.statusCode).toBe(201);
+        // the superseded record is history: the DB refuses any change to it
+        await expect(
+          withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+            tx.execute(sql`UPDATE nomnc_notice SET delivery_note = 'tampered' WHERE id = ${n1.id}`),
+          ),
+        ).rejects.toMatchObject({ cause: { message: expect.stringMatching(/M6_NOMNC_FROZEN/) } });
+      }
+    });
+
+    it("a deadline typed already in the past does not page on the next tick; a stale scan cannot mark a moved deadline; the link records the validated VERSION", async () => {
+      const { admissionId, patientId } = await activate();
+      const base = `/api/v1/admissions/${admissionId}`;
+      const n = (await call("POST", `${base}/nomnc`, as(recorder), noticeBody())).json() as { id: string; version: number };
+      const past = await call("POST", `${base}/nomnc/${n.id}/deadlines`, as(recorder), {
+        kind: "appeal_request",
+        due: { date: PAST_DATE, time: "12:00" },
+        sourceNote: "printed on the notice",
+      });
+      const pd = past.json() as { id: string; dueAt: string; status: string; version: number };
+      await scan(new Date());
+      expect((await events("m6.expedited_deadline.overdue", admissionId)).length).toBe(0);
+      expect(pd.status).toBe("past");
+
+      // a scan that read the old due_at cannot mark or alert after the deadline was moved
+      const future = new Date(Date.now() + 3 * HOUR);
+      await dueAt(pd.id, new Date(Date.now() + 100 * HOUR));
+      const stale = {
+        id: pd.id, dueAt: future, kind: "appeal_request", admissionId, patientId, nomncNoticeId: n.id,
+        lastAlertedBoundaryHours: null, overdueAlertedAt: null, satisfiedAt: null,
+      };
+      const published = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        markAndPublish(tx as never, validatingM6Outbox(), ORG_A, stale as never, { id: pd.id, kind: "approaching", boundaryHours: 4 }, new Date()),
+      );
+      expect(published).toBe(false);
+      expect((await events("m6.expedited_deadline.approaching", admissionId)).length).toBe(0);
+
+      // the validated document VERSION is persisted with the link
+      const doc = await seedDoc(ORG_A, patientId, admissionId);
+      expect((await call("PATCH", `${base}/nomnc/${n.id}`, as(recorder), { ifVersion: n.version, documentId: doc.documentId, documentVersionId: doc.documentVersionId })).statusCode).toBe(200);
+      const row = await one<{ document_id: string; document_version_id: string }>("SELECT document_id, document_version_id FROM nomnc_notice WHERE id=$1", [n.id]);
+      expect(row).toEqual({ document_id: doc.documentId, document_version_id: doc.documentVersionId });
+
+      // the deadline guard checks the patient as well as the admission
+      await expect(
+        admin.query(
+          `INSERT INTO expedited_deadline (organization_id, patient_id, admission_id, nomnc_notice_id, kind, due_at, due_local, zone, source_note)
+           VALUES ($1,$2,$3,$4,'other',now(),'2099-01-01T00:00','America/New_York','x')`,
+          [ORG_A, randomUUID(), admissionId, n.id],
+        ),
+      ).rejects.toThrow();
     });
 
     it("the nomnc routes are not on the auditor enrolment allowlist (an auditor session reaches none of them)", () => {

@@ -29639,6 +29639,10 @@
                         {
                           "const": "satisfied",
                           "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
                         }
                       ]
                     },
@@ -30318,6 +30322,10 @@
                         },
                         {
                           "const": "satisfied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
                           "type": "string"
                         }
                       ]
@@ -31697,6 +31705,10 @@
                               {
                                 "const": "satisfied",
                                 "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
                               }
                             ]
                           },
@@ -32553,6 +32565,10 @@
                         },
                         {
                           "const": "satisfied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
                           "type": "string"
                         }
                       ]

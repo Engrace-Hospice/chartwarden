@@ -200,6 +200,7 @@ export const DeadlineViewSchema = Type.Object({
     Type.Literal("due_soon"),
     Type.Literal("past"),
     Type.Literal("satisfied"),
+    Type.Literal("closed"),
   ]),
   version: Type.Integer(),
 });

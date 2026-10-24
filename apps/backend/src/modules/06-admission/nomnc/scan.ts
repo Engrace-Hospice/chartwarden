@@ -58,7 +58,7 @@ export async function scanExpeditedDeadlinesInTx(
   return published;
 }
 
-async function markAndPublish(
+export async function markAndPublish(
   tx: DbClient,
   outbox: NomncOutboxPort,
   organizationId: string,
@@ -72,7 +72,9 @@ async function markAndPublish(
       ? await tx
           .update(D)
           .set({ overdueAlertedAt: now, updatedAt: now })
-          .where(and(eq(D.id, d.id), isNull(D.overdueAlertedAt), isNull(D.satisfiedAt)))
+          .where(
+            and(eq(D.id, d.id), eq(D.dueAt, d.dueAt), isNull(D.overdueAlertedAt), isNull(D.satisfiedAt)),
+          )
           .returning({ id: D.id })
       : await tx
           .update(D)
@@ -80,6 +82,8 @@ async function markAndPublish(
           .where(
             and(
               eq(D.id, d.id),
+              // A deadline moved since this scan read it is not marked or alerted on the stale value.
+              eq(D.dueAt, d.dueAt),
               isNull(D.satisfiedAt),
               or(
                 isNull(D.lastAlertedBoundaryHours),

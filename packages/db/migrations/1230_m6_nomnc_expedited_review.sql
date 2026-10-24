@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS "nomnc_notice" (
   "acknowledgement_kind" text CHECK ("acknowledgement_kind" IN ('signed','refused','other')),
   "acknowledgement_note" text,
   "document_id" uuid, -- M22 logical FK (a scanned copy of the notice as delivered); NULL shows a prompt
+  "document_version_id" uuid, -- the exact M22 version the link check validated (evidence of what was linked)
   "source_note" text NOT NULL CHECK (btrim("source_note") <> ''),
   -- DEFERRED: a supersession marks the old row (pointing at the new id) before the new row is inserted, in one transaction
   -- (the one-active partial unique index forbids inserting the new row first).
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS "nomnc_notice" (
     "acknowledgement_note" IS NOT NULL AND btrim("acknowledgement_note") <> '')),
   CONSTRAINT "nomnc_notice_withdrawn_reason" CHECK ("status" <> 'withdrawn' OR (
     "withdrawn_reason" IS NOT NULL AND btrim("withdrawn_reason") <> '')),
+  CONSTRAINT "nomnc_notice_document_version_shape" CHECK (("document_id" IS NULL) = ("document_version_id" IS NULL)),
   CONSTRAINT "nomnc_notice_superseded_shape" CHECK (("status" = 'superseded') = ("superseded_by_id" IS NOT NULL))
 );--> statement-breakpoint
 -- One ACTIVE notice per admission.
@@ -74,16 +76,21 @@ CREATE TABLE IF NOT EXISTS "expedited_review" (
   "requested_by_kind" text NOT NULL CHECK ("requested_by_kind" IN ('beneficiary','representative','unknown')),
   "denc_delivered_at" timestamptz,
   "denc_document_id" uuid, -- M22 logical FK
+  "denc_document_version_id" uuid,
   "records_sent_at" timestamptz,
   "records_sent_note" text,
   "decision_outcome" text CHECK ("decision_outcome" IN ('discharge_upheld','discharge_reversed','other')),
   "decision_received_at" timestamptz,
   "decision_note" text,
   "decision_document_id" uuid, -- M22 logical FK
+  "decision_document_version_id" uuid,
   "created_by_user_id" uuid REFERENCES "user"("id") ON DELETE SET NULL,
   "version" integer NOT NULL DEFAULT 1,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "expedited_review_document_version_shape" CHECK (
+    (("denc_document_id" IS NULL) = ("denc_document_version_id" IS NULL))
+    AND (("decision_document_id" IS NULL) = ("decision_document_version_id" IS NULL))),
   CONSTRAINT "expedited_review_one_per_notice" UNIQUE ("nomnc_notice_id"),
   CONSTRAINT "expedited_review_decided_shape" CHECK ("state" <> 'decided' OR ("decision_outcome" IS NOT NULL AND "decision_received_at" IS NOT NULL)),
   CONSTRAINT "expedited_review_outcome_only_when_decided" CHECK ("state" = 'decided' OR "decision_outcome" IS NULL),
@@ -117,6 +124,7 @@ CREATE TABLE IF NOT EXISTS "expedited_deadline" (
   -- Where the date and time came from (the notice, the QIO's call). Mandatory: an untraceable deadline is not recorded.
   "source_note" text NOT NULL CHECK (btrim("source_note") <> ''),
   "notice_document_id" uuid, -- M22 logical FK
+  "notice_document_version_id" uuid,
   "satisfied_at" timestamptz,
   "last_alerted_boundary_hours" integer CHECK ("last_alerted_boundary_hours" IS NULL OR "last_alerted_boundary_hours" > 0),
   "overdue_alerted_at" timestamptz,
@@ -125,6 +133,7 @@ CREATE TABLE IF NOT EXISTS "expedited_deadline" (
   "version" integer NOT NULL DEFAULT 1,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "expedited_deadline_document_version_shape" CHECK (("notice_document_id" IS NULL) = ("notice_document_version_id" IS NULL)),
   CONSTRAINT "expedited_deadline_one_subject" CHECK (num_nonnulls("nomnc_notice_id","expedited_review_id") = 1),
   CONSTRAINT "expedited_deadline_kind_matches_subject" CHECK (
     ("nomnc_notice_id" IS NOT NULL AND "kind" IN ('appeal_request','other'))
@@ -169,16 +178,16 @@ CREATE POLICY "expedited_deadline_org" ON "expedited_deadline" FOR ALL TO chartw
 -- patient, subject, kind) never change after insert.
 GRANT SELECT, INSERT ON "nomnc_notice" TO chartwarden_app;--> statement-breakpoint
 GRANT UPDATE ("status", "services_end_on", "delivered_at", "delivered_by_user_id", "recipient_kind", "representative_name",
-  "delivery_note", "acknowledgement_kind", "acknowledgement_note", "document_id", "source_note", "superseded_by_id",
+  "delivery_note", "acknowledgement_kind", "acknowledgement_note", "document_id", "document_version_id", "source_note", "superseded_by_id",
   "withdrawn_reason", "version", "updated_at") ON "nomnc_notice" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "nomnc_notice" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "expedited_review" TO chartwarden_app;--> statement-breakpoint
 GRANT UPDATE ("state", "qio_name", "qio_reference", "qio_notified_at", "requested_by_kind", "denc_delivered_at",
-  "denc_document_id", "records_sent_at", "records_sent_note", "decision_outcome", "decision_received_at", "decision_note",
-  "decision_document_id", "version", "updated_at") ON "expedited_review" TO chartwarden_app;--> statement-breakpoint
+  "denc_document_id", "denc_document_version_id", "records_sent_at", "records_sent_note", "decision_outcome", "decision_received_at", "decision_note",
+  "decision_document_id", "decision_document_version_id", "version", "updated_at") ON "expedited_review" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "expedited_review" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "expedited_deadline" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("label", "due_at", "due_local", "zone", "source_note", "notice_document_id", "satisfied_at",
+GRANT UPDATE ("label", "due_at", "due_local", "zone", "source_note", "notice_document_id", "notice_document_version_id", "satisfied_at",
   "last_alerted_boundary_hours", "overdue_alerted_at", "version", "updated_at") ON "expedited_deadline" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "expedited_deadline" TO chartwarden_admin;--> statement-breakpoint
 
@@ -242,11 +251,16 @@ BEGIN
     IF v_patient <> NEW.patient_id THEN
       RAISE EXCEPTION 'M6_NOMNC_PATIENT: patient does not match admission %', NEW.admission_id;
     END IF;
+    RETURN NEW;
+  END IF;
+  -- A superseded or withdrawn record is history: nothing about it changes again.
+  IF OLD.status <> 'active' THEN
+    RAISE EXCEPTION 'M6_NOMNC_FROZEN: nomnc_notice % is % and cannot change', OLD.id, OLD.status;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_nomnc_notice_guard" ON nomnc_notice;--> statement-breakpoint
-CREATE TRIGGER "trg_nomnc_notice_guard" BEFORE INSERT ON nomnc_notice FOR EACH ROW EXECUTE FUNCTION m6_nomnc_notice_guard();--> statement-breakpoint
+CREATE TRIGGER "trg_nomnc_notice_guard" BEFORE INSERT OR UPDATE ON nomnc_notice FOR EACH ROW EXECUTE FUNCTION m6_nomnc_notice_guard();--> statement-breakpoint
 
 -- expedited_review: the notice must be visible to this organization and ACTIVE when the review opens; the review carries
 -- the notice's admission / patient; once decided or withdrawn only the document links (and bookkeeping) may change.
@@ -291,19 +305,19 @@ CREATE TRIGGER "trg_expedited_review_guard" BEFORE INSERT OR UPDATE ON expedited
 -- fail closed); once satisfied the deadline is frozen except for the alert bookkeeping.
 CREATE OR REPLACE FUNCTION m6_expedited_deadline_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
-DECLARE v_adm uuid;
+DECLARE v_adm uuid; v_patient uuid;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.nomnc_notice_id IS NOT NULL THEN
-      SELECT admission_id INTO v_adm FROM nomnc_notice WHERE id = NEW.nomnc_notice_id AND organization_id = NEW.organization_id;
+      SELECT admission_id, patient_id INTO v_adm, v_patient FROM nomnc_notice WHERE id = NEW.nomnc_notice_id AND organization_id = NEW.organization_id;
     ELSE
-      SELECT admission_id INTO v_adm FROM expedited_review WHERE id = NEW.expedited_review_id AND organization_id = NEW.organization_id;
+      SELECT admission_id, patient_id INTO v_adm, v_patient FROM expedited_review WHERE id = NEW.expedited_review_id AND organization_id = NEW.organization_id;
     END IF;
     IF v_adm IS NULL THEN
       RAISE EXCEPTION 'M6_EXPEDITED_DEADLINE_PARENT: the subject is not visible to this organization';
     END IF;
-    IF v_adm <> NEW.admission_id THEN
-      RAISE EXCEPTION 'M6_EXPEDITED_DEADLINE_ADMISSION: admission does not match the subject';
+    IF v_adm <> NEW.admission_id OR v_patient <> NEW.patient_id THEN
+      RAISE EXCEPTION 'M6_EXPEDITED_DEADLINE_ADMISSION: admission / patient do not match the subject';
     END IF;
     RETURN NEW;
   END IF;
@@ -314,6 +328,7 @@ BEGIN
     OR NEW.zone IS DISTINCT FROM OLD.zone
     OR NEW.source_note IS DISTINCT FROM OLD.source_note
     OR NEW.notice_document_id IS DISTINCT FROM OLD.notice_document_id
+    OR NEW.notice_document_version_id IS DISTINCT FROM OLD.notice_document_version_id
     OR NEW.satisfied_at IS DISTINCT FROM OLD.satisfied_at) THEN
     RAISE EXCEPTION 'M6_EXPEDITED_DEADLINE_FROZEN: expedited_deadline % is satisfied and cannot change', OLD.id;
   END IF;

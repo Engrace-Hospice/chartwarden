@@ -4,13 +4,29 @@
 // transaction as the write, and never blocks or sends anything. Every route hangs off the ADMISSION path; a notice,
 // review or deadline of another admission reads as absent.
 import { type DbClient, organizationTimezone } from "@chartwarden/db";
-import { DegradedError } from "@chartwarden/types";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
+import type {
+  AddDeadlineInput,
+  OpenReviewInput,
+  PatchDeadlineInput,
+  PatchNoticeInput,
+  PatchReviewInput,
+  RecordNoticeInput,
+} from "./types";
 import { ResourceNotFoundError } from "../routes/service";
 import { mapUniqueViolation } from "../unique-violation";
+import {
+  type DocumentVerifier,
+  type NomncLog,
+  blankToNull,
+  createDocumentVerifier,
+  defaultNomncLog,
+  insertDeadline,
+  typedMoment,
+} from "./deadlines";
 import {
   type AcknowledgementKind,
   type DeadlineKind,
@@ -25,7 +41,6 @@ import {
   promptsFor,
   requireOtherLabel,
   requireSourceNote,
-  resolveTypedInstant,
   validateNoticeFacts,
 } from "./domain";
 import {
@@ -72,80 +87,19 @@ export interface NomncServiceDeps {
    *  linking a document is refused with 503; nothing else needs it. */
   readonly documentValidator?: AdmissionEvidenceDocumentValidator;
   readonly now?: () => Date;
+  /** Where a refused document link is reported (ids and error class only, never PHI). Defaults to stderr. */
+  readonly log?: NomncLog;
 }
 
-/** A typed local date + time as the person entered them (no default for either). */
-export interface TypedMoment {
-  readonly date?: string | null;
-  readonly time?: string | null;
-}
-
-export interface RecordNoticeInput {
-  readonly supersedesId?: string | null;
-  readonly servicesEndOn: string;
-  readonly delivered: TypedMoment;
-  readonly recipientKind: RecipientKind;
-  readonly representativeName?: string | null;
-  readonly deliveryNote?: string | null;
-  readonly acknowledgementKind?: AcknowledgementKind | null;
-  readonly acknowledgementNote?: string | null;
-  readonly documentId?: string | null;
-  readonly documentVersionId?: string | null;
-  readonly sourceNote: string;
-}
-
-export interface PatchNoticeInput {
-  readonly ifVersion: number;
-  readonly deliveryNote?: string | null;
-  readonly acknowledgementKind?: AcknowledgementKind | null;
-  readonly acknowledgementNote?: string | null;
-  readonly documentId?: string | null;
-  readonly documentVersionId?: string | null;
-}
-
-export interface OpenReviewInput {
-  readonly qioName: string;
-  readonly qioReference?: string | null;
-  readonly qioNotified: TypedMoment;
-  readonly requestedByKind: RequestedByKind;
-}
-
-export interface PatchReviewInput {
-  readonly ifVersion: number;
-  readonly qioReference?: string | null;
-  readonly dencDelivered?: TypedMoment;
-  readonly dencDocumentId?: string | null;
-  readonly dencDocumentVersionId?: string | null;
-  readonly recordsSent?: TypedMoment;
-  readonly recordsSentNote?: string | null;
-  readonly decision?: {
-    readonly outcome: DecisionOutcome;
-    readonly received: TypedMoment;
-    readonly note?: string | null;
-  };
-  readonly decisionDocumentId?: string | null;
-  readonly decisionDocumentVersionId?: string | null;
-}
-
-export interface AddDeadlineInput {
-  readonly kind: DeadlineKind;
-  readonly label?: string | null;
-  readonly due: TypedMoment;
-  readonly sourceNote: string;
-  readonly noticeDocumentId?: string | null;
-  readonly noticeDocumentVersionId?: string | null;
-}
-
-export interface PatchDeadlineInput {
-  readonly ifVersion: number;
-  readonly label?: string | null;
-  readonly due?: TypedMoment;
-  readonly sourceNote?: string;
-  readonly noticeDocumentId?: string | null;
-  readonly noticeDocumentVersionId?: string | null;
-  /** Mark the deadline met (the server stamps the time). Irreversible: a satisfied deadline is frozen. */
-  readonly satisfy?: boolean;
-}
+export type {
+  AddDeadlineInput,
+  OpenReviewInput,
+  PatchDeadlineInput,
+  PatchNoticeInput,
+  PatchReviewInput,
+  RecordNoticeInput,
+  TypedMoment,
+} from "./types";
 
 export interface NomncOverview {
   readonly admissionId: string;
@@ -234,12 +188,6 @@ const versionConflict = (what: string, id: string, have: number, want: number) =
     `${what} ${id} changed since it was read (version ${have}, expected ${want})`,
   );
 
-/** A blank string from a form is "not recorded", never an empty fact. */
-const blankToNull = (s: string | null | undefined): string | null => {
-  const t = s?.trim();
-  return t ? t : null;
-};
-
 const SQL_NOW = sql`now()`;
 
 export function createNomncService(deps: NomncServiceDeps): NomncService {
@@ -254,8 +202,13 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     return facts;
   }
 
-  async function noticeOf(tx: DbClient, admissionId: string, id: string): Promise<NoticeRow> {
-    const row = await loadNotice(tx, id);
+  async function noticeOf(
+    tx: DbClient,
+    admissionId: string,
+    id: string,
+    opts: { readonly forUpdate?: boolean } = {},
+  ): Promise<NoticeRow> {
+    const row = await loadNotice(tx, id, opts);
     if (!row || row.admissionId !== admissionId) throw new ResourceNotFoundError(id);
     return row;
   }
@@ -278,41 +231,13 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     }
   };
 
-  /**
-   * A document a record links to must be an ACTIVE M22 version of THIS organization's patient and admission. Run
-   * before any write, inside the caller's org-context transaction; a foreign, cross-patient or cross-tenant id reads
-   * as absent (404, no existence oracle) and nothing is written.
-   */
-  async function verifyDocument(
-    organizationId: string,
-    scope: { readonly admissionId: string; readonly patientId: string },
-    documentId: string | null | undefined,
-    documentVersionId: string | null | undefined,
-  ): Promise<void> {
-    if (!documentId) return;
-    if (!deps.documentValidator) {
-      throw new DegradedError("m6.nomnc-documents", "document linking is not bound");
-    }
-    if (!documentVersionId) {
-      throw new NomncRuleError("DOCUMENT_VERSION_REQUIRED", "name the document version to link");
-    }
-    try {
-      await deps.documentValidator.validateAdmissionEvidenceDocumentVersion({
-        organizationId,
-        admissionId: scope.admissionId,
-        patientId: scope.patientId,
-        documentId,
-        documentVersionId,
-      });
-    } catch {
-      throw new ResourceNotFoundError(documentId);
-    }
-  }
-
   const zoneOf = (tx: DbClient, organizationId: string) => organizationTimezone(tx, organizationId);
 
-  const moment = (m: TypedMoment | undefined, zone: string) =>
-    resolveTypedInstant(m?.date, m?.time, zone);
+  const moment = typedMoment;
+  const verifyDocument: DocumentVerifier = createDocumentVerifier(
+    deps.documentValidator,
+    deps.log ?? defaultNomncLog,
+  );
 
   return {
     async overview(organizationId, admissionId, dischargeReason) {
@@ -325,14 +250,19 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         const notices = await listNotices(tx, admissionId);
         const active = notices.find((n) => n.status === "active") ?? null;
         const reviews = await listReviews(tx, admissionId);
-        // The review that matters is the active notice's; failing that, the newest (e.g. after a withdrawal).
-        const review = reviews.find((r) => r.nomncNoticeId === active?.id) ?? reviews[0] ?? null;
+        // The review that matters is the ACTIVE notice's (none yet = none shown, so it can be opened). With no active
+        // notice (all withdrawn) the newest review is shown as history.
+        const review = active
+          ? (reviews.find((r) => r.nomncNoticeId === active.id) ?? null)
+          : (reviews[0] ?? null);
         const deadlineRows = await listDeadlinesOf(
           tx,
           active ? [active.id] : [],
           review ? [review.id] : [],
         );
-        const deadlines = deadlineRows.map((d) => deadlineView(d, at));
+        const deadlines = deadlineRows.map((d) =>
+          deadlineView(d, at, d.nomncNoticeId ? active?.id === d.nomncNoticeId : review?.state === "open"),
+        );
         const prompts = promptsFor({
           notice: active
             ? {
@@ -382,7 +312,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
           acknowledgementNote: ackNote,
         });
 
-        const active = await loadActiveNotice(tx, admissionId);
+        const active = await loadActiveNotice(tx, admissionId, { forUpdate: true });
         if (active && active.id !== input.supersedesId) {
           throw new NomncRuleError(
             "ACTIVE_NOTICE_EXISTS",
@@ -429,6 +359,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
             acknowledgementKind: input.acknowledgementKind ?? null,
             acknowledgementNote: ackNote,
             documentId: input.documentId ?? null,
+            documentVersionId: input.documentId ? (input.documentVersionId ?? null) : null,
             sourceNote,
             createdByUserId: actorUserId || null,
           })
@@ -459,7 +390,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     async patchNotice(organizationId, admissionId, noticeId, input, actorUserId) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (txRaw) => {
         const tx = asTx(txRaw);
-        const row = await noticeOf(tx, admissionId, noticeId);
+        const row = await noticeOf(tx, admissionId, noticeId, { forUpdate: true });
         requireActive(row);
         await verifyDocument(organizationId, row, input.documentId, input.documentVersionId);
         const ackKind =
@@ -486,7 +417,12 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
             ...(input.deliveryNote !== undefined
               ? { deliveryNote: blankToNull(input.deliveryNote) }
               : {}),
-            ...(input.documentId !== undefined ? { documentId: input.documentId } : {}),
+            ...(input.documentId !== undefined
+              ? {
+                  documentId: input.documentId,
+                  documentVersionId: input.documentId ? (input.documentVersionId ?? null) : null,
+                }
+              : {}),
             version: sql`${N.version} + 1`,
             updatedAt: SQL_NOW,
           })
@@ -500,7 +436,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     async withdrawNotice(organizationId, admissionId, noticeId, input, actorUserId) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (txRaw) => {
         const tx = asTx(txRaw);
-        const row = await noticeOf(tx, admissionId, noticeId);
+        const row = await noticeOf(tx, admissionId, noticeId, { forUpdate: true });
         requireActive(row);
         const reason = blankToNull(input.reason);
         if (!reason) {
@@ -531,7 +467,8 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     async openReview(organizationId, admissionId, noticeId, input, actorUserId) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (txRaw) => {
         const tx = asTx(txRaw);
-        const notice = await noticeOf(tx, admissionId, noticeId);
+        // Locked: openReview and withdrawNotice / supersede serialise on the notice row.
+        const notice = await noticeOf(tx, admissionId, noticeId, { forUpdate: true });
         requireActive(notice);
         if (await loadReviewOfNotice(tx, noticeId)) {
           throw new NomncRuleError("REVIEW_ALREADY_OPEN", "this notice already has a QIO review");
@@ -600,7 +537,10 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         if (input.dencDelivered !== undefined) {
           set.dencDeliveredAt = moment(input.dencDelivered, zone).instant;
         }
-        if (input.dencDocumentId !== undefined) set.dencDocumentId = input.dencDocumentId;
+        if (input.dencDocumentId !== undefined) {
+          set.dencDocumentId = input.dencDocumentId;
+          set.dencDocumentVersionId = input.dencDocumentId ? (input.dencDocumentVersionId ?? null) : null;
+        }
         if (input.recordsSent !== undefined) {
           set.recordsSentAt = moment(input.recordsSent, zone).instant;
         }
@@ -609,6 +549,9 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         }
         if (input.decisionDocumentId !== undefined) {
           set.decisionDocumentId = input.decisionDocumentId;
+          set.decisionDocumentVersionId = input.decisionDocumentId
+            ? (input.decisionDocumentVersionId ?? null)
+            : null;
         }
         let decidedOutcome: DecisionOutcome | null = null;
         if (input.decision) {
@@ -671,13 +614,11 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         const notice = await noticeOf(tx, admissionId, noticeId);
         requireActive(notice);
         return insertDeadline(
-          tx,
-          organizationId,
+          { tx, organizationId, actorUserId, now: now(), verify: verifyDocument },
           notice,
           { nomncNoticeId: noticeId },
           NOTICE_DEADLINE_KINDS,
           input,
-          actorUserId,
         );
       });
     },
@@ -688,13 +629,11 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         const review = await reviewOf(tx, admissionId, reviewId);
         requireOpen(review);
         return insertDeadline(
-          tx,
-          organizationId,
+          { tx, organizationId, actorUserId, now: now(), verify: verifyDocument },
           review,
           { expeditedReviewId: reviewId },
           REVIEW_DEADLINE_KINDS,
           input,
-          actorUserId,
         );
       });
     },
@@ -713,7 +652,12 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         if (input.label !== undefined && row.kind === "other") {
           set.label = requireOtherLabel("other", input.label);
         }
-        if (input.noticeDocumentId !== undefined) set.noticeDocumentId = input.noticeDocumentId;
+        if (input.noticeDocumentId !== undefined) {
+          set.noticeDocumentId = input.noticeDocumentId;
+          set.noticeDocumentVersionId = input.noticeDocumentId
+            ? (input.noticeDocumentVersionId ?? null)
+            : null;
+        }
         if (input.sourceNote !== undefined) set.sourceNote = requireSourceNote(input.sourceNote);
         if (input.due !== undefined) {
           const zone = await zoneOf(tx, organizationId);
@@ -722,8 +666,9 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
           set.dueLocal = typed.dueLocal;
           set.zone = zone;
           // A moved deadline starts its alert history over.
+          // (a time typed already in the past is recorded as alerted: the editor is looking at it).
           set.lastAlertedBoundaryHours = null;
-          set.overdueAlertedAt = null;
+          set.overdueAlertedAt = typed.instant.getTime() <= at.getTime() ? at : null;
         }
         if (input.satisfy) set.satisfiedAt = at;
         const [updated] = await tx
@@ -732,76 +677,8 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
           .where(and(eq(D.id, deadlineId), eq(D.version, input.ifVersion)))
           .returning();
         if (!updated) throw versionConflict("deadline", deadlineId, row.version, input.ifVersion);
-        return deadlineView(updated, at);
+        return deadlineView(updated, at, true);
       });
     },
   };
-
-  async function insertDeadline(
-    tx: DbClient,
-    organizationId: string,
-    parent: NoticeRow | ReviewRow,
-    subject: { nomncNoticeId: string } | { expeditedReviewId: string },
-    allowedKinds: readonly DeadlineKind[],
-    input: AddDeadlineInput,
-    actorUserId: string,
-  ): Promise<DeadlineView> {
-    if (!allowedKinds.includes(input.kind)) {
-      throw new NomncRuleError(
-        "DEADLINE_KIND_NOT_ALLOWED",
-        `a deadline of kind "${input.kind}" does not belong here`,
-      );
-    }
-    await verifyDocument(organizationId, parent, input.noticeDocumentId, input.noticeDocumentVersionId);
-    const label = requireOtherLabel(input.kind, input.label);
-    const sourceNote = requireSourceNote(input.sourceNote);
-    const zone = await zoneOf(tx, organizationId);
-    const typed = moment(input.due, zone);
-    const subjectColumn =
-      "nomncNoticeId" in subject
-        ? eq(D.nomncNoticeId, subject.nomncNoticeId)
-        : eq(D.expeditedReviewId, subject.expeditedReviewId);
-    if (input.kind !== "other") {
-      const [dup] = await tx
-        .select({ id: D.id })
-        .from(D)
-        .where(and(subjectColumn, eq(D.kind, input.kind), sql`${D.satisfiedAt} IS NULL`))
-        .limit(1);
-      if (dup) {
-        throw new NomncRuleError(
-          "DEADLINE_ALREADY_RECORDED",
-          `an unsatisfied "${input.kind}" deadline is already recorded; edit it instead`,
-        );
-      }
-    }
-    const [row] = await tx
-      .insert(D)
-      .values({
-        organizationId,
-        providerEntityId: parent.providerEntityId,
-        locationId: parent.locationId,
-        patientId: parent.patientId,
-        admissionId: parent.admissionId,
-        ...subject,
-        kind: input.kind,
-        label,
-        dueAt: typed.instant,
-        dueLocal: typed.dueLocal,
-        zone,
-        sourceNote,
-        noticeDocumentId: input.noticeDocumentId ?? null,
-        createdByUserId: actorUserId || null,
-      })
-      .returning()
-      .catch((err: unknown) => {
-        throw mapUniqueViolation(err, {
-          expedited_deadline_notice_kind_uq: () =>
-            new NomncRuleError("DEADLINE_ALREADY_RECORDED", "that deadline is already recorded"),
-          expedited_deadline_review_kind_uq: () =>
-            new NomncRuleError("DEADLINE_ALREADY_RECORDED", "that deadline is already recorded"),
-        });
-      });
-    if (!row) throw new Error("expedited_deadline insert returned no row");
-    return deadlineView(row, now());
-  }
 }

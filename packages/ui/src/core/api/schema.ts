@@ -33537,7 +33537,7 @@ export interface operations {
                         sourceNote: string;
                         noticeDocumentId: string | null;
                         satisfiedAt: string | null;
-                        status: "open" | "due_soon" | "past" | "satisfied";
+                        status: "open" | "due_soon" | "past" | "satisfied" | "closed";
                         version: number;
                     };
                 };
@@ -33662,7 +33662,7 @@ export interface operations {
                         sourceNote: string;
                         noticeDocumentId: string | null;
                         satisfiedAt: string | null;
-                        status: "open" | "due_soon" | "past" | "satisfied";
+                        status: "open" | "due_soon" | "past" | "satisfied" | "closed";
                         version: number;
                     };
                 };
@@ -33951,7 +33951,7 @@ export interface operations {
                             sourceNote: string;
                             noticeDocumentId: string | null;
                             satisfiedAt: string | null;
-                            status: "open" | "due_soon" | "past" | "satisfied";
+                            status: "open" | "due_soon" | "past" | "satisfied" | "closed";
                             version: number;
                         }[];
                         prompts: {
@@ -34128,7 +34128,7 @@ export interface operations {
                         sourceNote: string;
                         noticeDocumentId: string | null;
                         satisfiedAt: string | null;
-                        status: "open" | "due_soon" | "past" | "satisfied";
+                        status: "open" | "due_soon" | "past" | "satisfied" | "closed";
                         version: number;
                     };
                 };
