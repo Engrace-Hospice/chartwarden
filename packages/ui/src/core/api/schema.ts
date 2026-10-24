@@ -23359,6 +23359,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scheduling/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organization service timezone for authorized scheduling forms */
+        get: operations["getApiV1SchedulingContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scheduling/eligible-clinicians": {
         parameters: {
             query?: never;
@@ -50495,6 +50512,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         }[];
                     };
                 };
@@ -64781,6 +64799,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         }[];
                     };
                 };
@@ -88487,6 +88506,16 @@ export interface operations {
                         visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         rrule: string;
                         status: "active" | "discontinued";
+                        /** Format: uuid */
+                        admissionId?: string;
+                        visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        patientAddressId?: string | null;
+                        timeOfDayStart?: string;
+                        timeOfDayEnd?: string;
+                        timeZone?: string;
+                        /** Format: date */
+                        startDate?: string;
+                        count?: number | null;
                     }[];
                 };
             };
@@ -88544,6 +88573,16 @@ export interface operations {
                         visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         rrule: string;
                         status: "active" | "discontinued";
+                        /** Format: uuid */
+                        admissionId?: string;
+                        visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        patientAddressId?: string | null;
+                        timeOfDayStart?: string;
+                        timeOfDayEnd?: string;
+                        timeZone?: string;
+                        /** Format: date */
+                        startDate?: string;
+                        count?: number | null;
                     };
                 };
             };
@@ -88584,6 +88623,16 @@ export interface operations {
                         visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         rrule: string;
                         status: "active" | "discontinued";
+                        /** Format: uuid */
+                        admissionId?: string;
+                        visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        patientAddressId?: string | null;
+                        timeOfDayStart?: string;
+                        timeOfDayEnd?: string;
+                        timeZone?: string;
+                        /** Format: date */
+                        startDate?: string;
+                        count?: number | null;
                     };
                 };
             };
@@ -94456,6 +94505,30 @@ export interface operations {
                         medicationOrderId: string;
                         dueAt: string;
                         status: "pending" | "administered" | "missed" | "cancelled" | "intentionally_held";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SchedulingContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        timeZone: string;
                     };
                 };
             };
@@ -102832,6 +102905,13 @@ export interface operations {
                         proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         /** Format: date */
                         proposedForDate: string;
+                        source?: string;
+                        suggestedMembershipId?: string | null;
+                        /** Format: date-time */
+                        proposedStartedAt?: string;
+                        /** Format: date-time */
+                        proposedEndedAt?: string;
+                        publishedAsVisitId?: string | null;
                         status: "pending" | "published" | "dismissed" | "stale";
                     }[];
                 };
@@ -102873,6 +102953,13 @@ export interface operations {
                         proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         /** Format: date */
                         proposedForDate: string;
+                        source?: string;
+                        suggestedMembershipId?: string | null;
+                        /** Format: date-time */
+                        proposedStartedAt?: string;
+                        /** Format: date-time */
+                        proposedEndedAt?: string;
+                        publishedAsVisitId?: string | null;
                         status: "pending" | "published" | "dismissed" | "stale";
                     };
                 };
@@ -102921,6 +103008,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -102972,6 +103060,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     }[];
                 };
             };
@@ -103040,6 +103129,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103087,6 +103177,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103148,6 +103239,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103201,6 +103293,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103255,6 +103348,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103308,6 +103402,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103363,6 +103458,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103423,6 +103519,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         };
                         created: {
                             /** Format: uuid */
@@ -103447,6 +103544,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         };
                     };
                 };
@@ -103501,6 +103599,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103859,6 +103958,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         }[];
                     };
                 };
