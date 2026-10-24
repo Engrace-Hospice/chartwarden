@@ -287,6 +287,45 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "alarm_ingest.nurse_call",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 6.10 (ADR-0102, WATCH ONLY): a nurse-call event reported by an external system. An ALERT, never a call for help: not designated, not locked, never an
+    // acknowledgment request or an escalation. Supervisors (messaging.review) by permission, the tenant administrators when nobody holds it, so an
+    // enabled source is never silently audience-less. In-app only; a tenant re-aims or widens it through the alert-rule admin. Fixed generic text.
+    resolverArgs: { permissionKeys: ["messaging.review"], fallbackToTenantAdmins: true },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "alarm_ingest.patient_sensor",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 6.10 (ADR-0102, WATCH ONLY): a bed, fall or other patient-sensor event reported by an external system. An ALERT, never a call for help: not designated, not locked, never an
+    // acknowledgment request or an escalation. Supervisors (messaging.review) by permission, the tenant administrators when nobody holds it, so an
+    // enabled source is never silently audience-less. In-app only; a tenant re-aims or widens it through the alert-rule admin. Fixed generic text.
+    resolverArgs: { permissionKeys: ["messaging.review"], fallbackToTenantAdmins: true },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "alarm_ingest.equipment",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 6.10 (ADR-0102, WATCH ONLY): a monitor or equipment event reported by an external system. An ALERT, never a call for help: not designated, not locked, never an
+    // acknowledgment request or an escalation. Supervisors (messaging.review) by permission, the tenant administrators when nobody holds it, so an
+    // enabled source is never silently audience-less. In-app only; a tenant re-aims or widens it through the alert-rule admin. Fixed generic text.
+    resolverArgs: { permissionKeys: ["messaging.review"], fallbackToTenantAdmins: true },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.promotion.decided",
     category: "clinical_routine",
     severityFloor: "info",

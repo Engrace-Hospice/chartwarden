@@ -56,6 +56,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.export.download",
         "messaging.share.manage",
         "messaging.ai.use",
+        "messaging.alarm_ingest.manage",
         "alert.inbox.self",
       ].sort(),
     );
@@ -99,6 +100,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.export.download",
       "messaging.share.manage",
       "messaging.ai.use",
+      "messaging.alarm_ingest.manage",
       "alert.inbox.self",
     ] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[key].abac).toBe("none");

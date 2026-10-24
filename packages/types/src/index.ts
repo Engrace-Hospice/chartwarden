@@ -76,6 +76,7 @@ export * from "./messaging-handoff";
 export * from "./messaging-review";
 export * from "./messaging-death-board";
 export * from "./messaging-voice-notes";
+export * from "./messaging-alarm-ingest";
 export * from "./messaging-promotion";
 export * from "./messaging-xss-corpus";
 export * from "./mrn";

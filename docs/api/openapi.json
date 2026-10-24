@@ -170450,6 +170450,875 @@
         }
       }
     },
+    "/api/v1/messaging/alarm-ingest/events": {
+      "post": {
+        "operationId": "postApiV1MessagingAlarmingestEvents",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "INBOUND, no user session. A third-party alarm becomes an ordinary in-app alert (never a response request, never routed or paged by this route). Headers x-wx-key-id (`<organizationId>.<sourceId>`), x-wx-timestamp (epoch seconds, within 300 s) and x-wx-signature (`v1=` + hex HMAC-SHA256 of `<timestamp>.<keyId>.<raw body>` under the source secret). Every refusal up to a wrong signature is the same 401. Body at most 1 KiB, no free text. `eventId` is the idempotency key (a replay is 202 duplicate; the same id with a different body is 409). The effective severity is the requested one capped at the mapping's ceiling (info or warn). 422 ALARM_KIND_UNMAPPED when the code is not mapped (recorded and counted); 503 ALARM_NOT_ALERTED when the alert could not be raised (retry with the same eventId); 429 over budget",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "outcome"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "duplicate",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "alerted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_recipients",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unmapped",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "eventId",
+                  "alarmKind"
+                ],
+                "properties": {
+                  "eventId": {
+                    "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+                    "type": "string"
+                  },
+                  "alarmKind": {
+                    "pattern": "^[a-z0-9_]{1,40}$",
+                    "type": "string"
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "info",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "occurredAt": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?(Z|[+-]\\d{2}:\\d{2})$",
+                    "maxLength": 40,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/alarm-sources": {
+      "get": {
+        "operationId": "getApiV1MessagingAlarmsources",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The tenant's alarm sources (messaging.alarm_ingest.manage; never depends on the flag): ids, a staff-chosen name, state, secret version, the alarm-code mappings with their severity ceilings, the last accepted instant and the last 24 hours' outcome counts (alerted, nobody to alert, unmapped, waiting). No secret, cipher or alarm detail",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sources"
+                  ],
+                  "properties": {
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "enabled",
+                          "secretGeneration",
+                          "createdAt",
+                          "rotatedAt",
+                          "disabledAt",
+                          "lastAcceptedAt",
+                          "mappings",
+                          "last24h"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "secretGeneration": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "rotatedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "disabledAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastAcceptedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mappings": {
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "alarmKind",
+                                "alertType",
+                                "severityCeiling"
+                              ],
+                              "properties": {
+                                "alarmKind": {
+                                  "pattern": "^[a-z0-9_]{1,40}$",
+                                  "type": "string"
+                                },
+                                "alertType": {
+                                  "anyOf": [
+                                    {
+                                      "const": "alarm_ingest.nurse_call",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "alarm_ingest.patient_sensor",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "alarm_ingest.equipment",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "severityCeiling": {
+                                  "anyOf": [
+                                    {
+                                      "const": "info",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "warn",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "last24h": {
+                            "type": "object",
+                            "required": [
+                              "alerted",
+                              "noRecipients",
+                              "unmapped",
+                              "pending"
+                            ],
+                            "properties": {
+                              "alerted": {
+                                "type": "integer"
+                              },
+                              "noRecipients": {
+                                "type": "integer"
+                              },
+                              "unmapped": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingAlarmsources",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Create an alarm source (messaging.alarm_ingest.manage + a fresh step-up; 404 while the tenant flag is off; 503 ALARM_INGEST_UNAVAILABLE without trusted proxy configuration; 409 at 20 enabled sources). Each mapping sends a sender alarm code to one alarm_ingest.* catalog alert type with a severity ceiling of info or warn (never critical). The credential (`keyId` and `secret`) is returned ONCE; the secret is stored sealed under the tenant key",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "enabled",
+                    "secretGeneration",
+                    "createdAt",
+                    "rotatedAt",
+                    "disabledAt",
+                    "lastAcceptedAt",
+                    "mappings",
+                    "last24h",
+                    "keyId",
+                    "secret"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "secretGeneration": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "rotatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "disabledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastAcceptedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mappings": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "alarmKind",
+                          "alertType",
+                          "severityCeiling"
+                        ],
+                        "properties": {
+                          "alarmKind": {
+                            "pattern": "^[a-z0-9_]{1,40}$",
+                            "type": "string"
+                          },
+                          "alertType": {
+                            "anyOf": [
+                              {
+                                "const": "alarm_ingest.nurse_call",
+                                "type": "string"
+                              },
+                              {
+                                "const": "alarm_ingest.patient_sensor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "alarm_ingest.equipment",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "severityCeiling": {
+                            "anyOf": [
+                              {
+                                "const": "info",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warn",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "last24h": {
+                      "type": "object",
+                      "required": [
+                        "alerted",
+                        "noRecipients",
+                        "unmapped",
+                        "pending"
+                      ],
+                      "properties": {
+                        "alerted": {
+                          "type": "integer"
+                        },
+                        "noRecipients": {
+                          "type": "integer"
+                        },
+                        "unmapped": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "keyId": {
+                      "type": "string"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "name",
+                  "mappings"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 220,
+                    "type": "string"
+                  },
+                  "mappings": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "alarmKind",
+                        "alertType",
+                        "severityCeiling"
+                      ],
+                      "properties": {
+                        "alarmKind": {
+                          "pattern": "^[a-z0-9_]{1,40}$",
+                          "type": "string"
+                        },
+                        "alertType": {
+                          "anyOf": [
+                            {
+                              "const": "alarm_ingest.nurse_call",
+                              "type": "string"
+                            },
+                            {
+                              "const": "alarm_ingest.patient_sensor",
+                              "type": "string"
+                            },
+                            {
+                              "const": "alarm_ingest.equipment",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "severityCeiling": {
+                          "anyOf": [
+                            {
+                              "const": "info",
+                              "type": "string"
+                            },
+                            {
+                              "const": "warn",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/alarm-sources/{id}/disable": {
+      "post": {
+        "operationId": "postApiV1MessagingAlarmsourcesByIdDisable",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Disable a source for good (messaging.alarm_ingest.manage + a fresh step-up; never depends on the flag). One way: create a new source to resume. Idempotent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "enabled",
+                    "secretGeneration",
+                    "createdAt",
+                    "rotatedAt",
+                    "disabledAt",
+                    "lastAcceptedAt",
+                    "mappings",
+                    "last24h"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "secretGeneration": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "rotatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "disabledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastAcceptedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mappings": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "alarmKind",
+                          "alertType",
+                          "severityCeiling"
+                        ],
+                        "properties": {
+                          "alarmKind": {
+                            "pattern": "^[a-z0-9_]{1,40}$",
+                            "type": "string"
+                          },
+                          "alertType": {
+                            "anyOf": [
+                              {
+                                "const": "alarm_ingest.nurse_call",
+                                "type": "string"
+                              },
+                              {
+                                "const": "alarm_ingest.patient_sensor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "alarm_ingest.equipment",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "severityCeiling": {
+                            "anyOf": [
+                              {
+                                "const": "info",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warn",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "last24h": {
+                      "type": "object",
+                      "required": [
+                        "alerted",
+                        "noRecipients",
+                        "unmapped",
+                        "pending"
+                      ],
+                      "properties": {
+                        "alerted": {
+                          "type": "integer"
+                        },
+                        "noRecipients": {
+                          "type": "integer"
+                        },
+                        "unmapped": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/alarm-sources/{id}/rotate-secret": {
+      "post": {
+        "operationId": "postApiV1MessagingAlarmsourcesByIdRotatesecret",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Replace a source's secret (messaging.alarm_ingest.manage + a fresh step-up; 404 while the flag is off or the source is unknown or disabled). The old secret stops verifying at once; the new credential is returned ONCE",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "enabled",
+                    "secretGeneration",
+                    "createdAt",
+                    "rotatedAt",
+                    "disabledAt",
+                    "lastAcceptedAt",
+                    "mappings",
+                    "last24h",
+                    "keyId",
+                    "secret"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "secretGeneration": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "rotatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "disabledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastAcceptedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mappings": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "alarmKind",
+                          "alertType",
+                          "severityCeiling"
+                        ],
+                        "properties": {
+                          "alarmKind": {
+                            "pattern": "^[a-z0-9_]{1,40}$",
+                            "type": "string"
+                          },
+                          "alertType": {
+                            "anyOf": [
+                              {
+                                "const": "alarm_ingest.nurse_call",
+                                "type": "string"
+                              },
+                              {
+                                "const": "alarm_ingest.patient_sensor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "alarm_ingest.equipment",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "severityCeiling": {
+                            "anyOf": [
+                              {
+                                "const": "info",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warn",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "last24h": {
+                      "type": "object",
+                      "required": [
+                        "alerted",
+                        "noRecipients",
+                        "unmapped",
+                        "pending"
+                      ],
+                      "properties": {
+                        "alerted": {
+                          "type": "integer"
+                        },
+                        "noRecipients": {
+                          "type": "integer"
+                        },
+                        "unmapped": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "keyId": {
+                      "type": "string"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/analytics/response": {
       "get": {
         "operationId": "getApiV1MessagingAnalyticsResponse",

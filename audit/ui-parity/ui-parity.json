@@ -2383,6 +2383,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.alarm-sources",
+      "path": "/messaging/alarm-sources",
+      "permission": "messaging.alarm_ingest.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.partner-share",
       "path": "/partner/share",
       "permission": "(none)"
