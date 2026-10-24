@@ -46,6 +46,7 @@ export {
   type TerminologyLookupPort,
   buildDrizzleAdrReadinessService,
   buildDrizzlePlaybookService,
+  buildMedicalReviewReportService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
   buildDrizzleCaseViewService,

@@ -349,6 +349,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       // existing roles; administrator / org_admin get the keys through the non-platform catalog).
       "playbook.read",
       "playbook.publish",
+      // M25 milestone 9a-2: the leadership medical-review report (migration 1252 covers existing roles).
+      "medical_review.report.read",
     ],
   },
   {
