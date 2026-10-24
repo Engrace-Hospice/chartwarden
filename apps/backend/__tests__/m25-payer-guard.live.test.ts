@@ -20,7 +20,7 @@ import {
 } from "@chartwarden/auth";
 import { FormatRegistry } from "@sinclair/typebox";
 import type { FastifyRequest } from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { registerM24PublishedSeams } from "../src/modules/24-billing-medicaid/wiring";
 import { buildDrizzleCaseViewService } from "../src/modules/25-remittance/routes/case-view-service";
@@ -297,6 +297,98 @@ describe.skipIf(!DB_URL)("M25 payer guard + Medicaid case view (11a-1) - LIVE Po
       await decide(normal);
       expect(await appealCount(medicaid)).toBe(1); // decision recorded, no reconsideration spawned
       expect(await appealCount(medicare)).toBe(2); // the Medicare chain still spawns the next tier
+    });
+  });
+
+  describe("badge and guard share one payer decision (no remittance line)", () => {
+    const badge = async (id: string, svc = read()) => (await svc.getDenial(A(), id))?.payerKind;
+    const listed = async (svc = read()) =>
+      new Map(
+        (await svc.denialWorklist(A(), {}, undefined, 200)).items.map((i) => [i.id, i.payerKind]),
+      );
+    /** The guard refuses iff the denial is Medicaid; any other refusal (e.g. a missing notice date) is not the guard. */
+    const guardRefuses = async (id: string) =>
+      (await fx.refused(write().createAppeal(A(), id, { noticeDate: daysAgo(10) })))?.code ===
+      "PAYER_IS_MEDICAID";
+
+    it("every case: list, detail and guard agree (422 iff the badge says medicaid)", async () => {
+      const m24Claim = await mkMedicaidClaim(ORG, fx.pe1);
+      const otherTenantM24Claim = await mkMedicaidClaim(ORG_B, fx.peB);
+      const cases = [
+        { name: "M24 claim, no line", id: await mkDenial(null, m24Claim), want: "medicaid" },
+        { name: "M23 claim, no line", id: await mkDenial(null, fx.claim1), want: "unknown" },
+        { name: "claim known to nobody", id: await mkDenial(null, randomUUID()), want: "unknown" },
+        {
+          name: "another tenant's Medicaid claim id",
+          id: await mkDenial(null, otherTenantM24Claim),
+          want: "unknown",
+        },
+        {
+          name: "medicare advice on an M24 claim",
+          id: await mkDenial("medicare", m24Claim),
+          want: "medicare",
+        },
+        {
+          name: "medicaid advice on an M23 claim",
+          id: await mkDenial("medicaid", fx.claim1),
+          want: "medicaid",
+        },
+      ] as const;
+      const all = await listed();
+      for (const c of cases) {
+        expect(await badge(c.id), `detail: ${c.name}`).toBe(c.want);
+        expect(all.get(c.id), `list: ${c.name}`).toBe(c.want);
+        expect(await guardRefuses(c.id), `guard: ${c.name}`).toBe(c.want === "medicaid");
+      }
+    });
+
+    it("out-of-scope denials are neither listed nor readable, and their claim ids reveal nothing", async () => {
+      const m24Claim = await mkMedicaidClaim(ORG, fx.pe1);
+      const denial = await mkDenial(null, m24Claim);
+      const scoped = fx.actor(ORG, [fx.pe2]);
+      expect(await read().getDenial(scoped, denial)).toBeNull();
+      const page = await read().denialWorklist(scoped, {}, undefined, 200);
+      expect(page.items.find((i) => i.id === denial)).toBeUndefined();
+      expect(JSON.stringify(page)).not.toContain(m24Claim);
+      // the other tenant cannot see it either
+      expect(await read().getDenial(B(), denial)).toBeNull();
+    });
+
+    it("an M24 outage leaves the badge 'unknown' (list and detail still succeed)", async () => {
+      const m24Claim = await mkMedicaidClaim(ORG, fx.pe1);
+      const denial = await mkDenial(null, m24Claim);
+      const failing = buildDrizzleM25ReadService(fx.handle.db, undefined, {
+        m24ClaimIds: async () => {
+          throw new Error("m24 down");
+        },
+      });
+      expect(await badge(denial, failing)).toBe("unknown");
+      expect((await listed(failing)).get(denial)).toBe("unknown");
+    });
+
+    it("the list adds at most 2 SELECTs for the payer, however many denials it holds", async () => {
+      const pg = await import("pg");
+      const spy = vi.spyOn(pg.default.Client.prototype, "query");
+      const selects = async () => {
+        spy.mockClear();
+        await read().denialWorklist(A(), {}, undefined, 200);
+        return spy.mock.calls
+          .map((c) => (typeof c[0] === "string" ? c[0] : ((c[0] as { text?: string })?.text ?? "")))
+          .filter((q) => /^\s*select/i.test(q) && !/set_config/i.test(q)).length;
+      };
+      try {
+        const claims = [await mkMedicaidClaim(ORG, fx.pe1), fx.claim1, randomUUID()];
+        for (const c of claims) await mkDenial(null, c);
+        const small = await selects();
+        for (let i = 0; i < 30; i += 1) await mkDenial(null, claims[i % 3] as string);
+        const large = await selects();
+        expect(small).toBeGreaterThan(1); // the spy sees the list SELECT and the lookups
+        expect(large).toBe(small);
+        // baseline: the list's own single SELECT; M23 + M24 lookups are the only others
+        expect(large).toBeLessThanOrEqual(1 + 2);
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

@@ -18,7 +18,7 @@
 // the subscription contract in §4.11.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { M24ReadActor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";
 
@@ -167,7 +167,15 @@ export interface MedicaidClaimMatchProvider {
    * provider entity and its patient (one read, one connection). `null` when the claim does not exist or RLS hides it - fail closed, never a guess.
    */
   claimContext(orgId: string, claimId: string): Promise<MedicaidClaimContext | null>;
+  /**
+   * Batch existence: which of `claimIds` are this organization's Medicaid claims (one query, org-explicit under RLS).
+   * The list is capped at {@link MEDICAID_CLAIM_IDS_CAP}; M25's payer badge asks once per worklist page.
+   */
+  medicaidClaimIds(orgId: string, claimIds: readonly string[]): Promise<ReadonlySet<string>>;
 }
+
+/** Most ids one `medicaidClaimIds` call looks up (a worklist page); extra ids are ignored, never an error. */
+export const MEDICAID_CLAIM_IDS_CAP = 200;
 
 export interface MedicaidClaimContext {
   readonly serviceState: string;
@@ -416,6 +424,18 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
           .where(and(eq(C.id, claimId), eq(C.organizationId, orgId)))
           .limit(1);
         return rows[0]?.patientId ?? null;
+      });
+    },
+    async medicaidClaimIds(orgId, claimIds) {
+      const ids = [...new Set(claimIds)].slice(0, MEDICAID_CLAIM_IDS_CAP);
+      if (ids.length === 0) return new Set<string>();
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const C = schema.medicaidClaim;
+        const rows = await tx
+          .select({ id: C.id })
+          .from(C)
+          .where(and(eq(C.organizationId, orgId), inArray(C.id, ids)));
+        return new Set(rows.map((r) => r.id));
       });
     },
     async claimContext(orgId, claimId) {
