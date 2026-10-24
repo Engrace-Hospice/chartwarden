@@ -211,6 +211,7 @@ function makeServer(
       return input.organizationId === ORG && input.referralId === REFERRAL;
     },
   },
+  serverOpts: { db?: DbClient; readAuditPrefixes?: string[] } = {},
 ) {
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.flatMap((s) =>
@@ -249,7 +250,11 @@ function makeServer(
     resolver: sharedObjectResolver,
   });
 
-  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const app = buildServer({
+    authenticate: headerAuth,
+    security: { rateLimitEnabled: false },
+    ...serverOpts,
+  });
   registerDocumentRoutes(app, { service, signedUrl, referralReader });
   return { app };
 }
@@ -498,6 +503,34 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     expect(res.json().url).toContain("X-Amz-Expires=300"); // floor clamps the requested 3600 → 300
   });
 
+  it("records the content download as a document_version read event keyed by the version id (matches the sibling version routes)", async () => {
+    const captured: Array<{ eventType: string; resourceKind: string; resourceId?: string }> = [];
+    const tx = {
+      execute: async () => undefined,
+      insert: () => ({
+        values: async (row: (typeof captured)[number]) => {
+          captured.push(row);
+        },
+      }),
+    };
+    const db = {
+      transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+    } as unknown as DbClient;
+    const { app } = makeServer(undefined, undefined, {
+      db,
+      readAuditPrefixes: ["/api/v1/documents"],
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/versions/${VERSION}/content?purpose=treatment`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    const row = captured.find((r) => r.resourceId === VERSION);
+    expect(row?.resourceKind).toBe("document_version");
+    expect(row?.eventType).toBe("document_version.viewed");
+  });
+
   it("denies content for a caller off the patient's caseload (404 — existence non-leak)", async () => {
     const { app } = makeServer();
     // off_user holds the permission but is NOT on PATIENT's caseload.
@@ -702,6 +735,14 @@ describe("F-238 — intake records filed against a referral (a prospect's older 
       headers: RN,
       payload: { sourceChannel: "fax", ...body },
     });
+
+  it("a batch may only be built over a document the caller can read (off-caseload document id -> 404; own caseload -> 201)", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const off = await post(app, { documentId: DOC_OFF_CASELOAD });
+    expect(off.statusCode).toBe(404);
+    const own = await post(app, { documentId: DOC });
+    expect(own.statusCode).toBe(201);
+  });
 
   it("the batch takes the patient the referral resolved to", async () => {
     const { app } = makeServer(sharedBackend.service, referralReader);
@@ -1366,6 +1407,16 @@ describe("M22 GAP-066 — step-up on PHI export, overlay publish and render retr
     const { app } = makeServer();
     const res = await app.inject(exportRequest({ ...EXPORTER_STALE, ...STEP_UP_FRESH }));
     expect(res.statusCode).toBeLessThan(300);
+  });
+
+  it("export-phi-bundle refuses a body patientId the path document does not belong to (uniform 404)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      ...exportRequest({ ...EXPORTER_STALE, ...STEP_UP_FRESH }),
+      payload: { patientId: PATIENT_OFF, purpose: "patient_access" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
   });
 
   it("the overlay PUT without a fresh step-up is refused with STEP_UP_REQUIRED", async () => {

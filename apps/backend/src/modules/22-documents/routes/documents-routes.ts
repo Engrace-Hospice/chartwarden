@@ -516,7 +516,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents/:id/versions/:versionId/content",
     {
       preHandler: [READ_PHI, ABAC_OWNER],
-      config: { auditRead: { resourceKind: "document", resourceIdParam: "versionId" } },
+      config: { auditRead: { resourceKind: "document_version", resourceIdParam: "versionId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -664,6 +664,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
       const body = parse(ExportPhiBundleRequest, request.body);
+      // ABAC above gated the PATH document; the bundle is built for the BODY patient. Bind the two so a
+      // caller cannot pair an owned document with another patient's id (uniform 404, as for a missing doc).
+      const doc = await service.getDocument(organizationId, docIdOf(request));
+      if (doc.patientId !== body.patientId) throw new NotFoundError("document");
       const res = await service.exportPhiBundle(organizationId, actor, {
         patientId: body.patientId,
         purpose: body.purpose,
@@ -719,6 +723,12 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
         );
       }
       patientId = subject.patientId ?? patientId;
+    }
+    // The intake review surface (`intake.*`, ABAC none) is org-wide by design, so a batch built over an
+    // EXISTING document would expose that document's extracted values and page images to every intake
+    // reader. Naming one therefore requires the same read scope as opening the document itself.
+    if (body.documentId) {
+      await assertDocumentInScope(request, await service.getDocument(organizationId, body.documentId));
     }
     const res = await service.uploadBatch(organizationId, actor, {
       patientId,

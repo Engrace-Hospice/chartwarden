@@ -141,7 +141,15 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
       }
 
       // §4.12 — external disclosure presigns gate on M40's live BAA status (as-of NOW); fail closed.
-      if (isExternalDisclosure(args.purpose) && facts.externalRecipient) {
+      if (isExternalDisclosure(args.purpose)) {
+        // The recipient is not resolved anywhere on the read wire (`recipientClass` / `recipientMembershipId`
+        // on the request are accepted but never mapped to an M40 entity), so an unresolved recipient cannot be
+        // BAA-checked. Refuse rather than mint an ungated disclosure URL; wire a resolver to re-enable.
+        if (!facts.externalRecipient) {
+          throw new ForbiddenError(
+            "signed-url denied: the external recipient is not resolved, so its BAA cannot be verified",
+          );
+        }
         const active = await resolveExternalBaaActive({
           organizationId: args.organizationId,
           recipient: facts.externalRecipient,

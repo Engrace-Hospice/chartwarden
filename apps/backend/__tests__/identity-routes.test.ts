@@ -116,6 +116,8 @@ function makeServer(
     bindUserIdentity?: boolean;
     /** GAP-005 — the MFA matrix gate select-organization consults. */
     mfaGate?: IdentityRouteDeps["mfaGate"];
+    /** Wave 5 — M1's site read; defaults to "every `loc_*` id belongs to the org". `null` binds none. */
+    validateLocations?: IdentityRouteDeps["validateLocations"] | null;
   } = {},
 ) {
   const guardCalls: Array<{ inviterUserId: string; roleKeys: readonly string[] }> = [];
@@ -184,6 +186,12 @@ function makeServer(
       : { proposedRoleGuard: opts.proposedRoleGuard ?? defaultGuard }),
     ...(opts.bindUserIdentity === false ? {} : { userIdentity: identity }),
     ...(opts.mfaGate ? { mfaGate: opts.mfaGate } : {}),
+    ...(opts.validateLocations === null
+      ? {}
+      : {
+          validateLocations:
+            opts.validateLocations ?? ((_org, ids) => ids.every((id) => id.startsWith("loc_"))),
+        }),
   };
   registerIdentityRoutes(app, deps);
   return {
@@ -1599,6 +1607,133 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(res.statusCode).toBe(404);
       await app.close();
+    });
+  });
+});
+
+describe("wave 5 identity hardening", () => {
+  beforeEach(() => {
+    resetAuthorizationContract();
+    resetRbacEngine();
+  });
+  afterEach(() => {
+    resetAuthorizationContract();
+    resetRbacEngine();
+  });
+  const post = (app: ReturnType<typeof makeServer>["app"], payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/api/v1/orgs/org_a/invitations", headers: ADMIN, payload });
+
+  it("rescind refuses another org's invitation (404) and leaves it pending", async () => {
+    const { app, invitations } = makeServer();
+    const foreign = await invitations.store.create({
+      organizationId: "org_b",
+      organizationName: "Other",
+      email: "x@example.com",
+      proposedRoleKeys: [],
+      defaultLocationIds: [],
+    });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/orgs/org_a/invitations/${foreign.invitationId}`,
+      headers: ADMIN,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(await invitations.store.pendingExists("org_b", "x@example.com")).toBe(true);
+    await app.close();
+  });
+
+  it("invite rejects a malformed email and treats case variants as one pending invite", async () => {
+    const { app } = makeServer();
+    expect((await post(app, { email: "not-an-email" })).statusCode).toBe(422);
+    expect((await post(app, { email: "  Rn@Example.com " })).statusCode).toBe(201);
+    const dup = await post(app, { email: "rn@EXAMPLE.com" });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error.code).toBe("PENDING_INVITE_EXISTS");
+    await app.close();
+  });
+
+  it("invite refuses location ids that are not the org's, and fails closed when no site reader is bound", async () => {
+    const { app } = makeServer({ validateLocations: (_o, ids) => ids.every((i) => i === "loc_ok") });
+    const bad = await post(app, { email: "a@example.com", proposedDefaultLocationIds: ["loc_other"] });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().error.code).toBe("INVALID_LOCATION");
+    expect(
+      (await post(app, { email: "a@example.com", proposedDefaultLocationIds: ["loc_ok"] })).statusCode,
+    ).toBe(201);
+    await app.close();
+    const unbound = makeServer({ validateLocations: null });
+    const res = await post(unbound.app, {
+      email: "b@example.com",
+      proposedDefaultLocationIds: ["loc_ok"],
+    });
+    expect(res.statusCode).toBe(503);
+    await unbound.app.close();
+  });
+
+  it("member PATCH refuses foreign location ids and leaves the scope unchanged", async () => {
+    const { app, memberships } = makeServer({
+      seed: [ADMIN_MEMBERSHIP, membership({ membershipId: "rn_1", userId: "rn_u" })],
+      validateLocations: (_o, ids) => ids.every((i) => i === "loc_ok"),
+    });
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/orgs/org_a/members/rn_1",
+      headers: ADMIN,
+      payload: { defaultLocationIds: ["loc_foreign"] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(memberships.all().find((m) => m.membershipId === "rn_1")?.defaultLocationIds).toEqual([]);
+    await app.close();
+  });
+
+  describe("last-admin guard is one lock scope (concurrency)", () => {
+    type Ctx = ReturnType<typeof makeServer>;
+    const twoAdmins = (): Ctx => {
+      const ctx = makeServer({
+        seed: [
+          membership({ membershipId: "adm_1", userId: "admin_1", isAdmin: true }),
+          membership({ membershipId: "adm_2", userId: "admin_2", isAdmin: true }),
+        ],
+      });
+      // model the DB round trip between the count and the write
+      const count = ctx.memberships.repo.activeAdminCount.bind(ctx.memberships.repo);
+      ctx.memberships.repo.activeAdminCount = async (org) => {
+        const n = await count(org);
+        await new Promise((r) => setTimeout(r, 10));
+        return n;
+      };
+      return ctx;
+    };
+    const activeAdmins = (c: Ctx) =>
+      c.memberships.all().filter((m) => m.isAdmin && m.status === "active").length;
+    const suspend = (c: Ctx, id: string) =>
+      c.app.inject({
+        method: "PATCH",
+        url: `/api/v1/orgs/org_a/members/${id}`,
+        headers: ADMIN,
+        payload: { status: "suspended" },
+      });
+    const revoke = (c: Ctx, id: string) =>
+      c.app.inject({ method: "DELETE", url: `/api/v1/orgs/org_a/members/${id}`, headers: ADMIN });
+    const deactivate = (c: Ctx, userId: string) =>
+      c.app.inject({
+        method: "POST",
+        url: `/api/v1/users/${userId}/deactivate`,
+        headers: ADMIN,
+        payload: { reason: "offboarding" },
+      });
+
+    it.each([
+      ["suspend+suspend", (c: Ctx) => [suspend(c, "adm_1"), suspend(c, "adm_2")]],
+      ["revoke+revoke", (c: Ctx) => [revoke(c, "adm_1"), revoke(c, "adm_2")]],
+      ["suspend+revoke", (c: Ctx) => [suspend(c, "adm_1"), revoke(c, "adm_2")]],
+      ["deactivate+suspend", (c: Ctx) => [deactivate(c, "admin_1"), suspend(c, "adm_2")]],
+    ])("%s on the last two admins leaves exactly one", async (_n, fire) => {
+      const c = twoAdmins();
+      const codes = (await Promise.all(fire(c))).map((r) => r.statusCode).sort();
+      expect(codes).toEqual([200, 409]);
+      expect(activeAdmins(c)).toBe(1);
+      await c.app.close();
     });
   });
 });

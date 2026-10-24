@@ -126,7 +126,8 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
           .select({ id: I.id })
           .from(I)
           .where(
-            and(eq(I.organizationId, organizationId), eq(I.email, email), eq(I.status, "pending")),
+            and(eq(I.organizationId, organizationId), sql`lower(${I.email}) = ${email.trim().toLowerCase()}`,
+            eq(I.status, "pending")),
           )
           .limit(1);
         return rows.length > 0;
@@ -237,7 +238,7 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
       return detail;
     },
 
-    async rescind(invitationId) {
+    async rescind(invitationId, organizationId) {
       // `revoked`, not a DELETE: the invitation is a compliance record of who was offered access, and
       // the M4 write-audit trigger on this table records the transition. The in-memory slice deleted
       // the row, which is why nothing could later answer "who invited this person, and who withdrew it".
@@ -245,7 +246,13 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
         const rows = await tx
           .update(I)
           .set({ status: "revoked" })
-          .where(and(eq(I.id, invitationId), eq(I.status, "pending")))
+          .where(
+            and(
+              eq(I.id, invitationId),
+              eq(I.organizationId, organizationId),
+              eq(I.status, "pending"),
+            ),
+          )
           .returning({ id: I.id });
         return rows.length > 0;
       });

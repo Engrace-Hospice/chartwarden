@@ -668,6 +668,9 @@ jobs:
           # function; this drives `listForUser` (which had no live coverage) through the production
           # repository as chartwarden_app, so the hand-written raw-query row mapping is proven too.
           - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
+          # Wave 5: org-bound invitation rescind (RLS + predicate), case-insensitive pendingExists, and the
+          # advisory-lock `withAdminLock` behind the last-admin guard (suspend / revoke / deactivate).
+          - { name: "M2 wave-5 hardening", scripts: "test:m2:wave5-hardening:live" }
           # F-158 (#248) — M2's first outbox consumer: the M39 consent-revocation session-termination
           # cascade, `portal_access` scope.
           - { name: "M2 consent-revoked session termination", scripts: "test:m2:consent-revoked:live" }

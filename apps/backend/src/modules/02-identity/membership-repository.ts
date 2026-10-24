@@ -260,6 +260,17 @@ export function createDbMembershipRepository(
         };
       }),
 
+    // One advisory lock per org, held for the duration of `fn` (count + write). `fn` uses its own
+    // connections and commits before the lock releases, so the next waiter counts committed state.
+    // ponytail: holds one pool connection while `fn` needs another; revisit if pool size <= concurrent admin ops per org.
+    withAdminLock: (organizationId, fn) =>
+      db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m2:last-admin:${organizationId}`}, 0))`,
+        );
+        return fn();
+      }),
+
     activeAdminCount: async (organizationId) => {
       const rows = await selectByOrg(organizationId);
       return rows.filter((m) => m.status === "active" && m.isAdmin).length;
