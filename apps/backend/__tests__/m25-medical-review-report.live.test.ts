@@ -792,7 +792,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
       worker: await mkRole("mr-worker", ["denial.read", "appeal.read"]),
     };
     const migration = readFileSync(
-      join(fx.migrationsDir, "1252_m25_medical_review_report_permission.sql"),
+      join(fx.migrationsDir, "1253_m25_medical_review_report_permission.sql"),
       "utf8",
     );
     await fx.admin.query(migration);

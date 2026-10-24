@@ -1090,7 +1090,7 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
     const resolver = await mkRole("pb-resolver", ["denial.resolve"]);
     const compliance = await mkRole("compliance_officer", ["audit.read"]);
     const migration = readFileSync(
-      join(fx.migrationsDir, "1251_m25_playbook_role_grants.sql"),
+      join(fx.migrationsDir, "1252_m25_playbook_role_grants.sql"),
       "utf8",
     );
     await fx.admin.query(migration);
