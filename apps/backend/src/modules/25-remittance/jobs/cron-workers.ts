@@ -393,8 +393,8 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
               state: PC.state,
               createdAt: PC.createdAt,
               computed: sql<boolean>`${PC.deadlineAt} IS NOT NULL`,
-              openRecorded: sql<number>`(SELECT count(*)::int FROM recorded_deadline d WHERE d.payer_appeal_case_id = ${PC.id} AND d.satisfied_on IS NULL)`,
-              alerted: sql<number>`(SELECT count(*)::int FROM payer_appeal_case_event e WHERE e.payer_appeal_case_id = ${PC.id} AND e.event_kind = 'no_deadline_alerted')`,
+              openRecorded: sql<number>`(SELECT count(*)::int FROM recorded_deadline d WHERE d.payer_appeal_case_id = payer_appeal_case.id AND d.satisfied_on IS NULL)`,
+              alerted: sql<number>`(SELECT count(*)::int FROM payer_appeal_case_event e WHERE e.payer_appeal_case_id = payer_appeal_case.id AND e.event_kind = 'no_deadline_alerted')`,
             })
             .from(PC)
             .where(sql`${PC.state} = 'draft'`)
