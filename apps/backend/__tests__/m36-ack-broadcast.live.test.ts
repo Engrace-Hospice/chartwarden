@@ -7,7 +7,7 @@
  *   2. CREATE      only the AUTHOR of a live announcement may require acknowledgment; the audience is every active member but the author;
  *                  a repeat is 200 and does not touch the frozen audience.
  *   3. NOT BY OPEN opening (read receipt) never acknowledges; only the explicit POST does; idempotent, original instant stands.
- *   4. SUPERVISOR  sees EVERY non-acknowledger (opened or not), exact counts, paged; acknowledged people leave the pending list.
+ *   4. CREATOR     only the broadcast creator (not any other messaging.announce holder) reads detail/list; sees EVERY non-acknowledger (opened or not), exact counts, paged; acknowledged people leave the pending list.
  *   5. INELIGIBLE  an offboarded recipient is listed as ineligible, not as a silent non-reader; a later joiner is counted outside the audience.
  *   6. NO PROXY    the author and a non-audience member get the uniform 404 on acknowledge; a user id in the body is ignored; the database
  *                  refuses a forged recipient write (someone else's row, a withdrawn or re-stamped acknowledgment, a delete).
@@ -66,7 +66,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     return sent.messageId;
   };
   const detail = async (id: string, qs = "") =>
-    (await call("GET", `${url(id, "ack-broadcast")}${qs}`, supervisor)).json();
+    (await call("GET", `${url(id, "ack-broadcast")}${qs}`, author)).json();
 
   beforeAll(async () => {
     kit = await bootLiveKit(DB_URL as string, ORG_A, ORG_B, "wp68");
@@ -284,7 +284,7 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
   it("tenancy: org B sees nothing of org A's broadcast, by id or by list", async () => {
     expect((await call("GET", url(messageId, "ack-broadcast"), userB, ORG_B)).statusCode).toBe(404);
     expect((await call("GET", "/api/v1/messaging/ack-broadcasts", userB, ORG_B)).json().broadcasts).toEqual([]);
-    const list = (await call("GET", "/api/v1/messaging/ack-broadcasts", supervisor)).json();
+    const list = (await call("GET", "/api/v1/messaging/ack-broadcasts", author)).json();
     expect(list.broadcasts).toHaveLength(1);
     // RLS as chartwarden_app: with org B's GUC, org A's rows are invisible.
     await kit.appConn.query("BEGIN");
@@ -292,6 +292,39 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     const seen = await kit.appConn.query(`SELECT (SELECT count(*) FROM message_ack_broadcast)::int AS a, (SELECT count(*) FROM message_ack_broadcast_recipient)::int AS b`);
     await kit.appConn.query("ROLLBACK");
     expect(seen.rows[0]).toEqual({ a: 0, b: 0 });
+  });
+
+  it("another messaging.announce holder gets the uniform 404 on detail and an empty list (creator-only)", async () => {
+    const stranger = await call("GET", url(messageId, "ack-broadcast"), supervisor);
+    const unknown = await call("GET", url(randomUUID(), "ack-broadcast"), supervisor);
+    expect(stranger.statusCode).toBe(404);
+    expect(unknown.statusCode).toBe(404);
+    const shape = (r: { json(): { error: Record<string, unknown> } }) => ({ ...r.json().error, correlationId: 0 });
+    expect(shape(stranger)).toEqual(shape(unknown));
+    expect((await call("GET", "/api/v1/messaging/ack-broadcasts", supervisor)).json().broadcasts).toEqual([]);
+  });
+
+  it("list counts for several broadcasts are exact and per broadcast (one aggregate)", async () => {
+    const second = await announcement(author);
+    expect((await call("POST", url(second, "ack-broadcast"), author)).statusCode).toBe(201);
+    expect((await call("POST", url(second, "ack"), bob)).statusCode).toBe(200);
+    const list = (await call("GET", "/api/v1/messaging/ack-broadcasts", author)).json().broadcasts;
+    const by = (id: string) => list.find((b: { messageId: string }) => b.messageId === id).counts;
+    expect(by(second)).toMatchObject({ audience: 5, acknowledged: 1, pending: 4, outsideAudience: 0 });
+    const first = await detail(messageId);
+    expect(by(messageId)).toEqual(first.counts);
+  });
+
+  it("a soft-deleted announcement leaves mine, cannot be acknowledged, and its detail is a 404", async () => {
+    const gone = await announcement(author);
+    expect((await call("POST", url(gone, "ack-broadcast"), author)).statusCode).toBe(201);
+    const before = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", bob)).json().items;
+    expect(before.map((i: { messageId: string }) => i.messageId)).toContain(gone);
+    await kit.admin.query(`UPDATE message SET status='deleted', deleted_at = now() WHERE id = $1`, [gone]);
+    const after = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", bob)).json().items;
+    expect(after.map((i: { messageId: string }) => i.messageId)).not.toContain(gone);
+    expect((await call("POST", url(gone, "ack"), bob)).statusCode).toBe(404);
+    expect((await call("GET", url(gone, "ack-broadcast"), author)).statusCode).toBe(404);
   });
 
   it("the audit trail carries ids and instants only", async () => {

@@ -75,13 +75,6 @@ export function classifyRecipient(row: {
   return row.openedAt ? "opened" : "not_opened";
 }
 
-interface CountRow extends Record<string, unknown> {
-  audience: string | number;
-  acknowledged: string | number;
-  opened: string | number;
-  not_opened: string | number;
-  ineligible: string | number;
-}
 interface PersonRow extends Record<string, unknown> {
   user_id: string;
   name: string | null;
@@ -132,59 +125,127 @@ async function activeRecipientIds(tx: Tx, orgId: string, authorUserId: string): 
 
 type BroadcastRow = { id: string; messageId: string; channelId: string; createdAt: Date };
 
-async function broadcastOf(tx: Tx, orgId: string, messageId: string): Promise<BroadcastRow | null> {
+/** `createdBy` limits to the caller's own broadcasts; `live` drops broadcasts whose announcement was soft-deleted. */
+async function broadcastOf(
+  tx: Tx,
+  orgId: string,
+  messageId: string,
+  opts: { createdBy?: string; live?: boolean } = {},
+): Promise<BroadcastRow | null> {
   const rows = (await tx
     .select({ id: BC.id, messageId: BC.messageId, channelId: BC.channelId, createdAt: BC.createdAt })
     .from(BC)
-    .where(and(eq(BC.organizationId, orgId), eq(BC.messageId, messageId)))
+    .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
+    .where(
+      and(
+        eq(BC.organizationId, orgId),
+        eq(BC.messageId, messageId),
+        opts.createdBy ? eq(BC.createdBy, opts.createdBy) : undefined,
+        opts.live ? isNull(MSG.deletedAt) : undefined,
+      ),
+    )
     .limit(1)) as BroadcastRow[];
   return rows[0] ?? null;
 }
 
-async function countsOf(tx: Tx, orgId: string, b: BroadcastRow): Promise<AckBroadcastCounts> {
-  const facts = recipientFacts(orgId, b.id, b.messageId);
-  const res = await tx.execute<CountRow>(sql`
-    WITH f AS (${facts})
-    SELECT count(*) AS audience,
-           count(*) FILTER (WHERE acknowledged_at IS NOT NULL) AS acknowledged,
-           count(*) FILTER (WHERE acknowledged_at IS NULL AND eligible AND opened_at IS NOT NULL) AS opened,
-           count(*) FILTER (WHERE acknowledged_at IS NULL AND eligible AND opened_at IS NULL) AS not_opened,
-           count(*) FILTER (WHERE acknowledged_at IS NULL AND NOT eligible) AS ineligible
-      FROM f`);
-  const row = res.rows[0];
-  const n = (v: string | number | undefined): number => Number(v ?? 0);
-  // Active staff (but the author) who are not in the frozen audience: joined later, or missed. Said, never silently added.
-  const author = await tx
-    .select({ id: MSG.authorUserId })
-    .from(MSG)
-    .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, b.messageId)))
-    .limit(1);
-  const outside = await tx.execute<{ n: string | number }>(sql`
-    SELECT count(*) AS n
-      FROM ${MEMBERSHIP} m JOIN "user" u ON u.id = m.user_id
-     WHERE m.organization_id = ${orgId}::uuid AND m.status = 'active' AND u.status = 'active'
-       AND (${author[0]?.id ?? null}::uuid IS NULL OR m.user_id <> ${author[0]?.id ?? null}::uuid)
-       AND NOT EXISTS (SELECT 1 FROM message_ack_broadcast_recipient r
-                        WHERE r.organization_id = m.organization_id AND r.broadcast_id = ${b.id}::uuid AND r.user_id = m.user_id)`);
-  const opened = n(row?.opened);
-  const notOpened = n(row?.not_opened);
-  return {
-    audience: n(row?.audience),
-    acknowledged: n(row?.acknowledged),
-    pending: opened + notOpened,
-    opened,
-    notOpened,
-    ineligible: n(row?.ineligible),
-    outsideAudience: n(outside.rows[0]?.n),
-  };
+const num = (v: string | number | undefined | null): number => Number(v ?? 0);
+
+interface BatchCountRow extends Record<string, unknown> {
+  broadcast_id: string;
+  audience: string | number | null;
+  acknowledged: string | number | null;
+  opened: string | number | null;
+  not_opened: string | number | null;
+  ineligible: string | number | null;
+  outside: string | number;
 }
 
-const summaryOf = async (tx: Tx, orgId: string, b: BroadcastRow): Promise<AckBroadcastSummary> => ({
+/**
+ * Exact counts for every given broadcast in ONE aggregate (no per-broadcast round trips). "Outside the audience" is active staff, but the
+ * author, who are not in the frozen audience: joined later, or missed. Said, never silently added.
+ */
+async function countsFor(
+  tx: Tx,
+  orgId: string,
+  bs: readonly BroadcastRow[],
+): Promise<Map<string, AckBroadcastCounts>> {
+  const out = new Map<string, AckBroadcastCounts>();
+  if (bs.length === 0) return out;
+  const ids = sql.join(
+    bs.map((b) => sql`${b.id}::uuid`),
+    sql`, `,
+  );
+  const res = await tx.execute<BatchCountRow>(sql`
+    WITH b AS (
+      SELECT bc.id, bc.message_id, msg.author_user_id
+        FROM ${BC} bc JOIN ${MSG} msg ON msg.organization_id = bc.organization_id AND msg.id = bc.message_id
+       WHERE bc.organization_id = ${orgId}::uuid AND bc.id IN (${ids})),
+    rd AS (
+      SELECT mr.message_id, mr.user_id, min(mr.read_at) AS read_at
+        FROM message_receipt mr
+       WHERE mr.organization_id = ${orgId}::uuid AND mr.status = 'read' AND mr.message_id IN (SELECT message_id FROM b)
+       GROUP BY mr.message_id, mr.user_id),
+    f AS (
+      SELECT r.broadcast_id, r.acknowledged_at, rd.read_at AS opened_at,
+             (u.status = 'active' AND EXISTS (
+                SELECT 1 FROM ${MEMBERSHIP} m
+                 WHERE m.organization_id = r.organization_id AND m.user_id = r.user_id AND m.status = 'active')) AS eligible
+        FROM message_ack_broadcast_recipient r
+        JOIN b ON b.id = r.broadcast_id
+        JOIN "user" u ON u.id = r.user_id
+        LEFT JOIN rd ON rd.message_id = b.message_id AND rd.user_id = r.user_id
+       WHERE r.organization_id = ${orgId}::uuid),
+    c AS (
+      SELECT broadcast_id,
+             count(*) AS audience,
+             count(*) FILTER (WHERE acknowledged_at IS NOT NULL) AS acknowledged,
+             count(*) FILTER (WHERE acknowledged_at IS NULL AND eligible AND opened_at IS NOT NULL) AS opened,
+             count(*) FILTER (WHERE acknowledged_at IS NULL AND eligible AND opened_at IS NULL) AS not_opened,
+             count(*) FILTER (WHERE acknowledged_at IS NULL AND NOT eligible) AS ineligible
+        FROM f GROUP BY broadcast_id)
+    SELECT b.id AS broadcast_id, c.audience, c.acknowledged, c.opened, c.not_opened, c.ineligible,
+           (SELECT count(*)
+              FROM ${MEMBERSHIP} m JOIN "user" u ON u.id = m.user_id
+             WHERE m.organization_id = ${orgId}::uuid AND m.status = 'active' AND u.status = 'active'
+               AND (b.author_user_id IS NULL OR m.user_id <> b.author_user_id)
+               AND NOT EXISTS (SELECT 1 FROM message_ack_broadcast_recipient r
+                                WHERE r.organization_id = m.organization_id AND r.broadcast_id = b.id AND r.user_id = m.user_id)) AS outside
+      FROM b LEFT JOIN c ON c.broadcast_id = b.id`);
+  for (const row of res.rows) {
+    const opened = num(row.opened);
+    const notOpened = num(row.not_opened);
+    out.set(row.broadcast_id, {
+      audience: num(row.audience),
+      acknowledged: num(row.acknowledged),
+      pending: opened + notOpened,
+      opened,
+      notOpened,
+      ineligible: num(row.ineligible),
+      outsideAudience: num(row.outside),
+    });
+  }
+  return out;
+}
+
+const EMPTY_COUNTS: AckBroadcastCounts = {
+  audience: 0,
+  acknowledged: 0,
+  pending: 0,
+  opened: 0,
+  notOpened: 0,
+  ineligible: 0,
+  outsideAudience: 0,
+};
+
+const toSummary = (b: BroadcastRow, counts: AckBroadcastCounts | undefined): AckBroadcastSummary => ({
   messageId: b.messageId,
   channelId: b.channelId,
   createdAt: b.createdAt.toISOString(),
-  counts: await countsOf(tx, orgId, b),
+  counts: counts ?? EMPTY_COUNTS,
 });
+
+const summaryOf = async (tx: Tx, orgId: string, b: BroadcastRow): Promise<AckBroadcastSummary> =>
+  toSummary(b, (await countsFor(tx, orgId, [b])).get(b.id));
 
 export function createAckBroadcastService(deps: {
   db: DbClient;
@@ -262,7 +323,8 @@ export function createAckBroadcastService(deps: {
 
     async detail(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
-        const b = await broadcastOf(tx, orgId, input.messageId);
+        // Only the broadcast's creator reads who has not acknowledged; anyone else gets the same 404 as an unknown id (ADR-0097 D5).
+        const b = await broadcastOf(tx, orgId, input.messageId, { createdBy: input.userId, live: true });
         if (!b) throw notFound();
         const summary = await summaryOf(tx, orgId, b);
         const res = await tx.execute<PersonRow>(sql`
@@ -302,12 +364,12 @@ export function createAckBroadcastService(deps: {
             createdAt: BC.createdAt,
           })
           .from(BC)
-          .where(eq(BC.organizationId, orgId))
+          .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
+          .where(and(eq(BC.organizationId, orgId), eq(BC.createdBy, input.userId), isNull(MSG.deletedAt)))
           .orderBy(desc(BC.createdAt), desc(BC.id))
           .limit(ACK_BROADCAST_LIST_MAX)) as BroadcastRow[];
-        const out: AckBroadcastSummary[] = [];
-        for (const b of rows) out.push(await summaryOf(tx, orgId, b));
-        return out;
+        const counts = await countsFor(tx, orgId, rows);
+        return rows.map((b) => toSummary(b, counts.get(b.id)));
       });
     },
 
@@ -322,7 +384,8 @@ export function createAckBroadcastService(deps: {
           })
           .from(RC)
           .innerJoin(BC, and(eq(BC.organizationId, RC.organizationId), eq(BC.id, RC.broadcastId)))
-          .where(and(eq(RC.organizationId, orgId), eq(RC.userId, input.userId)))
+          .innerJoin(MSG, and(eq(MSG.organizationId, BC.organizationId), eq(MSG.id, BC.messageId)))
+          .where(and(eq(RC.organizationId, orgId), eq(RC.userId, input.userId), isNull(MSG.deletedAt)))
           .orderBy(desc(BC.createdAt), desc(BC.id))
           .limit(ACK_BROADCAST_LIST_MAX);
         return rows.map((r) => ({
@@ -336,7 +399,7 @@ export function createAckBroadcastService(deps: {
 
     async acknowledge(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
-        const b = await broadcastOf(tx, orgId, input.messageId);
+        const b = await broadcastOf(tx, orgId, input.messageId, { live: true });
         if (!b) throw notFound();
         const mine = (await tx
           .select({ id: RC.id, acknowledgedAt: RC.acknowledgedAt })

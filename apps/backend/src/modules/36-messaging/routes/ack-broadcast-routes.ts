@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/routes/ack-broadcast-routes.ts - M36 WP 6.8 (ADR-0097, PROPOSED): acknowledge-required broadcast.
 //
 //   POST /api/v1/messaging/announcements/:messageId/ack-broadcast   the AUTHOR requires acknowledgment (messaging.announce; 201 / 200 already)
-//   GET  /api/v1/messaging/announcements/:messageId/ack-broadcast   the supervisor's who-has-not-acknowledged list (messaging.announce)
-//   GET  /api/v1/messaging/ack-broadcasts                           the supervisor's broadcasts with counts (messaging.announce)
+//   GET  /api/v1/messaging/announcements/:messageId/ack-broadcast   the CREATOR's who-has-not-acknowledged list (messaging.announce; anyone else: 404)
+//   GET  /api/v1/messaging/ack-broadcasts                           the caller's OWN broadcasts with counts (messaging.announce)
 //   GET  /api/v1/messaging/ack-broadcasts/mine                      the caller's OWN broadcasts, waiting first (messaging.read)
 //   POST /api/v1/messaging/announcements/:messageId/ack             the caller's own explicit acknowledgment (messaging.read; idempotent)
 //
@@ -46,7 +46,9 @@ export function registerAckBroadcastRoutes(app: FastifyInstance, deps: AckBroadc
   /** Flag off (or unreadable) => the uniform 404, before anything is parsed. */
   const flagOn: PreHandler = async (request) => {
     const { organizationId } = actorOf(request);
-    if (!(await service.enabled(organizationId))) throw new NotFoundError("Not found");
+    // A flag-store error is indistinguishable from "off": fail closed (the death board does the same).
+    const on = await service.enabled(organizationId).catch(() => false);
+    if (!on) throw new NotFoundError("Not found");
   };
   const guards = (permission: PreHandler): PreHandler[] => [
     permission,

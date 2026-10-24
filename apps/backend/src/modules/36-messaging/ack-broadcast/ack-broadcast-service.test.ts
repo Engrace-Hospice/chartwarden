@@ -68,3 +68,35 @@ describe("ack broadcast routes: flag before parse", () => {
     await app.close();
   });
 });
+
+describe("ack broadcast routes: unreadable flag fails closed", () => {
+  it("a flag reader that throws answers the uniform 404 and never reaches the service", async () => {
+    vi.resetModules();
+    vi.doMock("@chartwarden/auth", () => ({ requirePermission: () => async () => undefined }));
+    const { registerAckBroadcastRoutes } = await import("../routes/ack-broadcast-routes");
+    const service = {
+      enabled: async () => {
+        throw new Error("flag store down");
+      },
+      create: vi.fn(),
+      detail: vi.fn(),
+      list: vi.fn(),
+      mine: vi.fn(),
+      acknowledge: vi.fn(),
+    };
+    const app = Fastify();
+    app.decorateRequest("context", undefined as never);
+    app.addHook("onRequest", async (req) => {
+      (req as unknown as { context: unknown }).context = { organizationId: "o", userId: "u" };
+    });
+    app.setErrorHandler((err, _req, reply) => {
+      void reply.code((err as { statusCode?: number }).statusCode ?? 500).send({ code: (err as { code?: string }).code });
+    });
+    registerAckBroadcastRoutes(app, { service });
+    const res = await app.inject({ method: "GET", url: "/api/v1/messaging/ack-broadcasts" });
+    expect(res.statusCode).toBe(404);
+    expect(service.list).not.toHaveBeenCalled();
+    vi.doUnmock("@chartwarden/auth");
+    await app.close();
+  });
+});
