@@ -336,8 +336,31 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- OLD is a draft.
+  -- OLD is a draft. Whoever recorded or last edited it must be a real member of THIS organization (fail closed), and the
+  -- last-editor stamp can only move through an edit, never in the same statement that activates.
+  IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.last_edited_by_membership_id AND m.organization_id = OLD.organization_id) THEN
+    RAISE EXCEPTION 'M25_REP_EDITOR: the last editor is not a member of this organization';
+  END IF;
   IF NEW.state = 'active' THEN
+    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = OLD.recorded_by_membership_id AND m.organization_id = OLD.organization_id) THEN
+      RAISE EXCEPTION 'M25_REP_EDITOR: the recorder is not a member of this organization';
+    END IF;
+    IF NEW.last_edited_by_membership_id IS DISTINCT FROM OLD.last_edited_by_membership_id THEN
+      RAISE EXCEPTION 'M25_REP_EDITOR: the last-editor stamp cannot change in the statement that activates';
+    END IF;
+    IF NEW.instrument_note IS DISTINCT FROM OLD.instrument_note
+       OR NEW.representative_name IS DISTINCT FROM OLD.representative_name
+       OR NEW.relationship_label IS DISTINCT FROM OLD.relationship_label
+       OR NEW.representative_kind IS DISTINCT FROM OLD.representative_kind
+       OR NEW.beneficiary_signed_on IS DISTINCT FROM OLD.beneficiary_signed_on
+       OR NEW.representative_signed_on IS DISTINCT FROM OLD.representative_signed_on
+       OR NEW.valid_through_on IS DISTINCT FROM OLD.valid_through_on
+       OR NEW.validity_source_note IS DISTINCT FROM OLD.validity_source_note
+       OR NEW.elements_confirmed IS DISTINCT FROM OLD.elements_confirmed
+       OR NEW.document_id IS DISTINCT FROM OLD.document_id
+       OR NEW.document_version_id IS DISTINCT FROM OLD.document_version_id THEN
+      RAISE EXCEPTION 'M25_REP_EDITOR: the evidence cannot change in the statement that activates it';
+    END IF;
     IF NEW.verified_by_membership_id IS NULL OR NEW.verified_by_membership_id = OLD.recorded_by_membership_id THEN
       RAISE EXCEPTION 'M25_REP_VERIFIER: an appointment is activated by a person other than the one who recorded it';
     END IF;
@@ -397,7 +420,7 @@ BEGIN
   IF NEW.representative_appointment_id IS NOT NULL
      AND (TG_OP = 'INSERT' OR NEW.representative_appointment_id IS DISTINCT FROM OLD.representative_appointment_id) THEN
     SELECT patient_id, state INTO v_patient, v_astate FROM representative_appointment
-      WHERE id = NEW.representative_appointment_id AND organization_id = NEW.organization_id;
+      WHERE id = NEW.representative_appointment_id AND organization_id = NEW.organization_id FOR SHARE;
     IF NOT FOUND OR v_patient IS DISTINCT FROM NEW.patient_id THEN
       RAISE EXCEPTION 'M25_BENEFICIARY_APPEAL_APPOINTMENT: the appointment is not visible to this organization or is another patient''s';
     END IF;

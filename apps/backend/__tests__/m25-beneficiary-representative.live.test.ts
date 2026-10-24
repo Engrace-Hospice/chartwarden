@@ -716,8 +716,16 @@ describe.skipIf(!DB_URL)(
       expect(await sqlActivate(memberR, half)).toMatch(/M25_REP_ELEMENTS_INCOMPLETE/);
     });
 
-    it("lets exactly one of two concurrent activations win, one of them raw SQL so the trigger is under test", async () => {
+    it("lets exactly one of two concurrent activations win (service vs raw SQL), and the loser fails the way it should", async () => {
       const id = await readyDraft();
+      // the racers are neither the recorder nor the last editor, so only the race decides
+      const before = await apptRow(id);
+      expect([before.recorded_by_membership_id, before.last_edited_by_membership_id]).not.toContain(
+        memberS,
+      );
+      expect([before.recorded_by_membership_id, before.last_edited_by_membership_id]).not.toContain(
+        memberR,
+      );
       const v = await ver(id);
       const results = await Promise.allSettled([
         rep().activate(R(), id, v),
@@ -731,9 +739,9 @@ describe.skipIf(!DB_URL)(
       ]);
       const serviceWon = results[0].status === "fulfilled";
       const raw = results[1];
-      const rawWon =
-        raw.status === "fulfilled" && (raw.value as unknown as { rowCount: number }).rowCount === 1;
-      expect(Number(serviceWon) + Number(rawWon)).toBe(1);
+      expect(raw.status).toBe("fulfilled"); // a lost raw statement updates zero rows; it does not error
+      const rawRows = (raw as PromiseFulfilledResult<unknown>).value as { rowCount: number };
+      expect(Number(serviceWon) + rawRows.rowCount).toBe(1);
       if (!serviceWon) {
         expect(((results[0] as PromiseRejectedResult).reason as { code?: string }).code).toBe(
           "VERSION_CONFLICT",
@@ -742,6 +750,88 @@ describe.skipIf(!DB_URL)(
       const row = await apptRow(id);
       expect(row.state).toBe("active");
       expect(row.verified_by_membership_id).toBe(serviceWon ? memberR : memberS);
+    });
+
+    it("the activation edge cannot be forged as the app role: stamp, evidence and membership ids are all checked", async () => {
+      const id = await readyDraft(); // recorded and last edited by A
+      const asApp = (setClause: string) =>
+        fx.dbMessage(
+          fx.asApp((tx) =>
+            tx.execute(
+              sql.raw(
+                `UPDATE representative_appointment SET ${setClause} WHERE id='${id}' AND state='draft'`,
+              ),
+            ),
+          ),
+        );
+      const activate = `state='active', verified_by_membership_id='${memberS}', verified_at=now()`;
+      // forging the last-editor stamp in the activating statement
+      expect(await asApp(`${activate}, last_edited_by_membership_id='${memberR}'`)).toMatch(
+        /cannot change in the statement that activates/,
+      );
+      // editing evidence in the activating statement (with or without the stamp)
+      expect(await asApp(`${activate}, representative_name='Swapped'`)).toMatch(
+        /evidence cannot change/,
+      );
+      expect(
+        await asApp(
+          `${activate}, representative_name='Swapped', last_edited_by_membership_id='${memberR}'`,
+        ),
+      ).toMatch(/M25_REP_EDITOR/);
+      // a nonexistent or foreign-organization membership as last editor is refused fail closed (activating or not)
+      for (const bogus of [randomUUID(), fx.memberB]) {
+        expect(await asApp(`last_edited_by_membership_id='${bogus}'`)).toMatch(
+          /last editor is not a member of this organization/,
+        );
+        expect(await asApp(`${activate}, last_edited_by_membership_id='${bogus}'`)).toMatch(
+          /last editor is not a member of this organization/,
+        );
+      }
+      // a foreign or nonexistent verifier is refused too
+      for (const bogus of [randomUUID(), fx.memberB]) {
+        expect(
+          await asApp(`state='active', verified_by_membership_id='${bogus}', verified_at=now()`),
+        ).toMatch(/not an active member of this organization/);
+      }
+      expect((await apptRow(id)).state).toBe("draft");
+      // the honest path still works: the stamp moves only through an edit
+      const v = await ver(id);
+      await rep().activate(S(), id, v);
+      expect((await apptRow(id)).state).toBe("active");
+    });
+
+    it("the trigger, not the version check, decides concurrent activations written without a version predicate", async () => {
+      const bare = (member: string, id: string) =>
+        fx.asApp((tx) =>
+          tx.execute(
+            sql.raw(
+              `UPDATE representative_appointment SET state='active', verified_by_membership_id='${member}', verified_at=now() WHERE id='${id}'`,
+            ),
+          ),
+        );
+      // the recorder is refused by the trigger even with no version predicate
+      const one = await readyDraft();
+      expect((await apptRow(one)).recorded_by_membership_id).toBe(fx.memberA);
+      expect((await apptRow(one)).last_edited_by_membership_id).toBe(fx.memberA);
+      // (sequential: the recorder is refused by the trigger before anyone else activates)
+      const recorder = await Promise.allSettled([bare(fx.memberA, one)]);
+      expect(recorder[0].status).toBe("rejected");
+      expect(
+        String(
+          ((recorder[0] as PromiseRejectedResult).reason as { cause?: { message?: string } }).cause
+            ?.message,
+        ),
+      ).toMatch(/M25_REP_VERIFIER/);
+      await bare(memberR, one);
+      expect((await apptRow(one)).verified_by_membership_id).toBe(memberR);
+      // two valid activators with no version predicate: the loser meets the frozen (already active) row
+      const two = await readyDraft();
+      const b = await Promise.allSettled([bare(memberR, two), bare(memberS, two)]);
+      expect(b.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lost = b.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect(String((lost.reason as { cause?: { message?: string } }).cause?.message)).toMatch(
+        /M25_REP_FROZEN/,
+      );
     });
 
     it("the activator must not be the last editor of the evidence: B edits, attaches and ticks, then B cannot activate but C can", async () => {
