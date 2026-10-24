@@ -8325,6 +8325,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/denials/{id}/playbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The published playbook that applies to this denial with its step ticks, or playbook null when the organization has not written one */
+        get: operations["getApiV1DenialsByIdPlaybook"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/playbook-steps/{stepKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Tick a playbook step on this denial (advisory; changes no case state) */
+        put: operations["putApiV1DenialsByIdPlaybookstepsByStepKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/denials/{id}/reopen": {
         parameters: {
             query?: never;
@@ -19340,6 +19374,109 @@ export interface paths {
         put?: never;
         /** Platform-authorized global password reset, including shared multi-tenant identities */
         post: operations["postApiV1PlatformUsersByUserIdPasswordreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbook-versions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a draft version (If-Match); a published version is never edited */
+        patch: operations["patchApiV1PlaybookversionsById"];
+        trace?: never;
+    };
+    "/api/v1/playbook-versions/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a draft (If-Match); someone other than the author must publish, and the previous version is retired */
+        post: operations["postApiV1PlaybookversionsByIdPublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbook-versions/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a published version (If-Match) */
+        post: operations["postApiV1PlaybookversionsByIdRetire"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's denial playbooks and which version is published (none are seeded) */
+        get: operations["getApiV1Playbooks"];
+        put?: never;
+        /** Write a playbook for one denial reason (code kind, code, optional MAC) as its first draft; a source note is required */
+        post: operations["postApiV1Playbooks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One playbook with every version, newest first */
+        get: operations["getApiV1PlaybooksById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbooks/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a new draft version of a playbook (one draft at a time) */
+        post: operations["postApiV1PlaybooksByIdVersions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -50897,6 +51034,92 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DenialsByIdPlaybook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        denialCaseId: string;
+                        codeKind: string | null;
+                        code: string | null;
+                        macName: string | null;
+                        playbook: {
+                            playbookId: string;
+                            title: string;
+                            codeKind: string;
+                            code: string;
+                            macName: string | null;
+                            versionId: string;
+                            versionNo: number;
+                            summary: string;
+                            sourceNote: string;
+                            sourceDocumentId: string | null;
+                            authoredByMembershipId: string;
+                            reviewedByMembershipId: string;
+                            publishedAt: string;
+                            effectiveFrom: string;
+                            steps: {
+                                key: string;
+                                text: string;
+                                status: string;
+                                markedAt: string | null;
+                                markedByMembershipId: string | null;
+                            }[];
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1DenialsByIdPlaybookstepsByStepKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "open" | "done" | "not_applicable";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stepKey: string;
+                        status: string;
                     };
                 };
             };
@@ -83685,6 +83908,262 @@ export interface operations {
                         /** @constant */
                         passwordChangeRequired: true;
                         temporaryPassword?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlaybookversionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    summary: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    steps: {
+                        key: string;
+                        text: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        rowVersion: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlaybookversionsByIdPublish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        rowVersion: number;
+                        effectiveFrom: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlaybookversionsByIdRetire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        rowVersion: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Playbooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            codeKind: string;
+                            code: string;
+                            macName: string | null;
+                            title: string;
+                            publishedVersionNo: number | null;
+                            publishedAt: string | null;
+                            hasDraft: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Playbooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    codeKind: "mac_reason" | "rarc" | "carc";
+                    code: string;
+                    macName?: string | null;
+                    title: string;
+                    summary: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    steps: {
+                        key: string;
+                        text: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        versionId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlaybooksById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        codeKind: string;
+                        code: string;
+                        macName: string | null;
+                        title: string;
+                        versions: {
+                            id: string;
+                            versionNo: number;
+                            status: string;
+                            summary: string;
+                            steps: {
+                                key: string;
+                                text: string;
+                            }[];
+                            sourceNote: string;
+                            sourceDocumentId: string | null;
+                            authoredByMembershipId: string;
+                            reviewedByMembershipId: string | null;
+                            publishedAt: string | null;
+                            retiredAt: string | null;
+                            effectiveFrom: string | null;
+                            rowVersion: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlaybooksByIdVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    summary: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    steps: {
+                        key: string;
+                        text: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        versionNo: number;
+                        rowVersion: number;
                     };
                 };
             };

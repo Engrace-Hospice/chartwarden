@@ -3574,6 +3574,26 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // Milestone 9a-1 (migrations 1206/1207): the denial-reason PLAYBOOK library. Guidance only: none of these gates a case.
+  // Publishing needs a person other than the author. The per-case step tick needs denial.read + playbook.read.
+  "playbook.read": {
+    resource: "denial_playbook",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.author": {
+    resource: "denial_playbook",
+    action: "author",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.publish": {
+    resource: "denial_playbook",
+    action: "publish",
+    category: "billing",
+    abac: "none",
+  },
   "mac_rule.manage": {
     resource: "mac_rule",
     action: "manage",

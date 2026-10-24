@@ -38,6 +38,7 @@ import {
 import { isLaterTier } from "./audit-api";
 import { CaseViewPanel } from "./case-view-panel";
 import { LaterTierPanel } from "./later-tier-panel";
+import { PlaybookPanel } from "./playbook-panel";
 import {
   EMPTY_RECONSIDERATION_SUBMIT,
   ReconsiderationSubmitFields,
@@ -391,6 +392,11 @@ export function AppealDetailPanel({
             key={`cv-${appeal.claimId}`}
             claimId={appeal.claimId}
             refreshKey={`${appeal.version}:${caseTick}`}
+          />
+          <PlaybookPanel
+            key={`pb-${appeal.denialCaseId}`}
+            denialId={appeal.denialCaseId}
+            refreshToken={caseTick}
           />
           {appeal.state !== "draft" ? (
             <SubmissionPanel key={appealId} kind="appeal" subjectId={appealId} />

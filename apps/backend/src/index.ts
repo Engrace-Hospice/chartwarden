@@ -91,7 +91,6 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
-import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import {
   createAckQueueNoticeEvaluator,
   registerAckQueueMetrics,
@@ -127,11 +126,11 @@ import {
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
+  classifyTenantHost,
   createCachingTenantHostResolver,
   createDbTenantAppOrigin,
   createDbTenantHostResolver,
   createSessionAuthenticate,
-  classifyTenantHost,
   createTenantHostGuard,
   escalationRouterDenyStub,
   getSeam,
@@ -239,6 +238,7 @@ import {
   createDbSessionProofReader,
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
+import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 
 /** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -304,8 +304,8 @@ import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-ra
 import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
-  DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
+  DEATH_BOARD_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
@@ -325,27 +325,28 @@ import {
   buildM2ConsentRevokedConsumer,
   createAuditorEnrolment,
   createAuditorLinkEmailDelivery,
+  createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
   createLinkDelivery,
   createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
   createPortalSignInStore,
   createTaxIdCipher,
+  createUnlockGuard,
+  createUserMayUseTenantHost,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
-  createUnlockGuard,
   mountOrgAdminRoutes,
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
   registerAuditorEnrolmentRoutes,
   registerAuditorRedeemRoutes,
-  registerPublicTenantRoutes,
-  createDbPublicTenantLookups,
-  createUserMayUseTenantHost,
   registerIdentityErasers,
   registerIdentitySeams,
+  registerPublicTenantRoutes,
 } from "./modules/02-identity/index";
+import { readStaffNames } from "./modules/02-identity/staff-names";
 import {
   type ActorPermissionResolver,
   type M3OutboxPublisher,
@@ -390,15 +391,14 @@ import {
   activeLegalHolds,
   approvedMessageCertificates,
   completeMessageCertificate,
+  createMessagingGovernanceHoldPort,
   expiredMessageCertificateIds,
   lockMessageCertificate,
   messageCertificateIsLive,
+  openMessageCertificate,
   reserveMessageCertificateCount,
   settleMessageCertificateCount,
-  createMessagingGovernanceHoldPort,
-  openMessageCertificate,
 } from "./modules/04-audit/messaging-hold-workflow";
-import { readStaffNames } from "./modules/02-identity/staff-names";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
@@ -1126,6 +1126,7 @@ import {
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildDrizzlePlaybookService,
   buildDrizzleQicService,
   buildDrizzleReopeningService,
   buildDrizzleSubmissionService,
@@ -1481,6 +1482,7 @@ import {
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
 import { createDeliveryRouteReader } from "./modules/36-messaging/ack-delivery-failure/delivery-route-reader-db";
+import { buildAfterHoursTriageBinding } from "./modules/36-messaging/afterhours-triage/binding";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import { createResponseAnalyticsReader } from "./modules/36-messaging/analytics/response-analytics-reader";
 import {
@@ -1514,6 +1516,7 @@ import {
   bindOutOfBandTransports,
   buildAckDeps,
   buildClinicalLinkDeps,
+  buildDeathBoardDeps,
   buildEscalationBinding,
   buildHandoffDeps,
   buildIdgAlertConsumers,
@@ -1526,7 +1529,6 @@ import {
   buildPresenceDeps,
   buildPromotionDeps,
   buildReviewDeps,
-  buildDeathBoardDeps,
   buildSbarDeps,
   buildSnoozeReminderBinding,
   buildTaskDeps,
@@ -1594,10 +1596,12 @@ import { buildM36AckNotificationsConsumer } from "./modules/36-messaging/outbox-
 import { buildM36AckTimerArmingConsumer } from "./modules/36-messaging/outbox-consumers/ack-timer-arming";
 import { buildM36AckUnreachableNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-unreachable-notifications";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
+import { buildM36AfterHoursOutcomeConsumer } from "./modules/36-messaging/outbox-consumers/afterhours-outcome";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/break-glass-notifications";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
+import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
 import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-consumers/feed-health-alerts";
@@ -1610,11 +1614,8 @@ import { buildM36MedicationQuestionNotificationsConsumer } from "./modules/36-me
 import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
-import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36PatientLifecycleReviewConsumer } from "./modules/36-messaging/outbox-consumers/patient-lifecycle-review";
 import { buildM36PromotionNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/promotion-notifications";
-import { buildAfterHoursTriageBinding } from "./modules/36-messaging/afterhours-triage/binding";
-import { buildM36AfterHoursOutcomeConsumer } from "./modules/36-messaging/outbox-consumers/afterhours-outcome";
 import { buildM36PromotionOutcomesConsumer } from "./modules/36-messaging/outbox-consumers/promotion-outcomes";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { buildM36ScheduleBlockedConsumer } from "./modules/36-messaging/outbox-consumers/schedule-blocked";
@@ -3355,7 +3356,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // ADR-0049 Phase 4 — where an organization's emailed links point (its own subdomain when TENANT_BASE_DOMAIN is set,
   // else the global origin exactly as before). Undefined without a database: no org to name, global origins apply.
   const tenantAppOrigin = dbHandle ? createDbTenantAppOrigin(dbHandle.db) : undefined;
-  const appOriginFor = tenantAppOrigin ? (orgId: string) => tenantAppOrigin.appOrigin(orgId) : undefined;
+  const appOriginFor = tenantAppOrigin
+    ? (orgId: string) => tenantAppOrigin.appOrigin(orgId)
+    : undefined;
   const portalOriginFor = tenantAppOrigin
     ? (orgId: string) => tenantAppOrigin.portalOrigin(orgId)
     : undefined;
@@ -4269,7 +4272,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // bucket, and fail-CLOSED on a store error (unlike the login-door throttles above). See unlock-guard.ts.
   const unlockGuard = createUnlockGuard(doorFailureStore, {
     onStoreError: (err) =>
-      process.stderr.write(`[throttle] screen-unlock counter store unavailable - failing CLOSED (503): ${String(err)}\n`),
+      process.stderr.write(
+        `[throttle] screen-unlock counter store unavailable - failing CLOSED (503): ${String(err)}\n`,
+      ),
   });
   const portalSignInThrottle = createCredentialThrottle(doorFailureStore, {
     keyPrefix: "portal-signin",
@@ -4286,7 +4291,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
   // Per-tenant origins alone (TENANT_BASE_DOMAIN set, no global PORTAL_APP_URL / WEB_APP_URL) are enough to send.
   const linkDelivery =
-    (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) && emailBinding.linkDeliveryAvailable
+    (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) &&
+    emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({
           transport: emailTransport,
           ...(linkLandingBaseUrl ? { baseUrl: linkLandingBaseUrl } : {}),
@@ -4344,7 +4350,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ...(tenantOrigins ? { tenantOrigins } : {}),
         ...(tenantOrigins && tenantBaseDomain
           ? {
-              userMayUseTenantHost: createUserMayUseTenantHost(createDbPublicTenantLookups(dbHandle.db), tenantBaseDomain),
+              userMayUseTenantHost: createUserMayUseTenantHost(
+                createDbPublicTenantLookups(dbHandle.db),
+                tenantBaseDomain,
+              ),
             }
           : {}),
       })
@@ -4916,7 +4925,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 windowMs: 15 * 60 * 1000,
                 keyPrefix,
                 failClosed: true, // an unauthenticated email-sending route: an outage must not lift its budget
-                onStoreError: (err) => app.log.warn({ err }, "public tenant rate-limit store error"),
+                onStoreError: (err) =>
+                  app.log.warn({ err }, "public tenant rate-limit store error"),
               });
             registerPublicTenantRoutes(app, {
               baseDomain: tenantBaseDomain,
@@ -4924,7 +4934,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               emailTransport,
               ipLimiter: publicTenantLimiter("find-my-org:ip", 10),
               emailLimiter: publicTenantLimiter("find-my-org:email", 3),
-              onBackgroundError: (err) => app.log.warn({ err }, "find-my-organization email failed"),
+              onBackgroundError: (err) =>
+                app.log.warn({ err }, "find-my-organization email failed"),
             });
           }
           mountAuditRoutes(app, dbHandle.db, {
@@ -5358,7 +5369,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     // WP 6.9: the leaver's death-board items move in the same step (not reported separately); both are attempted.
                     reassignTasks: async (orgId: string, userId: string) => {
                       let failure: unknown;
-                      let summary: Awaited<ReturnType<typeof m36Tasks.reassignForLeaver>> | undefined;
+                      let summary:
+                        | Awaited<ReturnType<typeof m36Tasks.reassignForLeaver>>
+                        | undefined;
                       try {
                         summary = await m36Tasks.reassignForLeaver(orgId, userId);
                       } catch (err) {
@@ -5851,7 +5864,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             onStagedDeleteFailed: (event) =>
               app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
             onRetryableParseDegraded: (event) =>
-              app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
+              app.log.warn(
+                event,
+                "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?",
+              ),
             payeeNpi: m25PayeeNpi,
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
@@ -5927,6 +5943,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               onAssistantError: (event) =>
                 app.log.warn(event, "M25 readiness assistant threw; recorded as a failed review"),
             }),
+            // Milestone 9a-1: the denial-reason playbook library. Organization-authored; nothing is seeded and a denial
+            // with no published playbook reads "not written yet".
+            playbookService: buildDrizzlePlaybookService(dbHandle.db),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
@@ -9790,7 +9809,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const flags = await featureFlagReader?.forOrg(organizationId);
           return objectBearingMessagesCountable({
             destructionEnabled: flags?.[RETENTION_DESTRUCTION_FLAG_KEY] === true,
-            attachmentDestructionEnabled: flags?.[RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY] === true,
+            attachmentDestructionEnabled:
+              flags?.[RETENTION_ATTACHMENT_DESTRUCTION_FLAG_KEY] === true,
             executorWired: destructionDbHandle !== undefined && destructionDbHandle !== null,
           });
         },
@@ -9813,7 +9833,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 },
                 onBatchError: (err: unknown) =>
                   app.log.error(
-                    { err: err instanceof Error ? { name: err.name, message: err.message } : "unknown" },
+                    {
+                      err:
+                        err instanceof Error ? { name: err.name, message: err.message } : "unknown",
+                    },
                     "M36 retention destruction batch failed",
                   ),
                 isEnabled: async (organizationId: string) =>
@@ -12084,7 +12107,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               onStagedDeleteFailed: (event) =>
                 app.log.warn(event, "M25 835 staged raw delete failed; object left behind"),
               onRetryableParseDegraded: (event) =>
-                app.log.warn(event, "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?"),
+                app.log.warn(
+                  event,
+                  "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?",
+                ),
               payeeNpi: m25PayeeNpi,
               outbox: m25OutboxPublisher,
               claims: {

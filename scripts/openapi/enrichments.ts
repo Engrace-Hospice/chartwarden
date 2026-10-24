@@ -12,26 +12,6 @@ import {
   ClaimVoidRequest,
   ManualValidateRequest,
 } from "@chartwarden/billing";
-/**
- * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
- * --------------------------------------------------------
- * Layers request/response schema detail onto the auto-discovered routes
- * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
- *
- * Routes are discovered automatically, so COVERAGE never depends on this file —
- * an unlisted route still appears in the contract (params auto-derived from the
- * path). This registry only ADDS the request body / typed response, reusing the
- * SAME exported TypeBox schemas the route handlers validate against, so the
- * contract cannot drift from the validator.
- *
- * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
- * path end-to-end). Wiring the remaining modules' bodies/responses is the
- * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
- */
-import {
-  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
-  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
-} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
@@ -573,6 +553,12 @@ import {
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 import {
+  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
+  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
+  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
+  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
+import {
   AdrAttachDocumentRequestSchema as M25AdrAttachDocumentRequestSchema,
   AdrChecklistRequestSchema as M25AdrChecklistRequestSchema,
   AdrCreateRequestSchema as M25AdrCreateRequestSchema,
@@ -584,22 +570,6 @@ import {
   MacRulePageSchema as M25MacRulePageSchema,
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
-import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
-import {
-  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
-  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
-  EscalationRequestSchema as M25EscalationRequestSchema,
-  QicClockRequestSchema as M25QicClockRequestSchema,
-  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
-  QicVersionedResultSchema as M25QicVersionedResultSchema,
-  QicViewSchema as M25QicViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
-import {
-  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
-  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
-  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
-  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
 import {
   AuditClaimRequestSchema as M25AuditClaimRequestSchema,
   AuditCreateRequestSchema as M25AuditCreateRequestSchema,
@@ -626,6 +596,29 @@ import {
   RecordedDeadlineSatisfyRequestSchema as M25RecordedDeadlineSatisfyRequestSchema,
   TierDetailRequestSchema as M25TierDetailRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
+import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  DenialPlaybookViewSchema as M25DenialPlaybookViewSchema,
+  PlaybookContentRequestSchema as M25PlaybookContentRequestSchema,
+  PlaybookCreateRequestSchema as M25PlaybookCreateRequestSchema,
+  PlaybookCreatedSchema as M25PlaybookCreatedSchema,
+  PlaybookDetailSchema as M25PlaybookDetailSchema,
+  PlaybookDraftCreatedSchema as M25PlaybookDraftCreatedSchema,
+  PlaybookListSchema as M25PlaybookListSchema,
+  PlaybookPublishResultSchema as M25PlaybookPublishResultSchema,
+  PlaybookStepRequestSchema as M25PlaybookStepRequestSchema,
+  PlaybookStepResultSchema as M25PlaybookStepResultSchema,
+  PlaybookVersionResultSchema as M25PlaybookVersionResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/playbook.routes";
+import {
+  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
+  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
+  EscalationRequestSchema as M25EscalationRequestSchema,
+  QicClockRequestSchema as M25QicClockRequestSchema,
+  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
+  QicVersionedResultSchema as M25QicVersionedResultSchema,
+  QicViewSchema as M25QicViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
@@ -806,6 +799,26 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+/**
+ * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
+ * --------------------------------------------------------
+ * Layers request/response schema detail onto the auto-discovered routes
+ * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
+ *
+ * Routes are discovered automatically, so COVERAGE never depends on this file —
+ * an unlisted route still appears in the contract (params auto-derived from the
+ * path). This registry only ADDS the request body / typed response, reusing the
+ * SAME exported TypeBox schemas the route handlers validate against, so the
+ * contract cannot drift from the validator.
+ *
+ * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
+ * path end-to-end). Wiring the remaining modules' bodies/responses is the
+ * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
+ */
+import {
+  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
+  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import {
   PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
   PresenceResponseSchema as M36PresenceResponseSchema,
@@ -1365,6 +1378,14 @@ import {
   VerifyEmailAckSchema as M34VerifyEmailAckSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
 
+import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 // M36 WP 4.2 acknowledgment requests.
 import {
   AckChannelListResponseSchema as M36AckChannelListResponseSchema,
@@ -1392,15 +1413,16 @@ import {
   ReviewListResponseSchema as M36BreakGlassReviewListResponseSchema,
   ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
-import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
+// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
+import {
+  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
+  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
+  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
+  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
+  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
+  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
 import {
@@ -1415,15 +1437,6 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
-// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
-import {
-  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
-  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
-  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
-  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
-  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
-  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
 import {
   CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
@@ -1466,6 +1479,11 @@ import {
   IdgDiscussionListResponseSchema as M36IdgDiscussionListResponseSchema,
   IdgDiscussionQuerySchema as M36IdgDiscussionQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/idg-discussion-typebox";
+// M36 WP 6.1 smart work inbox.
+import {
+  InboxQuerySchema as M36InboxQuerySchema,
+  InboxResponseSchema as M36InboxResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 3.10 medication questions.
 import {
   AskMedicationQuestionBodySchema as M36AskMedicationQuestionBodySchema,
@@ -1624,11 +1642,6 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
-// M36 WP 6.1 smart work inbox.
-import {
-  InboxQuerySchema as M36InboxQuerySchema,
-  InboxResponseSchema as M36InboxResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 4.9 supervisor unacknowledged queue.
 import {
   UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
@@ -8487,6 +8500,52 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M25AdrReadinessDispositionRequestSchema,
     response: M25AdrReadinessDispositionResultSchema,
   },
+  // ── playbook.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-1; organization-authored guidance, gates nothing) ──
+  "GET /api/v1/playbooks": {
+    summary: "The organization's denial playbooks and which version is published (none are seeded)",
+    response: M25PlaybookListSchema,
+  },
+  "GET /api/v1/playbooks/:id": {
+    summary: "One playbook with every version, newest first",
+    response: M25PlaybookDetailSchema,
+  },
+  "POST /api/v1/playbooks": {
+    summary:
+      "Write a playbook for one denial reason (code kind, code, optional MAC) as its first draft; a source note is required",
+    body: M25PlaybookCreateRequestSchema,
+    response: M25PlaybookCreatedSchema,
+    status: 201,
+  },
+  "POST /api/v1/playbooks/:id/versions": {
+    summary: "Start a new draft version of a playbook (one draft at a time)",
+    body: M25PlaybookContentRequestSchema,
+    response: M25PlaybookDraftCreatedSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/playbook-versions/:id": {
+    summary: "Edit a draft version (If-Match); a published version is never edited",
+    body: M25PlaybookContentRequestSchema,
+    response: M25PlaybookVersionResultSchema,
+  },
+  "POST /api/v1/playbook-versions/:id/publish": {
+    summary:
+      "Publish a draft (If-Match); someone other than the author must publish, and the previous version is retired",
+    response: M25PlaybookPublishResultSchema,
+  },
+  "POST /api/v1/playbook-versions/:id/retire": {
+    summary: "Retire a published version (If-Match)",
+    response: M25PlaybookVersionResultSchema,
+  },
+  "GET /api/v1/denials/:id/playbook": {
+    summary:
+      "The published playbook that applies to this denial with its step ticks, or playbook null when the organization has not written one",
+    response: M25DenialPlaybookViewSchema,
+  },
+  "PUT /api/v1/denials/:id/playbook-steps/:stepKey": {
+    summary: "Tick a playbook step on this denial (advisory; changes no case state)",
+    body: M25PlaybookStepRequestSchema,
+    response: M25PlaybookStepResultSchema,
+  },
   // ── audit-request.routes.ts / later-tier.routes.ts / case-view.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-1) ──
   "GET /api/v1/audit-requests": {
     summary: "RAC / UPIC / SMRC audit request worklist, newest first",
@@ -8516,7 +8575,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "DELETE /api/v1/audit-requests/:id/claims/:claimId": {
-    summary: "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
+    summary:
+      "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
     response: M25AuditVersionedResultSchema,
   },
   "POST /api/v1/audit-requests/:id/state": {

@@ -1935,6 +1935,14 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.playbooks",
+      "path": "/remittance/playbooks",
+      "permission": "playbook.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.taxonomy",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read"

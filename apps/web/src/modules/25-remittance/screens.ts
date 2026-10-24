@@ -20,6 +20,9 @@ const RemittanceWorklist = lazy(() =>
   import("./remittance-worklist").then((m) => ({ default: m.RemittanceWorklist })),
 );
 const TpeTracker = lazy(() => import("./tpe-tracker").then((m) => ({ default: m.TpeTracker })));
+const PlaybookLibrary = lazy(() =>
+  import("./playbook-library").then((m) => ({ default: m.PlaybookLibrary })),
+);
 const TaxonomyOverlay = lazy(() =>
   import("./taxonomy-overlay").then((m) => ({ default: m.TaxonomyOverlay })),
 );
@@ -75,6 +78,14 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "tpe.read",
       screen: TpeTracker,
+    },
+    {
+      id: "remittance.playbooks",
+      path: "/remittance/playbooks",
+      title: "Playbooks",
+      navGroup: "Billing",
+      requiredPermission: "playbook.read",
+      screen: PlaybookLibrary,
     },
     {
       id: "remittance.taxonomy",
