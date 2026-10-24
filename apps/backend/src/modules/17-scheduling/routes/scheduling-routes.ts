@@ -395,6 +395,12 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     return service.schedulingStaff(organizationId);
   });
 
+  // The organization's configured IANA zone is the authority for local scheduling forms.
+  app.get("/api/v1/scheduling/context", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    return { timeZone: await service.orgTimezone(organizationId) };
+  });
+
   // 4 — edit non-lineage fields / assignment. Schedule time changes use the dedicated reschedule command.
   app.patch("/api/v1/visits/:visitId", { preHandler: [EDIT] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
@@ -455,7 +461,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     const { organizationId, userId } = actorOf(request);
     const { visitId } = parse(VisitIdParamsSchema, request.params);
     const b = parse(CancelVisitRequest, request.body);
-    return service.cancelVisit(organizationId, userId, visitId, b.reason);
+    return service.cancelVisit(organizationId, userId, visitId, b.reason, b.reasonCode);
   });
 
   // 7 — reschedule a visit (creates a new visit; original → rescheduled).

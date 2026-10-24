@@ -101300,7 +101300,8 @@
                           "status",
                           "patientAddressId",
                           "externalFacilityId",
-                          "rescheduledIntoVisitId"
+                          "rescheduledIntoVisitId",
+                          "cancellationReasonCode"
                         ],
                         "properties": {
                           "id": {
@@ -101477,6 +101478,16 @@
                             "anyOf": [
                               {
                                 "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancellationReasonCode": {
+                            "anyOf": [
+                              {
                                 "type": "string"
                               },
                               {
@@ -153263,7 +153274,8 @@
                           "status",
                           "patientAddressId",
                           "externalFacilityId",
-                          "rescheduledIntoVisitId"
+                          "rescheduledIntoVisitId",
+                          "cancellationReasonCode"
                         ],
                         "properties": {
                           "id": {
@@ -153440,6 +153452,16 @@
                             "anyOf": [
                               {
                                 "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancellationReasonCode": {
+                            "anyOf": [
+                              {
                                 "type": "string"
                               },
                               {
@@ -244978,6 +245000,64 @@
                             "type": "string"
                           }
                         ]
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "visitSetting": {
+                        "anyOf": [
+                          {
+                            "const": "patient_home",
+                            "type": "string"
+                          },
+                          {
+                            "const": "facility",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient_unit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "telephonic",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "patientAddressId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timeOfDayStart": {
+                        "type": "string"
+                      },
+                      "timeOfDayEnd": {
+                        "type": "string"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      },
+                      "startDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "count": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -245100,6 +245180,64 @@
                         {
                           "const": "discontinued",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeOfDayStart": {
+                      "type": "string"
+                    },
+                    "timeOfDayEnd": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "count": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     }
@@ -245420,6 +245558,64 @@
                         {
                           "const": "discontinued",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeOfDayStart": {
+                      "type": "string"
+                    },
+                    "timeOfDayEnd": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "count": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     }
@@ -269966,6 +270162,42 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/scheduling/context": {
+      "get": {
+        "operationId": "getApiV1SchedulingContext",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Organization service timezone for authorized scheduling forms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "timeZone"
+                  ],
+                  "properties": {
+                    "timeZone": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -316393,6 +316625,39 @@
                         "format": "date",
                         "type": "string"
                       },
+                      "source": {
+                        "type": "string"
+                      },
+                      "suggestedMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "proposedStartedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "proposedEndedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "publishedAsVisitId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "status": {
                         "anyOf": [
                           {
@@ -316537,6 +316802,39 @@
                       "format": "date",
                       "type": "string"
                     },
+                    "source": {
+                      "type": "string"
+                    },
+                    "suggestedMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "proposedStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "proposedEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "publishedAsVisitId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "status": {
                       "anyOf": [
                         {
@@ -316629,7 +316927,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -316812,6 +317111,16 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -316904,7 +317213,8 @@
                       "status",
                       "patientAddressId",
                       "externalFacilityId",
-                      "rescheduledIntoVisitId"
+                      "rescheduledIntoVisitId",
+                      "cancellationReasonCode"
                     ],
                     "properties": {
                       "id": {
@@ -317087,6 +317397,16 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "cancellationReasonCode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -317130,7 +317450,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -317307,6 +317628,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -317522,7 +317853,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -317699,6 +318031,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -317756,7 +318098,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -317933,6 +318276,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318100,7 +318453,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318277,6 +318631,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318356,7 +318720,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318533,6 +318898,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318618,7 +318993,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -318795,6 +319171,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -318874,7 +319260,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -319051,6 +319438,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -319140,7 +319537,8 @@
                         "status",
                         "patientAddressId",
                         "externalFacilityId",
-                        "rescheduledIntoVisitId"
+                        "rescheduledIntoVisitId",
+                        "cancellationReasonCode"
                       ],
                       "properties": {
                         "id": {
@@ -319317,6 +319715,16 @@
                           "anyOf": [
                             {
                               "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cancellationReasonCode": {
+                          "anyOf": [
+                            {
                               "type": "string"
                             },
                             {
@@ -319342,7 +319750,8 @@
                         "status",
                         "patientAddressId",
                         "externalFacilityId",
-                        "rescheduledIntoVisitId"
+                        "rescheduledIntoVisitId",
+                        "cancellationReasonCode"
                       ],
                       "properties": {
                         "id": {
@@ -319519,6 +319928,16 @@
                           "anyOf": [
                             {
                               "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cancellationReasonCode": {
+                          "anyOf": [
+                            {
                               "type": "string"
                             },
                             {
@@ -319614,7 +320033,8 @@
                     "status",
                     "patientAddressId",
                     "externalFacilityId",
-                    "rescheduledIntoVisitId"
+                    "rescheduledIntoVisitId",
+                    "cancellationReasonCode"
                   ],
                   "properties": {
                     "id": {
@@ -319791,6 +320211,16 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReasonCode": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -320982,7 +321412,8 @@
                           "status",
                           "patientAddressId",
                           "externalFacilityId",
-                          "rescheduledIntoVisitId"
+                          "rescheduledIntoVisitId",
+                          "cancellationReasonCode"
                         ],
                         "properties": {
                           "id": {
@@ -321159,6 +321590,16 @@
                             "anyOf": [
                               {
                                 "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancellationReasonCode": {
+                            "anyOf": [
+                              {
                                 "type": "string"
                               },
                               {
