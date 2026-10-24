@@ -330,7 +330,7 @@ describe("alarm ingest: an alarm becomes an ordinary alert, capped and idempoten
       if (failSettle) throw new Error("db blip");
       return settle(...args);
     };
-    const emit = vi.fn(async () => ({ alertId: "alert-1", resolvedRecipientCount: 1 }));
+    const emit = vi.fn(async (_org: string, _input: { correlationId: string }) => ({ alertId: "alert-1", resolvedRecipientCount: 1 }));
     const svc = createAlarmIngestService({
       store,
       cipher,
