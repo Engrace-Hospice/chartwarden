@@ -1,4 +1,12 @@
-import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Modal,
+  SelectField,
+  TextField,
+  stepUpPath,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the two small §4.1/§4.2 document ceremonies (#91).
 //
 // EDIT is `PATCH /api/v1/documents/:id` — title and portal visibility. The route returns the patched
@@ -167,6 +175,7 @@ export function DocumentPreviewDialog({
   const [recipientId, setRecipientId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsStepUp, setNeedsStepUp] = useState(false);
   const external = EXTERNAL_PURPOSES.includes(purpose);
 
   useEffect(() => {
@@ -176,6 +185,7 @@ export function DocumentPreviewDialog({
     setRecipientId("");
     setBusy(false);
     setError(null);
+    setNeedsStepUp(false);
   }, [open]);
 
   if (!open) return null;
@@ -183,6 +193,7 @@ export function DocumentPreviewDialog({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
+    setNeedsStepUp(false);
     const res = await mintContentUrl(
       client,
       documentId,
@@ -193,6 +204,7 @@ export function DocumentPreviewDialog({
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
+      setNeedsStepUp(res.stepUp === true);
       return;
     }
     // `noopener` because the target is object storage, not this origin.
@@ -261,6 +273,12 @@ export function DocumentPreviewDialog({
         {error ? (
           <p role="alert" style={errorText}>
             {error}
+            {needsStepUp ? (
+              <>
+                {" "}
+                <a href={stepUpPath(`${location.pathname}${location.search}`)}>Verify now</a>
+              </>
+            ) : null}
           </p>
         ) : null}
         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>

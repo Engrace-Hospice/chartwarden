@@ -700,6 +700,57 @@ describe("M22 §4.12 — the disclosure recipient is resolved from the request, 
     expect(baaCalls).toEqual([{ kind: "facility", id: SURVIVOR }]);
   });
 
+  it("writes the §164.528 row (member, patient, purpose, recipient) before releasing the URL, and no URL when the append fails", async () => {
+    seams({ id: SURVIVOR, status: "active" }, true);
+    const rows: Array<Record<string, unknown>> = [];
+    let failAppend = false;
+    const logged = createSignedUrlService({
+      storage: {
+        async presignDownload() {
+          return { url: "https://minio.example/x", expiresAt: "2026-06-24T00:05:00.000Z" };
+        },
+      },
+      resolver: {
+        async loadObject() {
+          return { objectKey: "k", externalRecipient: null, patientId: PAT, isSudClass: false };
+        },
+      },
+      accessLog: {
+        async append(entry) {
+          if (failAppend) throw new Error("db down");
+          rows.push({ ...entry });
+        },
+      },
+    });
+    await logged.mint({ ...args({ kind: "facility", entityId: ENTITY }), actorMembershipId: "m-1" });
+    expect(rows).toEqual([
+      expect.objectContaining({
+        accessorMembershipId: "m-1",
+        patientId: PAT,
+        accessKind: "disclosure_export",
+        purpose: "disclosure",
+        recipientClass: `facility:${SURVIVOR}`,
+      }),
+    ]);
+    // an internal purpose is logged too, with no recipient (label misuse stays detectable)
+    await logged.mint({
+      organizationId: ORG,
+      documentId: DOC,
+      versionId: VERSION,
+      purpose: "treatment",
+      actorMembershipId: "m-1",
+    });
+    expect(rows[1]).toMatchObject({ purpose: "treatment", recipientClass: null });
+    // no member ⇒ refused; append failure ⇒ no URL
+    await expect(logged.mint(args({ kind: "facility", entityId: ENTITY }))).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    failAppend = true;
+    await expect(
+      logged.mint({ ...args({ kind: "facility", entityId: ENTITY }), actorMembershipId: "m-1" }),
+    ).rejects.toThrow("db down");
+  });
+
   it("refuses (403) when no recipient is named", async () => {
     const baaCalls = seams({ id: ENTITY, status: "active" }, true);
     await expect(svc.mint(args())).rejects.toMatchObject({ statusCode: 403 });

@@ -11,10 +11,18 @@ const PARTNER = "cccccccc-3333-4333-8333-cccccccccccc";
 
 let urls: URL[] = [];
 
+let refuseStepUp = false;
+
 async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const url = new URL(raw, "http://localhost");
   urls.push(url);
+  if (refuseStepUp && url.pathname.endsWith("/content")) {
+    return new Response(JSON.stringify({ error: { code: "STEP_UP_REQUIRED", message: "x" } }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
   const body = url.pathname.endsWith("/content")
     ? {
         url: "https://objects.example.test/x",
@@ -41,7 +49,8 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   });
 }
 
-function mount() {
+function mount(opts: { stepUp?: boolean } = {}) {
+  refuseStepUp = opts.stepUp === true;
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <ToastProvider>
@@ -126,4 +135,14 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     fireEvent.change(reason, { target: { value: "disclosure" } });
     expect((screen.getByRole("button", { name: "Open" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("offers a step-up link when the server asks for a fresh verification", async () => {
+    mount({ stepUp: true });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Confirm your identity");
+    expect(screen.getByRole("link", { name: "Verify now" }).getAttribute("href")).toContain(
+      "/step-up?returnTo=",
+    );
+  });
 });
+

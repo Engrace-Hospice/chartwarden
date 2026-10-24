@@ -187,6 +187,14 @@ const ABAC_BULK = requireAbac("intake.review", "extraction_high_risk_field_per_f
 // bypass (`requireStepUp` opts out of break-glass).
 const STEP_UP_EXPORT = requireStepUp("documents.export_phi_bundle") as PreHandler;
 const STEP_UP_OVERLAY = requireStepUp("documents.manage_overlay") as PreHandler;
+// §4.12 — handing a document to an outside recipient is a disclosure: a fresh step-up, like the bulk export.
+// The operation key has no tenant override row, so it resolves to the platform floor.
+const STEP_UP_DISCLOSE = requireStepUp("documents.disclose_external") as PreHandler;
+const EXTERNAL_PURPOSES: readonly unknown[] = ["disclosure", "survey_export"];
+const STEP_UP_IF_EXTERNAL: PreHandler = async (request, reply) => {
+  const purpose = (request.query as { purpose?: unknown } | undefined)?.purpose;
+  if (EXTERNAL_PURPOSES.includes(purpose)) await STEP_UP_DISCLOSE(request, reply);
+};
 const STEP_UP_RETRY = requireStepUp("documents.admin_retry_render") as PreHandler;
 const ABAC_PUBLISH = requireAbac(
   "documents.publish_template",
@@ -515,15 +523,16 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   app.get(
     "/api/v1/documents/:id/versions/:versionId/content",
     {
-      preHandler: [READ_PHI, ABAC_OWNER],
+      preHandler: [READ_PHI, ABAC_OWNER, STEP_UP_IF_EXTERNAL],
       config: { auditRead: { resourceKind: "document_version", resourceIdParam: "versionId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id, versionId } = parse(VersionParamsSchema, request.params);
       const q = parse(SignedUrlRequest, request.query);
       return signedUrl.mint({
         organizationId,
+        actorMembershipId: actor.membershipId,
         documentId: id,
         versionId,
         purpose: q.purpose,

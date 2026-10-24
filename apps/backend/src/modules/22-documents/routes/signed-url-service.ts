@@ -25,6 +25,7 @@ import type {
   SignedUrlDescriptor,
 } from "@chartwarden/types";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
+import { getRequestContext } from "@chartwarden/tenancy";
 import { planSignedUrl } from "../lifecycle/storage";
 import { resolveExternalBaaActive } from "../outbox-consumers/baa-gate";
 import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
@@ -82,8 +83,28 @@ function isExternalDisclosure(purpose: DocumentAccessPurpose): boolean {
   return purpose === "disclosure" || purpose === "survey_export";
 }
 
+/** One staff-issued signed URL, for the §164.528 accounting ledger (`document_access_log`). Ids only. */
+export interface StaffMintLogEntry {
+  readonly organizationId: OrgId;
+  readonly documentId: string;
+  readonly documentVersionId: string;
+  readonly patientId: string | null;
+  readonly accessorMembershipId: string;
+  readonly accessKind: DocumentAccessKind;
+  readonly purpose: DocumentAccessPurpose;
+  /** `<kind>:<mdmEntityId>` of the external recipient; null for an internal purpose. */
+  readonly recipientClass: string | null;
+  readonly correlationId: string;
+}
+export interface StaffMintAccessLogPort {
+  /** Append ONE row. Throws on failure: the caller must not release the URL when this rejects. */
+  append(entry: StaffMintLogEntry): Promise<void>;
+}
+
 export interface MintSignedUrlArgs {
   readonly organizationId: OrgId;
+  /** The staff member minting the URL (their membership); required to write the accounting row. */
+  readonly actorMembershipId?: string;
   readonly documentId: string;
   readonly versionId: string;
   readonly purpose: DocumentAccessPurpose;
@@ -104,6 +125,8 @@ export interface SignedUrlServiceDeps {
   readonly resolver: SignedUrlObjectResolver;
   /** Proves the named recipient is an active M40 registry entity (default: the opaque M40 seam). */
   readonly recipients?: DisclosureRecipientResolver;
+  /** The §164.528 ledger. When bound, every mint writes a row BEFORE the URL is returned (fail-closed). */
+  readonly accessLog?: StaffMintAccessLogPort;
 }
 
 /** The signed-URL service the §4.1 content route composes over (T03 plan + T04 presign port + §4.12 gate). */
@@ -118,7 +141,7 @@ export interface SignedUrlService {
  * blocked BAA or an absent SUD consent is 403.
  */
 export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlService {
-  const { storage, resolver, recipients = resolveDisclosureRecipient } = deps;
+  const { storage, resolver, recipients = resolveDisclosureRecipient, accessLog } = deps;
   return {
     async mint(args) {
       const facts = await resolver.loadObject({
@@ -150,6 +173,7 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
       }
 
       // §4.12 — external disclosure presigns gate on M40's live BAA status (as-of NOW); fail closed.
+      let recipientClass: string | null = null;
       if (isExternalDisclosure(args.purpose)) {
         // The recipient comes from the request (`recipientKind` + `recipientEntityId`) and must resolve to an
         // active M40 registry entity; an unresolved recipient cannot be BAA-checked, so it is refused.
@@ -172,6 +196,7 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
         if (!active) {
           throw new ForbiddenError("signed-url denied: no active BAA for the external recipient");
         }
+        recipientClass = `${recipient.kind}:${recipient.mdmEntityId}`;
       }
 
       const accessKind = ACCESS_KIND_FOR_PURPOSE[args.purpose];
@@ -185,6 +210,25 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
         descriptor,
         organizationId: args.organizationId,
       });
+      // §164.528 — record who got a URL to what, for which purpose and to whom. After every gate and the
+      // presign, before the URL leaves: a failed append throws (no URL is released un-logged). The ledger is
+      // also the only detection for a caller who labels an external hand-off with an internal purpose.
+      if (accessLog) {
+        if (!args.actorMembershipId) {
+          throw new ForbiddenError("signed-url denied: the requesting member cannot be recorded");
+        }
+        await accessLog.append({
+          organizationId: args.organizationId,
+          documentId: args.documentId,
+          documentVersionId: args.versionId,
+          patientId: facts.patientId,
+          accessorMembershipId: args.actorMembershipId,
+          accessKind,
+          purpose: args.purpose,
+          recipientClass,
+          correlationId: getRequestContext()?.correlationId ?? `staff-mint:${args.versionId}`,
+        });
+      }
       return { url, expiresAt, documentVersionId: args.versionId, accessKind };
     },
   };

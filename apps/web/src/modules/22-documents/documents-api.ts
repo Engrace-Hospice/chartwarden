@@ -23,7 +23,7 @@
 // Anything that fails between 2 and 4 leaves a `pending` upload row and a staged object, so every
 // failure path calls `DELETE /api/v1/document-uploads/:id`. A row nobody aborts expires on its own
 // after 15 minutes, but relying on that would leave the user's next attempt racing a stale one.
-import type { ApiClient, operations } from "@chartwarden/ui";
+import { type ApiClient, type operations, isStepUpRequired } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,13 @@ export type AccessPurpose = NonNullable<
  */
 export type WriteResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly status: number | null; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly status: number | null;
+      readonly message: string;
+      /** The server wants a fresh step-up before it will do this (403 STEP_UP_REQUIRED). */
+      readonly stepUp?: boolean;
+    };
 
 /**
  * Turn a failure into copy a clinician can act on.
@@ -296,7 +302,12 @@ export async function mintContentUrl(
       },
     },
   );
-  if (error || !data) return failure(response?.status, error);
+  if (error || !data) {
+    const res = failure<SignedUrlResult>(response?.status, error);
+    return !res.ok && isStepUpRequired(error)
+      ? { ...res, message: "Confirm your identity to release this document.", stepUp: true }
+      : res;
+  }
   return { ok: true, value: data as SignedUrlResult };
 }
 

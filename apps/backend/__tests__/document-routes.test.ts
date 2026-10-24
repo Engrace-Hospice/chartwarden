@@ -517,7 +517,7 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     const ok = await app.inject({
       method: "GET",
       url: `${base}&recipientKind=facility&recipientEntityId=${ENTITY}`,
-      headers: RN,
+      headers: { ...RN, ...STEP_UP_FRESH },
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().accessKind).toBe("disclosure_export");
@@ -528,14 +528,14 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     const half = await app.inject({
       method: "GET",
       url: `${base}&recipientKind=facility`,
-      headers: RN,
+      headers: { ...RN, ...STEP_UP_FRESH },
     });
     expect(half.statusCode).toBe(403);
 
     const badKind = await app.inject({
       method: "GET",
       url: `${base}&recipientKind=physician&recipientEntityId=${ENTITY}`,
-      headers: RN,
+      headers: { ...RN, ...STEP_UP_FRESH },
     });
     expect(badKind.statusCode).toBe(422);
 
@@ -543,9 +543,26 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     const noTable = await app.inject({
       method: "GET",
       url: `${base}&recipientKind=dme_vendor&recipientEntityId=${ENTITY}`,
-      headers: RN,
+      headers: { ...RN, ...STEP_UP_FRESH },
     });
     expect(noTable.statusCode).toBe(422);
+  
+    // §4.12 — an external purpose needs a fresh step-up, whatever recipient is named.
+    const stale = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=facility&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(stale.statusCode).toBe(403);
+    expect(stale.json().code ?? stale.json().error?.code).toBe("STEP_UP_REQUIRED");
+
+    // An internal purpose is not step-up gated.
+    const internal = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/versions/${VERSION}/content?purpose=treatment`,
+      headers: RN,
+    });
+    expect(internal.statusCode).toBe(200);
   });
 
   it("records the content download as a document_version read event keyed by the version id (matches the sibling version routes)", async () => {
