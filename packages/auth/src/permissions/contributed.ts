@@ -451,6 +451,24 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 6.5 (ADR-0095, PROPOSED): ask for an AI summary or reply draft of a conversation the caller can read. Needs the tenant flag
+  //     messaging.ai.enabled AND current membership of the channel (re-checked at call time); the model sees only a minimised, pseudonymised
+  //     copy of what the caller can read. Migration 1220 grants it to administrator and org_admin only; the clinical lead names who else. ---
+  "messaging.ai.use": {
+    resource: "message_ai",
+    action: "use",
+    category: "clinical",
+    abac: "none",
+  },
+  // --- WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. MANAGE creates, rotates and disables a third-party alarm source (a fresh
+  //     step-up each time). Migration 1250 grants it to compliance_officer, administrator, org_admin only. The tenant flag
+  //     messaging.alarm_ingest is off by default. ---
+  "messaging.alarm_ingest.manage": {
+    resource: "alarm_source",
+    action: "manage",
+    category: "compliance",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
@@ -1017,6 +1035,15 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
   "election_addendum.acknowledge": {
     resource: "election_addendum",
     action: "acknowledge",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  // --- Milestone 10a: NOMNC delivery + BFCC-QIO expedited review record-keeping (mig 1230 grants `nomnc.read` to the
+  //     roles holding admission.read and `nomnc.record` to those holding discharge.no_longer_terminal / for_cause) ---
+  "nomnc.read": { resource: "nomnc", action: "read", category: "clinical", abac: "admission.scope" },
+  "nomnc.record": {
+    resource: "nomnc",
+    action: "record",
     category: "clinical",
     abac: "admission.scope",
   },
@@ -3573,6 +3600,40 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     action: "dispose",
     category: "billing",
     abac: "provider_entity_scope",
+  },
+  // Milestone 9a-1 (migrations 1250/1251): the denial-reason PLAYBOOK library. Guidance only: none of these gates a case.
+  // Publishing needs a person other than the author. The per-case step tick needs playbook.step.mark + denial.read.
+  "playbook.read": {
+    resource: "denial_playbook",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.author": {
+    resource: "denial_playbook",
+    action: "author",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.publish": {
+    resource: "denial_playbook",
+    action: "publish",
+    category: "billing",
+    abac: "none",
+  },
+  // Ticking a step is working the denial (advisory, gates nothing), so it is a write-level key of its own.
+  "playbook.step.mark": {
+    resource: "denial_playbook",
+    action: "step_mark",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Milestone 9a-2 (migration 1252): the leadership medical-review report. Aggregates only; no target or benchmark is shown.
+  "medical_review.report.read": {
+    resource: "medical_review_report",
+    action: "read",
+    category: "billing",
+    abac: "none",
   },
   "mac_rule.manage": {
     resource: "mac_rule",

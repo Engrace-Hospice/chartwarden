@@ -7,7 +7,7 @@
 // `withOrgContext` (RLS) and inside the actor's provider-entity scope.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   PLATFORM_ROUTE_RULES,
@@ -101,17 +101,26 @@ async function rulesInForce(tx: Tx): Promise<RouteRule[]> {
   return [...own, ...PLATFORM_ROUTE_RULES];
 }
 
+/** What the code-keyed lookups (routing rules, playbooks) read off a denial: its codes and the MAC an ADR names. */
+export interface DenialCodes {
+  readonly carcCode: string;
+  readonly rarcCode: string | null;
+  readonly macReasonCode: string | null;
+  /** The MAC the lookups are read for; null = only MAC-agnostic entries apply. */
+  readonly macName: string | null;
+}
+
 /**
- * Resolve a denial's route inside the caller's transaction. `macNameHint` lets a caller that already knows the MAC
+ * A denial's codes and MAC inside the caller's transaction. `macNameHint` lets a caller that already knows the MAC
  * (the reopening being opened against a specific ADR) override the lookup. Throws NotFound when the denial is not
- * visible to this org/scope.
+ * visible to this org/scope. Shared by the route resolver and the playbook lookup so both read the same MAC.
  */
-export async function resolveDenialRoute(
+export async function loadDenialCodes(
   tx: Tx,
   denialCaseId: string,
   providerEntityScope: readonly string[] | undefined,
   macNameHint?: string | null,
-): Promise<DenialRouteView> {
+): Promise<DenialCodes & { readonly claimId: string | null }> {
   const DC = schema.denialCase;
   const ADR = schema.adrCase;
   const scope = providerEntityScopeCondition(DC.providerEntityId, providerEntityScope);
@@ -148,6 +157,18 @@ export async function resolveDenialRoute(
       macName = byClaim[0]?.macName ?? null;
     }
   }
+  return { ...denial, macName };
+}
+
+/** Resolve a denial's route inside the caller's transaction. Throws NotFound when the denial is not visible to this org/scope. */
+export async function resolveDenialRoute(
+  tx: Tx,
+  denialCaseId: string,
+  providerEntityScope: readonly string[] | undefined,
+  macNameHint?: string | null,
+): Promise<DenialRouteView> {
+  const denial = await loadDenialCodes(tx, denialCaseId, providerEntityScope, macNameHint);
+  const macName = denial.macName;
   const resolved = resolveRoute(
     {
       macName,

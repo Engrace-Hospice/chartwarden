@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 198 statically-routable `web` screen(s) — 20/198 E2E-reached, 187/198 axe-reached.
+**Coverage:** 201 statically-routable `web` screen(s) — 20/201 E2E-reached, 190/201 axe-reached.
 
 ## Zero E2E coverage
 
@@ -100,6 +100,7 @@
 | `medicaid.rule-config` | 24-billing-medicaid | `/medicaid/billing/rule-config` | medicaid.rule_config.read |
 | `medicaid.trading-partners` | 24-billing-medicaid | `/medicaid/billing/trading-partner-credentials` | medicaid.trading_partner.read |
 | `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
+| `messaging.alarm-sources` | 36-messaging | `/messaging/alarm-sources` | messaging.alarm_ingest.manage |
 | `messaging.response-analytics` | 36-messaging | `/messaging/analytics` | messaging.analytics.read |
 | `messaging.ack-broadcast` | 36-messaging | `/messaging/broadcasts` | messaging.read |
 | `messaging.death-board` | 36-messaging | `/messaging/death-board` | messaging.read |
@@ -137,6 +138,8 @@
 | `remittance.audits` | 25-remittance | `/remittance/audits` | audit_request.read |
 | `remittance.denials` | 25-remittance | `/remittance/denials` | denial.worklist.read |
 | `remittance.payer-appeal-paths` | 25-remittance | `/remittance/payer-appeal-paths` | payer_appeal_path.read |
+| `remittance.playbooks` | 25-remittance | `/remittance/playbooks` | playbook.read |
+| `remittance.report` | 25-remittance | `/remittance/report` | medical_review.report.read |
 | `remittance.representative-forms` | 25-remittance | `/remittance/representative-forms` | representative_form.configure |
 | `remittance.taxonomy` | 25-remittance | `/remittance/taxonomy` | taxonomy.read |
 | `remittance.tpe` | 25-remittance | `/remittance/tpe` | tpe.read |

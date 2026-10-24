@@ -282,8 +282,11 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       member,
       v.id,
       "patient admitted to inpatient unit",
+      "inpatient_transfer",
     );
     expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.cancellationReasonCode).toBe("inpatient_transfer");
+    expect((await svc.getVisit(ORG_A, v.id)).cancellationReasonCode).toBe("inpatient_transfer");
     const evts = await eventsFor(v.id);
     expect(evts).toContain("m17.visit.unassigned");
     expect(evts).toContain("m17.visit.cancelled");

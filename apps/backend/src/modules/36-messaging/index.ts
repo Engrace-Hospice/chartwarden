@@ -157,6 +157,11 @@ import { createBreakGlassReadAccess as _createBreakGlassReadAccess } from "./bre
 import { createBreakGlassService as _createBreakGlassService } from "./break-glass/break-glass-service";
 import type { buildClinicalLinkDeps as _buildClinicalLinkDeps } from "./clinical-link/binding";
 import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from "./delivery-target/delivery-target-reader-db";
+import {
+  type AlarmIngestServiceDeps as _AlarmIngestServiceDeps,
+  createAlarmIngestService as _createAlarmIngestService,
+} from "./alarm-ingest/alarm-ingest-service";
+import { createDrizzleAlarmIngestStore as _createDrizzleAlarmIngestStore } from "./alarm-ingest/alarm-ingest-store";
 import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
@@ -212,12 +217,14 @@ import {
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
+import type { AiRouteDeps as _AiRouteDeps } from "./routes/ai-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
 import {
   type DeathBoardRouteDeps as _DeathBoardRouteDeps,
   registerDeathBoardRoutes as _registerDeathBoardRoutes,
 } from "./routes/death-board-routes";
+import { registerAlarmIngestRoutes as _registerAlarmIngestRoutes } from "./routes/alarm-ingest-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
@@ -264,7 +271,12 @@ export function mountMessagingRoutes(
     sendEndpointVerificationCode?: EndpointVerificationSender;
     outbox?: MessagingOutboxPort;
     /** WP 1.5: object storage + malware scanner. No scanner => attachments stay pending (nothing is delivered). */
-    attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
+    attachments?: {
+      storage: AttachmentStoragePort;
+      scanner?: ScanPort | undefined;
+      /** WP 6.3 (ADR-0094): the tenant flag `messaging.voice_notes`. Omitted => audio uploads are refused (415). */
+      voiceNotesEnabled?: ((orgId: string) => Promise<boolean>) | undefined;
+    };
     /** WP 2.7b: global search. Omitted => inert (throwing key provider, fail-closed limiter, flags OFF). */
     globalSearch?: GlobalSearchMountOptions;
     /** WP 2.7b C4: true only once the ADR-0058 P2 per-route rate limit covers the search routes. Default false => ON refused. */
@@ -298,6 +310,8 @@ export function mountMessagingRoutes(
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     };
+    /** WP 6.5 (ADR-0095, PROPOSED): AI summaries and reply drafts (flag `messaging.ai.enabled`). Omitted => the panel is absent and every call is the uniform 404. */
+    ai?: _AiRouteDeps;
     /** ADR-0082: the optional budget of the after-hours thread-line read. */
     afterHoursTriageRateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
@@ -354,6 +368,15 @@ export function mountMessagingRoutes(
     };
     /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
     deathBoard?: _DeathBoardRouteDeps;
+    /**
+     * WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. `flags` is the M1 reader for `messaging.alarm_ingest` (absent or off => the inbound
+     * route and create / rotate are refused; list and disable never depend on it). `alerts` is the lazy AlertEmitter seam; the limiters are the
+     * composition root's budgets; `ingestAvailable` is the ADR-0096 D17 trusted-proxy gate. Omitted => not mounted.
+     */
+    alarmIngest?: Pick<
+      _AlarmIngestServiceDeps,
+      "flags" | "alerts" | "ipLimiter" | "sourceLimiter" | "ingestAvailable" | "warn"
+    >;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -418,6 +441,7 @@ export function mountMessagingRoutes(
       ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
     ...(opts.afterHoursTriageRateLimit ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit } : {}),
+    ...(opts.ai ? { ai: opts.ai } : {}),
     deliveryTarget: {
       service: _createDeliveryTargetService({
         read: _createDbDeliveryTargetReader(db),
@@ -453,6 +477,7 @@ export function mountMessagingRoutes(
         db,
         storage: opts.attachments.storage,
         scanner: opts.attachments.scanner,
+        voiceNotesEnabled: opts.attachments.voiceNotesEnabled,
         outbox: opts.outbox,
         canViewChannel: service.canViewChannel,
       }),
@@ -544,6 +569,18 @@ export function mountMessagingRoutes(
   }
   // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board; every route is the uniform 404 while the tenant flag is off.
   if (opts.deathBoard) _registerDeathBoardRoutes(app, opts.deathBoard);
+  // WP 6.10 (ADR-0102, PROPOSED) - alarm ingest, WATCH ONLY: a signed third-party alarm becomes an ordinary alert. Never an acknowledgment request,
+  // never an escalation, never a page by itself. The inbound route and create / rotate are behind the tenant flag `messaging.alarm_ingest`.
+  if (opts.alarmIngest) {
+    _registerAlarmIngestRoutes(app, {
+      service: _createAlarmIngestService({
+        store: _createDrizzleAlarmIngestStore(db),
+        cipher: _createMessageBodyCipher(),
+        ...opts.alarmIngest,
+      }),
+      inboundRoute: opts.alarmIngest.ingestAvailable !== false,
+    });
+  }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -558,6 +595,9 @@ export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
 export { buildDeathBoardDeps } from "./death-board/deps";
+// WP 6.5 (ADR-0095): AI summaries and reply drafts. The port is injected by the boot (M32's governed pipeline); absent = "AI unavailable".
+export { buildAiDeps } from "./ai/binding";
+export { UNAVAILABLE_AI_PORT } from "./ai/unavailable-ai-port";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";
@@ -677,6 +717,7 @@ export {
   scheduleM36AttachmentScanJobs,
 } from "./attachments/attachment-scan-worker";
 export { registerAttachmentRoutes } from "./routes/attachment-routes";
+export { buildVoiceNotesEnabled } from "./attachments/voice-notes-flag";
 
 // WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @chartwarden/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";

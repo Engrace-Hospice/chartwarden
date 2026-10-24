@@ -43,6 +43,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
 import {
   type RealtimeHandle,
   type RealtimePrincipal,
@@ -72,6 +73,7 @@ import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-s
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
+import { buildAiDeps } from "../src/modules/36-messaging/ai/binding";
 import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import {
   buildMedicationQuestionDeps,
@@ -160,6 +162,11 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/channels/:id/presence": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/presence": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/afterhours-triage": { kind: "idor" }, // ADR-0082 S4/S5: attacked in the channelRoutes loop below
+  // WP 6.5 (ADR-0095) AI summaries and drafts: the membership predicate answers before the service (and before the flag); attacked in the "AI routes" test below.
+  "GET /api/v1/messaging/ai/status": { kind: "scoped" },
+  "POST /api/v1/messaging/channels/:id/summaries": { kind: "idor" },
+  "POST /api/v1/messaging/channels/:id/draft-replies": { kind: "idor" },
+  "POST /api/v1/messaging/channels/:id/ai-outcomes": { kind: "idor" },
   // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
   "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
@@ -429,12 +436,16 @@ const REGISTRAR_FILES = [
   "break-glass-routes.ts", // WP 5.8 break-glass: open/end/review/complete are the random-id 404 across orgs - m36-break-glass.live "CROSS-TENANT"
   "break-glass-typebox.ts", // schemas only
   "afterhours-triage-routes.ts", // ADR-0082 S4/S5 triage line: a foreign-tenant or non-member channel id gets the unknown-id answer from the guards - m36-tenant-idor "channel-id routes"
+  "ai-routes.ts", // WP 6.5 AI summaries / drafts / outcomes, mounted by registerMessagingRoutes: attacked in "AI routes" below; the full proof is m36-ai.live
+  "ai-typebox.ts", // schemas only
   "ack-broadcast-routes.ts", // WP 6.8 ack-required broadcast: org B gets 404 by id and an empty list, RLS hides the rows as chartwarden_app, a non-creator announcer gets the uniform 404 - m36-ack-broadcast.live "tenancy"
   "ack-broadcast-typebox.ts", // schemas only
   "death-board-routes.ts", // WP 6.9 death-event board (flag off): a foreign-tenant or non-viewer id is the missing-board 404, byte-identical body, FORCEd RLS hides the rows - m36-death-board.live "3. routes"
   "death-board-typebox.ts", // schemas only
   "external-share-routes.ts", // ADR-0096 external partner share (flag off): another org's staff lists/revokes nothing, a bearer or invitation under another org matches nothing, RLS on all three tables - m36-external-share.live "tenancy"
   "external-share-typebox.ts", // schemas only
+  "alarm-ingest-routes.ts", // WP 6.10 alarm ingest (flag off): staff list/create/rotate/disable are org-bound (another org's staff lists nothing and disables/rotates a random-id 404). The INBOUND route has NO session by design: its credential is a per-source HMAC whose key id names the org, so a secret from org A presented under org B's key id (or the reverse) is the same 401 as any wrong signature and no row of either org is touched - m36-alarm-ingest.live "tenancy"
+  "alarm-ingest-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
@@ -815,6 +826,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
               // scope stub passes patient A for any holder), so only the org-scoped patient check / channel visibility stops them.
               "messaging.oncall.read",
               "messaging.oncall.send",
+              // WP 6.5 (ADR-0095): EVERY persona holds the AI permission, so only channel membership / tenancy stops an attacker.
+              "messaging.ai.use",
               ...(w === u1 ? ["messaging.review"] : []),
               ...(w === reviewerB ? ["messaging.review", "patient.read"] : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
@@ -854,6 +867,16 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     registerMessagingRoutes(app, {
       service,
       announcements: createDbAnnouncementService(handle.db),
+      // WP 6.5: the flag is ON and the port is the production default (UNAVAILABLE), so a legitimate member would get 503 "AI unavailable";
+      // the attackers are stopped by the membership predicate before the service is reached.
+      ai: {
+        service: buildAiDeps({
+          db: handle.db,
+          flags: { forOrg: async () => ({ "messaging.ai.enabled": true }) },
+          messaging: service,
+          rateLimitStore: createInMemoryRateLimitStore(),
+        }).service,
+      },
       clinicalLinks: {
         isEnabled: async () => true,
         sources: {
@@ -1230,6 +1253,26 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id/presence", // WP 2.12: the guard answers before the (off) tenant flag
       "GET /api/v1/messaging/channels/:id/afterhours-triage", // ADR-0082: messaging.read + channel_visibility answer before the service/flag
     ];
+    it("AI routes (WP 6.5): org B and an in-org non-member get a random id's answer, a member reaches the service (422, AI is care-team only), and nothing is written", async () => {
+      const before = await fingerprint();
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle("POST /api/v1/messaging/channels/:id/summaries", attacker, { id }, {});
+          await expectNoOracle("POST /api/v1/messaging/channels/:id/draft-replies", attacker, { id }, {});
+          await expectNoOracle(
+            "POST /api/v1/messaging/channels/:id/ai-outcomes",
+            attacker,
+            { id },
+            { invocation_id: randomUUID(), invoked_at: new Date().toISOString(), outcome: "accepted" },
+          );
+        }
+      }
+      // non-vacuous: a real member passes every guard and the service refuses a non-care-team channel (422, generic) before any model could be reached
+      const member = await call("POST /api/v1/messaging/channels/:id/summaries", u2, { id: dmA }, {});
+      expect(member.statusCode, member.body).toBe(422);
+      expect((await call("GET /api/v1/messaging/ai/status", u2)).json()).toEqual({ enabled: true });
+      expect(await fingerprint()).toEqual(before);
+    });
     it("POST presence (WP 2.12): org B and an in-org non-member get a random id's answer and write nothing", async () => {
       const before = await fingerprint();
       for (const attacker of [bUser, outsider]) {

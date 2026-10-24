@@ -89,7 +89,8 @@ export type GlyphName =
   | "utensils"
   | "brain"
   | "frown"
-  | "globe";
+  | "globe"
+  | "mic";
 
 // 24×24 viewBox path data. Stroke-drawn unless listed in FILLED.
 const PATHS: Record<GlyphName, string> = {
@@ -208,6 +209,7 @@ const PATHS: Record<GlyphName, string> = {
   frown: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M8 16.5s1.5-2 4-2 4 2 4 2 M9 9.5h.01 M15 9.5h.01",
   globe:
     "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M3 12h18 M12 3a14 14 0 0 1 0 18 M12 3a14 14 0 0 0 0 18",
+  mic: "M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z M5 11a7 7 0 0 0 14 0 M12 18v3",
 };
 
 const FILLED: ReadonlySet<GlyphName> = new Set(["sparkle", "dot"]);

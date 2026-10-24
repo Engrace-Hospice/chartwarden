@@ -43,6 +43,7 @@ import { createDocumentStorageProvider } from "./storage-provider";
 export {
   createDrizzleDocumentReaderStore,
   createDrizzlePortalAccessLog,
+  createDrizzleStaffMintAccessLog,
   createRefusingObjectStore,
 } from "./drizzle-readers-store";
 export { RENDER_SYSTEM_MEMBERSHIP_ID, createDrizzleDocumentSeamStore } from "./drizzle-seam-store";

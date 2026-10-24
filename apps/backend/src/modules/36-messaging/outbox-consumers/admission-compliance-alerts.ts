@@ -21,6 +21,10 @@ export const M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER = "m36.admission-compliance
 export const M36_ADMISSION_COMPLIANCE_ALERT_EVENT_TYPES = [
   "m6.election_addendum.overdue",
   "m6.compliance.window.overdue",
+  // Milestone 10a — NOMNC / BFCC-QIO expedited review: a review opened, a typed deadline near or past.
+  "m6.expedited_review.opened",
+  "m6.expedited_deadline.approaching",
+  "m6.expedited_deadline.overdue",
 ] as const;
 
 /** Window kinds whose miss is paged by the dedicated addendum event instead (never double-page). */
@@ -69,6 +73,73 @@ function planWindowOverdue(
   ];
 }
 
+const EXPEDITED_KIND_LABEL: Readonly<Record<string, string>> = {
+  appeal_request: "appeal request",
+  denc_delivery: "DENC delivery",
+  records_to_qio: "records to the QIO",
+  qio_decision: "QIO decision",
+  other: "recorded",
+};
+
+/** Two audiences per code (care team, then compliance + clinical lead + billing), distinct correlation keys. */
+function twoAudiences(
+  alertEventType: string,
+  key: string,
+  safe: Record<string, unknown>,
+): AdmissionComplianceAlertPlan[] {
+  return [
+    { alertEventType, correlationKey: `${key}:team`, safe },
+    { alertEventType: `${alertEventType}_compliance`, correlationKey: `${key}:compliance`, safe },
+  ];
+}
+
+/** Milestone 10a. NO PHI and NO rule statement: ids, the deadline kind and instants, and what staff recorded. */
+function planExpedited(p: Record<string, unknown>, name: string): AdmissionComplianceAlertPlan[] {
+  const patientId = requireString(p, "patientId", name);
+  const admissionId = requireString(p, "admissionId", name);
+  const deepLink = `/admissions/${admissionId}`;
+  if (name === "m6.expedited_review.opened") {
+    const reviewId = requireString(p, "expeditedReviewId", name);
+    return twoAudiences(name, reviewId, {
+      patientId,
+      admissionId,
+      expeditedReviewId: reviewId,
+      nomncNoticeId: requireString(p, "nomncNoticeId", name),
+      qioNotifiedAt: requireString(p, "qioNotifiedAt", name),
+      deepLink,
+      message:
+        "A QIO expedited review was opened for a NOMNC. Open the admission and enter the deadlines the QIO gave, with their source.",
+    });
+  }
+  const deadlineId = requireString(p, "expeditedDeadlineId", name);
+  const kind = requireString(p, "kind", name);
+  const label = EXPEDITED_KIND_LABEL[kind] ?? kind;
+  const base = {
+    patientId,
+    admissionId,
+    expeditedDeadlineId: deadlineId,
+    subject: requireString(p, "subject", name),
+    kind,
+    dueAt: requireString(p, "dueAt", name),
+    deepLink,
+  };
+  if (name === "m6.expedited_deadline.approaching") {
+    const hours = p.boundaryHours;
+    if (typeof hours !== "number") {
+      throw new Error(`${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: ${name} payload has no boundaryHours`);
+    }
+    return twoAudiences(name, `${deadlineId}:${hours}`, {
+      ...base,
+      boundaryHours: hours,
+      message: `The recorded ${label} deadline is within ${hours} hour${hours === 1 ? "" : "s"} and is not marked met.`,
+    });
+  }
+  return twoAudiences(name, `${deadlineId}:overdue`, {
+    ...base,
+    message: `The recorded ${label} deadline has passed and is not marked met.`,
+  });
+}
+
 export interface AdmissionComplianceAlertPlan {
   readonly alertEventType: string;
   readonly correlationKey: string;
@@ -92,6 +163,7 @@ export function planAdmissionComplianceAlerts(
   const p = (event.payload ?? {}) as Record<string, unknown>;
   const name = event.eventType;
   if (name === "m6.compliance.window.overdue") return planWindowOverdue(p, name);
+  if (name.startsWith("m6.expedited_")) return planExpedited(p, name);
   if (name !== "m6.election_addendum.overdue") {
     throw new Error(`${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: unexpected event ${name}`);
   }

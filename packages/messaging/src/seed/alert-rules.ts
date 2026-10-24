@@ -287,6 +287,45 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "alarm_ingest.nurse_call",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 6.10 (ADR-0102, WATCH ONLY): a nurse-call event reported by an external system. An ALERT, never a call for help: not designated, not locked, never an
+    // acknowledgment request or an escalation. Supervisors (messaging.review) by permission, the tenant administrators when nobody holds it, so an
+    // enabled source is never silently audience-less. In-app only; a tenant re-aims or widens it through the alert-rule admin. Fixed generic text.
+    resolverArgs: { permissionKeys: ["messaging.review"], fallbackToTenantAdmins: true },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "alarm_ingest.patient_sensor",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 6.10 (ADR-0102, WATCH ONLY): a bed, fall or other patient-sensor event reported by an external system. An ALERT, never a call for help: not designated, not locked, never an
+    // acknowledgment request or an escalation. Supervisors (messaging.review) by permission, the tenant administrators when nobody holds it, so an
+    // enabled source is never silently audience-less. In-app only; a tenant re-aims or widens it through the alert-rule admin. Fixed generic text.
+    resolverArgs: { permissionKeys: ["messaging.review"], fallbackToTenantAdmins: true },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "alarm_ingest.equipment",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 6.10 (ADR-0102, WATCH ONLY): a monitor or equipment event reported by an external system. An ALERT, never a call for help: not designated, not locked, never an
+    // acknowledgment request or an escalation. Supervisors (messaging.review) by permission, the tenant administrators when nobody holds it, so an
+    // enabled source is never silently audience-less. In-app only; a tenant re-aims or widens it through the alert-rule admin. Fixed generic text.
+    resolverArgs: { permissionKeys: ["messaging.review"], fallbackToTenantAdmins: true },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.promotion.decided",
     category: "clinical_routine",
     severityFloor: "info",
@@ -731,6 +770,70 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "warn",
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // Milestone 10a — NOMNC / BFCC-QIO expedited review (`36-messaging/outbox-consumers/admission-compliance-alerts.ts`):
+  // a review opened, and a typed deadline within a product boundary or past. Two audiences per code (the addendum
+  // precedent): the patient's care team, and compliance + clinical lead + billing (coverage and liability depend on
+  // the outcome). Boundaries are product timings, not CMS figures.
+  {
+    eventType: "m6.expedited_review.opened",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.expedited_review.opened_compliance",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead", "billing_manager"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.expedited_deadline.approaching",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.expedited_deadline.approaching_compliance",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead", "billing_manager"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.expedited_deadline.overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m6.expedited_deadline.overdue_compliance",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_lead", "billing_manager"] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,

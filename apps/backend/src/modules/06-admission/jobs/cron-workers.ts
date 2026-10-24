@@ -11,6 +11,7 @@ import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { markOverdueAddendumWindowsInTx } from "../election-addendum/compliance";
+import { scanExpeditedDeadlinesInTx } from "../nomnc/scan";
 import { completeActiveElectionPeriod } from "../election-period-completion";
 import { startDueRecertPeriodsForOrg } from "../recert-period-activation";
 import {
@@ -296,6 +297,37 @@ export async function runElectionAddendumOverdueScanCron(deps: M6WorkerDeps): Pr
 }
 
 /**
+ * `admission.window_alert` (NOMNC / expedited-review half, milestone 10a) — every 15 min, alert on each typed
+ * expedited deadline that crossed a product boundary (24 / 4 / 1 hours before) or passed unsatisfied. The boundary
+ * mark is written in the same tx as the publish and guarded in the UPDATE, so a replayed tick pages once.
+ * Deliberately NOT the nightly M25 scan: these clocks are stated in hours and a nightly job would miss them.
+ * ponytail: 15-min cron granularity; a delayed job via BullMQ if tighter is needed.
+ */
+export async function runExpeditedDeadlineScanCron(deps: M6WorkerDeps): Promise<number> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+  let total = 0;
+  for (const { organizationId } of orgs) {
+    // One org's failure must not stop the tick for the rest, nor the compliance escalation scan that follows.
+    try {
+      // The NULL (system) audit actor: the scan UPDATEs an audited table (see the F-178b note above).
+      total += await withOrgContext(deps.db, systemOrgContext(organizationId), (tx) =>
+        scanExpeditedDeadlinesInTx(tx as unknown as DbClient, deps.outbox, organizationId, now),
+      );
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "m6.expedited_deadline_scan_failed",
+          organizationId,
+          error: error instanceof Error ? error.name : "unknown",
+        }),
+      );
+    }
+  }
+  return total;
+}
+
+/**
  * `admission.window_alert` (every-kind half, GAP-026) — move every non-F2F/non-addendum compliance window
  * (CTI, NOR, assessments, care plan, recert-due, ...) through `open -> closing_soon -> overdue` and publish
  * `m6.compliance.window.overdue` (M36 pages) once per window. Pure core: `planWindowEscalation`.
@@ -399,6 +431,7 @@ export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
       async () => {
         await runF2fWindowMissedScanCron(deps);
         await runElectionAddendumOverdueScanCron(deps);
+        await runExpeditedDeadlineScanCron(deps);
         await runComplianceWindowEscalationCron(deps);
       },
       {

@@ -731,6 +731,8 @@ jobs:
           - { name: "M25 submission attempts", scripts: "test:m25:submission:live" }
           # Milestone 7a-1 - later tiers (ALJ / Council / federal court record-keeping, recorded deadlines, the case view) and audit request intake.
           - { name: "M25 later tiers", scripts: "test:m25:later-tiers:live" }
+          # Milestone 11a-1 - the Medicaid payer guard (no Medicare tier on a Medicaid denial) and the Medicaid case view.
+          - { name: "M25 payer guard", scripts: "test:m25:payer-guard:live" }
           - { name: "M25 audit requests", scripts: "test:m25:audit-request:live" }
           # Milestone 7a-2 - the audit response packet: typed checklist, sign-off by a second person, the none-stated attestation, filing proof (audit_response attempt) and the retained render request.
           - { name: "M25 audit response", scripts: "test:m25:audit-response:live" }
@@ -740,6 +742,10 @@ jobs:
           - { name: "M25 payer appeals", scripts: "test:m25:payer-appeal:live" }
           # Milestone 13a - beneficiary-filed appeals and appointments of representative (record-keeping only): a second person with step-up activates an appointment (the database refuses recorder = activator), signed documents are validated against the M22 active version, no computed beneficiary deadline, no portal / consent / caregiver side effects.
           - { name: "M25 beneficiary and representative", scripts: "test:m25:beneficiary-representative:live" }
+          # Milestone 9a-1 - the org-authored denial playbook library (nothing seeded; review before publish; advisory ticks).
+          - { name: "M25 playbooks", scripts: "test:m25:playbook:live" }
+          # Milestone 9a-2 - the leadership medical-review report (figures only; no table, no target or benchmark).
+          - { name: "M25 medical-review report", scripts: "test:m25:medical-review-report:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {
@@ -853,6 +859,8 @@ jobs:
           - { name: "M36 external partner share", scripts: "test:m36:external-share:live" }
           # ADR-0098 (PROPOSED) / WP 6.9 - death-event coordination board (migration 1201) as chartwarden_app: the real death consumer (both events converge on ONE board of six items, a duplicate or a transfer creates nothing, flag off opens nothing, nobody eligible fails loudly and writes nothing), no app DELETE / frozen identity columns / items born open / only the owner completes / completed_at is the database clock / done is final / a flagged item cannot be completed, FORCEd RLS, the routes (owner / supervisor / care team see it; stranger, Part 2-refused viewer and other tenant get the missing-board 404; flag off 404 before parse), idempotent owner completion, audited reassignment with fixed-text alerts, offboarding move or needs_owner flag, audit rows omit the patient id.
           - { name: "M36 death board", scripts: "test:m36:death-board:live" }
+          # ADR-0095 (PROPOSED) / WP 6.5 - AI thread summaries and reply drafts as chartwarden_app over the REAL M32 pipeline and ledger with a fake in-process model: the backend receives no name, id, patient or clock time and never a redacted, held or deleted message; one ai_invocation row and one m36.ai.summary_viewed audit row per call; the human decision lands only for its own actor and channel; message, draft, schedule, task, link and outbox tables stay byte-identical (the AI cannot send, queue, order or write); flag off, no permission, non-member, other tenant, removed member and Part 2 patient are refused with the answer a random id gets.
+          - { name: "M36 AI summaries and drafts", scripts: "test:m36:ai:live" }
           # ADR-0086 (PROPOSED) / WP 5.6 S2 - message legal-hold overlay (migration 1138): chartwarden_app records but cannot update or delete overlay rows, cross-tenant reads nothing, the SECURITY DEFINER backstop refuses DELETE and body_cipher UPDATE of a held message with 23001 (destruction credential and app edit) and allows both after release, the tenant eraser refuses cleanly under a hold.
           - { name: "M36 message legal hold", scripts: "test:m36:message-legal-hold:live" }
           # ADR-0086 (PROPOSED) / WP 5.6 S4 - retention and legal-hold governance routes with REAL Better Auth sessions as chartwarden_app: 403 without the key or a fresh step-up, other tenant = unknown 404, short reason 422, stale preview count 409 RELEASE_PREVIEW_STALE, apply and release audited with the reason and the overlay materialised in the same transaction, a held message edit is a typed 409, responses carry ids/counts/dates/hold names only.
@@ -867,6 +875,8 @@ jobs:
           - { name: "M36 response analytics", scripts: "test:m36:response-analytics:live" }
           # ADR-0097 (PROPOSED) / WP 6.8 - acknowledge-required broadcast as chartwarden_app: flag-off 404 before parsing, author-only create, open never acks, idempotent per-person ack, every non-acknowledger listed, ineligible apart, guard triggers refuse forged writes.
           - { name: "M36 ack broadcast", scripts: "test:m36:ack-broadcast:live" }
+          # ADR-0102 (PROPOSED) / WP 6.10 - alarm ingest (watch only) as chartwarden_app: flag-off 404/401, a signed alarm becomes ONE in-app alert capped at warn with a fixed message and no response request or message, replay / concurrency / failed-emit retry alert once, unmapped kinds recorded and refused, rotated / disabled / stale / tampered requests are one 401, the secret is sealed and absent from audit rows, the guard triggers refuse delete / critical / re-enable / mapping edits, cross-tenant credentials and RLS.
+          - { name: "M36 alarm ingest", scripts: "test:m36:alarm-ingest:live" }
           # WP 4.4 (ADR-0070) - durable escalation timers: the guarded exactly-once escalation, ack-vs-deadline in both orders, reassign re-arm, delete cancel, tenancy, the DB backstops, and on the Valkey this job provides: a worker killed mid-timer, a duplicate job, a flushed Redis recovered by the sweeper, the DLQ landing and its audit row.
           - { name: "M36 ack escalation timers", scripts: "test:m36:ack-escalation:live" }
           # WP 4.5 (ADR-0071) - delivery-failure handling: a simulated push+SMS outage through the real delivery settlement and event -> one failed_unreachable (history, audit, id-only event, supervisor alert, ops notice) before the deadline; a bound router escalates now; replay + 8-way concurrency write once; ack vs failure in both orders; flag off, non-assignee, reminder alerts and pre-reassign alerts do nothing; tenant isolation as chartwarden_app; the DB refuses a person writing failed_unreachable.
@@ -973,6 +983,12 @@ jobs:
           - {
               name: "F-225 M22 portal access log",
               scripts: "test:f225:m22-portal-access-log:live",
+            }
+          # M22 §164.528 — a STAFF signed-URL mint appends one ids-only `document_access_log` row (member, patient,
+          # purpose, recipient); an RLS-refused write throws so no URL is released; append-only for the app role.
+          - {
+              name: "M22 staff mint access log",
+              scripts: "test:m22:staff-mint-access-log:live",
             }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
@@ -1090,6 +1106,9 @@ jobs:
           # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
           - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           - { name: "M6 election addendum", scripts: "test:m6:election-addendum:live" }
+          # Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping: typed facts / deadlines, the
+          # 15-minute alert scan through the REAL publisher, RLS, frozen-once-decided guards, and route 39 unblocked.
+          - { name: "M6 NOMNC expedited review", scripts: "test:m6:nomnc-expedited:live" }
           # The NOR / election statement / signed-election / CTI uploaded-evidence routes, through the REAL M22
           # DocumentReader: happy path + another org's, patient's, admission's and a superseded version refused.
           - { name: "M6 uploaded evidence", scripts: "test:m6:uploaded-evidence:live" }

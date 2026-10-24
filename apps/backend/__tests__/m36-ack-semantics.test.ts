@@ -23,6 +23,8 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 6.8 (ADR-0097) the request and response shapes of the acknowledge-required broadcast; they carry the explicit acknowledgment instant, never a receipt state",
   "apps/web/src/modules/36-messaging/ack-broadcast.tsx":
     "WP 6.8 (ADR-0097) the broadcasts screen: the Acknowledge button is an explicit action and the supervisor list names who has not taken it; no receipt is labelled acknowledged",
+  "apps/web/src/modules/36-messaging/ai-wording.ts":
+    "WP 6.5 (ADR-0095) the AI panel wording: one sentence says an AI summary never replaces answering a request that asks the reader to acknowledge it; nothing is labelled acknowledged",
   "apps/web/src/modules/36-messaging/ack-broadcast-wording.ts":
     "WP 6.8 (ADR-0097) the screen wording for the explicit acknowledgment of an announcement; the read receipt keeps its own words",
   "apps/web/src/modules/36-messaging/use-ack-broadcast.ts":

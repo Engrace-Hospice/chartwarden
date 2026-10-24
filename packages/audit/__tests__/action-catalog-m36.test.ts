@@ -33,6 +33,7 @@ describe("M36-T08 action catalog (§8.1.2)", () => {
       "m36.session.admin_listed",
       "m36.offboarding.viewed",
       "m36.offboarding.executed",
+      "m36.ai.summary_viewed",
     ]);
   });
 

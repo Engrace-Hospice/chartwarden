@@ -2,7 +2,7 @@
   "totals": {
     "Implemented": 40,
     "Partial": 0,
-    "Placeholder": 0
+    "Placeholder": 1
   },
   "rows": [
     {
@@ -111,15 +111,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 88,
-        "enriched": 88
+        "routes": 98,
+        "enriched": 98
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 16,
-        "covered": 16
+        "tables": 19,
+        "covered": 19
       }
     },
     {
@@ -331,8 +331,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 38,
-        "enriched": 38
+        "routes": 39,
+        "enriched": 39
       },
       "screens": true,
       "tests": true,
@@ -491,15 +491,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 148,
-        "enriched": 148
+        "routes": 158,
+        "enriched": 158
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 40,
-        "covered": 40
+        "tables": 43,
+        "covered": 43
       }
     },
     {
@@ -711,15 +711,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 178,
-        "enriched": 178
+        "routes": 187,
+        "enriched": 187
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 64,
-        "covered": 64
+        "tables": 67,
+        "covered": 67
       }
     },
     {
@@ -800,6 +800,23 @@
       "liveInfra": {
         "tables": 14,
         "covered": 14
+      }
+    },
+    {
+      "id": 41,
+      "module": "M41 Billing — Commercial",
+      "status": "Placeholder",
+      "spec": true,
+      "schema": false,
+      "migration": false,
+      "routes": false,
+      "enriched": null,
+      "screens": false,
+      "tests": false,
+      "adapter": null,
+      "liveInfra": {
+        "tables": 12,
+        "covered": 0
       }
     }
   ],
