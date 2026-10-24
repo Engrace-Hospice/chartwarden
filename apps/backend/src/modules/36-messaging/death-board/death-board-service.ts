@@ -96,6 +96,19 @@ const notOwner = (): ChartWardenError =>
 const ownerInvalid = (): ChartWardenError =>
   new ChartWardenError("DEATH_BOARD_OWNER_INVALID", "this person cannot own the item", 422);
 
+/**
+ * A flagged item cannot be "moved" to the person it already names (the database guard would raise), and a supervisor cannot hand an
+ * item they do not own to themselves (they could then complete it, bypassing the owner; mirrors the S-10 self-approval control).
+ */
+function validNewOwner(
+  actor: DeathBoardActor,
+  item: Pick<DeathBoardItemRow, "ownerUserId" | "needsOwner">,
+  toUserId: string,
+): boolean {
+  if (toUserId === item.ownerUserId) return !item.needsOwner;
+  return !(actor.supervisor && toUserId === actor.userId);
+}
+
 const LABELS: ReadonlyMap<string, string> = new Map(
   DEATH_BOARD_TEMPLATE.map((t) => [t.key, t.label]),
 );
@@ -156,25 +169,57 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
     return ordered.find((id) => ok.has(id)) ?? null;
   }
 
-  /** The Part 2 gate for the viewer, then supervisor / involvement / live care team. */
-  async function mayView(actor: DeathBoardActor, board: DeathBoardRow): Promise<boolean> {
-    try {
-      const admitted = await deps.part2Gate.allowedUserIds({
-        organizationId: actor.orgId,
-        patientId: board.patientId,
-        userIds: [actor.userId],
-      });
-      if (!admitted.has(actor.userId)) return false;
-    } catch {
-      return false;
-    }
+  /** Per-request memo: the Part 2 verdict and the care team are read once per patient, however many boards name it. */
+  interface ViewMemo {
+    readonly admitted: Map<string, Promise<boolean>>;
+    readonly team: Map<string, Promise<readonly string[]>>;
+  }
+  const newMemo = (): ViewMemo => ({ admitted: new Map(), team: new Map() });
+  const memoised = <T>(
+    m: Map<string, Promise<T>>,
+    key: string,
+    read: () => Promise<T>,
+  ): Promise<T> => {
+    const hit = m.get(key);
+    if (hit) return hit;
+    const next = read();
+    m.set(key, next);
+    return next;
+  };
+
+  /**
+   * The Part 2 gate for the viewer, then supervisor / CURRENT owner of an item / live care team. A past owner has no standing
+   * (ADR-0098 D7). `ownsItem` is supplied by the caller (in memory for a list, one query otherwise) and only asked when needed.
+   */
+  async function mayView(
+    actor: DeathBoardActor,
+    board: DeathBoardRow,
+    memo: ViewMemo,
+    ownsItem: () => Promise<boolean>,
+  ): Promise<boolean> {
+    const admitted = await memoised(memo.admitted, board.patientId, async () => {
+      try {
+        const ok = await deps.part2Gate.allowedUserIds({
+          organizationId: actor.orgId,
+          patientId: board.patientId,
+          userIds: [actor.userId],
+        });
+        return ok.has(actor.userId);
+      } catch {
+        return false; // fail closed
+      }
+    });
+    if (!admitted) return false;
     if (actor.supervisor) return true;
-    if (await asUser(actor, (tx) => store.isInvolved(tx, actor.orgId, board.id, actor.userId))) {
-      return true;
-    }
-    const team = await settled(() => deps.careTeamMembers(actor.orgId, board.patientId), []);
+    if (await ownsItem()) return true;
+    const team = await memoised(memo.team, board.patientId, () =>
+      settled(() => deps.careTeamMembers(actor.orgId, board.patientId), []),
+    );
     return team.includes(actor.userId);
   }
+
+  const ownsViaStore = (actor: DeathBoardActor, boardId: string) => (): Promise<boolean> =>
+    asUser(actor, (tx) => store.isInvolved(tx, actor.orgId, boardId, actor.userId));
 
   async function names(orgId: string, ids: readonly string[]): Promise<Map<string, string | null>> {
     const out = new Map<string, string | null>();
@@ -213,15 +258,9 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
   async function present(
     actor: DeathBoardActor,
     boards: readonly DeathBoardRow[],
+    items: readonly DeathBoardItemRow[],
   ): Promise<DeathBoardDto[]> {
     if (boards.length === 0) return [];
-    const items = await asUser(actor, (tx) =>
-      store.itemsForBoards(
-        tx,
-        actor.orgId,
-        boards.map((b) => b.id),
-      ),
-    );
     const labels = await deps
       .patientLabels(actor.orgId, unique(boards.map((b) => b.patientId)))
       .catch(() => new Map<string, { displayName: string; mrnSuffix: string | null }>());
@@ -256,7 +295,12 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
       const board = item ? await store.getBoard(tx, actor.orgId, item.boardId) : null;
       return item && board ? { item, board } : null;
     });
-    if (!found || !(await mayView(actor, found.board))) throw notFound();
+    if (
+      !found ||
+      !(await mayView(actor, found.board, newMemo(), ownsViaStore(actor, found.board.id)))
+    ) {
+      throw notFound();
+    }
     return found;
   }
 
@@ -301,21 +345,41 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
     },
 
     async list(actor, limit) {
+      // Bounded: the DEATH_BOARD_SCAN_MAX newest boards, three queries in all. Older boards are invisible to non-supervisors.
       const recent = await asUser(actor, (tx) =>
         store.listBoards(tx, actor.orgId, DEATH_BOARD_SCAN_MAX),
       );
+      if (recent.length === 0) return [];
+      const items = await asUser(actor, (tx) =>
+        store.itemsForBoards(
+          tx,
+          actor.orgId,
+          recent.map((b) => b.id),
+        ),
+      );
+      const memo = newMemo();
       const visible: DeathBoardRow[] = [];
       for (const board of recent) {
         if (visible.length >= limit) break;
-        if (await mayView(actor, board)) visible.push(board);
+        const owns = async (): Promise<boolean> =>
+          items.some((i) => i.boardId === board.id && i.ownerUserId === actor.userId);
+        if (await mayView(actor, board, memo, owns)) visible.push(board);
       }
-      return present(actor, visible);
+      const ids = new Set(visible.map((b) => b.id));
+      return present(
+        actor,
+        visible,
+        items.filter((i) => ids.has(i.boardId)),
+      );
     },
 
     async get(actor, boardId) {
       const board = await asUser(actor, (tx) => store.getBoard(tx, actor.orgId, boardId));
-      if (!board || !(await mayView(actor, board))) throw notFound();
-      const [dto] = await present(actor, [board]);
+      if (!board || !(await mayView(actor, board, newMemo(), ownsViaStore(actor, board.id)))) {
+        throw notFound();
+      }
+      const items = await asUser(actor, (tx) => store.itemsForBoards(tx, actor.orgId, [board.id]));
+      const [dto] = await present(actor, [board], items);
       if (!dto) throw notFound();
       return dto;
     },
@@ -377,6 +441,7 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
       if (seen.ownerUserId === toUserId && !seen.needsOwner) {
         return itemDto(actor, seen, await names(actor.orgId, [toUserId]));
       }
+      if (!validNewOwner(actor, seen, toUserId)) throw ownerInvalid();
       if (!(await eligible(actor.orgId, board.patientId, [toUserId])).has(toUserId)) {
         throw ownerInvalid();
       }
@@ -386,6 +451,7 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
         if (item.status !== "open") throw conflict();
         if (item.ownerUserId === toUserId && !item.needsOwner) return item;
         if (item.ownerUserId !== actor.userId && !actor.supervisor) throw notOwner();
+        if (!validNewOwner(actor, item, toUserId)) throw ownerInvalid();
         const moved = await store.reassign(tx, {
           orgId: actor.orgId,
           itemId,

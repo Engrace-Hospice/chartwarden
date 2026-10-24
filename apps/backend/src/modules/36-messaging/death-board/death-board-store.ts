@@ -51,7 +51,7 @@ export interface DeathBoardStore {
   itemsForBoards(tx: Tx, orgId: string, boardIds: readonly string[]): Promise<DeathBoardItemRow[]>;
   getItem(tx: Tx, orgId: string, itemId: string): Promise<DeathBoardItemRow | null>;
   getItemForUpdate(tx: Tx, orgId: string, itemId: string): Promise<DeathBoardItemRow | null>;
-  /** True when the user owns, once owned, or acted on any item of the board. */
+  /** True when the user is the CURRENT owner of any item of the board (a past owner or an actor has no standing). */
   isInvolved(tx: Tx, orgId: string, boardId: string, userId: string): Promise<boolean>;
   complete(
     tx: Tx,
@@ -176,24 +176,7 @@ export function createDbDeathBoardStore(): DeathBoardStore {
         .from(I)
         .where(and(eq(I.organizationId, orgId), eq(I.boardId, boardId), eq(I.ownerUserId, userId)))
         .limit(1);
-      if (owned) return true;
-      const [touched] = await tx
-        .select({ id: E.id })
-        .from(E)
-        .innerJoin(I, and(eq(I.organizationId, E.organizationId), eq(I.id, E.itemId)))
-        .where(
-          and(
-            eq(E.organizationId, orgId),
-            eq(I.boardId, boardId),
-            or(
-              eq(E.actorUserId, userId),
-              eq(E.fromOwnerUserId, userId),
-              eq(E.toOwnerUserId, userId),
-            ),
-          ),
-        )
-        .limit(1);
-      return !!touched;
+      return !!owned;
     },
 
     async complete(tx, a) {
