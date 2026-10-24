@@ -67170,9 +67170,9 @@ export interface operations {
                                 change: number | null;
                             };
                             openedDollars: {
-                                value: number | null;
-                                previous: number | null;
-                                change: number | null;
+                                value: string;
+                                previous: string;
+                                change: string;
                             };
                             macReasonAsTyped: {
                                 code: string;
@@ -67187,14 +67187,14 @@ export interface operations {
                                     codeKind: string;
                                     code: string;
                                     count: number;
-                                    dollars: number;
+                                    dollars: string;
                                 }[];
                                 omitted: number;
                             };
                             byMonth: {
                                 month: string;
                                 count: number;
-                                dollars: number;
+                                dollars: string;
                             }[];
                             closureOutcomes: {
                                 outcome: string;
@@ -67260,6 +67260,8 @@ export interface operations {
                             openWithNoRecordedDeadline: number;
                         };
                         playbookCoverage: {
+                            denialsSeen: number;
+                            denialsWithoutPlaybook: number;
                             reasonsSeen: number;
                             reasonsWithoutPlaybook: number;
                             withoutPlaybook: {
@@ -67267,7 +67269,7 @@ export interface operations {
                                     codeKind: string;
                                     code: string;
                                     count: number;
-                                    dollars: number;
+                                    dollars: string;
                                 }[];
                                 omitted: number;
                             };

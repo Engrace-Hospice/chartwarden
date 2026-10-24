@@ -112,7 +112,8 @@ export async function adrByMac(tx: Tx, days: DayRange, s: ScopeArgs): Promise<Ad
 
 export interface DenialTotals {
   readonly opened: number;
-  readonly dollars: number;
+  /** Integer cents. */
+  readonly cents: number;
   readonly macReasonAsTyped: number;
 }
 
@@ -125,13 +126,13 @@ export async function denialTotals(
   const D = schema.denialCase;
   const r = await rowsOf<Record<string, unknown>>(
     tx,
-    sql`SELECT count(*)::int AS opened, coalesce(sum(dollar_value), 0)::float8 AS dollars,
+    sql`SELECT count(*)::int AS opened, round(coalesce(sum(dollar_value), 0) * 100)::bigint::text AS cents,
         count(*) FILTER (WHERE upper(btrim(mac_reason_code)) = ${macReasonCode})::int AS typed
       FROM denial_case
      WHERE opened_at >= ${range.startsAt}::timestamptz AND opened_at < ${range.endsBefore}::timestamptz ${scoped(D.providerEntityId, s)}`,
   );
   const row = r[0] ?? {};
-  return { opened: num(row.opened), dollars: num(row.dollars), macReasonAsTyped: num(row.typed) };
+  return { opened: num(row.opened), cents: num(row.cents), macReasonAsTyped: num(row.typed) };
 }
 
 export interface ReasonRow {
@@ -139,13 +140,16 @@ export interface ReasonRow {
   readonly code: string;
   readonly covered: boolean;
   readonly count: number;
-  readonly dollars: number;
+  /** Integer cents. */
+  readonly cents: number;
 }
 
 /**
  * Denials opened in the range grouped by the most specific code they carry (MAC reason, else RARC, else CARC), with
- * whether a PUBLISHED, in-effect playbook exists for any of the denial's codes (MAC is not considered: a MAC-specific
- * playbook counts as covering that code).
+ * whether the denial panel WOULD find a playbook for that denial: the same inputs and matching as `loadDenialCodes` and
+ * `resolvePlaybook` (the denial's MAC comes from the newest ADR logged against it, else the newest unlinked ADR on its claim;
+ * a published, in-effect playbook matches on any of the denial's codes, and a MAC-specific playbook only on that MAC,
+ * compared case-insensitively). Coverage is decided PER DENIAL, so one reason can have covered and uncovered denials.
  */
 export async function denialReasons(
   tx: Tx,
@@ -155,18 +159,26 @@ export async function denialReasons(
   const D = schema.denialCase;
   const r = await rowsOf<Record<string, unknown>>(
     tx,
-    sql`SELECT kind, code, covered, count(*)::int AS n, coalesce(sum(dollar_value), 0)::float8 AS dollars
-      FROM (SELECT dollar_value,
-          CASE WHEN nullif(btrim(mac_reason_code), '') IS NOT NULL THEN 'mac_reason'
-               WHEN nullif(btrim(rarc_code), '') IS NOT NULL THEN 'rarc' ELSE 'carc' END AS kind,
-          upper(btrim(coalesce(nullif(btrim(mac_reason_code), ''), nullif(btrim(rarc_code), ''), carc_code))) AS code,
+    sql`SELECT kind, code, covered, count(*)::int AS n, round(coalesce(sum(dollar_value), 0) * 100)::bigint::text AS cents
+      FROM (SELECT denial_case.dollar_value,
+          CASE WHEN nullif(btrim(denial_case.mac_reason_code), '') IS NOT NULL THEN 'mac_reason'
+               WHEN nullif(btrim(denial_case.rarc_code), '') IS NOT NULL THEN 'rarc' ELSE 'carc' END AS kind,
+          upper(btrim(coalesce(nullif(btrim(denial_case.mac_reason_code), ''), nullif(btrim(denial_case.rarc_code), ''), denial_case.carc_code))) AS code,
           EXISTS (SELECT 1 FROM denial_playbook_version v JOIN denial_playbook p ON p.id = v.playbook_id
-            WHERE v.status = 'published' AND v.effective_from <= CURRENT_DATE AND (
-              (p.code_kind = 'mac_reason' AND upper(btrim(p.code)) = upper(btrim(denial_case.mac_reason_code)))
-              OR (p.code_kind = 'rarc' AND upper(btrim(p.code)) = upper(btrim(denial_case.rarc_code)))
-              OR (p.code_kind = 'carc' AND upper(btrim(p.code)) = upper(btrim(denial_case.carc_code))))) AS covered
+            WHERE v.status = 'published' AND v.effective_from <= (now() AT TIME ZONE 'UTC')::date
+              AND (p.mac_name IS NULL OR upper(btrim(p.mac_name)) = upper(btrim(coalesce(m.mac_name, ''))))
+              AND ((p.code_kind = 'mac_reason' AND upper(btrim(p.code)) = upper(btrim(denial_case.mac_reason_code)))
+                OR (p.code_kind = 'rarc' AND upper(btrim(p.code)) = upper(btrim(denial_case.rarc_code)))
+                OR (p.code_kind = 'carc' AND upper(btrim(p.code)) = upper(btrim(denial_case.carc_code))))) AS covered
         FROM denial_case
-       WHERE opened_at >= ${range.startsAt}::timestamptz AND opened_at < ${range.endsBefore}::timestamptz ${scoped(D.providerEntityId, s)}) d
+        LEFT JOIN LATERAL (
+          SELECT mac_name FROM (
+            SELECT mac_name, 1 AS pri, created_at FROM adr_case WHERE denial_case_id = denial_case.id
+            UNION ALL
+            SELECT mac_name, 2 AS pri, created_at FROM adr_case
+             WHERE denial_case.claim_id IS NOT NULL AND claim_id = denial_case.claim_id AND denial_case_id IS NULL) x
+          ORDER BY pri, created_at DESC LIMIT 1) m ON true
+       WHERE denial_case.opened_at >= ${range.startsAt}::timestamptz AND denial_case.opened_at < ${range.endsBefore}::timestamptz ${scoped(D.providerEntityId, s)}) d
      GROUP BY kind, code, covered`,
   );
   return r.map((x) => ({
@@ -174,7 +186,7 @@ export async function denialReasons(
     code: String(x.code),
     covered: x.covered === true,
     count: num(x.n),
-    dollars: num(x.dollars),
+    cents: num(x.cents),
   }));
 }
 
@@ -182,17 +194,17 @@ export async function denialsByMonth(
   tx: Tx,
   range: InstantRange,
   s: ScopeArgs,
-): Promise<{ month: string; count: number; dollars: number }[]> {
+): Promise<{ month: string; count: number; cents: number }[]> {
   const D = schema.denialCase;
   const r = await rowsOf<Record<string, unknown>>(
     tx,
     sql`SELECT to_char(opened_at AT TIME ZONE 'UTC', 'YYYY-MM') AS month, count(*)::int AS n,
-        coalesce(sum(dollar_value), 0)::float8 AS dollars
+        round(coalesce(sum(dollar_value), 0) * 100)::bigint::text AS cents
       FROM denial_case
      WHERE opened_at >= ${range.startsAt}::timestamptz AND opened_at < ${range.endsBefore}::timestamptz ${scoped(D.providerEntityId, s)}
      GROUP BY 1 ORDER BY 1`,
   );
-  return r.map((x) => ({ month: String(x.month), count: num(x.n), dollars: num(x.dollars) }));
+  return r.map((x) => ({ month: String(x.month), count: num(x.n), cents: num(x.cents) }));
 }
 
 export async function denialClosures(

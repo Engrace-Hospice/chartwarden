@@ -1,6 +1,5 @@
 import {
   Button,
-  EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
@@ -15,9 +14,10 @@ import {
 // There is NO target, benchmark, score, red/green threshold or "compliant" wording anywhere on this page; the only
 // threshold that can appear is a TPE exit threshold the organization recorded itself. Deadline figures are "against the due
 // date on the case" and carry the count of due dates that came from unverified rules. A tile with no data shows a dash.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { RetryAlert } from "./action-ui";
 import { PLAYBOOK_CODE_KIND_LABEL } from "./playbook-api";
 import { humanize } from "./remittance-status";
 import { type MedicalReviewReport, type ReportFigure, loadMedicalReviewReport } from "./report-api";
@@ -27,14 +27,25 @@ export const REPORT_NOTE =
 const DEFAULT_PERIOD_DAYS = 30;
 const DAY_MS = 86_400_000;
 
-const dayOffset = (days: number): string =>
-  new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
+/** A calendar day `days` ago in the reader's own time zone (YYYY-MM-DD). */
+const localDay = (days: number): string =>
+  new Date(Date.now() - days * DAY_MS).toLocaleDateString("en-CA");
+/** The report counts whole UTC days and refuses a future one, so the latest day offered is the earlier of the two "today"s. */
+const latestDay = (): string => {
+  const utc = new Date().toISOString().slice(0, 10);
+  const local = localDay(0);
+  return local < utc ? local : utc;
+};
 
 const kindLabel = (k: string): string => PLAYBOOK_CODE_KIND_LABEL[k] ?? k;
 const NO_DATA = "no data in this period";
 const count = (f: ReportFigure): string => (f.value === null ? "—" : String(f.value));
-const money = (n: number): string =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+/** Exact dollars from the server ("1234.50") shown with a sign and thousands separators, never through a float. */
+const money = (exact: string): string => {
+  const [whole = "0", cents = "00"] = exact.replace("-", "").split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${exact.startsWith("-") ? "-" : ""}$${grouped}.${cents}`;
+};
 const percent = (v: number | null): string => (v === null ? "—" : `${Math.round(v * 100)}%`);
 
 /** "vs previous period: 4 (+3)" in plain words; a missing side reads as no comparison, never as zero. */
@@ -56,9 +67,12 @@ function Section({
   readonly title: string;
   readonly children: ReactNode;
 }): JSX.Element {
+  const headingId = useId();
   return (
-    <section aria-label={title} style={{ padding: "0 1.5rem 1.5rem" }}>
-      <h3 className="wx-action-title">{title}</h3>
+    <section aria-labelledby={headingId} style={{ padding: "0 1.5rem 1.5rem" }}>
+      <h2 id={headingId} className="wx-action-title">
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -114,7 +128,7 @@ function Rows({
 
 function ReportBody({ r }: { readonly r: MedicalReviewReport }): JSX.Element {
   const a = r.adrs;
-  const unverified = a.dueDatesFromUnverifiedWindows.value ?? 0;
+  const unverified = count(a.dueDatesFromUnverifiedWindows);
   return (
     <>
       <Section title="ADR requests">
@@ -181,7 +195,7 @@ function ReportBody({ r }: { readonly r: MedicalReviewReport }): JSX.Element {
       </Section>
       <Section title="Denials">
         <p className="wx-action-hint">
-          {`Opened ${count(r.denials.opened)} (${money(r.denials.openedDollars.value ?? 0)}). Denials whose MAC reason field says ${r.denials.macReasonAsTyped.code}, as typed: ${count(r.denials.macReasonAsTyped.figure)}. This is counted apart from ADRs denied for no response.`}
+          {`Opened ${count(r.denials.opened)} (${money(r.denials.openedDollars.value)}). Denials whose MAC reason field says ${r.denials.macReasonAsTyped.code}, as typed: ${count(r.denials.macReasonAsTyped.figure)}. This is counted apart from ADRs denied for no response.`}
         </p>
         <Rows
           caption="Denials by reason"
@@ -285,12 +299,12 @@ function ReportBody({ r }: { readonly r: MedicalReviewReport }): JSX.Element {
       </Section>
       <Section title="Playbook coverage">
         <p className="wx-action-hint">
-          {`${r.playbookCoverage.reasonsWithoutPlaybook} of ${r.playbookCoverage.reasonsSeen} denial reasons seen in this period have no published playbook.`}
+          {`${r.playbookCoverage.denialsWithoutPlaybook} of ${r.playbookCoverage.denialsSeen} denials opened in this period have no matching published playbook (same MAC and code matching as the denial panel). ${r.playbookCoverage.reasonsWithoutPlaybook} of ${r.playbookCoverage.reasonsSeen} reasons have at least one such denial.`}
         </p>
         <Rows
           caption="Reasons without a playbook"
-          head={["Reason", "Denials", "Dollars", "Playbook"]}
-          empty="Every reason seen in this period has a published playbook."
+          head={["Reason", "Denials without a matching playbook", "Dollars", "Playbook"]}
+          empty="Every denial opened in this period has a matching published playbook."
           rows={r.playbookCoverage.withoutPlaybook.rows.map((x) => [
             `${kindLabel(x.codeKind)} ${x.code}`,
             x.count,
@@ -310,11 +324,11 @@ function ReportBody({ r }: { readonly r: MedicalReviewReport }): JSX.Element {
 
 export function MedicalReviewReportScreen(): JSX.Element {
   const client = useApiClient();
-  const [from, setFrom] = useState(dayOffset(DEFAULT_PERIOD_DAYS));
-  const [to, setTo] = useState(dayOffset(1));
+  const [from, setFrom] = useState(localDay(DEFAULT_PERIOD_DAYS));
+  const [to, setTo] = useState(localDay(1));
   const [applied, setApplied] = useState({
-    from: dayOffset(DEFAULT_PERIOD_DAYS),
-    to: dayOffset(1),
+    from: localDay(DEFAULT_PERIOD_DAYS),
+    to: localDay(1),
   });
   const [report, setReport] = useState<MedicalReviewReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -333,8 +347,13 @@ export function MedicalReviewReportScreen(): JSX.Element {
     void load();
   }, [load]);
 
-  const a = report?.adrs;
-  const d = report?.denials;
+  // The report on screen belongs to ITS OWN period. Figures are used (and the KPI tiles filled) only when that period is the
+  // one asked for; otherwise they are never shown under the new From/To.
+  const matches =
+    report !== null && report.window.from === applied.from && report.window.to === applied.to;
+  const current = matches ? report : null;
+  const a = current?.adrs;
+  const d = current?.denials;
   const shown = (f: ReportFigure | undefined): string => (f ? count(f) : "—");
 
   return (
@@ -374,8 +393,8 @@ export function MedicalReviewReportScreen(): JSX.Element {
           />
           <KpiCard
             label="Appeals filed"
-            value={shown(report?.appeals.filed)}
-            detail={report ? vsPrevious(report.appeals.filed) : NO_DATA}
+            value={shown(current?.appeals.filed)}
+            detail={current ? vsPrevious(current.appeals.filed) : NO_DATA}
             tone="neutral"
             accentColor="var(--color-outline-variant)"
           />
@@ -406,46 +425,39 @@ export function MedicalReviewReportScreen(): JSX.Element {
             label="To"
             type="date"
             value={to}
-            max={dayOffset(0)}
+            max={latestDay()}
             onChange={(e) => setTo(e.target.value)}
           />
           <Button size="sm" type="submit" disabled={from === "" || to === "" || from > to}>
             Show period
           </Button>
-          {report ? (
+          {current ? (
             <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8rem" }}>
-              {`${report.window.days} days, compared with ${report.window.previous.from} to ${report.window.previous.to}`}
+              {`${current?.window.days} days, compared with ${current?.window.previous.from} to ${current?.window.previous.to}`}
             </span>
           ) : null}
         </form>
       }
       table={
-        error && !report ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="Unavailable"
-              description={error}
-              action={
-                <Button tone="secondary" size="sm" onClick={() => void load()}>
-                  Retry
-                </Button>
-              }
-            />
-          </div>
-        ) : !report ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : (
-          <>
-            {error ? (
-              <div role="alert" style={{ padding: "0 1.5rem", color: "var(--color-error)" }}>
-                {error}
-              </div>
-            ) : null}
+        <>
+          {error ? <RetryAlert message={error} onRetry={() => void load()} /> : null}
+          {report && !matches ? (
+            <p className="wx-action-hint" style={{ padding: "0 1.5rem" }}>
+              {`Showing the earlier period ${report.window.from} to ${report.window.to}; ${applied.from} to ${applied.to} ${error ? "could not be loaded" : "is loading"}.`}
+            </p>
+          ) : null}
+          {!report && !error ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : report && (matches || error) ? (
             <ReportBody r={report} />
-          </>
-        )
+          ) : report ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : null}
+        </>
       }
       fullPageScroll
     />

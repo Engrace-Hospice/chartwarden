@@ -5,6 +5,7 @@
 // uncovered-reason list links into playbook authoring; a refused read shows the server's message with a Retry.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MedicalReviewReportScreen, REPORT_NOTE } from "./medical-review-report";
@@ -39,10 +40,10 @@ const report = (over: Record<string, unknown> = {}) => ({
   },
   denials: {
     opened: fig(5, null),
-    openedDollars: fig(166, null),
+    openedDollars: { value: "166.00", previous: "0.00", change: "166.00" },
     macReasonAsTyped: { code: "56900", figure: fig(1, 0) },
-    byReason: { rows: [{ codeKind: "carc", code: "50", count: 2, dollars: 150 }], omitted: 0 },
-    byMonth: [{ month: "2026-05", count: 5, dollars: 166 }],
+    byReason: { rows: [{ codeKind: "carc", code: "50", count: 2, dollars: "150.00" }], omitted: 0 },
+    byMonth: [{ month: "2026-05", count: 5, dollars: "166.00" }],
     closureOutcomes: [{ outcome: "written_off", count: 1 }],
   },
   appeals: {
@@ -85,10 +86,12 @@ const report = (over: Record<string, unknown> = {}) => ({
   },
   audits: { open: 3, openWithNoRecordedDeadline: 1 },
   playbookCoverage: {
+    denialsSeen: 5,
+    denialsWithoutPlaybook: 2,
     reasonsSeen: 4,
     reasonsWithoutPlaybook: 2,
     withoutPlaybook: {
-      rows: [{ codeKind: "rarc", code: "N1", count: 1, dollars: 10 }],
+      rows: [{ codeKind: "rarc", code: "N1", count: 2, dollars: "10.00" }],
       omitted: 0,
     },
   },
@@ -96,6 +99,8 @@ const report = (over: Record<string, unknown> = {}) => ({
 });
 
 let calls: string[] = [];
+let gate: Promise<void> | null = null;
+let failAfter = Number.POSITIVE_INFINITY;
 let status = 200;
 let body: unknown = report();
 
@@ -106,9 +111,14 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   const req = typeof input === "object" && "url" in input ? (input as Request) : null;
   const url = new URL(req ? req.url : String(input), "http://localhost");
   calls.push(`${url.pathname}?${url.searchParams.toString()}`);
-  return status === 200
-    ? json(200, body)
-    : json(status, { error: { code: "X", message: "report refused" } });
+  if (gate) await gate;
+  gate = null;
+  if (failAfter < calls.length)
+    return json(500, { error: { code: "X", message: "report unavailable" } });
+  if (status !== 200) return json(status, { error: { code: "X", message: "report refused" } });
+  const asked = { from: url.searchParams.get("from") ?? "", to: url.searchParams.get("to") ?? "" };
+  const base = body as { window: Record<string, unknown> };
+  return json(200, { ...base, window: { ...base.window, ...asked } });
 }
 
 function mount(): void {
@@ -123,6 +133,8 @@ function mount(): void {
 
 beforeEach(() => {
   calls = [];
+  gate = null;
+  failAfter = Number.POSITIVE_INFINITY;
   status = 200;
   body = report();
 });
@@ -173,8 +185,9 @@ describe("M25 Medical Review Report", () => {
     const link = await screen.findByRole("link", { name: "Write one" });
     expect(link.getAttribute("href")).toBe("/remittance/playbooks?new=1&kind=rarc&code=N1");
     expect(
-      screen.getByText(/2 of 4 denial reasons seen in this period have no published playbook/),
+      screen.getByText(/2 of 5 denials opened in this period have no matching published playbook/),
     ).toBeTruthy();
+    expect(screen.getByText(/2 of 4 reasons have at least one such denial/)).toBeTruthy();
   });
 
   it("never uses target, benchmark, score or compliance wording", async () => {
@@ -206,15 +219,74 @@ describe("M25 Medical Review Report", () => {
     expect(screen.getByText("No denials opened in this period.")).toBeTruthy();
   });
 
+  const choosePeriod = async (
+    user: ReturnType<typeof userEvent.setup>,
+    from: string,
+    to: string,
+  ) => {
+    // Date inputs take a whole value at once; the click is a real user click.
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: from } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: to } });
+    await user.click(screen.getByRole("button", { name: "Show period" }));
+  };
+
   it("asks for the chosen period", async () => {
+    const user = userEvent.setup();
     mount();
     await screen.findByText(REPORT_NOTE);
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-01-01" } });
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-01-31" } });
-    fireEvent.click(screen.getByRole("button", { name: "Show period" }));
+    await choosePeriod(user, "2026-01-01", "2026-01-31");
     await waitFor(() =>
       expect(calls.at(-1)).toBe("/api/v1/medical-review/report?from=2026-01-01&to=2026-01-31"),
     );
+    expect(await screen.findByText(/30 days, compared with/)).toBeTruthy();
+  });
+
+  it("never shows the earlier period's figures under a new From/To while the new one loads", async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText(REPORT_NOTE);
+    expect(screen.getByRole("table", { name: "ADR figures" })).toBeTruthy();
+    let release: () => void = () => {};
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await choosePeriod(user, "2026-01-01", "2026-01-31");
+    expect(await screen.findByText(/Showing the earlier period .* is loading/)).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "ADR figures" })).toBeNull();
+    expect(screen.getByText("ADRs received").closest("div")?.textContent).toContain("—");
+    release();
+    expect(await screen.findByRole("table", { name: "ADR figures" })).toBeTruthy();
+    expect(screen.queryByText(/Showing the earlier period/)).toBeNull();
+  });
+
+  it("keeps the figures and offers Retry when a refresh of the same period fails", async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText(REPORT_NOTE);
+    failAfter = calls.length;
+    await user.click(screen.getByRole("button", { name: "Show period" }));
+    expect(await screen.findByText("report unavailable")).toBeTruthy();
+    expect(screen.getByRole("table", { name: "ADR figures" })).toBeTruthy();
+    failAfter = Number.POSITIVE_INFINITY;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText("report unavailable")).toBeNull());
+  });
+
+  it("says plainly that a new period could not be loaded, and labels the earlier figures with their own period", async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText(REPORT_NOTE);
+    failAfter = calls.length;
+    await choosePeriod(user, "2026-01-01", "2026-01-31");
+    expect(await screen.findByText("report unavailable")).toBeTruthy();
+    expect(screen.getByText(/Showing the earlier period .* could not be loaded/)).toBeTruthy();
+  });
+
+  it("uses section headings that name their regions", async () => {
+    mount();
+    await screen.findByText(REPORT_NOTE);
+    const region = screen.getByRole("region", { name: "ADR requests" });
+    expect(region.querySelector("h2")?.textContent).toBe("ADR requests");
   });
 
   it("shows the server's refusal with a Retry", async () => {
@@ -222,5 +294,10 @@ describe("M25 Medical Review Report", () => {
     mount();
     expect(await screen.findByText("report refused")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("writes exact money from the server's strings", async () => {
+    mount();
+    expect(await screen.findByText(/Opened 5 \(\$166\.00\)/)).toBeTruthy();
   });
 });

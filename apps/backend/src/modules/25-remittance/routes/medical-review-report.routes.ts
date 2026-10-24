@@ -6,13 +6,15 @@
 // Responses are `Cache-Control: no-store`.
 import { FormatRegistry, Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { actorOf } from "./actor";
+import { type PreHandler, actorOf } from "./actor";
 import { P } from "./guards";
 import { parse } from "./m25-typebox";
 import type { MedicalReviewReportService } from "./medical-review-report-service";
 
 export interface MedicalReviewReportRouteDeps {
   readonly medicalReviewReportService: MedicalReviewReportService;
+  /** Optional per-route cap (a report is a live aggregate): runs after the permission check. */
+  readonly rateLimit?: PreHandler;
 }
 
 const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,11 +32,13 @@ export const MedicalReviewReportQuerySchema = Type.Object({
 });
 
 const Figure = Type.Object({ value: NUM_OR_NULL, previous: NUM_OR_NULL, change: NUM_OR_NULL });
+const Money = Type.String({ pattern: "^-?\\d+\\.\\d{2}$" });
+const MoneyFigure = Type.Object({ value: Money, previous: Money, change: Money });
 const Reason = Type.Object({
   codeKind: Type.String(),
   code: Type.String(),
   count: Type.Integer(),
-  dollars: Type.Number(),
+  dollars: Money,
 });
 const Ranked = Type.Object({ rows: Type.Array(Reason), omitted: Type.Integer() });
 const Outcomes = Type.Array(Type.Object({ outcome: Type.String(), count: Type.Integer() }));
@@ -69,11 +73,11 @@ export const MedicalReviewReportSchema = Type.Object({
   }),
   denials: Type.Object({
     opened: Figure,
-    openedDollars: Figure,
+    openedDollars: MoneyFigure,
     macReasonAsTyped: Type.Object({ code: Type.String(), figure: Figure }),
     byReason: Ranked,
     byMonth: Type.Array(
-      Type.Object({ month: Type.String(), count: Type.Integer(), dollars: Type.Number() }),
+      Type.Object({ month: Type.String(), count: Type.Integer(), dollars: Money }),
     ),
     closureOutcomes: Outcomes,
   }),
@@ -110,6 +114,8 @@ export const MedicalReviewReportSchema = Type.Object({
   }),
   audits: Type.Object({ open: Type.Integer(), openWithNoRecordedDeadline: Type.Integer() }),
   playbookCoverage: Type.Object({
+    denialsSeen: Type.Integer(),
+    denialsWithoutPlaybook: Type.Integer(),
     reasonsSeen: Type.Integer(),
     reasonsWithoutPlaybook: Type.Integer(),
     withoutPlaybook: Ranked,
@@ -125,12 +131,10 @@ export function registerMedicalReviewReportRoutes(
   app.get(
     "/api/v1/medical-review/report",
     {
-      preHandler: [READ],
-      config: {
-        auditRead: {
-          none: "aggregate counts, rates, dollars and medians only; no patient, claim or person field",
-        },
-      },
+      preHandler: [READ, ...(deps.rateLimit ? [deps.rateLimit] : [])],
+      // The report carries no patient field, but who read leadership figures, for which window and entity, is still
+      // accountable: one aggregate read event per request (the window and entity are the query filter).
+      config: { auditRead: { resourceKind: "medical_review_report", list: true } },
     },
     async (request, reply) => {
       const q = parse(MedicalReviewReportQuerySchema, request.query);

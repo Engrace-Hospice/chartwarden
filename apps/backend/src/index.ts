@@ -305,6 +305,7 @@ import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
+  MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
@@ -5955,6 +5956,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // organization recorded one.
             medicalReviewReportService: buildMedicalReviewReportService(dbHandle.db, {
               tpe: m25TpeService,
+            }),
+            medicalReviewReportRateLimit: createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
+              keyPrefix: "m25-medical-review-report",
             }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the

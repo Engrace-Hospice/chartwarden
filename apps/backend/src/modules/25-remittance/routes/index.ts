@@ -86,4 +86,6 @@ export interface M25RouteServices {
   readonly playbookService?: PlaybookService;
   /** The leadership medical-review report (milestone 9a-2); the route mounts only when supplied. */
   readonly medicalReviewReportService?: MedicalReviewReportService;
+  /** Optional per-route rate limit for the report (built in the composition root from the shared store). */
+  readonly medicalReviewReportRateLimit?: (request: never, reply: never) => Promise<void>;
 }

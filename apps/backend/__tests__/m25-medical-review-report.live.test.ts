@@ -58,7 +58,9 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
 
   /** Seed helpers - rows go straight into the tables with explicit dates; the report only reads them. */
   async function adr(o: {
-    requested: number;
+    requested?: number;
+    requestedOn?: string;
+    denialId?: string;
     mac: string;
     pe?: string;
     state: string;
@@ -72,10 +74,10 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
     const org = o.org ?? ORG;
     const id = (
       await fx.admin.query(
-        `INSERT INTO adr_case (organization_id, provider_entity_id, claim_id, mac_name, review_type, state, requested_on,
+        `INSERT INTO adr_case (organization_id, provider_entity_id, claim_id, denial_case_id, mac_name, review_type, state, requested_on,
            window_days, window_source, window_verified, response_due_at, packet_manifest, filed_at, submitted_at,
            filing_channel, filing_confirmation_ref, reviewed_by_membership_id, reviewed_at, sent_to_review_by_membership_id)
-         VALUES ($1,$2,$3,$4,'adr',$5, CURRENT_DATE - $6::int, 30,'platform_default',$7, ${ago(o.dueAgo)},
+         VALUES ($1,$2,$3,$11::uuid,$4,'adr',$5, COALESCE($12::date, CURRENT_DATE - $6::int), 30,'platform_default',$7, ${ago(o.dueAgo)},
            CASE WHEN $8::int IS NOT NULL THEN '{}'::jsonb END,
            CASE WHEN $8::int IS NOT NULL THEN ${ago(o.filedAgo ?? 0)} END,
            CASE WHEN $8::int IS NOT NULL THEN ${ago(o.filedAgo ?? 0)} END,
@@ -88,11 +90,13 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
           o.claim ?? (org === ORG ? fx.claim1 : fx.claimB),
           o.mac,
           o.state,
-          o.requested,
+          o.requested ?? 0,
           o.verified,
           o.filedAgo ?? null,
           fx.memberA,
           memberA2,
+          o.denialId ?? null,
+          o.requestedOn ?? null,
         ],
       )
     ).rows[0].id as string;
@@ -107,7 +111,9 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
     return id;
   }
   async function denial(o: {
-    openedAgo: number;
+    openedAgo?: number;
+    openedAt?: string;
+    claim?: string;
     carc: string;
     rarc?: string;
     mac?: string;
@@ -122,12 +128,12 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
       await fx.admin.query(
         `INSERT INTO denial_case (organization_id, provider_entity_id, claim_id, source_evv_aggregator_submission_id, carc_code,
            rarc_code, mac_reason_code, category, source, state, dollar_value, taxonomy_status, opened_at, closed_at, closure_outcome)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'denial','evv_aggregator_rejection',$8,$9,'mapped', ${ago(o.openedAgo)},
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'denial','evv_aggregator_rejection',$8,$9,'mapped', COALESCE($12::timestamptz, ${ago(o.openedAgo ?? 0)}),
            CASE WHEN $10::int IS NOT NULL THEN ${ago(o.closedAgo ?? 0)} END, $11) RETURNING id`,
         [
           org,
           o.pe ?? (org === ORG ? fx.pe1 : fx.peB),
-          org === ORG ? fx.claim1 : fx.claimB,
+          o.claim ?? (org === ORG ? fx.claim1 : fx.claimB),
           randomUUID(),
           o.carc,
           o.rarc ?? null,
@@ -136,6 +142,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
           o.dollars,
           o.closedAgo ?? null,
           o.closure ?? null,
+          o.openedAt ?? null,
         ],
       )
     ).rows[0].id as string;
@@ -144,6 +151,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
     tier: string;
     state: string;
     submittedAgo?: number;
+    submittedAt?: string;
     deadlineAhead: number;
     decidedAgo?: number;
     outcome?: string;
@@ -156,7 +164,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
       deadline: new Date(Date.now() + o.deadlineAhead * 864e5).toISOString(),
     });
     await fx.admin.query(
-      `UPDATE appeal_case SET state = '${o.state}', submitted_at = ${o.submittedAgo === undefined ? "NULL" : ago(o.submittedAgo)},
+      `UPDATE appeal_case SET state = '${o.state}', submitted_at = ${o.submittedAt ? `'${o.submittedAt}'::timestamptz` : o.submittedAgo === undefined ? "NULL" : ago(o.submittedAgo)},
          decided_at = ${o.decidedAgo === undefined ? "NULL" : ago(o.decidedAgo)}, decision_outcome = $2 WHERE id=$1`,
       [id, o.outcome ?? null],
     );
@@ -373,16 +381,20 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
   it("computes exact denial figures: totals, 56900 as typed, by reason, by month and closure outcome", async () => {
     const r = await report();
     expect(r.denials.opened).toEqual({ value: 5, previous: 1, change: 4 });
-    expect(r.denials.openedDollars).toEqual({ value: 166, previous: 20, change: 146 });
+    expect(r.denials.openedDollars).toEqual({
+      value: "166.00",
+      previous: "20.00",
+      change: "146.00",
+    });
     expect(r.denials.macReasonAsTyped).toMatchObject({
       code: "56900",
       figure: { value: 1, previous: 0 },
     });
     expect(r.denials.byReason.rows).toEqual([
-      { codeKind: "carc", code: "50", count: 2, dollars: 150 },
-      { codeKind: "rarc", code: "N1", count: 1, dollars: 10 },
-      { codeKind: "carc", code: "97", count: 1, dollars: 5 },
-      { codeKind: "mac_reason", code: "56900", count: 1, dollars: 1 },
+      { codeKind: "carc", code: "50", count: 2, dollars: "150.00" },
+      { codeKind: "rarc", code: "N1", count: 1, dollars: "10.00" },
+      { codeKind: "carc", code: "97", count: 1, dollars: "5.00" },
+      { codeKind: "mac_reason", code: "56900", count: 1, dollars: "1.00" },
     ]);
     expect(r.denials.byMonth.reduce((n, m) => n + m.count, 0)).toBe(5);
     expect(r.denials.closureOutcomes).toEqual(
@@ -445,6 +457,152 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
     ]);
   });
 
+  it("counts every instant on a window seam exactly once (current, previous, neither), with a pinned clock", async () => {
+    const day = (d: string) => `${d}T00:00:00.000Z`;
+    const w = { from: "2026-03-02", to: "2026-03-11" }; // 10 days; previous = 2026-02-20 .. 2026-03-01
+    const at = {
+      prevStartMinus1: "2026-02-19T23:59:59.999Z", // neither
+      prevStart: day("2026-02-20"), // previous
+      prevEnd: "2026-03-01T23:59:59.999Z", // previous
+      start: day("2026-03-02"), // current
+      end: "2026-03-11T23:59:59.999Z", // current
+      after: day("2026-03-12"), // neither
+    };
+    for (const instant of Object.values(at))
+      await denial({ openedAt: instant, carc: "81", dollars: 1 });
+    for (const [name, instant] of Object.entries(at)) {
+      const appealId = await fx.mkAppeal({
+        claimId: fx.claim1,
+        pe: fx.pe1,
+        tier: "redetermination",
+      });
+      await fx.admin.query(
+        "UPDATE appeal_case SET state='submitted', submitted_at=$2::timestamptz WHERE id=$1",
+        [appealId, instant],
+      );
+      void name;
+    }
+    for (const requestedOn of [
+      "2026-02-19",
+      "2026-02-20",
+      "2026-03-01",
+      "2026-03-02",
+      "2026-03-11",
+      "2026-03-12",
+    ]) {
+      await adr({
+        requestedOn,
+        mac: "MAC-SEAM",
+        state: "in_assembly",
+        dueAgo: -10,
+        verified: true,
+      });
+    }
+    const pinned = buildMedicalReviewReportService(fx.handle.db, {
+      now: () => new Date("2026-03-20T12:00:00Z"),
+    });
+    const r = await pinned.getReport(fx.actor(), { ...w });
+    expect(r.window.previous).toEqual({ from: "2026-02-20", to: "2026-03-01" });
+    expect(r.generatedAt).toBe("2026-03-20T12:00:00.000Z");
+    expect(r.denials.opened).toMatchObject({ value: 2, previous: 2 });
+    expect(r.appeals.filed).toMatchObject({ value: 2, previous: 2 });
+    expect(r.adrs.received).toMatchObject({ value: 2, previous: 2 });
+    // A window ending after the pinned clock's day is refused whatever the real date is.
+    expect(
+      await fx.refused(pinned.getReport(fx.actor(), { from: "2026-03-10", to: "2026-03-21" })),
+    ).toMatchObject({
+      code: "REPORT_WINDOW_INVALID",
+    });
+  });
+
+  it("decides playbook coverage per denial with the panel's MAC and code matching", async () => {
+    const pb = buildDrizzlePlaybookService(fx.handle.db);
+    const mk = async (code: string, macName?: string) => {
+      const created = await pb.createPlaybook(fx.actor(), {
+        codeKind: "carc",
+        code,
+        ...(macName ? { macName } : {}),
+        title: `CARC ${code}`,
+        summary: "s",
+        sourceNote: "fixture",
+        steps: [{ key: "a", text: "a" }],
+      } as never);
+      await pb.publishVersion(
+        { ...fx.actor(), userId: userA2, membershipId: memberA2 },
+        created.versionId,
+        1,
+      );
+    };
+    await mk("70", "mac-x"); // MAC-specific, written in lower case
+    await mk("72"); // any MAC
+    const w = { from: "2026-01-05", to: "2026-01-09" };
+    const opened = "2026-01-06T10:00:00.000Z";
+    // CARC 70: nine denials under MAC-X (covered) and one under MAC-Y (uncovered).
+    for (let i = 0; i < 9; i++) {
+      const d = await denial({ openedAt: opened, carc: "70", dollars: 1 });
+      await adr({
+        denialId: d,
+        mac: "MAC-X",
+        state: "in_assembly",
+        dueAgo: -10,
+        verified: true,
+        requested: 400,
+      });
+    }
+    const other = await denial({ openedAt: opened, carc: "70", dollars: 1 });
+    await adr({
+      denialId: other,
+      mac: "MAC-Y",
+      state: "in_assembly",
+      dueAgo: -10,
+      verified: true,
+      requested: 400,
+    });
+    // CARC 70 with no ADR at all: no MAC, so a MAC-specific playbook does not apply.
+    await denial({ openedAt: opened, carc: "70", dollars: 1 });
+    // The MAC may come from an unlinked ADR on the same claim (the panel's fallback).
+    const viaClaim = await denial({ openedAt: opened, carc: "70", dollars: 1, claim: fx.claim1b });
+    void viaClaim;
+    await adr({
+      mac: "MAC-X",
+      claim: fx.claim1b,
+      state: "in_assembly",
+      dueAgo: -10,
+      verified: true,
+      requested: 400,
+    });
+    // An any-MAC playbook covers whatever the MAC.
+    await denial({ openedAt: opened, carc: "72", dollars: 1 });
+    const pinned = buildMedicalReviewReportService(fx.handle.db, {
+      now: () => new Date("2026-01-20T12:00:00Z"),
+    });
+    const r = await pinned.getReport(fx.actor(), w);
+    const cov = r.playbookCoverage;
+    expect(cov.denialsSeen).toBe(13);
+    expect(cov.denialsWithoutPlaybook).toBe(2); // MAC-Y and no-ADR
+    expect(cov.reasonsSeen).toBe(2);
+    expect(cov.reasonsWithoutPlaybook).toBe(1); // one reason, with covered AND uncovered denials
+    expect(cov.withoutPlaybook.rows).toEqual([
+      { codeKind: "carc", code: "70", count: 2, dollars: "2.00" },
+    ]);
+    // The same code is listed once in the by-reason table, with all its denials.
+    expect(r.denials.byReason.rows.find((x) => x.code === "70")).toMatchObject({ count: 12 });
+    // Every figure agrees with what the panel resolves for those denials.
+    const panelView = await pb.getDenialPlaybook(fx.actor(), other);
+    expect(panelView.playbook).toBeNull();
+  });
+
+  it("passes the entity filter into the TPE section so a filtered report is not truncated by other entities", async () => {
+    await fx.admin.query(
+      "INSERT INTO tpe_program (organization_id, provider_entity_id, mac_name, opened_on, state) VALUES ($1,$2,'MAC-PE2',CURRENT_DATE - 5,'active')",
+      [ORG, fx.pe2],
+    );
+    const r = await report(fx.actor(), { providerEntityId: fx.pe2 });
+    expect(r.tpe.active.map((p) => p.macName)).toEqual(["MAC-PE2"]);
+    expect(r.tpe.truncated).toBe(false);
+    await fx.admin.query("DELETE FROM tpe_program WHERE mac_name='MAC-PE2'");
+  });
+
   it("stops counting a reason as covered once its playbook is retired", async () => {
     const pb = buildDrizzlePlaybookService(fx.handle.db);
     const [first] = (await pb.listPlaybooks(fx.actor())).items;
@@ -460,7 +618,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
   });
 
   it("reads zeros and nulls where there is no data, never an invented rate", async () => {
-    const r = await report(fx.actor(), { from: daysAgo(300), to: daysAgo(290) });
+    const r = await report(fx.actor(), { from: daysAgo(700), to: daysAgo(690) });
     expect(r.adrs.received.value).toBe(0);
     expect(r.adrs.onOrBeforeDueShareOfFiled).toEqual({ value: null, previous: null, change: null });
     expect(r.adrs.medianDaysToFile.value).toBeNull();
@@ -471,7 +629,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
   it("shows another tenant none of this data and sees only its own", async () => {
     const b = await report(fx.actor(ORG_B));
     expect(b.adrs.received.value).toBe(1);
-    expect(b.denials.openedDollars.value).toBe(999);
+    expect(b.denials.openedDollars.value).toBe("999.00");
     expect(b.appeals.filed.value).toBe(0);
     expect(b.audits).toEqual({ open: 0, openWithNoRecordedDeadline: 0 });
     expect(b.tpe.active).toEqual([]);
@@ -574,6 +732,14 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
       expect(ok.statusCode).toBe(200);
       expect(ok.headers["cache-control"]).toBe("no-store");
       expect(ok.json().adrs.received.value).toBe(4);
+      // One aggregate read event per request is recorded (actor, resource kind; the window is the query filter).
+      const events = (
+        await fx.admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND event_type LIKE 'medical_review_report.%'",
+          [ORG],
+        )
+      ).rows[0].n as number;
+      expect(events).toBeGreaterThanOrEqual(1);
       expect(ok.json().tpe.available).toBe(false); // this app was built without the TPE reader
       expect(
         (
@@ -621,7 +787,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
       worker: await mkRole("mr-worker", ["denial.read", "appeal.read"]),
     };
     const migration = readFileSync(
-      join(fx.migrationsDir, "1208_m25_medical_review_report_permission.sql"),
+      join(fx.migrationsDir, "1252_m25_medical_review_report_permission.sql"),
       "utf8",
     );
     await fx.admin.query(migration);

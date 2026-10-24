@@ -95,19 +95,42 @@ export function comparePeriods(value: number | null, previous: number | null): P
   return { value, previous, change: value === null || previous === null ? null : value - previous };
 }
 
+/** Integer cents -> "1234.50": exact (no float arithmetic), so a sum of many amounts never drifts. */
+export function centsToDollars(cents: number): string {
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(Math.trunc(cents));
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+}
+
+export interface MoneyFigure {
+  readonly value: string;
+  readonly previous: string;
+  readonly change: string;
+}
+
+/** Two periods of integer cents as exact dollar strings with the plain difference. */
+export function compareMoney(cents: number, previousCents: number): MoneyFigure {
+  return {
+    value: centsToDollars(cents),
+    previous: centsToDollars(previousCents),
+    change: centsToDollars(cents - previousCents),
+  };
+}
+
 export interface RankedRow {
   readonly key: string;
   readonly count: number;
-  readonly dollars: number;
+  /** Integer cents (never a float), so ranking and totals are exact. */
+  readonly cents: number;
 }
 
-/** Highest count first, then dollars, then key (stable). `omitted` counts the rows not shown. */
+/** Highest count first, then cents, then key (stable). `omitted` counts the rows not shown. */
 export function topN<T extends RankedRow>(
   rows: readonly T[],
   limit: number,
 ): { readonly shown: T[]; readonly omitted: number } {
   const sorted = [...rows].sort(
-    (a, b) => b.count - a.count || b.dollars - a.dollars || (a.key < b.key ? -1 : 1),
+    (a, b) => b.count - a.count || b.cents - a.cents || (a.key < b.key ? -1 : 1),
   );
   return { shown: sorted.slice(0, limit), omitted: Math.max(0, sorted.length - limit) };
 }

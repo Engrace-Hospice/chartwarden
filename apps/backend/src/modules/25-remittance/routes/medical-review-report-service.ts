@@ -9,10 +9,13 @@ import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import {
+  type MoneyFigure,
   NON_RESPONSE_MAC_REASON_CODE,
   type PeriodFigure,
   REPORT_TOP_REASONS,
   type ReportWindow,
+  centsToDollars,
+  compareMoney,
   comparePeriods,
   rate,
   resolveReportWindow,
@@ -47,8 +50,10 @@ export const REPORT_TPE_PROGRAM_CAP = 200;
 export interface ReasonLine {
   readonly codeKind: string;
   readonly code: string;
+  /** Denials (all of them for "by reason"; only the ones the panel finds no playbook for in the coverage list). */
   readonly count: number;
-  readonly dollars: number;
+  /** Exact dollars as a string, "1234.50". */
+  readonly dollars: string;
 }
 
 export interface MedicalReviewReport {
@@ -74,11 +79,11 @@ export interface MedicalReviewReport {
   };
   readonly denials: {
     readonly opened: PeriodFigure;
-    readonly openedDollars: PeriodFigure;
+    readonly openedDollars: MoneyFigure;
     /** Denials whose MAC reason field was typed as this code: a label count, shown apart from the ADR non-responses. */
     readonly macReasonAsTyped: { readonly code: string; readonly figure: PeriodFigure };
     readonly byReason: { readonly rows: readonly ReasonLine[]; readonly omitted: number };
-    readonly byMonth: readonly { month: string; count: number; dollars: number }[];
+    readonly byMonth: readonly { month: string; count: number; dollars: string }[];
     readonly closureOutcomes: readonly { outcome: string; count: number }[];
   };
   readonly appeals: {
@@ -116,7 +121,11 @@ export interface MedicalReviewReport {
   };
   readonly audits: { readonly open: number; readonly openWithNoRecordedDeadline: number };
   readonly playbookCoverage: {
+    readonly denialsSeen: number;
+    /** Denials the panel would find no matching playbook for (same MAC and code matching as the panel). */
+    readonly denialsWithoutPlaybook: number;
     readonly reasonsSeen: number;
+    /** Reasons with AT LEAST ONE denial lacking a matching playbook. */
     readonly reasonsWithoutPlaybook: number;
     readonly withoutPlaybook: { readonly rows: readonly ReasonLine[]; readonly omitted: number };
   };
@@ -157,9 +166,15 @@ const sumBy = <T>(rows: readonly T[], pick: (r: T) => number): number =>
 
 /** Group rows to one line per (kind, code), then rank. */
 function rankReasons(
-  rows: readonly { codeKind: string; code: string; count: number; dollars: number }[],
-): { rows: ReasonLine[]; omitted: number } {
-  const merged = new Map<string, ReasonLine>();
+  rows: readonly { codeKind: string; code: string; count: number; cents: number }[],
+): {
+  rows: ReasonLine[];
+  omitted: number;
+} {
+  const merged = new Map<
+    string,
+    { codeKind: string; code: string; count: number; cents: number }
+  >();
   for (const r of rows) {
     const key = `${r.codeKind}:${r.code}`;
     const cur = merged.get(key);
@@ -167,7 +182,7 @@ function rankReasons(
       codeKind: r.codeKind,
       code: r.code,
       count: (cur?.count ?? 0) + r.count,
-      dollars: (cur?.dollars ?? 0) + r.dollars,
+      cents: (cur?.cents ?? 0) + r.cents,
     });
   }
   const ranked = topN(
@@ -175,18 +190,26 @@ function rankReasons(
     REPORT_TOP_REASONS,
   );
   return {
-    rows: ranked.shown.map(({ key: _key, ...line }) => line),
+    rows: ranked.shown.map(({ key: _key, cents, ...line }) => ({
+      ...line,
+      dollars: centsToDollars(cents),
+    })),
     omitted: ranked.omitted,
   };
 }
 
 export function buildMedicalReviewReportService(
   db: DbClient,
-  deps: { readonly tpe?: Pick<TpeService, "listPrograms"> } = {},
+  deps: {
+    readonly tpe?: Pick<TpeService, "listPrograms">;
+    /** The clock; pinned in tests so a window boundary is deterministic. */
+    readonly now?: () => Date;
+  } = {},
 ): MedicalReviewReportService {
   return {
     async getReport(actor, query) {
-      const resolved = resolveReportWindow(query, new Date());
+      const now = deps.now ?? (() => new Date());
+      const resolved = resolveReportWindow(query, now());
       if (!resolved.ok) {
         throw new ChartWardenError("REPORT_WINDOW_INVALID", REFUSAL_MESSAGE[resolved.reason], 422);
       }
@@ -253,7 +276,7 @@ export function buildMedicalReviewReportService(
       const share = (c: number | null, p: number | null): PeriodFigure => comparePeriods(c, p);
       return {
         window: { from: w.from, to: w.to, days: w.days, previous: w.previous },
-        generatedAt: new Date().toISOString(),
+        generatedAt: now().toISOString(),
         adrs: {
           received: share(body.aC.received, body.aP.received),
           filed: share(body.aC.filed, body.aP.filed),
@@ -274,13 +297,17 @@ export function buildMedicalReviewReportService(
         },
         denials: {
           opened: share(body.dC.opened, body.dP.opened),
-          openedDollars: share(body.dC.dollars, body.dP.dollars),
+          openedDollars: compareMoney(body.dC.cents, body.dP.cents),
           macReasonAsTyped: {
             code: NON_RESPONSE_MAC_REASON_CODE,
             figure: share(body.dC.macReasonAsTyped, body.dP.macReasonAsTyped),
           },
           byReason: rankReasons(body.reasons),
-          byMonth: body.months,
+          byMonth: body.months.map((m) => ({
+            month: m.month,
+            count: m.count,
+            dollars: centsToDollars(m.cents),
+          })),
           closureOutcomes: body.closures,
         },
         appeals: {
@@ -309,6 +336,8 @@ export function buildMedicalReviewReportService(
         tpe,
         audits: body.audits,
         playbookCoverage: {
+          denialsSeen: sumBy(body.reasons, (r) => r.count),
+          denialsWithoutPlaybook: sumBy(uncovered, (r) => r.count),
           reasonsSeen: seenKeys.size,
           reasonsWithoutPlaybook: uncoveredKeys.size,
           withoutPlaybook: rankReasons(uncovered),
@@ -324,10 +353,12 @@ async function tpeSection(
   providerEntityId: string | undefined,
 ): Promise<MedicalReviewReport["tpe"]> {
   if (!tpe) return { available: false, truncated: false, byState: [], active: [] };
-  const page = await tpe.listPrograms(actor, {}, REPORT_TPE_PROGRAM_CAP);
-  const items = providerEntityId
-    ? page.items.filter((p) => p.providerEntityId === providerEntityId)
-    : page.items;
+  const page = await tpe.listPrograms(
+    actor,
+    providerEntityId ? { providerEntityId } : {},
+    REPORT_TPE_PROGRAM_CAP,
+  );
+  const items = page.items;
   const counts = new Map<string, number>();
   for (const p of items) counts.set(p.state, (counts.get(p.state) ?? 0) + 1);
   return {

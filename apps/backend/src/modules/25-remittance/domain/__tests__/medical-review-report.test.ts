@@ -3,6 +3,8 @@
 import { describe, expect, it } from "vitest";
 import {
   REPORT_MAX_RANGE_DAYS,
+  centsToDollars,
+  compareMoney,
   comparePeriods,
   median,
   rate,
@@ -83,13 +85,34 @@ describe("comparePeriods", () => {
 describe("topN", () => {
   it("ranks by count then dollars then key, and keeps the rest as a count", () => {
     const rows = [
-      { key: "b", count: 2, dollars: 10 },
-      { key: "a", count: 2, dollars: 10 },
-      { key: "c", count: 5, dollars: 1 },
-      { key: "d", count: 2, dollars: 99 },
+      { key: "b", count: 2, cents: 10 },
+      { key: "a", count: 2, cents: 10 },
+      { key: "c", count: 5, cents: 1 },
+      { key: "d", count: 2, cents: 99 },
     ];
     const r = topN(rows, 3);
     expect(r.shown.map((x) => x.key)).toEqual(["c", "d", "a"]);
     expect(r.omitted).toBe(1);
+  });
+});
+
+describe("money is exact", () => {
+  it("formats integer cents without float drift", () => {
+    expect(centsToDollars(0)).toBe("0.00");
+    expect(centsToDollars(5)).toBe("0.05");
+    expect(centsToDollars(123456)).toBe("1234.56");
+    expect(centsToDollars(-250)).toBe("-2.50");
+    // 0.1 + 0.2 style sums: ten amounts of 10 cents are exactly one dollar.
+    expect(centsToDollars(Array.from({ length: 10 }, () => 10).reduce((a, b) => a + b, 0))).toBe(
+      "1.00",
+    );
+  });
+  it("compares two periods as strings", () => {
+    expect(compareMoney(16600, 2000)).toEqual({
+      value: "166.00",
+      previous: "20.00",
+      change: "146.00",
+    });
+    expect(compareMoney(0, 150)).toEqual({ value: "0.00", previous: "1.50", change: "-1.50" });
   });
 });

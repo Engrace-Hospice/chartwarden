@@ -93,6 +93,9 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   if (services.medicalReviewReportService) {
     registerMedicalReviewReportRoutes(app, {
       medicalReviewReportService: services.medicalReviewReportService,
+      ...(services.medicalReviewReportRateLimit
+        ? { rateLimit: services.medicalReviewReportRateLimit as never }
+        : {}),
     });
   }
 }

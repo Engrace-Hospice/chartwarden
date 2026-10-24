@@ -162704,34 +162704,16 @@
                           ],
                           "properties": {
                             "value": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "pattern": "^-?\\d+\\.\\d{2}$",
+                              "type": "string"
                             },
                             "previous": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "pattern": "^-?\\d+\\.\\d{2}$",
+                              "type": "string"
                             },
                             "change": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "pattern": "^-?\\d+\\.\\d{2}$",
+                              "type": "string"
                             }
                           }
                         },
@@ -162815,7 +162797,8 @@
                                     "type": "integer"
                                   },
                                   "dollars": {
-                                    "type": "number"
+                                    "pattern": "^-?\\d+\\.\\d{2}$",
+                                    "type": "string"
                                   }
                                 }
                               }
@@ -162842,7 +162825,8 @@
                                 "type": "integer"
                               },
                               "dollars": {
-                                "type": "number"
+                                "pattern": "^-?\\d+\\.\\d{2}$",
+                                "type": "string"
                               }
                             }
                           }
@@ -163214,11 +163198,19 @@
                     "playbookCoverage": {
                       "type": "object",
                       "required": [
+                        "denialsSeen",
+                        "denialsWithoutPlaybook",
                         "reasonsSeen",
                         "reasonsWithoutPlaybook",
                         "withoutPlaybook"
                       ],
                       "properties": {
+                        "denialsSeen": {
+                          "type": "integer"
+                        },
+                        "denialsWithoutPlaybook": {
+                          "type": "integer"
+                        },
                         "reasonsSeen": {
                           "type": "integer"
                         },
@@ -163253,7 +163245,8 @@
                                     "type": "integer"
                                   },
                                   "dollars": {
-                                    "type": "number"
+                                    "pattern": "^-?\\d+\\.\\d{2}$",
+                                    "type": "string"
                                   }
                                 }
                               }
