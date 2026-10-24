@@ -41,12 +41,12 @@ import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { mergePatients } from "../src/modules/05-patient/merges-db";
 import { registerPatientWristbandRoutes } from "../src/modules/05-patient/routes/wristband-routes";
 import { buildPatientWristbandVerifier } from "../src/modules/05-patient/wristband-verifier";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { installPermissiveConsentAbac } from "./consent-abac-harness";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";
 const ORG_B = "bbbbbbbb-0000-4000-8000-0000000000b1";
 const NURSE = "d0000000-0000-4000-8000-000000000001";

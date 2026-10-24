@@ -54,17 +54,11 @@ import {
   buildM34WorkerDeps,
   buildM34WorkerPorts,
 } from "../src/modules/34-saas-tenant-platform/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "33333333-3333-3333-3333-333333333333";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-4444-444444444444";
 

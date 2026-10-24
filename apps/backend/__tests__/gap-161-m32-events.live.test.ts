@@ -33,19 +33,11 @@ import {
   createDrizzleAiHallucinationReportStore,
   createDrizzleAiKillSwitchStore,
 } from "../src/modules/32-ai-platform/safety/store-drizzle";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const JOB_ID = "m32-events-live-test";
 
 const ORG = "11111111-1111-4111-8111-111111116101";

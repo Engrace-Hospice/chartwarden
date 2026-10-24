@@ -37,7 +37,7 @@ import { registerDenialRoutes } from "../src/modules/25-remittance/routes/denial
 import { DenialWorklistItemSchema } from "../src/modules/25-remittance/routes/m25-typebox";
 import { buildDrizzleM25ReadService } from "../src/modules/25-remittance/routes/read-service-drizzle";
 import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) FormatRegistry.Set("uuid", (v) => UUID_RE.test(v));
@@ -47,7 +47,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PERMISSIONS = ["denial.worklist.read", "denial.read"];

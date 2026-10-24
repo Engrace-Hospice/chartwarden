@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // Also proves 2FA-at-rest encryption (ADR-0034) and the password-reset flow (token issuance via the
 // sendResetPassword seam → resetPassword → credential rotation). Passkey enrollment is out of scope
 // (a browser WebAuthn ceremony — not CI-testable without a virtual authenticator).
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
@@ -43,13 +43,7 @@ function asTenantRole<T extends { transaction: (...a: any[]) => any }>(
   });
 }
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "mdm_canonical_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 
 describe.skipIf(!DB_URL)(
   "Better Auth live — email+password over the reconciled schema (AUTH-T06)",

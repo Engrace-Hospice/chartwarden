@@ -21,11 +21,11 @@ import { tenantSessionClassGuard } from "../src/bootstrap/tenant-session-class";
 import { createDbTenantAppOrigin } from "../src/bootstrap/tenant-app-origin-db";
 import { createDbPublicTenantLookups } from "../src/modules/02-identity/public-tenant-db";
 import { registerPublicTenantRoutes } from "../src/modules/02-identity/routes/public-tenant-routes";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 const BASE = "chartwarden.com";
 
 describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {

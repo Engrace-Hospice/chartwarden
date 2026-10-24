@@ -17,19 +17,11 @@ import { createPortalPhiCipher } from "../src/modules/31-portal/portal-crypto";
 import { createPortalInvitations } from "../src/modules/31-portal/provisioning/invitations";
 import { createPortalPreferences } from "../src/modules/31-portal/provisioning/preferences";
 import { createPortalUploads } from "../src/modules/31-portal/provisioning/uploads";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "11111111-1111-4111-8111-111111113101";
 const PDF = Buffer.from("%PDF-1.7 a small portal upload");
 

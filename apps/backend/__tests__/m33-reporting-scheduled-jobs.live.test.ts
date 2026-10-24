@@ -99,18 +99,12 @@ import {
   registerM33Workers,
 } from "../src/modules/33-reporting/index";
 import { M33_QUEUES } from "../src/modules/33-reporting/jobs/index";
+import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-];
+const ROLES = LIVE_DROP_ROLES;
 
 const ORG = "44444444-4444-4444-4444-444444444444";
 const USER = "44444444-4444-4444-4444-444444444401";

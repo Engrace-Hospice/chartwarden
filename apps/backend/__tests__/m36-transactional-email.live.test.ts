@@ -54,19 +54,11 @@ import {
 } from "../src/modules/02-identity/index";
 import { createLinkDelivery } from "../src/modules/02-identity/link-delivery";
 import { bindTransactionalEmail } from "../src/modules/36-messaging/transactional-email-binding";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORIGIN = "http://localhost:3000";
 const SERVER_TOKEN = "pm-live-SERVER-TOKEN-0123456789abcdef";
 const FROM = "no-reply@mail.chartwarden.health";

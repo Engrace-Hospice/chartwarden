@@ -70,21 +70,12 @@ import {
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { countHoldOverlayMessages } from "../src/modules/36-messaging/jobs/retention-hold-sql";
 import { runRetentionScanForOrg } from "../src/modules/36-messaging/jobs/retention-scan";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "chartwarden_destruction",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG = "33333333-3333-4333-8333-3333000a9601";
 const ORG_2 = "44444444-4444-4444-8444-4444000a9602";
 const ORIGIN = "http://localhost:3000";

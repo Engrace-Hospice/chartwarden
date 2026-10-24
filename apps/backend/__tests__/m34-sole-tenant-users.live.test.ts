@@ -30,18 +30,11 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildSoleTenantUserResolver } from "../src/bootstrap/sole-tenant-user-resolver";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_platform_login",
-  "chartwarden_platform",
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "tenant_platform_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const JOB_ID = "m34-shred-sole-tenant-resolver-live-test";
 
 const ORG_SHREDDED = "11111111-1111-4111-8111-111111113401";

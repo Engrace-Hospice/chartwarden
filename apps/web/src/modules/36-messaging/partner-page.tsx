@@ -30,6 +30,7 @@ export const PARTNER_ABSOLUTE_MS = EXTERNAL_SESSION_MAX_HOURS * 3_600_000;
 export const PARTNER_POLL_MS = 15_000;
 const WATCH_MS = 10_000;
 const PAGE_TITLE = "Secure message";
+const CODE_INPUT_ID = "partner-code";
 const CODE_PATTERN = /^\d{8}$/;
 const INPUT_EVENTS = [
   "pointerdown",
@@ -236,10 +237,12 @@ export function PartnerPage(): JSX.Element {
     };
   }, []);
 
-  // An unmount ends every in-flight answer's right to write.
+  // An unmount ends every in-flight answer's right to write, and the bearer does not outlive the component.
   useEffect(
     () => () => {
       sessionGen.current += 1;
+      refreshSeq.current += 1;
+      held.current = null;
     },
     [],
   );
@@ -285,9 +288,15 @@ export function PartnerPage(): JSX.Element {
     };
   }, [phase, end, refresh]);
 
-  // Move focus to the new step's heading so a keyboard or screen-reader user lands on it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the focus move is keyed on the step (phase), which the effect body does not read
+  // Move focus to the new step's heading so a keyboard or screen-reader user lands on it; after a failed code check, back to the code input.
+  const previousPhase = useRef<Phase>(phase);
   useEffect(() => {
+    const was = previousPhase.current;
+    previousPhase.current = phase;
+    if (was === "verifying" && phase === "code") {
+      document.getElementById(CODE_INPUT_ID)?.focus();
+      return;
+    }
     headingRef.current?.focus();
   }, [phase]);
 
@@ -353,7 +362,7 @@ export function PartnerPage(): JSX.Element {
         {notice && !gate ? <InlineAlert tone="error">{notice}</InlineAlert> : null}
         {gate ? (
           <TextField
-            id="partner-code"
+            id={CODE_INPUT_ID}
             label="Verification code"
             inputMode="numeric"
             autoComplete="one-time-code"

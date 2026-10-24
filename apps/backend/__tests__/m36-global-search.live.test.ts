@@ -95,7 +95,7 @@ import {
   CHANNEL_VISIBILITY_READ_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 // F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
 process.env.CHARTWARDEN_GLOBAL_SEARCH_FLOOR_MS = "0";
@@ -103,12 +103,7 @@ process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0279";
 const ORG_B = "22222222-2222-4222-8222-2222000f0279";

@@ -30,11 +30,11 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/index";
 import { runNppesSyncJob } from "../src/modules/29-external-interfaces/nppes/cron-workers";
 import { createDbNppesNpiSource } from "../src/modules/40-mdm/index";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = LIVE_DROP_ROLES;
 
 // Luhn-valid NPIs (the client short-circuits an invalid one as `invalid_format` without spending a
 // request, so a made-up number would silently never reach the stub).

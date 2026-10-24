@@ -58,17 +58,11 @@ import {
 import { mountM16Routes } from "../src/modules/16-bereavement/routes/mount";
 import { createBereavementOutreachConsentProbe } from "../src/modules/39-consent/bereavement-outreach-consent-probe";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
-import { appRoleConnectionString } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "report_writer",
-];
+const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "a1600000-0000-4000-8000-0000000000a1";
 const ORG_B = "b1600000-0000-4000-8000-0000000000b1";
 const NARRATIVE =
