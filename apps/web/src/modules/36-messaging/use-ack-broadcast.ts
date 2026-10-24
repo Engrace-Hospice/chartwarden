@@ -30,8 +30,11 @@ export function useAckBroadcast() {
   const [mine, setMine] = useState<MineView>({ status: "loading" });
   const [oversee, setOversee] = useState<OverseeView>({ status: "loading" });
   const [ackError, setAckError] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const latest = useRef(0);
+  const hasData = useRef(false);
+  const ackInFlight = useRef(false);
 
   const load = useCallback(async () => {
     if (!client) {
@@ -39,27 +42,55 @@ export function useAckBroadcast() {
       setOversee({ status: "hidden" });
       return;
     }
-    const mineRun = ++latest.current;
+    const run = ++latest.current;
+    const current = (): boolean => run === latest.current;
+    // Both reads start together; the oversight list is dropped when the caller's own list says off or denied.
+    const overseeRead = client.GET("/api/v1/messaging/ack-broadcasts").then(
+      (res) => ({ ok: true as const, res }),
+      () => ({ ok: false as const }),
+    );
+    let mineEnded = false;
+    const mineFailed = (): void => {
+      if (hasData.current) setRefreshFailed(true);
+      else setMine({ status: "error" });
+    };
     try {
       const res = await client.GET("/api/v1/messaging/ack-broadcasts/mine");
-      if (mineRun !== latest.current) return;
+      if (!current()) return;
       const code = res.response?.status ?? 0;
-      if (res.data) setMine({ status: "ready", items: res.data.items });
-      else if (code === 404) setMine({ status: "off" });
-      else if (code === 401 || code === 403) setMine({ status: "denied", code });
-      else setMine({ status: "error" });
+      if (res.data) {
+        hasData.current = true;
+        setRefreshFailed(false);
+        setMine({ status: "ready", items: res.data.items });
+      } else if (code === 404) {
+        mineEnded = true;
+        hasData.current = false;
+        setMine({ status: "off" });
+      } else if (code === 401 || code === 403) {
+        mineEnded = true;
+        hasData.current = false;
+        setMine({ status: "denied", code });
+      } else mineFailed();
     } catch {
-      if (mineRun === latest.current) setMine({ status: "error" });
+      if (!current()) return;
+      mineFailed();
     }
-    try {
-      const res = await client.GET("/api/v1/messaging/ack-broadcasts");
-      if (mineRun !== latest.current) return;
-      const code = res.response?.status ?? 0;
-      if (res.data) setOversee({ status: "ready", broadcasts: res.data.broadcasts });
-      else setOversee({ status: code === 403 || code === 404 || code === 401 ? "hidden" : "error" });
-    } catch {
-      if (mineRun === latest.current) setOversee({ status: "error" });
+    if (mineEnded) {
+      setOversee({ status: "hidden" });
+      return;
     }
+    const out = await overseeRead;
+    if (!current()) return;
+    const keepOrError = (prev: OverseeView): OverseeView =>
+      prev.status === "ready" ? prev : { status: "error" };
+    if (!out.ok) {
+      setOversee(keepOrError);
+      return;
+    }
+    const code = out.res.response?.status ?? 0;
+    if (out.res.data) setOversee({ status: "ready", broadcasts: out.res.data.broadcasts });
+    else if (code === 401 || code === 403 || code === 404) setOversee({ status: "hidden" });
+    else setOversee(keepOrError);
   }, [client]);
 
   useEffect(() => {
@@ -72,7 +103,8 @@ export function useAckBroadcast() {
   /** The caller's own explicit acknowledgment. Returns the record or null (and says so) on failure. */
   const acknowledge = useCallback(
     async (messageId: string): Promise<AckBroadcastAcknowledged | null> => {
-      if (!client) return null;
+      if (!client || ackInFlight.current) return null;
+      ackInFlight.current = true;
       setAckError(false);
       setBusy(messageId);
       try {
@@ -83,19 +115,30 @@ export function useAckBroadcast() {
           setAckError(true);
           return null;
         }
+        const { acknowledgedAt } = res.data;
+        // Show the recorded fact now; the reload then confirms it (a failed reload keeps this and says so).
+        setMine((prev) =>
+          prev.status === "ready"
+            ? {
+                status: "ready",
+                items: prev.items.map((i) => (i.messageId === messageId ? { ...i, acknowledgedAt } : i)),
+              }
+            : prev,
+        );
         await load();
         return res.data;
       } catch {
         setAckError(true);
         return null;
       } finally {
+        ackInFlight.current = false;
         setBusy(null);
       }
     },
     [client, load],
   );
 
-  return { mine, oversee, ackError, busy, acknowledge, reload: load };
+  return { mine, oversee, ackError, refreshFailed, busy, acknowledge, reload: load };
 }
 
 export type DetailView =
@@ -104,11 +147,16 @@ export type DetailView =
   | { readonly status: "error" }
   | { readonly status: "ready"; readonly detail: AckBroadcastDetail };
 
+export type MoreState = "idle" | "busy" | "failed";
+
 /** One broadcast's people for the supervisor, paged exactly; "show more" appends the next page. */
 export function useBroadcastDetail(messageId: string | null, filter: AckBroadcastFilter) {
   const client = useOptionalApiClient();
   const [view, setView] = useState<DetailView>({ status: "idle" });
+  const [moreState, setMoreState] = useState<MoreState>("idle");
+  const [attempt, setAttempt] = useState(0);
   const seq = useRef(0);
+  const moreInFlight = useRef(false);
 
   const fetchPage = useCallback(
     async (offset: number): Promise<AckBroadcastDetail | null> => {
@@ -121,8 +169,11 @@ export function useBroadcastDetail(messageId: string | null, filter: AckBroadcas
     [client, messageId, filter],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` is the manual re-read trigger
   useEffect(() => {
     const run = ++seq.current;
+    moreInFlight.current = false;
+    setMoreState("idle");
     if (!messageId) {
       setView({ status: "idle" });
       return;
@@ -138,22 +189,29 @@ export function useBroadcastDetail(messageId: string | null, filter: AckBroadcas
     return () => {
       seq.current += 1;
     };
-  }, [messageId, fetchPage]);
+  }, [messageId, fetchPage, attempt]);
 
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
+
+  /** Appends the next page. One request at a time; a failure keeps the pages already loaded and offers a retry. */
   const more = useCallback(async () => {
-    if (view.status !== "ready") return;
+    if (view.status !== "ready" || moreInFlight.current) return;
+    moreInFlight.current = true;
+    setMoreState("busy");
     const run = seq.current;
     const next = await fetchPage(view.detail.offset + view.detail.people.length).catch(() => null);
     if (run !== seq.current) return;
+    moreInFlight.current = false;
     if (!next) {
-      setView({ status: "error" });
+      setMoreState("failed");
       return;
     }
+    setMoreState("idle");
     setView({
       status: "ready",
       detail: { ...next, offset: view.detail.offset, people: [...view.detail.people, ...next.people] },
     });
   }, [fetchPage, view]);
 
-  return { view, more };
+  return { view, more, moreState, reload };
 }

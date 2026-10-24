@@ -16,6 +16,9 @@ export const MINE_EMPTY_TEXT = "You have acknowledged every announcement that as
 export const DONE_HEADING = "Acknowledged";
 export const OPEN_LABEL = "Open announcement";
 export const ACK_LABEL = "Acknowledge";
+export const ACKNOWLEDGED_ANNOUNCEMENT = "Acknowledged.";
+export const ACK_REFRESH_FAILED = "The list could not be refreshed. What is shown may be out of date.";
+export const LOAD_MORE_FAILED = "The next people could not be loaded. The ones already shown are kept.";
 export const ACK_FAILED = "Your acknowledgment could not be recorded. Try again.";
 export const SUPERVISE_HEADING = "Announcements you oversee";
 export const SUPERVISE_EMPTY = "No announcement has required acknowledgment yet.";
@@ -23,8 +26,10 @@ export const DETAIL_LOAD_FAILED = "This announcement's list could not be loaded.
 export const LOAD_MORE = "Show more";
 export const REQUIRE_LABEL = "Require acknowledgment";
 export const REQUIRE_DONE = "Acknowledgment is now required. Track it under Announcements to acknowledge.";
-export const REQUIRE_OFF = "Acknowledge-required announcements are not turned on for your organization.";
-export const REQUIRE_FAILED = "Acknowledgment could not be required. Only the author can do this.";
+export const REQUIRE_OFF =
+  "Acknowledge-required announcements are not turned on for your organization, or only the author of this announcement can require acknowledgment.";
+export const REQUIRE_SECTION = "Acknowledgment setting";
+export const REQUIRE_FAILED = "Acknowledgment could not be required because of a problem on our side or your connection. Try again.";
 export const REQUIRE_HINT =
   "Everyone active today will be asked to acknowledge. The list is fixed now; people who join later are counted but not asked.";
 
