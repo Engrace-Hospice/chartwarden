@@ -739,7 +739,7 @@ jobs:
           # Milestone 8a-1 - advisory ADR documentation readiness (deterministic gaps + a deny-stubbed assistant; no model is called).
           - { name: "M25 ADR readiness", scripts: "test:m25:adr-readiness:live" }
           # Milestone 12a-1 - payer (commercial / Medicare Advantage) appeal paths written by a person and verified by a second one, a payer appeal case per level on a claim-less denial, deadlines computed only from a complete path row, the denial-keyed case view.
-          - { name: "M25 payer appeals", scripts: "test:m25:payer-appeal:live" }
+          - { name: "M25 payer appeals", scripts: "test:m25:payer-appeal:live test:m25:payer-seam:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {

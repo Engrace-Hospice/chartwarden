@@ -47,7 +47,8 @@ import {
   buildDrizzlePayerAppealService,
 } from "../src/modules/25-remittance/routes/payer-appeal-service";
 import { registerPayerAppealRoutes } from "../src/modules/25-remittance/routes/payer-appeal.routes";
-import type { PayerSeam } from "../src/modules/25-remittance/routes/payer-seam";
+import { type PayerSeam, buildSeamPayerSeam } from "../src/modules/25-remittance/routes/payer-seam";
+import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { type M7Fixture, ORG, ORG_B, daysAgo, daysAhead, setupM7Fixture } from "./_m25-m7-fixture";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -201,7 +202,7 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     return dispatched;
   }
 
-  function makeApp(keys: string[]) {
+  function makeApp(keys: string[], seam: PayerSeam = payers) {
     resetAuthorizationContract();
     resetRbacEngine();
     registerEffectivePermissionResolver(
@@ -224,8 +225,8 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
       },
       security: { rateLimitEnabled: false },
     });
-    registerPayerAppealPathRoutes(app, { payerAppealPathService: pathSvc() });
-    registerPayerAppealRoutes(app, { payerAppealService: appealSvc(), laterTierService: tier() });
+    registerPayerAppealPathRoutes(app, { payerAppealPathService: pathSvc(seam) });
+    registerPayerAppealRoutes(app, { payerAppealService: appealSvc(seam), laterTierService: tier() });
     registerCaseViewRoutes(app, { caseViewService: buildDrizzleCaseViewService(fx.handle.db) });
     return app;
   }
@@ -980,6 +981,59 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
         })
       ).statusCode,
     ).toBe(200);
+    await app.close();
+  });
+
+  // ── the REAL payer seam (M40 `createDbMdmStore`), not the injected fake ──────────────────────────────────
+  it("resolves a real M40 payer end to end: path -> second user verifies -> level opens -> deadline only with a typed notice date", async () => {
+    const realPayer = randomUUID();
+    await fx.admin.query(
+      "INSERT INTO payer (id, kind, name, status) VALUES ($1, 'commercial', 'Real Seam Payer', 'active')",
+      [realPayer],
+    );
+    registerMdmSeams({ store: createDbMdmStore(fx.handle.db) });
+    const realPath = buildDrizzlePayerAppealPathService(fx.handle.db, {});
+    const realAppeal = buildDrizzlePayerAppealService(fx.handle.db, {
+      providerZones,
+      sources: buildSeamAppealSourcePorts(),
+    });
+
+    const created = await realPath.createPath(A(), pathInput({ payerId: realPayer }) as never);
+    await realPath.verifyPath(R(), created.id, created.version);
+    expect((await realPath.getPath(A(), created.id))?.payerName).toBe("Real Seam Payer");
+
+    const denial = await mkDenial("commercial", { payer: realPayer });
+    const view = await realAppeal.getForDenial(A(), denial);
+    expect(view).toMatchObject({
+      payerName: "Real Seam Payer",
+      payerUnresolved: false,
+      path: { id: created.id, verified: true },
+    });
+
+    // no typed notice date: the window is complete but nothing is computed
+    const noNotice = await realAppeal.open(A(), denial, { levelLabel: "L1", levelKind: "internal" });
+    expect(noNotice.deadlineSource).toBe("none");
+    const noticeless = await realAppeal.getCase(A(), noNotice.id);
+    expect(noticeless?.deadlineAt).toBeNull();
+
+    // typed notice date under the verified path: computed, equal to the pure function
+    const denial2 = await mkDenial("commercial", { payer: realPayer });
+    const notice = daysAgo(3);
+    const opened = await realAppeal.open(A(), denial2, { noticeDate: notice });
+    expect(opened.deadlineSource).toBe("path_rule");
+    const c = await realAppeal.getCase(A(), opened.id);
+    expect(c?.deadlineAt).toBe((await expectedDeadline(notice))?.toISOString());
+    expect(c).toMatchObject({ pathId: created.id, windowVerified: true, deadlineState: "computed" });
+
+    // the route returns the same non-null path and payer name
+    const app = makeApp(["appeal.read", "payer_appeal.read"], buildSeamPayerSeam());
+    const res = await app.inject({ method: "GET", url: `/api/v1/denials/${denial2}/payer-appeals` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      payerName: "Real Seam Payer",
+      payerUnresolved: false,
+      path: { id: created.id },
+    });
     await app.close();
   });
 
