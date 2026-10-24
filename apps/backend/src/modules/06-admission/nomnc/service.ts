@@ -213,8 +213,13 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     return row;
   }
 
-  async function reviewOf(tx: DbClient, admissionId: string, id: string): Promise<ReviewRow> {
-    const row = await loadReview(tx, id);
+  async function reviewOf(
+    tx: DbClient,
+    admissionId: string,
+    id: string,
+    opts: { readonly forUpdate?: boolean } = {},
+  ): Promise<ReviewRow> {
+    const row = await loadReview(tx, id, opts);
     if (!row || row.admissionId !== admissionId) throw new ResourceNotFoundError(id);
     return row;
   }
@@ -611,7 +616,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     async addNoticeDeadline(organizationId, admissionId, noticeId, input, actorUserId) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (txRaw) => {
         const tx = asTx(txRaw);
-        const notice = await noticeOf(tx, admissionId, noticeId);
+        const notice = await noticeOf(tx, admissionId, noticeId, { forUpdate: true });
         requireActive(notice);
         return insertDeadline(
           { tx, organizationId, actorUserId, now: now(), verify: verifyDocument },
@@ -626,7 +631,8 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     async addReviewDeadline(organizationId, admissionId, reviewId, input, actorUserId) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (txRaw) => {
         const tx = asTx(txRaw);
-        const review = await reviewOf(tx, admissionId, reviewId);
+        // Locked, like the notice: a deadline cannot be added to a review that closes underneath it.
+        const review = await reviewOf(tx, admissionId, reviewId, { forUpdate: true });
         requireOpen(review);
         return insertDeadline(
           { tx, organizationId, actorUserId, now: now(), verify: verifyDocument },
@@ -645,6 +651,14 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         if (!row || row.admissionId !== admissionId) throw new ResourceNotFoundError(deadlineId);
         if (row.satisfiedAt) {
           throw new NomncRuleError("DEADLINE_SATISFIED", "a satisfied deadline cannot change");
+        }
+        // The parent is locked and must still be live: a deadline of a superseded / withdrawn notice or a decided /
+        // withdrawn review is closed history and can be neither edited nor marked met.
+        const live = row.nomncNoticeId
+          ? (await noticeOf(tx, admissionId, row.nomncNoticeId, { forUpdate: true })).status === "active"
+          : (await reviewOf(tx, admissionId, row.expeditedReviewId as string, { forUpdate: true })).state === "open";
+        if (!live) {
+          throw new NomncRuleError("DEADLINE_CLOSED", "this deadline belongs to a closed record and cannot change");
         }
         await verifyDocument(organizationId, row, input.noticeDocumentId, input.noticeDocumentVersionId);
         const at = now();

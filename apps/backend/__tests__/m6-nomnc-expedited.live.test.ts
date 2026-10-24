@@ -798,6 +798,23 @@ describe.skipIf(!DB_URL)(
             tx.execute(sql`UPDATE nomnc_notice SET delivery_note = 'tampered' WHERE id = ${n1.id}`),
           ),
         ).rejects.toMatchObject({ cause: { message: expect.stringMatching(/M6_NOMNC_FROZEN/) } });
+        // a closed record's deadline can be neither edited nor marked met (typed 409), and nothing new is added to it
+        const closed = await call("PATCH", `${base}/expedited-deadlines/${dl.id}`, as(recorder), { ifVersion: 1, satisfy: true });
+        expect(closed.statusCode).toBe(409);
+        expect(codeOf(closed)).toBe("DEADLINE_CLOSED");
+        expect((await one<{ satisfied_at: Date | null }>("SELECT satisfied_at FROM expedited_deadline WHERE id=$1", [dl.id])).satisfied_at).toBeNull();
+        expect(codeOf(await call("POST", `${base}/expedited-reviews/${rv.id}/deadlines`, as(recorder), {
+          kind: "denc_delivery", due: { date: "2099-01-02", time: "09:00" }, sourceNote: "x",
+        }))).toBe("REVIEW_NOT_OPEN");
+        expect(codeOf(await call("POST", `${base}/nomnc/${n1.id}/deadlines`, as(recorder), {
+          kind: "appeal_request", due: { date: "2099-01-02", time: "09:00" }, sourceNote: "x",
+        }))).toBe("NOTICE_NOT_ACTIVE");
+        // an FK action (deleting the user who delivered it: ON DELETE SET NULL) is not a change to the record
+        const u = randomUUID();
+        await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [u, `${u}@x.test`]);
+        await admin.query("UPDATE nomnc_notice SET delivered_by_user_id=$2 WHERE id=$1", [n1.id, u]);
+        await admin.query(`DELETE FROM "user" WHERE id=$1`, [u]);
+        expect((await one<{ d: string | null }>("SELECT delivered_by_user_id AS d FROM nomnc_notice WHERE id=$1", [n1.id])).d).toBeNull();
       }
     });
 

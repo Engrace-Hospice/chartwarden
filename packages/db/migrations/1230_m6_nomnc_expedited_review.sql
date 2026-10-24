@@ -254,7 +254,10 @@ BEGIN
     RETURN NEW;
   END IF;
   -- A superseded or withdrawn record is history: nothing about it changes again.
-  IF OLD.status <> 'active' THEN
+  -- (An FK action — ON DELETE SET NULL on the two user columns — is not a change to the record.)
+  IF OLD.status <> 'active'
+     AND (to_jsonb(NEW) - 'delivered_by_user_id' - 'created_by_user_id')
+         IS DISTINCT FROM (to_jsonb(OLD) - 'delivered_by_user_id' - 'created_by_user_id') THEN
     RAISE EXCEPTION 'M6_NOMNC_FROZEN: nomnc_notice % is % and cannot change', OLD.id, OLD.status;
   END IF;
   RETURN NEW;

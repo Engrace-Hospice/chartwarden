@@ -60,8 +60,13 @@ export async function loadNotice(
   return row ?? null;
 }
 
-export async function loadReview(tx: DbClient, id: string): Promise<ReviewRow | null> {
-  const [row] = await tx.select().from(R).where(eq(R.id, id)).limit(1);
+export async function loadReview(
+  tx: DbClient,
+  id: string,
+  opts: { readonly forUpdate?: boolean } = {},
+): Promise<ReviewRow | null> {
+  const q = tx.select().from(R).where(eq(R.id, id)).limit(1);
+  const [row] = await (opts.forUpdate ? q.for("update") : q);
   return row ?? null;
 }
 
