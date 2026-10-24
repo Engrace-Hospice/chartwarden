@@ -1609,6 +1609,22 @@ describe.skipIf(!DB_URL)(
         "UPDATE channel_member SET last_read_message_id = $1 WHERE organization_id=$2 AND channel_id=$3 AND user_id=$4",
         [doomed, ORG_A, channel, author],
       );
+      // WP 6.8 broadcast: its insert guard only admits an announcement-channel message by its author, which this care-team fixture is not.
+      // The row is seeded with the guard triggers skipped (replica role, setup only) so the message -> broadcast -> recipient
+      // ON DELETE CASCADE chain is exercised by the real destruction run below.
+      await kit.admin.query("BEGIN");
+      await kit.admin.query("SET LOCAL session_replication_role = replica");
+      const broadcast = (
+        await kit.admin.query(
+          "INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by) VALUES ($1,$2,$3,$4) RETURNING id",
+          [ORG_A, doomed, channel, author],
+        )
+      ).rows[0].id as string;
+      await kit.admin.query(
+        "INSERT INTO message_ack_broadcast_recipient (organization_id, broadcast_id, user_id) VALUES ($1,$2,$3)",
+        [ORG_A, broadcast, officer1],
+      );
+      await kit.admin.query("COMMIT");
       // The redaction guard binds the requester to app.user_id: seed it the way the service does.
       await kit.admin.query("BEGIN");
       await kit.admin.query("SELECT set_config('app.user_id', $1, true)", [officer1]);
@@ -1632,6 +1648,7 @@ describe.skipIf(!DB_URL)(
         communication_task: "message_id",
         legal_hold_message: "message_id",
         message: "parent_message_id",
+        message_ack_broadcast: "message_id",
         message_acknowledgment_request: "message_id",
         message_attachment: "message_id",
         message_draft: "parent_message_id",
@@ -1668,6 +1685,12 @@ describe.skipIf(!DB_URL)(
         ]);
         expect(n, `${table} gone with the message`).toBe(0);
       }
+      expect(
+        await kit.count("SELECT count(*)::int AS n FROM message_ack_broadcast_recipient WHERE broadcast_id=$1", [
+          broadcast,
+        ]),
+        "message_ack_broadcast_recipient gone with its broadcast",
+      ).toBe(0);
       // The channel member row stays; only its pointer to the destroyed message is cleared.
       expect(
         await kit.count(
