@@ -15,6 +15,9 @@ const StaffMessaging = lazy(() =>
   import("./staff-messaging").then((m) => ({ default: m.StaffMessaging })),
 );
 const SmartInbox = lazy(() => import("./smart-inbox").then((m) => ({ default: m.SmartInbox })));
+const AckBroadcast = lazy(() =>
+  import("./ack-broadcast").then((m) => ({ default: m.AckBroadcast })),
+);
 const UnacknowledgedQueue = lazy(() =>
   import("./unacknowledged-queue").then((m) => ({ default: m.UnacknowledgedQueue })),
 );
@@ -73,6 +76,16 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.read",
       screen: SmartInbox,
+    },
+    {
+      // WP 6.8 (ADR-0097): announcements that require acknowledgment (the caller's own list; a holder of messaging.announce also sees who has
+      // not acknowledged). The screen says "not turned on" while the tenant flag `messaging.ack_broadcast` is off.
+      id: "messaging.ack-broadcast",
+      path: "/messaging/broadcasts",
+      title: "Announcements to acknowledge",
+      navGroup: "General",
+      requiredPermission: "messaging.read",
+      screen: AckBroadcast,
     },
     {
       // WP 4.9 (ADR-0076): the supervisor's queue of requests still waiting for a human; the API demands messaging.review as well.

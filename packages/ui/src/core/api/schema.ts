@@ -14191,6 +14191,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/ack-broadcasts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The acknowledge-required announcements of the organisation, newest first, with counts (WP 6.8, ADR-0097; messaging.announce; the uniform 404 while the tenant flag is off). No person and no message text. Never cached */
+        get: operations["getApiV1MessagingAckbroadcasts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/ack-broadcasts/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's OWN acknowledge-required announcements (WP 6.8, ADR-0097; messaging.read; the uniform 404 while the tenant flag is off): ids and instants, waiting ones carry `acknowledgedAt:null`. Never cached */
+        get: operations["getApiV1MessagingAckbroadcastsMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/analytics/response": {
         parameters: {
             query?: never;
@@ -14219,6 +14253,41 @@ export interface paths {
         put?: never;
         /** Post to the tenant announcement channel (org_admin; 201; Idempotency-Key required) */
         post: operations["postApiV1MessagingAnnounce"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/announcements/{messageId}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an announcement as yourself (WP 6.8, ADR-0097; messaging.read). Explicit, no body and no user field: the actor is the session. Idempotent: a repeat returns the original instant with `already:true`. Opening an announcement never acknowledges it. The author, a person who joined after publish, a person no longer active, another tenant and an unknown id are all the same 404; so is a tenant with the flag off. Never cached */
+        post: operations["postApiV1MessagingAnnouncementsByMessageIdAck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/announcements/{messageId}/ack-broadcast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who has not acknowledged one announcement (WP 6.8, ADR-0097; messaging.announce; the uniform 404 for an announcement with no broadcast and while the flag is off). Counts cover the whole frozen audience; people are paged exactly (filter pending|acknowledged|ineligible|all, limit up to 200, offset), nothing is cut. A recipient who is no longer an active member is `ineligible`, never a silent non-reader; `outsideAudience` counts active staff who joined after publish. Display names, states and instants only, never message text. Read-audited against the message. Never cached */
+        get: operations["getApiV1MessagingAnnouncementsByMessageIdAckbroadcast"];
+        put?: never;
+        /** Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached */
+        post: operations["postApiV1MessagingAnnouncementsByMessageIdAckbroadcast"];
         delete?: never;
         options?: never;
         head?: never;
@@ -67599,6 +67668,72 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAckbroadcasts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        broadcasts: {
+                            messageId: string;
+                            channelId: string;
+                            createdAt: string;
+                            counts: {
+                                audience: number;
+                                acknowledged: number;
+                                pending: number;
+                                opened: number;
+                                notOpened: number;
+                                ineligible: number;
+                                outsideAudience: number;
+                            };
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAckbroadcastsMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            messageId: string;
+                            channelId: string;
+                            createdAt: string;
+                            acknowledgedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingAnalyticsResponse: {
         parameters: {
             query?: {
@@ -67684,6 +67819,123 @@ export interface operations {
                         messageId: string;
                         channelId: string;
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAnnouncementsByMessageIdAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        acknowledgedAt: string;
+                        already: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAnnouncementsByMessageIdAckbroadcast: {
+        parameters: {
+            query?: {
+                filter?: "pending" | "acknowledged" | "ineligible" | "all";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                            opened: number;
+                            notOpened: number;
+                            ineligible: number;
+                            outsideAudience: number;
+                        };
+                        filter: "pending" | "acknowledged" | "ineligible" | "all";
+                        offset: number;
+                        hasMore: boolean;
+                        people: {
+                            userId: string;
+                            displayName: string;
+                            state: "acknowledged" | "opened" | "not_opened" | "ineligible";
+                            openedAt: string | null;
+                            acknowledgedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAnnouncementsByMessageIdAckbroadcast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                            opened: number;
+                            notOpened: number;
+                            ineligible: number;
+                            outsideAudience: number;
+                        };
+                        created: boolean;
                     };
                 };
             };

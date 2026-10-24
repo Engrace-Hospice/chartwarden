@@ -304,6 +304,8 @@ export const MODULES: ModuleDef[] = [
       "message_external_share",
       "message_external_session",
       "message_external_share_read",
+      "message_ack_broadcast",
+      "message_ack_broadcast_recipient",
       "legal_hold_message",
       "message_redaction",
       "message_destruction_batch",
