@@ -38,11 +38,12 @@ function VoiceRecorderPanel({ uploads, disabled, onClose }: PanelProps): JSX.Ele
   const { phase, elapsedSeconds, notice, review } = recorder;
   const panelRef = useRef<HTMLElement>(null);
 
-  // Focus follows the state change: the panel on open and on review, so the next control is one Tab away.
-  const settledPhase = phase === "review" || phase === "idle" ? phase : null;
+  // Focus follows the state change, so it never falls to <body> when a control unmounts: the panel on open, on recording and on review.
+  // Pause and Resume share one button, so they keep focus themselves.
+  const focusPhase = phase === "paused" || phase === "starting" ? null : phase;
   useEffect(() => {
-    if (settledPhase !== null) panelRef.current?.focus();
-  }, [settledPhase]);
+    if (focusPhase !== null) panelRef.current?.focus();
+  }, [focusPhase]);
 
   function cancel(): void {
     recorder.discard();
@@ -159,7 +160,8 @@ export function VoiceRecorderButton({
         aria-label="Record voice note"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
+        // Opening only: closing goes through Cancel / Discard, so a click can never throw a recording away.
+        onClick={() => setOpen(true)}
       >
         <Glyph name="mic" size={18} />
       </button>

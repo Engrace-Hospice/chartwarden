@@ -21,10 +21,6 @@
   font-size: 0.8125rem;
 }
 
-.wx-voice-notice:empty {
-  display: none;
-}
-
 .wx-voice-timer {
   font-variant-numeric: tabular-nums;
   font-weight: 600;

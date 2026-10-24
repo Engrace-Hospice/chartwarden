@@ -1274,6 +1274,17 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect((await access(u2, attachmentId)).statusCode).toBe(200);
     });
 
+    it("the kill switch also stops an upload authorized while the flag was on: complete answers 415", async () => {
+      voiceFlag.on = true;
+      const { attachmentId } = await uploaded(u1, dm, webm("killed"), {
+        over: voice,
+        mime: "audio/webm",
+        complete: false,
+      });
+      voiceFlag.on = false;
+      expect((await complete(u1, attachmentId)).statusCode).toBe(415);
+    });
+
     it("an approved redaction makes the note unplayable for everyone, and the attempt is logged as a denial", async () => {
       voiceFlag.on = true;
       const { attachmentId } = await uploaded(u1, dm, webm("redact"), {
@@ -4164,7 +4175,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
   describe("wiring (bound is not computing)", () => {
     it("the composition root mounts the routes with a binding and registers + schedules the scan sweep", () => {
       const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
-      expect(root).toContain("attachments: m36AttachmentBinding");
+      expect(root).toContain("...m36AttachmentBinding");
+      expect(root).toContain("voiceNotesEnabled: buildVoiceNotesEnabled(featureFlagReader)");
       expect(root).toContain("registerM36AttachmentScanWorker(");
       expect(root).toContain("scheduleM36AttachmentScanJobs(");
       expect(root).toContain("buildM36AttachmentBinding(process.env");

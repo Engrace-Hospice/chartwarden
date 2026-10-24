@@ -200,6 +200,33 @@ describe("voice note recorder", () => {
     expect(addFiles).not.toHaveBeenCalled();
   });
 
+  it("Cancel while the permission prompt is open releases the microphone when it is finally granted and records nothing", async () => {
+    let grant: (stream: unknown) => void = () => undefined;
+    getUserMedia.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          grant = resolve;
+        }),
+    );
+    mount();
+    await click("Record voice note");
+    await click("Record");
+    await click("Cancel");
+    await act(async () => {
+      grant({ getTracks: () => [{ stop: trackStop }], getAudioTracks: () => [] });
+    });
+    expect(trackStop).toHaveBeenCalled();
+    expect(FakeRecorder.instances).toHaveLength(0);
+  });
+
+  it("clicking the microphone button again never closes a recording in progress", async () => {
+    mount();
+    await startRecording();
+    await click("Record voice note");
+    expect(screen.getByRole("timer")).toBeTruthy();
+    expect(recorder().state).toBe("recording");
+  });
+
   it("closing the panel mid-recording releases the microphone and keeps nothing", async () => {
     mount();
     await startRecording();

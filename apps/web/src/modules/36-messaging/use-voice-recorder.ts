@@ -59,8 +59,10 @@ export function useVoiceRecorder(): VoiceRecorder {
   // Elapsed recording time excludes paused time: banked milliseconds plus the running segment.
   const bankedMsRef = useRef(0);
   const segmentStartRef = useRef(0);
-  // Set when the recorder is being thrown away, so its `stop` event produces nothing.
-  const discardingRef = useRef(false);
+  // Recorders being thrown away: their (asynchronous) `stop` event must produce nothing, even if a new recording has started since.
+  const discardedRef = useRef(new WeakSet<MediaRecorder>());
+  // Bumped whenever a start in flight must be cancelled (Discard, abandon, unmount) so a late getUserMedia answer releases the microphone.
+  const generationRef = useRef(0);
   const limitHitRef = useRef(false);
   const reviewUrlRef = useRef<string | null>(null);
   const startingRef = useRef(false);
@@ -90,10 +92,11 @@ export function useVoiceRecorder(): VoiceRecorder {
   /** Tear down an in-progress recording without keeping anything; `message` explains why (or null for a silent discard). */
   const abandon = useCallback(
     (message: string | null) => {
-      discardingRef.current = true;
+      generationRef.current += 1;
       clearTimer();
       const recorder = recorderRef.current;
       recorderRef.current = null;
+      if (recorder) discardedRef.current.add(recorder);
       if (recorder && recorder.state !== "inactive") {
         try {
           recorder.stop();
@@ -156,6 +159,7 @@ export function useVoiceRecorder(): VoiceRecorder {
     startingRef.current = true;
     setNotice(null);
     setPhase("starting");
+    const generation = generationRef.current;
     try {
       if (!canRecordVoice()) {
         setPhase("idle");
@@ -176,17 +180,21 @@ export function useVoiceRecorder(): VoiceRecorder {
         setNotice(VOICE_NOTICE[classifyMicrophoneError(error)]);
         return;
       }
+      if (generation !== generationRef.current) {
+        // Discarded or unmounted while the permission prompt was open: release the microphone, record nothing.
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       const recorder = new MediaRecorder(stream, { mimeType });
       streamRef.current = stream;
       recorderRef.current = recorder;
       chunksRef.current = [];
-      discardingRef.current = false;
       limitHitRef.current = false;
       recorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
-        if (discardingRef.current) return;
+        if (discardedRef.current.has(recorder)) return;
         finish(mimeType);
       };
       recorder.onerror = () => abandon(VOICE_NOTICE.interrupted);
@@ -232,6 +240,7 @@ export function useVoiceRecorder(): VoiceRecorder {
   }, []);
 
   const discard = useCallback(() => {
+    generationRef.current += 1;
     if (recorderRef.current) abandon(null);
     revokeReview();
     setReview(null);
@@ -261,9 +270,10 @@ export function useVoiceRecorder(): VoiceRecorder {
   // Unmount: release the microphone and the object URL; nothing is kept.
   useEffect(
     () => () => {
-      discardingRef.current = true;
+      generationRef.current += 1;
       if (timerRef.current) clearInterval(timerRef.current);
       const recorder = recorderRef.current;
+      if (recorder) discardedRef.current.add(recorder);
       if (recorder && recorder.state !== "inactive") {
         try {
           recorder.stop();

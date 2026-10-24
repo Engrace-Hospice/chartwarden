@@ -996,6 +996,19 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             410,
           );
         }
+        // WP 6.3: the voice-notes kill switch also stops an upload that was authorized while the flag was on.
+        if (isVoiceNoteMimeType(row.mimeType)) {
+          const stillOn = await Promise.resolve()
+            .then(() => deps.voiceNotesEnabled?.(orgId))
+            .catch(() => false);
+          if (stillOn !== true) {
+            throw new ChartWardenError(
+              "UNSUPPORTED_MEDIA_TYPE",
+              "attachment content type is not allowed",
+              415,
+            );
+          }
+        }
         const objectKey = row.objectKey;
         const found = objectKey
           ? await runWithDeadline(
@@ -1354,7 +1367,10 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     if (!objectKey) return "none";
     try {
       return await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
-        if (row.messageId && (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))) {
+        if (
+          row.messageId &&
+          (await isMessageHeldNow(rawTx as unknown as Tx, orgId, row.messageId))
+        ) {
           return "held" as const;
         }
         await runWithDeadline(
