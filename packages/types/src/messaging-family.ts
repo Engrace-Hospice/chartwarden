@@ -1,4 +1,4 @@
-// M36 WP 6.7 (ADR-0099, PROPOSED), slice S1 - family / caregiver messaging without an app (migrations 1230 and 1231): a consented person, bound to ONE
+// M36 WP 6.7 (ADR-0099, PROPOSED), slice S1 - family / caregiver messaging without an app (migrations 1233 and 1234): a consented person, bound to ONE
 // M5 `patient_caregiver` row, writes text into a dedicated `family` conversation through a one-time link plus an out-of-band code. Constants and DTOs
 // shared by the backend and the web. Every number marked "default" is a BUILD-TEAM default (ADR-0099 D3/D8), not an agreed value; the closed sets and
 // bounds are pinned against the SQL CHECKs by a test.

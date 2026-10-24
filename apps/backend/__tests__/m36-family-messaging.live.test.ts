@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0099 (PROPOSED), WP 6.7 - family / caregiver messaging without an app (migrations 1230 and 1231), LIVE Postgres as the NOBYPASSRLS
+ * M36 ADR-0099 (PROPOSED), WP 6.7 - family / caregiver messaging without an app (migrations 1233 and 1234), LIVE Postgres as the NOBYPASSRLS
  * `chartwarden_app` role, through the real routes (fastify inject), the real services and the real catalog-validating outbox publisher.
  *
  *   1. FLAG        off => create and EVERY contact route are the neutral 404; list, revoke and block still work. A deployment without the code pepper /

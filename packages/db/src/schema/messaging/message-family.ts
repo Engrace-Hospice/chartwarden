@@ -1,4 +1,4 @@
-// M36 WP 6.7 (ADR-0099, PROPOSED), slice S1 - family / caregiver messaging without an app (migration 1231): the tenant setting, the thread link per M5
+// M36 WP 6.7 (ADR-0099, PROPOSED), slice S1 - family / caregiver messaging without an app (migration 1234): the tenant setting, the thread link per M5
 // patient_caregiver, the one-time invitation, the contact's staged bearer session and an insert-only access trail. Names match the migration (pinned by a
 // test); the lifecycle instants are set from the database clock by the guard triggers. The invite token, the session token and the code are stored as HASHES
 // only; nothing here is a message body (the messages live in `message`, in a `family` channel).

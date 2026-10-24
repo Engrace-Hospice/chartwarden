@@ -1,5 +1,5 @@
 // M36 WP 6.7 (ADR-0099 D2, D10, D12, D15) - "may this person reach the family thread right now" is ONE SQL definition: the function
-// `message_family_person(patient_caregiver_id)` of migration 1232. It is embedded in the statement that resolves the bearer and in the staff screens that
+// `message_family_person(patient_caregiver_id)` of migration 1235. It is embedded in the statement that resolves the bearer and in the staff screens that
 // show the reason, so what staff are told and what the contact may do cannot disagree. The neighbouring modules' tables (M5 patient / caregiver / privacy
 // flags, M16 bereavement plan, M39 consent) are read INSIDE that function, never named by M36 application code (arch:tables). The function is SECURITY
 // INVOKER (the caller's org RLS applies), compares organization_id to app.org_id, and judges every instant on the database clock.

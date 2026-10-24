@@ -1,4 +1,4 @@
-// ADR-0099 S1 - migrations 1230 / 1231, the Drizzle schema, the manifest, the enum mirrors, the permission mirrors and the code-side constants agree. The structural
+// ADR-0099 S1 - migrations 1233 / 1234, the Drizzle schema, the manifest, the enum mirrors, the permission mirrors and the code-side constants agree. The structural
 // promises (FORCEd RLS, no app DELETE, hashes only, the 30 day / 12 hour / 5 attempt bounds, a block lifted by a second person, an access trail the database
 // refuses for a dead invitation, audit without secrets, permissions only to the named roles) are pinned on the migration text. Behaviour is proven live.
 import { readFileSync } from "node:fs";
@@ -34,7 +34,7 @@ const TABLES = [
   "message_family_access",
 ] as const;
 
-describe("migration 1230 enum values", () => {
+describe("migration 1233 enum values", () => {
   it("adds only the two values, and the Drizzle enums and the type mirrors carry them", () => {
     expect(enumSql).toContain(
       `ALTER TYPE "public"."channel_kind" ADD VALUE IF NOT EXISTS 'family'`,
@@ -56,7 +56,7 @@ describe("migration 1230 enum values", () => {
   });
 });
 
-describe("migration 1232 eligibility functions", () => {
+describe("migration 1235 eligibility functions", () => {
   const fn = flat(read("packages/db/migrations/1232_m36_family_eligibility_functions.sql"));
   it("are SECURITY INVOKER, STABLE, bound to app.org_id, and read consent, Part 2 and involvement on the database clock", () => {
     expect(fn.match(/LANGUAGE sql STABLE SECURITY INVOKER/g)?.length).toBe(3);
@@ -80,7 +80,7 @@ describe("migration 1232 eligibility functions", () => {
   });
 });
 
-describe("migration 1231 family messaging", () => {
+describe("migration 1234 family messaging", () => {
   it("the closed sets and numeric bounds in the SQL and Drizzle CHECKs are the constants", () => {
     expect(sql).toContain(`CHECK ("mode" IN (${inList(FAMILY_MODES)}))`);
     expect(sql).toContain(`CHECK ("stage" IN (${inList(FAMILY_SESSION_STAGES)}))`);

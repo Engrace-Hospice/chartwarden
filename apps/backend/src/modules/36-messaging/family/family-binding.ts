@@ -53,7 +53,7 @@ export function createFamilyPatientAccess(deps: {
     patientId: string,
   ): Promise<boolean> =>
     withOrgContext(deps.db, { organizationId: orgId, userId }, async (tx) => {
-      // M16 stores the counsellor as a MEMBERSHIP id; the database function resolves it back to the user (migration 1232).
+      // M16 stores the counsellor as a MEMBERSHIP id; the database function resolves it back to the user (migration 1235).
       const res = await tx.execute(
         sql`SELECT message_family_counsellor(${patientId}, ${userId}) AS "ok"`,
       );
