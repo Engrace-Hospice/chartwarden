@@ -104,7 +104,7 @@ Numbering: this ADR is **0099**; no migration number is claimed. The next free m
 - **S6** bereavement mode and plan-close handling (after the coordinator's answers).
 - **S7** automatic SMS/email sending, only after a recorded BAA and counsel's review; separate flag and ADR amendment.
 
-## Implementation status (S0, recorded before the build; finalised in the last commit of the slice series)
+## Implementation status
 
 The build follows the slices above with these mechanics, chosen where the text left a free hand. None of them changes a decision.
 
@@ -116,3 +116,11 @@ The build follows the slices above with these mechanics, chosen where the text l
 - **The dead-link page shows the agency number from the URL fragment** the staff screen builds (`#...&n=`), because an unauthenticated lookup by organisation would be an existence oracle; the live number comes from the state route once the link is redeemed.
 - **The code pepper is `MESSAGING_FAMILY_CODE_PEPPER` (at least 32 characters)**; without it, as without a validated `TRUSTED_PROXY_CIDRS`, the contact routes are not mounted and creating an invitation answers 503.
 - **Tenant settings** (`message_family_setting`): the neutral agency name (D7), the 24-hour number (D14, required before an invitation) and the bereavement support number (D15).
+
+**As built (flag `messaging.family_messaging`, default off; slices S0 to S5 are done, S6 is folded into S2/S3, S7 is not built).**
+
+- **S1** migrations 1230 (enum values), 1231 (`message_family_setting`, `_contact`, `_invitation`, `_session`, `_access`; guards, FORCEd RLS, PHI audit, permissions `messaging.family.manage` and `.respond`) and 1232 (the SQL functions `message_family_person`, `message_family_caregivers`, `message_family_counsellor`). The eligibility is those functions, called inside the statement that resolves the bearer; M36 application code names no neighbouring-module table.
+- **S2** staff and contact services over Drizzle stores (`apps/backend/src/modules/36-messaging/family/`). **S3** routes: staff `/api/v1/messaging/family/*`, contact `/api/v1/messaging/family-contact/{redeem,state,verify,messages}` (no id in any contact URL); live suite `test:m36:family-messaging:live`. **S4** the staff Family lane and invite screens, **S5** the contact link page `/family/open`, both in `apps/web`.
+- **Staff side (D6, D9, D15).** A care-team member reads and replies through the family routes and, unchanged, through the generic read, promotion and redaction routes (visibility is the roster plus Part 2 rule; a `family` channel has no member rows and no break-glass grant opens it). After a death the roster is gone and the plan's assigned counsellor takes the thread. Polls are blocked in family channels like other patient channels.
+- **Defaults awaiting a human decision** (all named constants in `packages/types/src/messaging-family.ts` or tenant settings): link life 7 days (max 30); 5 code attempts; 8-digit code under a pepper; session 30 idle minutes / 12 hours; 2,000 characters; 10 sends an hour, 40 a day, 200 unanswered; 25 invitations a day per organisation and 10 per creator; 13-month bereavement window; discharge grace 0 days; manage roles (clinical_supervisor, msw, bereavement_coordinator, compliance_officer, plus the two full-catalog admin roles) and respond roles; the neutral agency name, 24-hour number and bereavement number as tenant settings; the legal-representative (DPOA) route is not honoured; the bereavement wording and the dead-link wording are placeholders.
+- **Not built:** automatic SMS/email sending (S7, needs a BAA and counsel), physical purge of token and code hashes on auto-revocation (the live eligibility makes them inert), a Part 2 release naming a contact, non-English locales (English only, `family.*` keys), a `messaging.family_messaging` value exposed to the web client is assumed the same way `messaging.external_partners` is.
