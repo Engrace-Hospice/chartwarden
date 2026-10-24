@@ -151,6 +151,20 @@ BEGIN
     OR NEW.verified_by_membership_id IS DISTINCT FROM OLD.verified_by_membership_id) THEN
     RAISE EXCEPTION 'M25_PAYER_PATH_FROZEN: payer_appeal_path % is active; only retiring it is allowed', OLD.id;
   END IF;
+  -- Activation is decided here, atomically with the UPDATE (the row is locked by it): a second person (the CHECK above also
+  -- refuses author = verifier), an active membership of this organization, and at least one level. An app-side read-then-write
+  -- check could be raced; this cannot. A concurrent second verify finds the row already active and hits the frozen branch.
+  IF OLD.status = 'draft' AND NEW.status = 'active' THEN
+    IF NEW.verified_by_membership_id IS NULL OR NEW.verified_by_membership_id = OLD.authored_by_membership_id THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: a payer appeal path is activated by a person other than its author';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id) THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: the verifier is not a member of this organization';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM payer_appeal_path_level l WHERE l.path_id = OLD.id) THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_NO_LEVELS: a path with no levels cannot be activated';
+    END IF;
+  END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_payer_appeal_path_guard" ON payer_appeal_path;--> statement-breakpoint
