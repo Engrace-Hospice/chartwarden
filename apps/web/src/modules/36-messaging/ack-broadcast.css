@@ -1,0 +1,168 @@
+/* M36 WP 6.8 - acknowledge-required broadcast: flat rows, a rail and a detail panel on the shared kit's tokens. */
+.wx-bc {
+  display: grid;
+  gap: 1.5rem;
+  padding: 0.5rem var(--space-5);
+}
+
+.wx-bc-sub {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-bc-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+}
+
+.wx-bc-problem p {
+  margin: 0;
+}
+
+.wx-bc-heading {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0 0 0.5rem;
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.wx-bc-heading span {
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.wx-bc-rows,
+.wx-bc-rail {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-bc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-bc-row:last-child {
+  border-bottom: none;
+}
+
+.wx-bc-main {
+  display: grid;
+  flex: 1 1 14rem;
+  gap: 0.25rem;
+}
+
+.wx-bc-title {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.wx-bc-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--color-primary);
+  font-size: 0.875rem;
+}
+
+.wx-bc-status {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-bc-status:empty {
+  display: none;
+}
+
+.wx-bc-more {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.wx-bc-split {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 48rem) {
+  .wx-bc-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wx-bc-rail-item {
+  display: grid;
+  width: 100%;
+  gap: 0.15rem;
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-bottom: 1px solid var(--color-card-border);
+  background: transparent;
+  color: var(--color-on-surface);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.wx-bc-rail-item[aria-current="true"] {
+  border-inline-start: 3px solid var(--color-primary);
+  background: var(--color-surface-container, transparent);
+}
+
+.wx-bc-detail {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-bc-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wx-bc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.wx-bc-table th,
+.wx-bc-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-card-border);
+  text-align: start;
+  font-weight: 400;
+}
+
+.wx-bc-table thead th {
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}

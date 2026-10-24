@@ -14191,6 +14191,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/ack-broadcasts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The acknowledge-required announcements of the organisation, newest first, with counts (WP 6.8, ADR-0097; messaging.announce; the uniform 404 while the tenant flag is off). No person and no message text. Never cached */
+        get: operations["getApiV1MessagingAckbroadcasts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/ack-broadcasts/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's OWN acknowledge-required announcements (WP 6.8, ADR-0097; messaging.read; the uniform 404 while the tenant flag is off): ids and instants, waiting ones carry `acknowledgedAt:null`. Never cached */
+        get: operations["getApiV1MessagingAckbroadcastsMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/analytics/response": {
         parameters: {
             query?: never;
@@ -14219,6 +14253,41 @@ export interface paths {
         put?: never;
         /** Post to the tenant announcement channel (org_admin; 201; Idempotency-Key required) */
         post: operations["postApiV1MessagingAnnounce"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/announcements/{messageId}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an announcement as yourself (WP 6.8, ADR-0097; messaging.read). Explicit, no body and no user field: the actor is the session. Idempotent: a repeat returns the original instant with `already:true`. Opening an announcement never acknowledges it. The author, a person who joined after publish, a person no longer active, another tenant and an unknown id are all the same 404; so is a tenant with the flag off. Never cached */
+        post: operations["postApiV1MessagingAnnouncementsByMessageIdAck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/announcements/{messageId}/ack-broadcast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who has not acknowledged one announcement (WP 6.8, ADR-0097; messaging.announce; the uniform 404 for an announcement with no broadcast and while the flag is off). Counts cover the whole frozen audience; people are paged exactly (filter pending|acknowledged|ineligible|all, limit up to 200, offset), nothing is cut. A recipient who is no longer an active member is `ineligible`, never a silent non-reader; `outsideAudience` counts active staff who joined after publish. Display names, states and instants only, never message text. Read-audited against the message. Never cached */
+        get: operations["getApiV1MessagingAnnouncementsByMessageIdAckbroadcast"];
+        put?: never;
+        /** Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached */
+        post: operations["postApiV1MessagingAnnouncementsByMessageIdAckbroadcast"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15026,6 +15095,91 @@ export interface paths {
         };
         /** Open a message's clinical link (WP 3.2): READ-THROUGH, GET only. Requires messaging.read and that the caller can view the message's channel, then re-runs the linked record's own permission + scope NOW on the live `linkSummary`. Missing, forbidden, other-tenant, erased and failing sources, a hidden channel and a deleted message are ONE answer, `{state:"unavailable"}`; 404 only when the tenant flag `messaging.clinical_links` is off. `as_of` is when M36 read the source. Read-audited (resource = the link). */
         get: operations["getApiV1MessagingClinicallinksByLinkIdResolve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-board-items/{itemId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a checklist item complete (WP 6.9; the item's OWNER only: 403 DEATH_BOARD_NOT_OWNER for anyone else who can see it). Explicit, idempotent (the owner repeating it gets the same item), stamped by the database clock. A flagged item (no owner) is 409 DEATH_BOARD_ITEM_STATE_CONFLICT until a supervisor reassigns it. Coordination only: nothing is written to the chart */
+        post: operations["postApiV1MessagingDeathboarditemsByItemIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-board-items/{itemId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The owner and status history of one checklist item (WP 6.9): created, reassigned, needs_owner, completed, each with its actor (or the system) and instants. Same visibility and 404 as the board */
+        get: operations["getApiV1MessagingDeathboarditemsByItemIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-board-items/{itemId}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassign a checklist item (WP 6.9; the owner, or a messaging.review holder). The target must be an active user the Part 2 gate admits for the patient (422 DEATH_BOARD_OWNER_INVALID). Audited with the actor and reason, tells the new owner with fixed text, clears the no-owner flag. Repeating it is a no-op; a finished item is 409 */
+        post: operations["postApiV1MessagingDeathboarditemsByItemIdReassign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The death follow-up boards the caller may see (WP 6.9; messaging.read + patient.read; messaging.review marks a supervisor). One board per deceased patient, six fixed checklist items, each with ONE owner. Visible to a supervisor, anyone who owns or acted on an item, and the patient's live care team; a viewer the 42 CFR Part 2 gate refuses (or cannot evaluate) sees nothing. limit up to 50 (default 25) over the 100 most recent boards. 200 {enabled:false,boards:[]} while the tenant flag `messaging.death_board` is off, checked before the query is parsed. Read-audited against every patient it discloses */
+        get: operations["getApiV1MessagingDeathboards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards/{boardId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One death follow-up board (WP 6.9). A missing, foreign, not-your-patient, Part 2-refused and flag-off board is ONE 404. Items carry ids, a fixed label, the owner, a state and the actions the caller may take now. No free text. Read-audited against the patient */
+        get: operations["getApiV1MessagingDeathboardsByBoardId"];
         put?: never;
         post?: never;
         delete?: never;
@@ -67599,6 +67753,72 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAckbroadcasts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        broadcasts: {
+                            messageId: string;
+                            channelId: string;
+                            createdAt: string;
+                            counts: {
+                                audience: number;
+                                acknowledged: number;
+                                pending: number;
+                                opened: number;
+                                notOpened: number;
+                                ineligible: number;
+                                outsideAudience: number;
+                            };
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAckbroadcastsMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            messageId: string;
+                            channelId: string;
+                            createdAt: string;
+                            acknowledgedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingAnalyticsResponse: {
         parameters: {
             query?: {
@@ -67684,6 +67904,123 @@ export interface operations {
                         messageId: string;
                         channelId: string;
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAnnouncementsByMessageIdAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        acknowledgedAt: string;
+                        already: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAnnouncementsByMessageIdAckbroadcast: {
+        parameters: {
+            query?: {
+                filter?: "pending" | "acknowledged" | "ineligible" | "all";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                            opened: number;
+                            notOpened: number;
+                            ineligible: number;
+                            outsideAudience: number;
+                        };
+                        filter: "pending" | "acknowledged" | "ineligible" | "all";
+                        offset: number;
+                        hasMore: boolean;
+                        people: {
+                            userId: string;
+                            displayName: string;
+                            state: "acknowledged" | "opened" | "not_opened" | "ineligible";
+                            openedAt: string | null;
+                            acknowledgedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAnnouncementsByMessageIdAckbroadcast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                            opened: number;
+                            notOpened: number;
+                            ineligible: number;
+                            outsideAudience: number;
+                        };
+                        created: boolean;
                     };
                 };
             };
@@ -70444,6 +70781,227 @@ export interface operations {
                     } | {
                         /** @constant */
                         state: "unavailable";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathboarditemsByItemIdComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            id: string;
+                            item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                            label: string;
+                            status: "open" | "done";
+                            owner_user_id: string;
+                            owner_display_name: string | null;
+                            needs_owner: boolean;
+                            /** Format: date-time */
+                            due_at: string;
+                            overdue: boolean;
+                            completed_at: string | null;
+                            completed_by_user_id: string | null;
+                            actions: ("complete" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboarditemsByItemIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: {
+                            id: string;
+                            event_type: "created" | "reassigned" | "completed" | "needs_owner";
+                            actor_kind: "user" | "system";
+                            actor_user_id: string | null;
+                            from_owner_user_id: string | null;
+                            to_owner_user_id: string | null;
+                            reason_code: ("creation" | "manual" | "supervisor" | "offboarding") | null;
+                            /** Format: date-time */
+                            created_at: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathboarditemsByItemIdReassign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to_user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            id: string;
+                            item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                            label: string;
+                            status: "open" | "done";
+                            owner_user_id: string;
+                            owner_display_name: string | null;
+                            needs_owner: boolean;
+                            /** Format: date-time */
+                            due_at: string;
+                            overdue: boolean;
+                            completed_at: string | null;
+                            completed_by_user_id: string | null;
+                            actions: ("complete" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboards: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        boards: {
+                            id: string;
+                            patient_id: string;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            open_count: number;
+                            items: {
+                                id: string;
+                                item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                                label: string;
+                                status: "open" | "done";
+                                owner_user_id: string;
+                                owner_display_name: string | null;
+                                needs_owner: boolean;
+                                /** Format: date-time */
+                                due_at: string;
+                                overdue: boolean;
+                                completed_at: string | null;
+                                completed_by_user_id: string | null;
+                                actions: ("complete" | "reassign")[];
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboardsByBoardId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                boardId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        board: {
+                            id: string;
+                            patient_id: string;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            open_count: number;
+                            items: {
+                                id: string;
+                                item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
+                                label: string;
+                                status: "open" | "done";
+                                owner_user_id: string;
+                                owner_display_name: string | null;
+                                needs_owner: boolean;
+                                /** Format: date-time */
+                                due_at: string;
+                                overdue: boolean;
+                                completed_at: string | null;
+                                completed_by_user_id: string | null;
+                                actions: ("complete" | "reassign")[];
+                            }[];
+                        };
                     };
                 };
             };

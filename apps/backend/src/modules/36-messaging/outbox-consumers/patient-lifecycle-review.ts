@@ -61,16 +61,16 @@ function requireString(payload: Record<string, unknown>, key: string, eventType:
   return value;
 }
 
-interface Resolved {
+export interface Resolved {
   readonly cause: ReviewLifecycleCause;
   readonly patientId: string;
   readonly triggerRef: string;
 }
 
 /** The trigger this event stands for, or null when it must be skipped (readmitted patient on a late discharge). */
-async function resolve(
+export async function resolve(
   event: DispatchableOutboxEvent,
-  deps: PatientLifecycleReviewDeps,
+  deps: Pick<PatientLifecycleReviewDeps, "admissionCare">,
 ): Promise<Resolved | null> {
   const payload = (event.payload ?? {}) as Record<string, unknown>;
   const orgId = event.organizationId;

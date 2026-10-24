@@ -2263,6 +2263,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.ack-broadcast",
+      "path": "/messaging/broadcasts",
+      "permission": "messaging.read"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.unacknowledged",
       "path": "/messaging/unacknowledged",
       "permission": "messaging.review"
@@ -2346,6 +2354,14 @@
       "id": "messaging.export-approvals",
       "path": "/messaging/governance/export-approvals",
       "permission": "messaging.export.approve"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.death-board",
+      "path": "/messaging/death-board",
+      "permission": "messaging.read"
     },
     {
       "app": "web",

@@ -143,12 +143,13 @@ export {
 } from "@chartwarden/messaging";
 
 import type { DbClient } from "@chartwarden/db";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
 import { buildSmartInboxService as _buildSmartInboxService, smartInboxFlag as _smartInboxFlag } from "./inbox/binding";
+import { createAckBroadcastService as _createAckBroadcastService } from "./ack-broadcast/ack-broadcast-service";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
@@ -209,6 +210,10 @@ import {
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
+import {
+  type DeathBoardRouteDeps as _DeathBoardRouteDeps,
+  registerDeathBoardRoutes as _registerDeathBoardRoutes,
+} from "./routes/death-board-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
@@ -282,6 +287,11 @@ export function mountMessagingRoutes(
     snoozeReminders?: _SnoozeReminderRouteDeps;
     /** WP 6.1 (ADR-0091): the smart work inbox. `flags` is the platform flag reader for `messaging.smart_inbox`; omitted => off. */
     smartInbox?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
+    /** WP 6.8 (ADR-0097): acknowledge-required broadcast. `flags` reads `messaging.ack_broadcast` (absent = off); `rateLimit` is the optional route budget. */
+    ackBroadcast?: {
+      flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+      rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
+    };
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
@@ -334,6 +344,8 @@ export function mountMessagingRoutes(
       /** D17: false => partner routes are not mounted and create / reissue answer PARTNER_ACCESS_UNAVAILABLE (503). Default true. */
       partnerAccessAvailable?: boolean | undefined;
     };
+    /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
+    deathBoard?: _DeathBoardRouteDeps;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -389,6 +401,11 @@ export function mountMessagingRoutes(
         handoffs: opts.handoffs,
         listChannels: service.listChannels,
       }),
+    },
+    // WP 6.8 (ADR-0097): acknowledge-required broadcast; every route answers the uniform 404 while the tenant flag is off.
+    ackBroadcast: {
+      service: _createAckBroadcastService({ db, flags: opts.ackBroadcast?.flags }),
+      ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
     deliveryTarget: {
       service: _createDeliveryTargetService({
@@ -514,6 +531,8 @@ export function mountMessagingRoutes(
       partnerRoutes: opts.externalShare?.partnerAccessAvailable !== false,
     });
   }
+  // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board; every route is the uniform 404 while the tenant flag is off.
+  if (opts.deathBoard) _registerDeathBoardRoutes(app, opts.deathBoard);
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -527,6 +546,7 @@ export { buildSbarDeps } from "./sbar/binding";
 export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
+export { buildDeathBoardDeps } from "./death-board/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";

@@ -1392,6 +1392,12 @@ import {
   ReviewListResponseSchema as M36BreakGlassReviewListResponseSchema,
   ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
+import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
@@ -1407,6 +1413,15 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
+// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
+import {
+  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
+  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
+  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
+  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
+  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
+  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
 import {
   CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
@@ -10377,6 +10392,32 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel)",
     response: M36AnnouncementReceiptsResponseSchema,
   },
+  "POST /api/v1/messaging/announcements/:messageId/ack-broadcast": {
+    summary:
+      "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached",
+    response: M36AckBroadcastCreatedSchema,
+  },
+  "GET /api/v1/messaging/announcements/:messageId/ack-broadcast": {
+    summary:
+      "Who has not acknowledged one announcement (WP 6.8, ADR-0097; messaging.announce; the uniform 404 for an announcement with no broadcast and while the flag is off). Counts cover the whole frozen audience; people are paged exactly (filter pending|acknowledged|ineligible|all, limit up to 200, offset), nothing is cut. A recipient who is no longer an active member is `ineligible`, never a silent non-reader; `outsideAudience` counts active staff who joined after publish. Display names, states and instants only, never message text. Read-audited against the message. Never cached",
+    query: M36AckBroadcastDetailQuerySchema,
+    response: M36AckBroadcastDetailSchema,
+  },
+  "GET /api/v1/messaging/ack-broadcasts": {
+    summary:
+      "The acknowledge-required announcements of the organisation, newest first, with counts (WP 6.8, ADR-0097; messaging.announce; the uniform 404 while the tenant flag is off). No person and no message text. Never cached",
+    response: M36AckBroadcastListSchema,
+  },
+  "GET /api/v1/messaging/ack-broadcasts/mine": {
+    summary:
+      "The caller's OWN acknowledge-required announcements (WP 6.8, ADR-0097; messaging.read; the uniform 404 while the tenant flag is off): ids and instants, waiting ones carry `acknowledgedAt:null`. Never cached",
+    response: M36AckBroadcastMineSchema,
+  },
+  "POST /api/v1/messaging/announcements/:messageId/ack": {
+    summary:
+      "Acknowledge an announcement as yourself (WP 6.8, ADR-0097; messaging.read). Explicit, no body and no user field: the actor is the session. Idempotent: a repeat returns the original instant with `already:true`. Opening an announcement never acknowledges it. The author, a person who joined after publish, a person no longer active, another tenant and an unknown id are all the same 404; so is a tenant with the flag off. Never cached",
+    response: M36AckBroadcastAcknowledgedSchema,
+  },
   "POST /api/v1/messaging/department-channels": {
     summary:
       "Find-or-create a discipline or location department channel (messaging.announce; 201 created, 200 found, 404 foreign subject)",
@@ -10587,6 +10628,35 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/export/:id/download": {
     summary:
       "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
+  },
+
+  // death-event coordination board (WP 6.9, ADR-0098 PROPOSED)
+  "GET /api/v1/messaging/death-boards": {
+    summary:
+      "The death follow-up boards the caller may see (WP 6.9; messaging.read + patient.read; messaging.review marks a supervisor). One board per deceased patient, six fixed checklist items, each with ONE owner. Visible to a supervisor, anyone who owns or acted on an item, and the patient's live care team; a viewer the 42 CFR Part 2 gate refuses (or cannot evaluate) sees nothing. limit up to 50 (default 25) over the 100 most recent boards. 200 {enabled:false,boards:[]} while the tenant flag `messaging.death_board` is off, checked before the query is parsed. Read-audited against every patient it discloses",
+    query: M36ListDeathBoardsQuerySchema,
+    response: M36DeathBoardListResponseSchema,
+  },
+  "GET /api/v1/messaging/death-boards/:boardId": {
+    summary:
+      "One death follow-up board (WP 6.9). A missing, foreign, not-your-patient, Part 2-refused and flag-off board is ONE 404. Items carry ids, a fixed label, the owner, a state and the actions the caller may take now. No free text. Read-audited against the patient",
+    response: M36DeathBoardResponseSchema,
+  },
+  "GET /api/v1/messaging/death-board-items/:itemId/history": {
+    summary:
+      "The owner and status history of one checklist item (WP 6.9): created, reassigned, needs_owner, completed, each with its actor (or the system) and instants. Same visibility and 404 as the board",
+    response: M36DeathBoardHistoryResponseSchema,
+  },
+  "POST /api/v1/messaging/death-board-items/:itemId/complete": {
+    summary:
+      "Mark a checklist item complete (WP 6.9; the item's OWNER only: 403 DEATH_BOARD_NOT_OWNER for anyone else who can see it). Explicit, idempotent (the owner repeating it gets the same item), stamped by the database clock. A flagged item (no owner) is 409 DEATH_BOARD_ITEM_STATE_CONFLICT until a supervisor reassigns it. Coordination only: nothing is written to the chart",
+    response: M36DeathBoardItemResponseSchema,
+  },
+  "POST /api/v1/messaging/death-board-items/:itemId/reassign": {
+    summary:
+      "Reassign a checklist item (WP 6.9; the owner, or a messaging.review holder). The target must be an active user the Part 2 gate admits for the patient (422 DEATH_BOARD_OWNER_INVALID). Audited with the actor and reason, tells the new owner with fixed text, clears the no-owner flag. Repeating it is a no-op; a finished item is 409",
+    body: M36ReassignDeathBoardItemBodySchema,
+    response: M36DeathBoardItemResponseSchema,
   },
 
   // external partner share (WP 6.6, ADR-0096 PROPOSED)

@@ -4,6 +4,14 @@
 import { Button, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import {
+  REQUIRE_DONE,
+  REQUIRE_FAILED,
+  REQUIRE_HINT,
+  REQUIRE_LABEL,
+  REQUIRE_OFF,
+  REQUIRE_SECTION,
+} from "./ack-broadcast-wording";
 import { apiErrorMessage } from "./messaging-utils";
 import "./announcements.css";
 
@@ -97,6 +105,7 @@ export function AnnouncementReceiptsDialog({
         ) : (
           <ReceiptLists receipts={receipts} />
         )}
+        <RequireAcknowledgment key={messageId ?? "none"} messageId={messageId} />
         <footer>
           <Button tone="secondary" onClick={onClose}>
             Close
@@ -104,6 +113,53 @@ export function AnnouncementReceiptsDialog({
         </footer>
       </div>
     </Modal>
+  );
+}
+
+type RequireState = "idle" | "busy" | "done" | "off" | "failed";
+
+/**
+ * WP 6.8 (ADR-0097): the author asks everyone to acknowledge this announcement. An explicit action with its audience said first; the
+ * server answers 404 while the tenant flag is off and for anyone but the author, and the words say which is the likelier cause.
+ */
+function RequireAcknowledgment({ messageId }: { messageId: string | null }): JSX.Element | null {
+  const client = useApiClient();
+  const [state, setState] = useState<RequireState>("idle");
+  const inFlight = useRef(false);
+  // The parent keys this component by messageId, so a response for an earlier announcement lands on an unmounted instance and is dropped.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  if (!messageId) return null;
+  const settle = (next: RequireState): void => {
+    inFlight.current = false;
+    if (alive.current) setState(next);
+  };
+  const run = (): void => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setState("busy");
+    void client
+      .POST("/api/v1/messaging/announcements/{messageId}/ack-broadcast", {
+        params: { path: { messageId } },
+      })
+      .then(({ data, response }) => settle(data ? "done" : response?.status === 404 ? "off" : "failed"))
+      .catch(() => settle("failed"));
+  };
+  return (
+    <section aria-label={REQUIRE_SECTION} className="wx-announcement-require">
+      <p className="wx-announcement-empty">{REQUIRE_HINT}</p>
+      {state === "done" ? <p role="status">{REQUIRE_DONE}</p> : null}
+      {state === "off" ? <p role="alert">{REQUIRE_OFF}</p> : null}
+      {state === "failed" ? <p role="alert">{REQUIRE_FAILED}</p> : null}
+      <Button tone="secondary" size="lg" disabled={state === "busy" || state === "done"} onClick={run}>
+        {REQUIRE_LABEL}
+      </Button>
+    </section>
   );
 }
 

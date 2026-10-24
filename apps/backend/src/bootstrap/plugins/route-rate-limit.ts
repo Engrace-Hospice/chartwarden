@@ -47,6 +47,22 @@ export const ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
+export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 20,
+  perOrg: 200,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
+/** M36 WP 6.9 (ADR-0098): the death-board routes (a list scans up to 100 boards), 30/min/user and 300/min/org. Fail-open: an availability control. */
+export const DEATH_BOARD_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 30,
+  perOrg: 300,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 export interface RouteRateLimitOptions {
   readonly store: RateLimitStore;
   readonly limit: RouteRateLimit;
