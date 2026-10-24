@@ -17,6 +17,18 @@ const FILES = ["apps/web/src/shell/alert-inbox.tsx", "apps/web/src/shell/notific
 
 /** Files allowed to use the words, each WITH a reason (a ratchet: add only for a real, different meaning). */
 const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
+  "apps/backend/src/modules/36-messaging/routes/ack-broadcast-routes.ts":
+    "WP 6.8 (ADR-0097) the routes of the acknowledge-required broadcast: an explicit per-person acknowledgment action; opening an announcement still writes only a read receipt and never an acknowledgment",
+  "apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox.ts":
+    "WP 6.8 (ADR-0097) the request and response shapes of the acknowledge-required broadcast; they carry the explicit acknowledgment instant, never a receipt state",
+  "apps/web/src/modules/36-messaging/ack-broadcast.tsx":
+    "WP 6.8 (ADR-0097) the broadcasts screen: the Acknowledge button is an explicit action and the supervisor list names who has not taken it; no receipt is labelled acknowledged",
+  "apps/web/src/modules/36-messaging/ack-broadcast-wording.ts":
+    "WP 6.8 (ADR-0097) the screen wording for the explicit acknowledgment of an announcement; the read receipt keeps its own words",
+  "apps/web/src/modules/36-messaging/use-ack-broadcast.ts":
+    "WP 6.8 (ADR-0097) the data hook of the broadcasts screen: it posts the explicit acknowledgment and reads the author's non-acknowledger list; it never derives an acknowledgment from a read",
+  "apps/web/src/modules/36-messaging/announcement-receipts.tsx":
+    "WP 6.8 (ADR-0097) the author's 'Require acknowledgment' button beside the read receipts: it asks recipients for an explicit acknowledgment and labels no receipt as one",
   "apps/backend/src/modules/36-messaging/external-share/external-share-service.ts":
     "WP 6.6 (ADR-0096 D15) the staff `acknowledgedMinimumNecessary` flag: the creator confirms the minimum-necessary statement when sharing a conversation with an outside partner; it labels no delivery, open or read receipt",
   "apps/backend/src/modules/36-messaging/routes/external-share-typebox.ts":
@@ -155,6 +167,8 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
  * labelled acknowledged by code outside the aggregate.
  */
 const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
+  "apps/backend/src/modules/36-messaging/ack-broadcast/":
+    "WP 6.8 (ADR-0097) the acknowledge-required broadcast: a separate per-recipient acknowledgment, an explicit action stamped by the database clock; opening or reading never writes it and no receipt is labelled acknowledged",
   "apps/backend/src/modules/36-messaging/ack-requests/":
     "WP 4.2 the acknowledgment-request aggregate itself (service, store, events, binding): an explicit action by the assigned clinician, never a receipt",
   "packages/messaging/src/ack-requests/":
