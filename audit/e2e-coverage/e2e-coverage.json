@@ -749,9 +749,9 @@
       "axeReached": true
     },
     {
-      "id": "messaging.ack-broadcast",
+      "id": "messaging.death-board",
       "module": "36-messaging",
-      "path": "/messaging/broadcasts",
+      "path": "/messaging/death-board",
       "permission": "messaging.read",
       "e2eReached": false,
       "axeReached": true
@@ -2321,9 +2321,9 @@
       "axeReached": true
     },
     {
-      "id": "messaging.ack-broadcast",
+      "id": "messaging.death-board",
       "module": "36-messaging",
-      "path": "/messaging/broadcasts",
+      "path": "/messaging/death-board",
       "permission": "messaging.read",
       "e2eReached": false,
       "axeReached": true

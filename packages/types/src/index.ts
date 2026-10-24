@@ -73,6 +73,7 @@ export * from "./external-share-identifiers";
 export * from "./messaging-escalation";
 export * from "./messaging-handoff";
 export * from "./messaging-review";
+export * from "./messaging-death-board";
 export * from "./messaging-promotion";
 export * from "./messaging-xss-corpus";
 export * from "./mrn";

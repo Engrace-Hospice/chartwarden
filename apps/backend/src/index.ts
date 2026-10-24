@@ -1524,6 +1524,7 @@ import {
   buildPresenceDeps,
   buildPromotionDeps,
   buildReviewDeps,
+  buildDeathBoardDeps,
   buildSbarDeps,
   buildSnoozeReminderBinding,
   buildTaskDeps,
@@ -1605,6 +1606,7 @@ import { buildM36MedicationQuestionNotificationsConsumer } from "./modules/36-me
 import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
+import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36PatientLifecycleReviewConsumer } from "./modules/36-messaging/outbox-consumers/patient-lifecycle-review";
 import { buildM36PromotionNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/promotion-notifications";
 import { buildM36PromotionOutcomesConsumer } from "./modules/36-messaging/outbox-consumers/promotion-outcomes";
@@ -4447,6 +4449,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
       })
     : undefined;
+  // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board. ONE binding for the routes (flag `messaging.death_board` + service), the death
+  // consumer and the offboarding sweep. Off by default per tenant. Coordination only: it writes nothing outside M36. The alert emitter is read
+  // lazily (the seam registry fills after this point).
+  const m36DeathBoard = dbHandle
+    ? buildDeathBoardDeps({
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        alerts: {
+          emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+        },
+        patientLabels: (organizationId, patientIds) =>
+          patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+        warn: (message, context) => console.warn(message, context),
+      })
+    : undefined;
   // WP 3.10 - "ask a nurse about a medication". One binding for the routes; off unless the tenant flags
   // `messaging.medication_questions` AND `messaging.tasks` are on. Never an order path: it reads no order or prescribing
   // permission. The same messaging service instance sends the message, link and task in one transaction.
@@ -5236,6 +5253,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36Handoffs ? { handoffs: m36Handoffs } : {}),
             // WP 3.8 - lifecycle review queue; off unless the tenant flag `messaging.tasks` is on.
             ...(m36Review ? { review: m36Review } : {}),
+            ...(m36DeathBoard ? { deathBoard: m36DeathBoard } : {}),
             // WP 3.10 - ask a nurse about a medication; off unless tenant flags `messaging.medication_questions` AND `messaging.tasks` are on.
             ...(m36MedicationQuestions ? { medicationQuestions: m36MedicationQuestions } : {}),
             // WP 4.1 - urgent clinical message; off unless tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are on.
@@ -5299,7 +5317,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     },
                     endMemberships: (orgId: string, userId: string) =>
                       endChannelMembershipsForUser(dbHandle.db, orgId, userId),
-                    reassignTasks: m36Tasks.reassignForLeaver,
+                    // WP 6.9: the leaver's death-board items move in the same step (not reported separately); both are attempted.
+                    reassignTasks: async (orgId: string, userId: string) => {
+                      let failure: unknown;
+                      let summary: Awaited<ReturnType<typeof m36Tasks.reassignForLeaver>> | undefined;
+                      try {
+                        summary = await m36Tasks.reassignForLeaver(orgId, userId);
+                      } catch (err) {
+                        failure = err;
+                      }
+                      try {
+                        await m36DeathBoard?.service.reassignForLeaver(orgId, userId);
+                      } catch (err) {
+                        failure ??= err;
+                      }
+                      if (failure) throw failure;
+                      return summary as NonNullable<typeof summary>;
+                    },
                     resolveHandoffs: m36Handoffs.reassignForLeaver,
                     warn: (event: string, context: Record<string, string>) =>
                       app.log.warn(context, event),
@@ -11028,6 +11062,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // WP 3.8 - a patient who is discharged, dies or transfers out: their open care-team tasks are queued for a
           // supervisor's decision (never deleted, never auto-closed) and the people affected are told. Bound only with
           // the review binding; the care_team archive above is the posting restriction, this is the follow-up check.
+          // WP 6.9 - the same two events open the death board (a death only; flag `messaging.death_board`). It does not depend on the review binding.
+          ...(m36DeathBoard
+            ? [
+                buildM36DeathBoardConsumer({
+                  admissionCare: (orgId, admissionId) =>
+                    (
+                      getSeam("AdmissionStatusReader") as AdmissionStatusReader
+                    ).getAdmissionPatientCare(orgId, admissionId),
+                  service: m36DeathBoard.service,
+                  isFlagOn: m36DeathBoard.isEnabled,
+                }),
+              ]
+            : []),
           ...(m36Review
             ? [
                 buildM36PatientLifecycleReviewConsumer({
@@ -11055,6 +11102,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             reassignOwnedItems: combineReassignments([
               m36Tasks?.reassignForLeaver,
               m36Handoffs?.reassignForLeaver,
+              // WP 6.9: the leaver's open death-board items move to the next eligible person or are flagged (never ownerless).
+              m36DeathBoard?.service.reassignForLeaver,
             ]),
             ...(realtimeEmitter
               ? {

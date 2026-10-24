@@ -265,6 +265,28 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.death_board.assigned",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 6.9 (ADR-0098): the new owner of a death-board checklist item is told, in-app only, with generic text (no patient, no item wording).
+    resolverArgs: { roleKeys: [], userIdPaths: ["ownerUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.death_board.needs_owner",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 6.9 (ADR-0098): supervisors are told a death-board item has no available owner. Org-wide by role; tenants re-aim it through the alert-rule admin.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.promotion.decided",
     category: "clinical_routine",
     severityFloor: "info",

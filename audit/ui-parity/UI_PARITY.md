@@ -316,6 +316,7 @@
 | web | 36-messaging | `messaging.break-glass` | `/messaging/governance/break-glass` | `messaging.break_glass.review` | ✅ |
 | web | 36-messaging | `messaging.export` | `/messaging/export` | `messaging.export.request` | ✅ |
 | web | 36-messaging | `messaging.export-approvals` | `/messaging/governance/export-approvals` | `messaging.export.approve` | ✅ |
+| web | 36-messaging | `messaging.death-board` | `/messaging/death-board` | `messaging.read` | ✅ |
 | web | 36-messaging | `messaging.partners` | `/messaging/partners` | `messaging.share.manage` | ✅ |
 | web | 36-messaging | `messaging.saved-replies` | `/messaging/saved-replies` | `messaging.send` | ✅ |
 | web | 36-messaging | `messaging.global-search-settings` | `/messaging/search-settings` | `messaging.global_search.manage` | ✅ |

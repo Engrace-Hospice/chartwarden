@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1748,
     "coveredRoutes": 1748,
-    "directRoutesReferenced": 1625
+    "directRoutesReferenced": 1621
   },
   "modules": [
     {
@@ -531,7 +531,6 @@
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
-        "apps/backend/__tests__/m36-ack-broadcast.live.test.ts",
         "apps/backend/__tests__/m36-ack-delivery-failure.live.test.ts",
         "apps/backend/__tests__/m36-ack-escalation.live.test.ts",
         "apps/backend/__tests__/m36-ack-requests.live.test.ts",
@@ -546,6 +545,8 @@
         "apps/backend/__tests__/m36-channel-admin.live.test.ts",
         "apps/backend/__tests__/m36-clinical-link-routes.test.ts",
         "apps/backend/__tests__/m36-clinical-link.live.test.ts",
+        "apps/backend/__tests__/m36-death-board-routes.test.ts",
+        "apps/backend/__tests__/m36-death-board.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-delivery-target.live.test.ts",
         "apps/backend/__tests__/m36-delivery-target.test.ts",
@@ -607,7 +608,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 144
+      "directRoutesReferenced": 140
     },
     {
       "module": "37-ipu",

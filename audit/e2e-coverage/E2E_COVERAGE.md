@@ -101,7 +101,7 @@
 | `medicaid.trading-partners` | 24-billing-medicaid | `/medicaid/billing/trading-partner-credentials` | medicaid.trading_partner.read |
 | `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
 | `messaging.response-analytics` | 36-messaging | `/messaging/analytics` | messaging.analytics.read |
-| `messaging.ack-broadcast` | 36-messaging | `/messaging/broadcasts` | messaging.read |
+| `messaging.death-board` | 36-messaging | `/messaging/death-board` | messaging.read |
 | `messaging.devices` | 36-messaging | `/messaging/devices` | (none) |
 | `messaging.export` | 36-messaging | `/messaging/export` | messaging.export.request |
 | `messaging.break-glass` | 36-messaging | `/messaging/governance/break-glass` | messaging.break_glass.review |

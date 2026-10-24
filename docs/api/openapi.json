@@ -177150,6 +177150,975 @@
         }
       }
     },
+    "/api/v1/messaging/death-board-items/{itemId}/complete": {
+      "post": {
+        "operationId": "postApiV1MessagingDeathboarditemsByItemIdComplete",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Mark a checklist item complete (WP 6.9; the item's OWNER only: 403 DEATH_BOARD_NOT_OWNER for anyone else who can see it). Explicit, idempotent (the owner repeating it gets the same item), stamped by the database clock. A flagged item (no owner) is 409 DEATH_BOARD_ITEM_STATE_CONFLICT until a supervisor reassigns it. Coordination only: nothing is written to the chart",
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "item"
+                  ],
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "item_key",
+                        "label",
+                        "status",
+                        "owner_user_id",
+                        "owner_display_name",
+                        "needs_owner",
+                        "due_at",
+                        "overdue",
+                        "completed_at",
+                        "completed_by_user_id",
+                        "actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "item_key": {
+                          "anyOf": [
+                            {
+                              "const": "pronouncement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "family_notification",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme_pickup",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_disposal",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m4_record_tasks",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m22_document_tasks",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "done",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "owner_user_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "owner_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_owner": {
+                          "type": "boolean"
+                        },
+                        "due_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "overdue": {
+                          "type": "boolean"
+                        },
+                        "completed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completed_by_user_id": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reassign",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/death-board-items/{itemId}/history": {
+      "get": {
+        "operationId": "getApiV1MessagingDeathboarditemsByItemIdHistory",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The owner and status history of one checklist item (WP 6.9): created, reassigned, needs_owner, completed, each with its actor (or the system) and instants. Same visibility and 404 as the board",
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events"
+                  ],
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "event_type",
+                          "actor_kind",
+                          "actor_user_id",
+                          "from_owner_user_id",
+                          "to_owner_user_id",
+                          "reason_code",
+                          "created_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "event_type": {
+                            "anyOf": [
+                              {
+                                "const": "created",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reassigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_owner",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "actor_kind": {
+                            "anyOf": [
+                              {
+                                "const": "user",
+                                "type": "string"
+                              },
+                              {
+                                "const": "system",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "actor_user_id": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "from_owner_user_id": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "to_owner_user_id": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason_code": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "creation",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "manual",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "supervisor",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "offboarding",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/death-board-items/{itemId}/reassign": {
+      "post": {
+        "operationId": "postApiV1MessagingDeathboarditemsByItemIdReassign",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reassign a checklist item (WP 6.9; the owner, or a messaging.review holder). The target must be an active user the Part 2 gate admits for the patient (422 DEATH_BOARD_OWNER_INVALID). Audited with the actor and reason, tells the new owner with fixed text, clears the no-owner flag. Repeating it is a no-op; a finished item is 409",
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "item"
+                  ],
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "item_key",
+                        "label",
+                        "status",
+                        "owner_user_id",
+                        "owner_display_name",
+                        "needs_owner",
+                        "due_at",
+                        "overdue",
+                        "completed_at",
+                        "completed_by_user_id",
+                        "actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "item_key": {
+                          "anyOf": [
+                            {
+                              "const": "pronouncement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "family_notification",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme_pickup",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_disposal",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m4_record_tasks",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m22_document_tasks",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "done",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "owner_user_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "owner_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_owner": {
+                          "type": "boolean"
+                        },
+                        "due_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "overdue": {
+                          "type": "boolean"
+                        },
+                        "completed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completed_by_user_id": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reassign",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "to_user_id"
+                ],
+                "properties": {
+                  "to_user_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/death-boards": {
+      "get": {
+        "operationId": "getApiV1MessagingDeathboards",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The death follow-up boards the caller may see (WP 6.9; messaging.read + patient.read; messaging.review marks a supervisor). One board per deceased patient, six fixed checklist items, each with ONE owner. Visible to a supervisor, anyone who owns or acted on an item, and the patient's live care team; a viewer the 42 CFR Part 2 gate refuses (or cannot evaluate) sees nothing. limit up to 50 (default 25) over the 100 most recent boards. 200 {enabled:false,boards:[]} while the tenant flag `messaging.death_board` is off, checked before the query is parsed. Read-audited against every patient it discloses",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "boards"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "boards": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patient_id",
+                          "patient_display_name",
+                          "mrn_suffix",
+                          "created_at",
+                          "open_count",
+                          "items"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "patient_id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "patient_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mrn_suffix": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "open_count": {
+                            "type": "integer"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "item_key",
+                                "label",
+                                "status",
+                                "owner_user_id",
+                                "owner_display_name",
+                                "needs_owner",
+                                "due_at",
+                                "overdue",
+                                "completed_at",
+                                "completed_by_user_id",
+                                "actions"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "type": "string"
+                                },
+                                "item_key": {
+                                  "anyOf": [
+                                    {
+                                      "const": "pronouncement",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "family_notification",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dme_pickup",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "medication_disposal",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "m4_record_tasks",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "m22_document_tasks",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "open",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "done",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "owner_user_id": {
+                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "type": "string"
+                                },
+                                "owner_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "needs_owner": {
+                                  "type": "boolean"
+                                },
+                                "due_at": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "overdue": {
+                                  "type": "boolean"
+                                },
+                                "completed_at": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "completed_by_user_id": {
+                                  "anyOf": [
+                                    {
+                                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "actions": {
+                                  "type": "array",
+                                  "items": {
+                                    "anyOf": [
+                                      {
+                                        "const": "complete",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "reassign",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/death-boards/{boardId}": {
+      "get": {
+        "operationId": "getApiV1MessagingDeathboardsByBoardId",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One death follow-up board (WP 6.9). A missing, foreign, not-your-patient, Part 2-refused and flag-off board is ONE 404. Items carry ids, a fixed label, the owner, a state and the actions the caller may take now. No free text. Read-audited against the patient",
+        "parameters": [
+          {
+            "name": "boardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "board"
+                  ],
+                  "properties": {
+                    "board": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "patient_id",
+                        "patient_display_name",
+                        "mrn_suffix",
+                        "created_at",
+                        "open_count",
+                        "items"
+                      ],
+                      "properties": {
+                        "id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "patient_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "patient_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mrn_suffix": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "open_count": {
+                          "type": "integer"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "item_key",
+                              "label",
+                              "status",
+                              "owner_user_id",
+                              "owner_display_name",
+                              "needs_owner",
+                              "due_at",
+                              "overdue",
+                              "completed_at",
+                              "completed_by_user_id",
+                              "actions"
+                            ],
+                            "properties": {
+                              "id": {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              "item_key": {
+                                "anyOf": [
+                                  {
+                                    "const": "pronouncement",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "family_notification",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "dme_pickup",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "medication_disposal",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "m4_record_tasks",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "m22_document_tasks",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "open",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "done",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "owner_user_id": {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              "owner_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "needs_owner": {
+                                "type": "boolean"
+                              },
+                              "due_at": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "overdue": {
+                                "type": "boolean"
+                              },
+                              "completed_at": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "completed_by_user_id": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "actions": {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "const": "complete",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "reassign",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/deliveries/{id}/target": {
       "get": {
         "operationId": "getApiV1MessagingDeliveriesByIdTarget",
