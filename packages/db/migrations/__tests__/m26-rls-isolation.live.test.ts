@@ -53,6 +53,14 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "cap_settlement", key: "settlement" },
 ];
 
+// Migrations before 1139 are frozen history and spell the old wardenx_* role names; 1139 renamed those roles in the
+// live catalog. A test that RE-APPLIES an old migration after 1139 must therefore spell the roles as the catalog now does.
+const asCurrentRoles = (sql: string): string =>
+  sql.replace(
+    /\bwardenx_(app|admin|readonly|audit_writer|platform|platform_login|destruction|destruction_login|m36_reseal|body_backfill_login)\b/g,
+    "chartwarden_$1",
+  );
+
 describe.skipIf(!DB_URL)(
   "M26 Cap Management — RLS cross-tenant denial — LIVE Postgres (§3.5)",
   () => {
@@ -277,7 +285,8 @@ describe.skipIf(!DB_URL)(
       );
       return rows[0];
     }
-    const rerun = (file: string) => db.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+    const rerun = (file: string) =>
+      db.query(asCurrentRoles(readFileSync(join(MIGRATIONS_DIR, file), "utf8")));
 
     it("0393 publishes FY2026 = $35,361.44 and FY2027 = $36,174.75 with their Federal Register sources", async () => {
       const fy26 = await constantRow("FY2026");
