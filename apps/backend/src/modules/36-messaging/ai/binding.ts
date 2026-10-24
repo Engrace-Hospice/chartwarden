@@ -8,6 +8,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import type { MessagingRouteService } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   MESSAGING_AI_FLAG_KEY,
   MESSAGING_AI_LIMITS,
   MESSAGING_AI_USE_PERMISSION,
@@ -29,7 +30,7 @@ const R = schema.roles;
 
 const THREAD_PAGE = 200;
 /** Bounds the read (2,000 replies); the 14-day / 50-message window makes anything beyond it unlikely. */
-const THREAD_MAX_PAGES = 10;
+const THREAD_MAX_PAGES = 3;
 
 /**
  * A redaction that is REQUESTED but not yet approved does not mask the body for readers, but it means someone said the message holds too much
@@ -138,6 +139,14 @@ export function buildAiDeps(input: AiBindingInput): AiBinding {
               });
               replies.push(...next.replies);
               cursor = next.nextCursor;
+            }
+            // Beyond the cap the newest replies were not read: say so rather than summarise a stale picture as current.
+            if (cursor) {
+              throw new ChartWardenError(
+                "AI_NOT_AVAILABLE_FOR_CHANNEL",
+                "This thread is too long for an AI summary.",
+                422,
+              );
             }
             return [first.root, ...replies];
           }

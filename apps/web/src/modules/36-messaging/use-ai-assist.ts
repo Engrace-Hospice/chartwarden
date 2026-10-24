@@ -185,6 +185,7 @@ export function useAiAssist(channelId: string, draft: string) {
     toggle: (): void => {
       if (open) {
         settle("rejected"); // no-op when the shown answer was already used or rejected
+        generation.current += 1;
         setOpen(false);
         setView({ phase: "idle" });
         return;
@@ -193,6 +194,7 @@ export function useAiAssist(channelId: string, draft: string) {
       void run("summary", null);
     },
     close: (): void => {
+      generation.current += 1;
       settle("rejected");
       setOpen(false);
       setView({ phase: "idle" });
@@ -208,6 +210,7 @@ export function useAiAssist(channelId: string, draft: string) {
       void run("summary", null);
     },
     notUseful: (): void => {
+      generation.current += 1;
       settle("rejected");
       setOpen(false);
       setView({ phase: "idle" });

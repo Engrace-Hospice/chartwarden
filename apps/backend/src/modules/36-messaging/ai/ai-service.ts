@@ -327,6 +327,14 @@ export function createAiService(deps: AiServiceDeps): AiService {
       await stillEntitled(actor, channelId);
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        // The retry is a second vendor call: it spends a second unit of the user's hourly allowance (no cost amplification under one unit).
+        if (attempt > 0) {
+          await consume(
+            `m36-ai:sum:user:${actor.orgId}:${actor.userId}`,
+            HOUR_MS,
+            MESSAGING_AI_LIMITS.summariesPerUserPerHour,
+          );
+        }
         const call = await dispatch("summary", actor, channelId, facts.patientId, input);
         if (!call.available) throw unavailable();
         const parsed = parseSummary(call.text, input);
@@ -373,6 +381,13 @@ export function createAiService(deps: AiServiceDeps): AiService {
       await stillEntitled(actor, channelId);
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (attempt > 0) {
+          await consume(
+            `m36-ai:draft:user:${actor.orgId}:${actor.userId}`,
+            HOUR_MS,
+            MESSAGING_AI_LIMITS.draftsPerUserPerHour,
+          );
+        }
         const call = await dispatch("draft", actor, channelId, facts.patientId, input);
         if (!call.available) throw unavailable();
         const parsed = parseDrafts(call.text, input.aliasToDisplayName);

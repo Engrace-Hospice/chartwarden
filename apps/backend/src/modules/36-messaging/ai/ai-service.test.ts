@@ -281,6 +281,20 @@ describe("summarize - validation, retry and refusal", () => {
     expect(port.outcomes.map((o) => o.outcome)).toEqual(["rejected", "rejected"]);
   });
 
+  it("a retry is a second vendor call and spends a second unit of the user's hourly allowance", async () => {
+    const keys: string[] = [];
+    const { service, port } = build({
+      withinQuota: async (key) => {
+        keys.push(key);
+        return true;
+      },
+    });
+    port.script("garbage", GOOD_SUMMARY);
+    await service.summarize(ME, CH, null);
+    expect(keys.filter((k) => k.startsWith("m36-ai:sum:user:"))).toHaveLength(2);
+    expect(keys.filter((k) => k.startsWith("m36-ai:sum:chan:"))).toHaveLength(1);
+  });
+
   it("recovers when the retry is valid", async () => {
     const { service, port } = build();
     port.script("garbage", GOOD_SUMMARY);
