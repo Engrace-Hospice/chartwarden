@@ -1466,6 +1466,15 @@ import {
   ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
   ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
+// M36 WP 6.10 alarm ingest, watch only (ADR-0102, PROPOSED).
+import {
+  AlarmEventBodySchema as M36AlarmEventBodySchema,
+  AlarmIngestAcceptedResponseSchema as M36AlarmAcceptedResponseSchema,
+  AlarmSourceCredentialResponseSchema as M36AlarmCredentialResponseSchema,
+  AlarmSourceListResponseSchema as M36AlarmSourceListResponseSchema,
+  AlarmSourceResponseSchema as M36AlarmSourceResponseSchema,
+  CreateAlarmSourceBodySchema as M36AlarmCreateBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox";
 // M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
 import {
   CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
@@ -11042,6 +11051,35 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M36FamilySendBodySchema,
     response: M36FamilySendResponseSchema,
     status: 201,
+  // alarm ingest, watch only (ADR-0102, PROPOSED)
+  "GET /api/v1/messaging/alarm-sources": {
+    summary:
+      "The tenant's alarm sources (messaging.alarm_ingest.manage; never depends on the flag): ids, a staff-chosen name, state, secret version, the alarm-code mappings with their severity ceilings, the last accepted instant and the last 24 hours' outcome counts (alerted, nobody to alert, unmapped, waiting). No secret, cipher or alarm detail",
+    response: M36AlarmSourceListResponseSchema,
+  },
+  "POST /api/v1/messaging/alarm-sources": {
+    summary:
+      "Create an alarm source (messaging.alarm_ingest.manage + a fresh step-up; 404 while the tenant flag is off; 503 ALARM_INGEST_UNAVAILABLE without trusted proxy configuration; 409 at 20 enabled sources). Each mapping sends a sender alarm code to one alarm_ingest.* catalog alert type with a severity ceiling of info or warn (never critical). The credential (`keyId` and `secret`) is returned ONCE; the secret is stored sealed under the tenant key",
+    body: M36AlarmCreateBodySchema,
+    response: M36AlarmCredentialResponseSchema,
+    status: 201,
+  },
+  "POST /api/v1/messaging/alarm-sources/:id/rotate-secret": {
+    summary:
+      "Replace a source's secret (messaging.alarm_ingest.manage + a fresh step-up; 404 while the flag is off or the source is unknown or disabled). The old secret stops verifying at once; the new credential is returned ONCE",
+    response: M36AlarmCredentialResponseSchema,
+  },
+  "POST /api/v1/messaging/alarm-sources/:id/disable": {
+    summary:
+      "Disable a source for good (messaging.alarm_ingest.manage + a fresh step-up; never depends on the flag). One way: create a new source to resume. Idempotent",
+    response: M36AlarmSourceResponseSchema,
+  },
+  "POST /api/v1/messaging/alarm-ingest/events": {
+    summary:
+      "INBOUND, no user session. A third-party alarm becomes an ordinary in-app alert (never a response request, never routed or paged by this route). Headers x-wx-key-id (`<organizationId>.<sourceId>`), x-wx-timestamp (epoch seconds, within 300 s) and x-wx-signature (`v1=` + hex HMAC-SHA256 of `<timestamp>.<keyId>.<raw body>` under the source secret). Every refusal up to a wrong signature is the same 401. Body at most 1 KiB, no free text. `eventId` is the idempotency key (a replay is 202 duplicate; the same id with a different body is 409). The effective severity is the requested one capped at the mapping's ceiling (info or warn). 422 ALARM_KIND_UNMAPPED when the code is not mapped (recorded and counted); 503 ALARM_NOT_ALERTED when the alert could not be raised (retry with the same eventId); 429 over budget",
+    body: M36AlarmEventBodySchema,
+    response: M36AlarmAcceptedResponseSchema,
+    status: 202,
   },
 
   // alerts (§4.2)

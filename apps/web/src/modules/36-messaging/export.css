@@ -153,3 +153,8 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8125rem;
 }
+
+.wx-export-codes {
+  padding: 0;
+  list-style: none;
+}

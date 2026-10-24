@@ -345,6 +345,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       // WP 6.7 (ADR-0099 D9): the compliance officer manages and answers family messaging (migration 1234 covers existing roles).
       "messaging.family.manage",
       "messaging.family.respond",
+      // WP 6.10 (ADR-0102): the compliance officer manages alarm ingest sources (migration 1250 covers existing roles).
+      "messaging.alarm_ingest.manage",
       // WP 5.6 (ADR-0055 item 7): request and approve a message redaction (two different people; migration 1156 covers existing roles).
       "messaging.redact.request",
       "messaging.redact.approve",

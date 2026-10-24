@@ -69,6 +69,8 @@ import {
 } from "@chartwarden/tenancy";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
+  ALARM_INGEST_IP_BUDGET_PER_MINUTE,
+  ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
   ChartWardenError,
   DegradedError,
   type Npi,
@@ -5286,6 +5288,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.7 family messaging mount
+            // ── WP 6.10 (ADR-0102, PROPOSED) alarm ingest, WATCH ONLY. Flag `messaging.alarm_ingest` (absent = off) gates the inbound route and
+            // create / rotate; list and disable never. Budgets: per client address before any database work (300/min), then per source after the
+            // signature is proven (60/min). The inbound route is mounted only when the ADR-0096 D17 trusted-proxy gate passes (the boot warning for
+            // an invalid TRUSTED_PROXY_CIDRS is the external-share one above). The alerts are ordinary M36 alerts through the AlertEmitter seam.
+            alarmIngest: (() => {
+              const store = rateLimitStore ?? createInMemoryRateLimitStore();
+              const budget = (keyPrefix: string, limit: number) =>
+                createBudgetedRateLimiter(store, {
+                  limit,
+                  windowMs: 60 * 1000,
+                  keyPrefix,
+                  // Fail CLOSED: the pre-auth budget is the abuse control of an unauthenticated route; senders retry on 429.
+                  failClosed: true,
+                  onStoreError: (err) => app.log.warn({ err }, "alarm ingest rate-limit store error"),
+                });
+              return {
+                flags: featureFlagReader,
+                alerts: () => getSeam("AlertEmitter") as AlertEmitter,
+                ingestAvailable: partnerAccessAvailability(process.env).available,
+                ipLimiter: budget("m36-alarm-ingest:ip", ALARM_INGEST_IP_BUDGET_PER_MINUTE),
+                sourceLimiter: budget(
+                  "m36-alarm-ingest:source",
+                  ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
+                ),
+                warn: (event: string, context: Record<string, unknown>) =>
+                  app.log.warn(context, event),
+              };
+            })(),
+            // ── end WP 6.10 alarm ingest mount
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {
               flags: featureFlagReader,

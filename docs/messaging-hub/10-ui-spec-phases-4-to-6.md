@@ -550,6 +550,18 @@ what was shared with you." States: S0 plus *share expired*, *revoked* (partner v
 names the partner and expiry in its confirm button. Acceptance: axe + keyboard; live: partner reads nothing outside scope; revocation is immediate on
 the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on what may be shared.
 
+### 6.10 Alarm sources (read-only list; built flag-off, ADR-0102 Proposed)
+
+| | |
+|---|---|
+| Route / app | `/messaging/alarm-sources`, `apps/web`, nav group Admin |
+| Permission / flag | `messaging.alarm_ingest.manage`; tenant flag `messaging.alarm_ingest` (the list never depends on it; creating and rotating do) |
+| Endpoint | `GET /api/v1/messaging/alarm-sources` (create, rotate-secret and disable are API calls with a fresh step-up; the screen has only Refresh) |
+| Shows | per source: name, Active or Disabled (a word), what each alarm code becomes and its ceiling (Information only, Up to warning), last delivered, secret version, and the last 24 hours as `N alerted, N with nobody to alert, N unmapped code, N waiting`; a plain warning when any of the last three is above zero |
+| Always says | a notice only; does not replace the nurse-call or monitoring system; nobody is paged by it. Never uses the word emergency |
+| States | loading, empty ("No alarm sources"), denied, error with Retry, refresh-failed alert that keeps the list. No secret is ever rendered |
+| Acceptance | `alarm-sources.dom.test.tsx` (read only, wording, silent-drop visibility, states, axe) |
+
 ## 8. Exceeding TigerConnect
 
 > **Caution on the comparison.** The "TigerConnect" column is based on publicly marketed capability names as we understand them. It is
@@ -563,7 +575,7 @@ the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on wh
 | Priority alerts | Priority levels with distinct alerting | Routine / important / urgent / Critical, distinct tone | **Closed-loop acknowledgment with audit**: opened ≠ taken; aide = receipt only; permanent "not the emergency path" | P0 | 4.1, 4.2 (built), G1, G2 |
 | Escalation | Auto-escalate unanswered alerts | Timed tier escalation, backup routing | Visible **ladder visualiser**, supervisor queue with "shown N of M", `failed_unreachable`, restart-safe timers, exactly-once | P0 | 4.4 (built), 4.5, 4.9 |
 | Scheduling | On-call schedules integrated | Read M19 roster | Honest "who covers now" with shift/time-zone correctness; **after-hours triage line routing** into M19 `triage_call` | P0 | **4.12**, **4.13** |
-| Alarm management | Clinical alarm/event routing from devices | Receive system events as alerts | Hospice has little bedside telemetry: P3. Reuse the alert catalog for M-module events; ingest of third-party alarms only on a real customer need | P3 | **6.10** (watch) |
+| Alarm management | Clinical alarm/event routing from devices | Receive system events as alerts | Hospice has little bedside telemetry: P3. Reuse the alert catalog for M-module events; ingest of third-party alarms only on a real customer need. **Built flag-off as watch only (ADR-0102, Proposed):** a signed alarm is an in-app alert, never a response request, an escalation or a page, and never a nurse-call replacement | P3 | **6.10** (built flag-off, watch only) |
 | Patient engagement | Secure patient/family messaging | Family can reach the team | **Family/caregiver secure messaging with no app** (one-time link + code, no PHI in SMS/email), routed to the care team; bereavement channel kept after death | P1 | **6.7** |
 | Admin console, LDAP/SAML, PIN, remote lockout | Directory sync, SSO, PIN lock, remote wipe | Central identity, app lock, revoke a lost device | Identity stays M2/M34 (SAML/OIDC via the platform, not a second directory); **tenant-set tighten-only app lock**; revoke kills socket + endpoint; offboarding never leaves an urgent item ownerless | P1 | 5.5, 5.9 (+ M2 SSO, out of scope here) |
 | Archive / export | Retention policies, eDiscovery export | Retention, legal hold, export | Hold as an **overlay**, two-person export, expiring encrypted artefact, destruction certificates (M4), break-glass with mandatory post-review | P1 | 5.6, 5.7, 5.8 |

@@ -14431,6 +14431,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/alarm-ingest/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** INBOUND, no user session. A third-party alarm becomes an ordinary in-app alert (never a response request, never routed or paged by this route). Headers x-wx-key-id (`<organizationId>.<sourceId>`), x-wx-timestamp (epoch seconds, within 300 s) and x-wx-signature (`v1=` + hex HMAC-SHA256 of `<timestamp>.<keyId>.<raw body>` under the source secret). Every refusal up to a wrong signature is the same 401. Body at most 1 KiB, no free text. `eventId` is the idempotency key (a replay is 202 duplicate; the same id with a different body is 409). The effective severity is the requested one capped at the mapping's ceiling (info or warn). 422 ALARM_KIND_UNMAPPED when the code is not mapped (recorded and counted); 503 ALARM_NOT_ALERTED when the alert could not be raised (retry with the same eventId); 429 over budget */
+        post: operations["postApiV1MessagingAlarmingestEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's alarm sources (messaging.alarm_ingest.manage; never depends on the flag): ids, a staff-chosen name, state, secret version, the alarm-code mappings with their severity ceilings, the last accepted instant and the last 24 hours' outcome counts (alerted, nobody to alert, unmapped, waiting). No secret, cipher or alarm detail */
+        get: operations["getApiV1MessagingAlarmsources"];
+        put?: never;
+        /** Create an alarm source (messaging.alarm_ingest.manage + a fresh step-up; 404 while the tenant flag is off; 503 ALARM_INGEST_UNAVAILABLE without trusted proxy configuration; 409 at 20 enabled sources). Each mapping sends a sender alarm code to one alarm_ingest.* catalog alert type with a severity ceiling of info or warn (never critical). The credential (`keyId` and `secret`) is returned ONCE; the secret is stored sealed under the tenant key */
+        post: operations["postApiV1MessagingAlarmsources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-sources/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a source for good (messaging.alarm_ingest.manage + a fresh step-up; never depends on the flag). One way: create a new source to resume. Idempotent */
+        post: operations["postApiV1MessagingAlarmsourcesByIdDisable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-sources/{id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a source's secret (messaging.alarm_ingest.manage + a fresh step-up; 404 while the flag is off or the source is unknown or disabled). The old secret stops verifying at once; the new credential is returned ONCE */
+        post: operations["postApiV1MessagingAlarmsourcesByIdRotatesecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/analytics/response": {
         parameters: {
             query?: never;
@@ -69405,6 +69474,233 @@ export interface operations {
                 content: {
                     "application/json": {
                         enabled: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmingestEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    eventId: string;
+                    alarmKind: string;
+                    severity?: "info" | "warn" | "critical";
+                    occurredAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "accepted" | "duplicate";
+                        outcome: "received" | "alerted" | "no_recipients" | "unmapped";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAlarmsources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sources: {
+                            id: string;
+                            name: string;
+                            enabled: boolean;
+                            secretGeneration: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            rotatedAt: string | null;
+                            disabledAt: string | null;
+                            lastAcceptedAt: string | null;
+                            mappings: {
+                                alarmKind: string;
+                                alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                                severityCeiling: "info" | "warn";
+                            }[];
+                            last24h: {
+                                alerted: number;
+                                noRecipients: number;
+                                unmapped: number;
+                                pending: number;
+                            };
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmsources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    mappings: {
+                        alarmKind: string;
+                        alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                        severityCeiling: "info" | "warn";
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        enabled: boolean;
+                        secretGeneration: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        rotatedAt: string | null;
+                        disabledAt: string | null;
+                        lastAcceptedAt: string | null;
+                        mappings: {
+                            alarmKind: string;
+                            alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                            severityCeiling: "info" | "warn";
+                        }[];
+                        last24h: {
+                            alerted: number;
+                            noRecipients: number;
+                            unmapped: number;
+                            pending: number;
+                        };
+                        keyId: string;
+                        secret: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmsourcesByIdDisable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        enabled: boolean;
+                        secretGeneration: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        rotatedAt: string | null;
+                        disabledAt: string | null;
+                        lastAcceptedAt: string | null;
+                        mappings: {
+                            alarmKind: string;
+                            alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                            severityCeiling: "info" | "warn";
+                        }[];
+                        last24h: {
+                            alerted: number;
+                            noRecipients: number;
+                            unmapped: number;
+                            pending: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmsourcesByIdRotatesecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        enabled: boolean;
+                        secretGeneration: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        rotatedAt: string | null;
+                        disabledAt: string | null;
+                        lastAcceptedAt: string | null;
+                        mappings: {
+                            alarmKind: string;
+                            alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                            severityCeiling: "info" | "warn";
+                        }[];
+                        last24h: {
+                            alerted: number;
+                            noRecipients: number;
+                            unmapped: number;
+                            pending: number;
+                        };
+                        keyId: string;
+                        secret: string;
                     };
                 };
             };

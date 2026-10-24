@@ -476,6 +476,15 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // --- WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. MANAGE creates, rotates and disables a third-party alarm source (a fresh
+  //     step-up each time). Migration 1250 grants it to compliance_officer, administrator, org_admin only. The tenant flag
+  //     messaging.alarm_ingest is off by default. ---
+  "messaging.alarm_ingest.manage": {
+    resource: "alarm_source",
+    action: "manage",
+    category: "compliance",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
