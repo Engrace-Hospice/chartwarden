@@ -81,12 +81,13 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO patient
            (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status, deceased_date)
          VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', $3,
-                 CASE WHEN $3 = 'deceased' THEN '2026-01-01'::date END)
+                 $4::date)
          RETURNING id`,
         [
           organizationId,
           `MRN-${Math.random().toString(36).slice(2, 10)}`,
           status === "merged" ? "prospective" : status,
+          status === "deceased" ? "2026-01-01" : null,
         ],
       );
       const patientId = row.rows[0].id as string;
@@ -459,33 +460,23 @@ describe.skipIf(!DB_URL)(
       ]);
     });
 
-    it("leaves an on_hold or deceased patient's status alone", async () => {
-      for (const status of ["on_hold", "deceased"] as const) {
-        const patientId =
-          status === "deceased"
-            ? (
-                await admin.query(
-                  `INSERT INTO patient
-                     (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth,
-                      status, deceased_date)
-                   VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female', 'deceased', '2026-01-01')
-                   RETURNING id`,
-                  [ORG_A, `MRN-${Math.random().toString(36).slice(2, 10)}`],
-                )
-              ).rows[0].id
-            : await seedPatient(ORG_A, status);
-        const admissionId = await seedAdmission({
-          organizationId: ORG_A,
-          patientId,
-          providerEntityId: providerA1,
-          locationId: null,
-        });
+    // `on_hold → active` is the distinct "resume" edge, not an activation: the consumer refuses and changes
+    // nothing. deceased/merged refusal is covered by "refuses to reactivate a %s patient" above.
+    it("refuses to activate an on_hold patient and leaves its status and events alone", async () => {
+      const patientId = await seedPatient(ORG_A, "on_hold");
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: null,
+      });
 
-        await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+      await expect(
+        consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } }),
+      ).rejects.toThrow("cannot activate from status 'on_hold'");
 
-        expect(await patientStatus(patientId)).toBe(status);
-        expect(await statusChangedPayloads(patientId)).toEqual([]);
-      }
+      expect(await patientStatus(patientId)).toBe("on_hold");
+      expect(await statusChangedPayloads(patientId)).toEqual([]);
     });
 
     // ── §2.4.1 `active/on_hold → discharged` — the live-discharge consumer (m6.admission.discharged) ──

@@ -18,7 +18,13 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 
 export const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-export const daysAhead = (n: number) => daysAgo(-n);
+/**
+ * A deadline day `n` calendar days ahead in the watch's zone (DEFAULT_DEADLINE_ZONE = America/New_York). The
+ * watch ends the day at 23:59:59 NY, so a UTC-derived date is one day too far ahead between 00:00 and ~04:00 UTC
+ * (the boundary then reads 14 instead of 7); derive the day in the same zone the product uses.
+ */
+export const daysAhead = (n: number) =>
+  new Date(Date.now() + n * 864e5).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
 export interface M7Fixture {
   readonly admin: Client;

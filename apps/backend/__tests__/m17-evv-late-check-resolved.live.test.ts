@@ -57,7 +57,7 @@ describe.skipIf(!DB_URL)("F-196 — M17's EVV late-check-resolved consumer — L
   async function seedOrgFixture(orgId: string, slug: string) {
     await admin.query(
       `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$3,$3)`,
-      [orgId, slug, slug],
+      [orgId, `org-${slug}`, slug],
     );
     const pe = (
       await admin.query(

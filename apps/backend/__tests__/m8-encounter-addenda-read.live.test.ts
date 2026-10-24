@@ -15,7 +15,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { Value } from "@sinclair/typebox/value";
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -25,6 +24,7 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
+import { Value } from "@sinclair/typebox/value";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -271,7 +271,11 @@ describe.skipIf(!DB_URL)("M8 encounter addenda on GET /encounters/:id — LIVE P
       authenticate: headerAuth,
       security: { rateLimitEnabled: false },
     });
-    registerEncounterRoutes(app, { service: createDbEncounterRouteService(handle.db) });
+    // GAP-182: the list narrows to the caller's caseload (the "rn" role is not org-wide); stub the M5 lookup.
+    registerEncounterRoutes(app, {
+      service: createDbEncounterRouteService(handle.db),
+      caseloadPatientIds: async () => [PATIENT],
+    });
   }, 180_000);
 
   afterAll(async () => {

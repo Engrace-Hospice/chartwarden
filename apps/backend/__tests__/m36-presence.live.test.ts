@@ -40,6 +40,7 @@ import type { Part2ChannelGate } from "../src/modules/36-messaging/part2-channel
 import { createValkeyPresenceStore } from "../src/modules/36-messaging/presence/valkey-presence-store";
 import {
   CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
 import { PRESENCE_FLAG_KEY } from "../src/modules/36-messaging/routes/presence-routes";
@@ -240,6 +241,12 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         const id = typeof target.id === "string" ? target.id : null;
         return !!id && !!ctx.organizationId && !!ctx.userId
           ? service.canViewChannel(ctx.organizationId, ctx.userId, id)
+          : false;
+      });
+      registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+        const id = typeof target.id === "string" ? target.id : null;
+        return !!id && !!ctx.organizationId && !!ctx.userId
+          ? service.canReadChannel(ctx.organizationId, ctx.userId, id)
           : false;
       });
       registerAbacRegistry(registry);

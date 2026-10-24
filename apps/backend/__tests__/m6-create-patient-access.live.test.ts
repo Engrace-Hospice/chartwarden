@@ -57,6 +57,9 @@ const NURSE = "66666666-6666-6666-6666-666666666666";
 // A CMS-format MBI (`isValidMedicareNumber`), unique to this suite.
 const MBI = "1EG4TE5MK73";
 
+// org_admin and administrator read every chart org-wide (ADR-0090), which would mask the creator grant under test.
+const NON_ORG_WIDE_ROLES = ["intake_coordinator"] as const;
+
 const ctx = (organizationId: string, userId: string, roles: readonly string[]) => ({
   organizationId,
   userId,
@@ -260,8 +263,8 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
       const ref = await triagedReferral(ORG_A, "Epsilon, Eve");
       const { patientId } = await svc.createReferralPatient(ORG_A, ref.id, ref.version, CREATOR);
 
-      // org_admin holds no org-wide chart scope (by design) — only the grant opens the chart.
-      const adminRoles = ["org_admin"];
+      // A role with no org-wide chart scope (org_admin/administrator now have it, ADR-0090) — only the grant opens the chart.
+      const adminRoles = NON_ORG_WIDE_ROLES;
       expect(await caseloadOrScope(ctx(ORG_A, CREATOR, adminRoles), patientId)).toBe(true);
       expect(await caseloadOrScope(ctx(ORG_A, BYSTANDER, adminRoles), patientId)).toBe(false);
       expect(await caseloadOrScope(ctx(ORG_B, ORG_B_USER, adminRoles), patientId)).toBe(false);
@@ -368,7 +371,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
       const roster = await createDrizzleCareTeamStore(handle.db).listMembers(ORG_A, patientId);
 
       expect(roster).toEqual([BYSTANDER]);
-      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, ["org_admin"]), patientId)).toBe(true);
+      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, NON_ORG_WIDE_ROLES), patientId)).toBe(true);
     });
 
     it("activation ends the grant: a non-clinical creator loses the chart, an assigned RN keeps it", async () => {
@@ -386,7 +389,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
           [ORG_A, patientId, providerEntityId],
         )
       ).rows[0].id as string;
-      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, ["org_admin"]), patientId)).toBe(true);
+      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, NON_ORG_WIDE_ROLES), patientId)).toBe(true);
 
       const event = {
         organizationId: ORG_A,
@@ -395,7 +398,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
       await activated.handle(event);
       await activated.handle(event); // redelivery: no-op
 
-      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, ["org_admin"]), patientId)).toBe(false);
+      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, NON_ORG_WIDE_ROLES), patientId)).toBe(false);
       expect(await caseloadOrScope(ctx(ORG_A, BYSTANDER, ["rn"]), patientId)).toBe(true);
       const open = await openAssignments(patientId);
       expect(open.map((r) => r.role)).toEqual(["rn"]);
@@ -404,7 +407,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
     it("the grant also ends when the admission siting cannot be resolved (early-return path)", async () => {
       const ref = await triagedReferral(ORG_A, "Lambda, Lou");
       const { patientId } = await svc.createReferralPatient(ORG_A, ref.id, ref.version, CREATOR);
-      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, ["org_admin"]), patientId)).toBe(true);
+      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, NON_ORG_WIDE_ROLES), patientId)).toBe(true);
 
       // No such admission: the reader finds no siting row, and the consumer used to return before ending it.
       await activated.handle({
@@ -412,7 +415,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
         payload: { admissionId: "99999999-9999-4999-8999-999999999999", patientId },
       });
 
-      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, ["org_admin"]), patientId)).toBe(false);
+      expect(await caseloadOrScope(ctx(ORG_A, CREATOR, NON_ORG_WIDE_ROLES), patientId)).toBe(false);
     });
 
     it("the care-team read names each member and hides the access grant", async () => {

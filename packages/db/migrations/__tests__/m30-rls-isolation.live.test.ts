@@ -427,19 +427,21 @@ describe.skipIf(!DB_URL)(
       }
     });
 
+    // Migration 0067 is frozen history and still spells the pre-1139 role names (wardenx_*); 1139 renamed the
+    // roles in place, so this migration-TEXT check must match the old spelling (live privilege checks use chartwarden_*).
     // §3.7: NO M30 table grants DELETE (or ALL) to the request-scoped chartwarden_app role — SQL
     // hard-delete by the app role is impossible. chartwarden_admin (the eraseFn role) gets GRANT ALL.
     it("§3.7 0067 grants chartwarden_app only SELECT/INSERT/UPDATE (never DELETE/ALL); admin gets ALL", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0067_quality_m30_rls.sql"), "utf8");
       for (const { table } of COVERED) {
         expect(rls).toMatch(
-          new RegExp(`GRANT SELECT, INSERT, UPDATE ON "${table}" TO chartwarden_app`),
+          new RegExp(`GRANT SELECT, INSERT, UPDATE ON "${table}" TO wardenx_app`),
         );
-        expect(rls).toMatch(new RegExp(`GRANT ALL ON "${table}" TO chartwarden_admin`));
+        expect(rls).toMatch(new RegExp(`GRANT ALL ON "${table}" TO wardenx_admin`));
       }
       // No DELETE grant to chartwarden_app anywhere, and no GRANT ALL ... TO chartwarden_app.
-      expect(rls).not.toMatch(/GRANT[^;]*\bDELETE\b[^;]*TO chartwarden_app/i);
-      expect(rls).not.toMatch(/GRANT ALL[^;]*TO chartwarden_app/i);
+      expect(rls).not.toMatch(/GRANT[^;]*\bDELETE\b[^;]*TO wardenx_app/i);
+      expect(rls).not.toMatch(/GRANT ALL[^;]*TO wardenx_app/i);
     });
 
     // ── Per-table cross-tenant denial (§3.5) ─────────────────────────────────────────────────────

@@ -53,7 +53,7 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
   async function seedOrg(orgId: string, slug: string) {
     await admin.query(
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$3,$3)",
-      [orgId, slug, slug],
+      [orgId, `org-${slug}`, slug],
     );
     const row = await admin.query(
       `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)

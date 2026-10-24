@@ -35,6 +35,14 @@ const ORG = "11111111-1111-1111-1111-111111111111";
 const FY2027_END = "2027-03-31"; // fiscal_year_starting 2026
 const FY2026_END = "2026-03-31"; // fiscal_year_starting 2025
 
+// Migrations before 1139 are frozen history and spell the old wardenx_* role names; 1139 renamed those roles in the
+// live catalog. A test that RE-APPLIES an old migration after 1139 must therefore spell the roles as the catalog now does.
+const asCurrentRoles = (sql: string): string =>
+  sql.replace(
+    /\bwardenx_(app|admin|readonly|audit_writer|platform|platform_login|destruction|destruction_login|m36_reseal|body_backfill_login)\b/g,
+    "chartwarden_$1",
+  );
+
 describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migration 1058)", () => {
   let admin: Client;
   let handle: { db: DbClient; close: () => Promise<void> };
@@ -401,7 +409,7 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
       ).rows[0];
     const before = await count();
     const sql = readFileSync(join(MIGRATIONS_DIR, "1058_m23_hospice_cbsa_reference.sql"), "utf8");
-    await admin.query(sql);
+    await admin.query(asCurrentRoles(sql));
     expect(await count()).toEqual(before);
   });
 

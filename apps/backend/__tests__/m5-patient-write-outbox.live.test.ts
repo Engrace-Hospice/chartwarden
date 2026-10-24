@@ -177,13 +177,19 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
     const amd = await service.submitAmendment(
       ORG_A,
       patientId,
-      { scope: "demographic", rationale: "dob typo" },
+      {
+        scope: "demographic",
+        rationale: "dob typo",
+        requestedChange: { fieldPath: "dob", requestedValue: "1950-01-02" },
+      },
       STAFF,
     );
     await service.decideAmendment(ORG_A, amd.id, { accept: true }, STAFF);
     const evs = await events();
+    // Accepting a demographic amendment applies the change to the patient (GAP-118), which publishes `updated`.
     expect(evs.map((e) => e.event_type)).toEqual([
       "m5.patient.amendment_request_received",
+      "m5.patient.updated",
       "m5.patient.amendment_decided",
     ]);
     expect(evs[0]?.payload).toMatchObject({
@@ -191,7 +197,7 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
       organizationId: ORG_A,
       amendmentId: amd.id,
     });
-    expect(evs[1]?.payload).toMatchObject({
+    expect(evs[2]?.payload).toMatchObject({
       patientId,
       amendmentId: amd.id,
       decision: "accepted",

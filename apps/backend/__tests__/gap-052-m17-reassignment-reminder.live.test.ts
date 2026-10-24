@@ -79,7 +79,7 @@ describe.skipIf(!DB_URL)("GAP-052 — M17 reassignment scan + caregiver reminder
   async function seedOrg(orgId: string, slug: string): Promise<Fixture> {
     await admin.query(
       `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$3,$3)`,
-      [orgId, slug, slug],
+      [orgId, `org-${slug}`, slug],
     );
     const pe = (
       await admin.query(

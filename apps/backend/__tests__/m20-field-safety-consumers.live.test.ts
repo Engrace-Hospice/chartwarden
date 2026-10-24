@@ -252,7 +252,7 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
     await admin.query("DELETE FROM safety_emergency_contact_consent");
   });
 
-  it("every §4.8 visit trigger plus the M36 delivery-failure trigger has a live binding, and each names m20", () => {
+  it("every §4.8 visit trigger plus the M36 delivery-failure and M5 deceased triggers have a live binding, and each names m20", () => {
     const bound = consumers.flatMap((c) => c.eventTypes).sort();
     expect(bound).toEqual([
       "m17.visit.assigned",
@@ -263,6 +263,7 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
       "m18.evv.check_out_recorded",
       "m18.evv.gps_spoof_suspected",
       "m36.notification.delivery_failed",
+      "m5.patient.deceased", // §4.4 m5-patient-deceased.consumer (GAP-135)
     ]);
     for (const c of consumers) expect(c.consumerModule).toBe("m20");
   });

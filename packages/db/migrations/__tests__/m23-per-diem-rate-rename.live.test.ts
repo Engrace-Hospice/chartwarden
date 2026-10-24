@@ -37,6 +37,14 @@ const OLD_RULE_KEY = "hipps_coding_correct";
 const NEW_RULE_KEY = "per_diem_class_coding_correct";
 const DESTROYER = "m23_rename_destroyer";
 
+// Migrations before 1139 are frozen history and spell the old wardenx_* role names; 1139 renamed those roles in the
+// live catalog. A test that RE-APPLIES an old migration after 1139 must therefore spell the roles as the catalog now does.
+const asCurrentRoles = (sql: string): string =>
+  sql.replace(
+    /\bwardenx_(app|admin|readonly|audit_writer|platform|platform_login|destruction|destruction_login|m36_reseal|body_backfill_login)\b/g,
+    "chartwarden_$1",
+  );
+
 describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE Postgres", () => {
   let db: Client;
   let claimA: string;
@@ -52,8 +60,8 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
       .filter((f) => f.endsWith(".sql"))
       .sort();
 
-  async function applyFile(f: string) {
-    await db.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+  async function applyFile(f: string, rewrite: (sql: string) => string = (sql) => sql) {
+    await db.query(rewrite(readFileSync(join(MIGRATIONS_DIR, f), "utf8")));
   }
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
@@ -469,8 +477,8 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
       [OLD_RULE_KEY, NEW_RULE_KEY, ORG_C],
     );
 
-    await applyFile(RENAME_MIGRATION);
-    await applyFile(RENAME_MIGRATION);
+    await applyFile(RENAME_MIGRATION, asCurrentRoles);
+    await applyFile(RENAME_MIGRATION, asCurrentRoles);
 
     const cols = await db.query<{ column_name: string }>(
       "SELECT column_name FROM information_schema.columns WHERE table_name = $1",

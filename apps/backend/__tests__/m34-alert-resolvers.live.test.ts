@@ -114,6 +114,16 @@ describe.skipIf(!DB_URL)("M34 alert resolvers - LIVE Postgres (GAP-057)", () => 
     ).rows[0].id as string;
     await bind(PLATFORM_ORG, await membership(U_OWNER, PLATFORM_ORG), platformRole);
 
+    // Production binds each platform operator into the tenant with the zero-permission platform-owned
+    // `platform_alert_audience` role (bind-platform-staff, migration 1097). The emitter revalidates every
+    // recipient against the EMIT org's active memberships, so without this the owner is dropped.
+    const audienceRole = (
+      await admin.query(
+        "SELECT id FROM role WHERE key='platform_alert_audience' AND organization_id IS NULL",
+      )
+    ).rows[0].id as string;
+    await bind(TENANT, await membership(U_OWNER, TENANT), audienceRole);
+
     // A tenant cannot mint the look-alike at all: the DB backstop (migration 0318) refuses the row, so the
     // reader's `organization_id IS NULL` filter is defence in depth, not the only gate.
     await expect(
