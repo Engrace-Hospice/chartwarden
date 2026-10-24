@@ -19,7 +19,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -127,8 +132,9 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
       [patient, org, `1EG4TE5MK7${n}`, from],
     );
     await db.query(
-      `INSERT INTO patient_identifier (patient_id, organization_id, kind, value_encrypted, value_last4, effective_from)
-       VALUES ($1,$2,'ssn','cipher',$3,$4)`,
+      // `patient_identifier_ssn_blind_index` (0800): a live ssn row must carry its blind index.
+      `INSERT INTO patient_identifier (patient_id, organization_id, kind, value_encrypted, value_last4, value_blind_index, effective_from)
+       VALUES ($1,$2,'ssn','cipher',$3,convert_to('blind-' || $3, 'UTF8'),$4)`,
       [patient, org, `000${n}`, from],
     );
     const alias = await one(
