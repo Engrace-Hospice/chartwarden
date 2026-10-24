@@ -809,12 +809,6 @@ describe.skipIf(!DB_URL)(
         expect(codeOf(await call("POST", `${base}/nomnc/${n1.id}/deadlines`, as(recorder), {
           kind: "appeal_request", due: { date: "2099-01-02", time: "09:00" }, sourceNote: "x",
         }))).toBe("NOTICE_NOT_ACTIVE");
-        // an FK action (deleting the user who delivered it: ON DELETE SET NULL) is not a change to the record
-        const u = randomUUID();
-        await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [u, `${u}@x.test`]);
-        await admin.query("UPDATE nomnc_notice SET delivered_by_user_id=$2 WHERE id=$1", [n1.id, u]);
-        await admin.query(`DELETE FROM "user" WHERE id=$1`, [u]);
-        expect((await one<{ d: string | null }>("SELECT delivered_by_user_id AS d FROM nomnc_notice WHERE id=$1", [n1.id])).d).toBeNull();
       }
     });
 
@@ -859,6 +853,33 @@ describe.skipIf(!DB_URL)(
           [ORG_A, randomUUID(), admissionId, n.id],
         ),
       ).rejects.toThrow();
+    });
+
+    it("the freeze exempts only an FK action: a frozen notice's user columns can go to NULL, never to another user; the app role cannot touch them", async () => {
+      const author = await staff(ORG_A, "nomnc_recorder", []);
+      const { admissionId } = await activate();
+      const base = `/api/v1/admissions/${admissionId}`;
+      const n1 = (await call("POST", `${base}/nomnc`, as(author), noticeBody())).json() as { id: string };
+      expect((await call("POST", `${base}/nomnc`, as(recorder), noticeBody({ supersedesId: n1.id }))).statusCode).toBe(201);
+      const col = async () =>
+        (await one<{ d: string | null; c: string | null }>("SELECT delivered_by_user_id AS d, created_by_user_id AS c FROM nomnc_notice WHERE id=$1", [n1.id]));
+      expect(await col()).toEqual({ d: author, c: author });
+      // rewriting who delivered / created a frozen record is refused, even for the owner (the trigger)
+      for (const c of ["delivered_by_user_id", "created_by_user_id"])
+        await expect(admin.query(`UPDATE nomnc_notice SET ${c}=$2 WHERE id=$1`, [n1.id, recorder])).rejects.toThrow(/M6_NOMNC_FROZEN/);
+      // ... and the app role holds no UPDATE grant on either column
+      for (const c of ["delivered_by_user_id", "created_by_user_id"])
+        await expect(
+          withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+            tx.execute(sql.raw(`UPDATE nomnc_notice SET ${c} = '${recorder}' WHERE id = '${n1.id}'`)),
+          ),
+        ).rejects.toThrow();
+      expect(await col()).toEqual({ d: author, c: author });
+      // the FK action (ON DELETE SET NULL) is the one allowed change
+      await admin.query("DELETE FROM membership_role WHERE membership_id IN (SELECT id FROM membership WHERE user_id=$1)", [author]);
+      await admin.query("DELETE FROM membership WHERE user_id=$1", [author]);
+      await admin.query(`DELETE FROM "user" WHERE id=$1`, [author]);
+      expect(await col()).toEqual({ d: null, c: null });
     });
 
     it("the nomnc routes are not on the auditor enrolment allowlist (an auditor session reaches none of them)", () => {

@@ -177,7 +177,7 @@ CREATE POLICY "expedited_deadline_org" ON "expedited_deadline" FOR ALL TO chartw
 -- No DELETE for the app role: a notice, a review and a deadline are part of the record. Identity columns (org, admission,
 -- patient, subject, kind) never change after insert.
 GRANT SELECT, INSERT ON "nomnc_notice" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("status", "services_end_on", "delivered_at", "delivered_by_user_id", "recipient_kind", "representative_name",
+GRANT UPDATE ("status", "services_end_on", "delivered_at", "recipient_kind", "representative_name",
   "delivery_note", "acknowledgement_kind", "acknowledgement_note", "document_id", "document_version_id", "source_note", "superseded_by_id",
   "withdrawn_reason", "version", "updated_at") ON "nomnc_notice" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "nomnc_notice" TO chartwarden_admin;--> statement-breakpoint
@@ -254,10 +254,15 @@ BEGIN
     RETURN NEW;
   END IF;
   -- A superseded or withdrawn record is history: nothing about it changes again.
-  -- (An FK action — ON DELETE SET NULL on the two user columns — is not a change to the record.)
+  -- The ONLY exemption is an FK action (ON DELETE SET NULL on the two user columns): each column may go from a user to
+  -- NULL, never to another value, and nothing else may change. (The app role holds no UPDATE grant on either column.)
   IF OLD.status <> 'active'
-     AND (to_jsonb(NEW) - 'delivered_by_user_id' - 'created_by_user_id')
-         IS DISTINCT FROM (to_jsonb(OLD) - 'delivered_by_user_id' - 'created_by_user_id') THEN
+     AND ((to_jsonb(NEW) - 'delivered_by_user_id' - 'created_by_user_id')
+            IS DISTINCT FROM (to_jsonb(OLD) - 'delivered_by_user_id' - 'created_by_user_id')
+          OR NOT (NEW.delivered_by_user_id IS NOT DISTINCT FROM OLD.delivered_by_user_id
+                  OR (NEW.delivered_by_user_id IS NULL AND OLD.delivered_by_user_id IS NOT NULL))
+          OR NOT (NEW.created_by_user_id IS NOT DISTINCT FROM OLD.created_by_user_id
+                  OR (NEW.created_by_user_id IS NULL AND OLD.created_by_user_id IS NOT NULL))) THEN
     RAISE EXCEPTION 'M6_NOMNC_FROZEN: nomnc_notice % is % and cannot change', OLD.id, OLD.status;
   END IF;
   RETURN NEW;
