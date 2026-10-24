@@ -83,7 +83,13 @@ export const ROLE_SEND_ERROR_CODES = {
   resolutionChanged: "ROLE_SEND_RESOLUTION_CHANGED",
   unavailable: "ROLE_SEND_UNAVAILABLE",
   clientIdReused: "ROLE_SEND_CLIENT_ID_REUSED",
+  /** ADR-0082 decision 3: the router or its store failed on an after-hours send. A 503, never a coverage gap and never a person. */
+  lookupFailed: "ROLE_SEND_LOOKUP_FAILED",
 } as const;
+
+/** ADR-0082: the resolution statuses of a role send are the directory's plus `lookup_failed` (only produced while after-hours triage is on). */
+export const ROLE_SEND_RESOLUTION_STATUSES = [...ONCALL_DIRECTORY_STATUSES, "lookup_failed"] as const;
+export type RoleSendResolutionStatus = (typeof ROLE_SEND_RESOLUTION_STATUSES)[number];
 
 export interface RoleSendPersonDto {
   /** The user a confirmed send will go to. Disclosed only to a caller who may address the role for this visible patient. */
@@ -98,7 +104,9 @@ export interface RoleSendPersonDto {
 export interface RoleSendResolutionDto {
   readonly role: OnCallDirectoryRole;
   readonly as_of: string;
-  readonly status: OnCallDirectoryStatus;
+  readonly status: RoleSendResolutionStatus;
+  /** ADR-0082: true when sending will ALSO ask M19 for an after-hours triage call (shown before the send, hazard C). */
+  readonly afterhours_triage: boolean;
   readonly people: readonly RoleSendPersonDto[];
   readonly shift_ends_at: string | null;
   readonly time_zone: string | null;
@@ -137,3 +145,39 @@ export type AfterHoursTriageOutcome = (typeof AFTERHOURS_TRIAGE_OUTCOMES)[number
 
 /** The id-only outbox event M36 publishes for an after-hours send (consumed by M19). */
 export const AFTERHOURS_TRIAGE_REQUESTED_EVENT = "m36.afterhours_triage.requested";
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ADR-0082 slices S3-S5: what the sender and the care team see of the triage request. A CLOSED map: the line is chosen from the
+// recorded outcome and is never composed from M19 content (no call text, caller, disposition, phone or protocol).
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/**
+ *  - not_confirmed  M19 has not answered yet (or never will): shown to the sender as "triage call not confirmed", never a silent drop.
+ *  - opened / coalesced / no_coverage  M19's recorded answer.
+ *  - withheld       the channel is restricted (42 CFR Part 2): the outcome wording is not shown (Q8 default).
+ */
+export const AFTERHOURS_TRIAGE_LINE_STATES = [
+  "not_confirmed",
+  ...AFTERHOURS_TRIAGE_OUTCOMES,
+  "withheld",
+] as const;
+export type AfterHoursTriageLineState = (typeof AFTERHOURS_TRIAGE_LINE_STATES)[number];
+
+/** PROVISIONAL wording (clinical-lead sign-off pending). No name, patient, call content or disposition. */
+export const AFTERHOURS_TRIAGE_LINE_TEXT: Readonly<Record<AfterHoursTriageLineState, string>> = {
+  not_confirmed: "Triage call not confirmed",
+  opened: "After-hours triage call opened",
+  coalesced: "Added to an open after-hours triage call",
+  no_coverage: "No one was covering after-hours triage; no call was opened",
+  withheld: "After-hours triage request recorded. Details are in the on-call record",
+};
+
+export interface AfterHoursTriageLineDto {
+  readonly message_id: string;
+  readonly state: AfterHoursTriageLineState;
+  readonly text: string;
+}
+
+export interface AfterHoursTriageLinesResponse {
+  readonly lines: readonly AfterHoursTriageLineDto[];
+}

@@ -167,6 +167,39 @@ describe("create", () => {
     expect(screen.queryByText(/TOKEN-ABCDEF/)).toBeNull();
   });
 
+  it("previews what the partner will see BEFORE the acknowledgement, with synthetic text and no real message", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole("button", { name: "Share a conversation" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Share a conversation with a partner",
+    });
+    const preview = within(dialog).getByRole("region", { name: "What the partner will see" });
+    expect(within(preview).getByText(/Example: Shared conversation/)).toBeTruthy();
+    expect(
+      within(preview).getByText(/ChartWarden does not send the link or the code/),
+    ).toBeTruthy();
+    expect(within(preview).getByText(/Never shown:/)).toBeTruthy();
+    // It sits before the acknowledgement checkbox, so the box is ticked knowing what is shared.
+    const ack = within(dialog).getByRole("checkbox");
+    expect(preview.compareDocumentPosition(ack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the invitation as a fragment link with no query, and states that delivery is manual", async () => {
+    const user = userEvent.setup();
+    mount();
+    const dialog = await fillDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Create share" }));
+    const secrets = await screen.findByRole("dialog", { name: "Partner access created" });
+    const link = within(secrets).getByText(/\/partner\/share#o=/).textContent ?? "";
+    expect(link).toBe(
+      `${window.location.origin}/partner/share#o=${ORG}&t=${created().inviteToken}`,
+    );
+    expect(link).not.toContain("?");
+    expect(within(secrets).getByText(/does not send this link or the code/)).toBeTruthy();
+    expect(within(secrets).getByRole("region", { name: "What the partner will see" })).toBeTruthy();
+  });
+
   it("Cancel and Escape do nothing while a create is in flight, and the secrets still surface when it lands", async () => {
     const user = userEvent.setup();
     const g = gate<Reply>();
@@ -310,7 +343,9 @@ describe("reissue", () => {
     await act(async () => g.resolve(ok({ ...created(), verificationCode: "87654321" })));
     const secrets = await screen.findByRole("dialog", { name: "Invitation reissued" });
     expect(within(secrets).getByText("87654321")).toBeTruthy();
-    expect(within(secrets).getByRole("heading").textContent).toMatch(/Invitation reissued/);
+    expect(within(secrets).getByRole("heading", { level: 2 }).textContent).toMatch(
+      /Invitation reissued/,
+    );
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog", { name: "Invitation reissued" })).toBeTruthy();
     await user.click(within(secrets).getByRole("button", { name: "I have passed these on" }));

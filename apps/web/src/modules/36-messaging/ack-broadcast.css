@@ -166,3 +166,37 @@
   color: var(--color-on-surface-variant);
   font-size: 0.8125rem;
 }
+
+/* Wave 4 (ADR-0097 D13-D14): deadline and withdrawal markers, and the withdraw confirmation. Buttons are the kit's size="lg" (44px targets). */
+.wx-bc-marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.wx-bc-withdraw {
+  display: flex;
+}
+
+.wx-bc-dialog {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-bc-dialog h2,
+.wx-bc-dialog p {
+  margin: 0;
+}
+
+.wx-bc-dialog-problem {
+  color: var(--color-error, var(--color-on-surface));
+}
+
+.wx-bc-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

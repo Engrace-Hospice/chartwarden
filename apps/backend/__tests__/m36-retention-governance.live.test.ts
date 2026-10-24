@@ -52,7 +52,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildActivePermissionHolderCounter } from "../src/bootstrap/active-permission-holders";
+import { buildActivePermissionHolderIds } from "../src/bootstrap/active-permission-holders";
 import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -166,6 +166,8 @@ function keysOf(value: unknown, into = new Set<string>()): Set<string> {
 
 describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE Postgres", () => {
   let admin: Client;
+  // A test may pin the eligible-approver ids (a requester who holds the approve key by a path the holder reader does not count); null = the real reader.
+  let holderIdsOverride: ReadonlySet<string> | null = null;
   let handle: ReturnType<typeof createDbClient>;
   let auth: ReturnType<typeof createIdentityAuth>;
   let app: FastifyInstance;
@@ -359,6 +361,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
         throw err;
       },
     });
+    const realHolderIds = buildActivePermissionHolderIds(
+      createMembershipsHoldingPermissionReader(handle.db),
+    );
     mountMessagingRoutes(app, handle.db as never, {
       outbox: catalogOutbox() as never,
       retentionGovernance: {
@@ -379,9 +384,8 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
         redactionFallback: {
           enabled: async (organizationId) =>
             (await flagReader.forOrg(organizationId))[REDACTION_SINGLE_OFFICER_FLAG_KEY] === true,
-          eligibleApprovers: buildActivePermissionHolderCounter(
-            createMembershipsHoldingPermissionReader(handle.db),
-          ),
+          eligibleApprovers: async (tx, organizationId, permissionKey) =>
+            holderIdsOverride ?? (await realHolderIds(tx, organizationId, permissionKey)),
         },
         destructionMode: async (organizationId) =>
           retentionDestructionModeOf(
@@ -1323,6 +1327,23 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       // only the requester: another officer using the self route is refused (they use the ordinary approve)
       const stranger = await gov("POST", `/redactions/${id}/self-approve`, secondLogin);
       expect([401, 403, 409]).toContain(stranger.statusCode);
+    });
+
+    it("the requester must BE the sole eligible officer: another person's single-holder answer does not open self-approval to them", async () => {
+      await setFlag(true);
+      const { id } = await requestOne();
+      // The reader sees exactly one holder, but it is not the requester (who still reaches the route with the approve key and a fresh step-up).
+      holderIdsOverride = new Set([second.userId]);
+      try {
+        const res = await gov("POST", `/redactions/${id}/self-approve`, soleLogin);
+        expect(res.statusCode).toBe(403);
+        expect(res.body).toContain("REDACTION_FALLBACK_UNAVAILABLE");
+        expect((await stateOf(id))?.selfApproved).toBe(false);
+        expect(await auditCount("m36.redaction.self_approved", id)).toBe(0);
+      } finally {
+        holderIdsOverride = null;
+      }
+      expect((await gov("POST", `/redactions/${id}/self-approve`, soleLogin)).statusCode).toBe(200);
     });
 
     it("COUNTERSIGN: a second role with its own permission and fresh step-up makes it final; never the requester; once", async () => {

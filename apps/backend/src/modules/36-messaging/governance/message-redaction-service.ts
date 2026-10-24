@@ -44,7 +44,7 @@ export interface MessageRedactionDeps {
   readonly staffNames?: StaffNamePort;
   /**
    * The single-officer fallback's two inputs, bound at the composition root (absent = the fallback does not exist). `enabled` is the tenant flag
-   * (absent = off); `eligibleApprovers` is how many active people in the tenant hold `messaging.redact.approve` (M3's reader).
+   * (absent = off); `eligibleApprovers` is WHICH active people (user ids) in the tenant hold `messaging.redact.approve` (M3's reader).
    */
   readonly singleOfficerFallback?: {
     readonly enabled: (organizationId: string) => Promise<boolean>;
@@ -52,7 +52,7 @@ export interface MessageRedactionDeps {
       tx: DbClient,
       organizationId: string,
       permissionKey: string,
-    ) => Promise<number>;
+    ) => Promise<ReadonlySet<string>>;
   };
   readonly now?: () => Date;
   /** M4's active holds (live criteria), used only to say whether a listed message is under a hold. */
@@ -150,24 +150,32 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
     }));
   }
 
-  /** The fallback is usable now: the tenant flag is on and exactly one active person holds the approve permission. */
-  async function fallbackOpen(tx: DbClient, organizationId: string): Promise<boolean> {
+  /** The sole eligible officer's user id when the fallback is usable now (tenant flag on, exactly one active holder of the approve permission), else null. */
+  async function soleOfficer(tx: DbClient, organizationId: string): Promise<string | null> {
     const fallback = deps.singleOfficerFallback;
-    if (!fallback || !(await fallback.enabled(organizationId))) return false;
-    return (
-      (await fallback.eligibleApprovers(
-        tx,
-        organizationId,
-        MESSAGING_REDACT_APPROVE_PERMISSION,
-      )) === 1
+    if (!fallback || !(await fallback.enabled(organizationId))) return null;
+    const approvers = await fallback.eligibleApprovers(
+      tx,
+      organizationId,
+      MESSAGING_REDACT_APPROVE_PERMISSION,
     );
+    return approvers.size === 1 ? ([...approvers][0] ?? null) : null;
   }
 
-  async function assertFallbackOpen(tx: DbClient, actor: GovernanceActor): Promise<void> {
-    if (!(await fallbackOpen(tx, actor.organizationId))) {
+  const fallbackOpen = async (tx: DbClient, organizationId: string): Promise<boolean> =>
+    (await soleOfficer(tx, organizationId)) !== null;
+
+  /** `asOfficer`: the actor must BE the sole officer (self-approval). The countersigner is, by design, someone else. */
+  async function assertFallbackOpen(
+    tx: DbClient,
+    actor: GovernanceActor,
+    asOfficer = false,
+  ): Promise<void> {
+    const officer = await soleOfficer(tx, actor.organizationId);
+    if (officer === null || (asOfficer && officer !== actor.userId)) {
       throw new ChartWardenError(
         "REDACTION_FALLBACK_UNAVAILABLE",
-        "the single-officer fallback is not available: it needs the tenant setting on and exactly one eligible officer",
+        "the single-officer fallback is not available: it needs the tenant setting on and exactly one eligible officer, and only that officer can self-approve",
         403,
       );
     }
@@ -290,7 +298,7 @@ export function createMessageRedactionService(deps: MessageRedactionDeps) {
             409,
           );
         }
-        await assertFallbackOpen(tx, actor);
+        await assertFallbackOpen(tx, actor, true);
         const [row] = await tx
           .update(RED)
           .set({ selfApprovedAt: new Date() })

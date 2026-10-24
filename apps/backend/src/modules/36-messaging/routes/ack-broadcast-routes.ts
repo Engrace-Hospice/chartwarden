@@ -1,6 +1,7 @@
 // apps/backend/src/modules/36-messaging/routes/ack-broadcast-routes.ts - M36 WP 6.8 (ADR-0097, PROPOSED): acknowledge-required broadcast.
 //
 //   POST /api/v1/messaging/announcements/:messageId/ack-broadcast   the AUTHOR requires acknowledgment (messaging.announce; 201 / 200 already)
+//   POST /api/v1/messaging/announcements/:messageId/ack-broadcast/withdraw   the CREATOR stops asking (messaging.announce; one-way, idempotent; anyone else: 404)
 //   GET  /api/v1/messaging/announcements/:messageId/ack-broadcast   the CREATOR's who-has-not-acknowledged list (messaging.announce; anyone else: 404)
 //   GET  /api/v1/messaging/ack-broadcasts                           the caller's OWN broadcasts with counts (messaging.announce)
 //   GET  /api/v1/messaging/ack-broadcasts/mine                      the caller's OWN broadcasts, waiting first (messaging.read)
@@ -15,12 +16,14 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AckBroadcastService } from "../ack-broadcast/ack-broadcast-service";
 import {
   AckBroadcastAcknowledgedSchema,
+  AckBroadcastCreateBodySchema,
   AckBroadcastCreatedSchema,
   AckBroadcastDetailQuerySchema,
   AckBroadcastDetailSchema,
   AckBroadcastListSchema,
   AckBroadcastMineSchema,
   AckBroadcastParamsSchema,
+  AckBroadcastWithdrawnSchema,
 } from "./ack-broadcast-typebox";
 import { parse } from "./messaging-typebox";
 
@@ -68,9 +71,28 @@ export function registerAckBroadcastRoutes(app: FastifyInstance, deps: AckBroadc
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { messageId } = parse(AckBroadcastParamsSchema, request.params);
-      const out = await service.create(organizationId, { userId, messageId });
+      const body = parse(AckBroadcastCreateBodySchema, request.body);
+      const out = await service.create(organizationId, {
+        userId,
+        messageId,
+        ...(body.deadlineAt ? { deadlineAt: body.deadlineAt } : {}),
+      });
       noStore(reply);
       return reply.code(out.created ? 201 : 200).send(out);
+    },
+  );
+
+  app.post(
+    "/api/v1/messaging/announcements/:messageId/ack-broadcast/withdraw",
+    {
+      preHandler: guards(ANNOUNCE),
+      schema: { response: { 200: AckBroadcastWithdrawnSchema } },
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { messageId } = parse(AckBroadcastParamsSchema, request.params);
+      noStore(reply);
+      return service.withdraw(organizationId, { userId, messageId });
     },
   );
 

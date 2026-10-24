@@ -106,7 +106,8 @@ export interface AckService {
     input: CreateAckInput,
   ): Promise<AckRequestResponse & { created: boolean }>;
   /** The urgent entry's hook: inside the message's own transaction. Never refuses on the flag (the caller checked it). */
-  createForUrgentSend(rawTx: unknown, facts: UrgentAckFacts): Promise<void>;
+  /** Returns the id of the request (ADR-0082: the after-hours link row and its event name it). */
+  createForUrgentSend(rawTx: unknown, facts: UrgentAckFacts): Promise<{ readonly requestId: string }>;
   get(actor: AckActorRef, requestId: string): Promise<AckRequestDetailResponse>;
   listForChannel(actor: AckActorRef, channelId: string): Promise<AckChannelListResponse>;
   acknowledge(actor: AckActorRef, requestId: string): Promise<AckRequestResponse>;
@@ -421,12 +422,13 @@ export function createAckService(deps: AckServiceDeps): AckService {
     async createForUrgentSend(rawTx, facts) {
       const at = clock();
       try {
-        await insertRequest(
+        const { row } = await insertRequest(
           store.bind(rawTx, facts.orgId),
           rawTx,
           { ...facts, ackClass: "urgent" },
           at,
         );
+        return { requestId: row.id };
       } catch (err) {
         // The send fails whole (message and request roll back together); the log names the guard and ids only.
         const pg = pgErrorOf(err);

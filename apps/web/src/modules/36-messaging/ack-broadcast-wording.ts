@@ -57,3 +57,26 @@ export const progressLabel = (acknowledged: number, audience: number): string =>
   `${acknowledged} of ${audience} acknowledged`;
 export const OUTSIDE_NOTE = (n: number): string =>
   `${n} ${n === 1 ? "person" : "people"} joined after this was sent and ${n === 1 ? "was" : "were"} not asked.`;
+
+// Wave 4 (ADR-0097 D13-D14): a display-only deadline and the author's withdrawal. A deadline sends nothing and escalates nothing, and the words say so.
+export const DEADLINE_FIELD = "Deadline (optional)";
+export const DEADLINE_HINT =
+  "Shown to everyone who is asked, and marked on your list once it passes. Nobody is reminded and nothing else happens.";
+export const DEADLINE_INVALID = "The deadline must be between 5 minutes and 90 days from now.";
+export const deadlineLabel = (iso: string): string => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? "Deadline set"
+    : `Deadline ${date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
+};
+export const PAST_DEADLINE_MARK = "Past deadline";
+export const WITHDRAWN_MARK = "Withdrawn";
+export const WITHDRAW_LABEL = "Withdraw requirement";
+export const WITHDRAW_TITLE = "Withdraw this requirement?";
+export const WITHDRAW_TEXT =
+  "People will no longer be asked to acknowledge this announcement and it leaves their list. Acknowledgments already given are kept. This cannot be undone.";
+export const WITHDRAW_CONFIRM = "Withdraw";
+export const WITHDRAW_CANCEL = "Keep asking";
+export const WITHDRAW_FAILED = "The requirement could not be withdrawn. Nothing changed. Try again.";
+export const WITHDRAWN_NOTICE = "Requirement withdrawn. People are no longer asked.";
+export const WITHDRAWN_NOTE = "Withdrawn. People are no longer asked; the acknowledgments already given are kept.";

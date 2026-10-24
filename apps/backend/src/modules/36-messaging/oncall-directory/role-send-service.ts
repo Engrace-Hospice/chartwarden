@@ -46,6 +46,12 @@ export interface RoleSendDeps {
     channelId: string,
     clientMessageId: string,
   ) => Promise<{ readonly recipient: string | null; readonly role: string | null } | null>;
+  /**
+   * ADR-0082: the after-hours triage flag (with the four it needs). Absent or off, the role send is exactly the ADR-0081 send. On, the
+   * send also asks M19 for a triage call (the urgent send writes the request), a router failure is the distinct `lookup_failed`
+   * status (a 503, never a gap and never a person), and the resolution says so before the sender confirms. A throw propagates.
+   */
+  readonly afterHours?: { readonly enabled: (orgId: string) => Promise<boolean> };
   readonly urgent: Pick<UrgentService, "send">;
   readonly log?: (message: string, context: Record<string, string>) => void;
   readonly now?: () => Date;
@@ -84,6 +90,11 @@ const noCoverage = (status: string): ChartWardenError =>
     { field: "status", code: status, message: status },
   ]);
 
+const lookupFailed = (): ChartWardenError =>
+  new ChartWardenError(ROLE_SEND_ERROR_CODES.lookupFailed, ROLE_SEND_TELEPHONE_PROCEDURE, 503, [
+    { field: "status", code: "lookup_failed", message: "lookup_failed" },
+  ]);
+
 const clientIdReused = (): ChartWardenError =>
   new ChartWardenError(
     ROLE_SEND_ERROR_CODES.clientIdReused,
@@ -114,16 +125,30 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
   async function tierOne(
     actor: UrgentActorRef,
     target: RoleSendTarget,
+    afterHours: boolean,
   ): Promise<RoleSendResolutionDto> {
     const asOfDate = now();
     const asOf = asOfDate.toISOString();
-    const answer = await deps.router.resolveTier(actor.orgId, {
-      patientId: target.patientId,
-      requiredRole: target.role,
-      tier: 1,
-      asOf,
-    });
-    const base = { role: target.role, as_of: asOf } as const;
+    const base = { role: target.role, as_of: asOf, afterhours_triage: afterHours } as const;
+    let answer: Awaited<ReturnType<EscalationRouter["resolveTier"]>>;
+    try {
+      answer = await deps.router.resolveTier(actor.orgId, {
+        patientId: target.patientId,
+        requiredRole: target.role,
+        tier: 1,
+        asOf,
+      });
+    } catch (err) {
+      // ADR-0081: a router failure is a 5xx and never a gap. Only while after-hours triage is on does it become the distinct status.
+      if (!afterHours) throw err;
+      log("role lookup failed", {
+        organizationId: actor.orgId,
+        userId: actor.userId,
+        role: target.role,
+        error: err instanceof Error ? err.name : "unknown",
+      });
+      return { ...base, status: "lookup_failed", people: [], shift_ends_at: null, time_zone: null };
+    }
     if (answer.kind === "unavailable") {
       return {
         ...base,
@@ -159,13 +184,16 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
     };
   }
 
+  const afterHoursOn = async (orgId: string): Promise<boolean> =>
+    deps.afterHours ? deps.afterHours.enabled(orgId) : false;
+
   const refuse = (actor: UrgentActorRef, role: string, status: string): void =>
     log("role send refused", { organizationId: actor.orgId, userId: actor.userId, role, status });
 
   return {
     async resolve(actor, target) {
       await guardTarget(actor, target);
-      const resolution = await tierOne(actor, target);
+      const resolution = await tierOne(actor, target, await afterHoursOn(actor.orgId));
       log("role resolved", {
         organizationId: actor.orgId,
         userId: actor.userId,
@@ -177,6 +205,7 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
 
     async send(actor, input, validateLinks) {
       await guardTarget(actor, input);
+      const afterHours = await afterHoursOn(actor.orgId);
       // A lookup failure propagates: an unknown replay state must never become a fresh send.
       const replay = deps.findReplay
         ? await deps.findReplay(actor.orgId, actor.userId, input.channelId, input.clientMessageId)
@@ -188,7 +217,11 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
       }
       // A retry of a send that already committed to the SAME person is the original's answer: do not re-resolve (a shift may have changed).
       if (!replay?.recipient || !same(replay.recipient, input.recipientUserId)) {
-        const current = await tierOne(actor, input);
+        const current = await tierOne(actor, input, afterHours);
+        if (current.status === "lookup_failed") {
+          refuse(actor, input.role, current.status);
+          throw lookupFailed();
+        }
         if (current.status !== "covered") {
           refuse(actor, input.role, current.status);
           throw noCoverage(current.status);
@@ -208,6 +241,7 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
           clientMessageId: input.clientMessageId,
           correlationId: input.correlationId,
           roleAddressed: input.role,
+          ...(afterHours ? { requestTriageCall: true } : {}),
         },
         validateLinks,
       );

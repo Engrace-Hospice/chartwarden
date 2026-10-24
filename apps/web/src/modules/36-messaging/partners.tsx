@@ -2,7 +2,8 @@
 // revoke a share now. Flat rows on the shared kit; state is a word, never colour alone. Creating needs the tenant flag messaging.external_partners
 // (no provider reads as OFF); the list and Revoke never depend on it. The invitation token and the code are shown ONCE, with the instruction to give
 // them to the partner through different channels, and live only in this screen's state: they are dropped when the panel is dismissed or the screen
-// unmounts. The PARTNER-facing view is not built.
+// unmounts. The partner's own page is partner-page.tsx (/partner/share); the dialog and the secrets panel both show a synthetic preview of it
+// (partner-preview.tsx, ADR-0096 D22) and say plainly that ChartWarden sends nothing: staff hand the link and the code over themselves.
 // Revoke and Reissue each ask for a confirmation (the shared ConfirmDialog): one click ends the partner's access. Known limits: the conversation is
 // entered as a raw id (no picker) and a step-up redirect loses what was typed.
 import {
@@ -29,6 +30,8 @@ import type { JSX } from "react";
 import { LoadGate, formatTime, useFailureText } from "./export-common";
 import { useOnlineStatus } from "./offline-banner";
 import type { ExportResult } from "./use-export";
+import { buildPartnerInvitationLink } from "./partner-link";
+import { PartnerPreview } from "./partner-preview";
 import { useExternalShares, usePartnerActions } from "./use-partners";
 import "./export.css";
 
@@ -252,6 +255,10 @@ function CreateDialog({
           value={draft.days}
           onChange={(e) => set({ days: e.target.value })}
         />
+        <PartnerPreview
+          partnerName={draft.partnerName}
+          accessEndsText={`${draft.days.trim() || EXTERNAL_SHARE_DEFAULT_DAYS} day(s) after you create the share`}
+        />
         <div className="wx-export-choice">
           <label htmlFor={FIELD_ID.acknowledged}>
             <input
@@ -335,17 +342,17 @@ function Secrets({
           the code by phone). Never put either in a message about a patient.
         </p>
         <dl>
-          <dt>Organisation id</dt>
-          <dd className="wx-export-mono" translate="no">
-            {made.organizationId}
-          </dd>
           <dt>Share id</dt>
           <dd className="wx-export-mono" translate="no">
             {made.id}
           </dd>
-          <dt>Invitation token</dt>
+          <dt>Invitation link (works once)</dt>
           <dd className="wx-export-mono" translate="no">
-            {made.inviteToken}
+            {buildPartnerInvitationLink(
+              window.location.origin,
+              made.organizationId,
+              made.inviteToken,
+            )}
           </dd>
           <dt>Verification code</dt>
           <dd className="wx-export-mono" translate="no">
@@ -354,6 +361,15 @@ function Secrets({
           <dt>Access ends</dt>
           <dd>{formatTime(made.expiresAt)}</dd>
         </dl>
+        <p className="wx-export-notice">
+          <strong>ChartWarden does not send this link or the code.</strong> No approved, covered
+          delivery channel exists yet, so you must hand them over yourself: the link by a channel
+          you trust, the code by phone. Do not paste either into a message about a patient.
+        </p>
+        <PartnerPreview
+          partnerName={made.partnerName}
+          accessEndsText={formatTime(made.expiresAt)}
+        />
         <div className="wx-export-actions">
           <Button type="button" tone="primary" size="lg" onClick={onDone}>
             I have passed these on

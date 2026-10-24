@@ -2,7 +2,7 @@
 // broadcast is written once by the announcement's author; each recipient row's only change is `acknowledged_at` NULL -> database clock, by
 // that person (guard triggers). No message text, no names.
 import { sql } from "drizzle-orm";
-import { foreignKey, index, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { check, foreignKey, index, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { users } from "../users";
 import { messages } from "./messages";
@@ -21,8 +21,20 @@ export const messageAckBroadcasts = pgTable(
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Migration 1202: display only (no reminder, no escalation). Set once at creation, in the future by the database clock. */
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }),
+    /** Migration 1202: the author stops asking. NULL -> database clock, once, by the creator, never undone. */
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
   },
   (t) => ({
+    deadlineAfterCreate: check(
+      "message_ack_broadcast_deadline_after_create",
+      sql`${t.deadlineAt} IS NULL OR ${t.deadlineAt} > ${t.createdAt}`,
+    ),
+    withdrawnAfterCreate: check(
+      "message_ack_broadcast_withdrawn_after_create",
+      sql`${t.withdrawnAt} IS NULL OR ${t.withdrawnAt} >= ${t.createdAt}`,
+    ),
     orgIdUnique: unique("message_ack_broadcast_org_id_unique").on(t.organizationId, t.id),
     messageUnique: unique("message_ack_broadcast_message_unique").on(t.organizationId, t.messageId),
     messageFk: foreignKey({

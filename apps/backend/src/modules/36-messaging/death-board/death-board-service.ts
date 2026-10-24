@@ -36,6 +36,10 @@ import type {
 } from "./death-board-store";
 
 export const OFFBOARDING_BATCH_SIZE = 100;
+/** Stall sweep bounds per organization per tick (ADR-0098 D13): items read, pages of that read, and items flagged. */
+export const STALL_SCAN_MAX = 2000;
+export const STALL_SCAN_PAGE = 500;
+export const STALL_FLAG_MAX = 200;
 const NAME_LIMIT = 200;
 
 export interface DeathBoardActor {
@@ -73,6 +77,13 @@ export interface LeaverSummary {
   readonly flaggedNeedsOwner: number;
 }
 
+export interface StallSummary {
+  /** Open, unflagged items looked at this tick. */
+  readonly examined: number;
+  /** Items flagged needs_owner this tick (the owner column is never changed). */
+  readonly flagged: number;
+}
+
 export interface DeathBoardService {
   createForDeath(orgId: string, patientId: string): Promise<CreateBoardResult>;
   list(actor: DeathBoardActor, limit: number): Promise<DeathBoardDto[]>;
@@ -82,6 +93,12 @@ export interface DeathBoardService {
   reassign(actor: DeathBoardActor, itemId: string, toUserId: string): Promise<DeathBoardItemDto>;
   /** Offboarding (WP 5.9): move or flag every open item the leaver owns. Throws after the sweep if any item failed. */
   reassignForLeaver(orgId: string, leaverUserId: string): Promise<LeaverSummary>;
+  /**
+   * The periodic stall sweep (ADR-0098 D13), org-explicit (a tick is not a request): an open item whose owner is no longer an active user or no
+   * longer admitted by the Part 2 gate for the patient is flagged needs_owner (owner untouched) and supervisors get the fixed-text alert.
+   * Bounded, idempotent. A seam that cannot answer is NOT a verdict: that owner is skipped this tick. Throws after the sweep if any item failed.
+   */
+  flagStalledForOrg(orgId: string, opts?: { maxFlags?: number }): Promise<StallSummary>;
 }
 
 const notFound = (): NotFoundError => new NotFoundError("death_board");
@@ -315,6 +332,8 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
   }
 
   return {
+    flagStalledForOrg: (orgId, opts) => flagStalledForOrg(orgId, opts),
+
     async createForDeath(orgId, patientId) {
       const owner = await pickOwner(orgId, patientId, new Set());
       if (!owner) {
@@ -513,6 +532,107 @@ export function createDeathBoardService(deps: DeathBoardDeps): DeathBoardService
       return { reassigned, flaggedNeedsOwner: flagged };
     },
   };
+
+  /** Owners the seams positively say are not eligible. An unanswered seam leaves an owner out of the set (never flagged on an outage). */
+  async function ineligibleOwners(
+    orgId: string,
+    patientId: string,
+    owners: readonly string[],
+  ): Promise<ReadonlySet<string>> {
+    const out = new Set<string>();
+    const active: string[] = [];
+    for (const id of owners) {
+      try {
+        if (await deps.isActiveUser(orgId, id)) active.push(id);
+        else out.add(id);
+      } catch {
+        // unknown: skip this owner this tick
+      }
+    }
+    if (active.length === 0) return out;
+    try {
+      const admitted = await deps.part2Gate.allowedUserIds({
+        organizationId: orgId,
+        patientId,
+        userIds: active,
+      });
+      for (const id of active) if (!admitted.has(id)) out.add(id);
+    } catch {
+      // the gate cannot answer: not a verdict
+    }
+    return out;
+  }
+
+  async function flagStalledOne(orgId: string, seen: DeathBoardItemRow): Promise<boolean> {
+    // Alert FIRST (deduped on item + version): a failed alert leaves the item unflagged so the next tick retries; a flag without its alert
+    // can never happen. The cost is a rare early alert when the item moved in between (ADR-0098 D13).
+    await emitNeedsOwnerAlert(deps.alerts, orgId, ["item", seen.id, "stalled", String(seen.version)]);
+    return asSystem(orgId, async (tx) => {
+      const item = await store.getItemForUpdate(tx, orgId, seen.id);
+      if (!item || item.status !== "open" || item.needsOwner || item.ownerUserId !== seen.ownerUserId) {
+        return false;
+      }
+      if (!(await store.flagNeedsOwner(tx, { orgId, itemId: item.id }))) return false;
+      await store.addEvent(tx, {
+        orgId,
+        itemId: item.id,
+        eventType: "needs_owner",
+        actorUserId: null,
+        fromOwnerUserId: item.ownerUserId,
+        toOwnerUserId: item.ownerUserId,
+        reasonCode: "owner_ineligible",
+      });
+      return true;
+    });
+  }
+
+  async function flagStalledForOrg(
+    orgId: string,
+    opts: { maxFlags?: number } = {},
+  ): Promise<StallSummary> {
+    const maxFlags = opts.maxFlags ?? STALL_FLAG_MAX;
+    const scanned: DeathBoardItemRow[] = [];
+    let after: string | null = null;
+    let more = false;
+    while (scanned.length < STALL_SCAN_MAX) {
+      const cursor: string | null = after;
+      const page: DeathBoardItemRow[] = await asSystem(orgId, (tx) =>
+        store.openUnflaggedItems(tx, orgId, cursor, STALL_SCAN_PAGE),
+      );
+      scanned.push(...page);
+      more = page.length === STALL_SCAN_PAGE;
+      if (!more) break;
+      after = page[page.length - 1]?.id ?? null;
+    }
+    if (more) {
+      // The cap was hit on a full page: warn only when at least one more row exists beyond what was scanned.
+      const rest: DeathBoardItemRow[] = await asSystem(orgId, (tx) => store.openUnflaggedItems(tx, orgId, after, 1));
+      if (rest.length > 0) deps.warn?.("death board: stall sweep scan truncated", { org_id: orgId });
+    }
+    const byPatient = new Map<string, DeathBoardItemRow[]>();
+    for (const item of scanned) byPatient.set(item.patientId, [...(byPatient.get(item.patientId) ?? []), item]);
+    let flagged = 0;
+    let failed = 0;
+    for (const [patientId, items] of byPatient) {
+      if (flagged >= maxFlags) break;
+      const bad = await ineligibleOwners(orgId, patientId, unique(items.map((i) => i.ownerUserId)));
+      for (const item of items) {
+        if (flagged >= maxFlags) break;
+        if (!bad.has(item.ownerUserId)) continue;
+        try {
+          if (await flagStalledOne(orgId, item)) flagged += 1;
+        } catch (err) {
+          failed += 1;
+          deps.warn?.("death board: stall flag failed", {
+            item_id: item.id,
+            error_name: err instanceof Error ? err.name : "NonError",
+          });
+        }
+      }
+    }
+    if (failed > 0) throw new Error(`death board stall sweep failed for ${failed} item(s)`);
+    return { examined: scanned.length, flagged };
+  }
 
   async function moveOne(
     orgId: string,

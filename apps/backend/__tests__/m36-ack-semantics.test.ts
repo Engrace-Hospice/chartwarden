@@ -35,6 +35,8 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 6.6 (ADR-0096 D15) the request field `acknowledgedMinimumNecessary` (a creator confirmation on a share); it labels no delivery, open or read receipt",
   "apps/web/src/modules/36-messaging/partners.tsx":
     "WP 6.6 (ADR-0096 D15) the share dialog checkbox that sends `acknowledgedMinimumNecessary` (the creator confirms what the partner will see); it labels no delivery, open or read receipt",
+  "apps/web/src/modules/36-messaging/partner-preview.tsx":
+    "WP 6.6 (ADR-0096 D22) the staff preview's plain-language list of what a partner never sees: it names 'acknowledgment-requested messages' only as a kind of message that is EXCLUDED from the partner view; it labels no delivery, open or read receipt",
   "apps/backend/src/modules/36-messaging/external-share/external-share-store.ts":
     "WP 6.6 (ADR-0096) partner read query: names the acknowledgment-request table only to EXCLUDE a message that carries a request from what an external partner sees; labels no delivery, open or read receipt",
   "apps/web/src/modules/36-messaging/break-glass-wording.ts":

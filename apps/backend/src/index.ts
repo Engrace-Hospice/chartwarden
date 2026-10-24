@@ -295,7 +295,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@chartwarden/terminology-loader";
-import { buildActivePermissionHolderCounter } from "./bootstrap/active-permission-holders";
+import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-holders";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -303,6 +303,7 @@ import {
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
+  AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
@@ -1553,6 +1554,7 @@ import {
   registerM36AckEscalationWorkers,
   registerM36AttachmentScanWorker,
   registerM36BreakGlassReviewWorker,
+  registerM36DeathBoardStallWorker,
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
@@ -1563,6 +1565,7 @@ import {
   scheduleM36AckEscalationJobs,
   scheduleM36AttachmentScanJobs,
   scheduleM36BreakGlassReviewJobs,
+  scheduleM36DeathBoardStallJobs,
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
@@ -1610,6 +1613,8 @@ import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consu
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36PatientLifecycleReviewConsumer } from "./modules/36-messaging/outbox-consumers/patient-lifecycle-review";
 import { buildM36PromotionNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/promotion-notifications";
+import { buildAfterHoursTriageBinding } from "./modules/36-messaging/afterhours-triage/binding";
+import { buildM36AfterHoursOutcomeConsumer } from "./modules/36-messaging/outbox-consumers/afterhours-outcome";
 import { buildM36PromotionOutcomesConsumer } from "./modules/36-messaging/outbox-consumers/promotion-outcomes";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { buildM36ScheduleBlockedConsumer } from "./modules/36-messaging/outbox-consumers/schedule-blocked";
@@ -4560,6 +4565,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // WP 4.1 - "Urgent clinical". One binding for the routes; off unless the tenant flags `messaging.urgent_clinical` AND
   // `messaging.sbar` are on. It stores and marks an urgent message and tells the named recipient in-app; it does not page,
   // escalate or acknowledge (WP 4.2 - 4.4).
+  // ADR-0082 (PROPOSED, flag `messaging.afterhours_triage`, absent = off): the after-hours triage request, its link row, the outcome
+  // consumer and the thread-line read. With the flag off nothing is published, written or shown; no router is bound, so it answers
+  // "roster not connected" and refuses until M19 binds one.
+  const m36AfterHours = dbHandle
+    ? buildAfterHoursTriageBinding({
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        outbox: m36OutboxPublisher,
+      })
+    : undefined;
   const m36Urgent = dbHandle
     ? (() => {
         const messaging = createDbMessagingRouteService(dbHandle.db, {
@@ -4577,6 +4592,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             resolveActorPermissions({ organizationId, userId }),
           // WP 4.2: the request is created in the send transaction when `messaging.ack_requests` is on.
           ...(m36Ack ? { responseTracker: m36Ack.responseTracker } : {}),
+          ...(m36AfterHours ? { afterHoursTriage: m36AfterHours.urgentPort } : {}),
         });
       })()
     : undefined;
@@ -5216,7 +5232,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   (await featureFlagReader?.forOrg(organizationId))?.[
                     REDACTION_SINGLE_OFFICER_FLAG_KEY
                   ] === true,
-                eligibleApprovers: buildActivePermissionHolderCounter(
+                eligibleApprovers: buildActivePermissionHolderIds(
                   createMembershipsHoldingPermissionReader(dbHandle.db),
                 ),
               },
@@ -5315,8 +5331,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
             idgDiscussions: buildIdgDiscussionDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // ADR-0082 - the after-hours thread-line read's own budget.
+            afterHoursTriageRateLimit: createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
+              keyPrefix: "m36-afterhours-triage",
+            }),
             // WP 4.12 - on-call directory (read-only); off unless the tenant flag `messaging.oncall_directory` is on.
-            oncall: buildOnCallDirectoryDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            oncall: buildOnCallDirectoryDeps({
+              db: dbHandle.db,
+              flags: featureFlagReader,
+              afterHours: m36AfterHours,
+            }),
             // WP 5.9 (ADR-0084) - workforce offboarding: preview and run the offboarding of a departed user. Always on (a security control).
             // It calls the sweeps the deactivation event already runs, the ADR-0078 supervisor reassign and the ADR-0083 session revoke.
             ...(m36Ack && m36Tasks && m36Handoffs
@@ -9534,6 +9560,44 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     }
 
+    // ── M36 WP 6.9 (ADR-0098 D13, PROPOSED) — `messaging.death_board_stall_sweep` (hourly): an open death-board item whose owner lost Part 2
+    // admission or active status OUTSIDE the offboarding sweep is flagged needs_owner (owner untouched) and the supervisors get the fixed-text
+    // alert. Org-explicit (a tick is not a request). Active-org fan-out needs the platform pool. Flag-independent: a board that exists must not stall.
+    if (platformDbHandle && m36DeathBoard) {
+      const m36DeathBoardStallWorkers = registerM36DeathBoardStallWorker({
+        connection: queueConnection,
+        flagStalledForOrg: m36DeathBoard.service.flagStalledForOrg,
+        activeOrgs: buildActiveOrgEnumerator({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+          reason: "M36 WP 6.9 death_board_stall_sweep active-org fan-out",
+        }),
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 death board stall sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36DeathBoardStallWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36DeathBoardStallWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36DeathBoardStallQueues = await scheduleM36DeathBoardStallJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36DeathBoardStallQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 death board stall sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 death board stall sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; a stalled item is not flagged",
+      );
+    }
+
     // ── WP 5.7 export builder/sweep (ADR-0089, PROPOSED) — `messaging.export_build` (event-driven: approved -> encrypted artefact) and
     // `messaging.export_expiry_sweep` (hourly: deletes the artefact of each export past its 24 h link). Both run for flag-off tenants too: an
     // approved export still builds and an artefact must still expire. The sweep's active-org fan-out needs the platform pool.
@@ -11001,6 +11065,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   readRequest: m36AckEscalation.readRequest,
                   opsNotice: m36AckOpsNotice,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
+          // ADR-0082 - records M19's id-only answer to an after-hours triage request on the link row (regardless of the flag: an
+          // answer M19 already committed is kept). Malformed / unknown / conflicting answers throw and dead-letter.
+          ...(m36AfterHours
+            ? [
+                buildM36AfterHoursOutcomeConsumer({
+                  store: m36AfterHours.store,
                   warn: (message, context) => app.log.warn(context, message),
                 }),
               ]
