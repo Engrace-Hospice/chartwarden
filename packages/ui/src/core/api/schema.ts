@@ -14515,6 +14515,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/afterhours-triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The fixed-text after-hours triage line of the given messages of this channel (ADR-0082 slices S4/S5, PROPOSED; messaging.read + channel visibility; the uniform 404 while the tenant flag `messaging.afterhours_triage` (with role send, response requests, urgent clinical and SBAR) is off, and for a hidden channel). `message_ids` is a comma-separated list of at most 50 message ids; only messages of THIS channel that asked M19 for a triage call get a line, others are absent. `state` is not_confirmed (M19 has not answered: shown as 'Triage call not confirmed', never a silent drop), opened, coalesced or no_coverage (M19's recorded answer), or withheld (the channel's patient is restricted under 42 CFR Part 2, or that could not be read: the outcome wording is not shown). `text` is chosen from a closed map; nothing from the triage call (no content, caller, disposition or phone) ever appears. Read only; a malformed id list is a 422. Never cached */
+        get: operations["getApiV1MessagingChannelsByIdAfterhourstriage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/archive": {
         parameters: {
             query?: never;
@@ -14906,7 +14923,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient */
+        /** Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_LOOKUP_FAILED when, with after-hours triage on, the router or its store failed (nothing is sent; never treated as a gap). With after-hours triage on, the send ALSO writes an id-only request for an M19 triage call in the same transaction (ADR-0082). 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient */
         post: operations["postApiV1MessagingChannelsByIdRolesend"];
         delete?: never;
         options?: never;
@@ -14921,7 +14938,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids, display names and `rank`, the router's explicit primary or backup, primaries listed first, to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient */
+        /** Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids, display names and `rank`, the router's explicit primary or backup, primaries listed first, to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) not_configured, or lookup_failed (only while after-hours triage is on: the router or its store FAILED; a distinct status, never a coverage gap and never a person): in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. `afterhours_triage` is true when the send will ALSO ask M19 for an after-hours triage call (ADR-0082; shown before the sender confirms). Never cached. Read-audited against the patient */
         get: operations["getApiV1MessagingChannelsByIdRolesendResolution"];
         put?: never;
         post?: never;
@@ -68585,6 +68602,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingChannelsByIdAfterhourstriage: {
+        parameters: {
+            query: {
+                message_ids: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        lines: {
+                            /** Format: uuid */
+                            message_id: string;
+                            state: "not_confirmed" | "opened" | "coalesced" | "no_coverage" | "withheld";
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingChannelsByIdArchive: {
         parameters: {
             query?: never;
@@ -70214,7 +70264,8 @@ export interface operations {
                         role: "rn" | "physician";
                         /** Format: date-time */
                         as_of: string;
-                        status: "covered" | "coverage_gap" | "roster_not_connected" | "not_configured";
+                        status: "covered" | "coverage_gap" | "roster_not_connected" | "not_configured" | "lookup_failed";
+                        afterhours_triage: boolean;
                         people: {
                             /** Format: uuid */
                             user_id: string;

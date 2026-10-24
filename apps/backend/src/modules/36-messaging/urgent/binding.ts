@@ -32,6 +32,8 @@ export interface UrgentBindingInput {
   readonly findReplayRecipient?: UrgentServiceDeps["findReplayRecipient"];
   /** WP 4.2: creates the response request in the send transaction when its own flag is on. */
   readonly responseTracker?: UrgentServiceDeps["responseTracker"];
+  /** ADR-0082: the after-hours request written in the send transaction (flag `messaging.afterhours_triage`, absent = off). */
+  readonly afterHoursTriage?: UrgentServiceDeps["afterHoursTriage"];
   readonly now?: () => Date;
 }
 
@@ -116,6 +118,7 @@ export function buildUrgentBinding(input: UrgentBindingInput): UrgentBinding {
       displayName: input.displayName,
       ...(input.findReplayRecipient ? { findReplayRecipient: input.findReplayRecipient } : {}),
       ...(input.responseTracker ? { responseTracker: input.responseTracker } : {}),
+      ...(input.afterHoursTriage ? { afterHoursTriage: input.afterHoursTriage } : {}),
       ...(input.now ? { now: input.now } : {}),
     }),
   };

@@ -27,6 +27,8 @@ type Over = {
   /** The role stored on the replayed message: "rn" by default, null for a person-send. */
   replayRole?: string | null;
   tier1?: () => EscalationRouteAnswer;
+  /** ADR-0082: undefined = no after-hours port at all. */
+  afterHours?: boolean | (() => Promise<boolean>);
 };
 
 function build(over: Over = {}) {
@@ -62,6 +64,14 @@ function build(over: Over = {}) {
       over.replay
         ? { recipient: over.replay, role: over.replayRole === undefined ? "rn" : over.replayRole }
         : null,
+    ...(over.afterHours === undefined
+      ? {}
+      : {
+          afterHours: {
+            enabled:
+              typeof over.afterHours === "function" ? over.afterHours : async () => over.afterHours === true,
+          },
+        }),
     urgent,
     log: (_m, ctx) => logs.push(ctx),
     now: () => NOW,
@@ -317,5 +327,74 @@ describe("RoleSendService.send", () => {
     const text = JSON.stringify(logs);
     expect(text).toContain("resolution_changed");
     for (const secret of [PATIENT, U1, U2, "Dana"]) expect(text).not.toContain(secret);
+  });
+});
+
+describe("after-hours triage (ADR-0082)", () => {
+  const throwing: Over["router"] = {
+    async resolveTier() {
+      throw new Error("store down");
+    },
+  };
+
+  it("flag off or no port: the resolution says no triage call, the send carries no request, and a router failure is still a 5xx", async () => {
+    for (const afterHours of [undefined, false]) {
+      const { service, sends } = build({ afterHours, tier1: covered(U1) });
+      expect((await service.resolve(actor, target)).afterhours_triage).toBe(false);
+      await send(service, U1);
+      expect(sends[0]).not.toHaveProperty("requestTriageCall");
+      const failing = build({ afterHours, router: throwing });
+      await expect(failing.service.resolve(actor, target)).rejects.toThrow("store down");
+      await expect(send(failing.service, U1)).rejects.toThrow("store down");
+    }
+  });
+
+  it("flag on: the resolution announces the triage request before the sender confirms, and the send asks for it", async () => {
+    const { service, sends } = build({ afterHours: true, tier1: covered(U1) });
+    expect((await service.resolve(actor, target)).afterhours_triage).toBe(true);
+    await send(service, U1);
+    expect(sends[0]).toMatchObject({ roleAddressed: "rn", requestTriageCall: true });
+  });
+
+  it("flag on: a router failure is the distinct lookup_failed status (resolve) and a 503 that sends nothing (send), never a gap or a person", async () => {
+    const { service, sends, logs } = build({ afterHours: true, router: throwing });
+    const out = await service.resolve(actor, target);
+    expect(out).toMatchObject({ status: "lookup_failed", people: [], afterhours_triage: true });
+    await expect(send(service, U1)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "ROLE_SEND_LOOKUP_FAILED",
+    });
+    expect(sends).toEqual([]);
+    expect(JSON.stringify(logs)).not.toContain(PATIENT);
+  });
+
+  it("flag on: a coverage gap and an unconnected roster still refuse with the telephone wording and send nothing", async () => {
+    const gap = build({
+      afterHours: true,
+      tier1: () => ({
+        kind: "coverage_gap",
+        nextTier: null,
+        timeZone: "UTC",
+        tier: 1,
+        asOf: "x",
+        source: "m19",
+      }),
+    });
+    await expect(send(gap.service, U1)).rejects.toMatchObject({ statusCode: 422 });
+    const stub = build({ afterHours: true, router: escalationRouterDenyStub });
+    expect(await stub.service.resolve(actor, target)).toMatchObject({
+      status: "roster_not_connected",
+    });
+    await expect(send(stub.service, U1)).rejects.toMatchObject({ statusCode: 422 });
+    expect([...gap.sends, ...stub.sends]).toEqual([]);
+  });
+
+  it("flag on: an unreadable flag fails the request (a 5xx), it is not read as off", async () => {
+    const { service, sends } = build({
+      afterHours: async () => Promise.reject(new Error("flags down")),
+      tier1: covered(U1),
+    });
+    await expect(send(service, U1)).rejects.toThrow("flags down");
+    expect(sends).toEqual([]);
   });
 });
