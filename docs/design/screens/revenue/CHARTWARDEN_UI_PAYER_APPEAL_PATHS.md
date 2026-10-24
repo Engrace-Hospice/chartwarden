@@ -57,8 +57,9 @@ levels and a button row. The write form is the shared modal chrome.
 - **Levels**: level name as the contract names it, kind label (internal, external review, other), who
   files (provider, member, either, unknown), and the filing window sentence or "no filing window
   recorded".
-- **Draft banner**: a draft path is used for new cases, but every deadline it yields is badged "Window
-  not verified" until a second person activates it.
+- **Draft banner**: a draft path is shown as awaiting verification: no deadline is computed from it
+  until a second person activates it, and a level opened under a draft reads "Appeal path awaiting
+  verification".
 
 ## Write form
 
