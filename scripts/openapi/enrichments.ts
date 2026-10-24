@@ -11051,6 +11051,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M36FamilySendBodySchema,
     response: M36FamilySendResponseSchema,
     status: 201,
+  },
+
   // alarm ingest, watch only (ADR-0102, PROPOSED)
   "GET /api/v1/messaging/alarm-sources": {
     summary:
