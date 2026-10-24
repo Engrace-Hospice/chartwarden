@@ -14286,8 +14286,25 @@ export interface paths {
         /** Who has not acknowledged one announcement (WP 6.8, ADR-0097; messaging.announce; the uniform 404 for an announcement with no broadcast and while the flag is off). Counts cover the whole frozen audience; people are paged exactly (filter pending|acknowledged|ineligible|all, limit up to 200, offset), nothing is cut. A recipient who is no longer an active member is `ineligible`, never a silent non-reader; `outsideAudience` counts active staff who joined after publish. Display names, states and instants only, never message text. Read-audited against the message. Never cached */
         get: operations["getApiV1MessagingAnnouncementsByMessageIdAckbroadcast"];
         put?: never;
-        /** Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached */
+        /** Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. The body is optional in practice (an empty POST still works): `deadlineAt` (ISO, 5 minutes to 90 days ahead, else a typed 422 ACK_BROADCAST_DEADLINE_INVALID) is a DISPLAY-ONLY deadline fixed at creation: passing it marks the broadcast past deadline on the author's list and triggers no reminder, push, SMS, email or escalation. Never cached */
         post: operations["postApiV1MessagingAnnouncementsByMessageIdAckbroadcast"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the acknowledgment requirement (WP 6.8, ADR-0097 D14; messaging.announce; only the broadcast's CREATOR, anyone else and an unknown id are the uniform 404, as is a tenant with the flag off, before the request is parsed). One-way and idempotent on the database clock: a repeat is 200 `already:true` with the original instant. Recipients are no longer asked (the broadcast leaves their `mine` list and acknowledging it is a 404); acknowledgments already recorded are kept and stay visible to the author. No body, no user field. Never cached */
+        post: operations["postApiV1MessagingAnnouncementsByMessageIdAckbroadcastWithdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -67782,6 +67799,9 @@ export interface operations {
                                 ineligible: number;
                                 outsideAudience: number;
                             };
+                            deadlineAt: string | null;
+                            withdrawnAt: string | null;
+                            pastDeadline: boolean;
                         }[];
                     };
                 };
@@ -67811,6 +67831,7 @@ export interface operations {
                             channelId: string;
                             createdAt: string;
                             acknowledgedAt: string | null;
+                            deadlineAt: string | null;
                         }[];
                     };
                 };
@@ -67973,6 +67994,9 @@ export interface operations {
                             ineligible: number;
                             outsideAudience: number;
                         };
+                        deadlineAt: string | null;
+                        withdrawnAt: string | null;
+                        pastDeadline: boolean;
                         filter: "pending" | "acknowledged" | "ineligible" | "all";
                         offset: number;
                         hasMore: boolean;
@@ -67991,6 +68015,53 @@ export interface operations {
         };
     };
     postApiV1MessagingAnnouncementsByMessageIdAckbroadcast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    deadlineAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                            opened: number;
+                            notOpened: number;
+                            ineligible: number;
+                            outsideAudience: number;
+                        };
+                        deadlineAt: string | null;
+                        withdrawnAt: string | null;
+                        pastDeadline: boolean;
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAnnouncementsByMessageIdAckbroadcastWithdraw: {
         parameters: {
             query?: never;
             header?: never;
@@ -68020,7 +68091,10 @@ export interface operations {
                             ineligible: number;
                             outsideAudience: number;
                         };
-                        created: boolean;
+                        deadlineAt: string | null;
+                        withdrawnAt: string | null;
+                        pastDeadline: boolean;
+                        already: boolean;
                     };
                 };
             };
@@ -70853,7 +70927,7 @@ export interface operations {
                             actor_user_id: string | null;
                             from_owner_user_id: string | null;
                             to_owner_user_id: string | null;
-                            reason_code: ("creation" | "manual" | "supervisor" | "offboarding") | null;
+                            reason_code: ("creation" | "manual" | "supervisor" | "offboarding" | "owner_ineligible") | null;
                             /** Format: date-time */
                             created_at: string;
                         }[];

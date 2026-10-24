@@ -1393,7 +1393,9 @@ import {
   ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
 import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
@@ -10394,8 +10396,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/announcements/:messageId/ack-broadcast": {
     summary:
-      "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached",
+      "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. The body is optional in practice (an empty POST still works): `deadlineAt` (ISO, 5 minutes to 90 days ahead, else a typed 422 ACK_BROADCAST_DEADLINE_INVALID) is a DISPLAY-ONLY deadline fixed at creation: passing it marks the broadcast past deadline on the author's list and triggers no reminder, push, SMS, email or escalation. Never cached",
+    body: M36AckBroadcastCreateBodySchema,
     response: M36AckBroadcastCreatedSchema,
+  },
+  "POST /api/v1/messaging/announcements/:messageId/ack-broadcast/withdraw": {
+    summary:
+      "Withdraw the acknowledgment requirement (WP 6.8, ADR-0097 D14; messaging.announce; only the broadcast's CREATOR, anyone else and an unknown id are the uniform 404, as is a tenant with the flag off, before the request is parsed). One-way and idempotent on the database clock: a repeat is 200 `already:true` with the original instant. Recipients are no longer asked (the broadcast leaves their `mine` list and acknowledging it is a 404); acknowledgments already recorded are kept and stay visible to the author. No body, no user field. Never cached",
+    response: M36AckBroadcastWithdrawnSchema,
   },
   "GET /api/v1/messaging/announcements/:messageId/ack-broadcast": {
     summary:

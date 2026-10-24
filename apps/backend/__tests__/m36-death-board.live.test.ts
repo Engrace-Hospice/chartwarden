@@ -780,4 +780,92 @@ describe.skipIf(!DB_URL)("M36 WP 6.9 death board - LIVE Postgres", () => {
       expect(rows.find((r) => r.owner_user_id === rn)?.status).toBe("done");
     });
   });
+
+  describe("5. stall sweep (owner lost eligibility outside offboarding)", () => {
+    const needsOwnerCount = async () => (await alertsOf("needs_owner")).length;
+
+    it("flags every open item of an owner the Part 2 gate no longer admits, keeps the owner, alerts once with fixed text, and replays are no-ops", async () => {
+      const { patientId, boardId, items } = await boardFor({ rn, members: [rn, nurse2] });
+      part2Denied.add(`${rn}:${patientId}`);
+      const alertsBefore = await needsOwnerCount();
+      const first = await on.service.flagStalledForOrg(ORG_A);
+      expect(first.flagged).toBeGreaterThanOrEqual(ITEM_COUNT);
+      const rows = await itemRows(boardId);
+      expect(rows.every((i) => i.needs_owner && i.owner_user_id === rn && i.status === "open")).toBe(true);
+      expect((await eventsOf(items[0]?.id as string)).at(-1)).toMatchObject({
+        event_type: "needs_owner",
+        actor_kind: "system",
+        actor_user_id: null,
+        from_owner_user_id: rn,
+        to_owner_user_id: rn,
+        reason_code: "owner_ineligible",
+      });
+      const alerts = await alertsOf("needs_owner");
+      expect(alerts.length).toBeGreaterThanOrEqual(alertsBefore + ITEM_COUNT);
+      expect(JSON.stringify(alerts)).not.toContain(patientId);
+      expect(alerts.at(-1)?.payload.message).toBe(DEATH_BOARD_ALERT_TEXT.needsOwner);
+
+      const eventsBefore = await kit.count("SELECT count(*)::int AS n FROM death_board_item_event");
+      const alertsMid = await needsOwnerCount();
+      const again = await on.service.flagStalledForOrg(ORG_A);
+      expect(again.flagged).toBe(0);
+      expect(await kit.count("SELECT count(*)::int AS n FROM death_board_item_event")).toBe(eventsBefore);
+      expect(await needsOwnerCount()).toBe(alertsMid);
+
+      // The existing guard semantics hold: the Part 2-refused owner reaches nothing (the uniform 404, so cannot complete); a supervisor
+      // admitted for the patient hands the item to an admitted person and the flag clears.
+      const itemId = items[0]?.id as string;
+      expect((await call(rn, "POST", `${ITEMS}/${itemId}/complete`)).statusCode).toBe(404);
+      const handed = await call(supervisor, "POST", `${ITEMS}/${itemId}/reassign`, { to_user_id: nurse2 });
+      expect((handed.json().item as ItemJson).needs_owner).toBe(false);
+      await on.service.flagStalledForOrg(ORG_A);
+      expect((await itemRows(boardId)).find((r) => r.id === itemId)?.owner_user_id).toBe(nurse2);
+      expect((await itemRows(boardId)).find((r) => r.id === itemId)?.needs_owner).toBe(false);
+      part2Denied.delete(`${rn}:${patientId}`);
+    });
+
+    it("flags an owner whose membership is no longer active, and leaves completed items alone", async () => {
+      const lone = await kit.seedUser("lone-owner", ORG_A);
+      const { boardId, items } = await boardFor({ rn: lone, members: [lone] });
+      await call(lone, "POST", `${ITEMS}/${items[0]?.id}/complete`);
+      await kit.admin.query("UPDATE membership SET status='suspended' WHERE user_id=$1", [lone]);
+      await on.service.flagStalledForOrg(ORG_A);
+      const rows = await itemRows(boardId);
+      expect(rows.filter((r) => r.needs_owner)).toHaveLength(ITEM_COUNT - 1);
+      expect(rows.find((r) => r.id === items[0]?.id)).toMatchObject({ status: "done", needs_owner: false });
+      expect(rows.every((r) => r.owner_user_id === lone)).toBe(true);
+    });
+
+    it("a Part 2 gate outage is not a verdict: nothing is flagged", async () => {
+      const { patientId, boardId } = await boardFor({ rn, members: [rn, nurse2] });
+      part2Down.add(patientId);
+      try {
+        await on.service.flagStalledForOrg(ORG_A);
+      } finally {
+        part2Down.delete(patientId);
+      }
+      expect((await itemRows(boardId)).some((i) => i.needs_owner)).toBe(false);
+    });
+
+    it("the database accepts the new reason only through the existing event shape, and the sweep is bounded per tick", async () => {
+      const { patientId, boardId } = await boardFor({ rn, members: [rn, nurse2] });
+      part2Denied.add(`${rn}:${patientId}`);
+      try {
+        const capped = await on.service.flagStalledForOrg(ORG_A, { maxFlags: 2 });
+        expect(capped.flagged).toBe(2);
+        expect((await itemRows(boardId)).filter((i) => i.needs_owner).length).toBeLessThanOrEqual(2);
+        await on.service.flagStalledForOrg(ORG_A);
+        expect((await itemRows(boardId)).every((i) => i.needs_owner)).toBe(true);
+      } finally {
+        part2Denied.delete(`${rn}:${patientId}`);
+      }
+      await asApp(ORG_A, async () => {
+        expect(
+          await attempt(
+            "INSERT INTO death_board_item_event (organization_id,item_id,event_type,actor_kind,reason_code) SELECT organization_id,id,'needs_owner','system','not_a_reason' FROM death_board_item LIMIT 1",
+          ),
+        ).toBe("23514");
+      });
+    });
+  });
 });

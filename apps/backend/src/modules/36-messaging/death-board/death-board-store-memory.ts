@@ -144,6 +144,18 @@ export function createMemoryDeathBoardStore(now: () => Date): MemoryDeathBoardSt
         .slice(0, limit)
         .map((i) => i.id);
     },
+    async openUnflaggedItems(_tx, orgId, afterId, limit) {
+      return [...items.values()]
+        .filter(
+          (i) =>
+            i.organizationId === orgId &&
+            i.status === "open" &&
+            !i.needsOwner &&
+            (afterId === null || i.id > afterId),
+        )
+        .sort((x, y) => (x.id < y.id ? -1 : 1))
+        .slice(0, limit);
+    },
     async eventsForItems(_tx, _orgId, itemIds) {
       return events.filter((e) => itemIds.includes(e.itemId));
     },

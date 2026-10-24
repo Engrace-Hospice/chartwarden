@@ -78,6 +78,33 @@ describe("Require acknowledgment", () => {
     expect((screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("posts an empty body without a deadline, and the deadline (as an ISO instant) when one is chosen; it says nothing is sent", async () => {
+    const POST = open(() => ({ data: { created: true } }));
+    expect(await screen.findByText(/Nobody is reminded and nothing else happens/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Deadline (optional)"), { target: { value: "2099-01-01T09:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Require acknowledgment" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    expect(POST).toHaveBeenCalledWith(
+      "/api/v1/messaging/announcements/{messageId}/ack-broadcast",
+      { params: { path: { messageId: "m1" } }, body: { deadlineAt: new Date("2099-01-01T09:30").toISOString() } },
+    );
+  });
+
+  it("posts {} when no deadline is set", async () => {
+    const POST = open(() => ({ data: { created: true } }));
+    fireEvent.click(await screen.findByRole("button", { name: "Require acknowledgment" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    expect(POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: {} }));
+  });
+
+  it("a 422 says the deadline range and leaves the button available to try again", async () => {
+    open(() => ({ error: {}, response: { status: 422 } }));
+    fireEvent.change(await screen.findByLabelText("Deadline (optional)"), { target: { value: "2099-01-01T09:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Require acknowledgment" }));
+    expect(await screen.findByText(/between 5 minutes and 90 days/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("does not post anything until clicked", async () => {
     const POST = open(() => ({ data: {} }));
     await screen.findByRole("button", { name: "Require acknowledgment" });

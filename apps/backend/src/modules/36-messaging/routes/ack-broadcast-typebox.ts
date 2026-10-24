@@ -34,17 +34,31 @@ const Counts = Type.Object({
   ineligible: Type.Integer(),
   outsideAudience: Type.Integer(),
 });
+const NullableString = Type.Union([Type.String(), Type.Null()]);
 const SummaryProps = {
   messageId: Type.String(),
   channelId: Type.String(),
   createdAt: Type.String(),
   counts: Counts,
+  deadlineAt: NullableString,
+  withdrawnAt: NullableString,
+  pastDeadline: Type.Boolean(),
 };
+
+/** The optional body of "require acknowledgment": a display-only deadline (ADR-0097 D13). Range-checked by the service (typed 422). */
+export const AckBroadcastCreateBodySchema = Type.Object(
+  { deadlineAt: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })) },
+  { additionalProperties: false },
+);
 
 export const AckBroadcastSummarySchema = Type.Object(SummaryProps);
 export const AckBroadcastCreatedSchema = Type.Object({
   ...SummaryProps,
   created: Type.Boolean(),
+});
+export const AckBroadcastWithdrawnSchema = Type.Object({
+  ...SummaryProps,
+  already: Type.Boolean(),
 });
 export const AckBroadcastListSchema = Type.Object({ broadcasts: Type.Array(AckBroadcastSummarySchema) });
 export const AckBroadcastDetailSchema = Type.Object({
@@ -69,6 +83,7 @@ export const AckBroadcastMineSchema = Type.Object({
       channelId: Type.String(),
       createdAt: Type.String(),
       acknowledgedAt: Type.Union([Type.String(), Type.Null()]),
+      deadlineAt: NullableString,
     }),
   ),
 });

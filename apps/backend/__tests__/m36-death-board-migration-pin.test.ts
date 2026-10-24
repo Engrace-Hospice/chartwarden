@@ -15,6 +15,7 @@ const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const sql = flat(read("packages/db/migrations/1201_m36_death_board.sql"));
+const sql1202 = flat(read("packages/db/migrations/1202_m36_ack_broadcast_withdraw_deadline_death_board_stall.sql"));
 const schema = flat(read("packages/db/src/schema/messaging/death-board.ts"));
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 const TABLES = ["death_board", "death_board_item", "death_board_item_event"] as const;
@@ -27,7 +28,9 @@ describe("migration 1201 death board", () => {
     expect(schema).toContain(`IN (${inList(DEATH_BOARD_ITEM_STATUSES)})`);
     expect(sql).toContain(`CHECK ("event_type" IN (${inList(DEATH_BOARD_EVENT_TYPES)}))`);
     expect(schema).toContain(`IN (${inList(DEATH_BOARD_EVENT_TYPES)})`);
-    expect(sql).toContain(`IN (${inList(DEATH_BOARD_REASON_CODES)})`);
+    // 1201 shipped the first four reasons; 1202 widened the CHECK with the stall sweep's 'owner_ineligible' (the full set is the constant).
+    expect(sql).toContain(`IN (${inList(DEATH_BOARD_REASON_CODES.slice(0, 4))})`);
+    expect(sql1202).toContain(`IN (${inList(DEATH_BOARD_REASON_CODES)})`);
     expect(schema).toContain(`IN (${inList(DEATH_BOARD_REASON_CODES)})`);
   });
 
