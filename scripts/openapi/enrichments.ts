@@ -1437,6 +1437,27 @@ import {
   PartnerVerifiedResponseSchema as M36PartnerVerifiedResponseSchema,
   PartnerVerifyBodySchema as M36PartnerVerifyBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/external-share-typebox";
+// M36 WP 6.7 family / caregiver messaging (ADR-0099, PROPOSED).
+import {
+  CreateFamilyInvitationBodySchema as M36FamilyInviteBodySchema,
+  CreatedFamilyInvitationResponseSchema as M36FamilyInviteResponseSchema,
+  FamilyCaregiversResponseSchema as M36FamilyCaregiversResponseSchema,
+  FamilyContactListResponseSchema as M36FamilyContactListResponseSchema,
+  FamilyContactMessagesResponseSchema as M36FamilyContactMessagesResponseSchema,
+  FamilyContactStateResponseSchema as M36FamilyContactStateResponseSchema,
+  FamilyContactSummarySchema as M36FamilyContactSummarySchema,
+  FamilyContactVerifiedResponseSchema as M36FamilyContactVerifiedResponseSchema,
+  FamilyRedeemBodySchema as M36FamilyRedeemBodySchema,
+  FamilyRedeemResponseSchema as M36FamilyRedeemResponseSchema,
+  FamilyReplyBodySchema as M36FamilyReplyBodySchema,
+  FamilyReplyResponseSchema as M36FamilyReplyResponseSchema,
+  FamilySendBodySchema as M36FamilySendBodySchema,
+  FamilySendResponseSchema as M36FamilySendResponseSchema,
+  FamilySettingsBodySchema as M36FamilySettingsBodySchema,
+  FamilySettingsResponseSchema as M36FamilySettingsResponseSchema,
+  FamilyThreadResponseSchema as M36FamilyThreadResponseSchema,
+  FamilyVerifyBodySchema as M36FamilyVerifyBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/family-typebox";
 // M36 WP 2.7b C4 tenant global search switch.
 import {
   GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
@@ -10719,6 +10740,101 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references, redaction rows, urgent or targeted messages, acknowledgment requests, legal holds, or a high-signal identifier in the text (withheld, never masked; names are NOT detected). The session dies after 30 idle minutes or 12 hours. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned",
     response: M36PartnerMessagesResponseSchema,
+  },
+
+  // family / caregiver messaging (WP 6.7, ADR-0099 PROPOSED)
+  "GET /api/v1/messaging/family/settings": {
+    summary:
+      "The tenant's family-messaging settings (messaging.family.manage): the neutral agency name, the 24-hour number the not-an-emergency notice shows and the bereavement support number. No patient or person",
+    response: M36FamilySettingsResponseSchema,
+  },
+  "PUT /api/v1/messaging/family/settings": {
+    summary:
+      "Set the family-messaging settings (messaging.family.manage; never depends on the flag). Empty text clears a value. The 24-hour number must exist before an invitation can be created",
+    body: M36FamilySettingsBodySchema,
+    response: M36FamilySettingsResponseSchema,
+  },
+  "GET /api/v1/messaging/family/patients/:patientId/caregivers": {
+    summary:
+      "The patient's caregivers with the eligibility reason (messaging.family.manage; the caller must be on the patient's care team, otherwise the unknown-patient 404). `ok` is the only reason that allows an invitation: no_consent, involvement_ended, part2_restricted, patient_status, not_in_bereavement_plan, blocked. Audited as a patient read",
+    response: M36FamilyCaregiversResponseSchema,
+  },
+  "POST /api/v1/messaging/family/invitations": {
+    summary:
+      "Invite (or reissue for) ONE consented family contact (messaging.family.manage + a fresh step-up; 404 while the tenant flag messaging.family_messaging is off; 503 FAMILY_ACCESS_UNAVAILABLE without a validated TRUSTED_PROXY_CIDRS and the code pepper; 409 FAMILY_SETTINGS_MISSING without the 24-hour number; 409 FAMILY_CONTACT_NOT_ELIGIBLE with the reason code; 429 over the daily caps). A reissue supersedes the older link, whose sessions die. The link token and the 8-digit code are returned ONCE; the code is given by voice, never in the same message as the link",
+    body: M36FamilyInviteBodySchema,
+    response: M36FamilyInviteResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/family/contacts": {
+    summary:
+      "The Family lane (messaging.family.respond; never depends on the flag): the thread links of patients the caller's care-team predicate admits, with consent state, link state, mode, last activity, the oldest unanswered message instant and a high-volume flag. No message text, token or code",
+    response: M36FamilyContactListResponseSchema,
+  },
+  "GET /api/v1/messaging/family/contacts/:contactId/thread": {
+    summary:
+      "One family thread, oldest first, newest 200 (messaging.family.respond; unknown id, another tenant and a patient outside the caller's care team are the same 404). Reading marks the contact's messages 'received by the care team'. Approved redactions are masked",
+    response: M36FamilyThreadResponseSchema,
+  },
+  "POST /api/v1/messaging/family/contacts/:contactId/reply": {
+    summary:
+      "Reply to a family contact (messaging.family.respond; 404 while the flag is off). Refused with 409 unless the contact is eligible right now (the Part 2 / consent / block check), the thread is open and the contact has written. Text only, 1 to 2,000 characters. This is a message to a family thread, not a chart note",
+    body: M36FamilyReplyBodySchema,
+    response: M36FamilyReplyResponseSchema,
+    status: 201,
+  },
+  "DELETE /api/v1/messaging/family/contacts/:contactId/invitation": {
+    summary:
+      "Revoke the contact's live link now (messaging.family.manage + a fresh step-up; never depends on the flag). The contact's very next request is a 404 (nothing is cached). 409 when no link is live",
+    response: M36FamilyContactSummarySchema,
+  },
+  "POST /api/v1/messaging/family/contacts/:contactId/close": {
+    summary:
+      "Close a family thread (messaging.family.manage). The contact's send then answers a plain 409 'call the agency'; reading stays",
+    response: M36FamilyContactSummarySchema,
+  },
+  "POST /api/v1/messaging/family/contacts/:contactId/reopen": {
+    summary: "Reopen a closed family thread (messaging.family.manage)",
+    response: M36FamilyContactSummarySchema,
+  },
+  "POST /api/v1/messaging/family/contacts/:contactId/block": {
+    summary:
+      "Block a contact (messaging.family.manage + a fresh step-up): revokes the live link and refuses a reissue until the block is lifted by a SECOND person",
+    response: M36FamilyContactSummarySchema,
+  },
+  "POST /api/v1/messaging/family/contacts/:contactId/unblock": {
+    summary:
+      "Lift a block (messaging.family.manage + a fresh step-up). 409 when the caller is the person who set the block: a second authoriser is required (database guard)",
+    response: M36FamilyContactSummarySchema,
+  },
+  "POST /api/v1/messaging/family-contact/redeem": {
+    summary:
+      "FAMILY CONTACT (no user session): redeem the one-time link for an enrolment-stage bearer (single use; budgeted per client address). The bearer reaches only state and verify until the spoken 8-digit code is proven. Every refusal (flag off, unknown, used, expired, revoked, ineligible, wrong shape) is the same neutral 404",
+    body: M36FamilyRedeemBodySchema,
+    response: M36FamilyRedeemResponseSchema,
+  },
+  "GET /api/v1/messaging/family-contact/state": {
+    summary:
+      "FAMILY CONTACT (Authorization: Bearer): the contact's own access state (stage, mode standard or bereavement, the agency numbers, language, closed). No patient, no staff, no id. Eligibility is re-judged in the same statement; any loss of it is the neutral 404",
+    response: M36FamilyContactStateResponseSchema,
+  },
+  "POST /api/v1/messaging/family-contact/verify": {
+    summary:
+      "FAMILY CONTACT (Authorization: Bearer): prove the spoken 8-digit code to activate the session. Activation ROTATES the bearer: the response carries the NEW `sessionToken` (once). Five wrong attempts lock the link for good (the sixth answer is the neutral 404)",
+    body: M36FamilyVerifyBodySchema,
+    response: M36FamilyContactVerifiedResponseSchema,
+  },
+  "GET /api/v1/messaging/family-contact/messages": {
+    summary:
+      "FAMILY CONTACT (Authorization: Bearer, active stage only): the contact's own thread, oldest first: its own text as 'you', staff text as 'care_team' with no staff identity. Never staff channels, other contacts, system, urgent, deleted or redacted lines. Every read leaves a trail row",
+    response: M36FamilyContactMessagesResponseSchema,
+  },
+  "POST /api/v1/messaging/family-contact/messages": {
+    summary:
+      "FAMILY CONTACT (Authorization: Bearer, active stage only): send text, 1 to 2,000 characters, no attachments. The conversation comes from the link, never the request. 409 FAMILY_THREAD_CLOSED when closed; 429 over 10 an hour, 40 a day or 200 unanswered. Every send leaves a trail row",
+    body: M36FamilySendBodySchema,
+    response: M36FamilySendResponseSchema,
+    status: 201,
   },
 
   // alerts (§4.2)

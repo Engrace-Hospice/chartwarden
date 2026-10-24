@@ -15631,6 +15631,263 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/family-contact/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FAMILY CONTACT (Authorization: Bearer, active stage only): the contact's own thread, oldest first: its own text as 'you', staff text as 'care_team' with no staff identity. Never staff channels, other contacts, system, urgent, deleted or redacted lines. Every read leaves a trail row */
+        get: operations["getApiV1MessagingFamilycontactMessages"];
+        put?: never;
+        /** FAMILY CONTACT (Authorization: Bearer, active stage only): send text, 1 to 2,000 characters, no attachments. The conversation comes from the link, never the request. 409 FAMILY_THREAD_CLOSED when closed; 429 over 10 an hour, 40 a day or 200 unanswered. Every send leaves a trail row */
+        post: operations["postApiV1MessagingFamilycontactMessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family-contact/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** FAMILY CONTACT (no user session): redeem the one-time link for an enrolment-stage bearer (single use; budgeted per client address). The bearer reaches only state and verify until the spoken 8-digit code is proven. Every refusal (flag off, unknown, used, expired, revoked, ineligible, wrong shape) is the same neutral 404 */
+        post: operations["postApiV1MessagingFamilycontactRedeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family-contact/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FAMILY CONTACT (Authorization: Bearer): the contact's own access state (stage, mode standard or bereavement, the agency numbers, language, closed). No patient, no staff, no id. Eligibility is re-judged in the same statement; any loss of it is the neutral 404 */
+        get: operations["getApiV1MessagingFamilycontactState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family-contact/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** FAMILY CONTACT (Authorization: Bearer): prove the spoken 8-digit code to activate the session. Activation ROTATES the bearer: the response carries the NEW `sessionToken` (once). Five wrong attempts lock the link for good (the sixth answer is the neutral 404) */
+        post: operations["postApiV1MessagingFamilycontactVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Family lane (messaging.family.respond; never depends on the flag): the thread links of patients the caller's care-team predicate admits, with consent state, link state, mode, last activity, the oldest unanswered message instant and a high-volume flag. No message text, token or code */
+        get: operations["getApiV1MessagingFamilyContacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Block a contact (messaging.family.manage + a fresh step-up): revokes the live link and refuses a reissue until the block is lifted by a SECOND person */
+        post: operations["postApiV1MessagingFamilyContactsByContactIdBlock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a family thread (messaging.family.manage). The contact's send then answers a plain 409 'call the agency'; reading stays */
+        post: operations["postApiV1MessagingFamilyContactsByContactIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke the contact's live link now (messaging.family.manage + a fresh step-up; never depends on the flag). The contact's very next request is a 404 (nothing is cached). 409 when no link is live */
+        delete: operations["deleteApiV1MessagingFamilyContactsByContactIdInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen a closed family thread (messaging.family.manage) */
+        post: operations["postApiV1MessagingFamilyContactsByContactIdReopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply to a family contact (messaging.family.respond; 404 while the flag is off). Refused with 409 unless the contact is eligible right now (the Part 2 / consent / block check), the thread is open and the contact has written. Text only, 1 to 2,000 characters. This is a message to a family thread, not a chart note */
+        post: operations["postApiV1MessagingFamilyContactsByContactIdReply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One family thread, oldest first, newest 200 (messaging.family.respond; unknown id, another tenant and a patient outside the caller's care team are the same 404). Reading marks the contact's messages 'received by the care team'. Approved redactions are masked */
+        get: operations["getApiV1MessagingFamilyContactsByContactIdThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/contacts/{contactId}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lift a block (messaging.family.manage + a fresh step-up). 409 when the caller is the person who set the block: a second authoriser is required (database guard) */
+        post: operations["postApiV1MessagingFamilyContactsByContactIdUnblock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invite (or reissue for) ONE consented family contact (messaging.family.manage + a fresh step-up; 404 while the tenant flag messaging.family_messaging is off; 503 FAMILY_ACCESS_UNAVAILABLE without a validated TRUSTED_PROXY_CIDRS and the code pepper; 409 FAMILY_SETTINGS_MISSING without the 24-hour number; 409 FAMILY_CONTACT_NOT_ELIGIBLE with the reason code; 429 over the daily caps). A reissue supersedes the older link, whose sessions die. The link token and the 8-digit code are returned ONCE; the code is given by voice, never in the same message as the link */
+        post: operations["postApiV1MessagingFamilyInvitations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/patients/{patientId}/caregivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patient's caregivers with the eligibility reason (messaging.family.manage; the caller must be on the patient's care team, otherwise the unknown-patient 404). `ok` is the only reason that allows an invitation: no_consent, involvement_ended, part2_restricted, patient_status, not_in_bereavement_plan, blocked. Audited as a patient read */
+        get: operations["getApiV1MessagingFamilyPatientsByPatientIdCaregivers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/family/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's family-messaging settings (messaging.family.manage): the neutral agency name, the 24-hour number the not-an-emergency notice shows and the bereavement support number. No patient or person */
+        get: operations["getApiV1MessagingFamilySettings"];
+        /** Set the family-messaging settings (messaging.family.manage; never depends on the flag). Empty text clears a value. The 24-hour number must exist before an invitation can be created */
+        put: operations["putApiV1MessagingFamilySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/global-search/settings": {
         parameters: {
             query?: never;
@@ -68600,7 +68857,7 @@ export interface operations {
                     "application/json": {
                         channels: {
                             channelId: string;
-                            kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement";
+                            kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement" | "family";
                             title: string | null;
                             subjectId: string | null;
                             archivedAt: string | null;
@@ -68641,7 +68898,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         channelId: string;
-                        kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement";
+                        kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement" | "family";
                         title: string | null;
                         subjectId: string | null;
                         archivedAt: string | null;
@@ -72334,6 +72591,645 @@ export interface operations {
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingFamilycontactMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messages: {
+                            messageId: string;
+                            from: "you" | "care_team";
+                            body: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            receivedByCareTeam: boolean;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilycontactMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilycontactRedeem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    organizationId: string;
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionToken: string;
+                        /** @constant */
+                        stage: "enrolment";
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingFamilycontactState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        mode: "standard" | "bereavement";
+                        agencyName: string | null;
+                        agencyPhone: string | null;
+                        bereavementPhone: string | null;
+                        language: string | null;
+                        closed: boolean;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilycontactVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stage: "enrolment" | "active";
+                        mode: "standard" | "bereavement";
+                        agencyName: string | null;
+                        agencyPhone: string | null;
+                        bereavementPhone: string | null;
+                        language: string | null;
+                        closed: boolean;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        sessionToken: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingFamilyContacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contacts: {
+                            contactId: string;
+                            patientId: string;
+                            patientCaregiverId: string;
+                            patientName: string;
+                            displayName: string;
+                            relationship: string;
+                            consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                            linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                            mode: "standard" | "bereavement";
+                            language: string | null;
+                            closed: boolean;
+                            blocked: boolean;
+                            channelId: string | null;
+                            lastContactActivityAt: string | null;
+                            unansweredSince: string | null;
+                            highVolume: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilyContactsByContactIdBlock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        patientId: string;
+                        patientCaregiverId: string;
+                        patientName: string;
+                        displayName: string;
+                        relationship: string;
+                        consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                        linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                        mode: "standard" | "bereavement";
+                        language: string | null;
+                        closed: boolean;
+                        blocked: boolean;
+                        channelId: string | null;
+                        lastContactActivityAt: string | null;
+                        unansweredSince: string | null;
+                        highVolume: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilyContactsByContactIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        patientId: string;
+                        patientCaregiverId: string;
+                        patientName: string;
+                        displayName: string;
+                        relationship: string;
+                        consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                        linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                        mode: "standard" | "bereavement";
+                        language: string | null;
+                        closed: boolean;
+                        blocked: boolean;
+                        channelId: string | null;
+                        lastContactActivityAt: string | null;
+                        unansweredSince: string | null;
+                        highVolume: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingFamilyContactsByContactIdInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        patientId: string;
+                        patientCaregiverId: string;
+                        patientName: string;
+                        displayName: string;
+                        relationship: string;
+                        consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                        linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                        mode: "standard" | "bereavement";
+                        language: string | null;
+                        closed: boolean;
+                        blocked: boolean;
+                        channelId: string | null;
+                        lastContactActivityAt: string | null;
+                        unansweredSince: string | null;
+                        highVolume: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilyContactsByContactIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        patientId: string;
+                        patientCaregiverId: string;
+                        patientName: string;
+                        displayName: string;
+                        relationship: string;
+                        consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                        linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                        mode: "standard" | "bereavement";
+                        language: string | null;
+                        closed: boolean;
+                        blocked: boolean;
+                        channelId: string | null;
+                        lastContactActivityAt: string | null;
+                        unansweredSince: string | null;
+                        highVolume: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilyContactsByContactIdReply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        /** @constant */
+                        from: "staff";
+                        authorName: string | null;
+                        body: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingFamilyContactsByContactIdThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contact: {
+                            contactId: string;
+                            patientId: string;
+                            patientCaregiverId: string;
+                            patientName: string;
+                            displayName: string;
+                            relationship: string;
+                            consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                            linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                            mode: "standard" | "bereavement";
+                            language: string | null;
+                            closed: boolean;
+                            blocked: boolean;
+                            channelId: string | null;
+                            lastContactActivityAt: string | null;
+                            unansweredSince: string | null;
+                            highVolume: boolean;
+                        };
+                        messages: {
+                            messageId: string;
+                            from: "contact" | "staff";
+                            authorName: string | null;
+                            body: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilyContactsByContactIdUnblock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        patientId: string;
+                        patientCaregiverId: string;
+                        patientName: string;
+                        displayName: string;
+                        relationship: string;
+                        consentState: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                        linkState: "none" | "not_opened" | "verifying" | "active" | "locked" | "expired" | "revoked";
+                        mode: "standard" | "bereavement";
+                        language: string | null;
+                        closed: boolean;
+                        blocked: boolean;
+                        channelId: string | null;
+                        lastContactActivityAt: string | null;
+                        unansweredSince: string | null;
+                        highVolume: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingFamilyInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string;
+                    patientCaregiverId: string;
+                    expiresInDays?: number;
+                    /** @constant */
+                    codeByVoiceConfirmed: true;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        organizationId: string;
+                        inviteToken: string;
+                        verificationCode: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        agencyPhone: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingFamilyPatientsByPatientIdCaregivers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        caregivers: {
+                            patientCaregiverId: string;
+                            displayName: string;
+                            relationship: string;
+                            isLegalRepresentative: boolean;
+                            eligible: boolean;
+                            reason: "ok" | "no_consent" | "involvement_ended" | "part2_restricted" | "patient_status" | "not_in_bereavement_plan" | "blocked";
+                            language: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingFamilySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        agencyName: string | null;
+                        agencyPhone: string | null;
+                        bereavementPhone: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingFamilySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    agencyName: string | null;
+                    agencyPhone: string | null;
+                    bereavementPhone: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        agencyName: string | null;
+                        agencyPhone: string | null;
+                        bereavementPhone: string | null;
                     };
                 };
             };

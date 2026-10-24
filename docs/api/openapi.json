@@ -168513,6 +168513,10 @@
                               {
                                 "const": "bereavement",
                                 "type": "string"
+                              },
+                              {
+                                "const": "family",
+                                "type": "string"
                               }
                             ]
                           },
@@ -168685,6 +168689,10 @@
                         },
                         {
                           "const": "bereavement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "family",
                           "type": "string"
                         }
                       ]
@@ -183805,6 +183813,2458 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family-contact/messages": {
+      "get": {
+        "operationId": "getApiV1MessagingFamilycontactMessages",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "FAMILY CONTACT (Authorization: Bearer, active stage only): the contact's own thread, oldest first: its own text as 'you', staff text as 'care_team' with no staff identity. Never staff channels, other contacts, system, urgent, deleted or redacted lines. Every read leaves a trail row",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messages",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "from",
+                          "body",
+                          "createdAt",
+                          "receivedByCareTeam"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "from": {
+                            "anyOf": [
+                              {
+                                "const": "you",
+                                "type": "string"
+                              },
+                              {
+                                "const": "care_team",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "receivedByCareTeam": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingFamilycontactMessages",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "FAMILY CONTACT (Authorization: Bearer, active stage only): send text, 1 to 2,000 characters, no attachments. The conversation comes from the link, never the request. 409 FAMILY_THREAD_CLOSED when closed; 429 over 10 an hour, 40 a day or 200 unanswered. Every send leaves a trail row",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family-contact/redeem": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilycontactRedeem",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "FAMILY CONTACT (no user session): redeem the one-time link for an enrolment-stage bearer (single use; budgeted per client address). The bearer reaches only state and verify until the spoken 8-digit code is proven. Every refusal (flag off, unknown, used, expired, revoked, ineligible, wrong shape) is the same neutral 404",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionToken",
+                    "stage",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "sessionToken": {
+                      "type": "string"
+                    },
+                    "stage": {
+                      "const": "enrolment",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "organizationId",
+                  "token"
+                ],
+                "properties": {
+                  "organizationId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "token": {
+                    "pattern": "^[A-Za-z0-9_-]{43}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family-contact/state": {
+      "get": {
+        "operationId": "getApiV1MessagingFamilycontactState",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "FAMILY CONTACT (Authorization: Bearer): the contact's own access state (stage, mode standard or bereavement, the agency numbers, language, closed). No patient, no staff, no id. Eligibility is re-judged in the same statement; any loss of it is the neutral 404",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stage",
+                    "mode",
+                    "agencyName",
+                    "agencyPhone",
+                    "bereavementPhone",
+                    "language",
+                    "closed",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "enrolment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "agencyName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agencyPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bereavementPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family-contact/verify": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilycontactVerify",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "FAMILY CONTACT (Authorization: Bearer): prove the spoken 8-digit code to activate the session. Activation ROTATES the bearer: the response carries the NEW `sessionToken` (once). Five wrong attempts lock the link for good (the sixth answer is the neutral 404)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stage",
+                    "mode",
+                    "agencyName",
+                    "agencyPhone",
+                    "bereavementPhone",
+                    "language",
+                    "closed",
+                    "expiresAt",
+                    "sessionToken"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "enrolment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "agencyName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agencyPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bereavementPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "sessionToken": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "pattern": "^\\d{8}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts": {
+      "get": {
+        "operationId": "getApiV1MessagingFamilyContacts",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The Family lane (messaging.family.respond; never depends on the flag): the thread links of patients the caller's care-team predicate admits, with consent state, link state, mode, last activity, the oldest unanswered message instant and a high-volume flag. No message text, token or code",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contacts"
+                  ],
+                  "properties": {
+                    "contacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "contactId",
+                          "patientId",
+                          "patientCaregiverId",
+                          "patientName",
+                          "displayName",
+                          "relationship",
+                          "consentState",
+                          "linkState",
+                          "mode",
+                          "language",
+                          "closed",
+                          "blocked",
+                          "channelId",
+                          "lastContactActivityAt",
+                          "unansweredSince",
+                          "highVolume"
+                        ],
+                        "properties": {
+                          "contactId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "patientCaregiverId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "patientName": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "relationship": {
+                            "type": "string"
+                          },
+                          "consentState": {
+                            "anyOf": [
+                              {
+                                "const": "ok",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no_consent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "involvement_ended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "part2_restricted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "patient_status",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_in_bereavement_plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "linkState": {
+                            "anyOf": [
+                              {
+                                "const": "none",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_opened",
+                                "type": "string"
+                              },
+                              {
+                                "const": "verifying",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "locked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "mode": {
+                            "anyOf": [
+                              {
+                                "const": "standard",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bereavement",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "language": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closed": {
+                            "type": "boolean"
+                          },
+                          "blocked": {
+                            "type": "boolean"
+                          },
+                          "channelId": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastContactActivityAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "unansweredSince": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "highVolume": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/block": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilyContactsByContactIdBlock",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Block a contact (messaging.family.manage + a fresh step-up): revokes the live link and refuses a reissue until the block is lifted by a SECOND person",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "patientId",
+                    "patientCaregiverId",
+                    "patientName",
+                    "displayName",
+                    "relationship",
+                    "consentState",
+                    "linkState",
+                    "mode",
+                    "language",
+                    "closed",
+                    "blocked",
+                    "channelId",
+                    "lastContactActivityAt",
+                    "unansweredSince",
+                    "highVolume"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientCaregiverId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "consentState": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "involvement_ended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "part2_restricted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_status",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_in_bereavement_plan",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "linkState": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_opened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verifying",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "locked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "blocked": {
+                      "type": "boolean"
+                    },
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastContactActivityAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unansweredSince": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "highVolume": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/close": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilyContactsByContactIdClose",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Close a family thread (messaging.family.manage). The contact's send then answers a plain 409 'call the agency'; reading stays",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "patientId",
+                    "patientCaregiverId",
+                    "patientName",
+                    "displayName",
+                    "relationship",
+                    "consentState",
+                    "linkState",
+                    "mode",
+                    "language",
+                    "closed",
+                    "blocked",
+                    "channelId",
+                    "lastContactActivityAt",
+                    "unansweredSince",
+                    "highVolume"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientCaregiverId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "consentState": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "involvement_ended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "part2_restricted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_status",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_in_bereavement_plan",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "linkState": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_opened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verifying",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "locked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "blocked": {
+                      "type": "boolean"
+                    },
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastContactActivityAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unansweredSince": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "highVolume": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/invitation": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingFamilyContactsByContactIdInvitation",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Revoke the contact's live link now (messaging.family.manage + a fresh step-up; never depends on the flag). The contact's very next request is a 404 (nothing is cached). 409 when no link is live",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "patientId",
+                    "patientCaregiverId",
+                    "patientName",
+                    "displayName",
+                    "relationship",
+                    "consentState",
+                    "linkState",
+                    "mode",
+                    "language",
+                    "closed",
+                    "blocked",
+                    "channelId",
+                    "lastContactActivityAt",
+                    "unansweredSince",
+                    "highVolume"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientCaregiverId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "consentState": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "involvement_ended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "part2_restricted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_status",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_in_bereavement_plan",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "linkState": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_opened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verifying",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "locked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "blocked": {
+                      "type": "boolean"
+                    },
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastContactActivityAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unansweredSince": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "highVolume": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/reopen": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilyContactsByContactIdReopen",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reopen a closed family thread (messaging.family.manage)",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "patientId",
+                    "patientCaregiverId",
+                    "patientName",
+                    "displayName",
+                    "relationship",
+                    "consentState",
+                    "linkState",
+                    "mode",
+                    "language",
+                    "closed",
+                    "blocked",
+                    "channelId",
+                    "lastContactActivityAt",
+                    "unansweredSince",
+                    "highVolume"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientCaregiverId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "consentState": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "involvement_ended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "part2_restricted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_status",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_in_bereavement_plan",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "linkState": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_opened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verifying",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "locked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "blocked": {
+                      "type": "boolean"
+                    },
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastContactActivityAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unansweredSince": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "highVolume": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/reply": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilyContactsByContactIdReply",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reply to a family contact (messaging.family.respond; 404 while the flag is off). Refused with 409 unless the contact is eligible right now (the Part 2 / consent / block check), the thread is open and the contact has written. Text only, 1 to 2,000 characters. This is a message to a family thread, not a chart note",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "from",
+                    "authorName",
+                    "body",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "from": {
+                      "const": "staff",
+                      "type": "string"
+                    },
+                    "authorName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "minLength": 1,
+                    "maxLength": 20000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/thread": {
+      "get": {
+        "operationId": "getApiV1MessagingFamilyContactsByContactIdThread",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One family thread, oldest first, newest 200 (messaging.family.respond; unknown id, another tenant and a patient outside the caller's care team are the same 404). Reading marks the contact's messages 'received by the care team'. Approved redactions are masked",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contact",
+                    "messages"
+                  ],
+                  "properties": {
+                    "contact": {
+                      "type": "object",
+                      "required": [
+                        "contactId",
+                        "patientId",
+                        "patientCaregiverId",
+                        "patientName",
+                        "displayName",
+                        "relationship",
+                        "consentState",
+                        "linkState",
+                        "mode",
+                        "language",
+                        "closed",
+                        "blocked",
+                        "channelId",
+                        "lastContactActivityAt",
+                        "unansweredSince",
+                        "highVolume"
+                      ],
+                      "properties": {
+                        "contactId": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "patientCaregiverId": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "patientName": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "relationship": {
+                          "type": "string"
+                        },
+                        "consentState": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_consent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "involvement_ended",
+                              "type": "string"
+                            },
+                            {
+                              "const": "part2_restricted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient_status",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_in_bereavement_plan",
+                              "type": "string"
+                            },
+                            {
+                              "const": "blocked",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "linkState": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_opened",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verifying",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "locked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revoked",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "mode": {
+                          "anyOf": [
+                            {
+                              "const": "standard",
+                              "type": "string"
+                            },
+                            {
+                              "const": "bereavement",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "language": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "blocked": {
+                          "type": "boolean"
+                        },
+                        "channelId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastContactActivityAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "unansweredSince": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "highVolume": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "from",
+                          "authorName",
+                          "body",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "from": {
+                            "anyOf": [
+                              {
+                                "const": "contact",
+                                "type": "string"
+                              },
+                              {
+                                "const": "staff",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "authorName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/contacts/{contactId}/unblock": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilyContactsByContactIdUnblock",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Lift a block (messaging.family.manage + a fresh step-up). 409 when the caller is the person who set the block: a second authoriser is required (database guard)",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "patientId",
+                    "patientCaregiverId",
+                    "patientName",
+                    "displayName",
+                    "relationship",
+                    "consentState",
+                    "linkState",
+                    "mode",
+                    "language",
+                    "closed",
+                    "blocked",
+                    "channelId",
+                    "lastContactActivityAt",
+                    "unansweredSince",
+                    "highVolume"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientCaregiverId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "patientName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "consentState": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "involvement_ended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "part2_restricted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_status",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_in_bereavement_plan",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "linkState": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_opened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verifying",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "locked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "blocked": {
+                      "type": "boolean"
+                    },
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastContactActivityAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unansweredSince": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "highVolume": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/invitations": {
+      "post": {
+        "operationId": "postApiV1MessagingFamilyInvitations",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Invite (or reissue for) ONE consented family contact (messaging.family.manage + a fresh step-up; 404 while the tenant flag messaging.family_messaging is off; 503 FAMILY_ACCESS_UNAVAILABLE without a validated TRUSTED_PROXY_CIDRS and the code pepper; 409 FAMILY_SETTINGS_MISSING without the 24-hour number; 409 FAMILY_CONTACT_NOT_ELIGIBLE with the reason code; 429 over the daily caps). A reissue supersedes the older link, whose sessions die. The link token and the 8-digit code are returned ONCE; the code is given by voice, never in the same message as the link",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "organizationId",
+                    "inviteToken",
+                    "verificationCode",
+                    "expiresAt",
+                    "agencyPhone"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "inviteToken": {
+                      "type": "string"
+                    },
+                    "verificationCode": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "agencyPhone": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "patientCaregiverId",
+                  "codeByVoiceConfirmed"
+                ],
+                "properties": {
+                  "patientId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "patientCaregiverId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "expiresInDays": {
+                    "minimum": 1,
+                    "maximum": 30,
+                    "type": "integer"
+                  },
+                  "codeByVoiceConfirmed": {
+                    "const": true,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/patients/{patientId}/caregivers": {
+      "get": {
+        "operationId": "getApiV1MessagingFamilyPatientsByPatientIdCaregivers",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The patient's caregivers with the eligibility reason (messaging.family.manage; the caller must be on the patient's care team, otherwise the unknown-patient 404). `ok` is the only reason that allows an invitation: no_consent, involvement_ended, part2_restricted, patient_status, not_in_bereavement_plan, blocked. Audited as a patient read",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "caregivers"
+                  ],
+                  "properties": {
+                    "caregivers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientCaregiverId",
+                          "displayName",
+                          "relationship",
+                          "isLegalRepresentative",
+                          "eligible",
+                          "reason",
+                          "language"
+                        ],
+                        "properties": {
+                          "patientCaregiverId": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "relationship": {
+                            "type": "string"
+                          },
+                          "isLegalRepresentative": {
+                            "type": "boolean"
+                          },
+                          "eligible": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "const": "ok",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no_consent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "involvement_ended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "part2_restricted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "patient_status",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_in_bereavement_plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "language": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/family/settings": {
+      "get": {
+        "operationId": "getApiV1MessagingFamilySettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The tenant's family-messaging settings (messaging.family.manage): the neutral agency name, the 24-hour number the not-an-emergency notice shows and the bereavement support number. No patient or person",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agencyName",
+                    "agencyPhone",
+                    "bereavementPhone"
+                  ],
+                  "properties": {
+                    "agencyName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agencyPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bereavementPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingFamilySettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Set the family-messaging settings (messaging.family.manage; never depends on the flag). Empty text clears a value. The 24-hour number must exist before an invitation can be created",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agencyName",
+                    "agencyPhone",
+                    "bereavementPhone"
+                  ],
+                  "properties": {
+                    "agencyName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agencyPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bereavementPhone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "agencyName",
+                  "agencyPhone",
+                  "bereavementPhone"
+                ],
+                "properties": {
+                  "agencyName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 220,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "agencyPhone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 220,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "bereavementPhone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 220,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

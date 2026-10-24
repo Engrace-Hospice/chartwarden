@@ -435,6 +435,8 @@ const REGISTRAR_FILES = [
   "death-board-typebox.ts", // schemas only
   "external-share-routes.ts", // ADR-0096 external partner share (flag off): another org's staff lists/revokes nothing, a bearer or invitation under another org matches nothing, RLS on all three tables - m36-external-share.live "tenancy"
   "external-share-typebox.ts", // schemas only
+  "family-routes.ts", // ADR-0099 family messaging (flag off): another org's staff lists/revokes/blocks nothing and gets the byte-identical unknown-id 404, a contact bearer or link under another org matches nothing, contact A cannot reach contact B's thread (no id in any contact URL), FORCEd RLS on all five tables - m36-family-messaging.live "tenancy" and "scope"
+  "family-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
