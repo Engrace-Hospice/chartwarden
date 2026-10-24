@@ -438,9 +438,9 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
       expect(created.patientId).toBe(PAT_2);
     });
 
-    it("an administrator is NOT org-wide: an out-of-caseload patient is 404 for the write path too", async () => {
+    it("a caseload-bound role (registered_nurse) is 404 for an out-of-caseload patient on the write path too (administrator is org-wide per ADR-0090)", async () => {
       await expect(
-        write().createIncident(writeActor(NO_CASELOAD, ["administrator"]), incidentArgs(PAT_2)),
+        write().createIncident(writeActor(NO_CASELOAD, ["registered_nurse"]), incidentArgs(PAT_2)),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
 
