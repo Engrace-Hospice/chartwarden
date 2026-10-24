@@ -74,6 +74,8 @@ export const PayerAppealVersionedSchema = Type.Object({
   version: Type.Integer(),
 });
 
+const PatientAttributionSchema = Type.Union([Type.Literal("claim"), Type.Literal("unattributed")]);
+
 export const PayerAppealCaseViewSchema = Type.Object({
   id: Type.String(),
   denialCaseId: Type.String(),
@@ -106,6 +108,9 @@ export const PayerAppealCaseViewSchema = Type.Object({
     Type.Null(),
   ]),
   prompt: NULLABLE_STRING,
+  pathAwaitingVerification: Type.Boolean(),
+  patientId: NULLABLE_STRING,
+  patientAttribution: PatientAttributionSchema,
   payerReference: NULLABLE_STRING,
   externalReviewerName: NULLABLE_STRING,
   decisionOutcome: NULLABLE_STRING,
@@ -133,6 +138,9 @@ export const PayerAppealDenialViewSchema = Type.Object({
     Type.Null(),
   ]),
   maHint: Type.Boolean(),
+  payerUnresolved: Type.Boolean(),
+  patientId: NULLABLE_STRING,
+  patientAttribution: PatientAttributionSchema,
   path: Type.Union([
     Type.Object({
       id: Type.String(),
@@ -169,7 +177,13 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
     "/api/v1/denials/:denialCaseId/payer-appeals",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "denial_case", resourceIdParam: "denialCaseId" } },
+      config: {
+        auditRead: {
+          resourceKind: "denial_case",
+          resourceIdParam: "denialCaseId",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) =>
       reply.send(await svc.getForDenial(actorOf(request), denialId(request))),
@@ -188,7 +202,13 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
     "/api/v1/payer-appeals/:id",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "payer_appeal_case", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "payer_appeal_case",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request, reply) => {
       const found = await svc.getCase(actorOf(request), caseId(request));

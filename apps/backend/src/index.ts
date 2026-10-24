@@ -5926,6 +5926,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // nothing is seeded) and payer appeal cases keyed on the denial. Payer names come through M40's seam.
             payerAppealPathService: buildDrizzlePayerAppealPathService(dbHandle.db),
             payerAppealService: buildDrizzlePayerAppealService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
               providerZones: (tx, providerEntityId) =>
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
             }),

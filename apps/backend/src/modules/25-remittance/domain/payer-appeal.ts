@@ -1,4 +1,3 @@
-import { APPEAL_TRANSITIONS } from "./appeal-machine";
 // M25 milestone 12a-1 - the PAYER APPEAL CASE (hospice ADR/TPE/QIC PRD, milestone 12). PURE.
 //
 // One case per level of a payer's own path. A deadline is computed ONLY from a complete level window (the path row, as a
@@ -17,7 +16,6 @@ import {
 import { DISPOSITION_KINDS } from "./later-tier";
 import { LEVEL_KINDS, type LevelWindow } from "./payer-appeal-path";
 import { deriveRecordedDeadline } from "./recorded-deadline";
-import type { AppealState } from "./types";
 
 export type { LevelWindow } from "./payer-appeal-path";
 
@@ -34,12 +32,30 @@ export type PayerAppealState = (typeof PAYER_APPEAL_STATES)[number];
 
 export const PAYER_DECISION_OUTCOMES = ["favorable", "partial", "unfavorable"] as const;
 
-/** Days a draft may sit with no due date of either kind before the one `payer_appeal.no_deadline` alert (product to confirm). */
+/**
+ * Days a draft may sit with no due date of either kind before the one `payer_appeal.no_deadline` alert. This is an alert
+ * threshold, not a payer rule, so it stays a code constant like AUDIT_NO_DEADLINE_ALERT_DAYS (no per-organization setting
+ * exists for either); product confirms the value.
+ */
 export const PAYER_APPEAL_NO_DEADLINE_ALERT_DAYS = 2; // bound: alert threshold, not a payer rule
 
+/**
+ * The payer level's own edges (forward-only; `decided` needs an outcome; there is no `escalated`). Declared here, not borrowed
+ * from the Medicare `APPEAL_TRANSITIONS`, so a change to the Medicare machine cannot silently change payer behaviour.
+ */
+export const PAYER_APPEAL_TRANSITIONS: Readonly<
+  Record<PayerAppealState, readonly PayerAppealState[]>
+> = {
+  draft: ["submitted", "withdrawn"],
+  submitted: ["under_review", "withdrawn"],
+  under_review: ["decided", "withdrawn"],
+  decided: ["closed"],
+  withdrawn: [],
+  closed: [],
+};
+
 export function canTransitionPayerAppeal(from: PayerAppealState, to: PayerAppealState): boolean {
-  if (to === ("escalated" as string)) return false;
-  return APPEAL_TRANSITIONS[from as AppealState]?.includes(to as AppealState) ?? false;
+  return PAYER_APPEAL_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
 export const isPayerAppealTerminal = (state: PayerAppealState): boolean =>

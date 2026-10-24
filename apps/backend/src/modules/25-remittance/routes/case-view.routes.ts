@@ -52,6 +52,8 @@ export const DenialCaseViewSchema = Type.Object({
   denialCaseId: Type.String(),
   claimId: NULLABLE_STRING,
   patientId: NULLABLE_STRING,
+  /** `unattributed` = no patient could be named (a claim-less commercial denial): the read is audited against the denial only. */
+  patientAttribution: Type.Union([Type.Literal("claim"), Type.Literal("unattributed")]),
   generatedAt: Type.String(),
   nextDeadline: Type.Union([TimelineItemSchema, Type.Null()]),
   items: Type.Array(TimelineItemSchema),

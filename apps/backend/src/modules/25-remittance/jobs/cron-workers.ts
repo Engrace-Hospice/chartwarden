@@ -378,11 +378,27 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
       const payerDeadlineStore: PayerAppealDeadlineStore = {
         async draftsWithComputedDeadline() {
           const rows = await tx
-            .select({ id: PC.id, deadlineAt: PC.deadlineAt })
+            .select({
+              id: PC.id,
+              deadlineAt: PC.deadlineAt,
+              lastBoundary: sql<
+                number | null
+              >`(SELECT min((e.event_payload->>'boundary')::int) FROM payer_appeal_case_event e WHERE e.payer_appeal_case_id = payer_appeal_case.id AND e.event_kind = 'deadline_alerted')`,
+            })
             .from(PC)
             .where(sql`${PC.state} = 'draft' AND ${PC.deadlineAt} IS NOT NULL`)
             .limit(100000);
-          return rows.flatMap((r) => (r.deadlineAt ? [{ id: r.id, deadlineAt: r.deadlineAt.toISOString() }] : []));
+          return rows.flatMap((r) =>
+            r.deadlineAt
+              ? [
+                  {
+                    id: r.id,
+                    deadlineAt: r.deadlineAt.toISOString(),
+                    lastAlertedBoundary: r.lastBoundary,
+                  },
+                ]
+              : [],
+          );
         },
       };
       const payerNoDeadlineStore: PayerAppealNoDeadlineStore = {
@@ -408,11 +424,10 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
           }));
         },
       };
-      const payerAlerts = [
-        ...(await runPayerAppealDeadlineWatch(payerDeadlineStore, now)).alerts,
-      ];
+      const payerDeadline = await runPayerAppealDeadlineWatch(payerDeadlineStore, now);
       const payerNoDeadline = await runPayerAppealNoDeadlineWatch(payerNoDeadlineStore, now);
-      for (const a of [...payerAlerts, ...payerNoDeadline.alerts]) {
+      // Dispatch first, then mark (the same transaction): a dispatch that throws rolls the marks back and the next tick retries.
+      for (const a of [...payerDeadline.alerts, ...payerNoDeadline.alerts]) {
         await alerts.dispatch({
           alertCode: a.kind,
           severity: "warn",
@@ -420,8 +435,18 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
           payload: a.detail,
         });
       }
+      for (const m of payerDeadline.marks) {
+        await tx.insert(PE).values({
+          organizationId,
+          payerAppealCaseId: m.id,
+          eventKind: "deadline_alerted",
+          eventPayload: { boundary: m.boundary },
+        });
+      }
       for (const id of payerNoDeadline.alertedIds) {
-        await tx.insert(PE).values({ organizationId, payerAppealCaseId: id, eventKind: "no_deadline_alerted" });
+        await tx
+          .insert(PE)
+          .values({ organizationId, payerAppealCaseId: id, eventKind: "no_deadline_alerted" });
       }
     });
   }

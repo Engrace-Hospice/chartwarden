@@ -154,9 +154,15 @@ describe("resolvePayerPath", () => {
     );
     expect(r).toMatchObject({ kind: "path", verified: true, path: { id: "act" } });
   });
-  it("falls back to a draft but flags it unverified", () => {
+  it("a draft is reported as awaiting verification, never as a path to compute a deadline from", () => {
     const r = resolvePayerPath([p({ id: "dr", status: "draft" })], q);
-    expect(r).toMatchObject({ kind: "path", verified: false, path: { id: "dr" } });
+    expect(r).toMatchObject({ kind: "awaiting_verification", path: { id: "dr" } });
+    expect(r.kind).not.toBe("path");
+  });
+  it("only an active path ever resolves as a path", () => {
+    for (const status of ["draft", "retired"]) {
+      expect(resolvePayerPath([p({ status })], q).kind).not.toBe("path");
+    }
   });
   it("never returns a path for an empty or foreign set (no default is ever returned)", () => {
     for (const set of [[], [p({ payerId: "other" })], [p({ status: "retired" })]]) {

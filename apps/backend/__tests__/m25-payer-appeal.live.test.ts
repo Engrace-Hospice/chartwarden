@@ -26,20 +26,24 @@ import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { buildServer } from "../src/bootstrap/index";
+import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
 import {
   DEFAULT_DEADLINE_ZONE,
   derivePayerLevelDeadline,
   isKnownZone,
 } from "../src/modules/25-remittance/domain";
 import { runAppealDeadlineCron } from "../src/modules/25-remittance/jobs/cron-workers";
+import { buildSeamAppealSourcePorts } from "../src/modules/25-remittance/routes/appeal-packet-sources";
 import { buildDrizzleCaseViewService } from "../src/modules/25-remittance/routes/case-view-service";
 import { registerCaseViewRoutes } from "../src/modules/25-remittance/routes/case-view.routes";
 import { buildDrizzleLaterTierService } from "../src/modules/25-remittance/routes/later-tier-service";
 import { buildDrizzlePayerAppealPathService } from "../src/modules/25-remittance/routes/payer-appeal-path-service";
 import { registerPayerAppealPathRoutes } from "../src/modules/25-remittance/routes/payer-appeal-path.routes";
 import {
+  AWAITING_VERIFICATION_PROMPT,
   NO_DUE_DATE_PROMPT,
   NO_PATH_PROMPT,
+  PAYER_UNRESOLVED_PROMPT,
   buildDrizzlePayerAppealService,
 } from "../src/modules/25-remittance/routes/payer-appeal-service";
 import { registerPayerAppealRoutes } from "../src/modules/25-remittance/routes/payer-appeal.routes";
@@ -73,7 +77,12 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     buildFoundationSiteReader().providerEntityTimezones(tx, pe);
   const pathSvc = (p: PayerSeam = payers) =>
     buildDrizzlePayerAppealPathService(fx.handle.db, { payers: p });
-  const appealSvc = () => buildDrizzlePayerAppealService(fx.handle.db, { payers, providerZones });
+  const appealSvc = (p: PayerSeam = payers) =>
+    buildDrizzlePayerAppealService(fx.handle.db, {
+      payers: p,
+      providerZones,
+      sources: buildSeamAppealSourcePorts(),
+    });
   const tier = () => buildDrizzleLaterTierService(fx.handle.db, { providerZones });
   const A = () => fx.actor();
   const R = () => ({ ...fx.actor(), userId: userR, membershipId: memberR });
@@ -223,6 +232,7 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
 
   beforeAll(async () => {
     fx = await setupM7Fixture(DB_URL as string, "m25-pa");
+    registerM23PublishedSeams(fx.handle.db);
     userR = (
       await fx.admin.query(`INSERT INTO "user" (email) VALUES ('m25-pa-r@x.test') RETURNING id`)
     ).rows[0].id as string;
@@ -475,17 +485,54 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     expect(within?.version).toBe(opened.version);
   });
 
-  it("a draft (unverified) path yields the deadline badged unverified", async () => {
+  it("a draft (unverified) path computes NO deadline: the level shows 'awaiting verification' and a typed notice date does not change that", async () => {
     const pid = randomUUID();
     known.set(pid, { id: pid, name: "Payer Four", kind: "commercial" });
     await pathSvc().createPath(A(), pathInput({ payerId: pid }) as never);
     const denial = await mkDenial("commercial", { payer: pid });
     const view = await appealSvc().getForDenial(A(), denial);
     expect(view.path).toMatchObject({ status: "draft", verified: false });
+    expect(view.pathPrompt).toBe(AWAITING_VERIFICATION_PROMPT);
     const opened = await appealSvc().open(A(), denial, { noticeDate: daysAgo(1) });
+    expect(opened.deadlineSource).toBe("none");
     const c = await appealSvc().getCase(A(), opened.id);
-    expect(c?.deadlineSource).toBe("path_rule");
-    expect(c?.windowVerified).toBe(false);
+    expect(c).toMatchObject({
+      deadlineAt: null,
+      windowVerified: false,
+      pathAwaitingVerification: true,
+      prompt: AWAITING_VERIFICATION_PROMPT,
+      levelLabel: "First level",
+    });
+    const noted = await appealSvc().recordNotice(A(), opened.id, daysAgo(2), opened.version);
+    expect(noted.deadlineSource).toBe("none");
+  });
+
+  it("a payer the directory cannot resolve gets no defaulted program and no path lookup", async () => {
+    const denial = await mkDenial("commercial");
+    const view = await appealSvc(downPayers).getForDenial(A(), denial);
+    expect(view).toMatchObject({ payerUnresolved: true, payerName: null, path: null });
+    expect(view.pathPrompt).toBe(PAYER_UNRESOLVED_PROMPT);
+    const e = await fx.refused(
+      appealSvc(downPayers).open(A(), denial, { levelLabel: "L", levelKind: "internal" }),
+    );
+    expect(e?.code).toBe("PAYER_UNRESOLVED");
+  });
+
+  it("a caller-chosen program must agree with the payer's kind", async () => {
+    const ma = await mkDenial("commercial", { payer: maPayerId });
+    const bad = await fx.refused(
+      appealSvc().open(A(), ma, { program: "commercial", levelLabel: "L", levelKind: "internal" }),
+    );
+    expect(bad?.code).toBe("PROGRAM_KIND_MISMATCH");
+    const com = await mkDenial("commercial");
+    const bad2 = await fx.refused(
+      appealSvc().open(A(), com, {
+        program: "medicare_advantage",
+        levelLabel: "L",
+        levelKind: "internal",
+      }),
+    );
+    expect(bad2?.code).toBe("PROGRAM_KIND_MISMATCH");
   });
 
   it("a notice date typed later computes the deadline once, then it is frozen", async () => {
@@ -495,8 +542,14 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     const denial = await mkDenial("commercial", { payer: pid });
     const opened = await appealSvc().open(A(), denial, {});
     expect(opened.deadlineSource).toBe("none");
+    // the path's verified state is snapshotted at opening, before any deadline exists
+    expect((await appealSvc().getCase(A(), opened.id))?.windowVerified).toBe(true);
     const noted = await appealSvc().recordNotice(A(), opened.id, daysAgo(2), opened.version);
     expect(noted.deadlineSource).toBe("path_rule");
+    expect(await appealSvc().getCase(A(), opened.id)).toMatchObject({
+      windowVerified: true,
+      deadlineState: "computed",
+    });
     const e = await fx.refused(appealSvc().recordNotice(A(), opened.id, daysAgo(1), noted.version));
     expect(e?.code).toBe("DEADLINE_FROZEN");
   });
@@ -728,6 +781,163 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
       includePayerAppeals: true,
     });
     expect(view.items.map((i) => i.id)).toContain(opened.id);
+  });
+
+  it("separation of duties compares people: a second membership of the author's user, an inactive membership and a verification-date override are refused or ignored", async () => {
+    await fx.admin.query("DROP INDEX IF EXISTS membership_active_unique_idx");
+    const dup = (
+      await fx.admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [fx.userA, ORG],
+      )
+    ).rows[0].id as string;
+    const pendingUser = (
+      await fx.admin.query(
+        `INSERT INTO "user" (email) VALUES ('m25-pa-pending@x.test') RETURNING id`,
+      )
+    ).rows[0].id as string;
+    const pending = (
+      await fx.admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'pending') RETURNING id`,
+        [pendingUser, ORG],
+      )
+    ).rows[0].id as string;
+    const created = await pathSvc().createPath(
+      A(),
+      pathInput({ payerId: payerId2, contractLabel: "sod", effectiveFrom: "2020-05-01" }) as never,
+    );
+    const activate = (member: string, day = "CURRENT_DATE") =>
+      fx.dbMessage(
+        fx.asApp((tx) =>
+          tx.execute(
+            sql.raw(
+              `UPDATE payer_appeal_path SET status='active', verified_on=${day === "CURRENT_DATE" ? day : `'${day}'`}, verified_by_membership_id='${member}' WHERE id='${created.id}'`,
+            ),
+          ),
+        ),
+      );
+    // a second membership of the same person is not a second person
+    expect(await activate(dup)).toMatch(/same person as the author/);
+    // service-level: the same person acting through the other membership
+    const viaDup = await fx.refused(
+      pathSvc().verifyPath({ ...A(), membershipId: dup }, created.id, created.version),
+    );
+    expect(viaDup?.code).toBe("PATH_VERIFIER_IS_AUTHOR");
+    // a membership that is not active cannot verify
+    expect(await activate(pending)).toMatch(/not an active member/);
+    // another person's active membership succeeds, and the verification day is the database's, not the caller's
+    expect(await activate(memberR, "2001-01-01")).toBe("");
+    const row = (
+      await fx.admin.query(
+        "SELECT verified_on::text AS d, CURRENT_DATE::text AS today FROM payer_appeal_path WHERE id=$1",
+        [created.id],
+      )
+    ).rows[0];
+    expect(row.d).toBe(row.today);
+    // restore the one-active-membership-per-user index this test lifted
+    await fx.admin.query("UPDATE membership SET status='revoked' WHERE id=$1", [dup]);
+    await fx.admin.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS membership_active_unique_idx ON membership (user_id, organization_id) WHERE status != 'revoked'`,
+    );
+  });
+
+  it("the payer deadline alert fires once per boundary: a second tick repeats nothing", async () => {
+    const pid = randomUUID();
+    known.set(pid, { id: pid, name: "Payer Seven", kind: "commercial" });
+    await activePath({ payerId: pid }); // a made-up 10-day calendar window
+    const denial = await mkDenial("commercial", { payer: pid });
+    const opened = await appealSvc().open(A(), denial, { noticeDate: daysAgo(4) });
+    const mine = (d: Awaited<ReturnType<typeof cron>>) =>
+      d.filter(
+        (a) =>
+          a.alertCode === "payer_appeal.deadline_approaching" &&
+          a.payload.payerAppealCaseId === opened.id,
+      );
+    const first = mine(await cron());
+    expect(first).toHaveLength(1);
+    expect(Object.keys(first[0]?.payload ?? {}).sort()).toEqual([
+      "daysRemaining",
+      "payerAppealCaseId",
+    ]);
+    expect(mine(await cron())).toHaveLength(0);
+    expect(
+      (
+        await fx.admin.query(
+          "SELECT count(*)::int AS n FROM payer_appeal_case_event WHERE payer_appeal_case_id=$1 AND event_kind='deadline_alerted'",
+          [opened.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it("read events land on every payer-appeal read, with the claim's patient when there is one and an explicit unattributed marker when there is none", async () => {
+    const claimless = await mkDenial("commercial");
+    const withClaim = await mkDenial("commercial", { claimId: fx.claim1b });
+    const c1 = await appealSvc().open(A(), claimless, { levelLabel: "L", levelKind: "internal" });
+    const c2 = await appealSvc().open(A(), withClaim, { levelLabel: "L", levelKind: "internal" });
+    const claimPatient = (
+      await fx.admin.query("SELECT patient_id::text AS p FROM claim WHERE id=$1", [fx.claim1b])
+    ).rows[0].p as string;
+    const app = makeApp(["appeal.read", "payer_appeal.read", "payer_appeal_path.read"]);
+    const events = async (kind: string, id: string) =>
+      (
+        await fx.admin.query(
+          "SELECT context->>'patientId' AS pid FROM audit_event WHERE organization_id=$1 AND event_type=$2 AND resource_id=$3::uuid",
+          [ORG, `${kind}.viewed`, id],
+        )
+      ).rows as { pid: string | null }[];
+    const get = async (url: string) =>
+      (await app.inject({ method: "GET", url })).json() as Record<string, unknown>;
+
+    const v1 = await get(`/api/v1/denials/${claimless}/payer-appeals`);
+    expect(v1).toMatchObject({ patientId: null, patientAttribution: "unattributed" });
+    expect((await events("denial_case", claimless)).length).toBeGreaterThan(0);
+    const v2 = await get(`/api/v1/denials/${withClaim}/payer-appeals`);
+    expect(v2).toMatchObject({ patientId: claimPatient, patientAttribution: "claim" });
+    expect((await events("denial_case", withClaim)).some((e) => e.pid === claimPatient)).toBe(true);
+
+    expect(await get(`/api/v1/payer-appeals/${c1.id}`)).toMatchObject({
+      patientAttribution: "unattributed",
+    });
+    expect((await events("payer_appeal_case", c1.id)).length).toBeGreaterThan(0);
+    expect(await get(`/api/v1/payer-appeals/${c2.id}`)).toMatchObject({ patientId: claimPatient });
+    expect((await events("payer_appeal_case", c2.id)).some((e) => e.pid === claimPatient)).toBe(
+      true,
+    );
+
+    expect(await get(`/api/v1/payer-appeals/${c1.id}/recorded-deadlines`)).toMatchObject({
+      patientAttribution: "unattributed",
+    });
+    expect((await events("payer_appeal_case", c1.id)).length).toBeGreaterThan(1);
+    expect(await get(`/api/v1/denials/${claimless}/case-view`)).toMatchObject({
+      patientAttribution: "unattributed",
+    });
+    expect((await events("denial_case_view", claimless)).length).toBeGreaterThan(0);
+    expect(await get(`/api/v1/denials/${withClaim}/case-view`)).toMatchObject({
+      patientId: claimPatient,
+    });
+
+    // the path routes surface no patient and declare a justified waiver; malformed filters are a 400, never a 500
+    expect(
+      (await app.inject({ method: "GET", url: "/api/v1/payer-appeal-paths" })).statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/v1/payer-appeal-paths?payerId=nope" }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/v1/payer-appeal-paths?status=bogus" }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/payer-appeal-paths?payerId=${payerId}&status=draft`,
+        })
+      ).statusCode,
+    ).toBe(200);
+    await app.close();
   });
 
   it("re-applies migrations 1206-1209 idempotently", async () => {

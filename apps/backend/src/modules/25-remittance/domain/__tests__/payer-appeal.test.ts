@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type LevelWindow,
+  PAYER_APPEAL_TRANSITIONS,
   canTransitionPayerAppeal,
   checkPayerDecision,
   checkPayerKind,
@@ -37,6 +38,19 @@ describe("checkPayerKind (the program guard on the payer-appeal side)", () => {
   });
   it("accepts a commercial advice", () => {
     expect(checkPayerKind("commercial")).toBeNull();
+  });
+});
+
+describe("PAYER_APPEAL_TRANSITIONS", () => {
+  it("is pinned here, independent of the Medicare machine", () => {
+    expect(PAYER_APPEAL_TRANSITIONS).toEqual({
+      draft: ["submitted", "withdrawn"],
+      submitted: ["under_review", "withdrawn"],
+      under_review: ["decided", "withdrawn"],
+      decided: ["closed"],
+      withdrawn: [],
+      closed: [],
+    });
   });
 });
 

@@ -127,11 +127,15 @@ CREATE TRIGGER "trg_audit_payer_appeal_path_level" AFTER INSERT OR UPDATE OR DEL
 -- A superseded path must be the same scope (a FK cannot prove it).
 CREATE OR REPLACE FUNCTION m25_payer_appeal_path_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
-DECLARE v_prior record;
+DECLARE v_prior record; v_ver_user uuid; v_auth_user uuid;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.status <> 'draft' THEN
       RAISE EXCEPTION 'M25_PAYER_PATH_BORN_DRAFT: a payer appeal path is created as a draft and verified by a second person';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.authored_by_membership_id
+                   AND m.organization_id = NEW.organization_id AND m.status = 'active') THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_AUTHOR: the author is not an active member of this organization';
     END IF;
     IF NEW.supersedes_path_id IS NOT NULL THEN
       SELECT payer_id, program, lower(btrim(coalesce(contract_label, ''))) AS label INTO v_prior
@@ -152,19 +156,30 @@ BEGIN
     OR NEW.verified_by_membership_id IS DISTINCT FROM OLD.verified_by_membership_id) THEN
     RAISE EXCEPTION 'M25_PAYER_PATH_FROZEN: payer_appeal_path % is active; only retiring it is allowed', OLD.id;
   END IF;
-  -- Activation is decided here, atomically with the UPDATE (the row is locked by it): a second person (the CHECK above also
-  -- refuses author = verifier), an active membership of this organization, and at least one level. An app-side read-then-write
-  -- check could be raced; this cannot. A concurrent second verify finds the row already active and hits the frozen branch.
+  -- Activation is decided here, atomically with the UPDATE (the row is locked by it). Separation of duties compares PEOPLE,
+  -- not membership ids: the verifier's membership must be an ACTIVE one of this organization and its user must differ from
+  -- the author's membership's user (a second membership of the same person is refused). The verification day is set here,
+  -- never trusted from the caller. A concurrent second verify finds the row already active and hits the frozen branch.
+  -- (The database cannot also assert that the verifier is the logged-in user: that needs app.user_id, which the tenancy
+  -- gate allows only for audit attribution. The caller binding is the server-derived membership id.)
   IF OLD.status = 'draft' AND NEW.status = 'active' THEN
     IF NEW.verified_by_membership_id IS NULL OR NEW.verified_by_membership_id = OLD.authored_by_membership_id THEN
       RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: a payer appeal path is activated by a person other than its author';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id) THEN
-      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: the verifier is not a member of this organization';
+    SELECT m.user_id INTO v_ver_user FROM membership m
+     WHERE m.id = NEW.verified_by_membership_id AND m.organization_id = OLD.organization_id AND m.status = 'active';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: the verifier is not an active member of this organization';
+    END IF;
+    SELECT m.user_id INTO v_auth_user FROM membership m
+     WHERE m.id = OLD.authored_by_membership_id AND m.organization_id = OLD.organization_id;
+    IF v_auth_user IS NOT DISTINCT FROM v_ver_user THEN
+      RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: the verifier is the same person as the author';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM payer_appeal_path_level l WHERE l.path_id = OLD.id) THEN
       RAISE EXCEPTION 'M25_PAYER_PATH_NO_LEVELS: a path with no levels cannot be activated';
     END IF;
+    NEW.verified_on := CURRENT_DATE;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint

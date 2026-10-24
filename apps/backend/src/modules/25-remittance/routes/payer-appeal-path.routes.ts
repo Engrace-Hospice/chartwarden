@@ -10,6 +10,7 @@ import {
   DAY_BASES,
   LEVEL_KINDS,
   PATH_BOUNDS,
+  PATH_STATUSES,
   PAYER_PROGRAMS,
   ROLLS,
   WHO_FILES,
@@ -107,8 +108,8 @@ export const PayerAppealPathPageSchema = Type.Object({
   items: Type.Array(PayerAppealPathViewSchema),
 });
 export const PayerAppealPathListQuerySchema = Type.Object({
-  payerId: Type.Optional(Type.String()),
-  status: Type.Optional(Type.String()),
+  payerId: Type.Optional(Type.String({ format: "uuid" })),
+  status: Type.Optional(literals(PATH_STATUSES)),
 });
 export const PayerAppealVersionedResultSchema = Type.Object({
   id: Type.String(),
@@ -126,23 +127,36 @@ export function registerPayerAppealPathRoutes(
   const IDEMPOTENT = requireIdempotencyKey();
   const pathId = (request: { params?: unknown }) => uuidParam(request, "id", "payer appeal path");
 
-  app.get("/api/v1/payer-appeal-paths", { preHandler: [READ] }, async (request, reply) => {
-    const q = request.query as Record<string, unknown>;
-    const payerId = typeof q.payerId === "string" && q.payerId.length > 0 ? q.payerId : undefined;
-    const status = typeof q.status === "string" && q.status.length > 0 ? q.status : undefined;
-    return reply.send(
-      await svc.listPaths(actorOf(request), {
-        ...(payerId ? { payerId } : {}),
-        ...(status ? { status } : {}),
-      }),
-    );
-  });
+  // The path data is the organization's own configuration (a payer's levels as written from a contract): it names no
+  // patient and no PHI, so there is nothing to account for in the read trail. Its changes are audited by the write triggers.
+  const NO_PHI = {
+    auditRead: {
+      none: "Organization-written payer appeal path configuration: no patient, no PHI; writes are audited by trigger.",
+    },
+  } as const;
+  app.get(
+    "/api/v1/payer-appeal-paths",
+    { preHandler: [READ], config: NO_PHI },
+    async (request, reply) => {
+      const q = parse(PayerAppealPathListQuerySchema, request.query);
+      return reply.send(
+        await svc.listPaths(actorOf(request), {
+          ...(q.payerId ? { payerId: q.payerId } : {}),
+          ...(q.status ? { status: q.status } : {}),
+        }),
+      );
+    },
+  );
 
-  app.get("/api/v1/payer-appeal-paths/:id", { preHandler: [READ] }, async (request, reply) => {
-    const found = await svc.getPath(actorOf(request), pathId(request));
-    if (!found) throw new NotFoundError("payer appeal path");
-    return reply.send(found);
-  });
+  app.get(
+    "/api/v1/payer-appeal-paths/:id",
+    { preHandler: [READ], config: NO_PHI },
+    async (request, reply) => {
+      const found = await svc.getPath(actorOf(request), pathId(request));
+      if (!found) throw new NotFoundError("payer appeal path");
+      return reply.send(found);
+    },
+  );
 
   app.post(
     "/api/v1/payer-appeal-paths",

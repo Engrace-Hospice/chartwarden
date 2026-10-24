@@ -6,7 +6,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   type PathHeaderInput,
   type PathLevelInput,
@@ -177,7 +177,19 @@ export function buildDrizzlePayerAppealPathService(
           .where(conds.length > 0 ? and(...conds) : undefined)
           .orderBy(desc(P.effectiveFrom), desc(P.createdAt))
           .limit(200);
-        const levels = rows.length > 0 ? await tx.select().from(L).orderBy(asc(L.ordinal)) : [];
+        const levels =
+          rows.length > 0
+            ? await tx
+                .select()
+                .from(L)
+                .where(
+                  inArray(
+                    L.pathId,
+                    rows.map((r) => r.id),
+                  ),
+                )
+                .orderBy(asc(L.ordinal))
+            : [];
         return { items: rows.map((r) => pathView(r, levels)) };
       });
     },
@@ -266,6 +278,21 @@ export function buildDrizzlePayerAppealPathService(
         });
         if (refusal) {
           throw new ChartWardenError(`PATH_${refusal}`, VERIFY_MESSAGES[refusal], 409);
+        }
+        // People, not membership ids: a second membership of the author's own user is refused (the trigger enforces it too).
+        const M = schema.memberships;
+        const people = await tx
+          .select({ id: M.id, userId: M.userId })
+          .from(M)
+          .where(inArray(M.id, [cur.authoredByMembershipId, actor.membershipId]));
+        const authorUser = people.find((x) => x.id === cur.authoredByMembershipId)?.userId;
+        const verifierUser = people.find((x) => x.id === actor.membershipId)?.userId;
+        if (authorUser !== undefined && authorUser === verifierUser) {
+          throw new ChartWardenError(
+            "PATH_VERIFIER_IS_AUTHOR",
+            VERIFY_MESSAGES.VERIFIER_IS_AUTHOR,
+            409,
+          );
         }
         if (!(await payers.resolve(actor.organizationId, cur.payerId))) throw payerUnresolved();
         // One conditional UPDATE: the version and draft status are checked in the statement itself, and the

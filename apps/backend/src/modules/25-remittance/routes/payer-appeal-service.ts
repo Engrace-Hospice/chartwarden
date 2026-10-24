@@ -32,6 +32,8 @@ import {
   resolvePayerPath,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
+import type { AppealSourcePorts } from "./appeal-packet-sources";
+import { patientOfClaim } from "./claim-patient";
 import { VersionConflictError } from "./concurrency";
 import { isUniqueViolation } from "./denial-route-service";
 import { type PayerSeam, buildSeamPayerSeam } from "./payer-seam";
@@ -43,6 +45,10 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 export const NO_PATH_PROMPT =
   "No appeal path recorded for this payer - add it from your contract or the payer's denial notice";
 export const NO_DUE_DATE_PROMPT = "No due date - enter it from the notice";
+export const AWAITING_VERIFICATION_PROMPT =
+  "Appeal path awaiting verification - no due date is computed from it; enter the date from the notice, or ask a second person to verify the path";
+export const PAYER_UNRESOLVED_PROMPT =
+  "Payer not resolved from the payer directory - the appeal path cannot be looked up";
 
 export interface PayerAppealCaseView {
   readonly id: string;
@@ -71,6 +77,11 @@ export interface PayerAppealCaseView {
   } | null;
   /** The visible prompt when nothing gives a due date. */
   readonly prompt: string | null;
+  /** True when the level was opened under a path that was still an unverified draft (no deadline is computed from it). */
+  readonly pathAwaitingVerification: boolean;
+  /** The claim's patient when the denial has a claim; a claim-less (commercial) denial has none. */
+  readonly patientId: string | null;
+  readonly patientAttribution: "claim" | "unattributed";
   readonly payerReference: string | null;
   readonly externalReviewerName: string | null;
   readonly decisionOutcome: string | null;
@@ -97,6 +108,10 @@ export interface PayerAppealDenialView {
   readonly refusal: PayerKindRefusal | null;
   /** Medicare Advantage coverage hint: hospice for MA enrollees is paid by Original Medicare through the MAC. */
   readonly maHint: boolean;
+  /** True when the payer could not be resolved through the seam (nothing is guessed, no path is looked up). */
+  readonly payerUnresolved: boolean;
+  readonly patientId: string | null;
+  readonly patientAttribution: "claim" | "unattributed";
   readonly path: {
     readonly id: string;
     readonly status: string;
@@ -161,6 +176,8 @@ export interface PayerAppealService {
 
 export interface PayerAppealPorts {
   readonly payers?: PayerSeam;
+  /** M22 / M23 seams; only used to name a claim's patient for the read audit. */
+  readonly sources?: AppealSourcePorts;
   readonly providerZones?: (tx: DbClient, providerEntityId: string) => Promise<readonly string[]>;
 }
 
@@ -192,6 +209,14 @@ const MOVE_TARGET: Readonly<Record<PayerAppealMove, PayerAppealState>> = {
   close: "closed",
   withdraw: "withdrawn",
 };
+
+/** The program a payer's M40 kind implies; `other` and `commercial` are commercial. */
+const programOf = (kind: string): "commercial" | "medicare_advantage" =>
+  kind === "medicare_advantage" ? "medicare_advantage" : "commercial";
+
+/** A caller-chosen program must agree with a payer kind the directory states (`other` accepts either). */
+const programMatchesKind = (program: string, kind: string): boolean =>
+  kind === "other" || program === programOf(kind);
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const clean = (v: string | null | undefined): string | null => {
@@ -268,17 +293,30 @@ export function buildDrizzlePayerAppealService(
   const windowOf = (r: typeof PC.$inferSelect): LevelWindow | null =>
     levelWindow({
       filingWindowDays: r.windowDays,
-      anchorKind: r.anchorKind as LevelWindow["anchorKind"] | null,
+      anchorKind: r.anchorKind,
       receiptPresumptionDays: r.receiptPresumptionDays,
-      dayBasis: r.dayBasis as LevelWindow["dayBasis"] | null,
-      roll: r.roll as LevelWindow["roll"] | null,
+      dayBasis: r.dayBasis,
+      roll: r.roll,
     });
+
+  /** The status of each path a set of cases was opened under (a draft path means "awaiting verification"). */
+  async function pathStatuses(tx: Tx, rows: (typeof PC.$inferSelect)[]) {
+    const ids = [...new Set(rows.flatMap((r) => (r.pathId ? [r.pathId] : [])))];
+    if (ids.length === 0) return new Map<string, string>();
+    const found = await tx
+      .select({ id: PP.id, status: PP.status })
+      .from(PP)
+      .where(inArray(PP.id, ids));
+    return new Map(found.map((f) => [f.id, f.status]));
+  }
 
   function caseView(
     r: typeof PC.$inferSelect,
     recorded: (typeof RD.$inferSelect)[],
     now: Date,
+    ctx: { pathStatus: string | undefined; patientId: string | null },
   ): PayerAppealCaseView {
+    const awaiting = ctx.pathStatus === "draft" && r.windowDays === null;
     const open = recorded.filter((d) => d.satisfiedOn === null);
     const state = payerDeadlineState({ computedAt: r.deadlineAt, openRecordedCount: open.length });
     const derived =
@@ -311,7 +349,15 @@ export function buildDrizzlePayerAppealService(
             lastFilingDay: derived.lastFilingDay,
           }
         : null,
-      prompt: state === "none" && r.state === "draft" ? NO_DUE_DATE_PROMPT : null,
+      prompt:
+        state === "none" && r.state === "draft"
+          ? awaiting
+            ? AWAITING_VERIFICATION_PROMPT
+            : NO_DUE_DATE_PROMPT
+          : null,
+      pathAwaitingVerification: awaiting,
+      patientId: ctx.patientId,
+      patientAttribution: ctx.patientId ? "claim" : "unattributed",
       payerReference: r.payerReference,
       externalReviewerName: r.externalReviewerName,
       decisionOutcome: r.decisionOutcome,
@@ -332,7 +378,12 @@ export function buildDrizzlePayerAppealService(
     };
   }
 
-  async function casesOfDenial(tx: Tx, actor: M25ReadActor, denialCaseId: string) {
+  async function casesOfDenial(
+    tx: Tx,
+    actor: M25ReadActor,
+    denialCaseId: string,
+    patientId: string | null,
+  ) {
     const scope = providerEntityScopeCondition(PC.providerEntityId, actor.providerEntityScope);
     const rows = await tx
       .select()
@@ -355,11 +406,13 @@ export function buildDrizzlePayerAppealService(
             .orderBy(asc(RD.dueOn))
         : [];
     const now = new Date();
+    const statuses = await pathStatuses(tx, rows);
     return rows.map((r) =>
       caseView(
         r,
         recorded.filter((d) => d.payerAppealCaseId === r.id),
         now,
+        { pathStatus: r.pathId ? statuses.get(r.pathId) : undefined, patientId },
       ),
     );
   }
@@ -382,21 +435,37 @@ export function buildDrizzlePayerAppealService(
 
   return {
     async getForDenial(actor, denialCaseId) {
-      const base = await withOrgContext(db, actor, async (tx) => {
+      const head = await withOrgContext(db, actor, async (tx) => {
         const denial = await loadDenial(tx, actor, denialCaseId);
-        const advice = await adviceOf(tx, denial.remittanceLineId);
-        const cases = await casesOfDenial(tx, actor, denialCaseId);
-        return { advice, cases };
+        return { claimId: denial.claimId, advice: await adviceOf(tx, denial.remittanceLineId) };
       });
-      const { advice, cases } = base;
-      const payer = advice ? await payers.resolve(actor.organizationId, advice.payerId) : null;
+      const { advice } = head;
+      const patientId = await patientOfClaim(ports.sources, actor.organizationId, head.claimId);
       const refusal = checkPayerKind(advice?.payerKind);
-      const program = payer?.kind === "medicare_advantage" ? "medicare_advantage" : "commercial";
-      const path =
-        advice && refusal === null
-          ? await withOrgContext(db, actor, (tx) => pathFor(tx, advice.payerId, program, null))
+      // The seam is called outside any transaction; failing closed reads as "not resolved", never a guessed payer.
+      const payer = advice ? await payers.resolve(actor.organizationId, advice.payerId) : null;
+      const payerUnresolved = advice !== null && payer === null;
+      const looked =
+        advice && refusal === null && payer
+          ? await withOrgContext(db, actor, (tx) =>
+              pathFor(tx, advice.payerId, programOf(payer.kind), null),
+            )
           : null;
-      const found = path && path.resolution.kind === "path" ? path : null;
+      const cases = await withOrgContext(db, actor, (tx) =>
+        casesOfDenial(tx, actor, denialCaseId, patientId),
+      );
+      const found = looked && looked.resolution.kind !== "none" ? looked : null;
+      const verified = found?.resolution.kind === "path";
+      const pathPrompt =
+        refusal !== null
+          ? null
+          : payerUnresolved
+            ? PAYER_UNRESOLVED_PROMPT
+            : found === null
+              ? NO_PATH_PROMPT
+              : verified
+                ? null
+                : AWAITING_VERIFICATION_PROMPT;
       return {
         denialCaseId,
         payerId: advice?.payerId ?? null,
@@ -405,12 +474,15 @@ export function buildDrizzlePayerAppealService(
         adviceKind: advice?.payerKind ?? null,
         refusal,
         maHint: payer?.kind === "medicare_advantage",
+        payerUnresolved,
+        patientId,
+        patientAttribution: patientId ? ("claim" as const) : ("unattributed" as const),
         path:
-          found && found.resolution.kind === "path"
+          found && found.resolution.kind !== "none"
             ? {
                 id: found.resolution.path.id,
                 status: found.resolution.path.status,
-                verified: found.resolution.verified,
+                verified,
                 revision: found.resolution.path.revision,
                 program: found.resolution.path.program,
                 levels: found.levels.map((l) => ({
@@ -418,11 +490,11 @@ export function buildDrizzlePayerAppealService(
                   levelKind: l.levelKind,
                   levelLabel: l.levelLabel,
                   whoFiles: l.whoFiles,
-                  windowComplete: levelWindow(l as never) !== null,
+                  windowComplete: levelWindow(l) !== null,
                 })),
               }
             : null,
-        pathPrompt: refusal === null && found === null ? NO_PATH_PROMPT : null,
+        pathPrompt,
         cases,
       };
     },
@@ -441,7 +513,16 @@ export function buildDrizzlePayerAppealService(
           .from(RD)
           .where(eq(RD.payerAppealCaseId, id))
           .orderBy(asc(RD.dueOn));
-        return caseView(rows[0], recorded, new Date());
+        const statuses = await pathStatuses(tx, rows);
+        const patientId = await patientOfClaim(
+          ports.sources,
+          actor.organizationId,
+          rows[0].claimId,
+        );
+        return caseView(rows[0], recorded, new Date(), {
+          pathStatus: rows[0].pathId ? statuses.get(rows[0].pathId) : undefined,
+          patientId,
+        });
       });
     },
 
@@ -453,26 +534,43 @@ export function buildDrizzlePayerAppealService(
           "the notice date must be a real date, not in the future",
         );
       }
+      // The payer directory is read BEFORE the transaction opens (a slow seam must not hold row locks); the transaction
+      // re-reads the advice and refuses if the payer moved in between.
+      const pre = await withOrgContext(db, actor, async (tx) => {
+        const denial = await loadDenial(tx, actor, denialCaseId);
+        return adviceOf(tx, denial.remittanceLineId);
+      });
+      const preRefusal = checkPayerKind(pre?.payerKind);
+      if (preRefusal || !pre) {
+        throw conflict(
+          preRefusal ?? "NO_PAYER_ADVICE",
+          KIND_MESSAGES[preRefusal ?? "NO_PAYER_ADVICE"],
+        );
+      }
+      const seamPayer = await payers.resolve(actor.organizationId, pre.payerId);
+      // No program is defaulted when the payer cannot be resolved: an unresolved payer needs an explicit program.
+      if (input.program === undefined && !seamPayer) {
+        throw unprocessable("PAYER_UNRESOLVED", PAYER_UNRESOLVED_PROMPT);
+      }
+      const program = input.program ?? programOf(seamPayer?.kind ?? "other");
+      if (program !== "commercial" && program !== "medicare_advantage") {
+        throw unprocessable(
+          "PROGRAM_INVALID",
+          "the program must be commercial or medicare_advantage",
+        );
+      }
+      if (seamPayer && !programMatchesKind(program, seamPayer.kind)) {
+        throw unprocessable(
+          "PROGRAM_KIND_MISMATCH",
+          "the program does not match the payer's type in the payer directory",
+        );
+      }
       try {
         return await withOrgContext(db, actor, async (tx) => {
           const denial = await loadDenial(tx, actor, denialCaseId);
           const advice = await adviceOf(tx, denial.remittanceLineId);
-          const kindRefusal = checkPayerKind(advice?.payerKind);
-          if (kindRefusal || !advice) {
-            throw conflict(
-              kindRefusal ?? "NO_PAYER_ADVICE",
-              KIND_MESSAGES[kindRefusal ?? "NO_PAYER_ADVICE"],
-            );
-          }
-          const seamPayer = await payers.resolve(actor.organizationId, advice.payerId);
-          const program =
-            input.program ??
-            (seamPayer?.kind === "medicare_advantage" ? "medicare_advantage" : "commercial");
-          if (program !== "commercial" && program !== "medicare_advantage") {
-            throw unprocessable(
-              "PROGRAM_INVALID",
-              "the program must be commercial or medicare_advantage",
-            );
+          if (!advice || advice.payerId !== pre.payerId || advice.payerKind !== pre.payerKind) {
+            throw conflict("PAYER_CHANGED", "the denial's payer changed; reload and try again");
           }
           let prior: typeof PC.$inferSelect | undefined;
           if (input.priorLevelCaseId) {
@@ -496,11 +594,12 @@ export function buildDrizzlePayerAppealService(
           );
           const wantedOrdinal =
             input.levelOrdinal ?? (prior?.levelOrdinal != null ? prior.levelOrdinal + 1 : 1);
+          // A draft path supplies the level's name and kind, never a window: no deadline is derived from an unverified path.
           const pathLevel =
-            resolution.kind === "path"
+            resolution.kind !== "none"
               ? levels.find((l) => l.ordinal === wantedOrdinal)
               : undefined;
-          if (resolution.kind === "path" && !pathLevel && input.levelLabel === undefined) {
+          if (resolution.kind !== "none" && !pathLevel && input.levelLabel === undefined) {
             throw unprocessable(
               "LEVEL_NOT_IN_PATH",
               "the recorded path has no such level; name the level you are filing",
@@ -513,7 +612,7 @@ export function buildDrizzlePayerAppealService(
           });
           if (openRefusal) throw unprocessable(openRefusal, OPEN_MESSAGES[openRefusal]);
 
-          const window = pathLevel ? levelWindow(pathLevel as never) : null;
+          const window = pathLevel && resolution.kind === "path" ? levelWindow(pathLevel) : null;
           const derived = derivePayerLevelDeadline(
             window,
             day ?? null,
@@ -528,11 +627,9 @@ export function buildDrizzlePayerAppealService(
               claimId: denial.claimId,
               payerId: advice.payerId,
               program,
-              pathId: pathLevel && resolution.kind === "path" ? resolution.path.id : null,
+              pathId: pathLevel && resolution.kind !== "none" ? resolution.path.id : null,
               pathRevision:
-                pathLevel && resolution.kind === "path"
-                  ? (resolution.path as { revision: number }).revision
-                  : null,
+                pathLevel && resolution.kind !== "none" ? resolution.path.revision : null,
               levelOrdinal: pathLevel ? pathLevel.ordinal : null,
               levelKind: pathLevel ? pathLevel.levelKind : (input.levelKind as string),
               levelLabel: (pathLevel ? pathLevel.levelLabel : (input.levelLabel as string)).trim(),
@@ -548,7 +645,9 @@ export function buildDrizzlePayerAppealService(
               deadlineAt: derived?.deadlineAt ?? null,
               deadlineZone: derived?.zone ?? null,
               deadlineSource: derived ? "path_rule" : "none",
-              windowVerified: derived ? resolution.kind === "path" && resolution.verified : false,
+              // The path's verified state is snapshotted at opening, whether or not a deadline is computed yet, so a
+              // notice date typed later keeps the same badge.
+              windowVerified: resolution.kind === "path",
               createdByMembershipId: actor.membershipId,
             })
             .returning({ id: PC.id, version: PC.version, deadlineSource: PC.deadlineSource });

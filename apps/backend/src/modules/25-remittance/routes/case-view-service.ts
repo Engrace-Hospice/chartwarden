@@ -32,6 +32,8 @@ export interface DenialCaseView {
   /** The denial's claim, or null (a commercial denial has none). */
   readonly claimId: string | null;
   readonly patientId: string | null;
+  /** `claim` when the denial's claim names a patient; `unattributed` for a claim-less (commercial) denial. */
+  readonly patientAttribution: "claim" | "unattributed";
   readonly generatedAt: string;
   readonly nextDeadline: TimelineItem | null;
   readonly items: TimelineItem[];
@@ -68,8 +70,8 @@ async function payerAppealItems(
   tx: CaseViewTx,
   rows: (typeof schema.payerAppealCase.$inferSelect)[],
   now: Date,
-): Promise<TimelineItem[]> {
-  if (rows.length === 0) return [];
+): Promise<{ items: TimelineItem[]; truncated: boolean }> {
+  if (rows.length === 0) return { items: [], truncated: false };
   const RD = schema.recordedDeadline;
   const recorded = await tx
     .select()
@@ -112,7 +114,7 @@ async function payerAppealItems(
       windowConfirmed: true,
     };
   });
-  return [...cases, ...deadlines];
+  return { items: [...cases, ...deadlines], truncated: recorded.length > CASE_VIEW_ITEM_CAP };
 }
 
 export function buildDrizzleCaseViewService(
@@ -340,7 +342,9 @@ export function buildDrizzleCaseViewService(
               .orderBy(asc(PC.createdAt))
               .limit(CASE_VIEW_ITEM_CAP + 1),
           );
-          items.push(...(await payerAppealItems(tx, payer, now)));
+          const built = await payerAppealItems(tx, payer, now);
+          items.push(...built.items);
+          if (built.truncated) truncated = true;
         }
 
         return {
@@ -378,12 +382,15 @@ export function buildDrizzleCaseViewService(
             const rows = await tx
               .select()
               .from(PC)
-              .where(sc ? and(eq(PC.denialCaseId, denialCaseId), sc) : eq(PC.denialCaseId, denialCaseId))
+              .where(
+                sc ? and(eq(PC.denialCaseId, denialCaseId), sc) : eq(PC.denialCaseId, denialCaseId),
+              )
               .orderBy(asc(PC.createdAt))
               .limit(CASE_VIEW_ITEM_CAP + 1);
+            const built = await payerAppealItems(tx, rows.slice(0, CASE_VIEW_ITEM_CAP), new Date());
             return {
-              items: await payerAppealItems(tx, rows.slice(0, CASE_VIEW_ITEM_CAP), new Date()),
-              truncated: rows.length > CASE_VIEW_ITEM_CAP,
+              items: built.items,
+              truncated: rows.length > CASE_VIEW_ITEM_CAP || built.truncated,
             };
           })
         : { items: [] as TimelineItem[], truncated: false };
@@ -393,6 +400,7 @@ export function buildDrizzleCaseViewService(
         denialCaseId,
         claimId: denial.claimId,
         patientId: fromClaim?.patientId ?? null,
+        patientAttribution: fromClaim?.patientId ? ("claim" as const) : ("unattributed" as const),
         generatedAt: now.toISOString(),
         nextDeadline: nextDeadline(items, now),
         items,

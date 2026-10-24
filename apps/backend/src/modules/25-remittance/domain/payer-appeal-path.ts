@@ -111,20 +111,23 @@ const wholeBetween = (n: number, min: number, max: number): boolean =>
 /** The window a level states, or null when it states none or an incomplete one (nothing is computed from it). */
 export function levelWindow(level: {
   readonly filingWindowDays: number | null;
-  readonly anchorKind: AnchorKind | null;
+  readonly anchorKind: string | null;
   readonly receiptPresumptionDays: number | null;
-  readonly dayBasis: DayBasis | null;
-  readonly roll: Roll | null;
+  readonly dayBasis: string | null;
+  readonly roll: string | null;
 }): LevelWindow | null {
   const { filingWindowDays, anchorKind, dayBasis, roll } = level;
   if (filingWindowDays === null || anchorKind === null || dayBasis === null) return null;
+  // A stored value outside the closed sets (it cannot happen past the CHECKs) computes nothing.
+  if (!inSet(ANCHOR_KINDS, anchorKind) || !inSet(DAY_BASES, dayBasis)) return null;
+  if (roll !== null && !inSet(ROLLS, roll)) return null;
   if ((dayBasis === "business_us_federal") !== (roll !== null)) return null;
   return {
     windowDays: filingWindowDays,
     anchorKind,
     receiptPresumptionDays: level.receiptPresumptionDays,
     dayBasis,
-    roll,
+    roll: roll as Roll | null,
   };
 }
 
@@ -206,7 +209,10 @@ export interface ResolvablePath {
 }
 
 export type PathResolution<P extends ResolvablePath> =
-  | { readonly kind: "path"; readonly path: P; readonly verified: boolean }
+  /** An ACTIVE (verified) path: the only kind a deadline may be computed from. */
+  | { readonly kind: "path"; readonly path: P; readonly verified: true }
+  /** Only a DRAFT exists: shown ("awaiting verification"), never used to compute a deadline. */
+  | { readonly kind: "awaiting_verification"; readonly path: P }
   | { readonly kind: "none" };
 
 const newest = <P extends ResolvablePath>(rows: readonly P[]): P | undefined =>
@@ -217,7 +223,7 @@ const newest = <P extends ResolvablePath>(rows: readonly P[]): P | undefined =>
 
 /**
  * The path in force for a payer, program and contract label on `asOf` (YYYY-MM-DD): the newest ACTIVE one, else the newest
- * DRAFT (flagged unverified), else `none`. There is never a default, and the contract label must match (case-insensitively):
+ * DRAFT as `awaiting_verification` (a deadline is never derived from it), else `none`. There is never a default, and the contract label must match (case-insensitively):
  * a case that names no label matches only a label-less path.
  */
 export function resolvePayerPath<P extends ResolvablePath>(
@@ -241,7 +247,7 @@ export function resolvePayerPath<P extends ResolvablePath>(
   const active = newest(inScope.filter((p) => p.status === "active"));
   if (active) return { kind: "path", path: active, verified: true };
   const draft = newest(inScope.filter((p) => p.status === "draft"));
-  return draft ? { kind: "path", path: draft, verified: false } : { kind: "none" };
+  return draft ? { kind: "awaiting_verification", path: draft } : { kind: "none" };
 }
 
 /** Verification makes a draft active: a person other than the author checks it, and it must have levels. */

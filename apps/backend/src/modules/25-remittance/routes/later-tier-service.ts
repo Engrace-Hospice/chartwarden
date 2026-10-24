@@ -101,7 +101,11 @@ export interface LaterTierService {
   listDeadlines(
     actor: M25ReadActor,
     subject: DeadlineSubject,
-  ): Promise<{ items: RecordedDeadlineView[]; patientId: string | null }>;
+  ): Promise<{
+    items: RecordedDeadlineView[];
+    patientId: string | null;
+    patientAttribution: "claim" | "unattributed";
+  }>;
   createDeadline(
     actor: M25WriteActor,
     subject: DeadlineSubject,
@@ -456,9 +460,11 @@ export function buildDrizzleLaterTierService(
           .where(subjectFilter(subject))
           .orderBy(asc(RD.dueOn), asc(RD.createdAt));
         const now = new Date();
+        const patientId = await patientOfClaim(ports.sources, actor.organizationId, s.claimId);
         return {
           items: rows.map((r) => viewRecordedDeadline(r, now)),
-          patientId: await patientOfClaim(ports.sources, actor.organizationId, s.claimId),
+          patientId,
+          patientAttribution: patientId ? ("claim" as const) : ("unattributed" as const),
         };
       });
     },
