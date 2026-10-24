@@ -970,6 +970,12 @@ jobs:
               name: "F-225 M22 portal access log",
               scripts: "test:f225:m22-portal-access-log:live",
             }
+          # M22 §164.528 — a STAFF signed-URL mint appends one ids-only `document_access_log` row (member, patient,
+          # purpose, recipient); an RLS-refused write throws so no URL is released; append-only for the app role.
+          - {
+              name: "M22 staff mint access log",
+              scripts: "test:m22:staff-mint-access-log:live",
+            }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
           # real dispatcher delivers to M5 (contact rows + reply) and back to M22 (provenance stamp +
