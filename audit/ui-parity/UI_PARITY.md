@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 114 documented screen specs · 44 module screen-sets registered · 365 screens wired across web/portal/admin.
+**Coverage:** 114 documented screen specs · 44 module screen-sets registered · 367 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 308 screen(s)
+- **web**: 310 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -263,6 +263,8 @@
 | web | 25-remittance | `remittance.audits` | `/remittance/audits` | `audit_request.read` | ✅ |
 | web | 25-remittance | `remittance.appeals` | `/remittance/appeals` | `appeal.read` | ✅ |
 | web | 25-remittance | `remittance.tpe` | `/remittance/tpe` | `tpe.read` | ✅ |
+| web | 25-remittance | `remittance.playbooks` | `/remittance/playbooks` | `playbook.read` | ✅ |
+| web | 25-remittance | `remittance.report` | `/remittance/report` | `medical_review.report.read` | ✅ |
 | web | 25-remittance | `remittance.payer-appeal-paths` | `/remittance/payer-appeal-paths` | `payer_appeal_path.read` | ✅ |
 | web | 25-remittance | `remittance.taxonomy` | `/remittance/taxonomy` | `taxonomy.read` | ✅ |
 | web | 26-cap | `cap.dashboard` | `/cap` | `cap.projection.read` | ✅ |

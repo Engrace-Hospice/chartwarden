@@ -8514,6 +8514,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/denials/{id}/playbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The published playbook that applies to this denial with its step ticks, or playbook null when the organization has not written one */
+        get: operations["getApiV1DenialsByIdPlaybook"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/playbook-steps/{stepKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Tick a playbook step on this denial (advisory; changes no case state); versionId must be the version now in force (409 otherwise) */
+        put: operations["putApiV1DenialsByIdPlaybookstepsByStepKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/denials/{id}/reopen": {
         parameters: {
             query?: never;
@@ -14028,6 +14062,23 @@ export interface paths {
         };
         /** Org-wide blocked-claim worklist grouped by the failing rule holding each claim (§5.1) — the response reports the blocked-claim denominator and whether the scan was truncated */
         get: operations["getApiV1Medicaidvalidationworklist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medical-review/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Leadership medical-review report for a window: ADR, denial, appeal, reopening, TPE, audit and playbook-coverage figures with change against the previous equal period */
+        get: operations["getApiV1MedicalreviewReport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -19838,6 +19889,109 @@ export interface paths {
         put?: never;
         /** Platform-authorized global password reset, including shared multi-tenant identities */
         post: operations["postApiV1PlatformUsersByUserIdPasswordreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbook-versions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a draft version (If-Match); a published version is never edited */
+        patch: operations["patchApiV1PlaybookversionsById"];
+        trace?: never;
+    };
+    "/api/v1/playbook-versions/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a draft (If-Match); someone other than the author must publish, and the previous version is retired */
+        post: operations["postApiV1PlaybookversionsByIdPublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbook-versions/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a published version (If-Match) */
+        post: operations["postApiV1PlaybookversionsByIdRetire"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's denial playbooks and which version is published (none are seeded) */
+        get: operations["getApiV1Playbooks"];
+        put?: never;
+        /** Write a playbook for one denial reason (code kind, code, optional MAC) as its first draft; a source note is required */
+        post: operations["postApiV1Playbooks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One playbook with every version, newest first */
+        get: operations["getApiV1PlaybooksById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playbooks/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a new draft version of a playbook (one draft at a time) */
+        post: operations["postApiV1PlaybooksByIdVersions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -52242,6 +52396,94 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1DenialsByIdPlaybook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        denialCaseId: string;
+                        codeKind: string | null;
+                        code: string | null;
+                        macName: string | null;
+                        playbook: {
+                            playbookId: string;
+                            title: string;
+                            codeKind: string;
+                            code: string;
+                            macName: string | null;
+                            versionId: string;
+                            versionNo: number;
+                            summary: string;
+                            sourceNote: string;
+                            sourceDocumentId: string | null;
+                            authoredByMembershipId: string;
+                            reviewedByMembershipId: string;
+                            publishedAt: string;
+                            effectiveFrom: string;
+                            steps: {
+                                key: string;
+                                text: string;
+                                status: string;
+                                markedAt: string | null;
+                                markedByMembershipId: string | null;
+                            }[];
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1DenialsByIdPlaybookstepsByStepKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    versionId: string;
+                    status: "open" | "done" | "not_applicable";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stepKey: string;
+                        status: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1DenialsByIdReopen: {
         parameters: {
             query?: never;
@@ -68173,6 +68415,208 @@ export interface operations {
                         blockedClaimCount: number;
                         unattributedClaimCount: number;
                         truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicalreviewReport: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        window: {
+                            from: string;
+                            to: string;
+                            days: number;
+                            previous: {
+                                from: string;
+                                to: string;
+                            };
+                        };
+                        generatedAt: string;
+                        adrs: {
+                            received: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filed: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filedOnOrBeforeDue: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filedAfterDue: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            onOrBeforeDueShareOfFiled: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            withRecordedProof: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            medianDaysToFile: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            deniedNoResponse: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            dueDatesFromUnverifiedWindows: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            byMac: {
+                                macName: string;
+                                received: number;
+                                filed: number;
+                                filedOnOrBeforeDue: number;
+                                deniedNoResponse: number;
+                            }[];
+                        };
+                        denials: {
+                            opened: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            openedDollars: {
+                                value: string;
+                                previous: string;
+                                change: string;
+                            };
+                            macReasonAsTyped: {
+                                code: string;
+                                figure: {
+                                    value: number | null;
+                                    previous: number | null;
+                                    change: number | null;
+                                };
+                            };
+                            byReason: {
+                                rows: {
+                                    codeKind: string;
+                                    code: string;
+                                    count: number;
+                                    dollars: string;
+                                }[];
+                                omitted: number;
+                            };
+                            byMonth: {
+                                month: string;
+                                count: number;
+                                dollars: string;
+                            }[];
+                            closureOutcomes: {
+                                outcome: string;
+                                count: number;
+                            }[];
+                        };
+                        appeals: {
+                            filed: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            decided: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filedByTier: {
+                                tier: string;
+                                filed: number;
+                                filedOnOrBeforeDeadline: number;
+                                deadlineWindowUnconfirmed: boolean;
+                            }[];
+                            decidedByOutcome: {
+                                outcome: string;
+                                count: number;
+                            }[];
+                            favorableShareOfDecided: number | null;
+                            openByTier: {
+                                tier: string;
+                                count: number;
+                            }[];
+                        };
+                        reopenings: {
+                            opened: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            decidedByOutcome: {
+                                outcome: string;
+                                count: number;
+                            }[];
+                        };
+                        tpe: {
+                            available: boolean;
+                            truncated: boolean;
+                            byState: {
+                                state: string;
+                                count: number;
+                            }[];
+                            active: {
+                                macName: string;
+                                currentRound: number | null;
+                                latestMacErrorRatePct: number | null;
+                                thresholdPct: number | null;
+                                thresholdVerified: boolean;
+                                aboveThreshold: boolean | null;
+                            }[];
+                        };
+                        audits: {
+                            open: number;
+                            openWithNoRecordedDeadline: number;
+                        };
+                        playbookCoverage: {
+                            denialsSeen: number;
+                            denialsWithoutPlaybook: number;
+                            reasonsSeen: number;
+                            reasonsWithoutPlaybook: number;
+                            withoutPlaybook: {
+                                rows: {
+                                    codeKind: string;
+                                    code: string;
+                                    count: number;
+                                    dollars: string;
+                                }[];
+                                omitted: number;
+                            };
+                        };
                     };
                 };
             };
@@ -85922,6 +86366,262 @@ export interface operations {
                         /** @constant */
                         passwordChangeRequired: true;
                         temporaryPassword?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlaybookversionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    summary: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    steps: {
+                        key: string;
+                        text: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        rowVersion: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlaybookversionsByIdPublish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        rowVersion: number;
+                        effectiveFrom: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlaybookversionsByIdRetire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        rowVersion: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Playbooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            codeKind: string;
+                            code: string;
+                            macName: string | null;
+                            title: string;
+                            publishedVersionNo: number | null;
+                            publishedAt: string | null;
+                            hasDraft: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Playbooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    codeKind: "mac_reason" | "rarc" | "carc";
+                    code: string;
+                    macName?: string | null;
+                    title: string;
+                    summary: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    steps: {
+                        key: string;
+                        text: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        versionId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlaybooksById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        codeKind: string;
+                        code: string;
+                        macName: string | null;
+                        title: string;
+                        versions: {
+                            id: string;
+                            versionNo: number;
+                            status: string;
+                            summary: string;
+                            steps: {
+                                key: string;
+                                text: string;
+                            }[];
+                            sourceNote: string;
+                            sourceDocumentId: string | null;
+                            authoredByMembershipId: string;
+                            reviewedByMembershipId: string | null;
+                            publishedAt: string | null;
+                            retiredAt: string | null;
+                            effectiveFrom: string | null;
+                            rowVersion: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlaybooksByIdVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    summary: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    steps: {
+                        key: string;
+                        text: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        versionNo: number;
+                        rowVersion: number;
                     };
                 };
             };

@@ -18,6 +18,11 @@ export {
   buildDrizzleDenialRouteService,
   type DenialRouteService,
 } from "./denial-route-service";
+export { buildDrizzlePlaybookService, type PlaybookService } from "./playbook-service";
+export {
+  buildMedicalReviewReportService,
+  type MedicalReviewReportService,
+} from "./medical-review-report-service";
 export { buildDrizzleReopeningService, type ReopeningService } from "./reopening-service";
 export { buildDrizzleTpeService, type TpeService } from "./tpe-service";
 export { buildDrizzleQicService, type QicService } from "./qic-service";
@@ -44,6 +49,8 @@ import type { AuditRequestService } from "./audit-request-service";
 import type { CaseViewService } from "./case-view-service";
 import type { DenialRouteService } from "./denial-route-service";
 import type { LaterTierService } from "./later-tier-service";
+import type { MedicalReviewReportService } from "./medical-review-report-service";
+import type { PlaybookService } from "./playbook-service";
 import type { PayerAppealPathService } from "./payer-appeal-path-service";
 import type { PayerAppealService } from "./payer-appeal-service";
 import type { QicService } from "./qic-service";
@@ -86,4 +93,10 @@ export interface M25RouteServices {
   readonly payerAppealService?: PayerAppealService;
   /** Advisory ADR documentation readiness (milestone 8a-1); the routes mount only when supplied. */
   readonly adrReadinessService?: AdrReadinessService;
+  /** The denial-reason playbook library and the per-denial panel (milestone 9a-1); the routes mount only when supplied. */
+  readonly playbookService?: PlaybookService;
+  /** The leadership medical-review report (milestone 9a-2); the route mounts only when supplied. */
+  readonly medicalReviewReportService?: MedicalReviewReportService;
+  /** Optional per-route rate limit for the report (built in the composition root from the shared store). */
+  readonly medicalReviewReportRateLimit?: (request: never, reply: never) => Promise<void>;
 }

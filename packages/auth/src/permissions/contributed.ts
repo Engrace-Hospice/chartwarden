@@ -3601,6 +3601,40 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // Milestone 9a-1 (migrations 1250/1251): the denial-reason PLAYBOOK library. Guidance only: none of these gates a case.
+  // Publishing needs a person other than the author. The per-case step tick needs playbook.step.mark + denial.read.
+  "playbook.read": {
+    resource: "denial_playbook",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.author": {
+    resource: "denial_playbook",
+    action: "author",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.publish": {
+    resource: "denial_playbook",
+    action: "publish",
+    category: "billing",
+    abac: "none",
+  },
+  // Ticking a step is working the denial (advisory, gates nothing), so it is a write-level key of its own.
+  "playbook.step.mark": {
+    resource: "denial_playbook",
+    action: "step_mark",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Milestone 9a-2 (migration 1252): the leadership medical-review report. Aggregates only; no target or benchmark is shown.
+  "medical_review.report.read": {
+    resource: "medical_review_report",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
   "mac_rule.manage": {
     resource: "mac_rule",
     action: "manage",

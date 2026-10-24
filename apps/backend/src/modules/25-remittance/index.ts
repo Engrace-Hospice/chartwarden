@@ -45,6 +45,8 @@ export {
   type OutboxEmission,
   type TerminologyLookupPort,
   buildDrizzleAdrReadinessService,
+  buildDrizzlePlaybookService,
+  buildMedicalReviewReportService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
   buildDrizzleCaseViewService,

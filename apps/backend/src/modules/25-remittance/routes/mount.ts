@@ -18,6 +18,8 @@ import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
 import { registerInternalRoutes } from "./internal.routes";
 import { registerLaterTierRoutes } from "./later-tier.routes";
+import { registerMedicalReviewReportRoutes } from "./medical-review-report.routes";
+import { registerPlaybookRoutes } from "./playbook.routes";
 import { registerPayerAppealPathRoutes } from "./payer-appeal-path.routes";
 import { registerPayerAppealRoutes } from "./payer-appeal.routes";
 import { registerQicRoutes } from "./qic.routes";
@@ -29,6 +31,11 @@ import { registerTpeRoutes } from "./tpe.routes";
 
 export { registerAdrRoutes, type AdrRouteDeps } from "./adr.routes";
 export { registerAdrReadinessRoutes, type AdrReadinessRouteDeps } from "./adr-readiness.routes";
+export {
+  registerMedicalReviewReportRoutes,
+  type MedicalReviewReportRouteDeps,
+} from "./medical-review-report.routes";
+export { registerPlaybookRoutes, type PlaybookRouteDeps } from "./playbook.routes";
 export { registerReopeningRoutes, type ReopeningRouteDeps } from "./reopening.routes";
 export { registerTpeRoutes, type TpeRouteDeps } from "./tpe.routes";
 export { registerQicRoutes, type QicRouteDeps } from "./qic.routes";
@@ -94,5 +101,18 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   // Milestone 8a-1: advisory documentation readiness (deterministic gaps + a deny-stubbed assistant port).
   if (services.adrReadinessService) {
     registerAdrReadinessRoutes(app, { adrReadinessService: services.adrReadinessService });
+  }
+  // Milestone 9a-1: the denial-reason playbook library and the per-denial panel (organization-authored; nothing seeded).
+  if (services.playbookService) {
+    registerPlaybookRoutes(app, { playbookService: services.playbookService });
+  }
+  // Milestone 9a-2: the leadership medical-review report (figures only, computed live; no table, no target).
+  if (services.medicalReviewReportService) {
+    registerMedicalReviewReportRoutes(app, {
+      medicalReviewReportService: services.medicalReviewReportService,
+      ...(services.medicalReviewReportRateLimit
+        ? { rateLimit: services.medicalReviewReportRateLimit as never }
+        : {}),
+    });
   }
 }

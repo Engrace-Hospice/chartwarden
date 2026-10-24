@@ -33,6 +33,7 @@ import {
 } from "./action-ui";
 import { CaseViewPanel } from "./case-view-panel";
 import { DenialRoutePanel } from "./denial-route-panel";
+import { PlaybookPanel } from "./playbook-panel";
 import { PayerAppealPanel } from "./payer-appeal-panel";
 import {
   type AppealTier,
@@ -323,6 +324,7 @@ export function DenialDetailPanel({
             onBusyChange={setRouteBusy}
             refreshToken={refreshToken}
           />
+          <PlaybookPanel key={`pb-${denialId}`} denialId={denialId} refreshToken={refreshToken} />
           {act === null ? (
             <ButtonRow>
               {available.map((kind) => (

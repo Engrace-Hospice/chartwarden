@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1790,
-    "coveredRoutes": 1790,
-    "directRoutesReferenced": 1658
+    "routes": 1800,
+    "coveredRoutes": 1800,
+    "directRoutesReferenced": 1668
   },
   "modules": [
     {
@@ -406,7 +406,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 126,
+      "routes": 136,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
@@ -414,15 +414,17 @@
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-medical-review-report.live.test.ts",
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-payer-guard.live.test.ts",
+        "apps/backend/__tests__/m25-playbook.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 107
+      "directRoutesReferenced": 117
     },
     {
       "module": "26-cap",
