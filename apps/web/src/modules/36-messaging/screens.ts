@@ -51,6 +51,8 @@ const ExternalPartners = lazy(() =>
   import("./partners").then((m) => ({ default: m.ExternalPartners })),
 );
 const PartnerPage = lazy(() => import("./partner-page").then((m) => ({ default: m.PartnerPage })));
+const FamilyLane = lazy(() => import("./family-lane").then((m) => ({ default: m.FamilyLane })));
+const FamilyPage = lazy(() => import("./family-page").then((m) => ({ default: m.FamilyPage })));
 const ExportApprovals = lazy(() =>
   import("./export-approvals").then((m) => ({ default: m.ExportApprovals })),
 );
@@ -214,6 +216,26 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       title: "Secure message",
       chrome: false,
       screen: PartnerPage,
+    },
+    {
+      // WP 6.7 (ADR-0099, proposed): the Family lane - contacts who write to the care team without an app, their threads and replies. Listing needs
+      // messaging.family.respond; Invite, Settings, revoke, close and block show only for messaging.family.manage. Creating an invitation and replying also
+      // need the tenant flag messaging.family_messaging; the screen says "not turned on" while it is off.
+      id: "messaging.family",
+      path: "/messaging/family",
+      title: "Family",
+      navGroup: "General",
+      requiredPermission: "messaging.family.respond",
+      screen: FamilyLane,
+    },
+    {
+      // WP 6.7 (ADR-0099 D1, proposed): the family CONTACT's page, outside the staff shell like /partner/share. The link rides the URL fragment; no staff
+      // session or client is used. Usable only while the tenant flag messaging.family_messaging is on (every contact API answers the uniform 404 otherwise).
+      id: "messaging.family-contact",
+      path: "/family/open",
+      title: "Secure message",
+      chrome: false,
+      screen: FamilyPage,
     },
     {
       id: "messaging.saved-replies",

@@ -6,6 +6,8 @@
 // clinician-reviewed. They carry `provisional: true` until a reviewer signs off (docs/messaging-hub/brief-clinical-lead-signoff.md).
 // No machine translation: nothing here or in template-translations.ts is generated at runtime.
 
+import { FAMILY_EN } from "./family-en";
+
 export const LOCALES = ["en", "es"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
@@ -22,6 +24,7 @@ export const EN = {
   "picker.none": "No saved replies yet. Add some on the Saved replies page.",
   "picker.count.one": "1 saved reply",
   "picker.count.other": "{n} saved replies",
+  ...FAMILY_EN,
 } as const;
 export type MessageKey = keyof typeof EN;
 export type Catalog = Partial<Record<MessageKey, string>>;
@@ -33,7 +36,8 @@ const ES: Catalog = {
   "picker.loading": "Cargando respuestas guardadas",
   "picker.retry": "Intentar de nuevo",
   "picker.noMatch": "Ninguna respuesta guardada coincide con la búsqueda.",
-  "picker.none": "Aún no hay respuestas guardadas. Agregue algunas en la página de respuestas guardadas.",
+  "picker.none":
+    "Aún no hay respuestas guardadas. Agregue algunas en la página de respuestas guardadas.",
   "picker.count.one": "1 respuesta guardada",
   "picker.count.other": "{n} respuestas guardadas",
 };
@@ -58,7 +62,9 @@ export function translate(
   const own = catalogs[locale]?.[key];
   const hit = typeof own === "string" && own.trim().length > 0;
   const raw = hit ? own : EN[key];
-  const text = raw.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m));
+  const text = raw.replace(/\{(\w+)\}/g, (m, name: string) =>
+    name in vars ? String(vars[name]) : m,
+  );
   return {
     text,
     lang: hit ? locale : DEFAULT_LOCALE,
