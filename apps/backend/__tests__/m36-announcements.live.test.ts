@@ -35,6 +35,7 @@ import { createDbAnnouncementService } from "../src/modules/36-messaging/announc
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
+  CHANNEL_VISIBILITY_READ_PREDICATE,
 } from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import {
@@ -45,7 +46,12 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0029";
 const ORG_B = "22222222-2222-4222-8222-2222000f0029";
@@ -219,6 +225,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.9 announcements & departments — LIVE Postgr
       const channelId = typeof target.id === "string" ? target.id : null;
       if (!channelId || !ctx.organizationId || !ctx.userId) return false;
       return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
+    });
+    registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+      const channelId = typeof target.id === "string" ? target.id : null;
+      if (!channelId || !ctx.organizationId || !ctx.userId) return false;
+      return service.canReadChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
     registerAbacRegistry(registry);
