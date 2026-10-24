@@ -185,45 +185,48 @@ GRANT ALL ON "expedited_deadline" TO chartwarden_admin;--> statement-breakpoint
 -- M4 write-audit triggers (the 0084 shape). The representative's name and every free-text note are scrubbed.
 CREATE OR REPLACE FUNCTION audit_phi_write_nomnc_notice() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['representative_name','delivery_note','acknowledgement_note','withdrawn_reason','source_note'];
+DECLARE v_before jsonb; v_after jsonb;
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['representative_name','delivery_note','acknowledgement_note','withdrawn_reason','source_note']::text[]) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), ARRAY['representative_name','delivery_note','acknowledgement_note','withdrawn_reason','source_note']::text[]) ELSE NULL END;
   INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'nomnc_notice.' || lower(TG_OP), 'nomnc_notice', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, jsonb_build_object('provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), '')), 'compliance');
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_nomnc_notice() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_audit_nomnc_notice" ON nomnc_notice;--> statement-breakpoint
-CREATE TRIGGER "trg_audit_nomnc_notice" AFTER INSERT OR UPDATE OR DELETE ON nomnc_notice FOR EACH ROW EXECUTE FUNCTION audit_phi_write_nomnc_notice();--> statement-breakpoint
+CREATE TRIGGER "trg_audit_nomnc_notice" AFTER INSERT OR UPDATE OR DELETE ON nomnc_notice
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_nomnc_notice();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_phi_write_expedited_review() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['qio_name','qio_reference','records_sent_note','decision_note'];
+DECLARE v_before jsonb; v_after jsonb;
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['qio_name','qio_reference','records_sent_note','decision_note']::text[]) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), ARRAY['qio_name','qio_reference','records_sent_note','decision_note']::text[]) ELSE NULL END;
   INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'expedited_review.' || lower(TG_OP), 'expedited_review', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, jsonb_build_object('provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), '')), 'compliance');
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_expedited_review() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_audit_expedited_review" ON expedited_review;--> statement-breakpoint
-CREATE TRIGGER "trg_audit_expedited_review" AFTER INSERT OR UPDATE OR DELETE ON expedited_review FOR EACH ROW EXECUTE FUNCTION audit_phi_write_expedited_review();--> statement-breakpoint
+CREATE TRIGGER "trg_audit_expedited_review" AFTER INSERT OR UPDATE OR DELETE ON expedited_review
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_expedited_review();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_phi_write_expedited_deadline() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['label','source_note'];
+DECLARE v_before jsonb; v_after jsonb;
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['label','source_note']::text[]) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), ARRAY['label','source_note']::text[]) ELSE NULL END;
   INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'expedited_deadline.' || lower(TG_OP), 'expedited_deadline', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, jsonb_build_object('provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), '')), 'compliance');
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_expedited_deadline() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_audit_expedited_deadline" ON expedited_deadline;--> statement-breakpoint
-CREATE TRIGGER "trg_audit_expedited_deadline" AFTER INSERT OR UPDATE OR DELETE ON expedited_deadline FOR EACH ROW EXECUTE FUNCTION audit_phi_write_expedited_deadline();--> statement-breakpoint
+CREATE TRIGGER "trg_audit_expedited_deadline" AFTER INSERT OR UPDATE OR DELETE ON expedited_deadline
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_expedited_deadline();--> statement-breakpoint
 
 -- nomnc_notice: the admission must be visible to this organization and the patient must be the admission's (a FK alone
 -- checks as the table owner, so a cross-tenant admission_id would pass it; RLS hides the foreign row here and fails closed).
