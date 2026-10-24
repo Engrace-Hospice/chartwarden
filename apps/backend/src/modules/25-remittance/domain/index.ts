@@ -29,3 +29,4 @@ export * from "./later-tier";
 export * from "./case-timeline";
 export * from "./readiness";
 export * from "./playbook";
+export * from "./medical-review-report";

@@ -1943,6 +1943,14 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.report",
+      "path": "/remittance/report",
+      "permission": "medical_review.report.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.taxonomy",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read"

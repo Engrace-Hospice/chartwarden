@@ -162144,6 +162144,1141 @@
         }
       }
     },
+    "/api/v1/medical-review/report": {
+      "get": {
+        "operationId": "getApiV1MedicalreviewReport",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Leadership medical-review report for a window: ADR, denial, appeal, reopening, TPE, audit and playbook-coverage figures with change against the previous equal period",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "window",
+                    "generatedAt",
+                    "adrs",
+                    "denials",
+                    "appeals",
+                    "reopenings",
+                    "tpe",
+                    "audits",
+                    "playbookCoverage"
+                  ],
+                  "properties": {
+                    "window": {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "to",
+                        "days",
+                        "previous"
+                      ],
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "days": {
+                          "type": "integer"
+                        },
+                        "previous": {
+                          "type": "object",
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "generatedAt": {
+                      "type": "string"
+                    },
+                    "adrs": {
+                      "type": "object",
+                      "required": [
+                        "received",
+                        "filed",
+                        "filedOnOrBeforeDue",
+                        "filedAfterDue",
+                        "onOrBeforeDueShareOfFiled",
+                        "withRecordedProof",
+                        "medianDaysToFile",
+                        "deniedNoResponse",
+                        "dueDatesFromUnverifiedWindows",
+                        "byMac"
+                      ],
+                      "properties": {
+                        "received": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "filed": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "filedOnOrBeforeDue": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "filedAfterDue": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "onOrBeforeDueShareOfFiled": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "withRecordedProof": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "medianDaysToFile": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "deniedNoResponse": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "dueDatesFromUnverifiedWindows": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "byMac": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "macName",
+                              "received",
+                              "filed",
+                              "filedOnOrBeforeDue",
+                              "deniedNoResponse"
+                            ],
+                            "properties": {
+                              "macName": {
+                                "type": "string"
+                              },
+                              "received": {
+                                "type": "integer"
+                              },
+                              "filed": {
+                                "type": "integer"
+                              },
+                              "filedOnOrBeforeDue": {
+                                "type": "integer"
+                              },
+                              "deniedNoResponse": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "denials": {
+                      "type": "object",
+                      "required": [
+                        "opened",
+                        "openedDollars",
+                        "macReasonAsTyped",
+                        "byReason",
+                        "byMonth",
+                        "closureOutcomes"
+                      ],
+                      "properties": {
+                        "opened": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "openedDollars": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "macReasonAsTyped": {
+                          "type": "object",
+                          "required": [
+                            "code",
+                            "figure"
+                          ],
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "figure": {
+                              "type": "object",
+                              "required": [
+                                "value",
+                                "previous",
+                                "change"
+                              ],
+                              "properties": {
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "previous": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "change": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "byReason": {
+                          "type": "object",
+                          "required": [
+                            "rows",
+                            "omitted"
+                          ],
+                          "properties": {
+                            "rows": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "codeKind",
+                                  "code",
+                                  "count",
+                                  "dollars"
+                                ],
+                                "properties": {
+                                  "codeKind": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "count": {
+                                    "type": "integer"
+                                  },
+                                  "dollars": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            },
+                            "omitted": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "byMonth": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "month",
+                              "count",
+                              "dollars"
+                            ],
+                            "properties": {
+                              "month": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "dollars": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        },
+                        "closureOutcomes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "outcome",
+                              "count"
+                            ],
+                            "properties": {
+                              "outcome": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "appeals": {
+                      "type": "object",
+                      "required": [
+                        "filed",
+                        "decided",
+                        "filedByTier",
+                        "decidedByOutcome",
+                        "favorableShareOfDecided",
+                        "openByTier"
+                      ],
+                      "properties": {
+                        "filed": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "decided": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "filedByTier": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "tier",
+                              "filed",
+                              "filedOnOrBeforeDeadline",
+                              "deadlineWindowUnconfirmed"
+                            ],
+                            "properties": {
+                              "tier": {
+                                "type": "string"
+                              },
+                              "filed": {
+                                "type": "integer"
+                              },
+                              "filedOnOrBeforeDeadline": {
+                                "type": "integer"
+                              },
+                              "deadlineWindowUnconfirmed": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "decidedByOutcome": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "outcome",
+                              "count"
+                            ],
+                            "properties": {
+                              "outcome": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "favorableShareOfDecided": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "openByTier": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "tier",
+                              "count"
+                            ],
+                            "properties": {
+                              "tier": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "reopenings": {
+                      "type": "object",
+                      "required": [
+                        "opened",
+                        "decidedByOutcome"
+                      ],
+                      "properties": {
+                        "opened": {
+                          "type": "object",
+                          "required": [
+                            "value",
+                            "previous",
+                            "change"
+                          ],
+                          "properties": {
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "previous": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "change": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "decidedByOutcome": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "outcome",
+                              "count"
+                            ],
+                            "properties": {
+                              "outcome": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "tpe": {
+                      "type": "object",
+                      "required": [
+                        "available",
+                        "truncated",
+                        "byState",
+                        "active"
+                      ],
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        },
+                        "byState": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "state",
+                              "count"
+                            ],
+                            "properties": {
+                              "state": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "active": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "macName",
+                              "currentRound",
+                              "latestMacErrorRatePct",
+                              "thresholdPct",
+                              "thresholdVerified",
+                              "aboveThreshold"
+                            ],
+                            "properties": {
+                              "macName": {
+                                "type": "string"
+                              },
+                              "currentRound": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "latestMacErrorRatePct": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "thresholdPct": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "thresholdVerified": {
+                                "type": "boolean"
+                              },
+                              "aboveThreshold": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "audits": {
+                      "type": "object",
+                      "required": [
+                        "open",
+                        "openWithNoRecordedDeadline"
+                      ],
+                      "properties": {
+                        "open": {
+                          "type": "integer"
+                        },
+                        "openWithNoRecordedDeadline": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "playbookCoverage": {
+                      "type": "object",
+                      "required": [
+                        "reasonsSeen",
+                        "reasonsWithoutPlaybook",
+                        "withoutPlaybook"
+                      ],
+                      "properties": {
+                        "reasonsSeen": {
+                          "type": "integer"
+                        },
+                        "reasonsWithoutPlaybook": {
+                          "type": "integer"
+                        },
+                        "withoutPlaybook": {
+                          "type": "object",
+                          "required": [
+                            "rows",
+                            "omitted"
+                          ],
+                          "properties": {
+                            "rows": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "codeKind",
+                                  "code",
+                                  "count",
+                                  "dollars"
+                                ],
+                                "properties": {
+                                  "codeKind": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "count": {
+                                    "type": "integer"
+                                  },
+                                  "dollars": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            },
+                            "omitted": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/medication-history-records/{id}/reconcile": {
       "post": {
         "operationId": "postApiV1MedicationhistoryrecordsByIdReconcile",

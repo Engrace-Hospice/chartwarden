@@ -3601,6 +3601,13 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // Milestone 9a-2 (migration 1252): the leadership medical-review report. Aggregates only; no target or benchmark is shown.
+  "medical_review.report.read": {
+    resource: "medical_review_report",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
   "mac_rule.manage": {
     resource: "mac_rule",
     action: "manage",

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1764,
-    "coveredRoutes": 1764,
-    "directRoutesReferenced": 1637
+    "routes": 1765,
+    "coveredRoutes": 1765,
+    "directRoutesReferenced": 1638
   },
   "modules": [
     {
@@ -401,7 +401,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 120,
+      "routes": 121,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
@@ -409,6 +409,7 @@
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-medical-review-report.live.test.ts",
         "apps/backend/__tests__/m25-playbook.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
@@ -416,7 +417,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 104
+      "directRoutesReferenced": 105
     },
     {
       "module": "26-cap",

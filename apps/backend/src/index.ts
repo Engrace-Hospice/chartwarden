@@ -1137,6 +1137,7 @@ import {
   buildM24BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
+  buildMedicalReviewReportService,
   buildSeamAppealSourcePorts,
   createDrizzleRemittanceEraseStore,
   mountM25Routes,
@@ -5876,6 +5877,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               medicaid: buildM24BackedClaimMatchCandidateProvider(),
             },
           });
+          const m25TpeService = buildDrizzleTpeService(dbHandle.db, {
+            providerEntityExists: async (tx, organizationId, providerEntityId) =>
+              (await buildFoundationSiteReader().providerEntityIdentifiers(
+                tx as never,
+                organizationId,
+                providerEntityId,
+              )) !== null,
+          });
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
             // GAP-036 - the appeal packet reads the claim copy (M23) and the enclosure facts (M22) through their
@@ -5898,14 +5907,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             reopeningService: buildDrizzleReopeningService(dbHandle.db),
             denialRouteService: buildDrizzleDenialRouteService(dbHandle.db),
             // Milestone 5: the TPE program tracker (programs, rounds, sampled claims, per-MAC thresholds).
-            tpeService: buildDrizzleTpeService(dbHandle.db, {
-              providerEntityExists: async (tx, organizationId, providerEntityId) =>
-                (await buildFoundationSiteReader().providerEntityIdentifiers(
-                  tx as never,
-                  organizationId,
-                  providerEntityId,
-                )) !== null,
-            }),
+            tpeService: m25TpeService,
             // Milestone 4: QIC reconsideration evidence + decision clock, and the OMHA escalation.
             qicService: buildDrizzleQicService(dbHandle.db, {
               providerZones: (tx, providerEntityId) =>
@@ -5947,6 +5949,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // with no published playbook reads "not written yet".
             playbookService: buildDrizzlePlaybookService(dbHandle.db, {
               documents: () => buildSeamAppealSourcePorts().documents(),
+            }),
+            // Milestone 9a-2: the leadership medical-review report. Computed live from M25's own tables (no table, no
+            // target); the TPE section reads the same service the tracker uses, so a threshold appears only where the
+            // organization recorded one.
+            medicalReviewReportService: buildMedicalReviewReportService(dbHandle.db, {
+              tpe: m25TpeService,
             }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the

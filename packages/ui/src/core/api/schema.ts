@@ -13881,6 +13881,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medical-review/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Leadership medical-review report for a window: ADR, denial, appeal, reopening, TPE, audit and playbook-coverage figures with change against the previous equal period */
+        get: operations["getApiV1MedicalreviewReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medication-history-records/{id}/reconcile": {
         parameters: {
             query?: never;
@@ -67055,6 +67072,206 @@ export interface operations {
                         blockedClaimCount: number;
                         unattributedClaimCount: number;
                         truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicalreviewReport: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        window: {
+                            from: string;
+                            to: string;
+                            days: number;
+                            previous: {
+                                from: string;
+                                to: string;
+                            };
+                        };
+                        generatedAt: string;
+                        adrs: {
+                            received: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filed: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filedOnOrBeforeDue: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filedAfterDue: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            onOrBeforeDueShareOfFiled: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            withRecordedProof: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            medianDaysToFile: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            deniedNoResponse: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            dueDatesFromUnverifiedWindows: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            byMac: {
+                                macName: string;
+                                received: number;
+                                filed: number;
+                                filedOnOrBeforeDue: number;
+                                deniedNoResponse: number;
+                            }[];
+                        };
+                        denials: {
+                            opened: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            openedDollars: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            macReasonAsTyped: {
+                                code: string;
+                                figure: {
+                                    value: number | null;
+                                    previous: number | null;
+                                    change: number | null;
+                                };
+                            };
+                            byReason: {
+                                rows: {
+                                    codeKind: string;
+                                    code: string;
+                                    count: number;
+                                    dollars: number;
+                                }[];
+                                omitted: number;
+                            };
+                            byMonth: {
+                                month: string;
+                                count: number;
+                                dollars: number;
+                            }[];
+                            closureOutcomes: {
+                                outcome: string;
+                                count: number;
+                            }[];
+                        };
+                        appeals: {
+                            filed: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            decided: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            filedByTier: {
+                                tier: string;
+                                filed: number;
+                                filedOnOrBeforeDeadline: number;
+                                deadlineWindowUnconfirmed: boolean;
+                            }[];
+                            decidedByOutcome: {
+                                outcome: string;
+                                count: number;
+                            }[];
+                            favorableShareOfDecided: number | null;
+                            openByTier: {
+                                tier: string;
+                                count: number;
+                            }[];
+                        };
+                        reopenings: {
+                            opened: {
+                                value: number | null;
+                                previous: number | null;
+                                change: number | null;
+                            };
+                            decidedByOutcome: {
+                                outcome: string;
+                                count: number;
+                            }[];
+                        };
+                        tpe: {
+                            available: boolean;
+                            truncated: boolean;
+                            byState: {
+                                state: string;
+                                count: number;
+                            }[];
+                            active: {
+                                macName: string;
+                                currentRound: number | null;
+                                latestMacErrorRatePct: number | null;
+                                thresholdPct: number | null;
+                                thresholdVerified: boolean;
+                                aboveThreshold: boolean | null;
+                            }[];
+                        };
+                        audits: {
+                            open: number;
+                            openWithNoRecordedDeadline: number;
+                        };
+                        playbookCoverage: {
+                            reasonsSeen: number;
+                            reasonsWithoutPlaybook: number;
+                            withoutPlaybook: {
+                                rows: {
+                                    codeKind: string;
+                                    code: string;
+                                    count: number;
+                                    dollars: number;
+                                }[];
+                                omitted: number;
+                            };
+                        };
                     };
                 };
             };

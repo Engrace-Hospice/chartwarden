@@ -598,6 +598,10 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 import {
+  MedicalReviewReportQuerySchema as M25MedicalReviewReportQuerySchema,
+  MedicalReviewReportSchema as M25MedicalReviewReportSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/medical-review-report.routes";
+import {
   DenialPlaybookViewSchema as M25DenialPlaybookViewSchema,
   PlaybookContentRequestSchema as M25PlaybookContentRequestSchema,
   PlaybookCreateRequestSchema as M25PlaybookCreateRequestSchema,
@@ -8499,6 +8503,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Acknowledge, dismiss or dispute an advisory readiness finding",
     body: M25AdrReadinessDispositionRequestSchema,
     response: M25AdrReadinessDispositionResultSchema,
+  },
+  // ── medical-review-report.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-2; figures only, no target or benchmark) ──
+  "GET /api/v1/medical-review/report": {
+    summary:
+      "Leadership medical-review report for a window: ADR, denial, appeal, reopening, TPE, audit and playbook-coverage figures with change against the previous equal period",
+    query: M25MedicalReviewReportQuerySchema,
+    response: M25MedicalReviewReportSchema,
   },
   // ── playbook.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-1; organization-authored guidance, gates nothing) ──
   "GET /api/v1/playbooks": {

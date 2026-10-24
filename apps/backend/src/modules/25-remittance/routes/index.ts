@@ -19,6 +19,10 @@ export {
   type DenialRouteService,
 } from "./denial-route-service";
 export { buildDrizzlePlaybookService, type PlaybookService } from "./playbook-service";
+export {
+  buildMedicalReviewReportService,
+  type MedicalReviewReportService,
+} from "./medical-review-report-service";
 export { buildDrizzleReopeningService, type ReopeningService } from "./reopening-service";
 export { buildDrizzleTpeService, type TpeService } from "./tpe-service";
 export { buildDrizzleQicService, type QicService } from "./qic-service";
@@ -40,6 +44,7 @@ import type { AuditRequestService } from "./audit-request-service";
 import type { CaseViewService } from "./case-view-service";
 import type { DenialRouteService } from "./denial-route-service";
 import type { LaterTierService } from "./later-tier-service";
+import type { MedicalReviewReportService } from "./medical-review-report-service";
 import type { PlaybookService } from "./playbook-service";
 import type { QicService } from "./qic-service";
 import type { M25ReadService } from "./read-service";
@@ -79,4 +84,6 @@ export interface M25RouteServices {
   readonly adrReadinessService?: AdrReadinessService;
   /** The denial-reason playbook library and the per-denial panel (milestone 9a-1); the routes mount only when supplied. */
   readonly playbookService?: PlaybookService;
+  /** The leadership medical-review report (milestone 9a-2); the route mounts only when supplied. */
+  readonly medicalReviewReportService?: MedicalReviewReportService;
 }
