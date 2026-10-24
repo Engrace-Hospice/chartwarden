@@ -22,7 +22,7 @@ interface MdmPayerProviderView {
     id: string,
   ): Promise<{
     id: string;
-    canonical: { name?: unknown; kind?: unknown };
+    canonical: { displayName?: unknown; kind?: unknown };
   } | null>;
 }
 
@@ -34,15 +34,16 @@ export function buildSeamPayerSeam(): PayerSeam {
         const found = await provider.resolvePayer(organizationId, payerId);
         if (
           !found ||
-          typeof found.canonical.name !== "string" ||
-          found.canonical.name.trim() === ""
+          typeof found.canonical.displayName !== "string" ||
+          found.canonical.displayName.trim() === "" ||
+          typeof found.canonical.kind !== "string"
         ) {
           return null;
         }
         return {
           id: found.id,
-          name: found.canonical.name,
-          kind: typeof found.canonical.kind === "string" ? found.canonical.kind : "other",
+          name: found.canonical.displayName,
+          kind: found.canonical.kind,
         };
       } catch {
         return null;

@@ -14,7 +14,7 @@
 // rows the store returns, so the §7.2 "redirect is invisible to consumers" guarantee has exactly
 // one home and every consumer sees the same resolution.
 
-import type { CanonicalIdentifier, MdmEntityKind } from "./kinds";
+import type { CanonicalIdentifier, MdmEntityKind, PayerKind } from "./kinds";
 
 // ── Per-kind canonical payloads (§2.3 — registry-sourced, one row shared by every tenant) ──────
 
@@ -50,6 +50,8 @@ export interface CanonicalFacilityFields extends CanonicalBaseFields {
 /** Canonical `payer` projection (§3.3). */
 export interface CanonicalPayerFields extends CanonicalBaseFields {
   readonly x12PayerId: string | null;
+  /** The `payer_kind` subtype (medicare, medicaid, medicare_advantage, commercial, other). */
+  readonly kind: PayerKind;
 }
 
 /** Per-kind canonical payload map. Phase 1 materializes physician/facility/payer concretely; the
