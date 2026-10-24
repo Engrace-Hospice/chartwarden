@@ -136,12 +136,13 @@ export async function setPlaybookStep(
   client: ApiClient,
   denialId: string,
   stepKey: string,
+  versionId: string,
   status: PlaybookStepStatus,
 ): Promise<WriteResult<Ok<operations["putApiV1DenialsByIdPlaybookstepsByStepKey"]>>> {
   return guarded(async () => {
     const { data, error, response } = await client.PUT(
       "/api/v1/denials/{id}/playbook-steps/{stepKey}",
-      { params: { path: { id: denialId, stepKey } }, body: { status } },
+      { params: { path: { id: denialId, stepKey } }, body: { status, versionId } },
     );
     return error || !data ? failure(response?.status, error) : ok(data);
   });

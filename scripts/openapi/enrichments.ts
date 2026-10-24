@@ -8542,7 +8542,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25DenialPlaybookViewSchema,
   },
   "PUT /api/v1/denials/:id/playbook-steps/:stepKey": {
-    summary: "Tick a playbook step on this denial (advisory; changes no case state)",
+    summary:
+      "Tick a playbook step on this denial (advisory; changes no case state); versionId must be the version now in force (409 otherwise)",
     body: M25PlaybookStepRequestSchema,
     response: M25PlaybookStepResultSchema,
   },

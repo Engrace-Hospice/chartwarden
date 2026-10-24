@@ -8,7 +8,7 @@
 -- Publishing needs a person other than the author (enforced in the service and by a CHECK), so a tenant with one
 -- appeal.decide holder cannot publish until it names a second reviewer. The compliance officer reviews guidance but does not
 -- work denials, so that role is granted playbook.read and playbook.publish by role key (new tenants: templates.ts).
--- No ABAC override is copied: an override names a predicate written for denial rows, and the playbook is organization content.
+-- playbook.step.mark: see the lines below. No ABAC override is copied: an override names a predicate written for denial rows, and the playbook is organization content.
 -- A tenant tightens by removing a grant from a role it owns; a role with none of the source keys is unchanged. Idempotent.
 INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")
 SELECT rp."organization_id", rp."role_id", m."new_key"
@@ -17,7 +17,14 @@ SELECT rp."organization_id", rp."role_id", m."new_key"
     ('denial.read', 'playbook.read'),
     ('appeal.decide', 'playbook.read'),
     ('appeal.decide', 'playbook.author'),
-    ('appeal.decide', 'playbook.publish')
+    ('appeal.decide', 'playbook.publish'),
+    -- Ticking a step is working a denial, so it follows the keys that change a denial or an appeal: a read-only role
+    -- (denial.read alone) does not receive it.
+    ('denial.assign', 'playbook.step.mark'),
+    ('denial.escalate', 'playbook.step.mark'),
+    ('denial.resolve', 'playbook.step.mark'),
+    ('appeal.create', 'playbook.step.mark'),
+    ('appeal.decide', 'playbook.step.mark')
   ) AS m ("source_key", "new_key") ON m."source_key" = rp."permission_key"
 ON CONFLICT ("role_id", "permission_key") DO NOTHING;--> statement-breakpoint
 INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")

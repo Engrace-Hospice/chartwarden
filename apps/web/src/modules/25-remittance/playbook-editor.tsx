@@ -41,8 +41,11 @@ export interface PlaybookEditorProps {
   readonly mode: PlaybookEditorMode;
   readonly onClose: () => void;
   readonly onDone: (message: string) => void;
-  /** The draft changed under the user (HTTP 409 version conflict): the library reloads. */
-  readonly onStale: (message: string) => void;
+  /**
+   * The draft changed under the user (HTTP 409 version conflict). The editor STAYS open with what was typed and shows the
+   * message; the parent reloads, and because `mode.draft` is read live, the next save uses the rebased row version.
+   */
+  readonly onConflict?: (message: string) => void;
 }
 
 const CODE_KINDS = ["carc", "rarc", "mac_reason"] as const;
@@ -59,7 +62,7 @@ export function PlaybookEditor({
   mode,
   onClose,
   onDone,
-  onStale,
+  onConflict,
 }: PlaybookEditorProps): JSX.Element {
   const client = useApiClient();
   const from = seed(mode);
@@ -131,8 +134,14 @@ export function PlaybookEditor({
     if (!mounted.current) return;
     setBusy(false);
     if (res.ok) onDone(done);
-    else if (res.code === "VERSION_CONFLICT") onStale(res.message);
-    else setError(res.message);
+    else {
+      setError(
+        res.code === "VERSION_CONFLICT"
+          ? `${res.message} Your text is kept; save again to overwrite the newer draft.`
+          : res.message,
+      );
+      if (res.code === "VERSION_CONFLICT") onConflict?.(res.message);
+    }
   }
 
   const setStepText = (key: string, text: string): void =>
@@ -146,98 +155,109 @@ export function PlaybookEditor({
 
   return (
     <ActionModal ariaLabel={title0} onClose={onClose} width="44rem">
-      {mode.kind === "new" ? (
-        <>
-          <SelectField
-            label="Reason code type"
-            value={codeKind}
-            onChange={(e) => setCodeKind(e.target.value)}
-            options={CODE_KINDS.map((k) => ({ value: k, label: PLAYBOOK_CODE_KIND_LABEL[k] ?? k }))}
-          />
-          <TextField
-            label="Code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            maxLength={16}
-          />
-          <TextField
-            label="MAC (optional)"
-            value={macName}
-            onChange={(e) => setMacName(e.target.value)}
-            maxLength={120}
-            hint="Leave empty for a playbook that applies to every MAC."
-          />
-          <TextField
-            label="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={120}
-          />
-        </>
-      ) : null}
-      <TextAreaField
-        label="Summary"
-        value={summary}
-        onChange={(e) => setSummary(e.target.value)}
-        maxLength={1000}
-        rows={3}
-      />
-      <TextAreaField
-        label="Source of this guidance"
-        value={sourceNote}
-        onChange={(e) => setSourceNote(e.target.value)}
-        maxLength={500}
-        rows={2}
-        hint="Required. Where did this come from (a MAC letter, a webinar, a consultant memo, your own review)?"
-      />
-      <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend className="wx-action-title">Steps</legend>
-        {steps.map((s, i) => (
-          <div key={s.key} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
-            <div style={{ flex: 1 }}>
-              <TextField
-                label={`Step ${i + 1}`}
-                value={s.text}
-                onChange={(e) => setStepText(s.key, e.target.value)}
-                maxLength={500}
-              />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!busy && blockedReason === null) void submit();
+        }}
+      >
+        {mode.kind === "new" ? (
+          <>
+            <SelectField
+              label="Reason code type"
+              value={codeKind}
+              onChange={(e) => setCodeKind(e.target.value)}
+              options={CODE_KINDS.map((k) => ({
+                value: k,
+                label: PLAYBOOK_CODE_KIND_LABEL[k] ?? k,
+              }))}
+            />
+            <TextField
+              label="Code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              maxLength={16}
+            />
+            <TextField
+              label="MAC (optional)"
+              value={macName}
+              onChange={(e) => setMacName(e.target.value)}
+              maxLength={120}
+              hint="Leave empty for a playbook that applies to every MAC."
+            />
+            <TextField
+              label="Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={120}
+            />
+          </>
+        ) : null}
+        <TextAreaField
+          label="Summary"
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          maxLength={1000}
+          rows={3}
+        />
+        <TextAreaField
+          label="Source of this guidance"
+          value={sourceNote}
+          onChange={(e) => setSourceNote(e.target.value)}
+          maxLength={500}
+          rows={2}
+          hint="Required. Where did this come from (a MAC letter, a webinar, a consultant memo, your own review)?"
+        />
+        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="wx-action-title">Steps</legend>
+          {steps.map((s, i) => (
+            <div key={s.key} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+              <div style={{ flex: 1 }}>
+                <TextField
+                  label={`Step ${i + 1}`}
+                  value={s.text}
+                  onChange={(e) => setStepText(s.key, e.target.value)}
+                  maxLength={500}
+                />
+              </div>
+              <Button
+                tone="tertiary"
+                size="sm"
+                disabled={steps.length === 1}
+                aria-label={`Remove step ${i + 1}`}
+                onClick={() => setSteps((cur) => cur.filter((x) => x.key !== s.key))}
+              >
+                Remove
+              </Button>
             </div>
+          ))}
+          <ButtonRow>
             <Button
-              tone="tertiary"
+              tone="secondary"
               size="sm"
-              disabled={steps.length === 1}
-              aria-label={`Remove step ${i + 1}`}
-              onClick={() => setSteps((cur) => cur.filter((x) => x.key !== s.key))}
+              disabled={steps.length >= 30}
+              onClick={() => setSteps((cur) => [...cur, { key: stepKey(cur), text: "" }])}
             >
-              Remove
+              Add a step
             </Button>
-          </div>
-        ))}
-        <ButtonRow>
-          <Button
-            tone="secondary"
-            size="sm"
-            disabled={steps.length >= 30}
-            onClick={() => setSteps((cur) => [...cur, { key: stepKey(cur), text: "" }])}
-          >
-            Add a step
-          </Button>
-        </ButtonRow>
-      </fieldset>
-      <PhiNotice />
-      <Hint>
-        This is saved as a draft. It does not apply to any denial until a different person reviews
-        and publishes it.
-      </Hint>
-      <ErrorAlert message={error} />
-      <FormButtons
-        submitLabel="Save draft"
-        busy={busy}
-        blocked={blockedReason !== null}
-        blockedReason={blockedReason ?? undefined}
-        onSubmit={() => void submit()}
-        onCancel={onClose}
-      />
+          </ButtonRow>
+        </fieldset>
+        <PhiNotice />
+        <Hint>
+          This is saved as a draft. It does not apply to any denial until a different person reviews
+          and publishes it.
+        </Hint>
+        <ErrorAlert message={error} />
+        <FormButtons
+          submitLabel="Save draft"
+          busy={busy}
+          blocked={blockedReason !== null}
+          blockedReason={blockedReason ?? undefined}
+          onSubmit={() => void submit()}
+          onCancel={onClose}
+          asFormSubmit
+        />
+      </form>
     </ActionModal>
   );
 }

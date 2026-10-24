@@ -61,6 +61,23 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
   let userA2: string;
   const svc = () => buildDrizzlePlaybookService(fx.handle.db);
   const A = () => fx.actor();
+  /** Tick a step on the version now in force for the denial (what the panel does). */
+  async function tick(
+    actor: ReturnType<typeof A>,
+    denial: string,
+    key: string,
+    status: "open" | "done" | "not_applicable",
+    versionId?: string,
+  ) {
+    const view = await svc().getDenialPlaybook(actor, denial);
+    return svc().setStepStatus(
+      actor,
+      denial,
+      key,
+      versionId ?? view.playbook?.versionId ?? randomUUID(),
+      status,
+    );
+  }
   let memberA3: string;
   let userA3: string;
   const A3 = () => ({ ...fx.actor(), userId: userA3, membershipId: memberA3 });
@@ -166,8 +183,9 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         [userA2, ORG],
       )
     ).rows[0].id as string;
-    userA3 = (await fx.admin.query(`INSERT INTO "user" (email) VALUES ('m25-pb-a3@x.test') RETURNING id`))
-      .rows[0].id as string;
+    userA3 = (
+      await fx.admin.query(`INSERT INTO "user" (email) VALUES ('m25-pb-a3@x.test') RETURNING id`)
+    ).rows[0].id as string;
     memberA3 = (
       await fx.admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
@@ -328,17 +346,29 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         title: "CARC 102",
         ...content(),
       } as never);
-      const edited = await svc().updateDraft(A2(), created.versionId, content({ summary: "Rewritten by member 2" }), 1);
+      const edited = await svc().updateDraft(
+        A2(),
+        created.versionId,
+        content({ summary: "Rewritten by member 2" }),
+        1,
+      );
       const row = (
-        await fx.admin.query("SELECT authored_by_membership_id AS a, last_edited_by_membership_id AS e FROM denial_playbook_version WHERE id=$1", [created.versionId])
+        await fx.admin.query(
+          "SELECT authored_by_membership_id AS a, last_edited_by_membership_id AS e FROM denial_playbook_version WHERE id=$1",
+          [created.versionId],
+        )
       ).rows[0];
       expect(row).toEqual({ a: fx.memberA, e: memberA2 });
       for (let attempt = 0; attempt < 2; attempt++) {
-        expect(await fx.refused(svc().publishVersion(A2(), created.versionId, edited.rowVersion))).toMatchObject({
+        expect(
+          await fx.refused(svc().publishVersion(A2(), created.versionId, edited.rowVersion)),
+        ).toMatchObject({
           code: "PLAYBOOK_REVIEWER_IS_AUTHOR",
           statusCode: 409,
         });
-        expect(await fx.refused(svc().publishVersion(A(), created.versionId, edited.rowVersion))).toMatchObject({
+        expect(
+          await fx.refused(svc().publishVersion(A(), created.versionId, edited.rowVersion)),
+        ).toMatchObject({
           code: "PLAYBOOK_REVIEWER_IS_AUTHOR",
         });
       }
@@ -354,18 +384,110 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
       // The app role cannot reach the author column, and the editor column freezes once published.
       expect(
         await fx.dbMessage(
-          fx.asApp((tx) => tx.execute(sql`UPDATE denial_playbook_version SET authored_by_membership_id=${memberA2}`)),
+          fx.asApp((tx) =>
+            tx.execute(
+              sql`UPDATE denial_playbook_version SET authored_by_membership_id=${memberA2}`,
+            ),
+          ),
         ),
       ).toMatch(/permission denied/i);
       const ok = await svc().publishVersion(A3(), created.versionId, edited.rowVersion);
       expect(ok.rowVersion).toBe(edited.rowVersion + 1);
       expect(
         await fx.dbMessage(
-          fx.admin.query("UPDATE denial_playbook_version SET last_edited_by_membership_id=reviewed_by_membership_id WHERE id=$1", [
-            created.versionId,
-          ]) as never,
+          fx.admin.query(
+            "UPDATE denial_playbook_version SET last_edited_by_membership_id=reviewed_by_membership_id WHERE id=$1",
+            [created.versionId],
+          ) as never,
         ),
       ).toMatch(/M25_PLAYBOOK_PUBLISHED_IMMUTABLE/);
+    });
+
+    it("refuses a publish that also changes content: the app role cannot smuggle an edit into the approval", async () => {
+      const created = await svc().createPlaybook(A(), {
+        codeKind: "carc",
+        code: "103",
+        title: "CARC 103",
+        ...content(),
+      } as never);
+      const msg = await fx.dbMessage(
+        fx.asApp((tx) =>
+          tx.execute(
+            sql`UPDATE denial_playbook_version SET status='published', summary='sneaked in with the approval',
+                  reviewed_by_membership_id=${memberA2}, reviewed_by_user_id=${userA2}, published_at=now(),
+                  effective_from=CURRENT_DATE WHERE id=${created.versionId}`,
+          ),
+        ),
+      );
+      expect(msg).toMatch(/M25_PLAYBOOK_PUBLISH_CONTENT/);
+      const lastEditor = await fx.dbMessage(
+        fx.asApp((tx) =>
+          tx.execute(
+            sql`UPDATE denial_playbook_version SET status='published', last_edited_by_membership_id=${memberA2},
+                  last_edited_by_user_id=${userA2}, reviewed_by_membership_id=${memberA2}, reviewed_by_user_id=${userA2},
+                  published_at=now(), effective_from=CURRENT_DATE WHERE id=${created.versionId}`,
+          ),
+        ),
+      );
+      expect(lastEditor).toMatch(/M25_PLAYBOOK_PUBLISH_CONTENT/);
+      const row = (
+        await fx.admin.query("SELECT status FROM denial_playbook_version WHERE id=$1", [
+          created.versionId,
+        ])
+      ).rows[0];
+      expect(row.status).toBe("draft");
+    });
+
+    it("refuses the same human under a new membership (revoke and re-invite), in the service and the CHECK", async () => {
+      const reinvited = (
+        await fx.admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'revoked') RETURNING id`,
+          [fx.userA, ORG],
+        )
+      ).rows[0].id as string;
+      const created = await svc().createPlaybook(A(), {
+        codeKind: "carc",
+        code: "104",
+        title: "CARC 104",
+        ...content(),
+      } as never);
+      const again = await fx.refused(
+        svc().publishVersion({ ...A(), membershipId: reinvited }, created.versionId, 1),
+      );
+      expect(again).toMatchObject({ code: "PLAYBOOK_REVIEWER_IS_AUTHOR", statusCode: 409 });
+      const msg = await fx.dbMessage(
+        fx.admin.query(
+          `UPDATE denial_playbook_version SET status='published', reviewed_by_membership_id=$2,
+             reviewed_by_user_id=authored_by_user_id, published_at=now(), effective_from=CURRENT_DATE WHERE id=$1`,
+          [created.versionId, reinvited],
+        ) as never,
+      );
+      expect(msg).toMatch(/denial_playbook_version_published_reviewed/);
+    });
+
+    it("refuses a source document the organization cannot see, and accepts one it can", async () => {
+      const known = randomUUID();
+      const documents = () => ({
+        documentMetadata: async (args: { documentId: string }) =>
+          args.documentId === known ? { title: "t" } : null,
+      });
+      const guarded = buildDrizzlePlaybookService(fx.handle.db, { documents: documents as never });
+      const bad = await fx.refused(
+        guarded.createPlaybook(A(), {
+          codeKind: "carc",
+          code: "105",
+          title: "CARC 105",
+          ...content({ sourceDocumentId: randomUUID() }),
+        } as never),
+      );
+      expect(bad).toMatchObject({ code: "PLAYBOOK_SOURCE_DOCUMENT_NOT_FOUND", statusCode: 422 });
+      const ok = await guarded.createPlaybook(A(), {
+        codeKind: "carc",
+        code: "105",
+        title: "CARC 105",
+        ...content({ sourceDocumentId: known }),
+      } as never);
+      expect(ok.id).toBeTruthy();
     });
 
     it("lets a different person publish; the published version is frozen and cannot be edited", async () => {
@@ -557,10 +679,10 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         [ORG, fx.pe1, fx.claim1, denial],
       );
       const before = await humanRecord(denial);
-      await svc().setStepStatus(A(), denial, "first", "done");
-      await svc().setStepStatus(A(), denial, "second", "not_applicable");
-      await svc().setStepStatus(A(), denial, "first", "open");
-      await svc().setStepStatus(A(), denial, "first", "done");
+      await tick(A(), denial, "first", "done");
+      await tick(A(), denial, "second", "not_applicable");
+      await tick(A(), denial, "first", "open");
+      await tick(A(), denial, "first", "done");
       expect(await humanRecord(denial)).toBe(before);
       const view = await svc().getDenialPlaybook(A(), denial);
       expect(view.playbook?.steps).toMatchObject([
@@ -576,14 +698,32 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
       expect(rows).toBe(2); // one row per step: a re-tick updates it
     });
 
+    it("refuses a tick bound to a version that is no longer the one in force (409) and writes nothing", async () => {
+      const p = await published({ codeKind: "carc", code: "302" });
+      const denial = await denialWith({ carc: "302" });
+      const before = (await svc().getDenialPlaybook(A(), denial)).playbook?.versionId as string;
+      const next = await svc().createDraftVersion(A(), p.id, content({ summary: "v2" }));
+      await svc().publishVersion(A2(), next.id, next.rowVersion);
+      const stale = await fx.refused(tick(A(), denial, "first", "done", before));
+      expect(stale).toMatchObject({ code: "PLAYBOOK_VERSION_CHANGED", statusCode: 409 });
+      const n = (
+        await fx.admin.query(
+          "SELECT count(*)::int AS n FROM denial_playbook_case_step WHERE denial_case_id=$1",
+          [denial],
+        )
+      ).rows[0].n;
+      expect(n).toBe(0);
+      await tick(A(), denial, "first", "done"); // the version now in force is accepted
+    });
+
     it("refuses an unknown step, a denial with no playbook, and a tick on a version that is not published", async () => {
       const p = await published({ codeKind: "carc", code: "301" });
       const denial = await denialWith({ carc: "301" });
-      expect(await fx.refused(svc().setStepStatus(A(), denial, "nope", "done"))).toMatchObject({
+      expect(await fx.refused(tick(A(), denial, "nope", "done"))).toMatchObject({
         statusCode: 404,
       });
       const bare = await denialWith({ carc: "399" });
-      expect(await fx.refused(svc().setStepStatus(A(), bare, "first", "done"))).toMatchObject({
+      expect(await fx.refused(tick(A(), bare, "first", "done"))).toMatchObject({
         statusCode: 404,
       });
       // Past the service, a draft or retired version is refused by the trigger.
@@ -658,7 +798,7 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         { summary: SECRET, sourceNote: SECRET, steps: [{ key: "first", text: SECRET }] },
       );
       const denial = await denialWith({ carc: "401" });
-      await svc().setStepStatus(A(), denial, "first", "done");
+      await tick(A(), denial, "first", "done");
       const kinds = (
         await fx.admin.query(
           "SELECT DISTINCT resource_kind FROM audit_event WHERE organization_id=$1 AND resource_kind LIKE 'denial_playbook%'",
@@ -778,46 +918,71 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         ORG,
         denial,
       ]);
-      const app = makeApp(["playbook.read", "denial.read"]);
+      const app = makeApp(["playbook.read", "playbook.step.mark", "denial.read"]);
       const got = await app.inject({ method: "GET", url: `/api/v1/denials/${denial}/playbook` });
       expect(got.statusCode, got.body).toBe(200);
       expect(got.json().playbook.steps).toHaveLength(2);
-      const tick = await app.inject({
+      const versionId = got.json().playbook.versionId as string;
+      const ticked = await app.inject({
         method: "PUT",
         url: `/api/v1/denials/${denial}/playbook-steps/first`,
         headers: WRITE(),
-        payload: { status: "done" },
+        payload: { status: "done", versionId },
       });
-      expect(tick.statusCode).toBe(200);
+      expect(ticked.statusCode).toBe(200);
+      // A tick bound to any other version is refused, so a stale screen cannot tick the new version's step.
+      const stale = await app.inject({
+        method: "PUT",
+        url: `/api/v1/denials/${denial}/playbook-steps/first`,
+        headers: WRITE(),
+        payload: { status: "done", versionId: randomUUID() },
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(stale.json().error.code).toBe("PLAYBOOK_VERSION_CHANGED");
+      // Reading is not enough to tick: a read-only role is refused.
+      const readOnly = makeApp(["playbook.read", "denial.read"]);
       expect(
         (
-          await app.inject({
+          await readOnly.inject({
+            method: "PUT",
+            url: `/api/v1/denials/${denial}/playbook-steps/first`,
+            headers: WRITE(),
+            payload: { status: "done", versionId },
+          })
+        ).statusCode,
+      ).toBe(403);
+      await readOnly.close();
+      const app2 = makeApp(["playbook.read", "playbook.step.mark", "denial.read"]);
+      expect(
+        (
+          await app2.inject({
             method: "PUT",
             url: `/api/v1/denials/${denial}/playbook-steps/nope`,
             headers: WRITE(),
-            payload: { status: "done" },
+            payload: { status: "done", versionId },
           })
         ).statusCode,
       ).toBe(404);
       expect(
         (
-          await app.inject({
+          await app2.inject({
             method: "PUT",
             url: `/api/v1/denials/${denial}/playbook-steps/first`,
             headers: WRITE(),
-            payload: { status: "bogus" },
+            payload: { status: "bogus", versionId },
           })
         ).statusCode,
       ).toBe(422);
       expect(
         (
-          await app.inject({
+          await app2.inject({
             method: "PUT",
             url: `/api/v1/denials/${denial}/playbook-steps/first`,
-            payload: { status: "done" },
+            payload: { status: "done", versionId },
           })
         ).statusCode,
       ).toBe(400); // Idempotency-Key
+      await app2.close();
       await app.close();
       const viewed = (
         await fx.admin.query(
@@ -852,10 +1017,15 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
   it("registers the three keys and migration 1251 grants existing roles idempotently, mirroring the matching keys", async () => {
     const keys = (
       await fx.admin.query(
-        "SELECT key FROM permission WHERE key IN ('playbook.read','playbook.author','playbook.publish') ORDER BY key",
+        "SELECT key FROM permission WHERE key IN ('playbook.read','playbook.author','playbook.publish','playbook.step.mark') ORDER BY key",
       )
     ).rows.map((r) => r.key);
-    expect(keys).toEqual(["playbook.author", "playbook.publish", "playbook.read"]);
+    expect(keys).toEqual([
+      "playbook.author",
+      "playbook.publish",
+      "playbook.read",
+      "playbook.step.mark",
+    ]);
 
     const mkRole = async (key: string, grants: string[]) => {
       const id = (
@@ -875,9 +1045,10 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
     const worker = await mkRole("pb-worker", ["denial.read"]);
     const lead = await mkRole("pb-lead", ["denial.read", "appeal.decide"]);
     const unrelated = await mkRole("pb-unrelated", ["adr.read"]);
+    const resolver = await mkRole("pb-resolver", ["denial.resolve"]);
     const compliance = await mkRole("compliance_officer", ["audit.read"]);
     const migration = readFileSync(
-      join(fx.migrationsDir, "1207_m25_playbook_role_grants.sql"),
+      join(fx.migrationsDir, "1251_m25_playbook_role_grants.sql"),
       "utf8",
     );
     await fx.admin.query(migration);
@@ -890,7 +1061,13 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         )
       ).rows.map((r) => r.permission_key);
     expect(await held(worker)).toEqual(["playbook.read"]);
-    expect(await held(lead)).toEqual(["playbook.author", "playbook.publish", "playbook.read"]);
+    expect(await held(lead)).toEqual([
+      "playbook.author",
+      "playbook.publish",
+      "playbook.read",
+      "playbook.step.mark",
+    ]);
+    expect(await held(resolver)).toEqual(["playbook.step.mark"]); // working a denial may tick; read-only (worker) may not
     expect(await held(unrelated)).toEqual([]);
     expect(await held(compliance)).toEqual(["playbook.publish", "playbook.read"]);
   });

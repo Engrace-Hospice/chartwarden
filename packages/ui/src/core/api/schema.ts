@@ -8350,7 +8350,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Tick a playbook step on this denial (advisory; changes no case state) */
+        /** Tick a playbook step on this denial (advisory; changes no case state); versionId must be the version now in force (409 otherwise) */
         put: operations["putApiV1DenialsByIdPlaybookstepsByStepKey"];
         post?: never;
         delete?: never;
@@ -51106,6 +51106,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
+                    versionId: string;
                     status: "open" | "done" | "not_applicable";
                 };
             };

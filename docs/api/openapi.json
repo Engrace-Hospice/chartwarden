@@ -102739,7 +102739,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Tick a playbook step on this denial (advisory; changes no case state)",
+        "summary": "Tick a playbook step on this denial (advisory; changes no case state); versionId must be the version now in force (409 otherwise)",
         "parameters": [
           {
             "name": "id",
@@ -102795,9 +102795,14 @@
               "schema": {
                 "type": "object",
                 "required": [
+                  "versionId",
                   "status"
                 ],
                 "properties": {
+                  "versionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "status": {
                     "anyOf": [
                       {

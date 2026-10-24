@@ -12,7 +12,7 @@
 //     (`loadDenialCodes`), so a playbook and a route are read for the same MAC.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { ChartWardenError, type DocumentReader, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import {
   PLAYBOOK_CODE_KINDS,
@@ -148,6 +148,8 @@ export interface PlaybookService {
     actor: M25WriteActor,
     denialId: string,
     stepKey: string,
+    /** The version the person was looking at: a tick on any other version is refused (409). */
+    versionId: string,
     status: "open" | PlaybookStepStatus,
   ): Promise<{ stepKey: string; status: "open" | PlaybookStepStatus }>;
 }
@@ -217,7 +219,32 @@ function mostSpecificCode(c: {
   return hit ? { codeKind: hit[0], code: (hit[1] as string).trim().toUpperCase() } : null;
 }
 
-export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
+/** The one arm of M22's published document seam the library reads: is this document visible to the organization? */
+export type PlaybookDocumentPort = Pick<DocumentReader, "documentMetadata">;
+
+export function buildDrizzlePlaybookService(
+  db: DbClient,
+  deps: { readonly documents?: () => PlaybookDocumentPort } = {},
+): PlaybookService {
+  /** A source document must exist in the organization (the seam is RLS-scoped, so another tenant's id reads as absent). */
+  async function assertSourceDocument(
+    actor: M25ReadActor,
+    id: string | null | undefined,
+  ): Promise<void> {
+    if (!id || !deps.documents) return;
+    const found = await deps.documents().documentMetadata({
+      documentId: id as never,
+      organizationId: actor.organizationId as never,
+    });
+    if (!found) {
+      throw new ChartWardenError(
+        "PLAYBOOK_SOURCE_DOCUMENT_NOT_FOUND",
+        "the source document was not found in your organization",
+        422,
+      );
+    }
+  }
+
   const PB = schema.denialPlaybook;
   const PV = schema.denialPlaybookVersion;
   const CS = schema.denialPlaybookCaseStep;
@@ -385,6 +412,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
       }
       assertContent(input);
       const content = cleanContent(input);
+      await assertSourceDocument(actor, content.sourceDocumentId);
       const macName = input.macName?.trim() || null;
       return withOrgContext(db, actor, async (tx) => {
         try {
@@ -408,6 +436,8 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
               versionNo: 1,
               authoredByMembershipId: actor.membershipId,
               lastEditedByMembershipId: actor.membershipId,
+              authoredByUserId: actor.userId,
+              lastEditedByUserId: actor.userId,
               ...content,
             })
             .returning({ id: PV.id });
@@ -425,6 +455,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
     async createDraftVersion(actor, playbookId, input) {
       assertContent(input);
       const content = cleanContent(input);
+      await assertSourceDocument(actor, content.sourceDocumentId);
       return withOrgContext(db, actor, async (tx) => {
         const parent = await tx
           .select({ id: PB.id })
@@ -446,6 +477,8 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
               versionNo,
               authoredByMembershipId: actor.membershipId,
               lastEditedByMembershipId: actor.membershipId,
+              authoredByUserId: actor.userId,
+              lastEditedByUserId: actor.userId,
               ...content,
             })
             .returning({ id: PV.id, versionNo: PV.versionNo, rowVersion: PV.rowVersion });
@@ -464,6 +497,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
     async updateDraft(actor, versionId, input, ifMatch) {
       assertContent(input);
       const content = cleanContent(input);
+      await assertSourceDocument(actor, content.sourceDocumentId);
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadVersion(tx, versionId);
         if (cur.status !== "draft") {
@@ -479,6 +513,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
           .set({
             ...content,
             lastEditedByMembershipId: actor.membershipId,
+            lastEditedByUserId: actor.userId,
             rowVersion: sql`${PV.rowVersion} + 1`,
           })
           .where(and(eq(PV.id, versionId), eq(PV.rowVersion, ifMatch)))
@@ -495,7 +530,10 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
         const refusal = checkPublish({
           status: cur.status as PlaybookVersionStatus,
           authorMembershipId: cur.authoredByMembershipId,
+          authorUserId: cur.authoredByUserId,
           lastEditorMembershipId: cur.lastEditedByMembershipId,
+          lastEditorUserId: cur.lastEditedByUserId,
+          publisherUserId: actor.userId,
           publisherMembershipId: actor.membershipId,
         });
         if (refusal === "NOT_A_DRAFT") {
@@ -522,6 +560,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
           .set({
             status: "published",
             reviewedByMembershipId: actor.membershipId,
+            reviewedByUserId: actor.userId,
             publishedAt: now,
             effectiveFrom,
             rowVersion: sql`${PV.rowVersion} + 1`,
@@ -536,6 +575,8 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
               eq(PV.status, "draft"),
               ne(PV.authoredByMembershipId, actor.membershipId),
               ne(PV.lastEditedByMembershipId, actor.membershipId),
+              ne(PV.authoredByUserId, actor.userId),
+              ne(PV.lastEditedByUserId, actor.userId),
             ),
           )
           .returning({ id: PV.id, rowVersion: PV.rowVersion });
@@ -569,10 +610,17 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
       return withOrgContext(db, actor, (tx) => denialPlaybook(tx, actor, denialId));
     },
 
-    async setStepStatus(actor, denialId, stepKey, status) {
+    async setStepStatus(actor, denialId, stepKey, versionId, status) {
       return withOrgContext(db, actor, async (tx) => {
         const view = await denialPlaybook(tx, actor, denialId);
         if (!view.playbook) throw new NotFoundError("playbook for this denial");
+        if (view.playbook.versionId !== versionId) {
+          throw new ChartWardenError(
+            "PLAYBOOK_VERSION_CHANGED",
+            "the playbook for this denial changed; reload to see the version now in force",
+            409,
+          );
+        }
         if (!view.playbook.steps.some((s) => s.key === stepKey)) {
           throw new NotFoundError("playbook step");
         }

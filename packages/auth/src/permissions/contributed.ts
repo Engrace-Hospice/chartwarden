@@ -3594,6 +3594,13 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "none",
   },
+  // Ticking a step is working the denial (advisory, gates nothing), so it is a write-level key of its own.
+  "playbook.step.mark": {
+    resource: "denial_playbook",
+    action: "step_mark",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   "mac_rule.manage": {
     resource: "mac_rule",
     action: "manage",

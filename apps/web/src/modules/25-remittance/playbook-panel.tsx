@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient } from "@chartwarden/ui";
+import { StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the PLAYBOOK section of the denial work panel and of the appeal panel (through the
 // appeal's denial), hospice ADR/TPE/QIC PRD milestone 9a-1. It shows the guidance YOUR ORGANIZATION wrote for this denial's
 // reason code: a summary, its source, who reviewed it, which version is in force and the ordered steps. There is no platform
@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { ButtonRow, ErrorAlert, Facts, Hint, WarningAlert } from "./action-ui";
+import { ErrorAlert, Facts, Hint, RetryAlert, WarningAlert } from "./action-ui";
 import {
   type DenialPlaybook,
   PLAYBOOK_CODE_KIND_LABEL,
@@ -82,13 +82,17 @@ export function PlaybookPanel({
     void load();
   }, [load, refreshToken]);
 
-  async function tick(stepKey: string, status: PlaybookStepStatus): Promise<void> {
+  async function tick(
+    stepKey: string,
+    versionId: string,
+    status: PlaybookStepStatus,
+  ): Promise<void> {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusyKey(stepKey);
     setActionError(null);
     try {
-      const res = await setPlaybookStep(client, denialId, stepKey, status);
+      const res = await setPlaybookStep(client, denialId, stepKey, versionId, status);
       if (!mounted.current) return;
       if (!res.ok) setActionError(res.message);
       await load();
@@ -109,16 +113,7 @@ export function PlaybookPanel({
     <section aria-label="Denial playbook" aria-busy={busyKey !== null}>
       <h3 className="wx-action-title">Playbook</h3>
       <ErrorAlert message={actionError} />
-      {loadError ? (
-        <>
-          <ErrorAlert message={loadError} />
-          <ButtonRow>
-            <Button tone="secondary" size="sm" onClick={() => void load()}>
-              Retry
-            </Button>
-          </ButtonRow>
-        </>
-      ) : null}
+      {loadError ? <RetryAlert message={loadError} onRetry={() => void load()} /> : null}
       {!view ? (
         loadError ? null : (
           <Hint>Loading playbook…</Hint>
@@ -151,8 +146,8 @@ export function PlaybookPanel({
                 />,
               ],
               ["Source", pb.sourceNote],
-              ["Written by", pb.authoredByMembershipId],
-              ["Reviewed by", pb.reviewedByMembershipId],
+              ["Written by (member ID)", pb.authoredByMembershipId],
+              ["Reviewed by (member ID)", pb.reviewedByMembershipId],
             ]}
           />
           <p>{pb.summary}</p>
@@ -164,7 +159,9 @@ export function PlaybookPanel({
                   aria-label={`Status of step: ${s.text}`}
                   value={s.status}
                   disabled={busyKey !== null}
-                  onChange={(e) => void tick(s.key, e.target.value as PlaybookStepStatus)}
+                  onChange={(e) =>
+                    void tick(s.key, pb.versionId, e.target.value as PlaybookStepStatus)
+                  }
                 >
                   {STEP_STATUSES.map((st) => (
                     <option key={st} value={st}>

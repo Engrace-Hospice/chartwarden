@@ -177,7 +177,10 @@ export function FormButtons({
   danger,
   onSubmit,
   onCancel,
+  asFormSubmit,
 }: {
+  /** The buttons sit inside a <form onSubmit>: the primary button is a real submit button (Enter submits). */
+  readonly asFormSubmit?: boolean;
   readonly submitLabel: string;
   readonly busy: boolean;
   readonly blocked: boolean;
@@ -198,7 +201,7 @@ export function FormButtons({
         </Button>
         <Button
           tone={danger ? "danger" : "primary"}
-          onClick={onSubmit}
+          {...(asFormSubmit ? { type: "submit" as const } : { onClick: onSubmit })}
           disabled={busy || blocked}
           aria-describedby={reason ? reasonId : undefined}
         >

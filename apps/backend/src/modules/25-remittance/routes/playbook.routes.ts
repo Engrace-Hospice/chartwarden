@@ -51,6 +51,8 @@ export const PlaybookCreateRequestSchema = Type.Object({
   ...ContentProps,
 });
 export const PlaybookStepRequestSchema = Type.Object({
+  /** The playbook version the person is looking at; a tick on any other version is a 409. */
+  versionId: Type.String({ format: "uuid" }),
   status: literals(["open", ...PLAYBOOK_STEP_STATUSES] as const),
 });
 
@@ -147,6 +149,7 @@ export const PlaybookStepResultSchema = Type.Object({
 const READ = P("playbook.read");
 const AUTHOR = P("playbook.author");
 const PUBLISH = P("playbook.publish");
+const MARK = P("playbook.step.mark");
 const DENIAL_READ = P("denial.read");
 const DENIAL_READ_ABAC = ASSIGNED_TO_ACTOR("denial.read");
 const IDEMPOTENT = requireIdempotencyKey();
@@ -261,7 +264,7 @@ export function registerPlaybookRoutes(app: FastifyInstance, deps: PlaybookRoute
   // An advisory tick of one step. Writes only the tick row; changes no case, claim, appeal, ADR or submission.
   app.put(
     "/api/v1/denials/:id/playbook-steps/:stepKey",
-    { preHandler: [READ, DENIAL_READ, DENIAL_READ_ABAC, IDEMPOTENT] },
+    { preHandler: [MARK, DENIAL_READ, DENIAL_READ_ABAC, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(PlaybookStepRequestSchema, request.body);
       const stepKey = (request.params as Record<string, string>).stepKey ?? "";
@@ -270,6 +273,7 @@ export function registerPlaybookRoutes(app: FastifyInstance, deps: PlaybookRoute
           writeActorOf(request),
           denialId(request),
           stepKey,
+          body.versionId,
           body.status,
         ),
       );

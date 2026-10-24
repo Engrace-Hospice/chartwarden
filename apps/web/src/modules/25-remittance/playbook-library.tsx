@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
+import { RetryAlert } from "./action-ui";
 import { PLAYBOOK_CODE_KIND_LABEL, type PlaybookListItem, loadPlaybooks } from "./playbook-api";
 import { PlaybookDetailPanel } from "./playbook-detail-panel";
 import { PlaybookEditor } from "./playbook-editor";
@@ -34,7 +35,9 @@ export function PlaybookLibrary(): JSX.Element {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
-  const [writing, setWriting] = useState(params.get("new") === "1" && canAuthor);
+  // Requested by the ?new=1 link or the button; only offered once the session says the person may author (it can load late).
+  const [writeRequested, setWriteRequested] = useState(params.get("new") === "1");
+  const writing = writeRequested && canAuthor;
   const prefill = useRef({
     codeKind: params.get("kind") ?? undefined,
     code: params.get("code") ?? undefined,
@@ -59,7 +62,7 @@ export function PlaybookLibrary(): JSX.Element {
   }, [load]);
 
   const closeWriter = (): void => {
-    setWriting(false);
+    setWriteRequested(false);
     if (params.has("new")) setParams({}, { replace: true });
   };
   const published = rows.filter((r) => r.publishedVersionNo !== null);
@@ -108,18 +111,14 @@ export function PlaybookLibrary(): JSX.Element {
           <div
             style={{ display: "flex", gap: "0.75rem", alignItems: "center", padding: "0 1.5rem" }}
           >
-            {error && loaded ? (
-              <Button tone="secondary" size="sm" onClick={() => void load()}>
-                Retry
-              </Button>
-            ) : null}
+            {error && loaded ? <RetryAlert message={error} onRetry={() => void load()} /> : null}
             <span style={{ flex: 1 }} />
             {canAuthor ? (
               <Button
                 size="sm"
                 onClick={() => {
                   prefill.current = { codeKind: undefined, code: undefined, macName: undefined };
-                  setWriting(true);
+                  setWriteRequested(true);
                 }}
               >
                 Write a playbook
@@ -151,7 +150,7 @@ export function PlaybookLibrary(): JSX.Element {
                 description="Your organization has not written any. A playbook is guidance for one denial reason, with a source and a second person's review. Until you write one, a denial shows that none exists."
                 action={
                   canAuthor ? (
-                    <Button size="sm" onClick={() => setWriting(true)}>
+                    <Button size="sm" onClick={() => setWriteRequested(true)}>
                       Write a playbook
                     </Button>
                   ) : undefined
@@ -233,7 +232,6 @@ export function PlaybookLibrary(): JSX.Element {
             closeWriter();
             void load();
           }}
-          onStale={() => closeWriter()}
         />
       ) : null}
     </>

@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS "denial_playbook_version" (
   -- Whoever last changed the content: the author at creation, then anyone who edits the draft. A reviewer must be neither
   -- the author nor the last editor, so a second person cannot rewrite a draft and then approve their own words.
   "last_edited_by_membership_id" uuid NOT NULL,
+  -- The same three facts by USER id: a revoked and re-invited person gets a NEW membership id, so membership ids alone would
+  -- let one human approve their own work. Residual risk: two accounts held by one person cannot be told apart here.
+  "authored_by_user_id" uuid NOT NULL,
+  "last_edited_by_user_id" uuid NOT NULL,
+  "reviewed_by_user_id" uuid,
   "reviewed_by_membership_id" uuid,
   "published_at" timestamptz,
   "retired_at" timestamptz,
@@ -55,10 +60,12 @@ CREATE TABLE IF NOT EXISTS "denial_playbook_version" (
   CONSTRAINT "denial_playbook_version_no_key" UNIQUE ("playbook_id", "version_no"),
   -- A draft carries no review; a published or retired version carries its reviewer, who is not its author, and its date.
   CONSTRAINT "denial_playbook_version_draft_unreviewed" CHECK ("status" <> 'draft'
-    OR ("reviewed_by_membership_id" IS NULL AND "published_at" IS NULL AND "effective_from" IS NULL AND "retired_at" IS NULL)),
+    OR ("reviewed_by_membership_id" IS NULL AND "reviewed_by_user_id" IS NULL AND "published_at" IS NULL AND "effective_from" IS NULL AND "retired_at" IS NULL)),
   CONSTRAINT "denial_playbook_version_published_reviewed" CHECK ("status" = 'draft'
     OR ("reviewed_by_membership_id" IS NOT NULL AND "reviewed_by_membership_id" <> "authored_by_membership_id"
         AND "reviewed_by_membership_id" <> "last_edited_by_membership_id"
+        AND "reviewed_by_user_id" IS NOT NULL AND "reviewed_by_user_id" <> "authored_by_user_id"
+        AND "reviewed_by_user_id" <> "last_edited_by_user_id"
         AND "published_at" IS NOT NULL AND "effective_from" IS NOT NULL)),
   CONSTRAINT "denial_playbook_version_retired_has_time" CHECK (("status" = 'retired') = ("retired_at" IS NOT NULL))
 );--> statement-breakpoint
@@ -108,7 +115,7 @@ CREATE POLICY "denial_playbook_case_step_org" ON "denial_playbook_case_step" FOR
 GRANT SELECT, INSERT ON "denial_playbook" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "denial_playbook" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "denial_playbook_version" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("status", "summary", "steps", "source_note", "source_document_id", "last_edited_by_membership_id", "reviewed_by_membership_id",
+GRANT UPDATE ("status", "summary", "steps", "source_note", "source_document_id", "last_edited_by_membership_id", "last_edited_by_user_id", "reviewed_by_membership_id", "reviewed_by_user_id",
   "published_at", "retired_at", "effective_from", "row_version") ON "denial_playbook_version" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "denial_playbook_version" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "denial_playbook_case_step" TO chartwarden_app;--> statement-breakpoint
@@ -189,13 +196,24 @@ BEGIN
     OR (OLD.status = 'published' AND NEW.status = 'retired')) THEN
     RAISE EXCEPTION 'M25_PLAYBOOK_ILLEGAL_TRANSITION: playbook version % cannot move from % to %', OLD.id, OLD.status, NEW.status;
   END IF;
+  IF OLD.status = 'draft' AND NEW.status = 'published' AND (
+       NEW.summary IS DISTINCT FROM OLD.summary
+    OR NEW.steps IS DISTINCT FROM OLD.steps
+    OR NEW.source_note IS DISTINCT FROM OLD.source_note
+    OR NEW.source_document_id IS DISTINCT FROM OLD.source_document_id
+    OR NEW.last_edited_by_membership_id IS DISTINCT FROM OLD.last_edited_by_membership_id
+    OR NEW.last_edited_by_user_id IS DISTINCT FROM OLD.last_edited_by_user_id) THEN
+    RAISE EXCEPTION 'M25_PLAYBOOK_PUBLISH_CONTENT: playbook version % may not change content or last editor while being published', OLD.id;
+  END IF;
   IF OLD.status = 'published' AND (
        NEW.summary IS DISTINCT FROM OLD.summary
     OR NEW.steps IS DISTINCT FROM OLD.steps
     OR NEW.source_note IS DISTINCT FROM OLD.source_note
     OR NEW.source_document_id IS DISTINCT FROM OLD.source_document_id
     OR NEW.last_edited_by_membership_id IS DISTINCT FROM OLD.last_edited_by_membership_id
+    OR NEW.last_edited_by_user_id IS DISTINCT FROM OLD.last_edited_by_user_id
     OR NEW.reviewed_by_membership_id IS DISTINCT FROM OLD.reviewed_by_membership_id
+    OR NEW.reviewed_by_user_id IS DISTINCT FROM OLD.reviewed_by_user_id
     OR NEW.published_at IS DISTINCT FROM OLD.published_at
     OR NEW.effective_from IS DISTINCT FROM OLD.effective_from) THEN
     RAISE EXCEPTION 'M25_PLAYBOOK_PUBLISHED_IMMUTABLE: playbook version % is published; its content cannot change', OLD.id;
@@ -225,9 +243,10 @@ CREATE TRIGGER "trg_denial_playbook_case_step_guard" BEFORE INSERT ON denial_pla
 
 -- playbook.read: see the library and a denial's playbook. playbook.author: write a playbook and its drafts. playbook.publish:
 -- publish a draft someone else wrote, or retire a published version. None gates a case, and the per-case tick needs only
--- denial.read plus playbook.read. Existing tenants' roles get them from 1251.
+-- playbook.step.mark and denial.read. Existing tenants' roles get them from 1251.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
-  ('playbook.read', 'denial_playbook', 'read', 'billing', 'none', ''),
-  ('playbook.author', 'denial_playbook', 'author', 'billing', 'none', ''),
-  ('playbook.publish', 'denial_playbook', 'publish', 'billing', 'none', '')
+  ('playbook.read', 'denial_playbook', 'read', 'billing', 'none', 'See the organization''s denial playbooks and the playbook that applies to a denial'),
+  ('playbook.author', 'denial_playbook', 'author', 'billing', 'none', 'Write a denial playbook and its draft versions'),
+  ('playbook.publish', 'denial_playbook', 'publish', 'billing', 'none', 'Publish a draft playbook that someone else wrote, or retire a published version'),
+  ('playbook.step.mark', 'denial_playbook', 'step_mark', 'billing', 'provider_entity_scope', 'Tick or reset a playbook step on a denial (advisory; gates nothing)')
 ON CONFLICT ("key") DO NOTHING;

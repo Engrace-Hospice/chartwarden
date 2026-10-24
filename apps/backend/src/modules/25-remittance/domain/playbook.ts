@@ -101,22 +101,28 @@ export function validatePlaybookVersion(content: PlaybookVersionContent): Playbo
 
 export type PlaybookPublishRefusal = "NOT_A_DRAFT" | "REVIEWER_IS_AUTHOR";
 
-/** Review before publish: only a draft is published, and never by the person who wrote it (the `checkSignOff` shape). */
-export function checkPublish(input: {
-  readonly status: PlaybookVersionStatus;
+/** The people involved, by membership id AND user id (a re-invited person has a new membership id but the same user id). */
+export interface PlaybookPeople {
   readonly authorMembershipId: string;
+  readonly authorUserId: string;
   /** Whoever last changed the draft's content (the author unless someone else edited it). */
   readonly lastEditorMembershipId: string;
+  readonly lastEditorUserId: string;
   readonly publisherMembershipId: string;
-}): PlaybookPublishRefusal | null {
+  readonly publisherUserId: string;
+}
+
+/** Review before publish: only a draft is published, and never by its author or last editor (the `checkSignOff` shape). */
+export function checkPublish(
+  input: PlaybookPeople & { readonly status: PlaybookVersionStatus },
+): PlaybookPublishRefusal | null {
   if (input.status !== "draft") return "NOT_A_DRAFT";
-  if (
+  const same =
     input.publisherMembershipId === input.authorMembershipId ||
-    input.publisherMembershipId === input.lastEditorMembershipId
-  ) {
-    return "REVIEWER_IS_AUTHOR";
-  }
-  return null;
+    input.publisherMembershipId === input.lastEditorMembershipId ||
+    input.publisherUserId === input.authorUserId ||
+    input.publisherUserId === input.lastEditorUserId;
+  return same ? "REVIEWER_IS_AUTHOR" : null;
 }
 
 export function checkRetire(status: PlaybookVersionStatus): "NOT_PUBLISHED" | null {

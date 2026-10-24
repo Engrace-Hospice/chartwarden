@@ -61,6 +61,9 @@ export const denialPlaybookVersion = pgTable(
     sourceDocumentId: uuid("source_document_id"), // logical FK -> M22 document
     authoredByMembershipId: uuid("authored_by_membership_id").notNull(),
     lastEditedByMembershipId: uuid("last_edited_by_membership_id").notNull(),
+    authoredByUserId: uuid("authored_by_user_id").notNull(),
+    lastEditedByUserId: uuid("last_edited_by_user_id").notNull(),
+    reviewedByUserId: uuid("reviewed_by_user_id"),
     reviewedByMembershipId: uuid("reviewed_by_membership_id"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     retiredAt: timestamp("retired_at", { withTimezone: true }),

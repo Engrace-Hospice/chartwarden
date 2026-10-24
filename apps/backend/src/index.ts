@@ -5945,7 +5945,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             }),
             // Milestone 9a-1: the denial-reason playbook library. Organization-authored; nothing is seeded and a denial
             // with no published playbook reads "not written yet".
-            playbookService: buildDrizzlePlaybookService(dbHandle.db),
+            playbookService: buildDrizzlePlaybookService(dbHandle.db, {
+              documents: () => buildSeamAppealSourcePorts().documents(),
+            }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).

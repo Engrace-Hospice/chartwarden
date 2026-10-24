@@ -77,28 +77,47 @@ describe("validatePlaybookVersion", () => {
 });
 
 describe("checkPublish", () => {
+  const people = {
+    authorMembershipId: "m1",
+    authorUserId: "u1",
+    lastEditorMembershipId: "m1",
+    lastEditorUserId: "u1",
+    publisherMembershipId: "m2",
+    publisherUserId: "u2",
+  };
   it("refuses the author publishing their own draft", () => {
+    expect(checkPublish({ ...people, status: "draft", publisherMembershipId: "m1" })).toBe(
+      "REVIEWER_IS_AUTHOR",
+    );
+  });
+  it("refuses the same human under a new membership id (revoke and re-invite)", () => {
     expect(
-      checkPublish({ status: "draft", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m1" }),
+      checkPublish({
+        ...people,
+        status: "draft",
+        publisherMembershipId: "m9",
+        publisherUserId: "u1",
+      }),
     ).toBe("REVIEWER_IS_AUTHOR");
   });
   it("refuses anything that is not a draft", () => {
-    expect(
-      checkPublish({ status: "published", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m2" }),
-    ).toBe("NOT_A_DRAFT");
-    expect(
-      checkPublish({ status: "retired", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m2" }),
-    ).toBe("NOT_A_DRAFT");
+    expect(checkPublish({ ...people, status: "published" })).toBe("NOT_A_DRAFT");
+    expect(checkPublish({ ...people, status: "retired" })).toBe("NOT_A_DRAFT");
   });
   it("refuses the last editor too: a second person cannot rewrite a draft and then approve it", () => {
-    const base = { status: "draft", authorMembershipId: "m1", lastEditorMembershipId: "m2" } as const;
-    expect(checkPublish({ ...base, publisherMembershipId: "m2" })).toBe("REVIEWER_IS_AUTHOR");
-    expect(checkPublish({ ...base, publisherMembershipId: "m3" })).toBeNull();
+    const edited = {
+      ...people,
+      status: "draft",
+      lastEditorMembershipId: "m2",
+      lastEditorUserId: "u2",
+    } as const;
+    expect(checkPublish(edited)).toBe("REVIEWER_IS_AUTHOR");
+    expect(
+      checkPublish({ ...edited, publisherMembershipId: "m3", publisherUserId: "u3" }),
+    ).toBeNull();
   });
   it("allows a different person to publish a draft", () => {
-    expect(
-      checkPublish({ status: "draft", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m2" }),
-    ).toBeNull();
+    expect(checkPublish({ ...people, status: "draft" })).toBeNull();
   });
 });
 

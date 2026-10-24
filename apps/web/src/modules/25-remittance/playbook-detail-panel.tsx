@@ -3,10 +3,20 @@ import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/u
 // playbook, newest first, with the actions each state allows. A draft can be edited by its author side and PUBLISHED by a
 // different person (the server refuses the author, and the message is shown); a published version is frozen, so a change is
 // a new version; a published version can be retired, after which denials show "no playbook" until another is published.
+// A failed reload keeps the detail on screen with a Retry above it, and only the newest response may land. The editor is a
+// sibling of the rail (a modal never nests inside the drawer) and reads the latest draft by id, so a conflict rebases it.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
-import { ActionRail, ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
+import {
+  ActionRail,
+  ButtonRow,
+  ErrorAlert,
+  Facts,
+  Hint,
+  NoticeAlert,
+  RetryAlert,
+} from "./action-ui";
 import {
   PLAYBOOK_CODE_KIND_LABEL,
   type PlaybookDetail,
@@ -23,6 +33,9 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning"> = {
   published: "success",
   retired: "neutral",
 };
+
+/** What the editor is doing; a draft is named by id so its row version is always the latest loaded one. */
+type Editing = { readonly kind: "version" } | { readonly kind: "draft"; readonly draftId: string };
 
 export interface PlaybookDetailPanelProps {
   readonly playbookId: string;
@@ -43,9 +56,10 @@ export function PlaybookDetailPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [editing, setEditing] = useState<PlaybookEditorMode | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const loadSeq = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -55,8 +69,10 @@ export function PlaybookDetailPanel({
   }, []);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const res = await loadPlaybook(client, playbookId);
-    if (!mounted.current) return;
+    // An older response must never overwrite a newer one.
+    if (!mounted.current || seq !== loadSeq.current) return;
     if (res.ok) {
       setDetail(res.value);
       setLoadError(null);
@@ -90,6 +106,15 @@ export function PlaybookDetailPanel({
 
   const draft = detail?.versions.find((v) => v.status === "draft") ?? null;
   const latest = detail?.versions[0] ?? null;
+  const editorMode: PlaybookEditorMode | null =
+    editing === null || !detail
+      ? null
+      : editing.kind === "version"
+        ? { kind: "version", playbookId, from: latest }
+        : (() => {
+            const current = detail.versions.find((v) => v.id === editing.draftId);
+            return current ? { kind: "draft" as const, draft: current } : null;
+          })();
 
   const versionRow = (v: PlaybookVersion): JSX.Element => (
     <li key={v.id}>
@@ -99,8 +124,8 @@ export function PlaybookDetailPanel({
       <Facts
         items={[
           ["Source", v.sourceNote],
-          ["Written by", v.authoredByMembershipId],
-          ["Reviewed by", v.reviewedByMembershipId ?? "Not yet reviewed"],
+          ["Written by (member ID)", v.authoredByMembershipId],
+          ["Reviewed by (member ID)", v.reviewedByMembershipId ?? "Not yet reviewed"],
           ["Published", v.publishedAt ? v.publishedAt.slice(0, 10) : "Not published"],
         ]}
       />
@@ -115,7 +140,7 @@ export function PlaybookDetailPanel({
             tone="secondary"
             size="sm"
             disabled={busy}
-            onClick={() => setEditing({ kind: "draft", draft: v })}
+            onClick={() => setEditing({ kind: "draft", draftId: v.id })}
           >
             Edit draft
           </Button>
@@ -157,49 +182,45 @@ export function PlaybookDetailPanel({
   );
 
   return (
-    <ActionRail ariaLabel={detail ? detail.title : "Playbook"} onClose={onClose}>
-      {loadError ? (
-        <>
-          <ErrorAlert message={loadError} />
-          <ButtonRow>
-            <Button tone="secondary" size="sm" onClick={() => void load()}>
-              Retry
-            </Button>
-          </ButtonRow>
-        </>
-      ) : !detail ? (
-        <LoadingSpinner />
-      ) : (
-        <>
-          <Facts
-            items={[
-              [
-                "Applies to",
-                `${PLAYBOOK_CODE_KIND_LABEL[detail.codeKind] ?? detail.codeKind} ${detail.code}`,
-              ],
-              ["MAC", detail.macName ?? "Any MAC"],
-            ]}
-          />
-          <NoticeAlert message={notice} />
-          <ErrorAlert message={error} />
-          {can("playbook.author") && !draft ? (
-            <ButtonRow>
-              <Button
-                tone="secondary"
-                size="sm"
-                disabled={busy}
-                onClick={() => setEditing({ kind: "version", playbookId, from: latest })}
-              >
-                New version
-              </Button>
-            </ButtonRow>
-          ) : null}
-          <ul aria-label="Versions">{detail.versions.map(versionRow)}</ul>
-        </>
-      )}
-      {editing ? (
+    <>
+      <ActionRail ariaLabel={detail ? detail.title : "Playbook"} onClose={onClose}>
+        {loadError ? <RetryAlert message={loadError} onRetry={() => void load()} /> : null}
+        {!detail ? (
+          loadError ? null : (
+            <LoadingSpinner />
+          )
+        ) : (
+          <>
+            <Facts
+              items={[
+                [
+                  "Applies to",
+                  `${PLAYBOOK_CODE_KIND_LABEL[detail.codeKind] ?? detail.codeKind} ${detail.code}`,
+                ],
+                ["MAC", detail.macName ?? "Any MAC"],
+              ]}
+            />
+            <NoticeAlert message={notice} />
+            <ErrorAlert message={error} />
+            {can("playbook.author") && !draft ? (
+              <ButtonRow>
+                <Button
+                  tone="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setEditing({ kind: "version" })}
+                >
+                  New version
+                </Button>
+              </ButtonRow>
+            ) : null}
+            <ul aria-label="Versions">{detail.versions.map(versionRow)}</ul>
+          </>
+        )}
+      </ActionRail>
+      {editorMode ? (
         <PlaybookEditor
-          mode={editing}
+          mode={editorMode}
           onClose={() => setEditing(null)}
           onDone={(message) => {
             setEditing(null);
@@ -207,13 +228,9 @@ export function PlaybookDetailPanel({
             void load();
             onChanged();
           }}
-          onStale={(message) => {
-            setEditing(null);
-            setError(message);
-            void load();
-          }}
+          onConflict={() => void load()}
         />
       ) : null}
-    </ActionRail>
+    </>
   );
 }
