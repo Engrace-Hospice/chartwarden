@@ -120,8 +120,8 @@
 | AW-03 | Response-time analytics | P2 | 6 | AI | 6.2 | new |
 | AW-04 | Unacknowledged urgent queue | P0 | 4 | ESC | 4.9 | new |
 | AW-05 | Cross-discipline collaboration metrics | P2 | 6 | AI | 6.2 | new |
-| AW-06 | AI thread summaries | P2 | 6 | AI | 6.5 | new |
-| AW-07 | AI message drafting | P2 | 6 | AI | 6.5 | new |
+| AW-06 | AI thread summaries | P2 | 6 | AI | 6.5 | built, flag off (ADR-0095, proposed; M36 side; capability `messaging_summarize` PROPOSED, no backend or BAA chosen, so every call answers "AI unavailable"; sign-off open) |
+| AW-07 | AI message drafting | P2 | 6 | AI | 6.5 | built, flag off (ADR-0095, proposed; drafts go to the composer only, a human sends; capability `messaging_draft_reply` PROPOSED; GA scope open) |
 | AW-08 | Multilingual UI & templates | P2 | 6 | UX | 6.4 | new |
 | AW-09 | Voice dictation | P2 | 6 | UX | 6.3 | new (NOT built: browser speech rejected; server-side needs an M32 speech backend and a BAA; ADR-0094) |
 | AW-10 | Approved external partners | P2 | 6 | GOV | 6.6 | new |

@@ -216,6 +216,26 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     governanceCatalogId: "adr-documentation-readiness",
     note: "Advisory only; Medium with High-class controls (risk tier is the recommended default pending the AI Safety Owner). No vendor or model chosen, so no backend key. No Phase-1 consumer surface; M25 resolves a deny-stub.",
   },
+  {
+    capabilityKey: "messaging_summarize",
+    displayName: "Messaging Thread Summary",
+    riskTier: "high",
+    phase1LifecycleState: "PROPOSED",
+    defaultBackendKey: null,
+    consumerModules: ["m36"],
+    governanceCatalogId: "messaging-summarize",
+    note: "ADR-0095 (hazard H-08). High: a wrong summary can hide an urgent message. The M36 side is built behind the per-tenant flag `messaging.ai.enabled` (off) and the MessagingAiPort in @chartwarden/types; M36 does not depend on M32 in the module manifest. No vendor, region, BAA or ZDR is chosen, so no backend key and the sync script does not seed it: the capability does not exist at runtime and every call answers 'AI unavailable'. Chart-context allowlist: channelId, messageCount. Prompt file packages/ai-platform/prompts/messaging/summarize.v1.md is not registered.",
+  },
+  {
+    capabilityKey: "messaging_draft_reply",
+    displayName: "Messaging Draft Reply",
+    riskTier: "high",
+    phase1LifecycleState: "PROPOSED",
+    defaultBackendKey: null,
+    consumerModules: ["m36"],
+    governanceCatalogId: "messaging-draft-reply",
+    note: "ADR-0095. Same boundary as messaging_summarize; the draft goes to the composer only and a human sends. Whether drafts are in scope for general availability is an open decision (ADR-0095 open decision 9). No backend key until the vendor decision.",
+  },
 ];
 
 /** Index by `capability_key` — the join key `ai_prompt_template`, `ai_invocation` and every seam use. */
