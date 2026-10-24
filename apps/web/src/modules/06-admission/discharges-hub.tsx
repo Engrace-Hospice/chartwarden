@@ -40,12 +40,20 @@ export function DischargesHub(): JSX.Element {
   const needs = useWorklist("needs_details", true);
   const cosign = useWorklist("awaiting_cosign", can.cosign);
   const recent = useWorklist("recently_discharged", true);
+  const qio = useWorklist("qio_review_open", can.nomnc);
+  const noDeadline = useWorklist("nomnc_no_deadline", can.nomnc);
   const today = new Date().toISOString().slice(0, 10);
   const [search, setSearch] = useState("");
 
   const onScreen = useMemo(
-    () => [...ready.items, ...needs.items, ...(can.cosign ? cosign.items : []), ...recent.items],
-    [ready.items, needs.items, cosign.items, can.cosign, recent.items],
+    () => [
+      ...ready.items,
+      ...needs.items,
+      ...(can.cosign ? cosign.items : []),
+      ...recent.items,
+      ...(can.nomnc ? [...qio.items, ...noDeadline.items] : []),
+    ],
+    [ready.items, needs.items, cosign.items, can.cosign, recent.items, can.nomnc, qio.items, noDeadline.items],
   );
   const patients = usePatients(onScreen);
   const readyRows = ready.items.filter((r) =>
@@ -209,6 +217,96 @@ export function DischargesHub(): JSX.Element {
             </div>
           </ListState>
         </Panel>
+
+        {can.nomnc ? (
+          <Panel
+            title="QIO review open"
+            icon="shield-check"
+            description="Admissions with an open QIO expedited review. A review with no deadline typed comes first; deadlines are the ones staff typed from the QIO's call."
+            flush
+          >
+            <ListState
+              list={qio}
+              emptyTitle="No open QIO reviews"
+              emptyText="Reviews opened from a NOMNC record appear here."
+            >
+              <div className="wx-list-table-wrap">
+                <table className="wx-list-table">
+                  <caption className="wx-sr-only">Admissions with an open QIO review</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Patient</th>
+                      <th scope="col">MRN</th>
+                      <th scope="col">Next typed deadline</th>
+                      <th scope="col">
+                        <span className="wx-sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {qio.items.map((r) => (
+                      <tr key={r.admissionId}>
+                        <PatientCell row={r} patients={patients} />
+                        <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
+                        <td className="wx-nums">
+                          {r.nextDeadlineAt ? (
+                            fmtDate(r.nextDeadlineAt)
+                          ) : (
+                            <StatusPill label="No deadline recorded" tone="warning" />
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <Link to={`/admissions/${r.admissionId}`} className="wx-action-link">
+                            Open record
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ListState>
+          </Panel>
+        ) : null}
+
+        {can.nomnc && noDeadline.items.length > 0 ? (
+          <Panel
+            title="NOMNC with no appeal-request deadline"
+            icon="alert"
+            description="Active NOMNC records where nobody has typed the deadline printed on the notice."
+            flush
+          >
+            <div className="wx-list-table-wrap">
+              <table className="wx-list-table">
+                <caption className="wx-sr-only">NOMNC records with no deadline typed</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Patient</th>
+                    <th scope="col">MRN</th>
+                    <th scope="col">Delivered</th>
+                    <th scope="col">
+                      <span className="wx-sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {noDeadline.items.map((r) => (
+                    <tr key={r.admissionId}>
+                      <PatientCell row={r} patients={patients} />
+                      <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
+                      <td className="wx-nums">{fmtDate(r.noticeDeliveredAt ?? null)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <Link to={`/admissions/${r.admissionId}`} className="wx-action-link">
+                          Enter the deadline
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        ) : null}
 
         <Panel
           title="Recently discharged"

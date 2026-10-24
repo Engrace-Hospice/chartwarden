@@ -3,7 +3,14 @@
 // short labels. Display gating only — the server enforces every key on the workflow it links to.
 import { DISCHARGE_WORKFLOW_PERMISSIONS } from "./admission-status";
 
-export type WorklistBucket = "ready" | "needs_details" | "awaiting_cosign" | "recently_discharged";
+export type WorklistBucket =
+  | "ready"
+  | "needs_details"
+  | "awaiting_cosign"
+  | "recently_discharged"
+  // Milestone 10a — open QIO expedited reviews / active NOMNC records with no appeal-request deadline typed.
+  | "qio_review_open"
+  | "nomnc_no_deadline";
 
 export interface WorklistItem {
   admissionId: string;
@@ -16,6 +23,10 @@ export interface WorklistItem {
   transferEventId: string | null;
   dischargeType: string | null;
   effectiveDate: string | null;
+  /** `qio_review_open` only: the soonest unsatisfied typed deadline (null = none typed). */
+  nextDeadlineAt?: string | null;
+  /** `nomnc_no_deadline` only: when the notice was delivered, as typed. */
+  noticeDeliveredAt?: string | null;
   /**
    * `recently_discharged` rows only: the name + MRN the server read through M5 (a readmission candidate is usually
    * off the caller's caseload, so the patient read would 404). `null` = M5 could not resolve it; absent = read it.
@@ -45,6 +56,8 @@ export interface HubAbilities {
   readonly cosign: boolean;
   /** Readmit a live-discharged patient (a new admission). */
   readonly readmit: boolean;
+  /** Milestone 10a — read the NOMNC / QIO-review buckets. */
+  readonly nomnc: boolean;
 }
 
 /** What the actor may start from the hub. An unknown permission set (null) shows nothing gated. */
@@ -55,6 +68,7 @@ export function hubAbilities(permissions: readonly string[] | null | undefined):
     death: has("discharge.death"),
     cosign: has("discharge.cosign_for_cause"),
     readmit: has("admission.create"),
+    nomnc: has("nomnc.read"),
   };
 }
 

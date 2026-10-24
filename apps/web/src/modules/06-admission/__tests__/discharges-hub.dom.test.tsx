@@ -64,6 +64,13 @@ const RECENT = [
     dischargedAt: "2026-06-20T17:00:00.000Z",
   }),
 ];
+const QIO = [
+  row({ admissionId: "a-6", patientId: "p-1", nextDeadlineAt: null }),
+  row({ admissionId: "a-7", patientId: "p-2", nextDeadlineAt: "2099-01-12T17:00:00.000Z" }),
+];
+const NO_DEADLINE = [
+  row({ admissionId: "a-8", patientId: "p-3", noticeDeliveredAt: "2026-01-10T15:30:00.000Z" }),
+];
 const PATIENTS: Record<string, unknown> = {
   "p-5": { id: "p-5", firstName: "Lena", lastName: "Park", mrn: "MRN-5005" },
   "p-1": { id: "p-1", firstName: "Maria", lastName: "Lopez", mrn: "MRN-1001" },
@@ -85,6 +92,8 @@ function makeClient(opts: { failReady?: boolean } = {}) {
         if (bucket === "needs_details") return ok({ items: NEEDS, nextCursor: null });
         if (bucket === "awaiting_cosign") return ok({ items: COSIGN, nextCursor: null });
         if (bucket === "recently_discharged") return ok({ items: RECENT, nextCursor: null });
+        if (bucket === "qio_review_open") return ok({ items: QIO, nextCursor: null });
+        if (bucket === "nomnc_no_deadline") return ok({ items: NO_DEADLINE, nextCursor: null });
       }
       if (path === "/api/v1/patients/{id}") {
         const id = init?.params?.path?.id ?? "";
@@ -127,19 +136,23 @@ describe("discharges hub model", () => {
       death: false,
       cosign: false,
       readmit: false,
+      nomnc: false,
     });
     expect(hubAbilities(["discharge.death", "discharge.cosign_for_cause"])).toEqual({
       discharge: false,
       death: true,
       cosign: true,
       readmit: false,
+      nomnc: false,
     });
     expect(hubAbilities(["admission.create"]).readmit).toBe(true);
+    expect(hubAbilities(["nomnc.read"]).nomnc).toBe(true);
     expect(hubAbilities(null)).toEqual({
       discharge: false,
       death: false,
       cosign: false,
       readmit: false,
+      nomnc: false,
     });
   });
   it("matches a patient by name or MRN and lists only unknown patient ids", () => {
@@ -229,6 +242,30 @@ describe("discharges hub screen", () => {
     expect(within(cosign).getByRole("link", { name: "Review & cosign" }).getAttribute("href")).toBe(
       "/discharges/de-4/cosign",
     );
+  });
+
+  it("lists open QIO reviews (no deadline typed is flagged) and NOMNC records with no deadline, only with nomnc.read", async () => {
+    mount(["admission.read", "discharge.create", "nomnc.read"]);
+    const qio = await waitFor(() => tableNamed("Admissions with an open QIO review"));
+    expect(await within(qio).findByText("No deadline recorded")).toBeTruthy();
+    expect(within(qio).getAllByRole("link", { name: "Open record" })[0]?.getAttribute("href")).toBe(
+      "/admissions/a-6",
+    );
+    const missing = await waitFor(() => tableNamed("NOMNC records with no deadline typed"));
+    expect(
+      within(missing).getByRole("link", { name: "Enter the deadline" }).getAttribute("href"),
+    ).toBe("/admissions/a-8");
+  });
+
+  it("does not fetch or show the QIO buckets without nomnc.read", async () => {
+    const client = mount(["admission.read", "discharge.create"]);
+    await waitFor(() => tableNamed("Admissions ready for discharge"));
+    expect(screen.queryByText("QIO review open")).toBeNull();
+    const buckets = client.GET.mock.calls.map(
+      ([, init]) => (init as { params?: { query?: { bucket?: string } } })?.params?.query?.bucket,
+    );
+    expect(buckets).not.toContain("qio_review_open");
+    expect(buckets).not.toContain("nomnc_no_deadline");
   });
 
   it("explains which workflow to use in the rail", async () => {
