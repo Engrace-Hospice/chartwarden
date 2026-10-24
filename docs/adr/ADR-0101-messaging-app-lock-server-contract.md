@@ -1,4 +1,4 @@
-# ADR-0100 — Messaging app lock (WP 5.11 client half): the server contract the mobile app consumes, and why nothing is built here yet
+# ADR-0101 — Messaging app lock (WP 5.11 client half): the server contract the mobile app consumes, and why nothing is built here yet
 
 - **Status:** **Proposed** (2026-10-23). Nothing is built. No code, no migration, no flag. Every default below is a PROPOSED default awaiting the security owner (SEC); none is a decision.
 - **Date:** 2026-10-23
